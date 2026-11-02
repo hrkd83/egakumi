@@ -131,8 +131,10 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 
 関連資料：[勉強会動画と資料](docs/study/VIDEOS.md)・[過去の調査・検証記録](docs/history/README.md)。
 
-## ライセンスと公開用設定
+## ライセンスと開発方針
 
 本プロジェクトの独自ソフトウェア・文書・図は [Apache License 2.0](LICENSE) で提供します。第三者のライブラリ・素材は各権利者の条件に従い、音楽・人物イラスト・ブランド素材・音声サンプルなどの扱いは [MEDIA-LICENSES.md](MEDIA-LICENSES.md) を参照してください。Egakumiの名称・ロゴについて、商標の使用許諾を与えるものではありません。
 
-この新規リポジトリは、企業・環境固有の情報を除いた公開用スナップショットから開始しています。元の非公開Git履歴、認証情報、構築状態、実環境の試験結果は含みません。サンプル値と制作記録の扱いは [PUBLIC-EXPORT.md](PUBLIC-EXPORT.md) を確認してください。クラウドへの配備や有料APIの実行前に、自身の環境の設定と費用を確認してください。
+設定例は架空値であり、実環境での動作確認を示すものではありません。企業・実環境固有情報は作業記録も含めて持ち込まず、[共通ルール](AGENTS.md)に従ってください。
+
+clone後は`python3 -I -B scripts/install_git_hooks.py`でローカルの混入検査を有効にします。[検査の範囲・GitHub Actions・許可リストの管理](docs/public-data-guard.md)も確認してください。

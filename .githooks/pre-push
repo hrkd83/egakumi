@@ -1,0 +1,16 @@
+#!/bin/sh
+# 全履歴とGitが標準入力で渡すpush対象を検査する。
+set -eu
+
+fail() {
+  printf '%s\n' 'Public-data guard: hook startup failed.' >&2
+  exit 1
+}
+
+command -v python3 >/dev/null 2>&1 || fail
+command -v git >/dev/null 2>&1 || fail
+python3 -I -S -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' >/dev/null 2>&1 || fail
+repository_root=$(git rev-parse --show-toplevel 2>/dev/null) || fail
+runner="$repository_root/scripts/install_git_hooks.py"
+[ -f "$runner" ] && [ -r "$runner" ] && [ ! -L "$runner" ] || fail
+exec python3 -I -S "$runner" --run-hook pre-push -- "$@"

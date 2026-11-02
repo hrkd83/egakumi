@@ -1,0 +1,3746 @@
+{
+  "version": 1,
+  "public_uuids": {
+    "1c0163c0-47e6-4577-8991-ea5c82e286e4": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "312a565d-c81f-4fd8-895a-4e21e48d571c": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "3913510d-42f4-4e42-8a64-420c390055eb": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "4633458b-17de-408a-b874-0445c86b69e6": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "53ca6127-db72-4b80-b1b0-d745d6d5456d": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "71522526-b88f-4d52-b57f-d31fc3546d0d": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "73c42c96-874c-492b-b04d-ab87d138a893": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "7628b7b8-a8b2-4cdc-b46f-e9b35248918e": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "7f951dda-4ed3-4680-a7ca-43fe172d538d": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "8311e382-0749-4cb8-b61a-304f252e45ec": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "a4417e6f-fecd-4de8-b567-7b0420556985": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "a97b65f3-24c7-4388-baec-2e87135dc908": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "acdd72a7-3385-48ef-bd42-f606fba81ae7": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "b86a8fe4-44ce-4948-aee5-eccb2c155cd7": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "c7244dfb-f447-457d-b2ba-3999044d1706": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "eadc314b-1a2d-4efa-be10-5d325db5065e": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "f2dc8367-1007-4938-bd23-fe263f013447": "Public Azure built-in RBAC role definition; not a deployment identity",
+    "fb879df8-f326-4884-b1cf-06f3ad86be52": "Public Azure built-in RBAC role definition; not a deployment identity"
+  },
+  "public_hosts": [
+    "acme-staging-v02.api.letsencrypt.org",
+    "acme-v02.api.letsencrypt.org",
+    "aiplatform.googleapis.com",
+    "aka.ms",
+    "api.github.com",
+    "authorization-manager.consent.azure-apim.net",
+    "azure.microsoft.com",
+    "cohere.com",
+    "console.cloud.google.com",
+    "devblogs.microsoft.com",
+    "developer.mozilla.org",
+    "docs.cloud.google.com",
+    "docs.cohere.com",
+    "feross.org",
+    "github.com",
+    "google.github.io",
+    "graph.microsoft.com",
+    "huggingface.co",
+    "json-schema.org",
+    "learn.microsoft.com",
+    "login.microsoftonline.com",
+    "management.azure.com",
+    "openai.com",
+    "opencollective.com",
+    "packages.microsoft.com",
+    "paulmillr.com",
+    "peps.python.org",
+    "platform.openai.com",
+    "polar.sh",
+    "portal.azure.com",
+    "registry.npmjs.org",
+    "schema.management.azure.com",
+    "techcommunity.microsoft.com",
+    "tidelift.com",
+    "tsdoc.org",
+    "ui.shadcn.com",
+    "www.apache.org",
+    "www.better-auth.com",
+    "www.deepseek.com",
+    "www.microsoft.com",
+    "www.patreon.com",
+    "www.python.org",
+    "www.rfc-editor.org",
+    "www.w3.org",
+    "www.youtube.com",
+    "youtu.be"
+  ],
+  "public_emails": [
+    "21281595+hrkd83@users.noreply.github.com"
+  ],
+  "public_author_names": [
+    "Egakumi contributors",
+    "Example developer"
+  ],
+  "literal_exceptions": [
+    {
+      "rule": "credential-assignment",
+      "value": " . getenv(",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/lib/document-analysis-integration.ts",
+        "apps/portal/lib/realtime-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "API key for this request",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/lib/i18n/dictionaries/en.json",
+        "apps/portal/lib/i18n/document-analysis.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "MOCK-ACCESS-TOKEN-PRIVATE",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "OFFLINE_FIXTURE",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_tenant_configuration.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "PRIVATE_EPHEMERAL",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_realtime_browser.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "PRIVATE_SENTINEL",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/cleanup_fixtures.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SECRET_FIXTURE",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_lifecycle.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SENTINEL_ACCESS_TOKEN",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SENTINEL_SECRET_ABC",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/cap-offline.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SYNTHETIC-ENTRA-DO-NOT-DISPLAY",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_prepare_secrets.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SYNTHETIC-HOOK-ENTRA-DO-NOT-DISPLAY",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_local_preparation_hooks.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SYNTHETIC-SELECTION-ENTRA-DO-NOT-DISPLAY",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_local_preparation_hooks.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "SYNTHETIC_KEY",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_common_authentication.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "fixture-azure-secret",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "fixture-password",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/certificate-offline.ps1",
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "fixture-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-directory.test.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "forbidden",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_common_authentication.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "must-not-leave-broker",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_credential_login.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "not-allowed",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/model-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "not-exposed",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_credential_login.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "opaque-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_credential_login.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-access-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-app-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-key",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "clients/connection-session/typescript/connection-session.test.ts",
+        "tests/test_credential_client_v2.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-refresh",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-refresh-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "private-user-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "sentinel-private-key",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_waf_probe.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "signature-test-secret",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "synthetic-pfx-password",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/certificate-rotation-offline.ps1"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "transient-test-token",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "apps/portal/tests/auth-flow.test.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "実行に使うAPIキー",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/lib/i18n/dictionaries/ja.json",
+        "apps/portal/lib/i18n/document-analysis.ts"
+      ]
+    },
+    {
+      "rule": "credential-pattern",
+      "value": "-----BEGIN OPENSSH PRIVATE KEY-----",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_configuration.py",
+        "tests/test_ssh_keys.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "../other",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "/another/app",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "APIM subscription ID",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/lib/i18n/dictionaries/en.json"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "APIM購読ID",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/lib/i18n/dictionaries/ja.json"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "MaStEr",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "[parameters(",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_connections.py",
+        "tests/test_service_bindings.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "actual-apim-subscription",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "another",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_credential_client_v2.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "another-test",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "app-a",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_audit_usage.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "app-b",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_audit_usage.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "business-subscription",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_credential_client_v2.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "different-real-subscription",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "existing-id",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_portal_api_keys_setup.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "existing-model-test",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "existing-test",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "forged-tenant",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/model-key-choices.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "forged-user",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/model-key-choices.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "legacy-key",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "master",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "missing-first",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "model-test",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/subscription-sync.sql.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "objectId",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/credential_broker/store.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "operator@example.invalid",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/cap-offline.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "other",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_http.py",
+        "apps/gateway/credential-broker/tests/test_store.py",
+        "tests/test_credential_login.py",
+        "tests/test_grpc_network.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "other-subscription",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "pii-system",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/configuration_fixtures.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "platform-",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "scripts/deployment/helpers/portal_api_keys.py",
+        "tests/test_portal_api_keys_setup.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "portal-22222222-2222-4222-8222-222222222222",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/gateway-profile.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "portal-fixture",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_subscription_usage.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "readonly",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_portal_gateway.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "second",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "shared-models",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/gateway-profile.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "spoofed",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_http.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-1",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "clients/connection-session/typescript/connection-session.test.ts"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-a",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_store_support.py",
+        "apps/gateway/credential-broker/tests/test_broker_http.py",
+        "apps/gateway/credential-broker/tests/test_store.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-b",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_http.py",
+        "apps/gateway/credential-broker/tests/test_store.py",
+        "tests/test_contract_rate_policy.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-override",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/test_contract_rate_policy.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscriptionId",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/credential_broker/store.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "system-a",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "tests/configuration_fixtures.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "tenantId",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/credential_broker/store.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "unregistered",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/portal/tests/subscription-sync.sql.test.ts"
+      ]
+    },
+    {
+      "rule": "local-user-path",
+      "value": "/home/$",
+      "reason": "Existing generic path or Graph API route syntax; no person/device identity",
+      "paths": [
+        "docs/study/video-sample/episodes/08/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/08/script.json",
+        "docs/study/video-sample/episodes/08/settings-source-review.md",
+        "infra/modules/management.bicep"
+      ]
+    },
+    {
+      "rule": "local-user-path",
+      "value": "/users/$",
+      "reason": "Existing generic path or Graph API route syntax; no person/device identity",
+      "paths": [
+        "apps/portal/lib/api-keys/graph.ts",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-upstreams.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "PRIVATE_FIXTURE@kv.vault.azure.net",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_apim_hostname_preservation.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "PRIVATE_FIXTURE@management.azure.com",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_grpc_network.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "PRIVATE_PASSWORD_FIXTURE@management.azure.com",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_lifecycle_transport.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "fixture@logic-apis-japaneast.consent.azure-apim.net",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "operator@fresh-clone.example",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_fresh_clone_readiness.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "secret@graph.microsoft.com",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "tests/test_connection_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-email",
+      "value": "user@logic-apis-japaneast.consent.azure-apim.net",
+      "reason": "Existing synthetic negative-test input; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "169.254.169.254",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/deploy/build-image.sh",
+        "guest/build-credential-broker.sh",
+        "guest/certificate.ps1",
+        "scripts/waf_probe.py",
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "ai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/apim/apis/azure-voice-live-webrtc-v1.json",
+        "apps/gateway/apim/apis/azure-voice-live-ws-v1.json",
+        "apps/gateway/apim/apis/cohere-inference-v1.json",
+        "apps/gateway/apim/apis/openai-transcription-ws-v1.json",
+        "apps/gateway/apim/policies/realtime-create.xml",
+        "scripts/deployment/helpers/configuration.py",
+        "tests/fixtures/external-api-definitions.json",
+        "tests/test_api_protocols.py",
+        "tests/test_configuration.py",
+        "tests/test_realtime_policy.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "aif-test-fixture.cognitiveservices.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "aif-test-fixture.openai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "aif-test-fixture.services.ai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_publication_size.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "aif-test.cognitiveservices.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_document_analysis_policy.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "aiortc.readthedocs.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/history/pre-20261101-realtime-latency-review.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "another.azure-api.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_gateway_callback_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "api.enterprise.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_catalog_descriptions.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "apic-test-egakumi.portal.eastus.azure-apicenter.ms",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_prepare_registration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "apim-egakumi-demo.azure-api.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-apim.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-zones.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "apim-fixture.azure-api.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_ssml_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "apim-test-fixture.azure-api.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_gateway_callback_waf.py",
+        "tests/test_grpc_network.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "attacker.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "tests/test_credential_login.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "bfl.ai",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/public/brand/providers/README.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "ca-test-fixture-portal.private.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_publish_apis.py",
+        "tests/test_subscription_profile_deployment.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "cognitiveservices.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/apim/apis/azure-speech-v1.json",
+        "apps/gateway/apim/apis/blackforest-images-v1.json",
+        "apps/gateway/apim/apis/document-analysis-v1.json",
+        "apps/gateway/apim/apis/microsoft-decision-v1.json",
+        "apps/gateway/apim/apis/openai-audio-v1.json",
+        "apps/gateway/apim/apis/openai-embeddings-v1.json",
+        "apps/gateway/apim/apis/openai-images-v1.json",
+        "apps/gateway/apim/apis/openai-inference-v1.json",
+        "apps/gateway/apim/apis/openai-live-control-v1.json",
+        "apps/gateway/apim/apis/openai-live-ws-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-control-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-observer-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-ws-v1.json",
+        "apps/gateway/apim/apis/pii-v1.json",
+        "apps/gateway/apim/policies/document-analysis.xml",
+        "apps/gateway/apim/policies/realtime-create.xml",
+        "scripts/deployment/helpers/configuration.py",
+        "tests/configuration_fixtures.py",
+        "tests/test_api_contract_configuration.py",
+        "tests/test_api_migration.py",
+        "tests/test_api_protocols.py",
+        "tests/test_operation_backend_publication.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_shared_mcp_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/credential_broker/store.py",
+        "apps/gateway/credential-broker/tests/test_store.py",
+        "apps/portal/lib/auth-database.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "demo-env.japaneast.azurecontainerapps.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-aca-json.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-aca.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-zones.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "developers.cloudflare.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/setup/03-public-dns.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "developers.openai.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/history/pre-20261101-api-design-proposal.md",
+        "docs/reference/api-design-proposal.md",
+        "docs/reference/foundry-model-catalog.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "different-private.fixture",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_catalog_publication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "different.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_migration.py",
+        "tests/test_credential_cleanup.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "docs.aws.amazon.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/setup/03-public-dns.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "docs.bfl.ai",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/reference/foundry-model-catalog.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "echoapi.cloudapp.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_apim_sample_cleanup.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "elsewhere.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "eslint.org",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/package-lock.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "evil-logic-apis-japaneast.consent.azure-apim.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "evil.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/gateway/credential-broker/tests/test_broker_service.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "example.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_portal_gateway.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "external.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "fixed.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_migration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "fixture.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_store.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "fixture.services.ai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_protocols.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "fixture.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_protocols.py",
+        "tests/test_prepare_coverage.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "gateway",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/setup/portal.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "gateway.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "gateway.example.com.attacker.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_credential_login.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "git-scm.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/setup/01-prerequisites.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "help.github.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/.gitignore"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "identity.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "internal.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/gateway-profile.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/deploy/api_publication.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-egakumi-demo.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/motion-dns-chain.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-check.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-config.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-fixture.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/certificate-hostnames-offline.ps1",
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/certificate-offline.ps1",
+        "tests/certificate-rotation-offline.ps1",
+        "tests/test_api_contract_configuration.py",
+        "tests/test_apim_hostname_preservation.py",
+        "tests/test_ssml_waf.py",
+        "tests/test_subscription_profile_deployment.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-test-fixture.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_publication_size.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_apim_hostname_preservation.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "logic-apis-",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_service.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "logic-apis-.consent.azure-apim.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "logic-apis-japaneast.consent.azure-apim.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "logic-apis-japaneast.consent.azure-apim.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_broker_support.py",
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "modelcontextprotocol.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/components/tools/pii-redaction-panel.tsx"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "original-private.fixture",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_catalog_publication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "other",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_live_api.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "other-vault.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/certificate-network-boundary-offline.ps1"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "other.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "other.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_cleanup.py",
+        "tests/test_connection_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "other.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_grpc_network.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "portal",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/README.md",
+        "docs/setup/portal.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "portal.fixture.azurecontainerapps.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_ssml_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "poshac.me",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/setup/03-public-dns.md",
+        "docs/setup/03a-azure-dns-managed-identity.md",
+        "scripts/deployment/helpers/configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "private-backend.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_foundation.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "private.local",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/image-generation.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "privatelink.cognitiveservices.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/01-network-control.html",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-zones.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-foundry.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-none.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-others.svg",
+        "docs/study/video-sample/episodes/02/make-settings.mjs",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs",
+        "docs/study/video-sample/episodes/a2/author.py",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-aca.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-apim.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-base.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-foundry-other.svg",
+        "docs/study/video-sample/episodes/a2/render-settings-v2.mjs",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/author.py",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
+        "docs/study/video-sample/episodes/a2/source-review.md",
+        "infra/modules/network.bicep"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "privatelink.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/01-network-control.html",
+        "docs/study/video-sample/episodes/02/content-review-settings.json",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-zones.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-sql.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-foundry.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-none.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-others.svg",
+        "docs/study/video-sample/episodes/02/make-settings.mjs",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs",
+        "docs/study/video-sample/episodes/02/versions/diagram-v1/script.json",
+        "docs/study/video-sample/episodes/02/versions/settings-v2/content-review-settings.json",
+        "docs/study/video-sample/episodes/a2/author.py",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-aca.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-apim.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-base.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-foundry-other.svg",
+        "docs/study/video-sample/episodes/a2/render-settings-v2.mjs",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/author.py",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
+        "docs/study/video-sample/episodes/a2/source-review.md",
+        "infra/modules/credential-broker-network.bicep"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "privatelink.openai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/01-network-control.html",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-zones.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-foundry.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-none.svg",
+        "docs/study/video-sample/episodes/02/diagrams/settings-private-link-zones-others.svg",
+        "docs/study/video-sample/episodes/02/make-settings.mjs",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs",
+        "docs/study/video-sample/episodes/02/versions/diagram-v1/script.json",
+        "docs/study/video-sample/episodes/a2/author.py",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-aca.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-apim.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-base.svg",
+        "docs/study/video-sample/episodes/a2/diagrams/settings-v2/a2-eight-zones-foundry-other.svg",
+        "docs/study/video-sample/episodes/a2/render-settings-v2.mjs",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/author.py",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/script.json",
+        "docs/study/video-sample/episodes/a2/revisions/initial-v1/source-review.md",
+        "docs/study/video-sample/episodes/a2/source-review.md",
+        "infra/modules/network.bicep"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "provider.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "qwen.ai",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/reference/foundry-model-catalog.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "qwenlm.github.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/reference/foundry-model-catalog.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "registered-fixture.openai.azure.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_realtime_policy.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "rpc.enterprise.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_catalog_descriptions.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "rpc.fixture.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_catalog_publication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sample.azurecontainerapps.io",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-egakumi-demo.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-sql.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-example.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/auth-environment.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-sync.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/subscription-sync.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-test-sample.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-test.database.windows.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/tests/subscription-sync.sql.test.ts",
+        "apps/portal/tests/subscription-sync.test.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "stt.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_migration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "texttospeech.googleapis.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/study/video-sample/gemini-audition.json",
+        "docs/study/video-sample/generate-gemini-audition.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "tts.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_migration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "unapproved.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "untrusted.example",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_subscription_profile_deployment.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "www.twilio.com",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "docs/history/pre-20261101-realtime-latency-review.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "x.ai",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "apps/portal/public/brand/providers/README.md"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "1.0.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "scripts/deployment/lifecycle.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.0.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.0.0.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.0.1.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_gateway_callback_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.1.1.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.10.0.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.10.0.5",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.20.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_configuration.py",
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.20.30.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-018.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-021.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-036.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-070.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-072.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-073.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-076.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-092.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-096.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-018.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-021.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-036.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-070.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-left-name_left-priority_left-source_left-dest.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-left-priority_right-priority.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-neutral.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-right-name_right-priority_right-source_right-dest.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-right-priority.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/episodes/04/diagrams/udr-appgw-roundtrip--base.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-appgw-roundtrip--firewall.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-appgw-roundtrip--forward.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-appgw-roundtrip--forward_return.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-appgw-roundtrip--return_return-flow.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-equal-prefix--base.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-equal-prefix--order.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-equal-prefix--udr.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-portal-roundtrip--agw-scope.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-portal-roundtrip--forward_return.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-portal-roundtrip--forward_return_portal-return.svg",
+        "docs/study/video-sample/episodes/04/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/04/versions/diagram-v1/script.json",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "docs/study/video-sample/settings-view-examples.json",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_configuration.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.0.255",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/01-network-control.html"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.0.3",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-018.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-021.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-036.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "docs/study/video-sample/settings-view-examples.json",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.255",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/01-network-control.html"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-check.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-keyvault.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-config.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.6",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-nic-ipconfigs.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-acr.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.7",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-nic-ipconfigs.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-acr.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.1.8",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-pe-dns-sql.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-018.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-021.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-036.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/episodes/04/diagrams/udr-internal-direct--base.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-internal-direct--system.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-specific--actual.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-specific--vip.svg",
+        "docs/study/video-sample/episodes/04/diagrams/udr-specific--vip_vnet.svg",
+        "docs/study/video-sample/episodes/04/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/04/versions/diagram-v1/script.json",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "docs/study/video-sample/settings-view-examples.json",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.128",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/episodes/08/settings-source-review.md",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_portal_configuration.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.192",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_portal_configuration.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.196",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-aca-json.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-aca.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.200",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_ssml_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.255",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/01-network-control.html"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_network_preservation.py",
+        "tests/test_route_preservation.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.64",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-008.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-009.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-010.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-011.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-012.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-015.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-090.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-052.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-083.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-085.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-094.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-10.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs-focus-9.svg",
+        "docs/study/video-sample/episodes/03/diagrams/cidrs.svg",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-left-name_left-priority_left-source_left-dest.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-left-priority_right-priority.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-neutral.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-right-name_right-priority_right-source_right-dest.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/agw-apim-http-right-priority.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/apim-foundry-dst.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/apim-foundry-left-dest_right-dest.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/apim-foundry-left-priority_right-priority.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/apim-foundry-neutral.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/two-directions-in-policy.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/two-directions-neutral.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/diagrams/two-directions-out-direction_in-direction.svg",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_configuration.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_publish_apis.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.2.68",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-records-apim.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs",
+        "tests/test_network_preservation.py",
+        "tests/test_route_preservation.py",
+        "tests/test_ssml_waf.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.3.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/assets/network-vnet-structure.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-084.svg",
+        "docs/study/video-sample/episodes/01/diagrams/turn-093.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-017.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-018.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-019.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-020.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-021.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-022.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-023.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-027.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-028.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-029.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-030.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-031.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-036.svg",
+        "docs/study/video-sample/episodes/01/settings-v2/diagrams/turn-093.svg",
+        "docs/study/video-sample/lesson-visual.mjs",
+        "docs/study/video-sample/settings-view-examples.json",
+        "infra/modules/network.bicep",
+        "params/production.example.json",
+        "params/test.example.json",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_configuration.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_portal_configuration.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.40.3.255",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/01-network-control.html"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.41.2.128",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.60.0.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/study/video-sample/episodes/02/diagrams/portal-vnet-dns-custom.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.0.1",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.1.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.1.5",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.2.128",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.2.132",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.2.4",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.2.5",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.2.64",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.3.128",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.71.2.128",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.99.0.0",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/test_portal_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "168.63.129.16",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "docs/setup/04-params.md",
+        "docs/study/01-network-control.html",
+        "docs/study/video-sample/episodes/02/diagrams/portal-dns-check.svg",
+        "docs/study/video-sample/episodes/02/diagrams/portal-nsg-dns-rules.svg",
+        "docs/study/video-sample/episodes/02/portal-screens.mjs",
+        "docs/study/video-sample/episodes/02/versions/diagram-v1/script.json",
+        "docs/study/video-sample/episodes/03/portal/scene-data.json",
+        "docs/study/video-sample/episodes/03/production.md",
+        "docs/study/video-sample/episodes/03/script.json",
+        "docs/study/video-sample/episodes/03/settings-v2/render-diagrams.mjs",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
+        "docs/study/video-sample/episodes/03/versions/diagram-v1/script.json",
+        "infra/modules/network.bicep",
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json",
+        "tests/test_parameter_ip_ownership.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "169.254.169.254",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "apps/portal/deploy/build-image.sh",
+        "guest/build-credential-broker.sh",
+        "guest/certificate.ps1",
+        "scripts/waf_probe.py",
+        "tests/certificate-azure-identity-offline.ps1",
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "1::2",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "scripts/deployment/helpers/cleanup.py",
+        "tests/arm_helpers.py",
+        "tests/cleanup_fixtures.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "2.5.29.17",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "guest/certificate.ps1"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "2.5.29.37",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "guest/certificate.ps1"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "::2",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "tests/arm_helpers.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "::443",
+      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "paths": [
+        "scripts/deployment/lifecycle.py"
+      ]
+    },
+    {
+      "rule": "signed-url",
+      "value": "https://kv.vault.azure.net/secrets/cert?sig=PRIVATE_FIXTURE",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_apim_hostname_preservation.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-0000-0000-000000000001",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/cap-offline.py",
+        "tests/test_portal_local_auth_preparation.py",
+        "tests/test_preparation_inventory.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-0000-0000-000000000002",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/cap-offline.py",
+        "tests/test_portal_local_auth_preparation.py",
+        "tests/test_preparation_inventory.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000000",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/components/api-keys/create-key-dialog.tsx",
+        "scripts/waf_probe.py",
+        "tests/test_waf_probe.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000001",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-administration-client.test.ts",
+        "apps/portal/tests/api-key-client.test.ts",
+        "apps/portal/tests/api-key-create-form.test.ts",
+        "apps/portal/tests/api-key-limit-client.test.ts",
+        "apps/portal/tests/api-key-ownership-client.test.ts",
+        "apps/portal/tests/graph-tool-client.test.ts",
+        "scripts/waf_probe.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000002",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-administration-client.test.ts",
+        "apps/portal/tests/api-key-client.test.ts",
+        "apps/portal/tests/api-key-create-form.test.ts",
+        "apps/portal/tests/api-key-ownership-client.test.ts",
+        "apps/portal/tests/graph-tool-client.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000003",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-client.test.ts",
+        "apps/portal/tests/api-key-create-form.test.ts",
+        "apps/portal/tests/api-key-ownership-client.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000004",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-client.test.ts",
+        "apps/portal/tests/api-key-create-form.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000005",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-client.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00112233-4455-6677-8899-aabbccddeeff",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/auth-runtime-grants.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_broker_support.py",
+        "apps/gateway/credential-broker/tests/_store_support.py",
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/gateway/credential-broker/tests/test_session_sql.py",
+        "apps/portal/tests/api-key-administration-config.test.ts",
+        "apps/portal/tests/api-key-administration-repository.test.ts",
+        "apps/portal/tests/api-key-administration.test.ts",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-group-config.test.ts",
+        "apps/portal/tests/api-key-group-pattern.test.ts",
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/api-key-limits.test.ts",
+        "apps/portal/tests/api-key-owner-http.test.ts",
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "apps/portal/tests/api-key-upstreams.test.ts",
+        "apps/portal/tests/auth-contract.test.ts",
+        "apps/portal/tests/auth-environment.test.ts",
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "apps/portal/tests/auth-flow.test.ts",
+        "apps/portal/tests/auth-identity.test.ts",
+        "apps/portal/tests/company-administration-client.test.ts",
+        "apps/portal/tests/company-administration.test.ts",
+        "apps/portal/tests/decision-gateway.test.ts",
+        "apps/portal/tests/document-analysis-gateway.test.ts",
+        "apps/portal/tests/document-analysis.test.ts",
+        "apps/portal/tests/embedding-gateway.test.ts",
+        "apps/portal/tests/gateway-profile.test.ts",
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/helpers/api-key-service-fixture.ts",
+        "apps/portal/tests/image-generation.test.ts",
+        "apps/portal/tests/model-gateway.test.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "apps/portal/tests/model-output-minimum.test.ts",
+        "apps/portal/tests/model-stream.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "apps/portal/tests/realtime-gateway.test.ts",
+        "apps/portal/tests/realtime-relay.test.ts",
+        "apps/portal/tests/realtime-webrtc.test.ts",
+        "apps/portal/tests/rerank-gateway.test.ts",
+        "apps/portal/tests/speech-gateway.test.ts",
+        "docs/setup/04-params.md",
+        "tests/certificate-azure-identity-offline.ps1",
+        "tests/configuration_fixtures.py",
+        "tests/test_api_contract_configuration.py",
+        "tests/test_api_protocols.py",
+        "tests/test_api_publication_size.py",
+        "tests/test_apim_preflight.py",
+        "tests/test_apim_sample_cleanup.py",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_azure_dns_identity.py",
+        "tests/test_capacity.py",
+        "tests/test_configuration.py",
+        "tests/test_configure_trial.py",
+        "tests/test_contract_rate_configuration.py",
+        "tests/test_credential_client.py",
+        "tests/test_credential_login.py",
+        "tests/test_decision_client.py",
+        "tests/test_deploy_applications.py",
+        "tests/test_deploy_portal.py",
+        "tests/test_dns_selection.py",
+        "tests/test_fresh_clone_readiness.py",
+        "tests/test_gateway_callback_waf.py",
+        "tests/test_gateway_cleanup.py",
+        "tests/test_grpc_network.py",
+        "tests/test_host_encryption_registration.py",
+        "tests/test_integration_client.py",
+        "tests/test_lifecycle_transport.py",
+        "tests/test_log_privacy.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_portal_authentication_infra.py",
+        "tests/test_portal_gateway.py",
+        "tests/test_prepare_coverage.py",
+        "tests/test_prepare_registration.py",
+        "tests/test_prepare_secrets.py",
+        "tests/test_publication_diagnostics.py",
+        "tests/test_publish_apis.py",
+        "tests/test_realtime_browser.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_released_apis.py",
+        "tests/test_split_cli.py",
+        "tests/test_split_configuration.py",
+        "tests/test_standard_gateway_authorization.py",
+        "tests/test_subscription_profile_deployment.py",
+        "tests/test_voice_client.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-2222-4333-8444-555555555555",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-mcp-guide.test.ts",
+        "clients/connection-session/typescript/connection-session.test.ts",
+        "tests/test_credential_client.py",
+        "tests/test_credential_client_v2.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-AAAA-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-aaaa-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_contract_rate_policy.py",
+        "tests/test_portal_api_key_configuration.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789000",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_portal_image.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789001",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/test_portal_image.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789002",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789003",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789004",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789005",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "12345678-1234-4234-8234-123456789006",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_credential_broker_initial_deployment.py",
+        "tests/test_portal_image.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_broker_support.py",
+        "apps/gateway/credential-broker/tests/_store_support.py",
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/gateway/credential-broker/tests/test_session_sql.py",
+        "apps/portal/tests/api-key-administration-config.test.ts",
+        "apps/portal/tests/api-key-administration-repository.test.ts",
+        "apps/portal/tests/api-key-administration.test.ts",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-group-config.test.ts",
+        "apps/portal/tests/api-key-group-pattern.test.ts",
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/api-key-limits.test.ts",
+        "apps/portal/tests/api-key-owner-http.test.ts",
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "apps/portal/tests/api-key-upstreams.test.ts",
+        "apps/portal/tests/auth-contract.test.ts",
+        "apps/portal/tests/auth-environment.test.ts",
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "apps/portal/tests/auth-flow.test.ts",
+        "apps/portal/tests/auth-identity.test.ts",
+        "apps/portal/tests/company-administration.test.ts",
+        "apps/portal/tests/decision-gateway.test.ts",
+        "apps/portal/tests/document-analysis-gateway.test.ts",
+        "apps/portal/tests/embedding-gateway.test.ts",
+        "apps/portal/tests/gateway-profile.test.ts",
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/helpers/api-key-service-fixture.ts",
+        "apps/portal/tests/image-generation.test.ts",
+        "apps/portal/tests/model-gateway.test.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "apps/portal/tests/model-output-minimum.test.ts",
+        "apps/portal/tests/model-stream.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "apps/portal/tests/realtime-relay.test.ts",
+        "apps/portal/tests/realtime-webrtc.test.ts",
+        "apps/portal/tests/rerank-gateway.test.ts",
+        "apps/portal/tests/speech-gateway.test.ts",
+        "docs/setup/04-params.md",
+        "tests/cleanup_fixtures.py",
+        "tests/test_api_contract_configuration.py",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_azure_dns_identity.py",
+        "tests/test_configuration.py",
+        "tests/test_configure_trial.py",
+        "tests/test_credential_login.py",
+        "tests/test_credential_login_browser.py",
+        "tests/test_deploy_applications.py",
+        "tests/test_deploy_portal.py",
+        "tests/test_dns_selection.py",
+        "tests/test_fresh_clone_readiness.py",
+        "tests/test_grpc_network.py",
+        "tests/test_integration_client.py",
+        "tests/test_portal_api_key_configuration.py",
+        "tests/test_portal_authentication_infra.py",
+        "tests/test_portal_cleanup.py",
+        "tests/test_prepare_registration.py",
+        "tests/test_prepare_secrets.py",
+        "tests/test_publish_apis.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_standard_apis.py",
+        "tests/test_standard_gateway_authorization.py",
+        "tests/test_subscription_profile_deployment.py",
+        "tests/test_subscription_usage.py",
+        "tests/test_tenant_configuration.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-bbbb-4222-8222-222222222222",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_contract_rate_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_broker_support.py",
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/gateway/credential-broker/tests/test_session_sql.py",
+        "apps/portal/tests/api-key-administration.test.ts",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/api-key-limits.test.ts",
+        "apps/portal/tests/api-key-owner-http.test.ts",
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "apps/portal/tests/api-key-upstreams.test.ts",
+        "apps/portal/tests/auth-environment.test.ts",
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "apps/portal/tests/auth-flow.test.ts",
+        "apps/portal/tests/auth-identity.test.ts",
+        "apps/portal/tests/company-administration.test.ts",
+        "apps/portal/tests/decision-gateway.test.ts",
+        "apps/portal/tests/document-analysis-gateway.test.ts",
+        "apps/portal/tests/embedding-gateway.test.ts",
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/helpers/api-key-service-fixture.ts",
+        "apps/portal/tests/image-generation.test.ts",
+        "apps/portal/tests/model-gateway.test.ts",
+        "apps/portal/tests/model-output-minimum.test.ts",
+        "apps/portal/tests/model-stream.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "apps/portal/tests/realtime-relay.test.ts",
+        "apps/portal/tests/realtime-webrtc.test.ts",
+        "apps/portal/tests/rerank-gateway.test.ts",
+        "apps/portal/tests/speech-gateway.test.ts",
+        "tests/test_audit_context.py",
+        "tests/test_configuration.py",
+        "tests/test_deploy_portal.py",
+        "tests/test_fresh_clone_readiness.py",
+        "tests/test_grpc_network.py",
+        "tests/test_integration_client.py",
+        "tests/test_portal_authentication_infra.py",
+        "tests/test_prepare_secrets.py",
+        "tests/test_publish_apis.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_standard_gateway_authorization.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-cccc-4333-8333-333333333333",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_contract_rate_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "41111111-1111-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/helpers/api-key-service-fixture.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "44444444-4444-4444-8444-444444444444",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/gateway/credential-broker/tests/test_session_sql.py",
+        "apps/portal/tests/api-key-administration.test.ts",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/api-key-limits.test.ts",
+        "apps/portal/tests/api-key-owner-http.test.ts",
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "apps/portal/tests/api-key-upstreams.test.ts",
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "apps/portal/tests/realtime-webrtc.test.ts",
+        "tests/api_definition_helpers.py",
+        "tests/cleanup_fixtures.py",
+        "tests/configuration_fixtures.py",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_configuration.py",
+        "tests/test_credential_pool_deployment.py",
+        "tests/test_deploy_portal.py",
+        "tests/test_publish_apis.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_split_cli.py",
+        "tests/test_standard_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "55555555-5555-4555-8555-555555555555",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py",
+        "apps/portal/tests/api-key-directory.test.ts",
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/api-key-owner-http.test.ts",
+        "apps/portal/tests/auth-expiry.sql.test.ts",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_connection_configuration.py",
+        "tests/test_deploy_portal.py",
+        "tests/test_management_cleanup.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "66666666-6666-4666-8666-666666666666",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_api_protocols.py",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_configuration.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "71111111-1111-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-ownership.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "77777777-7777-4777-8777-777777777777",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/arm_helpers.py",
+        "tests/test_audit_usage.py",
+        "tests/test_configuration.py",
+        "tests/test_prepare_coverage.py",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "7da3b268-cfcf-4b2f-bc37-cd3f27397989",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "81111111-1111-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-execution.test.ts",
+        "apps/portal/tests/api-key-ownership.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "88888888-8888-4888-8888-888888888888",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_publish_apis.py",
+        "tests/test_split_cli.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "8e3af657-a8ff-443c-a75c-2fe8c4bcb635",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "91111111-1111-4111-8111-111111111111",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-ownership.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "99999999-9999-4999-8999-999999999999",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-subscription-import.test.ts",
+        "tests/arm_helpers.py",
+        "tests/configuration_fixtures.py",
+        "tests/test_configuration.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_split_cli.py",
+        "tests/test_split_configuration.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "9d252ced-a744-45c1-a42f-9116a0ab846d",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "a2222222-2222-4222-8222-222222222222",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/helpers/api-key-service-fixture.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "a6994205-46b7-45ac-978d-99d011b58c81",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "apps/portal/tests/model-stream.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "tests/test_apim_hostname_preservation.py",
+        "tests/test_application_infrastructure_cleanup.py",
+        "tests/test_cleanup.py",
+        "tests/test_common_authentication.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_grpc_network.py",
+        "tests/test_integration_client.py",
+        "tests/test_lifecycle.py",
+        "tests/test_lifecycle_transport.py",
+        "tests/test_local_preparation_hooks.py",
+        "tests/test_network_preservation.py",
+        "tests/test_pii_policy.py",
+        "tests/test_portal_api_keys_setup.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "clients/connection-session/typescript/connection-session.test.ts",
+        "tests/test_credential_client_v2.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "abcdef00-0000-4000-8000-000000000001",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-administration-client.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "b21d67b3-7cef-49fc-b529-168f229b9cb0",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "b24988ac-6180-42a0-ab88-20f7382dd24c",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_integration_client.py",
+        "tests/test_pii_policy.py",
+        "tests/test_portal_api_keys_setup.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "c40ec37d-9af4-4f44-8ca7-a3f4625e29a3",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-upstreams.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/api-key-http.test.ts",
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/helpers/api-key-service-fixture.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_pii_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "e022b0c1-759a-4c35-9cf1-926f5b851a56",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "tests/test_pii_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "f3bdd15e-f64e-4f4f-8f30-04ecb45219e4",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-mcp.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "f5235390-eec1-4803-986b-0901a5d6ba19",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/pii-contract.test.ts"
+      ]
+    },
+    {
+      "rule": "unparseable-url",
+      "value": "https://[^",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "schemas/configuration.schema.json",
+        "schemas/params.schema.json"
+      ]
+    },
+    {
+      "rule": "unparseable-url",
+      "value": "https://[invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "http://user@localhost:8400",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://:PRIVATE_PASSWORD_FIXTURE@management.azure.com",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_lifecycle_transport.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://management.azure.com@evil.invalid/token",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_cli.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://name:password@gateway.example.invalid/auth/connections/browser/launch#x",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/graph-tool-client.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://name:secret@graph.microsoft.com/v1.0/me",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_connection_configuration.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://private:credential@",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_credential_cleanup.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://secret@example.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_waf_probe.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://secret@gateway.example.com/calls",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_realtime_browser.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:PRIVATE_FIXTURE@kv.vault.azure.net/secrets/cert",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_apim_hostname_preservation.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:fixture@logic-apis-japaneast.consent.azure-apim.net/redirect",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:pass@example.com",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/pii-contract.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:pass@gateway.example.com",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/pii-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:pass@gateway.example.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/document-analysis.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:pass@images.example.org/a.png",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/image-generation.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:pass@other.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/rerank-integration.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:password@gateway.example.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:secret@example.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/realtime-client.test.ts",
+        "apps/portal/tests/realtime-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:secret@gateway.example.com",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/decision-contract.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:secret@gateway.example.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/model-integration.test.ts",
+        "apps/portal/tests/rerank-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:secret@gateway.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/model-gateway.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user:secret@other.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/decision-gateway.test.ts",
+        "apps/portal/tests/embedding-gateway.test.ts",
+        "apps/portal/tests/embedding-integration.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user@",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_document_analysis_policy.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://user@logic-apis-japaneast.consent.azure-apim.net",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_identity_cm.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://userinfo@",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "apps/portal/tests/api-key-upstreams.test.ts"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "wss://user:secret@gateway.invalid",
+      "reason": "Existing synthetic malformed/authentication input rejection fixture; not a live credential",
+      "paths": [
+        "tests/test_voice_client.py"
+      ]
+    },
+    {
+      "rule": "tenant-url",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
+      "paths": [
+        "tests/test_credential_login_browser.py"
+      ]
+    },
+    {
+      "rule": "tenant-url",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
+      "paths": [
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "tenant-url",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
+      "paths": [
+        "tests/test_integration_client.py"
+      ]
+    },
+    {
+      "rule": "tenant-url",
+      "value": "authorize",
+      "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
+      "paths": [
+        "tests/test_entra_signin.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "::2",
+      "reason": "Python slicing syntax in scanner source, not an IP configuration.",
+      "paths": [
+        "scripts/check_public_data.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "1::2",
+      "reason": "Python slicing syntax in scanner source, not an IP configuration.",
+      "paths": [
+        "scripts/check_public_data.py"
+      ]
+    },
+    {
+      "rule": "local-user-path",
+      "value": "/Users/|",
+      "reason": "Detection regex prefixes/metacharacters only, with no actual user.",
+      "paths": [
+        "scripts/check_public_data.py"
+      ]
+    },
+    {
+      "rule": "local-user-path",
+      "value": "/home/|[A-Z]:[",
+      "reason": "Detection regex prefixes/metacharacters only, with no actual user.",
+      "paths": [
+        "scripts/check_public_data.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "test-token",
+      "reason": "Fixed test-token returned by an offline mock, not a credential.",
+      "paths": [
+        "apps/portal/tests/api-key-upstreams.test.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey${profile ? `, ",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/image-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n    CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 90,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status >= 300) { throw new RuntimeException(",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/decision-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n    CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 90,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status >= 300) { throw new RuntimeException(",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/embedding-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n    CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 90,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status < 200 || $status >= 300) { throw new RuntimeException(",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/rerank-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status < 200 || $status >= 300) { throw new RuntimeException(",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/pii-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $key, ",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/speech-integration.ts"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "xn--n8jzb4f6cz29q.xn--httpbackend-ht60a",
+      "reason": "Japanese protocol-prefix explanatory comment misparsed as URL/IDNA host; no actual authority.",
+      "paths": [
+        "apps/gateway/apim/api-publication.bicep"
+      ]
+    },
+    {
+      "rule": "unparseable-url",
+      "value": "https://へ切り替えると、APIMはWebSocket型に無効な接続先として握手前に拒否します。",
+      "reason": "Japanese protocol-prefix explanatory comment misparsed as URL/IDNA host; no actual authority.",
+      "paths": [
+        "apps/gateway/apim/api-publication.bicep"
+      ]
+    },
+    {
+      "rule": "tenant-url",
+      "value": "authorize",
+      "reason": "Independent repeated-digit tenant fixture or authorize-only fake MSAL endpoint in offline tests; no real tenant.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/_broker_support.py"
+      ]
+    },
+    {
+      "rule": "embedded-data-review-required",
+      "value": "data:image/png;base64,AA==",
+      "reason": "Exactly one NUL byte AA== in an intentionally invalid offline image-policy fixture; no private payload.",
+      "paths": [
+        "tests/test_api_profile_policy.py"
+      ]
+    }
+  ],
+  "reviewed_binary_assets": [
+    {
+      "path": "apps/gateway/apim/policies/credential-connection.xml",
+      "sha256": "701727b4492b328e78f3d0fe42b09667163ab4f2af96a0078ed4cd770639224d",
+      "reason": "Authored policy decodes runtime settings/sentinel placeholders, not a stored real config or credential. Exact source snapshot only."
+    },
+    {
+      "path": "apps/portal/app/favicon.ico",
+      "sha256": "2fda31eba2071c71824903c70e5a8ff84d2e7347aeac6294ec8932cf72f895fc",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/lib/realtime-relay.ts",
+      "sha256": "f55a77a47bdd9b86f57ea42cba7de49f0c7780d65fcda956dfb06179fd18e9de",
+      "reason": "Reviewed runtime SSE/RawData stream code; base64-context heuristic matches long code identifiers, with no embedded recording or stored credential. Exact source snapshot only."
+    },
+    {
+      "path": "apps/portal/lib/realtime-webrtc.ts",
+      "sha256": "3d8088c0169524731fba0b683ddea73e7c1b69a15f1a364e8359a1ff4acfca96",
+      "reason": "Reviewed runtime ticket/stream decoding code and variable interpolation; no embedded recording or stored credential. Exact source snapshot only."
+    },
+    {
+      "path": "apps/portal/public/brand/egakumi-symbol.webp",
+      "sha256": "0391e29223d61b2a4044984536f3d73d143d2f73a7225300d71c05bd3dff28d5",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/public/brand/egakumi-wordmark.webp",
+      "sha256": "e34c9213ca2449b18ac8ef99402f6e5879f6bee3c01d2d5a2a001be9f3a78db5",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/public/brand/favicon.svg",
+      "sha256": "d8ab1db805ec13d50765cb71c6e735feea569452e20e57e1e3e11bce7001a9ee",
+      "reason": "Existing reviewed embedded image payload in SVG or synthetic test fixture; text remains subject to all literal rules"
+    },
+    {
+      "path": "apps/portal/public/brand/providers/deepseek.png",
+      "sha256": "e51e06079e62216c018ca7feb48bc1ff49c8359e86b88692609c6c694d3c13fc",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/public/brand/providers/microsoft.png",
+      "sha256": "2d59b358c254d5467046e6f341825949aafecfe46af27b541fae72850c9fc41f",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/public/brand/providers/mistral.png",
+      "sha256": "ae02deb887cbf91e22657e60f362c80ff3f990b511f096cf5a2cf92a0e560490",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/public/samples/speech-ja-jp.wav",
+      "sha256": "22b9ca1dc46a3e1ab96fb8baba33256c1642edc3fd7e731ea87a32ec94042633",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "apps/portal/tests/image-generation.test.ts",
+      "sha256": "7df2bc28ddffeac4d7275ed1a4766093417dd30c526975adc36b3a8f93e5e269",
+      "reason": "Existing reviewed embedded image payload in SVG or synthetic test fixture; text remains subject to all literal rules"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/01-search-managed-identities.png",
+      "sha256": "c48cc8cda7453fee0d5cad6a40bda9a39f7c03052b1e809f0743aaed52e1f8f4",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/02-create-identity-basics.png",
+      "sha256": "c4cfc5b408de2fac871ccfda2f2ec0a052890531969d9ead668fd3411510544f",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/03-create-identity-review.png",
+      "sha256": "42e06038bc7013c7c37982cf40ef4e1c4cd4950655754ea38a3ecd0bd91606a7",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/04-dns-resource-group.png",
+      "sha256": "30c284ee9bbf33bbcaff34b068f209f8c5e2a4872a3f13aa5bed4dc12cb98b06",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/05-identity-properties.png",
+      "sha256": "eacc1cdbb7cb1c8ca743ed8b2476a703e2588edb733a5111019e711e35ba4ea8",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/06-dns-rg-iam.png",
+      "sha256": "27b496aac1847d80b1f2c363c165d3f8b6cfa8468e5de286db6e78c8f727e9a8",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/07-dns-zone-contributor.png",
+      "sha256": "9a05015239b7491dce33a11ea8858656d752e87af9fc68ae8f9502ca8dddb0a0",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/08-select-managed-identity.png",
+      "sha256": "bebd6b79afbf5e3af54c57b7bd5c0bab2b971406c55d040fbb80e927022b1093",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/08a-assignment-type.png",
+      "sha256": "19eb282fdb625a42e68994ba3ff2190abcf51e62e4760a424adb9f89bd0d7dd1",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/09-review-dns-role-assignment.png",
+      "sha256": "c3545438c98c3d02f8d9f6ac9b9d3371bb45f0c945056077bb7293cd44b7f8b0",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/azure-dns-managed-identity/10-dns-role-assigned.png",
+      "sha256": "57ca7ed600591f575edf07c21709cf4f9689f0098638fba97280de432fec519c",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/01-azure-entra-search.jpg",
+      "sha256": "4e8e265b672988399e483593db4e1974c6173ff1b4b89b1724a3e9a260f9ebc1",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/02-app-registrations-menu.jpg",
+      "sha256": "078d5ed68b635967ac7a0d0e4e90b21362504ce96f997ba81f716065a37f8656",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/03-new-gateway-application.jpg",
+      "sha256": "41aadf244bb9e0b4b00d8f354ccbdc00ad518a64e3eb76fa5442d67697d0d36d",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/05-gateway-access-token-version.png",
+      "sha256": "f2f8ed028821841ba175c667bfd28796b6375cae5f105f681fdfc509216a0ff1",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/09-gateway-app-role.png",
+      "sha256": "19c7335f429cce1d0ff511c2e8c50a7438e536aea356452bdd2af319b4045418",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/10-gateway-idtyp.png",
+      "sha256": "001a07c239b530e31f1045c9971dba55ff9c80d9bcaa3ac6e3c89415e91fc4c9",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/11-gateway-graph-permission.png",
+      "sha256": "c8bd33ab80833548b348a2f8c8ba45b775c2b005df7be9b504781753a8b70a0c",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-app-registration/13-gateway-client-secret.png",
+      "sha256": "8d065877e253aa87c464e95b0ae33b4ca1a09f06a85879ff989281d1d87e8684",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-cm-setup/01-register.png",
+      "sha256": "f3374d2b850ad967c8c0a887ae745ba9e97e93b84acb3615cc755a8c94a26028",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-cm-setup/02-overview.png",
+      "sha256": "b3cfd827ebfa546b185d7af87f604c13ead3d821d690481ca89a770715b586d4",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-cm-setup/03-graph-permissions.png",
+      "sha256": "0a26fd0424c4364009aad4028ac8cf0e7057a2b2b5739a350dd172d347f68890",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-cm-setup/04-web-redirect.png",
+      "sha256": "b8d49610dfd73c1d9550ad4ccfca70cfc84eadae5289a059ef0046d3bdf65d8e",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/images/entra-cm-setup/05-create-secret.png",
+      "sha256": "402eb5c3af0c6a0a2175e229110ef36a02674e1ab2fb2ed3ae02f538cecc9040",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-common-closing.mp4",
+      "sha256": "0ad787188dbea63f92474b28dc82953b3b74d5ba90abc0830c89cfb6ff03d1e7",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-logo-intro.mp4",
+      "sha256": "6dfed994bd568e9abf3aa1166fc90c759381f66710380c602bd0a48c7fa10ff9",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-symbol.webp",
+      "sha256": "0391e29223d61b2a4044984536f3d73d143d2f73a7225300d71c05bd3dff28d5",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-wordmark.webp",
+      "sha256": "e34c9213ca2449b18ac8ef99402f6e5879f6bee3c01d2d5a2a001be9f3a78db5",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/music/brand-theme.mp3",
+      "sha256": "cd8dbf5162c55a05547d2713810c494c31558d5d28f7ef2da436b76a30bdb5ea",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/music/main-bgm.mp3",
+      "sha256": "d9eadcf0aa4c9944aafaf972e42d9888ea52d070d28e8ac254d5cf33e7601ea1",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/ikumi.webp",
+      "sha256": "cb5e18a859dd5143c038f97a99067c80a256517b85c6974414a0b4dc3bd72388",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/mako.webp",
+      "sha256": "e5d3b4eb3610e1e654e57afd45890b09238204d6a42ac854e275fbeb7efa60f6",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/manabu.webp",
+      "sha256": "ce0838bb4b1cb5f235c1b590c0f37945bac6839af9ec6f22db630bc2636b7d3c",
+      "reason": "Existing public distribution media independently audited for pixels/audio and structured metadata; exact bytes only"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/02/diagrams/motion-data-path.svg",
+      "sha256": "54734c956b14609d9d6a940cc4f84e487eac3e4128756ed85317a43ff0a025c6",
+      "reason": "Existing reviewed embedded image payload in SVG or synthetic test fixture; text remains subject to all literal rules"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/02/diagrams/motion-dns-chain.svg",
+      "sha256": "f10319a8608f6a12e2533fb897a9793d81a31a2899d9c9bed0d8431a237b9f9c",
+      "reason": "Exact five embedded PNGs decoded/visually reviewed: public project symbol/wordmark/three cast portraits, metadata-free; generic DNS diagram. Whole-file reviewed snapshot only."
+    },
+    {
+      "path": "tests/test_gateway_speech_waf.py",
+      "sha256": "3085d395ec34ced6417d04f26588209bc064f2478c2943b0908a579347d2bdc3",
+      "reason": "Offline speech WAF test constructs independent fixture/probe data; no real recording, tenant or credential. Depth heuristic false positive. Exact source snapshot only."
+    }
+  ]
+}

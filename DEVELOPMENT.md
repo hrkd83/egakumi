@@ -96,6 +96,8 @@ protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](t
 
 ### ローカル確認
 
+clone後は、先に`python3 -I -B scripts/install_git_hooks.py`でコミット前・push前の混入検査を有効にします。検査内容・例外管理・停止時の扱いは[公開情報の混入検査](docs/public-data-guard.md)を参照してください。作業ツリー検査はignore対象の生成物も含むため、この公開チェックアウトへ依存パッケージや実行記録を生成する前に配置先を確認します。
+
 Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を使います。Azureへの変更、実際のサインイン、推論は行いません。
 
 ```sh
