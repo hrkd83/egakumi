@@ -470,14 +470,19 @@ class Guard:
 
     def current_metadata(self) -> None:
         """現在のブランチと公開用著者・コミッター情報を検査する。"""
-        refs = git(self.repository, "for-each-ref", "--format=%(refname)")
-        self.scan_text("@refs", refs.decode("utf-8", "strict"))
+        self.scan_text("@refs", "\n".join(self.public_refs()))
         for kind in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
             identity = git(self.repository, "var", kind)
             self.scan_text("@identity", identity.decode("utf-8", "strict"))
             name = identity.decode("utf-8", "strict").split(" <", 1)[0]
             if name not in self.authors:
                 self.record("@identity", "unapproved-author-name", "")
+
+    def public_refs(self) -> list[str]:
+        """通常の公開対象となるブランチ・追跡参照・タグ名を取得する。"""
+        refs = git(self.repository, "for-each-ref", "--format=%(refname)",
+                   "refs/heads/", "refs/remotes/", "refs/tags/")
+        return refs.decode("utf-8", "strict").splitlines()
 
     def blob(self, oid: str) -> bytes:
         """同じGitオブジェクトは再読込せず、内容を外へ表示しない。"""
@@ -496,12 +501,13 @@ class Guard:
                     self.record("@tag", "unapproved-author-name", "")
 
     def history(self, revisions: list[str] | None = None) -> None:
-        """削除済みファイルも含め、到達可能な全コミットを検査する。"""
+        """公開参照の全履歴、または明示された任意の対象を検査する。"""
         if git(self.repository, "rev-parse", "--is-shallow-repository").strip() != b"false":
             raise InspectionError("incomplete-shallow-history")
         if revisions:
             resolved = []
             for revision in revisions:
+                self.scan_text("@requested-refs", revision)
                 object_id = git(self.repository, "rev-parse", "--verify",
                                 "--end-of-options", revision + "^{object}").strip().decode()
                 for _ in range(16):
@@ -521,7 +527,7 @@ class Guard:
                                     "--end-of-options", revision + "^{commit}").strip().decode())
             revision_args = resolved
         else:
-            revision_args = ["--all", "HEAD"]
+            revision_args = ["HEAD", *self.public_refs()]
         commits = git(self.repository, "rev-list", *revision_args).splitlines()
         for commit in commits:
             oid = commit.decode("ascii")
@@ -545,8 +551,7 @@ class Guard:
                     self.record(path, "unsupported-git-object", "")
                     continue
                 self.scan_blob(path, self.blob(blob.decode()), mode.decode())
-        for ref in git(self.repository, "for-each-ref", "--format=%(refname)").splitlines():
-            name = ref.decode("utf-8", "strict")
+        for name in self.public_refs():
             self.scan_text("@refs", name)
             kind = git(self.repository, "cat-file", "-t", name).strip()
             if kind == b"tag":

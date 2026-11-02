@@ -96,7 +96,7 @@
     "assets/brand/egakumi-wordmark.webp": "e34c9213ca2449b18ac8ef99402f6e5879f6bee3c01d2d5a2a001be9f3a78db5",
     "assets/music/brand-theme.mp3": "cd8dbf5162c55a05547d2713810c494c31558d5d28f7ef2da436b76a30bdb5ea",
     "assets/music/main-bgm.mp3": "d9eadcf0aa4c9944aafaf972e42d9888ea52d070d28e8ac254d5cf33e7601ea1",
-    "assets/music/manifest.json": "ccc5fed2c8bf96826452f149c97403f8c8516d1d128985bc15dabea5355b3dff",
+    "assets/music/manifest.json": "968be9ba1c8dca30041f0c0c1936fd60bb6ca4bf82617a034c01d58aa71a2bd4",
     "assets/portraits/ikumi.webp": "cb5e18a859dd5143c038f97a99067c80a256517b85c6974414a0b4dc3bd72388",
     "assets/portraits/mako.webp": "e5d3b4eb3610e1e654e57afd45890b09238204d6a42ac854e275fbeb7efa60f6",
     "assets/portraits/manabu.webp": "ce0838bb4b1cb5f235c1b590c0f37945bac6839af9ec6f22db630bc2636b7d3c"
@@ -151,48 +151,5 @@
     "continuousPreviewHasInternalCuts": false,
     "episode01OutputRequired": false,
     "continuousPreviewTool": "make-conversation-preview.py"
-  },
-  "publicExport": {
-    "sanitized": true,
-    "sourceSnapshot": "fb3bca5caa77e4497f0fe3856d2452a928444039",
-    "note": "assetSha256 and commonFileSha256 bind the current sanitized export. The originalProductionHashes below describe the original private production and are retained as historical evidence, not a validation of changed exported bytes.",
-    "originalProductionHashes": {
-      "assetSha256": {
-        "assets/brand/animation-sources.json": "7cf0b3d037cde4dfd9641b916e7c268ea64f35dfe1975ef3184c57708e197c74",
-        "assets/brand/egakumi-common-closing.mp4": "0ad787188dbea63f92474b28dc82953b3b74d5ba90abc0830c89cfb6ff03d1e7",
-        "assets/brand/egakumi-logo-intro.mp4": "6dfed994bd568e9abf3aa1166fc90c759381f66710380c602bd0a48c7fa10ff9",
-        "assets/brand/egakumi-symbol.webp": "0391e29223d61b2a4044984536f3d73d143d2f73a7225300d71c05bd3dff28d5",
-        "assets/brand/egakumi-wordmark.webp": "e34c9213ca2449b18ac8ef99402f6e5879f6bee3c01d2d5a2a001be9f3a78db5",
-        "assets/music/brand-theme.mp3": "6f587b489c90d4f9dbf2483cb53d6768e3136aaf38689ec3050685d0c374b7dc",
-        "assets/music/main-bgm.mp3": "5b6c96c6672046028f95e091d15ca27fc123869fd2ae73c8628c926b5630b3e2",
-        "assets/music/manifest.json": "8dfdc22c4cb46fca27455ba773b253d7b1fc58ccf0405ce248c3035f9be9cab9",
-        "assets/portraits/ikumi.webp": "cb5e18a859dd5143c038f97a99067c80a256517b85c6974414a0b4dc3bd72388",
-        "assets/portraits/mako.webp": "e5d3b4eb3610e1e654e57afd45890b09238204d6a42ac854e275fbeb7efa60f6",
-        "assets/portraits/manabu.webp": "ce0838bb4b1cb5f235c1b590c0f37945bac6839af9ec6f22db630bc2636b7d3c"
-      },
-      "commonFileSha256": {
-        "PRODUCTION-GUIDE.md": "cb494c4c63dae57af01e45ae9aa4f454a1613620474c2fb99530f66cc97af933",
-        "build-lesson.mjs": "6884f295b5e3d6d29114f4bd063c149c6fac88c30d9fb9d774289ed4951749ee",
-        "check-production.py": "c5f015c9f7d6d22fa0f596f38e90d23801e375fbafb9598070495aa88f9282e8",
-        "generate-gemini-audition.py": "92a127741ff67c59b8c371bc536d21814416e424dd2c4413a9db08e094a34b32",
-        "generate-gemini-lesson.py": "fb161b1646192560d1736c566a034d477e50a8f5f3a7d18da6df6c4021a10433",
-        "hologram-visual.mjs": "766f287fcce7ffe64c78bbfc885adb7930937d64b97c4efdeb70d87257a593c2",
-        "lesson-audio-cache.mjs": "7c44f56ca6e7b2f123ea1e857a79afdb98412d1285e7df56222f672210a58290",
-        "lesson-visual.mjs": "a3a75cbff6f82665c02e52e16fd8626f408cf4cb14e9caaf4560e0a2b60cffd8",
-        "new-episode.py": "194750760c862876b661f1eaff2fc19108f262167fd9d5d962d00f52bf95e246",
-        "package-lock.json": "256d3aba9bf59800a0d1ade4a01d5f049c22bbab3a8baa295f811fbac8c66749",
-        "package.json": "4ecd2d3d5c4bf1b553b57372a6d0978d64547ee663b9c3276a58ef8893407906",
-        "podcast-cast-gemini.json": "a39ee34833e93620099eccc5015fb86f705cab6295584ae15477abe37bcc1a1b",
-        "portrait-sources.json": "8d3803648296e626b5d490e6b5b3a04db6f5fbad501aa83c12ed82af05c84662",
-        "prepare-gemini-lesson.py": "0149f0b49b7ba46016f5df0eb20c2f3f33e1b4c976abc92b2587fbff19808286",
-        "serve-episode.py": "7d02fb156858cad507ec92d1cb8da204ea496c777bb84657be7e8f5ec4a26647",
-        "speaker-names.json": "193046de2a1e0260937ba89f818ffc0c5738d32db588245efc31a9a1fc3a5494",
-        "verify-lesson.py": "90af3ac574251ab67666ec1b98a2d2a0832922d7f34dec395485f0bf3d825b63",
-        "SETTINGS-VIEW.md": "c3db22777611133ff0b30d41e673bf1c8a91e4bfb5c093ee0b6f9edbec878b47",
-        "settings-view-examples.json": "9d6b17d0f08f818a319e032fbb857a2f4f13587bbb7f37f77f3d0ef9c765c029",
-        "settings-visual.mjs": "a9a2704fffaf0b816589f3a70c8d68ed76a10d68d3070052f07026bc43e7d103",
-        "make-conversation-preview.py": "beae9189bd0d047a3b06655274b4530d2534ffb78702a13f97f9e2b210be9b20"
-      }
-    }
   }
 }

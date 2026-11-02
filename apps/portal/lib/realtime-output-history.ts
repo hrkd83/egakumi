@@ -9,7 +9,7 @@ export type RealtimeHistoryObservation = { playbackId?: string; interruptedPlayb
 /**
  * WSの実再生位置で履歴を補正し、その確認前に次の推論を開始しないための接続内状態です。
  * @remarks 上流item IDは返却せず、他接続・古い世代の入力から補正先を選ばせません。
- * @experimental 作業中の実装です。まだ音声経路へ接続しておらず、統合・検証の再開位置はdocs/testing/results/20261031-resume.mdを参照してください。
+ * @experimental 作業中の実装です。まだ音声経路へ接続しておらず、統合・検証は未完了です。
  */
 export class RealtimeOutputHistory {
   private output?: PrivateOutput;

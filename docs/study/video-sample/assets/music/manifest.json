@@ -65,17 +65,7 @@
           "normalization": false,
           "speedChange": false
         },
-        "description": "MP3 transcode of the adopted WAV; no new music generated.",
-        "publicExportMetadataSanitization": {
-          "originalProductionFileSha256": "6f587b489c90d4f9dbf2483cb53d6768e3136aaf38689ec3050685d0c374b7dc",
-          "method": "ffmpeg -c:a copy -map_metadata -1 -id3v2_version 0 -write_id3v1 0",
-          "audioPacketSha256": "77ddc5f5c81e264a8eb3cdb9d64fb5f4926b7532909452d3343c3881b3319384",
-          "decodedPcmSha256": "e9d600445bc67caf464c0f44820d40c979dd2d4d61f48676d2f159081d324f8b",
-          "compressedAudioPacketsIdentical": true,
-          "decodedPcmIdentical": true,
-          "sourceCommentsAndCreationIdentifiersRemoved": true,
-          "remainingMetadata": "Generic FFmpeg encoder marker only; no source comment, creator timestamp or song ID."
-        }
+        "description": "MP3 transcode of the adopted WAV; no new music generated."
       }
     },
     {
@@ -112,17 +102,7 @@
           "normalization": false,
           "speedChange": false
         },
-        "description": "MP3 transcode of the adopted WAV; no new music generated.",
-        "publicExportMetadataSanitization": {
-          "originalProductionFileSha256": "5b6c96c6672046028f95e091d15ca27fc123869fd2ae73c8628c926b5630b3e2",
-          "method": "ffmpeg -c:a copy -map_metadata -1 -id3v2_version 0 -write_id3v1 0",
-          "audioPacketSha256": "a22684ba646dfc51dddc949f666f74871b0c6981d1e88c026505550000a792cd",
-          "decodedPcmSha256": "f31e4b657600a94b9920f7b8765956b40bf6f3bec2f418ca05c48a0d8c51ba47",
-          "compressedAudioPacketsIdentical": true,
-          "decodedPcmIdentical": true,
-          "sourceCommentsAndCreationIdentifiersRemoved": true,
-          "remainingMetadata": "Generic FFmpeg encoder marker only; no source comment, creator timestamp or song ID."
-        }
+        "description": "MP3 transcode of the adopted WAV; no new music generated."
       }
     }
   ],

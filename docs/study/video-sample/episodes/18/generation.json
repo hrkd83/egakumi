@@ -1722,10 +1722,5 @@
       "paralinguisticsConvertedToStyle": []
     }
   ],
-  "editorialAudioPolicy": "Preserve the original sent text, voice and style, including original recording context; reuse hash-verified original audio only.",
-  "publicExport": {
-    "sanitized": true,
-    "originalProductionCastSha256": "a39ee34833e93620099eccc5015fb86f705cab6295584ae15477abe37bcc1a1b",
-    "note": "The active export binds to the sanitized cast metadata. Historical execution hashes refer to the original private production; this configuration has not been executed by this export."
-  }
+  "editorialAudioPolicy": "Preserve the original sent text, voice and style, including original recording context; reuse hash-verified original audio only."
 }
