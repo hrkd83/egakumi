@@ -262,6 +262,30 @@ class PublicDataGuardTests(unittest.TestCase):
         data = "HEAD " + self.initial_commit + " " + destination + " " + "0" * 40 + "\n"
         self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
 
+    def test_runtime_checkpoint_does_not_expand_default_public_history(self) -> None:
+        self.stage(self.identifier())
+        self.git("commit", "--quiet", "-m", "Synthetic runtime checkpoint")
+        self.git("rm", "--quiet", "candidate.txt")
+        self.git("commit", "--quiet", "-m", "Synthetic checkpoint cleanup")
+        checkpoint = self.git("rev-parse", "HEAD").strip().decode()
+        self.git("reset", "--hard", self.initial_commit)
+        reference = "refs/codex/" + self.identifier() + "/checkpoint"
+        self.git("update-ref", reference, checkpoint)
+        self.outcome(self.check("--staged"), 0)
+        self.outcome(self.check("--all-history"), 0)
+        self.outcome(self.check("--revisions", checkpoint), 1, "unknown-uuid")
+        data = "HEAD " + checkpoint + " refs/heads/review " + "0" * 40 + "\n"
+        self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
+
+    def test_explicit_runtime_reference_names_are_still_checked(self) -> None:
+        reference = "refs/codex/" + self.identifier() + "/checkpoint"
+        self.git("update-ref", reference, self.initial_commit)
+        self.outcome(self.check("--staged"), 0)
+        self.outcome(self.check("--all-history"), 0)
+        self.outcome(self.check("--revisions", reference), 1, "unknown-uuid")
+        data = reference + " " + self.initial_commit + " refs/heads/review " + "0" * 40 + "\n"
+        self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
+
     def test_shallow_history_fails_closed(self) -> None:
         (self.repository / ".git" / "shallow").write_text(self.initial_commit + "\n")
         self.outcome(self.check("--all-history"), 2, "incomplete-shallow-history")

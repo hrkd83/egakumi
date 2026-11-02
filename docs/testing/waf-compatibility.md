@@ -56,10 +56,6 @@ WebSocketはHTTP Upgradeまでを試験します。接続後のframe、デコー
 
 manifestからprofileを削除する操作は、現時点のCLIでは既存の関連付けの撤去を行いません。例外を撤去・ロールバックする場合は、変更前に保存した経路とポリシーを照合し、IaCで対象経路を明示的に復元します。バックアップやログには機密ヘッダーを含むApp Gatewayの全設定をそのまま出力せず、経路・WAF・変更識別子だけを保存します。
 
-試行ごとの計画・実測・適用記録は、[共通の証跡ルール](../../DEVELOPMENT.md#テストの共通ルール)に従ってGit管理外へ保存します。試験のrun ID、manifest hash、設定照合結果、E2Eと試験用購読の回収結果を[動作テスト仕様書](../../INTEGRATION_TESTS.md)から参照し、過去の試行の合格を現在の結果へ転記しません。
-
-## 進行中試行の関連記録
-
-2026年10月31日の実測・適用記録は、Git管理外の `.state/waf-audit-20261031/` にあります。試行`20261031-existing`の確認では、最終結果の要約、各試験のrun ID、manifest hash、設定照合結果、E2Eと試験用購読の回収結果を参照してください。進捗と残件は[現在の判定](../../INTEGRATION_TESTS.md)と[再開手順](results/20261031-resume.md)で管理します。
+試行ごとの計画・実測・適用記録は、[共通の証跡ルール](../../DEVELOPMENT.md#テストの共通ルール)に従ってリポジトリ外の非公開運用用ワークスペースへ保存します。試験のrun ID、manifest hash、設定照合結果、E2Eと試験用購読の回収結果を記録します。受入条件は[動作テスト仕様書](../../INTEGRATION_TESTS.md)で確認し、過去の試行の合格を現在の結果へ転記しません。
 
 仕様の根拠: [Azure WAFの除外](https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-waf-configuration)、[URI別ポリシー](https://learn.microsoft.com/azure/web-application-firewall/ag/per-site-policies)、[パスの照合](https://learn.microsoft.com/azure/application-gateway/url-route-overview)。

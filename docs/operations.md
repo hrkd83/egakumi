@@ -2,7 +2,7 @@
 
 [README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
 
-本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。現在進行中の試験状態は [動作テスト仕様書](../INTEGRATION_TESTS.md)と[再開記録](testing/results/20261031-resume.md)を参照し、この一般手順だけを理由に再構築や撤去を開始しません。
+本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](../INTEGRATION_TESTS.md)で確認し、実環境の試験状態・再開記録はリポジトリ外の非公開運用用ワークスペースで管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
 ## 対象環境と記録を確認する
 

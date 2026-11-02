@@ -60,9 +60,9 @@ source
 
 企業共通監査はCore運用ログの変更・検査範囲外として記録します。設定を読めない場合に、収集されていない・queryが残らないと推測しません。
 
-## 進行中試行の関連記録
+## 検証記録
 
-試行`20261031-existing`では、実秘密を使わない合成要求のquery識別値が`RequestQuery`と`OriginalRequestUriWithArgs`へ残ることを確認しています。ヘッダー・Cookie・本文の合成値は同じ試験では残りませんでした。この観測結果と、変換・export・Storage経路の反映確認は別に管理します。現在の反映状態と残件は[項目別実施記録](results/20261031-existing.md)と[再開手順](results/20261031-resume.md)を参照してください。
+`RequestQuery`と`OriginalRequestUriWithArgs`に合成要求の識別値が残らないことを、変換・export・Storageの各経路で確認します。ヘッダー・Cookie・本文も個別に試験します。受入条件は[動作テスト仕様書](../../INTEGRATION_TESTS.md)を参照し、実環境の結果・残件はリポジトリ外の非公開運用用ワークスペースで管理します。
 
 ## 一次資料
 
