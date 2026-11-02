@@ -1,6 +1,0 @@
-{
-  "sourceArchive": "docs/study/video-sample/episodes/06/revisions/diagram-v1",
-  "outputArchive": "docs/study/video-sample/output/lesson-06-gemini/revisions/diagram-v1",
-  "reason": "Preserve completed diagram version before teaching-settings-v2 rebuild",
-  "previousVideoSha256": "ce7f6a6f6f5b991f23c04af2e59d3ab129cceb0f0a30d17f618a2d675b7f0ee8"
-}

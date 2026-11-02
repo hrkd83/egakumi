@@ -194,4 +194,4 @@ Difyの任意入力`user`、ワークフロー引数、UPN文字列をEntra本�
 | 403`ConnectionClaimsRequired` | 条件付きアクセス要求を無視せず利用停止。CMで扱える範囲を確認し、自動認証ループにしない |
 | 401/403、503等 | 認可失敗・障害を識別し、無条件にログインへ誘導しない |
 
-公開の契約は [本人接続手順](../setup/credential-manager-login.md)、実APIM/CMを使う受入条件・結果は [動作テスト仕様書](../../INTEGRATION_TESTS.md)を参照する。PortalログアウトとGraph接続の失効操作を結び付ける範囲は実装と試験で区別する。
+公開の契約は [本人接続手順](../setup/credential-manager-login.md)、実APIM/CMを使う受入条件・結果は [動作テスト仕様書](../testing/integration-tests.md)を参照する。PortalログアウトとGraph接続の失効操作を結び付ける範囲は実装と試験で区別する。

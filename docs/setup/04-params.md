@@ -210,7 +210,7 @@ paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須
 
 予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、接続元CIDRを指定しただけではインターネットからSSH接続できません。
 
-IP制限は、設定済みCIDRの許可／拒否を[動作テスト](../../INTEGRATION_TESTS.md)で、全IPv4許可・省略・明示した空配列の各構成と同一環境での設定切替を[構築テスト](../../CONSTRUCTION_TESTS.md)で確認します。APIの認証・認可は全許可時も維持します。
+IP制限は、設定済みCIDRの許可／拒否を[動作テスト](../testing/integration-tests.md)で、全IPv4許可・省略・明示した空配列の各構成と同一環境での設定切替を[構築テスト](../testing/construction-tests.md)で確認します。APIの認証・認可は全許可時も維持します。
 
 `dnsServers:[]`はAzure提供DNSを使います。カスタムDNSではPrivate Endpoint名も解決できる転送・ゾーン参照が必要です。[Azureの名前解決](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-name-resolution-for-vms-and-role-instances)
 

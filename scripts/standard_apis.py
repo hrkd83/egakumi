@@ -36,7 +36,7 @@ PLACEHOLDER = re.compile(r"__([A-Z][A-Z0-9_]+)__")
 
 # 日本語の短い音声認識を標準とし、Voice Liveは独立したサービスのモデルを選ぶ。
 # このモデル名はFoundryの32個のモデル配備へ追加する指定ではない。
-# Voice Liveのモデル・API版を選択した構成での受入条件は INTEGRATION_TESTS.md を参照。
+# Voice Liveのモデル・API版を選択した構成での受入条件は docs/testing/integration-tests.md を参照。
 # https://learn.microsoft.com/azure/ai-services/speech-service/voice-live
 # https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-webrtc
 PUBLIC_BINDINGS = json.loads((ROOT / 'apps/gateway/apim/public-bindings.json').read_text(encoding='utf-8'))['bindings']

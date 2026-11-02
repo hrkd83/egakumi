@@ -55,7 +55,7 @@ HTTP・SSE・WebSocketの接続開始・gRPCのRPC開始には、対象ポリシ
 
 `azd up`は共通基盤の完了後、Gateway→Portalを順に配備します。Gateway更新は同じparams・配備記録を使い、計画確認後に`--execute`を付けて実行します。DB・CM・Broker起動確認の後にAPIと共通ポリシーを反映します。詳細は [運用手順](../operations.md)を参照してください。
 
-共通ルール・ローカル実行は [DEVELOPMENT.md](../../DEVELOPMENT.md)、動作の受入条件・結果は [INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)、資材と構築・更新・撤去の受入条件・結果は [CONSTRUCTION_TESTS.md](../../CONSTRUCTION_TESTS.md)で管理します。構築・登録成功だけで業務APIの実通信を合格にしません。
+共通ルール・ローカル実行は [DEVELOPMENT.md](../../DEVELOPMENT.md)、動作の受入条件・結果は [動作テスト仕様書](../testing/integration-tests.md)、資材と構築・更新・撤去の受入条件・結果は [構築テスト仕様書](../testing/construction-tests.md)で管理します。構築・登録成功だけで業務APIの実通信を合格にしません。
 
 ## 整理前の記録
 

@@ -86,7 +86,7 @@ npm run build
 npm audit
 ```
 
-SQL統合試験には専用のローカルSQLと追加設定が必要です。[共通の実行方法](../../DEVELOPMENT.md#テストの実行方法)を参照してください。実環境の受入条件・結果は[動作テスト仕様書](../../INTEGRATION_TESTS.md)、資材の構築・更新・撤去の確認は[構築テスト仕様書](../../CONSTRUCTION_TESTS.md)で管理します。
+SQL統合試験には専用のローカルSQLと追加設定が必要です。[共通の実行方法](../../DEVELOPMENT.md#テストの実行方法)を参照してください。実環境の受入条件・結果は[動作テスト仕様書](../../docs/testing/integration-tests.md)、資材の構築・更新・撤去の確認は[構築テスト仕様書](../../docs/testing/construction-tests.md)で管理します。
 
 | 確認したいこと | 参照先 |
 | --- | --- |

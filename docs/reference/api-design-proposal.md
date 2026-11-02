@@ -238,7 +238,7 @@ Graph等の本人接続APIは、セッション未指定・期限切れ・CM再�
 
 ## 受入条件と実施結果
 
-動作の対象・手順・受入条件・結果は [INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)、資材・構築・再公開・撤去は [CONSTRUCTION_TESTS.md](../../CONSTRUCTION_TESTS.md)で管理する。API・Operation・モデルの登録件数や公開成功だけを、業務APIの実通信の合格へ読み替えない。
+動作の対象・手順・受入条件・結果は [動作テスト仕様書](../testing/integration-tests.md)、資材・構築・再公開・撤去は [構築テスト仕様書](../testing/construction-tests.md)で管理する。API・Operation・モデルの登録件数や公開成功だけを、業務APIの実通信の合格へ読み替えない。
 
 ## 補助APIの数え方
 

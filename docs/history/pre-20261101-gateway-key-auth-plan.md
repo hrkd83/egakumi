@@ -185,7 +185,7 @@ API定義の認可方式は`subscriptionKey`に統一する。`operationConstrai
 | CM接続の本人確認 | `apps/gateway/apim/policies/credential-login/`、`credential-connection.xml`、`scripts/deployment/helpers/credential_login.py`、`scripts/cleanup_credential_connections.py`。旧共通ブラウザログイン資材を撤去し、API固有の本人接続へまとめる |
 | MCPの認可 | 生成MCPと外部MCPで購読キーを検証する。下流の本人接続が必要なAPIにはCM接続セッションを設定する |
 | 試験クライアント | `scripts/integration_client.py`、`voice_client.py`、`realtime_browser.py`、関連する公開契約と試験用入力 |
-| 手順 | `README.md`、`DEVELOPMENT.md`、`INTEGRATION_TESTS.md`、`CONSTRUCTION_TESTS.md`、`apps/gateway/apim/README.md`、`scripts/README.md`、`docs/setup/02-entra.md`・`04-params.md`・`05-config.md`・`06-deploy.md`、`docs/operations.md`、API定義とポリシー一覧 |
+| 手順 | `README.md`、`DEVELOPMENT.md`、`docs/testing/integration-tests.md`、`docs/testing/construction-tests.md`、`apps/gateway/apim/README.md`、`scripts/README.md`、`docs/setup/02-entra.md`・`04-params.md`・`05-config.md`・`06-deploy.md`、`docs/operations.md`、API定義とポリシー一覧 |
 
 ブラウザログインの文書と試験も、共通入口とAPI固有の本人認証の役割に合わせて整理する。テストは旧仕様の単純な期待値置換ではなく、購読の範囲・本人接続の所有権・拒否経路を検証する内容へ改める。すべてのXMLに、目的・入力・失敗時の動作が分かる説明コメントを付ける。
 
