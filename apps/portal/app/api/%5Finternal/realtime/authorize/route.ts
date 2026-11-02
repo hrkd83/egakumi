@@ -7,6 +7,7 @@ import { getPublicModelGatewayOrigin } from "@/lib/model-public-config";
 import { getRealtimeEndpoint } from "@/lib/realtime-integration";
 import { realtimeRelayStartSchema, verifyRealtimeInternalProof } from "@/lib/realtime-relay-contract";
 import { resolveRealtimeOutputTokens } from "@/lib/realtime-request";
+import { resolveRealtimeVoice } from "@/lib/realtime-voices";
 import { readSpeechBody } from "@/lib/speech-response";
 
 /** 外側のサーバーが遮断したloopback専用口で、SQL本人と最新のGraph所属・購読権限を照合します。 */
@@ -21,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
     const input = realtimeRelayStartSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 135_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
     const model = getRealtimeModels().find((entry) => entry.id === input.modelId);
     if (!model || (model.transport === "webrtc") !== Boolean(input.sdp)) return failure(400);
-    try { resolveRealtimeOutputTokens(model, input); } catch { return failure(400); }
+    try { resolveRealtimeOutputTokens(model, input); resolveRealtimeVoice(model, input); } catch { return failure(400); }
     const gatewayOrigin = getPublicModelGatewayOrigin(); if (!gatewayOrigin) return failure(503); getRealtimeEndpoint(model, gatewayOrigin);
     const key = await getApiKeyService().executionKey(actor, input.apiKeyId, model.apiId);
     if (model.observer && await getApiKeyService().executionKey(actor, input.apiKeyId, model.observer.apiId) !== key) return failure(403);

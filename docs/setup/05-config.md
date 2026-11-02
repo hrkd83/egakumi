@@ -105,16 +105,16 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
 | `services.grantApimFoundryModelsAccess` | `true` | APIMへ対象Foundryの非OpenAIモデル用の組み込み利用権限を付与。 |
 | `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。gRPC／Realtime制御を有効にした場合は、この指定と別に必須のKV読取権限をAPIM自身へ付与。通信許可とは別。 |
-| `services.modelDeployments` | [初期32モデル](../reference/platform.md#初期モデルと公開api)（固定版・SKUはconfig参照） | 単一FoundryへBicepで配備。32件の上限内で選定し、実カタログと利用枠を配備前に照合。 |
+| `services.modelDeployments` | [初期28モデル](../reference/platform.md#初期モデルと公開api)（固定版・SKUはconfig参照） | 単一FoundryへBicepで配備。32件の上限内で選定し、実カタログと利用枠を配備前に照合。 |
 
-初回の32枠を使用するため、モデルを追加するときは既存配備の入れ替えかFoundryの追加を計画します。
+初回は32件の上限のうち28件を使用します。モデル追加時は、配備数の上限・対象モデルの提供条件・利用枠を確認します。
 TTSはAzure Speech、文書OCRはAzure Document Intelligenceを使います。
 文書解析の`prebuilt-read`・`prebuilt-layout`は標準APIに含み、Foundryモデルの追加配備ではありません。Speech・Language・モデル配備の区分は
 [モデルと専用サービスの整理](../reference/foundry-model-catalog.md#モデル配備とazureの専用サービス)を参照してください。
 
 #### 構築後にClaudeを手動追加する場合
 
-Claudeは標準の32モデル・19 APIに含めません。Claude用のparamsや有効化・規約同意フラグ、設定生成コマンドの`--claude`オプションはサポートしません。
+Claudeは標準の28モデル・19 APIに含めません。Claude用のparamsや有効化・規約同意フラグ、設定生成コマンドの`--claude`オプションはサポートしません。
 
 Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもAPIを手動登録する運用です。購入条件・利用枠・接続先と認証方式を確認し、[手動追加時の公開制御と再配置の注意点](../operations.md#構築後にclaudeをguiで追加する)に従います。
 
@@ -210,7 +210,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 
 #### モデル配列の要素（services.modelDeployments[]）
 
-この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期モデル](../reference/platform.md#初期モデルと公開api)の32モデルの配備設定は、テスト・本番configが正本です。[標準API定義](../../apps/gateway/apim/apis/)は19 APIを1ファイルずつ管理し、モデル配備の設定を重複して持ちません。API側には、そのAPIで呼び出しを許可するモデル名・操作・要求上限を定義します。外部サンプルAPIやTools/Hosted Agent用bindingsは含みません。版・SKU・利用枠名の一覧はconfigを参照してください。
+この表の短い名前はconfigの`services.modelDeployments[]`配下です。[初期モデル](../reference/platform.md#初期モデルと公開api)の28モデルの配備設定は、テスト・本番configが正本です。[標準API定義](../../apps/gateway/apim/apis/)は19 APIを1ファイルずつ管理し、モデル配備の設定を重複して持ちません。API側には、そのAPIで呼び出しを許可するモデル名・操作・要求上限を定義します。外部サンプルAPIやTools/Hosted Agent用bindingsは含みません。版・SKU・利用枠名の一覧はconfigを参照してください。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |

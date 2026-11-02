@@ -20,6 +20,7 @@ import { MAX_SPEECH_UPLOAD_BYTES, MAX_SPEECH_TEXT_CHARACTERS, speechInputSchema,
 import { SAMPLE_SPEECH_TEXT, SPEECH_SAMPLE_PATH, SPEECH_VOICES, SPEECH_RATES, buildSpeechRequest, defaultSpeechInput, getSpeechEndpoint, getSpeechHeaders, getSpeechIntegrationExample, getSpeechRequestSchema, getSpeechResponseSchema } from "@/lib/speech-integration";
 import { inspectSpeechWav, readSpeechResponse, speechAudioBytes } from "@/lib/speech-response";
 import { buildSpeechExecutionRequest } from "@/lib/speech-client";
+import { AZURE_SPEECH_VOICES } from "@/lib/speech-voices";
 import type { SpeechModel } from "@/lib/model-types";
 import type { TextGenerationFailure } from "@/lib/model-request";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
@@ -155,7 +156,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   if (!model) return null;
   const requestCode = payload ? state.language === "body" ? typeof payload === "string" ? payload : JSON.stringify(payload, null, 2) : getSpeechIntegrationExample(state.language, model, state.input, origin, state.inputFile?.name) : text.errors.InvalidRequest;
   const bodyTitle = model.kind === "tts" ? speech.ssml : speech.binary;
-  const voiceLabels = { "ja-JP-NanamiNeural": speech.nanami, "ja-JP-KeitaNeural": speech.keita };
+  const selectedVoice = AZURE_SPEECH_VOICES.find((voice) => voice.id === state.input.voice);
   const rateLabels = { "-20%": speech.slower, "0%": speech.normal, "+20%": speech.faster };
   const runningText = model.kind === "tts" ? speech.runningTts : speech.runningStt;
   const result = state.result;
@@ -176,9 +177,10 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
 
       {model.kind === "tts" ? <>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2"><label htmlFor="speech-voice" className="text-sm font-medium">{speech.voice}</label><Select value={state.input.voice} disabled={state.loading} onValueChange={(voice) => { if (SPEECH_VOICES.includes(voice as SpeechInput["voice"])) updateInput({ voice: voice as SpeechInput["voice"] }); }}><SelectTrigger id="speech-voice" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{SPEECH_VOICES.map((voice) => <SelectItem key={voice} value={voice}>{voiceLabels[voice]}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><label htmlFor="speech-voice" className="text-sm font-medium">{speech.voice}</label><Select value={state.input.voice} disabled={state.loading} onValueChange={(voice) => { if (SPEECH_VOICES.includes(voice as SpeechInput["voice"])) updateInput({ voice: voice as SpeechInput["voice"] }); }}><SelectTrigger id="speech-voice" aria-describedby="speech-voice-help" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{AZURE_SPEECH_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label[locale]}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><label htmlFor="speech-rate" className="text-sm font-medium">{speech.rate}</label><Select value={state.input.rate} disabled={state.loading} onValueChange={(rate) => { if (SPEECH_RATES.includes(rate as SpeechInput["rate"])) updateInput({ rate: rate as SpeechInput["rate"] }); }}><SelectTrigger id="speech-rate" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{SPEECH_RATES.map((rate) => <SelectItem key={rate} value={rate}>{rateLabels[rate]}</SelectItem>)}</SelectContent></Select></div>
         </div>
+        <p id="speech-voice-help" className="text-sm leading-6 text-muted-foreground">{speech.voiceHelp}</p>
         <p className="text-sm leading-6 text-muted-foreground">{speech.formatNotice}</p>
         <div className="space-y-2"><label htmlFor="speech-text" className="block text-sm font-medium">{speech.text}</label><Textarea id="speech-text" rows={4} required disabled={state.loading} maxLength={MAX_SPEECH_TEXT_CHARACTERS} value={state.input.text} placeholder={SAMPLE_SPEECH_TEXT} onChange={(event) => updateInput({ text: event.target.value })} className="bg-white text-sm leading-7" /></div>
         <p className="text-sm leading-6 text-muted-foreground">{speech.fixedNotice}</p>
@@ -207,7 +209,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
         {state.failure && <div role="alert" className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/4 p-4 text-sm leading-6 text-destructive"><p>{text.errors[state.failure.error.code]}</p>{state.failure.retryAfterSeconds !== undefined && <p>{text.retryAfter.replace("{count}", number.format(state.failure.retryAfterSeconds))}</p>}{state.failure.requestId && <p className="break-all">{text.requestId}: {state.failure.requestId}</p>}</div>}
         {state.loading && <p role="status" className="flex items-center gap-2 text-sm text-primary"><LoaderCircle className="size-4 animate-spin" />{runningText}</p>}
         {result ? <>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground"><span>{result.model}</span><span>{speech.duration}: {(result.durationMs / 1000).toFixed(1)} s</span>{result.kind === "tts" && <><span>{speech.audioDuration}: {(result.audioDurationMs / 1000).toFixed(1)} s</span><span>{speech.bytes}: {number.format(result.byteLength)} B</span></>}</div>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground"><span>{result.model}</span><span>{speech.duration}: {(result.durationMs / 1000).toFixed(1)} s</span>{result.kind === "tts" && <><span>{speech.voice}: {selectedVoice?.label[locale]}</span><span>{speech.audioDuration}: {(result.audioDurationMs / 1000).toFixed(1)} s</span><span>{speech.bytes}: {number.format(result.byteLength)} B</span></>}</div>
           {result.kind === "tts" ? <>
             <div className="space-y-3 rounded-xl border border-border bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="text-sm font-semibold">{speech.generatedAudio}</h4>{state.audioUrl && <a href={state.audioUrl} download="egakumi-speech-sample.wav" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-4"><Download className="size-3.5" />{speech.download}</a>}</div>{state.audioUrl && <audio controls preload="none" src={state.audioUrl} aria-label={speech.generatedAudio} aria-describedby="speech-result-transcript" className="w-full" />}<p id="speech-result-transcript" className="text-sm leading-7">{state.input.text}</p><p className="text-sm leading-6 text-muted-foreground">{speech.noAutoplay}</p></div>
             <p className="font-mono text-sm text-muted-foreground">{speech.binaryResponse}</p>

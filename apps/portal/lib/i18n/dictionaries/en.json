@@ -281,11 +281,18 @@
       "embeddings": "Turn text into vectors for search and similarity comparisons.",
       "image": "Create images from your instructions.",
       "speech": "Transcribe audio files (STT) or turn text into speech (TTS).",
-      "realtime": "Build two-way voice conversations and realtime transcription.",
+      "realtime": "Choose from three voice conversation series and realtime transcription.",
       "rerank": "Reorder search results by relevance to a query.",
       "decision": "Compare candidates to support decisions and selection."
     },
     "providers": "Providers",
+    "series": "Series",
+    "realtimeSeriesDescriptions": {
+      "gpt-live": "Full-duplex voice conversations that listen and speak at the same time.",
+      "gpt-realtime": "Voice conversations with one model handling audio understanding and replies.",
+      "voice-live-gpt": "Combine Azure speech recognition, GPT conversation processing, and Azure speech synthesis.",
+      "gpt-live-transcribe": "Continuously turn microphone audio into text. No AI audio reply is generated."
+    },
     "models": "Models",
     "operations": "Operations",
     "open": "Explore integration",

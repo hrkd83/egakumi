@@ -97,8 +97,11 @@ class StandardApiTests(unittest.TestCase):
         calls = apis["azure-voice-live-webrtc-v1"]
         self.assertEqual(voice["backendUrl"], "wss://" + name + ".cognitiveservices.azure.com/voice-live/realtime")
         self.assertEqual(calls["backendUrl"], voice["backendUrl"] + "/calls")
-        self.assertEqual(voice["websocket"]["queryParameters"], {"model": "gpt-4.1", "api-version": "2026-04-10"})
-        self.assertEqual(calls["websocket"]["queryParameters"], {"model": "gpt-4.1", "api-version": "2026-01-01-preview"})
+        self.assertEqual(voice["websocket"]["queryParameters"], {"model": "gpt-6.1-sol", "api-version": "2026-04-10"})
+        self.assertEqual(calls["websocket"]["queryParameters"], {"model": "gpt-6.1-sol", "api-version": "2026-01-01-preview"})
+        for api in (voice, calls):
+            constraint = api["authorization"]["operationConstraints"]["invoke"]
+            self.assertEqual(constraint["maxOutputTokensByModel"], {"gpt-6.1-sol": 128000})
 
     def test_header_follows_environment_setting(self):
         self.raw["gateway"]["authentication"]["subscriptionKeyHeader"] = "X-Fixture-Key"

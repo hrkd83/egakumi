@@ -179,7 +179,7 @@ class PortalImageTests(unittest.TestCase):
             root = Path(directory).resolve()
             self.make_source(root)
             folder = root / 'apps/gateway/apim'
-            values = {'VOICE_LIVE_MODEL': 'gpt-4.1', 'VOICE_LIVE_CALLS_MODEL': 'gpt-4.1',
+            values = {'VOICE_LIVE_MODEL': 'gpt-6.1-sol', 'VOICE_LIVE_CALLS_MODEL': 'gpt-6.1-sol',
                       'VOICE_LIVE_API_VERSION': '2026-04-10', 'VOICE_LIVE_CALLS_API_VERSION': '2026-01-01-preview'}
             bindings = folder / 'public-bindings.json'
             bindings.write_text(json.dumps({'schemaVersion': 1, 'bindings': values}))
@@ -187,7 +187,7 @@ class PortalImageTests(unittest.TestCase):
             definition.write_text(json.dumps({'name': 'model', 'path': 'models/voice/v1', 'operations': [],
                 'backendUrl': '__VOICE_LIVE_WS_BASE_URL__', 'websocket': {'queryParameters': {'model': '__VOICE_LIVE_MODEL__'}}}))
             actual = json.loads(image.model_catalog_snapshot(root))['definitions'][0]
-            self.assertEqual(actual['websocket']['queryParameters']['model'], 'gpt-4.1')
+            self.assertEqual(actual['websocket']['queryParameters']['model'], 'gpt-6.1-sol')
             self.assertEqual(actual['backendUrl'], '__VOICE_LIVE_WS_BASE_URL__')
             before = image.source_bundle(root)[1]
             values['VOICE_LIVE_MODEL'] = 'another-public-model'

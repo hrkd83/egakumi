@@ -45,7 +45,7 @@ class ModelCapabilitiesTests(unittest.TestCase):
         caps = load_model_capabilities()
         caps["entries"] = [entry for entry in caps["entries"] if entry["modelId"] != "gpt-6.1-sol"]
         with self.assertRaisesRegex(ValueError, "no verified capability"):
-            apply_model_capabilities(apis, caps, {"VOICE_LIVE_MODEL": "gpt-4.1", "VOICE_LIVE_CALLS_MODEL": "gpt-4.1"})
+            apply_model_capabilities(apis, caps, {"VOICE_LIVE_MODEL": "gpt-6.1-sol", "VOICE_LIVE_CALLS_MODEL": "gpt-6.1-sol"})
 
 
 if __name__ == "__main__":

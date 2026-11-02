@@ -1,5 +1,6 @@
 import type { RealtimeModel } from "./model-types.ts";
 import { decodeRealtimeAudio } from "./realtime-audio.ts";
+import { resolveRealtimeVoice } from "./realtime-voices.ts";
 import { REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_EVENTS, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 
 /** マイクからの自然な会話に応じるための共通指示です。外部操作や固定の返答を要求しません。 */
@@ -11,15 +12,16 @@ const voiceActivityDetection = { type: "server_vad", threshold: 0.5, prefix_padd
 /** 製品固有の開始設定です。WSSのPCMとWebRTCのSDP交渉を混同させません。 */
 export function buildRealtimeSessionEvent(model: RealtimeModel, input: RealtimeInput): Record<string, unknown> | null {
   const outputTokens = resolveRealtimeOutputTokens(model, input);
+  const voice = resolveRealtimeVoice(model, input);
   if (model.transport === "webrtc" && model.family !== "realtime") return null;
-  if (model.family === "live") return { type: "session.start", session: { model: model.modelId, instructions: REALTIME_CONVERSATION_INSTRUCTIONS, audio: { output: { voice: model.voice } }, delegation: { type: "client" } } };
-  if (model.family === "voice-live") return { type: "session.update", session: { modalities: ["text", "audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, input_audio_format: "pcm16", output_audio_format: "pcm16", input_audio_sampling_rate: 24000, voice: { type: "azure-standard", name: model.voice }, turn_detection: voiceActivityDetection, max_response_output_tokens: outputTokens, tools: [] } };
+  if (model.family === "live") return { type: "session.start", session: { model: model.modelId, instructions: REALTIME_CONVERSATION_INSTRUCTIONS, audio: { output: { voice } }, delegation: { type: "client" } } };
+  if (model.family === "voice-live") return { type: "session.update", session: { modalities: ["text", "audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, input_audio_format: "pcm16", output_audio_format: "pcm16", input_audio_sampling_rate: 24000, voice: { type: "azure-standard", name: voice }, turn_detection: voiceActivityDetection, max_response_output_tokens: outputTokens, tools: [] } };
   // gpt-live-transcribeはturn detectionをサポートしません。公式例に合わせ、
   // 継続入力をbridgeが約300msずつcommitし、認識確定後も接続を維持します。
   if (model.family === "transcription") return { type: "session.update", session: { type: "transcription", audio: { input: { format: { type: "audio/pcm", rate: 24000 }, turn_detection: null, transcription: { model: model.modelId, language: "ja", delay: "medium" } } } } };
   // WebRTCのコーデックはSDPに任せ、WSSにだけヘッダーなしPCMを指定します。
   const format = model.transport === "websocket" ? { format: { type: "audio/pcm", rate: 24000 } } : {};
-  return { type: "session.update", session: { type: "realtime", output_modalities: ["audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, max_output_tokens: outputTokens, tools: [], audio: { input: { ...format, turn_detection: { ...voiceActivityDetection, create_response: true, interrupt_response: true } }, output: { ...format, voice: model.voice } } } };
+  return { type: "session.update", session: { type: "realtime", output_modalities: ["audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, max_output_tokens: outputTokens, tools: [], audio: { input: { ...format, turn_detection: { ...voiceActivityDetection, create_response: true, interrupt_response: true } }, output: { ...format, voice } } } };
 }
 
 /** 任意のオブジェクトを転送せず、既知の形式の非負数だけを利用量として公開します。 */

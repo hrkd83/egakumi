@@ -91,11 +91,11 @@ APIの呼出時は、`X-Core-Connection-Session`を購読キーと合わせて�
 両者を揃えて変更してください。API の `model` はモデルカタログ名ではなく、
 この環境の配備名です。`Microsoft-Decision-1` は安全な配備名 `decision-1` を使います。
 
-初期構成は一つのFoundryに[選定した32モデル](foundry-model-catalog.md#初回配備する32モデル)を配備します。
-標準API定義には、初期32モデルの操作・接続に加え、PII・Graph /me・文書解析を含む19 APIがあります。Document Intelligenceはモデル配備とは別のFoundryサービスとして扱います。[文書解析の契約](document-analysis.md)
+初期構成は一つのFoundryに[選定した28モデル](foundry-model-catalog.md#初回配備する28モデル)を配備します。
+標準API定義には、初期28モデルの操作・接続に加え、PII・Graph /me・文書解析を含む19 APIがあります。Document Intelligenceはモデル配備とは別のFoundryサービスとして扱います。[文書解析の契約](document-analysis.md)
 DeepSeek・Mistral・Grok・Routerは共通Chat Operation、FLUX flex/proは生成・編集Operationを共用します。
 Live会話とリアルタイム文字起こしは、それぞれの音声契約として公開します。
-[モデル対応表](api-design-proposal.md#初期32モデルとapioperationの対応)と[ポリシー一覧](apim-policy-catalog.md)で詳細を確認してください。
+[モデル対応表](api-design-proposal.md#初期28モデルとapioperationの対応)と[ポリシー一覧](apim-policy-catalog.md)で詳細を確認してください。
 モデルの販売地域・利用枠・提供状態は構築前に確認してください。
 モデルが配備できることと、すべての API が使えることは同じではありません。
 
@@ -103,8 +103,7 @@ GPT-5.6 Sol／Terra／Lunaは版`2026-07-09`・`GlobalStandard`で配備し、�
 
 | 用途 | 初期モデル | 公開パス | 要求の形式 |
 | --- | --- | --- | --- |
-| 会話・Responses | `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-sol`、`gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、`gpt-5.5`、`gpt-5.4-mini`、`gpt-5.4-nano` | `/models/openai/v1/chat/completions`、`/models/openai/v1/responses` | JSON。SSE は `stream:true` |
-| Responses 専用 | `gpt-5.4-pro` | `/models/openai/v1/responses` | JSON |
+| 会話・Responses | `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-sol`、`gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` | `/models/openai/v1/chat/completions`、`/models/openai/v1/responses` | JSON。SSE は `stream:true` |
 | OpenAI Embedding | `text-embedding-3-small`、`text-embedding-3-large` | `/models/openai-embeddings/v1/embeddings` | `model`、`input`、`encoding_format` の JSON |
 | Cohere Embedding | `embed-v-4-0` | `/models/cohere/v1/embed` | `model`、`texts`、`input_type`、`embedding_types` の JSON |
 | GPT 画像 | `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`、`gpt-image-2` | `/models/openai-images/v1/generations`、`/models/openai-images/v1/deployments/{deployment}/edits` | 生成は JSON、編集は multipart の画像 |
@@ -123,6 +122,7 @@ GPT-5.6 Sol／Terra／Lunaは版`2026-07-09`・`GlobalStandard`で配備し、�
 Speech サービスの SSML 読み上げ `/models/azure-speech/v1/synthesize`、
 WAV 文字起こし `/models/azure-speech/v1/recognize`、Voice Live も独立した操作として使用します。
 これらは OpenAI Audio API と入力形式・認証・応答イベントが異なります。
+Voice Liveは通常WSS・WebRTCとも`gpt-6.1-sol`を選びます。これはVoice Liveが管理する会話モデルで、初期28配備とは別の設定です。[対応モデル・API版・処理scope](foundry-model-catalog.md#voice-liveの会話モデル)を確認してください。
 
 ### モデル選択と添付形式
 
@@ -130,7 +130,7 @@ WAV 文字起こし `/models/azure-speech/v1/recognize`、Voice Live も独立�
 そのモデル用の初期例へ置き換えます。変更済みの本文や添付は引き継ぎません。
 初期例を選んだ後も JSON を編集できますが、最終的な許可モデルと上限は APIM が検査します。
 
-通常の会話例は出力512 token、Responses専用Proの例は8192 tokenです。
+API定義内の通常の会話例は出力512 tokenです。Portalの出力トークン初期値は、選択したモデルの公開最大値を使用します。
 公開するモデル別上限は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json) で管理し、APIとPortalへ同じ値を展開します。例の初期値をモデル上限として扱いません。推論に使う token も上限に含まれるため、
 `status:incomplete` の場合は結果を成功した回答と扱わず、返却された終了理由を確認します。
 推論設定はモデル別の短い疎通用初期値です。GPT-5.6 Sol/Terra/Lunaには`none`、
@@ -174,7 +174,7 @@ Realtime はモデルを接続先に固定します。WebRTC は一つの公開 
 同じチケットを使う構成を増やしません。
 [Azure Realtime の接続方法とセッション](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio)
 
-Microsoft Decisionは`Microsoft-Decision-1` v1／DataZoneStandard／初期割当1、配備名`decision-1`です。`state`と`noul`・`choice`・`score`を受け、型付き判断を返します。上流は`/providers/microsoft/v1/systemone`、公開上限8,192byteです。初期32モデルのうちDecisionはPreview、ほかは選定時GAです。版・SKU・quota名の正本はconfigで、`gpt-6.1-sol`の初期capacityは50、`gpt-5.6-luna`は5、ほかは1です。1は初期割当値です。[Decision仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision)
+Microsoft Decisionは`Microsoft-Decision-1` v1／DataZoneStandard／初期割当1、配備名`decision-1`です。`state`と`noul`・`choice`・`score`を受け、型付き判断を返します。上流は`/providers/microsoft/v1/systemone`、公開上限8,192byteです。初期28モデルのうちDecisionはPreview、ほかは選定時GAです。版・SKU・quota名の正本はconfigで、`gpt-6.1-sol`の初期capacityは50、`gpt-5.6-luna`は5、ほかは1です。1は初期割当値です。[Decision仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision)
 
 Cohereは共有Foundryのprovider routeとMIを使い、利用者のtokenを転用しません。採用版の実route・MI対応・PE到達は受入で確認します。`disableLocalAuth:true`を緩めたりAPIキーへ自動fallbackしたりせず、401／403等は相関と権限を調べます。[CohereのAzure例](https://github.com/cohere-ai/cohere-azure-workshops)、[Foundry認証](https://learn.microsoft.com/en-us/azure/foundry/concepts/authentication-authorization-foundry#feature-support-matrix)
 

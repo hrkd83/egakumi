@@ -61,14 +61,14 @@ function TextDocument({ models, dictionary, locale, gatewayOrigin }: Pick<ModelD
   return <TextGenerationPanel models={models} dictionary={dictionary} locale={locale} gatewayOrigin={gatewayOrigin} />;
 }
 
-/** 機能別の専用ページに既存のガイド・仕様・試用を表示します。提供元の切替では旧パネルを解放します。 */
+/** 機能別の専用ページにガイド・仕様・試用を表示し、提供元・音声シリーズの切替で旧パネルを解放します。 */
 export function ModelDocument({ category, models, embeddingModels, imageModels, speechModels, realtimeModels, rerankModels, decisionModels, operations, dictionary, locale, gatewayOrigin }: ModelDocumentProps) {
   const common = { dictionary, locale, gatewayOrigin };
   if (category === "text") return <TextDocument key={models[0]?.providerId ?? "text"} models={models} {...common} />;
   if (category === "embeddings") return <EmbeddingPanel key={embeddingModels[0]?.providerId ?? "embeddings"} models={embeddingModels} {...common} />;
   if (category === "image") return <ImageGenerationPanel key={imageModels[0]?.providerId ?? "image"} models={imageModels} {...common} />;
   if (category === "speech") return <SpeechPanel key={speechModels[0]?.providerId ?? "speech"} models={speechModels} {...common} />;
-  if (category === "realtime") return <RealtimeAudioPanel key={realtimeModels[0]?.providerId ?? "realtime"} models={realtimeModels} {...common} />;
+  if (category === "realtime") return <RealtimeAudioPanel key={realtimeModels[0]?.family ?? "realtime"} models={realtimeModels} {...common} />;
   if (category === "rerank") return <RerankPanel models={rerankModels} {...common} />;
   if (category === "decision") return <DecisionPanel models={decisionModels} {...common} />;
   return <div className="space-y-6">

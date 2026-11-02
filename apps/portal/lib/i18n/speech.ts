@@ -1,13 +1,13 @@
 import type { Locale } from "./config.ts";
 
 const ja = {
-  guideTitle: "音声APIをアプリに組み込む", guideSelect: "上の選択欄で操作とモデルを選び、利用するAPIの送信形式を確認します。", guideTts: "読み上げはテキストをSSMLへ変換して送信し、返ったWAVを再生または保存します。入力文はXMLとして安全にエスケープします。", guideStt: "文字起こしは対応するWAVを用意し、Azure Speechには音声バイナリ、OpenAIにはfileフィールドのmultipartを送ります。応答のJSONから認識文を読み取ります。", guideTry: "「試す」では利用できるAPIキーと入力を選び、右側で実際の応答を確認できます。以下のコード例は入力設定に合わせて更新されます。",
+  guideTitle: "音声APIをアプリに組み込む", guideSelect: "上の選択欄で操作とモデルを選び、利用するAPIの送信形式を確認します。", guideTts: "読み上げはテキストをSSMLへ変換して送信し、返ったWAVを再生または保存します。入力文はXMLとして安全にエスケープします。", guideStt: "文字起こしは対応するWAVを用意し、Azure Speechには音声バイナリ、OpenAIにはfileフィールドのmultipartを送ります。応答のJSONから認識文を読み取ります。", guideTry: "「試す」では利用できるAPIキーと入力を選び、右側で実際の応答を確認できます。読み上げ（TTS）では音声名も選べます。以下のコード例は入力設定に合わせて更新されます。",
   introduction: "選択した音声ファイルの文字起こし（STT）と、入力文の読み上げ（TTS）を試し、モデルや設定ごとの応答を確認します。",
   parameters: "音声APIの設定", operation: "操作・モデル", stt: "文字起こし（STT）", tts: "読み上げ（TTS）",
-  voice: "読み上げる声", nanami: "Nanami（女性）", keita: "Keita（男性）", rate: "読み上げ速度", slower: "ゆっくり（−20%）", normal: "標準", faster: "速く（＋20%）",
+  voice: "読み上げる声", voiceHelp: "日本語の標準Neural音声7種から選べます。同じ文章のまま声を変えて生成し、再生ボタンで声色を比べてください。声を変えると前の生成音声は消えます。", rate: "読み上げ速度", slower: "ゆっくり（−20%）", normal: "標準", faster: "速く（＋20%）",
   inputLanguage: "入力言語", japanese: "日本語（ja-JP）", languageNotice: "Azure Speechの認識言語はAPI定義側で日本語に設定されています。", openaiLanguageNotice: "言語パラメーターは送らず、モデルに音声の言語を認識させます。",
   text: "読み上げるテキスト", file: "文字起こしする音声ファイル", fileHelp: "WAV・PCM・16 kHz・16 bit・モノラル、最大{size} MiB。ファイルの内容も検証します。", fileChecking: "音声ファイルを確認しています…", fileInvalid: "対応するWAV形式か、ファイルサイズを確認してください。", sampleDownload: "サンプルWAVをダウンロード", sampleNotice: "サンプルが必要な場合はWAVをダウンロードし、上の欄で選択してください。実行時には選択したファイルを送ります。",
-  sampleFormat: "WAV · PCM · 16 kHz · 16 bit · モノラル", fixedNotice: "入力文を編集すると、SSMLと各言語の組み込み例にも反映されます。モデル変更時も入力文は保持します。",
+  sampleFormat: "WAV · PCM · 16 kHz · 16 bit · モノラル", fixedNotice: "入力文・音声・話速の変更は、SSMLと各言語の組み込み例にも反映されます。声やモデルを変えても入力文は保持します。",
   formatNotice: "出力形式はAPI定義側で固定されたWAV（16 kHz・16 bit・モノラル）です。速度はSSMLのprosodyで指定します。",
   runStt: "音声を文字起こしして確認", runTts: "音声を生成して確認", runningStt: "文字起こししています…", runningTts: "音声を生成しています…",
   wait: "最大180秒待機します。中止しても、送信済みの処理と課金が取り消されるとは限りません。自動再試行は行いません。",
@@ -27,13 +27,13 @@ const ja = {
 export type SpeechDictionary = { [K in keyof typeof ja]: string };
 
 const en: SpeechDictionary = {
-  guideTitle: "Integrate speech into your application", guideSelect: "Select an operation and model above, then review the request format for that API.", guideTts: "For synthesis, convert text to SSML, send it, and play or save the returned WAV. Escape user text safely as XML.", guideStt: "For transcription, prepare a supported WAV. Send audio binary to Azure Speech or a multipart file field to OpenAI, then read the transcript from the response JSON.", guideTry: "Open Try it to select an available API key and your input, then inspect the real response alongside the settings. The examples below update with your inputs.",
+  guideTitle: "Integrate speech into your application", guideSelect: "Select an operation and model above, then review the request format for that API.", guideTts: "For synthesis, convert text to SSML, send it, and play or save the returned WAV. Escape user text safely as XML.", guideStt: "For transcription, prepare a supported WAV. Send audio binary to Azure Speech or a multipart file field to OpenAI, then read the transcript from the response JSON.", guideTry: "Open Try it to select an available API key and your input, then inspect the real response alongside the settings. Text to speech (TTS) also lets you choose a voice. The examples below update with your inputs.",
   introduction: "Transcribe a selected audio file or synthesize your text, and compare responses across models and settings.",
   parameters: "Speech API parameters", operation: "Operation / model", stt: "Speech to text (STT)", tts: "Text to speech (TTS)",
-  voice: "Voice", nanami: "Nanami (female)", keita: "Keita (male)", rate: "Speaking rate", slower: "Slower (−20%)", normal: "Normal", faster: "Faster (+20%)",
+  voice: "Voice", voiceHelp: "Choose from seven Japanese standard Neural voices. Keep the same text, generate with another voice, then press play to compare how they sound. Changing voices clears the previous audio.", rate: "Speaking rate", slower: "Slower (−20%)", normal: "Normal", faster: "Faster (+20%)",
   inputLanguage: "Input language", japanese: "Japanese (ja-JP)", languageNotice: "The Azure Speech recognition language is configured as Japanese in the API definition.", openaiLanguageNotice: "No language parameter is sent; the model recognizes the audio language.",
   text: "Text to synthesize", file: "Audio file to transcribe", fileHelp: "WAV, PCM, 16 kHz, 16-bit mono, up to {size} MiB. File contents are also validated.", fileChecking: "Checking audio file…", fileInvalid: "Check the WAV format and file size.", sampleDownload: "Download sample WAV", sampleNotice: "Download the sample if needed, then select it above. Requests send your selected file.",
-  sampleFormat: "WAV · PCM · 16 kHz · 16 bit · Mono", fixedNotice: "Edits update the SSML and integration examples. Your text is preserved when switching models.",
+  sampleFormat: "WAV · PCM · 16 kHz · 16 bit · Mono", fixedNotice: "Changes to the text, voice, and rate update the SSML and integration examples. Your text is preserved when switching voices or models.",
   formatNotice: "The API definition fixes the output to a mono, 16 kHz, 16-bit WAV file. Speaking rate is sent through the SSML prosody element.",
   runStt: "Transcribe and inspect", runTts: "Generate and inspect speech", runningStt: "Transcribing…", runningTts: "Generating speech…",
   wait: "Requests wait for up to 180 seconds. Cancelling does not guarantee cancellation of processing or charges. Requests are never retried automatically.",

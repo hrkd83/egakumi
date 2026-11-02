@@ -1,13 +1,14 @@
 import type { SpeechModel } from "./model-types.ts";
 import { speechInputSchema, type SpeechInput } from "./speech-request.ts";
 import type { IntegrationLanguage } from "./model-integration.ts";
+import { AZURE_SPEECH_VOICE_IDS } from "./speech-voices.ts";
 
 /** 編集可能な読み上げ欄の初期例です。実行時は利用者のtextを使います。 */
 export const SAMPLE_SPEECH_TEXT = "エガクミの音声APIのサンプルです。";
 /** Portalとコード例で使う、16kHz・16bit・モノラルPCMの固定サンプルです。 */
 export const SPEECH_SAMPLE_PATH = "/samples/speech-ja-jp.wav";
 /** 日本語サンプルに対応する、Azure Speechのニューラル音声です。 */
-export const SPEECH_VOICES = ["ja-JP-NanamiNeural", "ja-JP-KeitaNeural"] as const;
+export const SPEECH_VOICES = AZURE_SPEECH_VOICE_IDS;
 /** SSMLへ挿入できる話速を限定し、任意のXMLを受け取りません。 */
 export const SPEECH_RATES = ["-20%", "0%", "+20%"] as const;
 /** Speech REST APIが求める呼び出し元の識別です。利用者情報を含めません。 */

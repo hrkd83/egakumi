@@ -29,7 +29,7 @@ def _test_bindings(value, raw):
         "HOSTED_AGENT_BASE_URL": "https://fixture.services.ai.azure.com/api/projects/core/agents/approved-agent/endpoint/protocols/openai",
         "VOICE_LIVE_WS_BASE_URL": "wss://provider.example.com/voice-live/realtime",
         "VOICE_LIVE_CALLS_WS_BASE_URL": "wss://provider.example.com/voice-live/realtime/calls",
-        "VOICE_LIVE_MODEL": "gpt-4.1", "VOICE_LIVE_CALLS_MODEL": "gpt-4.1",
+        "VOICE_LIVE_MODEL": "gpt-6.1-sol", "VOICE_LIVE_CALLS_MODEL": "gpt-6.1-sol",
         "LIVE_WS_BASE_URL": "wss://provider.example.com/openai/v1/live/sessions",
         "TRANSCRIPTION_WS_BASE_URL": "wss://provider.example.com/openai/v1/realtime"}
     bindings = {}

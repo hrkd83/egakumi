@@ -78,12 +78,12 @@ test("公開モデルの既定値を配備と同じファイルから解決し�
   try {
     const sourceDirectory = join(folder, "apis"); const snapshotFile = join(folder, "catalog.json");
     await mkdir(sourceDirectory);
-    const bindings = { VOICE_LIVE_MODEL: "gpt-4.1", VOICE_LIVE_CALLS_MODEL: "gpt-4.1", VOICE_LIVE_API_VERSION: "2026-04-10", VOICE_LIVE_CALLS_API_VERSION: "2026-01-01-preview" };
+    const bindings = { VOICE_LIVE_MODEL: "gpt-6.1-sol", VOICE_LIVE_CALLS_MODEL: "gpt-6.1-sol", VOICE_LIVE_API_VERSION: "2026-04-10", VOICE_LIVE_CALLS_API_VERSION: "2026-01-01-preview" };
     await writeFile(join(folder, "public-bindings.json"), JSON.stringify({ schemaVersion: 1, bindings }));
     await writeFile(join(sourceDirectory, "voice.json"), JSON.stringify({ ...definition("voice"), backendUrl: "__VOICE_LIVE_WS_BASE_URL__", websocket: { queryParameters: { model: "__VOICE_LIVE_MODEL__" } } }));
     await prepareModelCatalog({ sourceDirectory, snapshotFile });
     const snapshot = JSON.parse(await readFile(snapshotFile, "utf8"));
-    assert.equal(snapshot.definitions[0].websocket.queryParameters.model, "gpt-4.1");
+    assert.equal(snapshot.definitions[0].websocket.queryParameters.model, "gpt-6.1-sol");
     assert.equal(snapshot.definitions[0].backendUrl, "__VOICE_LIVE_WS_BASE_URL__");
     await writeFile(join(folder, "public-bindings.json"), JSON.stringify({ schemaVersion: 1, bindings: { ...bindings, SECRET: "forbidden" } }));
     await assert.rejects(prepareModelCatalog({ sourceDirectory, snapshotFile }));

@@ -44,7 +44,7 @@ test("API方式だけを変えても以前の結果を消し、同じメッセ�
   const store = createPortalStore();
   assert.equal(store.getState().textInput.operationId, "responses-create");
   store.getState().updateTextInput({ message: "同じ問いで比較", stream: true });
-  store.getState().completeGeneration({ text: "古い結果", model: "gpt-5.4-nano", durationMs: 1, rawResponse: {} });
+  store.getState().completeGeneration({ text: "古い結果", model: "gpt-6-luna", durationMs: 1, rawResponse: {} });
   store.getState().updateTextInput({ operationId: "chat-completions" });
   assert.equal(store.getState().generationStatus, "idle"); assert.equal(store.getState().generationResult, null);
   assert.equal(store.getState().textInput.message, "同じ問いで比較"); assert.equal(store.getState().textInput.stream, true);

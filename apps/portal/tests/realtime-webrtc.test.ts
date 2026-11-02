@@ -13,7 +13,7 @@ const portalOrigin = "https://portal.example.invalid"; const gatewayOrigin = "ht
 const sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=sendrecv\r\n";
 const realtime: RealtimeModel = { id: "realtime-webrtc", label: "Realtime", providerId: "openai", provider: "OpenAI", family: "realtime", transport: "webrtc", apiId: "openai-realtime-control-v1", operationId: "realtime-create", path: "/models/openai-realtime/v1/calls", modelId: "gpt-realtime-2.1", voice: "marin", maxRequestBytes: 131072, maxOutputTokens: 512, observer: { apiId: "openai-realtime-observer-v1", path: "/models/openai-realtime/v1/observer/" }, hangupPath: "/models/openai-realtime/v1/calls/{callId}/hangup" };
 const live: RealtimeModel = { ...realtime, id: "live-webrtc", family: "live", apiId: "openai-live-control-v1", operationId: "live-create", path: "/models/openai-live/v1/sessions", modelId: "gpt-live-1", observer: undefined, hangupPath: undefined };
-const voice: RealtimeModel = { ...live, id: "voice-webrtc", providerId: "azure-ai-speech", provider: "Azure AI Speech", family: "voice-live", apiId: "azure-voice-live-webrtc-v1", operationId: "invoke", path: "/models/voice-live/v1/webrtc/", modelId: "gpt-4.1", voice: "ja-JP-NanamiNeural", maxOutputTokens: 32768, numericMaxOutputTokens: 4096, supportsMaximumOutput: true };
+const voice: RealtimeModel = { ...live, id: "voice-webrtc", providerId: "azure-ai-speech", provider: "Azure AI Speech", family: "voice-live", apiId: "azure-voice-live-webrtc-v1", operationId: "invoke", path: "/models/voice-live/v1/webrtc/", modelId: "gpt-6.1-sol", voice: "ja-JP-NanamiNeural", maxOutputTokens: 128000, numericMaxOutputTokens: 4096, supportsMaximumOutput: true };
 const callId = "private-call-identifier";
 /** APIMから返る所有チケットの構造だけを模した、外部では使えないfixtureです。 */
 function ticket(seconds = 590): string { return `${Buffer.from(JSON.stringify({ v: 3, callId, exp: Math.floor(Date.now() / 1000) + seconds })).toString("base64url")}.test-only-signature`; }
@@ -62,6 +62,28 @@ test("未認証・異なるOrigin・不正入力は、上流呼び出しとキ�
   assert.equal((await handleRealtimeWebRtc(request(), { ...context, readSession: async () => { throw new Error(key); } })).status, 503);
   for (const extra of [{ modelId: "other" }, { sdp: "invalid" }, { url: "https://elsewhere.invalid" }, { apiKey: key }, { maxOutputTokens: 513 }]) assert.equal((await handleRealtimeWebRtc(request(realtime, extra), context)).status, 400);
   assert.equal(calls, 0);
+});
+
+test("WebRTCの未知音声と別系列の音声はキー取得・上流接続前に拒否する", async () => {
+  let sideEffects = 0;
+  const context = dependencies({
+    resolveSubscriptionKey: async () => { sideEffects++; return key; },
+    fetch: async () => { sideEffects++; throw new Error("Unexpected request"); },
+    connectWebSocket: async () => { sideEffects++; throw new Error("Unexpected connection"); },
+  });
+  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [live, "cedar"], [voice, " ja-JP-KeitaNeural"], [realtime, "a".repeat(151)]] as const) {
+    assert.equal((await handleRealtimeWebRtc(request(model, { voice: selectedVoice }), context)).status, 400);
+  }
+  assert.equal(sideEffects, 0);
+});
+
+test("Realtimeの音声選択を受け付けてもcalls作成本文はSDPだけを維持する", async () => {
+  let created = 0; const original = dependencies();
+  const output = await events(await handleRealtimeWebRtc(request(realtime, { voice: "cedar" }), { ...original, fetch: async (url, init) => {
+    if (!String(url).endsWith("/hangup")) { created++; assert.deepEqual(JSON.parse(init?.body as string), { sdp }); }
+    return original.fetch!(url, init);
+  } }));
+  assert.equal(created, 1); assert.ok(output.some((event) => event.type === "answer"));
 });
 
 test("observerの権限も開始前に確認し、権限不足で通話を作らない", async () => {
@@ -161,10 +183,10 @@ test("Liveは固定instructionsとmarinで開始し、契約にないhangup成�
   assert.equal(calls, 1); assert.ok(output.some((event) => event.type === "answer")); assert.equal((output.at(-1) as { stopStatus: string }).stopStatus, "transport-closed"); assert.ok(!JSON.stringify(output).includes("private-live-id"));
 });
 
-for (const maxOutputTokens of [256, "model-max"] as const) test(`Voice Liveは専用WSSでSDPと出力上限を交換する（${maxOutputTokens}）`, async () => {
+for (const maxOutputTokens of [256, "model-max"] as const) test(`Voice Liveは専用WSSでSDPと選択音声・出力上限を交換する（${maxOutputTokens}）`, async () => {
   let sent: unknown; let closed = false;
   const cancelled = new AbortController();
-  const response = await handleRealtimeWebRtc(request(voice, { maxOutputTokens }, {}, cancelled.signal), dependencies({ connectWebSocket: async (url, headers) => {
+  const response = await handleRealtimeWebRtc(request(voice, { maxOutputTokens, voice: "ja-JP-KeitaNeural" }, {}, cancelled.signal), dependencies({ connectWebSocket: async (url, headers) => {
     assert.equal(url, gatewayOrigin.replace("https:", "wss:") + voice.path); assert.equal(headers["api-key"], key);
     return { ...socket([{ type: "rtc.call.sdp.created", sdp_answer: sdp, private: key }, { type: "response.done", response: { status: "completed" } }], () => { closed = true; }), send: async (value) => { sent = value; } };
   }, fetch: async () => { throw new Error("Voice Live must use its WSS contract"); } }));
@@ -175,7 +197,7 @@ for (const maxOutputTokens of [256, "model-max"] as const) test(`Voice Liveは�
   while (true) { const chunk = await reader.read(); if (chunk.done) break; chunks.push(chunk.value); }
   const output = await events(new Response(Buffer.concat(chunks)));
   const offer = sent as { type: string; sdp_offer: string; session: { voice: unknown; turn_detection: unknown; max_response_output_tokens: number | "inf" } };
-  assert.equal(offer.type, "rtc.call.sdp.create"); assert.equal(offer.sdp_offer, sdp); assert.deepEqual(offer.session.voice, { type: "azure-standard", name: "ja-JP-NanamiNeural" }); assert.equal(offer.session.max_response_output_tokens, maxOutputTokens === "model-max" ? "inf" : maxOutputTokens); assert.ok(offer.session.turn_detection); assert.ok(closed);
+  assert.equal(offer.type, "rtc.call.sdp.create"); assert.equal(offer.sdp_offer, sdp); assert.deepEqual(offer.session.voice, { type: "azure-standard", name: "ja-JP-KeitaNeural" }); assert.equal(offer.session.max_response_output_tokens, maxOutputTokens === "model-max" ? "inf" : maxOutputTokens); assert.ok(offer.session.turn_detection); assert.ok(closed);
   assert.equal((output.at(-1) as { stopStatus: string }).stopStatus, "transport-closed"); assert.ok(!JSON.stringify(output).includes(key));
 });
 

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "bindings": {
-    "VOICE_LIVE_MODEL": "gpt-4.1",
-    "VOICE_LIVE_CALLS_MODEL": "gpt-4.1",
+    "VOICE_LIVE_MODEL": "gpt-6.1-sol",
+    "VOICE_LIVE_CALLS_MODEL": "gpt-6.1-sol",
     "VOICE_LIVE_API_VERSION": "2026-04-10",
     "VOICE_LIVE_CALLS_API_VERSION": "2026-01-01-preview"
   }

@@ -5,6 +5,7 @@ import { buildRealtimeSessionEvent, RealtimeProtocol } from "./realtime-protocol
 import { realtimeInputSchema, realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_DURATION_MS, REALTIME_MAX_STREAM_BYTES, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import type { ModelGatewayErrorCode } from "./model-request.ts";
 import type { RealtimeModel } from "./model-types.ts";
+import { resolveRealtimeVoice } from "./realtime-voices.ts";
 
 /** 認可を終えた接続が受け付ける操作です。上流のイベント・URL・キー実値は受け取りません。 */
 export type RealtimeConversationCommand = { type: "input_audio"; delta: string; sampleRate?: 24000 } | { type: "stop" } | { type: "cancel_response" };
@@ -38,6 +39,7 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
   validateRealtimeModel(model); realtimeInputSchema.parse(input);
   const url = new URL(endpoint); const origin = `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}`;
   resolveRealtimeOutputTokens(model, input);
+  resolveRealtimeVoice(model, input);
   if (model.transport !== "websocket" || input.modelId !== model.id || getRealtimeEndpoint(model, origin) !== endpoint || !/^[\x21-\x7e]{16,512}$/.test(key)) throw new RealtimeConversationError("InvalidRequest");
   const now = dependencies.now ?? (() => performance.now());
   const started = now(); const protocol = new RealtimeProtocol(model); const elapsed = () => Math.max(0, Math.round(now() - started));

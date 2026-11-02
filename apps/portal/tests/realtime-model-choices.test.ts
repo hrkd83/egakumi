@@ -7,13 +7,13 @@ import { defaultRealtimeInput, getRealtimeRequestExample } from "../lib/realtime
 
 /** 表示名が同じでも、モデルIDと接続契約を区別できるカタログを用意します。 */
 function model(family: RealtimeModel["family"], modelId: string, transport: RealtimeModel["transport"]): RealtimeModel {
-  return { id: `${family}-${modelId}-${transport}`, label: "Same label", providerId: family === "voice-live" ? "azure-ai-speech" : "openai", provider: "Provider", family, modelId, transport, apiId: `${family}-${transport}`, operationId: "invoke", path: "/models/fixture", voice: "voice", maxRequestBytes: 65536, maxOutputTokens: family === "live" || family === "transcription" ? null : family === "voice-live" ? 32_768 : 4_096, ...(family === "voice-live" ? { numericMaxOutputTokens: 4_096, supportsMaximumOutput: true } : {}) };
+  return { id: `${family}-${modelId}-${transport}`, label: "Same label", providerId: family === "voice-live" ? "azure-ai-speech" : "openai", provider: "Provider", family, modelId, transport, apiId: `${family}-${transport}`, operationId: "invoke", path: "/models/fixture", voice: family === "voice-live" ? "ja-JP-NanamiNeural" : "marin", maxRequestBytes: 65536, maxOutputTokens: family === "live" || family === "transcription" ? null : family === "voice-live" ? 128_000 : 4_096, ...(family === "voice-live" ? { numericMaxOutputTokens: 4_096, supportsMaximumOutput: true } : {}) };
 }
 const entries = [
   model("realtime", "gpt-realtime-mini", "websocket"),
   model("realtime", "gpt-realtime-2.1", "websocket"), model("realtime", "gpt-realtime-2.1", "webrtc"),
   model("live", "gpt-live-1", "websocket"), model("live", "gpt-live-1", "webrtc"),
-  model("voice-live", "gpt-4.1", "websocket"), model("voice-live", "gpt-4.1", "webrtc"),
+  model("voice-live", "gpt-6.1-sol", "websocket"), model("voice-live", "gpt-6.1-sol", "webrtc"),
   model("transcription", "gpt-live-transcribe", "websocket"),
 ];
 
@@ -21,7 +21,7 @@ test("モデルと接続方式を別々に選べるよう、同じモデルの�
   const choices = groupRealtimeModels(entries); assert.equal(choices.length, 5);
   assert.deepEqual(choices.map((choice) => [choice.modelId, choice.variants.map((entry) => entry.transport)]), [
     ["gpt-realtime-mini", ["websocket"]], ["gpt-realtime-2.1", ["websocket", "webrtc"]],
-    ["gpt-live-1", ["websocket", "webrtc"]], ["gpt-4.1", ["websocket", "webrtc"]], ["gpt-live-transcribe", ["websocket"]],
+    ["gpt-live-1", ["websocket", "webrtc"]], ["gpt-6.1-sol", ["websocket", "webrtc"]], ["gpt-live-transcribe", ["websocket"]],
   ]);
   assert.equal(entries.length, 8);
 });

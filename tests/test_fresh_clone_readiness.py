@@ -87,7 +87,9 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.root = Path(self.directory.name).resolve()
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
         patterns = ("scripts/**/*.py", "config/test.json", "config/production.json",
-                    "params/*.example.json", "schemas/*.schema.json", "apps/gateway/apim/apis/*.json")
+                    "params/*.example.json", "schemas/*.schema.json", "infra/log-privacy.json",
+                    "apps/gateway/apim/apis/*.json", "apps/gateway/apim/model-capabilities.json",
+                    "apps/gateway/apim/public-bindings.json")
         for pattern in patterns:
             for source in CORE.glob(pattern):
                 target = self.root / source.relative_to(CORE)
@@ -157,7 +159,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         return report, public
 
     def test_test_and_production_public_params_validate_and_render_without_local_assets(self):
-        """両profileとも新規paramsだけで検査でき、32モデルを正本から取り込める。"""
+        """両profileとも新規paramsだけで検査でき、初期モデルを正本から取り込める。"""
         for profile in ("test", "production"):
             with self.subTest(profile=profile):
                 report, public = self.check_in_isolated_process(profile, self.enterprise_parameters(profile))
@@ -169,8 +171,15 @@ class FreshCloneReadinessTests(unittest.TestCase):
 
     def test_api_definitions_project_only_registration_fields_into_enterprise_params(self):
         """APIごとの定義を登録しても、モデル・CMはparams/configで管理する。"""
-        template = {"apiDefinitions": [json.loads((self.root / "apps/gateway/apim/apis" / (name + ".json")).read_text())
-            for name in ("openai-inference-v1", "pii-v1", "graph-profile-v1")]}
+        # 登録用JSONは正本のモデル上限を展開してからparamsへ渡す。
+        prepare = subprocess.run([sys.executable, "-I", "-S", "-B", "-c",
+            "import json, sys; from pathlib import Path; sys.path.insert(0, 'scripts'); "
+            "from standard_apis import load_api_definitions; "
+            "print(json.dumps({'apiDefinitions': [api for name in "
+            "('openai-inference-v1', 'pii-v1', 'graph-profile-v1') for api in "
+            "load_api_definitions(Path('apps/gateway/apim/apis') / (name + '.json'))]}))"],
+            cwd=self.root, text=True, capture_output=True, timeout=30, check=True)
+        template = json.loads(prepare.stdout)
         replacements = {"TENANT_ID": TENANT, "CM_CLIENT_ID": GATEWAY,
             "CM_CLIENT_SECRET_FILE": "../secrets/entra-client-secret.txt",
             "PUBLIC_HOST_NAME": self.enterprise_parameters("test")["gateway"]["publicHostName"]}

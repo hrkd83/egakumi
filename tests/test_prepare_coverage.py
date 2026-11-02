@@ -34,8 +34,8 @@ class CoveragePreparationTests(unittest.TestCase):
         self.bindings["VOICE_LIVE_CALLS_WS_BASE_URL"] = "wss://provider.example.com/voice-live/realtime/calls"
         self.bindings["LIVE_WS_BASE_URL"] = "wss://provider.example.com/openai/v1/live/sessions"
         self.bindings["TRANSCRIPTION_WS_BASE_URL"] = "wss://provider.example.com/openai/v1/realtime"
-        self.bindings["VOICE_LIVE_MODEL"] = "gpt-4.1"
-        self.bindings["VOICE_LIVE_CALLS_MODEL"] = "gpt-4.1"
+        self.bindings["VOICE_LIVE_MODEL"] = "gpt-6.1-sol"
+        self.bindings["VOICE_LIVE_CALLS_MODEL"] = "gpt-6.1-sol"
 
     def test_standard_bindings_and_definitions_have_no_external_sample_dependency(self):
         self.assertTrue(all(api["serviceClass"] == "platform" for api in self.overlay["apiDefinitions"]))
