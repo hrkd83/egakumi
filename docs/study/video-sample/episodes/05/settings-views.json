@@ -1,0 +1,4690 @@
+{
+  "visualStyle": "teaching-settings-v2",
+  "views": {
+    "fw-association-path": {
+      "viewId": "fw-association-path",
+      "areaLabel": "Firewallポリシー",
+      "title": "関連付けを確認してから、通信の経路を追う",
+      "kind": "設定・公開定義の確認",
+      "section": "関連付け・経路",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "関連付けを確認してから、通信の経路を追う",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "firewall",
+          "label": "Firewall",
+          "value": "afw-<stem>"
+        },
+        {
+          "id": "policy",
+          "label": "関連Policy",
+          "value": "afwp-<stem>"
+        },
+        {
+          "id": "relay",
+          "label": "中継経路",
+          "value": "AppGW ↔ Firewall ↔ APIM / ACA"
+        },
+        {
+          "id": "pe",
+          "label": "PE経路（注釈）",
+          "value": "標準UDRでは、PE宛ての具体的な直接経路"
+        },
+        {
+          "id": "basis",
+          "label": "資料の範囲",
+          "value": "公開定義・設定例。実効経路の取得値ではない"
+        }
+      ],
+      "diagram": {
+        "kind": "routes",
+        "caption": "代表的な2経路",
+        "upper": [
+          "AppGW",
+          "Firewall",
+          "APIM"
+        ],
+        "lower": [
+          "ACA",
+          "SQL PE"
+        ]
+      },
+      "note": "注釈：許可の定義があることと、その通信がFirewallを通ることを区別する。"
+    },
+    "rule-inputs": {
+      "viewId": "rule-inputs",
+      "areaLabel": "Firewallポリシー",
+      "title": "NetworkとApplicationの照合条件",
+      "kind": "設定・公開定義の確認",
+      "section": "ルールの種類",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "NetworkとApplicationの違い",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：FQDNがあるだけでApplicationルールとは判断しない。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "table": {
+        "columns": [
+          {
+            "label": "照合する情報",
+            "width": 230
+          },
+          {
+            "label": "Networkルール",
+            "width": 371
+          },
+          {
+            "label": "Applicationルール",
+            "width": 371
+          }
+        ],
+        "rows": [
+          {
+            "id": "source",
+            "cells": [
+              "送信元",
+              "IP範囲",
+              "IP範囲"
+            ]
+          },
+          {
+            "id": "destination",
+            "cells": [
+              "宛先",
+              "IP / サービス タグ等",
+              "WebのFQDN"
+            ]
+          },
+          {
+            "id": "protocol",
+            "cells": [
+              "プロトコル・ポート",
+              "TCP / UDP等 + 宛先ポート",
+              "HTTP / HTTPS + ポート"
+            ]
+          },
+          {
+            "id": "host",
+            "cells": [
+              "名前の扱い",
+              "FQDNをDNSでIPへ解決する場合もある",
+              "HTTP Host / HTTPS SNI"
+            ]
+          }
+        ]
+      }
+    },
+    "application-tls": {
+      "viewId": "application-tls",
+      "areaLabel": "Firewallポリシー",
+      "title": "標準Applicationルールと検査の分担",
+      "kind": "設定・公開定義の確認",
+      "section": "ルールの種類",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "標準Applicationルールと検査の分担",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：宛先の許可、Web攻撃の検査、API認可の役割を分ける。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "tls",
+          "label": "terminateTLS",
+          "value": "false"
+        },
+        {
+          "id": "sni",
+          "label": "HTTPSの照合対象",
+          "value": "SNIのホスト名。URLパス・本文は復号しない"
+        },
+        {
+          "id": "host",
+          "label": "HTTPの照合対象",
+          "value": "Host"
+        },
+        {
+          "id": "waf",
+          "label": "Web攻撃検査（注釈）",
+          "value": "公開入口のWAF"
+        },
+        {
+          "id": "auth",
+          "label": "API認証・認可（注釈）",
+          "value": "APIMやアプリの設定も確認"
+        }
+      ]
+    },
+    "ntp-fqdn": {
+      "viewId": "ntp-fqdn",
+      "areaLabel": "Firewallポリシー",
+      "title": "FQDNを使う管理VMのNTP許可",
+      "kind": "設定・公開定義の確認",
+      "section": "ルールの種類",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "FQDNを使う管理VMのNTP許可",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "rule",
+          "label": "ルール名",
+          "value": "management-time"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "管理VM区画"
+        },
+        {
+          "id": "fqdn",
+          "label": "宛先FQDN",
+          "value": "ntp.ubuntu.com"
+        },
+        {
+          "id": "port",
+          "label": "通信・ポート",
+          "value": "UDP / 123"
+        },
+        {
+          "id": "method",
+          "label": "種別・照合",
+          "value": "Network / DNSで解決した宛先IPを照合"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "管理VM",
+            "detail": "management-time"
+          },
+          {
+            "id": "firewall",
+            "label": "DNSで解決したIP",
+            "detail": "ntp.ubuntu.com"
+          },
+          {
+            "id": "target",
+            "label": "IP + UDP 123",
+            "detail": "Networkルールで照合"
+          }
+        ],
+        "labels": [
+          "名前を解決",
+          "通信条件で判定"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "注釈：WebのHost / SNIを見分けるApplicationルールとは照合方法が異なる。"
+    },
+    "rule-processing": {
+      "viewId": "rule-processing",
+      "areaLabel": "Firewallポリシー",
+      "title": "独自ルールの種類と評価順",
+      "kind": "設定・公開定義の確認",
+      "section": "評価順・優先度",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "種類の順序と優先度",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：Network Allow一致後にApplicationのFQDN許可を重ねない。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "table": {
+        "columns": [
+          {
+            "label": "段階（教材注釈）",
+            "width": 240
+          },
+          {
+            "label": "一致した場合",
+            "width": 366
+          },
+          {
+            "label": "一致しない場合",
+            "width": 366
+          }
+        ],
+        "rows": [
+          {
+            "id": "network",
+            "cells": [
+              "01 Network",
+              "Allowで判定終了",
+              "対応するWeb通信は次の照合へ"
+            ]
+          },
+          {
+            "id": "application",
+            "cells": [
+              "02 Application",
+              "Allowで判定終了",
+              "Azure組み込み基盤用許可も評価"
+            ]
+          },
+          {
+            "id": "builtin",
+            "cells": [
+              "03 組み込み許可",
+              "基盤用の許可を区別する",
+              "最後まで許可がなければ拒否"
+            ]
+          },
+          {
+            "id": "default",
+            "cells": [
+              "最終の既定拒否",
+              "独自deny-all規則とは別",
+              "独自一覧以外を一律拒否とはしない"
+            ]
+          }
+        ]
+      }
+    },
+    "hierarchy": {
+      "viewId": "hierarchy",
+      "areaLabel": "Firewallポリシー",
+      "title": "グループ・コレクション・ルールの階層",
+      "kind": "設定・公開定義の確認",
+      "section": "評価順・優先度",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "グループ・コレクション・ルールの階層",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：種類の順序 → グループ → コレクション、の順で読む。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "group",
+          "label": "グループ",
+          "value": "同じ種類の中で、グループの小さいpriorityから"
+        },
+        {
+          "id": "collection",
+          "label": "コレクション",
+          "value": "次にコレクションの小さいpriorityから"
+        },
+        {
+          "id": "action",
+          "label": "Actionの設定先",
+          "value": "コレクションにAllow / Denyを設定"
+        },
+        {
+          "id": "individual",
+          "label": "個々のルール（注釈）",
+          "value": "NSGのような個別のpriorityを付ける構造ではない"
+        }
+      ]
+    },
+    "priority-comparison": {
+      "viewId": "priority-comparison",
+      "areaLabel": "Firewallポリシー",
+      "title": "種類の順序が優先度の数字より先になる",
+      "kind": "設定・公開定義の確認",
+      "section": "評価順・優先度",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "種類の順序が優先度の数字より先になる",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "400 / 350は原理を示す仮例。360の2行はリポジトリの実定義。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "table": {
+        "columns": [
+          {
+            "label": "比較する対象",
+            "width": 210
+          },
+          {
+            "label": "グループ優先度・所属",
+            "width": 392
+          },
+          {
+            "label": "読み方（教材注釈）",
+            "width": 370
+          }
+        ],
+        "rows": [
+          {
+            "id": "network",
+            "cells": [
+              "仮例：Network",
+              "400",
+              "Applicationより先に評価"
+            ]
+          },
+          {
+            "id": "application",
+            "cells": [
+              "仮例：Application",
+              "350",
+              "Network不一致のWeb通信を評価"
+            ]
+          },
+          {
+            "id": "broker",
+            "cells": [
+              "実定義①",
+              "rcg-credential-broker / 360",
+              "同値だけで互いの前後を決めない"
+            ]
+          },
+          {
+            "id": "gateway",
+            "cells": [
+              "実定義②",
+              "rcg-portal-gateway / 360",
+              "同値だけで互いの前後を決めない"
+            ]
+          }
+        ]
+      }
+    },
+    "allow-default": {
+      "viewId": "allow-default",
+      "areaLabel": "Firewallポリシー",
+      "title": "独自Allowと最終的な既定拒否",
+      "kind": "設定・公開定義の確認",
+      "section": "評価順・優先度",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "独自Allowと最終的な既定拒否",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "拒否の説明では、独自Deny名だけでなくAllow不一致も確認する。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "allow",
+          "label": "独自コレクション",
+          "value": "すべてAllow"
+        },
+        {
+          "id": "deny",
+          "label": "独自Deny / DNAT",
+          "value": "定義なし"
+        },
+        {
+          "id": "broad",
+          "label": "Internet全ポート許可",
+          "value": "独自定義なし"
+        },
+        {
+          "id": "builtin",
+          "label": "組み込み許可（注釈）",
+          "value": "Azureの基盤用許可も評価する"
+        },
+        {
+          "id": "default",
+          "label": "最終判定（注釈）",
+          "value": "最後まで許可に一致しなければ既定拒否"
+        }
+      ]
+    },
+    "agw-apim": {
+      "viewId": "agw-apim",
+      "areaLabel": "Firewallポリシー",
+      "title": "AppGW → APIMの内部中継を許可する",
+      "kind": "設定・公開定義の確認",
+      "section": "内部中継",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "AppGW → APIMの内部中継を許可する",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "rule",
+          "label": "ルール名",
+          "value": "agw-to-apim-http"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "AppGW区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "APIMの実内部VIP（数値は取得していない）"
+        },
+        {
+          "id": "protocol",
+          "label": "種別 / Action",
+          "value": "Network / Allow / TCP"
+        },
+        {
+          "id": "ports",
+          "label": "宛先ポート",
+          "value": "80 / gRPC有効時だけ内部443も追加"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "AppGW区画",
+            "detail": "内部中継の送信元"
+          },
+          {
+            "id": "firewall",
+            "label": "Azure Firewall",
+            "detail": "agw-to-apim-http"
+          },
+          {
+            "id": "target",
+            "label": "APIM実内部VIP",
+            "detail": "TCP 80 / gRPC時443も"
+          }
+        ],
+        "labels": [
+          "往路UDR",
+          "Network / Allow"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "注釈：名前のhttpだけでポート範囲を判断しない。FQDN許可を重ねない。"
+    },
+    "agw-aca": {
+      "viewId": "agw-aca",
+      "areaLabel": "Firewallポリシー",
+      "title": "Portal入口の許可先とUDRの宛先を比べる",
+      "kind": "設定・公開定義の確認",
+      "section": "内部中継",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "Portal入口の許可先とUDRの宛先を比べる",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "rule",
+          "label": "ルール名",
+          "value": "agw-aca-https"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "AppGW区画"
+        },
+        {
+          "id": "destination",
+          "label": "FWの許可宛先",
+          "value": "ACA区画のCIDR"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "TCP / 443"
+        },
+        {
+          "id": "route",
+          "label": "AppGWのUDR",
+          "value": "ACA入口の実IP /32 → Firewall"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "AppGW区画",
+            "detail": "Portalの要求"
+          },
+          {
+            "id": "firewall",
+            "label": "Azure Firewall",
+            "detail": "agw-aca-https"
+          },
+          {
+            "id": "target",
+            "label": "ACA入口",
+            "detail": "許可宛先はACA CIDR"
+          }
+        ],
+        "labels": [
+          "入口IP /32のUDR",
+          "TCP 443"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "注釈：UDRは次の行き先、Firewallルールは通してよい範囲を決める。"
+    },
+    "stateful-return": {
+      "viewId": "stateful-return",
+      "areaLabel": "Firewallポリシー",
+      "title": "許可済み接続への応答と復路UDR",
+      "kind": "設定・公開定義の確認",
+      "section": "内部中継",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "許可済み接続への応答と復路UDR",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "state",
+          "label": "動作（注釈）",
+          "value": "Firewallはステートフルに応答を扱う"
+        },
+        {
+          "id": "response",
+          "label": "応答（注釈）",
+          "value": "許可済み接続への応答は状態追跡の対象"
+        },
+        {
+          "id": "reverse",
+          "label": "逆向きのAllow",
+          "value": "応答だけのための新規接続Allowは不要"
+        },
+        {
+          "id": "route",
+          "label": "往路・復路のUDR",
+          "value": "同じFirewallへ経路をそろえる"
+        },
+        {
+          "id": "new",
+          "label": "新規接続",
+          "value": "逆向きの別の新規接続は別判定"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "AppGW区画",
+            "detail": "要求と応答"
+          },
+          {
+            "id": "firewall",
+            "label": "Azure Firewall",
+            "detail": "接続の状態を追跡"
+          },
+          {
+            "id": "target",
+            "label": "APIM",
+            "detail": "同じ接続への応答"
+          }
+        ],
+        "labels": [
+          "往路・復路UDR",
+          "往路・復路UDR"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": true
+      },
+      "note": "注釈：状態を追跡することは、戻る経路を自動で作ることではない。"
+    },
+    "direct-internal": {
+      "viewId": "direct-internal",
+      "areaLabel": "Firewallポリシー",
+      "title": "内部ルールの定義と標準の直接経路",
+      "kind": "設定・公開定義の確認",
+      "section": "内部中継",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "内部ルールの定義と標準の直接経路",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "Network / Allowの定義があっても標準経路ではFWを通らない。apim-brokerは生成条件付き。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "table": {
+        "columns": [
+          {
+            "label": "ルール名",
+            "width": 272
+          },
+          {
+            "label": "送信元",
+            "width": 160
+          },
+          {
+            "label": "宛先・ポート",
+            "width": 310
+          },
+          {
+            "label": "標準経路（注釈）",
+            "width": 230
+          }
+        ],
+        "rows": [
+          {
+            "id": "broker",
+            "cells": [
+              "apim-broker",
+              "APIM区画",
+              "ACA実内部IP / TCP 443",
+              "VNet内の具体経路"
+            ]
+          },
+          {
+            "id": "sql",
+            "cells": [
+              "broker-sql",
+              "ACA区画",
+              "SQL PE実IP / TCP 1433",
+              "PEへの具体的な直接経路"
+            ]
+          },
+          {
+            "id": "vault",
+            "cells": [
+              "broker-vault",
+              "ACA区画",
+              "Key Vault PE実IP / TCP 443",
+              "PEへの具体的な直接経路"
+            ]
+          }
+        ]
+      }
+    },
+    "apim-storage": {
+      "viewId": "apim-storage",
+      "areaLabel": "Firewallポリシー",
+      "title": "APIMの基盤依存通信：Storage",
+      "kind": "設定・公開定義の確認",
+      "section": "基盤依存通信",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "APIMの基盤依存通信：Storage",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "rule",
+          "label": "ルール名",
+          "value": "apim-storage"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "APIM区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "Storageサービス タグのIP集合"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "TCP / 443"
+        },
+        {
+          "id": "action",
+          "label": "種別 / Action",
+          "value": "Network / Allow"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "APIM区画",
+            "detail": "基盤の依存通信"
+          },
+          {
+            "id": "firewall",
+            "label": "Network / Allow",
+            "detail": "apim-storage"
+          },
+          {
+            "id": "target",
+            "label": "StorageタグのIP",
+            "detail": "自社アカウント1個の指定ではない"
+          }
+        ],
+        "labels": [
+          "Firewallへ到達",
+          "一致で判定終了"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+    },
+    "apim-platform": {
+      "viewId": "apim-platform",
+      "areaLabel": "Firewallポリシー",
+      "title": "基盤SQLと業務SQLを、送信元・目的で分ける",
+      "kind": "設定・公開定義の確認",
+      "section": "基盤依存通信",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "基盤SQLと業務SQLを、送信元・目的で分ける",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "全ポートの暗記より、送信元と依存先の役割を結び付ける。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "table": {
+        "columns": [
+          {
+            "label": "代表の接続",
+            "width": 250
+          },
+          {
+            "label": "送信元",
+            "width": 160
+          },
+          {
+            "label": "宛先・ポート",
+            "width": 332
+          },
+          {
+            "label": "目的（注釈）",
+            "width": 230
+          }
+        ],
+        "rows": [
+          {
+            "id": "apim-sql",
+            "cells": [
+              "apim-sql",
+              "APIM区画",
+              "Sqlタグ / TCP 1433",
+              "APIM基盤の依存通信"
+            ]
+          },
+          {
+            "id": "business-sql",
+            "cells": [
+              "業務SQLの接続",
+              "ACA区画",
+              "SQL PE実IP / TCP 1433",
+              "Portal・Brokerの業務SQL"
+            ]
+          },
+          {
+            "id": "vault",
+            "cells": [
+              "apim-key-vault",
+              "APIM区画",
+              "AzureKeyVault / TCP 443",
+              "基盤依存通信"
+            ]
+          },
+          {
+            "id": "entra",
+            "cells": [
+              "apim-entra",
+              "APIM区画",
+              "Entraのタグ / TCP 443",
+              "認証"
+            ]
+          },
+          {
+            "id": "monitor",
+            "cells": [
+              "監視・監査の代表例",
+              "APIM区画",
+              "AzureMonitor / EventHub等",
+              "監視・監査データの送信"
+            ]
+          }
+        ]
+      }
+    },
+    "ntp-sources": {
+      "viewId": "ntp-sources",
+      "areaLabel": "Firewallポリシー",
+      "title": "APIMと管理VMのNTP許可は独立して読む",
+      "kind": "設定・公開定義の確認",
+      "section": "基盤依存通信",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "APIMと管理VMのNTP許可は独立して読む",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "collection",
+          "label": "コレクション",
+          "value": "allow-vm-platform"
+        },
+        {
+          "id": "apim",
+          "label": "APIMのルール",
+          "value": "apim-platform-time"
+        },
+        {
+          "id": "apim-dest",
+          "label": "APIMの条件",
+          "value": "time.windows.com / UDP 123"
+        },
+        {
+          "id": "vm",
+          "label": "管理VMのルール",
+          "value": "management-time"
+        },
+        {
+          "id": "vm-dest",
+          "label": "管理VMの条件",
+          "value": "ntp.ubuntu.com / UDP 123"
+        }
+      ],
+      "diagram": {
+        "kind": "pair",
+        "caption": "送信元とFQDNを左右固定で比較",
+        "flows": [
+          {
+            "id": "apim",
+            "rule": "apim-platform-time",
+            "source": "APIM区画",
+            "destination": "time.windows.com",
+            "label": "UDP 123"
+          },
+          {
+            "id": "vm",
+            "rule": "management-time",
+            "source": "管理VM区画",
+            "destination": "ntp.ubuntu.com",
+            "label": "UDP 123"
+          }
+        ]
+      },
+      "note": "注釈：両方ともNetwork。名前をDNSでIPへ解決して照合する。所属名だけで送信元を決めない。"
+    },
+    "vm-aca": {
+      "viewId": "vm-aca",
+      "areaLabel": "Firewallポリシー",
+      "title": "管理VMとACAの管理・監視・認証",
+      "kind": "設定・公開定義の確認",
+      "section": "基盤依存通信",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "管理VMとACAの管理・監視・認証",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "vm-dest",
+          "label": "管理VMの宛先",
+          "value": "Entra / ARM / Monitor / Storageのタグ"
+        },
+        {
+          "id": "vm-purpose",
+          "label": "目的（注釈）",
+          "value": "認証・配備・保守・監視"
+        },
+        {
+          "id": "aca-rule",
+          "label": "ACAのルール",
+          "value": "aca-monitor-https"
+        },
+        {
+          "id": "aca-dest",
+          "label": "ACAの宛先",
+          "value": "AzureMonitor / AzureActiveDirectory"
+        },
+        {
+          "id": "aca-ports",
+          "label": "ACAの通信条件",
+          "value": "ACA区画 / TCP 443 / Network Allow"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "ACA区画",
+            "detail": "送信元を限定"
+          },
+          {
+            "id": "firewall",
+            "label": "Azure Firewall",
+            "detail": "aca-monitor-https"
+          },
+          {
+            "id": "target",
+            "label": "監視・認証のタグ",
+            "detail": "AzureMonitor / Entra"
+          }
+        ],
+        "labels": [
+          "TCP 443",
+          "Network / Allow"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "注釈：このNetwork許可に一致する通信は、Applicationの照合へ進まない。"
+    },
+    "custom-dns": {
+      "viewId": "custom-dns",
+      "areaLabel": "Firewallポリシー",
+      "title": "独自DNS許可の生成条件・送信元・経路",
+      "kind": "設定・公開定義の確認",
+      "section": "DNS・共通設定",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "独自DNS許可の生成条件・送信元・経路",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "condition",
+          "label": "作成する条件",
+          "value": "network.dnsServersが空でない場合"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "APIM区画・管理VM区画（ACAは含まない）"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "指定した独自DNSのIP群"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "TCP・UDP / 53"
+        },
+        {
+          "id": "public",
+          "label": "公開設定例",
+          "value": "dnsServers: [] → このコレクションは作成しない"
+        }
+      ],
+      "diagram": {
+        "kind": "routes",
+        "caption": "DNS問い合わせが選ぶ経路を確認",
+        "upper": [
+          "APIM / VM",
+          "Firewall",
+          "独自DNS"
+        ],
+        "lower": [
+          "APIM / VM",
+          "独自DNS"
+        ],
+        "upperLabel": "FWを経由する場合",
+        "lowerLabel": "同じVNet内など、具体的な直接経路の場合"
+      },
+      "note": "ルール名：custom-dns。許可の定義と実際の名前解決経路は別に確認する。"
+    },
+    "dns-proxy": {
+      "viewId": "dns-proxy",
+      "areaLabel": "Firewallポリシー",
+      "title": "Firewall側のDNSとVNet側のDNSを区別する",
+      "kind": "設定・公開定義の確認",
+      "section": "DNS・共通設定",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "Firewall側のDNSとVNet側のDNSを区別する",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：DNS proxyはNetwork FQDNの名前解決などを支える。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "proxy",
+          "label": "enableProxy",
+          "value": "true"
+        },
+        {
+          "id": "fw-dns",
+          "label": "FW上流DNSの優先指定",
+          "value": "network.firewall.dnsServers"
+        },
+        {
+          "id": "fallback",
+          "label": "未指定の場合",
+          "value": "network.dnsServersを使用"
+        },
+        {
+          "id": "vnet",
+          "label": "VNet側DNS（注釈）",
+          "value": "別途確認。FW IPへ自動で切り替わらない"
+        }
+      ]
+    },
+    "quiz-storage": {
+      "viewId": "quiz-storage",
+      "areaLabel": "Firewallポリシー",
+      "title": "確認1：Storage通信は二重の許可が必要か",
+      "kind": "設定・公開定義の確認",
+      "section": "確認問題",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "確認1：Storage通信は二重の許可が必要か",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "通信条件を確認し、該当する判断を考える。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "APIM区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "StorageタグのIP"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "TCP / 443"
+        },
+        {
+          "id": "premise",
+          "label": "設問の前提",
+          "value": "NetworkルールのAllowに一致済み"
+        }
+      ],
+      "diagram": {
+        "kind": "choices",
+        "caption": "判断する候補（教材の問い）",
+        "choices": [
+          {
+            "id": "required",
+            "label": "ApplicationのFQDN登録も必要"
+          },
+          {
+            "id": "not-required",
+            "label": "FQDN登録を追加で重ねない"
+          }
+        ]
+      },
+      "note": "条件と評価順を照合し、追加登録が必要かを判断する。",
+      "answerTarget": "not-required"
+    },
+    "quiz-ntp": {
+      "viewId": "quiz-ntp",
+      "areaLabel": "Firewallポリシー",
+      "title": "確認2：FQDNを使うNTPはどちらの種類か",
+      "kind": "設定・公開定義の確認",
+      "section": "確認問題",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "確認2：FQDNを使うNTPはどちらの種類か",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "通信条件を確認し、該当する判断を考える。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "管理VM区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先FQDN",
+          "value": "ntp.ubuntu.com"
+        },
+        {
+          "id": "protocol",
+          "label": "プロトコル",
+          "value": "UDP"
+        },
+        {
+          "id": "port",
+          "label": "宛先ポート",
+          "value": "123"
+        }
+      ],
+      "diagram": {
+        "kind": "choices",
+        "caption": "判断する候補（教材の問い）",
+        "choices": [
+          {
+            "id": "network",
+            "label": "Networkルール"
+          },
+          {
+            "id": "application",
+            "label": "Applicationルール"
+          }
+        ]
+      },
+      "note": "名前の見た目だけでなく、プロトコルと照合に使う情報を考える。",
+      "answerTarget": "network"
+    },
+    "quiz-pe": {
+      "viewId": "quiz-pe",
+      "areaLabel": "Firewallポリシー",
+      "title": "確認3：SQL PEへの接続失敗をどう考えるか",
+      "kind": "設定・公開定義の確認",
+      "section": "確認問題",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "確認3：SQL PEへの接続失敗をどう考えるか",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "通信条件を確認し、該当する判断を考える。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "ACA区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "SQL Private Endpointの実IP"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "TCP / 1433"
+        },
+        {
+          "id": "symptom",
+          "label": "設問の症状",
+          "value": "接続できない（稼働環境の実測ではない）"
+        }
+      ],
+      "diagram": {
+        "kind": "choices",
+        "caption": "判断する候補（教材の問い）",
+        "choices": [
+          {
+            "id": "firewall",
+            "label": "Firewallを経由する経路"
+          },
+          {
+            "id": "direct",
+            "label": "PE宛ての具体的な直接経路"
+          }
+        ]
+      },
+      "note": "まず経路を確認する。宛先IP・Private DNS・NSG・認証も同じ通信として照合。",
+      "answerTarget": "direct"
+    },
+    "linux-web": {
+      "viewId": "linux-web",
+      "areaLabel": "Firewallポリシー",
+      "title": "Network不一致のWeb通信はFQDNで照合する",
+      "kind": "設定・公開定義の確認",
+      "section": "ルールの種類",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "Network不一致のWeb通信はFQDNで照合する",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "設定値と教材注釈を対応付ける",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "composite",
+      "rows": [
+        {
+          "id": "rule",
+          "label": "ルール名",
+          "value": "vm-certificate-and-linux-packages"
+        },
+        {
+          "id": "source",
+          "label": "送信元",
+          "value": "管理VM区画"
+        },
+        {
+          "id": "destination",
+          "label": "宛先FQDN",
+          "value": "archive.ubuntu.com"
+        },
+        {
+          "id": "ports",
+          "label": "通信・ポート",
+          "value": "HTTP / 80"
+        },
+        {
+          "id": "action",
+          "label": "種別 / Action",
+          "value": "Application / Allow"
+        }
+      ],
+      "diagram": {
+        "kind": "vertical",
+        "nodes": [
+          {
+            "id": "source",
+            "label": "管理VM",
+            "detail": "Networkは不一致の例"
+          },
+          {
+            "id": "firewall",
+            "label": "Applicationルール",
+            "detail": "WebのFQDNを照合"
+          },
+          {
+            "id": "target",
+            "label": "archive.ubuntu.com",
+            "detail": "HTTP 80"
+          }
+        ],
+        "labels": [
+          "Network不一致",
+          "条件に一致 → Allow"
+        ],
+        "caption": "設定と経路を対応付ける",
+        "bidirectional": false
+      },
+      "note": "対象ルール：vm-certificate-and-linux-packages。未許可先は組み込み許可も確認して最終判定。"
+    },
+    "change-review": {
+      "viewId": "change-review",
+      "areaLabel": "Firewallポリシー",
+      "title": "変更前後に同じ通信について照合する",
+      "kind": "設定・公開定義の確認",
+      "section": "保守・まとめ",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "変更前後に同じ通信について照合する",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：この表は変更時の確認観点で、製品の設定項目名ではない。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "source",
+          "label": "目的・送信元",
+          "value": "誰が何のために使うか / Firewall到達時の送信元IP"
+        },
+        {
+          "id": "destination",
+          "label": "宛先",
+          "value": "実際の宛先IP・ホスト名"
+        },
+        {
+          "id": "ports",
+          "label": "通信条件",
+          "value": "プロトコルと宛先ポート"
+        },
+        {
+          "id": "policy",
+          "label": "規則の照合",
+          "value": "種別 → グループ → コレクション → 条件 / Action"
+        },
+        {
+          "id": "after",
+          "label": "変更後の確認",
+          "value": "新しい接続とログで、意図した判定になったかを確認"
+        }
+      ]
+    },
+    "alert-settings": {
+      "viewId": "alert-settings",
+      "areaLabel": "Firewallポリシー",
+      "title": "本番の公開config：検知のAlertと規則のDeny",
+      "kind": "設定・公開定義の確認",
+      "section": "保守・まとめ",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "本番の公開config：検知のAlertと規則のDeny",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "教材注釈：検出しただけで自動遮断するモードとは説明しない。詳細は第10回。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "sku",
+          "label": "Firewall SKU",
+          "value": "Premium"
+        },
+        {
+          "id": "idps",
+          "label": "IDPS",
+          "value": "Alert"
+        },
+        {
+          "id": "ti",
+          "label": "Threat Intelligence",
+          "value": "Alert"
+        }
+      ]
+    },
+    "final-review": {
+      "viewId": "final-review",
+      "areaLabel": "Firewallポリシー",
+      "title": "今日の到達点と、次回の外向き通信",
+      "kind": "設定・公開定義の確認",
+      "section": "保守・まとめ",
+      "menu": [
+        "関連付け・経路",
+        "ルールの種類",
+        "評価順・優先度",
+        "内部中継",
+        "基盤依存通信",
+        "DNS・共通設定",
+        "確認問題",
+        "保守・まとめ"
+      ],
+      "heading": "今日の到達点と、次回の外向き通信",
+      "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+      "notice": "まとめ：次回はWebの依存先と、接続先から見える出口IPを追う。",
+      "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+      "layout": "settings",
+      "fields": [
+        {
+          "id": "path",
+          "label": "経路（教材注釈）",
+          "value": "まず、Firewallへ届く通信かを確認する"
+        },
+        {
+          "id": "order",
+          "label": "評価順（教材注釈）",
+          "value": "Networkが先。一致で終了 / 不一致のWebはApplicationへ"
+        },
+        {
+          "id": "reason",
+          "label": "許可の理由（教材注釈）",
+          "value": "送信元・宛先・ポートと、使う目的を結び付ける"
+        }
+      ]
+    }
+  },
+  "artifacts": {
+    "fw-association-path--neutral.svg": {
+      "spec": {
+        "viewId": "fw-association-path",
+        "areaLabel": "Firewallポリシー",
+        "title": "関連付けを確認してから、通信の経路を追う",
+        "kind": "設定・公開定義の確認",
+        "section": "関連付け・経路",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "関連付けを確認してから、通信の経路を追う",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "firewall",
+            "label": "Firewall",
+            "value": "afw-<stem>"
+          },
+          {
+            "id": "policy",
+            "label": "関連Policy",
+            "value": "afwp-<stem>"
+          },
+          {
+            "id": "relay",
+            "label": "中継経路",
+            "value": "AppGW ↔ Firewall ↔ APIM / ACA"
+          },
+          {
+            "id": "pe",
+            "label": "PE経路（注釈）",
+            "value": "標準UDRでは、PE宛ての具体的な直接経路"
+          },
+          {
+            "id": "basis",
+            "label": "資料の範囲",
+            "value": "公開定義・設定例。実効経路の取得値ではない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "代表的な2経路",
+          "upper": [
+            "AppGW",
+            "Firewall",
+            "APIM"
+          ],
+          "lower": [
+            "ACA",
+            "SQL PE"
+          ]
+        },
+        "note": "注釈：許可の定義があることと、その通信がFirewallを通ることを区別する。"
+      },
+      "highlightTargets": []
+    },
+    "fw-association-path--policy.svg": {
+      "spec": {
+        "viewId": "fw-association-path",
+        "areaLabel": "Firewallポリシー",
+        "title": "関連付けを確認してから、通信の経路を追う",
+        "kind": "設定・公開定義の確認",
+        "section": "関連付け・経路",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "関連付けを確認してから、通信の経路を追う",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "firewall",
+            "label": "Firewall",
+            "value": "afw-<stem>"
+          },
+          {
+            "id": "policy",
+            "label": "関連Policy",
+            "value": "afwp-<stem>"
+          },
+          {
+            "id": "relay",
+            "label": "中継経路",
+            "value": "AppGW ↔ Firewall ↔ APIM / ACA"
+          },
+          {
+            "id": "pe",
+            "label": "PE経路（注釈）",
+            "value": "標準UDRでは、PE宛ての具体的な直接経路"
+          },
+          {
+            "id": "basis",
+            "label": "資料の範囲",
+            "value": "公開定義・設定例。実効経路の取得値ではない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "代表的な2経路",
+          "upper": [
+            "AppGW",
+            "Firewall",
+            "APIM"
+          ],
+          "lower": [
+            "ACA",
+            "SQL PE"
+          ]
+        },
+        "note": "注釈：許可の定義があることと、その通信がFirewallを通ることを区別する。"
+      },
+      "highlightTargets": [
+        "policy"
+      ]
+    },
+    "fw-association-path--direct-pe.svg": {
+      "spec": {
+        "viewId": "fw-association-path",
+        "areaLabel": "Firewallポリシー",
+        "title": "関連付けを確認してから、通信の経路を追う",
+        "kind": "設定・公開定義の確認",
+        "section": "関連付け・経路",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "関連付けを確認してから、通信の経路を追う",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "firewall",
+            "label": "Firewall",
+            "value": "afw-<stem>"
+          },
+          {
+            "id": "policy",
+            "label": "関連Policy",
+            "value": "afwp-<stem>"
+          },
+          {
+            "id": "relay",
+            "label": "中継経路",
+            "value": "AppGW ↔ Firewall ↔ APIM / ACA"
+          },
+          {
+            "id": "pe",
+            "label": "PE経路（注釈）",
+            "value": "標準UDRでは、PE宛ての具体的な直接経路"
+          },
+          {
+            "id": "basis",
+            "label": "資料の範囲",
+            "value": "公開定義・設定例。実効経路の取得値ではない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "代表的な2経路",
+          "upper": [
+            "AppGW",
+            "Firewall",
+            "APIM"
+          ],
+          "lower": [
+            "ACA",
+            "SQL PE"
+          ]
+        },
+        "note": "注釈：許可の定義があることと、その通信がFirewallを通ることを区別する。"
+      },
+      "highlightTargets": [
+        "pe",
+        "direct"
+      ]
+    },
+    "fw-association-path--basis.svg": {
+      "spec": {
+        "viewId": "fw-association-path",
+        "areaLabel": "Firewallポリシー",
+        "title": "関連付けを確認してから、通信の経路を追う",
+        "kind": "設定・公開定義の確認",
+        "section": "関連付け・経路",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "関連付けを確認してから、通信の経路を追う",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "firewall",
+            "label": "Firewall",
+            "value": "afw-<stem>"
+          },
+          {
+            "id": "policy",
+            "label": "関連Policy",
+            "value": "afwp-<stem>"
+          },
+          {
+            "id": "relay",
+            "label": "中継経路",
+            "value": "AppGW ↔ Firewall ↔ APIM / ACA"
+          },
+          {
+            "id": "pe",
+            "label": "PE経路（注釈）",
+            "value": "標準UDRでは、PE宛ての具体的な直接経路"
+          },
+          {
+            "id": "basis",
+            "label": "資料の範囲",
+            "value": "公開定義・設定例。実効経路の取得値ではない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "代表的な2経路",
+          "upper": [
+            "AppGW",
+            "Firewall",
+            "APIM"
+          ],
+          "lower": [
+            "ACA",
+            "SQL PE"
+          ]
+        },
+        "note": "注釈：許可の定義があることと、その通信がFirewallを通ることを区別する。"
+      },
+      "highlightTargets": [
+        "basis"
+      ]
+    },
+    "ntp-fqdn--neutral.svg": {
+      "spec": {
+        "viewId": "ntp-fqdn",
+        "areaLabel": "Firewallポリシー",
+        "title": "FQDNを使う管理VMのNTP許可",
+        "kind": "設定・公開定義の確認",
+        "section": "ルールの種類",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "FQDNを使う管理VMのNTP許可",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "management-time"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "fqdn",
+            "label": "宛先FQDN",
+            "value": "ntp.ubuntu.com"
+          },
+          {
+            "id": "port",
+            "label": "通信・ポート",
+            "value": "UDP / 123"
+          },
+          {
+            "id": "method",
+            "label": "種別・照合",
+            "value": "Network / DNSで解決した宛先IPを照合"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "管理VM",
+              "detail": "management-time"
+            },
+            {
+              "id": "firewall",
+              "label": "DNSで解決したIP",
+              "detail": "ntp.ubuntu.com"
+            },
+            {
+              "id": "target",
+              "label": "IP + UDP 123",
+              "detail": "Networkルールで照合"
+            }
+          ],
+          "labels": [
+            "名前を解決",
+            "通信条件で判定"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：WebのHost / SNIを見分けるApplicationルールとは照合方法が異なる。"
+      },
+      "highlightTargets": []
+    },
+    "ntp-fqdn--firewall-method-port-target.svg": {
+      "spec": {
+        "viewId": "ntp-fqdn",
+        "areaLabel": "Firewallポリシー",
+        "title": "FQDNを使う管理VMのNTP許可",
+        "kind": "設定・公開定義の確認",
+        "section": "ルールの種類",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "FQDNを使う管理VMのNTP許可",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "management-time"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "fqdn",
+            "label": "宛先FQDN",
+            "value": "ntp.ubuntu.com"
+          },
+          {
+            "id": "port",
+            "label": "通信・ポート",
+            "value": "UDP / 123"
+          },
+          {
+            "id": "method",
+            "label": "種別・照合",
+            "value": "Network / DNSで解決した宛先IPを照合"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "管理VM",
+              "detail": "management-time"
+            },
+            {
+              "id": "firewall",
+              "label": "DNSで解決したIP",
+              "detail": "ntp.ubuntu.com"
+            },
+            {
+              "id": "target",
+              "label": "IP + UDP 123",
+              "detail": "Networkルールで照合"
+            }
+          ],
+          "labels": [
+            "名前を解決",
+            "通信条件で判定"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：WebのHost / SNIを見分けるApplicationルールとは照合方法が異なる。"
+      },
+      "highlightTargets": [
+        "method",
+        "port",
+        "firewall",
+        "target"
+      ]
+    },
+    "agw-apim--neutral.svg": {
+      "spec": {
+        "viewId": "agw-apim",
+        "areaLabel": "Firewallポリシー",
+        "title": "AppGW → APIMの内部中継を許可する",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "AppGW → APIMの内部中継を許可する",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "agw-to-apim-http"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "AppGW区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "APIMの実内部VIP（数値は取得していない）"
+          },
+          {
+            "id": "protocol",
+            "label": "種別 / Action",
+            "value": "Network / Allow / TCP"
+          },
+          {
+            "id": "ports",
+            "label": "宛先ポート",
+            "value": "80 / gRPC有効時だけ内部443も追加"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "内部中継の送信元"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "agw-to-apim-http"
+            },
+            {
+              "id": "target",
+              "label": "APIM実内部VIP",
+              "detail": "TCP 80 / gRPC時443も"
+            }
+          ],
+          "labels": [
+            "往路UDR",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：名前のhttpだけでポート範囲を判断しない。FQDN許可を重ねない。"
+      },
+      "highlightTargets": []
+    },
+    "agw-apim--destination-firewall-protocol-source.svg": {
+      "spec": {
+        "viewId": "agw-apim",
+        "areaLabel": "Firewallポリシー",
+        "title": "AppGW → APIMの内部中継を許可する",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "AppGW → APIMの内部中継を許可する",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "agw-to-apim-http"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "AppGW区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "APIMの実内部VIP（数値は取得していない）"
+          },
+          {
+            "id": "protocol",
+            "label": "種別 / Action",
+            "value": "Network / Allow / TCP"
+          },
+          {
+            "id": "ports",
+            "label": "宛先ポート",
+            "value": "80 / gRPC有効時だけ内部443も追加"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "内部中継の送信元"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "agw-to-apim-http"
+            },
+            {
+              "id": "target",
+              "label": "APIM実内部VIP",
+              "detail": "TCP 80 / gRPC時443も"
+            }
+          ],
+          "labels": [
+            "往路UDR",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：名前のhttpだけでポート範囲を判断しない。FQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "source",
+        "destination",
+        "protocol",
+        "firewall"
+      ]
+    },
+    "agw-apim--ports-target.svg": {
+      "spec": {
+        "viewId": "agw-apim",
+        "areaLabel": "Firewallポリシー",
+        "title": "AppGW → APIMの内部中継を許可する",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "AppGW → APIMの内部中継を許可する",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "agw-to-apim-http"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "AppGW区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "APIMの実内部VIP（数値は取得していない）"
+          },
+          {
+            "id": "protocol",
+            "label": "種別 / Action",
+            "value": "Network / Allow / TCP"
+          },
+          {
+            "id": "ports",
+            "label": "宛先ポート",
+            "value": "80 / gRPC有効時だけ内部443も追加"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "内部中継の送信元"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "agw-to-apim-http"
+            },
+            {
+              "id": "target",
+              "label": "APIM実内部VIP",
+              "detail": "TCP 80 / gRPC時443も"
+            }
+          ],
+          "labels": [
+            "往路UDR",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：名前のhttpだけでポート範囲を判断しない。FQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "ports",
+        "target"
+      ]
+    },
+    "agw-aca--neutral.svg": {
+      "spec": {
+        "viewId": "agw-aca",
+        "areaLabel": "Firewallポリシー",
+        "title": "Portal入口の許可先とUDRの宛先を比べる",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "Portal入口の許可先とUDRの宛先を比べる",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "agw-aca-https"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "AppGW区画"
+          },
+          {
+            "id": "destination",
+            "label": "FWの許可宛先",
+            "value": "ACA区画のCIDR"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "route",
+            "label": "AppGWのUDR",
+            "value": "ACA入口の実IP /32 → Firewall"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "Portalの要求"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "agw-aca-https"
+            },
+            {
+              "id": "target",
+              "label": "ACA入口",
+              "detail": "許可宛先はACA CIDR"
+            }
+          ],
+          "labels": [
+            "入口IP /32のUDR",
+            "TCP 443"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：UDRは次の行き先、Firewallルールは通してよい範囲を決める。"
+      },
+      "highlightTargets": []
+    },
+    "agw-aca--destination-ports-route-target.svg": {
+      "spec": {
+        "viewId": "agw-aca",
+        "areaLabel": "Firewallポリシー",
+        "title": "Portal入口の許可先とUDRの宛先を比べる",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "Portal入口の許可先とUDRの宛先を比べる",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "agw-aca-https"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "AppGW区画"
+          },
+          {
+            "id": "destination",
+            "label": "FWの許可宛先",
+            "value": "ACA区画のCIDR"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "route",
+            "label": "AppGWのUDR",
+            "value": "ACA入口の実IP /32 → Firewall"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "Portalの要求"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "agw-aca-https"
+            },
+            {
+              "id": "target",
+              "label": "ACA入口",
+              "detail": "許可宛先はACA CIDR"
+            }
+          ],
+          "labels": [
+            "入口IP /32のUDR",
+            "TCP 443"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：UDRは次の行き先、Firewallルールは通してよい範囲を決める。"
+      },
+      "highlightTargets": [
+        "destination",
+        "ports",
+        "route",
+        "target"
+      ]
+    },
+    "stateful-return--neutral.svg": {
+      "spec": {
+        "viewId": "stateful-return",
+        "areaLabel": "Firewallポリシー",
+        "title": "許可済み接続への応答と復路UDR",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "許可済み接続への応答と復路UDR",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "state",
+            "label": "動作（注釈）",
+            "value": "Firewallはステートフルに応答を扱う"
+          },
+          {
+            "id": "response",
+            "label": "応答（注釈）",
+            "value": "許可済み接続への応答は状態追跡の対象"
+          },
+          {
+            "id": "reverse",
+            "label": "逆向きのAllow",
+            "value": "応答だけのための新規接続Allowは不要"
+          },
+          {
+            "id": "route",
+            "label": "往路・復路のUDR",
+            "value": "同じFirewallへ経路をそろえる"
+          },
+          {
+            "id": "new",
+            "label": "新規接続",
+            "value": "逆向きの別の新規接続は別判定"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "要求と応答"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "接続の状態を追跡"
+            },
+            {
+              "id": "target",
+              "label": "APIM",
+              "detail": "同じ接続への応答"
+            }
+          ],
+          "labels": [
+            "往路・復路UDR",
+            "往路・復路UDR"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": true
+        },
+        "note": "注釈：状態を追跡することは、戻る経路を自動で作ることではない。"
+      },
+      "highlightTargets": []
+    },
+    "stateful-return--response-reverse-route.svg": {
+      "spec": {
+        "viewId": "stateful-return",
+        "areaLabel": "Firewallポリシー",
+        "title": "許可済み接続への応答と復路UDR",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "許可済み接続への応答と復路UDR",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "state",
+            "label": "動作（注釈）",
+            "value": "Firewallはステートフルに応答を扱う"
+          },
+          {
+            "id": "response",
+            "label": "応答（注釈）",
+            "value": "許可済み接続への応答は状態追跡の対象"
+          },
+          {
+            "id": "reverse",
+            "label": "逆向きのAllow",
+            "value": "応答だけのための新規接続Allowは不要"
+          },
+          {
+            "id": "route",
+            "label": "往路・復路のUDR",
+            "value": "同じFirewallへ経路をそろえる"
+          },
+          {
+            "id": "new",
+            "label": "新規接続",
+            "value": "逆向きの別の新規接続は別判定"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "要求と応答"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "接続の状態を追跡"
+            },
+            {
+              "id": "target",
+              "label": "APIM",
+              "detail": "同じ接続への応答"
+            }
+          ],
+          "labels": [
+            "往路・復路UDR",
+            "往路・復路UDR"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": true
+        },
+        "note": "注釈：状態を追跡することは、戻る経路を自動で作ることではない。"
+      },
+      "highlightTargets": [
+        "response",
+        "reverse",
+        "route"
+      ]
+    },
+    "stateful-return--new-route.svg": {
+      "spec": {
+        "viewId": "stateful-return",
+        "areaLabel": "Firewallポリシー",
+        "title": "許可済み接続への応答と復路UDR",
+        "kind": "設定・公開定義の確認",
+        "section": "内部中継",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "許可済み接続への応答と復路UDR",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "state",
+            "label": "動作（注釈）",
+            "value": "Firewallはステートフルに応答を扱う"
+          },
+          {
+            "id": "response",
+            "label": "応答（注釈）",
+            "value": "許可済み接続への応答は状態追跡の対象"
+          },
+          {
+            "id": "reverse",
+            "label": "逆向きのAllow",
+            "value": "応答だけのための新規接続Allowは不要"
+          },
+          {
+            "id": "route",
+            "label": "往路・復路のUDR",
+            "value": "同じFirewallへ経路をそろえる"
+          },
+          {
+            "id": "new",
+            "label": "新規接続",
+            "value": "逆向きの別の新規接続は別判定"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "AppGW区画",
+              "detail": "要求と応答"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "接続の状態を追跡"
+            },
+            {
+              "id": "target",
+              "label": "APIM",
+              "detail": "同じ接続への応答"
+            }
+          ],
+          "labels": [
+            "往路・復路UDR",
+            "往路・復路UDR"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": true
+        },
+        "note": "注釈：状態を追跡することは、戻る経路を自動で作ることではない。"
+      },
+      "highlightTargets": [
+        "new",
+        "route"
+      ]
+    },
+    "apim-storage--neutral.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": []
+    },
+    "apim-storage--source.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "source"
+      ]
+    },
+    "apim-storage--ports-rule-source.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "rule",
+        "source",
+        "ports"
+      ]
+    },
+    "apim-storage--destination-target.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "destination",
+        "target"
+      ]
+    },
+    "apim-storage--action-firewall.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "action",
+        "firewall"
+      ]
+    },
+    "apim-storage--action.svg": {
+      "spec": {
+        "viewId": "apim-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMの基盤依存通信：Storage",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMの基盤依存通信：Storage",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "apim-storage"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "Storageサービス タグのIP集合"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Network / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "APIM区画",
+              "detail": "基盤の依存通信"
+            },
+            {
+              "id": "firewall",
+              "label": "Network / Allow",
+              "detail": "apim-storage"
+            },
+            {
+              "id": "target",
+              "label": "StorageタグのIP",
+              "detail": "自社アカウント1個の指定ではない"
+            }
+          ],
+          "labels": [
+            "Firewallへ到達",
+            "一致で判定終了"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "Application側の例：apim-approved-services。Network一致後にFQDN許可を重ねない。"
+      },
+      "highlightTargets": [
+        "action"
+      ]
+    },
+    "ntp-sources--neutral.svg": {
+      "spec": {
+        "viewId": "ntp-sources",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMと管理VMのNTP許可は独立して読む",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMと管理VMのNTP許可は独立して読む",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "collection",
+            "label": "コレクション",
+            "value": "allow-vm-platform"
+          },
+          {
+            "id": "apim",
+            "label": "APIMのルール",
+            "value": "apim-platform-time"
+          },
+          {
+            "id": "apim-dest",
+            "label": "APIMの条件",
+            "value": "time.windows.com / UDP 123"
+          },
+          {
+            "id": "vm",
+            "label": "管理VMのルール",
+            "value": "management-time"
+          },
+          {
+            "id": "vm-dest",
+            "label": "管理VMの条件",
+            "value": "ntp.ubuntu.com / UDP 123"
+          }
+        ],
+        "diagram": {
+          "kind": "pair",
+          "caption": "送信元とFQDNを左右固定で比較",
+          "flows": [
+            {
+              "id": "apim",
+              "rule": "apim-platform-time",
+              "source": "APIM区画",
+              "destination": "time.windows.com",
+              "label": "UDP 123"
+            },
+            {
+              "id": "vm",
+              "rule": "management-time",
+              "source": "管理VM区画",
+              "destination": "ntp.ubuntu.com",
+              "label": "UDP 123"
+            }
+          ]
+        },
+        "note": "注釈：両方ともNetwork。名前をDNSでIPへ解決して照合する。所属名だけで送信元を決めない。"
+      },
+      "highlightTargets": []
+    },
+    "ntp-sources--apim-apim-dest.svg": {
+      "spec": {
+        "viewId": "ntp-sources",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMと管理VMのNTP許可は独立して読む",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMと管理VMのNTP許可は独立して読む",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "collection",
+            "label": "コレクション",
+            "value": "allow-vm-platform"
+          },
+          {
+            "id": "apim",
+            "label": "APIMのルール",
+            "value": "apim-platform-time"
+          },
+          {
+            "id": "apim-dest",
+            "label": "APIMの条件",
+            "value": "time.windows.com / UDP 123"
+          },
+          {
+            "id": "vm",
+            "label": "管理VMのルール",
+            "value": "management-time"
+          },
+          {
+            "id": "vm-dest",
+            "label": "管理VMの条件",
+            "value": "ntp.ubuntu.com / UDP 123"
+          }
+        ],
+        "diagram": {
+          "kind": "pair",
+          "caption": "送信元とFQDNを左右固定で比較",
+          "flows": [
+            {
+              "id": "apim",
+              "rule": "apim-platform-time",
+              "source": "APIM区画",
+              "destination": "time.windows.com",
+              "label": "UDP 123"
+            },
+            {
+              "id": "vm",
+              "rule": "management-time",
+              "source": "管理VM区画",
+              "destination": "ntp.ubuntu.com",
+              "label": "UDP 123"
+            }
+          ]
+        },
+        "note": "注釈：両方ともNetwork。名前をDNSでIPへ解決して照合する。所属名だけで送信元を決めない。"
+      },
+      "highlightTargets": [
+        "apim",
+        "apim-dest"
+      ]
+    },
+    "ntp-sources--apim-vm-vm-dest.svg": {
+      "spec": {
+        "viewId": "ntp-sources",
+        "areaLabel": "Firewallポリシー",
+        "title": "APIMと管理VMのNTP許可は独立して読む",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "APIMと管理VMのNTP許可は独立して読む",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "collection",
+            "label": "コレクション",
+            "value": "allow-vm-platform"
+          },
+          {
+            "id": "apim",
+            "label": "APIMのルール",
+            "value": "apim-platform-time"
+          },
+          {
+            "id": "apim-dest",
+            "label": "APIMの条件",
+            "value": "time.windows.com / UDP 123"
+          },
+          {
+            "id": "vm",
+            "label": "管理VMのルール",
+            "value": "management-time"
+          },
+          {
+            "id": "vm-dest",
+            "label": "管理VMの条件",
+            "value": "ntp.ubuntu.com / UDP 123"
+          }
+        ],
+        "diagram": {
+          "kind": "pair",
+          "caption": "送信元とFQDNを左右固定で比較",
+          "flows": [
+            {
+              "id": "apim",
+              "rule": "apim-platform-time",
+              "source": "APIM区画",
+              "destination": "time.windows.com",
+              "label": "UDP 123"
+            },
+            {
+              "id": "vm",
+              "rule": "management-time",
+              "source": "管理VM区画",
+              "destination": "ntp.ubuntu.com",
+              "label": "UDP 123"
+            }
+          ]
+        },
+        "note": "注釈：両方ともNetwork。名前をDNSでIPへ解決して照合する。所属名だけで送信元を決めない。"
+      },
+      "highlightTargets": [
+        "apim",
+        "vm",
+        "vm-dest"
+      ]
+    },
+    "vm-aca--vm-dest-vm-purpose.svg": {
+      "spec": {
+        "viewId": "vm-aca",
+        "areaLabel": "Firewallポリシー",
+        "title": "管理VMとACAの管理・監視・認証",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "管理VMとACAの管理・監視・認証",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "vm-dest",
+            "label": "管理VMの宛先",
+            "value": "Entra / ARM / Monitor / Storageのタグ"
+          },
+          {
+            "id": "vm-purpose",
+            "label": "目的（注釈）",
+            "value": "認証・配備・保守・監視"
+          },
+          {
+            "id": "aca-rule",
+            "label": "ACAのルール",
+            "value": "aca-monitor-https"
+          },
+          {
+            "id": "aca-dest",
+            "label": "ACAの宛先",
+            "value": "AzureMonitor / AzureActiveDirectory"
+          },
+          {
+            "id": "aca-ports",
+            "label": "ACAの通信条件",
+            "value": "ACA区画 / TCP 443 / Network Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "ACA区画",
+              "detail": "送信元を限定"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "aca-monitor-https"
+            },
+            {
+              "id": "target",
+              "label": "監視・認証のタグ",
+              "detail": "AzureMonitor / Entra"
+            }
+          ],
+          "labels": [
+            "TCP 443",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：このNetwork許可に一致する通信は、Applicationの照合へ進まない。"
+      },
+      "highlightTargets": [
+        "vm-dest",
+        "vm-purpose"
+      ]
+    },
+    "vm-aca--aca-dest-aca-ports-aca-rule-firewall.svg": {
+      "spec": {
+        "viewId": "vm-aca",
+        "areaLabel": "Firewallポリシー",
+        "title": "管理VMとACAの管理・監視・認証",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "管理VMとACAの管理・監視・認証",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "vm-dest",
+            "label": "管理VMの宛先",
+            "value": "Entra / ARM / Monitor / Storageのタグ"
+          },
+          {
+            "id": "vm-purpose",
+            "label": "目的（注釈）",
+            "value": "認証・配備・保守・監視"
+          },
+          {
+            "id": "aca-rule",
+            "label": "ACAのルール",
+            "value": "aca-monitor-https"
+          },
+          {
+            "id": "aca-dest",
+            "label": "ACAの宛先",
+            "value": "AzureMonitor / AzureActiveDirectory"
+          },
+          {
+            "id": "aca-ports",
+            "label": "ACAの通信条件",
+            "value": "ACA区画 / TCP 443 / Network Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "ACA区画",
+              "detail": "送信元を限定"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "aca-monitor-https"
+            },
+            {
+              "id": "target",
+              "label": "監視・認証のタグ",
+              "detail": "AzureMonitor / Entra"
+            }
+          ],
+          "labels": [
+            "TCP 443",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：このNetwork許可に一致する通信は、Applicationの照合へ進まない。"
+      },
+      "highlightTargets": [
+        "aca-rule",
+        "aca-dest",
+        "aca-ports",
+        "firewall"
+      ]
+    },
+    "vm-aca--neutral.svg": {
+      "spec": {
+        "viewId": "vm-aca",
+        "areaLabel": "Firewallポリシー",
+        "title": "管理VMとACAの管理・監視・認証",
+        "kind": "設定・公開定義の確認",
+        "section": "基盤依存通信",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "管理VMとACAの管理・監視・認証",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "vm-dest",
+            "label": "管理VMの宛先",
+            "value": "Entra / ARM / Monitor / Storageのタグ"
+          },
+          {
+            "id": "vm-purpose",
+            "label": "目的（注釈）",
+            "value": "認証・配備・保守・監視"
+          },
+          {
+            "id": "aca-rule",
+            "label": "ACAのルール",
+            "value": "aca-monitor-https"
+          },
+          {
+            "id": "aca-dest",
+            "label": "ACAの宛先",
+            "value": "AzureMonitor / AzureActiveDirectory"
+          },
+          {
+            "id": "aca-ports",
+            "label": "ACAの通信条件",
+            "value": "ACA区画 / TCP 443 / Network Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "ACA区画",
+              "detail": "送信元を限定"
+            },
+            {
+              "id": "firewall",
+              "label": "Azure Firewall",
+              "detail": "aca-monitor-https"
+            },
+            {
+              "id": "target",
+              "label": "監視・認証のタグ",
+              "detail": "AzureMonitor / Entra"
+            }
+          ],
+          "labels": [
+            "TCP 443",
+            "Network / Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "注釈：このNetwork許可に一致する通信は、Applicationの照合へ進まない。"
+      },
+      "highlightTargets": []
+    },
+    "custom-dns--condition-destination-ports-source.svg": {
+      "spec": {
+        "viewId": "custom-dns",
+        "areaLabel": "Firewallポリシー",
+        "title": "独自DNS許可の生成条件・送信元・経路",
+        "kind": "設定・公開定義の確認",
+        "section": "DNS・共通設定",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "独自DNS許可の生成条件・送信元・経路",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "condition",
+            "label": "作成する条件",
+            "value": "network.dnsServersが空でない場合"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画・管理VM区画（ACAは含まない）"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "指定した独自DNSのIP群"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP・UDP / 53"
+          },
+          {
+            "id": "public",
+            "label": "公開設定例",
+            "value": "dnsServers: [] → このコレクションは作成しない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "DNS問い合わせが選ぶ経路を確認",
+          "upper": [
+            "APIM / VM",
+            "Firewall",
+            "独自DNS"
+          ],
+          "lower": [
+            "APIM / VM",
+            "独自DNS"
+          ],
+          "upperLabel": "FWを経由する場合",
+          "lowerLabel": "同じVNet内など、具体的な直接経路の場合"
+        },
+        "note": "ルール名：custom-dns。許可の定義と実際の名前解決経路は別に確認する。"
+      },
+      "highlightTargets": [
+        "condition",
+        "source",
+        "destination",
+        "ports"
+      ]
+    },
+    "custom-dns--neutral.svg": {
+      "spec": {
+        "viewId": "custom-dns",
+        "areaLabel": "Firewallポリシー",
+        "title": "独自DNS許可の生成条件・送信元・経路",
+        "kind": "設定・公開定義の確認",
+        "section": "DNS・共通設定",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "独自DNS許可の生成条件・送信元・経路",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "condition",
+            "label": "作成する条件",
+            "value": "network.dnsServersが空でない場合"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画・管理VM区画（ACAは含まない）"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "指定した独自DNSのIP群"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP・UDP / 53"
+          },
+          {
+            "id": "public",
+            "label": "公開設定例",
+            "value": "dnsServers: [] → このコレクションは作成しない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "DNS問い合わせが選ぶ経路を確認",
+          "upper": [
+            "APIM / VM",
+            "Firewall",
+            "独自DNS"
+          ],
+          "lower": [
+            "APIM / VM",
+            "独自DNS"
+          ],
+          "upperLabel": "FWを経由する場合",
+          "lowerLabel": "同じVNet内など、具体的な直接経路の場合"
+        },
+        "note": "ルール名：custom-dns。許可の定義と実際の名前解決経路は別に確認する。"
+      },
+      "highlightTargets": []
+    },
+    "custom-dns--public-source.svg": {
+      "spec": {
+        "viewId": "custom-dns",
+        "areaLabel": "Firewallポリシー",
+        "title": "独自DNS許可の生成条件・送信元・経路",
+        "kind": "設定・公開定義の確認",
+        "section": "DNS・共通設定",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "独自DNS許可の生成条件・送信元・経路",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "condition",
+            "label": "作成する条件",
+            "value": "network.dnsServersが空でない場合"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画・管理VM区画（ACAは含まない）"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "指定した独自DNSのIP群"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP・UDP / 53"
+          },
+          {
+            "id": "public",
+            "label": "公開設定例",
+            "value": "dnsServers: [] → このコレクションは作成しない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "DNS問い合わせが選ぶ経路を確認",
+          "upper": [
+            "APIM / VM",
+            "Firewall",
+            "独自DNS"
+          ],
+          "lower": [
+            "APIM / VM",
+            "独自DNS"
+          ],
+          "upperLabel": "FWを経由する場合",
+          "lowerLabel": "同じVNet内など、具体的な直接経路の場合"
+        },
+        "note": "ルール名：custom-dns。許可の定義と実際の名前解決経路は別に確認する。"
+      },
+      "highlightTargets": [
+        "source",
+        "public"
+      ]
+    },
+    "custom-dns--direct.svg": {
+      "spec": {
+        "viewId": "custom-dns",
+        "areaLabel": "Firewallポリシー",
+        "title": "独自DNS許可の生成条件・送信元・経路",
+        "kind": "設定・公開定義の確認",
+        "section": "DNS・共通設定",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "独自DNS許可の生成条件・送信元・経路",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "condition",
+            "label": "作成する条件",
+            "value": "network.dnsServersが空でない場合"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画・管理VM区画（ACAは含まない）"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "指定した独自DNSのIP群"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP・UDP / 53"
+          },
+          {
+            "id": "public",
+            "label": "公開設定例",
+            "value": "dnsServers: [] → このコレクションは作成しない"
+          }
+        ],
+        "diagram": {
+          "kind": "routes",
+          "caption": "DNS問い合わせが選ぶ経路を確認",
+          "upper": [
+            "APIM / VM",
+            "Firewall",
+            "独自DNS"
+          ],
+          "lower": [
+            "APIM / VM",
+            "独自DNS"
+          ],
+          "upperLabel": "FWを経由する場合",
+          "lowerLabel": "同じVNet内など、具体的な直接経路の場合"
+        },
+        "note": "ルール名：custom-dns。許可の定義と実際の名前解決経路は別に確認する。"
+      },
+      "highlightTargets": [
+        "direct"
+      ]
+    },
+    "quiz-storage--neutral.svg": {
+      "spec": {
+        "viewId": "quiz-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認1：Storage通信は二重の許可が必要か",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認1：Storage通信は二重の許可が必要か",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "StorageタグのIP"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "premise",
+            "label": "設問の前提",
+            "value": "NetworkルールのAllowに一致済み"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "required",
+              "label": "ApplicationのFQDN登録も必要"
+            },
+            {
+              "id": "not-required",
+              "label": "FQDN登録を追加で重ねない"
+            }
+          ]
+        },
+        "note": "条件と評価順を照合し、追加登録が必要かを判断する。",
+        "answerTarget": "not-required"
+      },
+      "highlightTargets": []
+    },
+    "quiz-storage--not-required-premise.svg": {
+      "spec": {
+        "viewId": "quiz-storage",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認1：Storage通信は二重の許可が必要か",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認1：Storage通信は二重の許可が必要か",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "StorageタグのIP"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 443"
+          },
+          {
+            "id": "premise",
+            "label": "設問の前提",
+            "value": "NetworkルールのAllowに一致済み"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "required",
+              "label": "ApplicationのFQDN登録も必要"
+            },
+            {
+              "id": "not-required",
+              "label": "FQDN登録を追加で重ねない"
+            }
+          ]
+        },
+        "note": "条件と評価順を照合し、追加登録が必要かを判断する。",
+        "answerTarget": "not-required"
+      },
+      "highlightTargets": [
+        "not-required",
+        "premise"
+      ]
+    },
+    "quiz-ntp--neutral.svg": {
+      "spec": {
+        "viewId": "quiz-ntp",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認2：FQDNを使うNTPはどちらの種類か",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認2：FQDNを使うNTPはどちらの種類か",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先FQDN",
+            "value": "ntp.ubuntu.com"
+          },
+          {
+            "id": "protocol",
+            "label": "プロトコル",
+            "value": "UDP"
+          },
+          {
+            "id": "port",
+            "label": "宛先ポート",
+            "value": "123"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "network",
+              "label": "Networkルール"
+            },
+            {
+              "id": "application",
+              "label": "Applicationルール"
+            }
+          ]
+        },
+        "note": "名前の見た目だけでなく、プロトコルと照合に使う情報を考える。",
+        "answerTarget": "network"
+      },
+      "highlightTargets": []
+    },
+    "quiz-ntp--network-port-protocol.svg": {
+      "spec": {
+        "viewId": "quiz-ntp",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認2：FQDNを使うNTPはどちらの種類か",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認2：FQDNを使うNTPはどちらの種類か",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先FQDN",
+            "value": "ntp.ubuntu.com"
+          },
+          {
+            "id": "protocol",
+            "label": "プロトコル",
+            "value": "UDP"
+          },
+          {
+            "id": "port",
+            "label": "宛先ポート",
+            "value": "123"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "network",
+              "label": "Networkルール"
+            },
+            {
+              "id": "application",
+              "label": "Applicationルール"
+            }
+          ]
+        },
+        "note": "名前の見た目だけでなく、プロトコルと照合に使う情報を考える。",
+        "answerTarget": "network"
+      },
+      "highlightTargets": [
+        "network",
+        "protocol",
+        "port"
+      ]
+    },
+    "quiz-pe--neutral.svg": {
+      "spec": {
+        "viewId": "quiz-pe",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認3：SQL PEへの接続失敗をどう考えるか",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認3：SQL PEへの接続失敗をどう考えるか",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "ACA区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "SQL Private Endpointの実IP"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 1433"
+          },
+          {
+            "id": "symptom",
+            "label": "設問の症状",
+            "value": "接続できない（稼働環境の実測ではない）"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "firewall",
+              "label": "Firewallを経由する経路"
+            },
+            {
+              "id": "direct",
+              "label": "PE宛ての具体的な直接経路"
+            }
+          ]
+        },
+        "note": "まず経路を確認する。宛先IP・Private DNS・NSG・認証も同じ通信として照合。",
+        "answerTarget": "direct"
+      },
+      "highlightTargets": []
+    },
+    "quiz-pe--destination-direct.svg": {
+      "spec": {
+        "viewId": "quiz-pe",
+        "areaLabel": "Firewallポリシー",
+        "title": "確認3：SQL PEへの接続失敗をどう考えるか",
+        "kind": "設定・公開定義の確認",
+        "section": "確認問題",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "確認3：SQL PEへの接続失敗をどう考えるか",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "通信条件を確認し、該当する判断を考える。",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "ACA区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先",
+            "value": "SQL Private Endpointの実IP"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "TCP / 1433"
+          },
+          {
+            "id": "symptom",
+            "label": "設問の症状",
+            "value": "接続できない（稼働環境の実測ではない）"
+          }
+        ],
+        "diagram": {
+          "kind": "choices",
+          "caption": "判断する候補（教材の問い）",
+          "choices": [
+            {
+              "id": "firewall",
+              "label": "Firewallを経由する経路"
+            },
+            {
+              "id": "direct",
+              "label": "PE宛ての具体的な直接経路"
+            }
+          ]
+        },
+        "note": "まず経路を確認する。宛先IP・Private DNS・NSG・認証も同じ通信として照合。",
+        "answerTarget": "direct"
+      },
+      "highlightTargets": [
+        "direct",
+        "destination"
+      ]
+    },
+    "linux-web--neutral.svg": {
+      "spec": {
+        "viewId": "linux-web",
+        "areaLabel": "Firewallポリシー",
+        "title": "Network不一致のWeb通信はFQDNで照合する",
+        "kind": "設定・公開定義の確認",
+        "section": "ルールの種類",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "Network不一致のWeb通信はFQDNで照合する",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "vm-certificate-and-linux-packages"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先FQDN",
+            "value": "archive.ubuntu.com"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "HTTP / 80"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Application / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "管理VM",
+              "detail": "Networkは不一致の例"
+            },
+            {
+              "id": "firewall",
+              "label": "Applicationルール",
+              "detail": "WebのFQDNを照合"
+            },
+            {
+              "id": "target",
+              "label": "archive.ubuntu.com",
+              "detail": "HTTP 80"
+            }
+          ],
+          "labels": [
+            "Network不一致",
+            "条件に一致 → Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "対象ルール：vm-certificate-and-linux-packages。未許可先は組み込み許可も確認して最終判定。"
+      },
+      "highlightTargets": []
+    },
+    "linux-web--action-firewall-rule.svg": {
+      "spec": {
+        "viewId": "linux-web",
+        "areaLabel": "Firewallポリシー",
+        "title": "Network不一致のWeb通信はFQDNで照合する",
+        "kind": "設定・公開定義の確認",
+        "section": "ルールの種類",
+        "menu": [
+          "関連付け・経路",
+          "ルールの種類",
+          "評価順・優先度",
+          "内部中継",
+          "基盤依存通信",
+          "DNS・共通設定",
+          "確認問題",
+          "保守・まとめ"
+        ],
+        "heading": "Network不一致のWeb通信はFQDNで照合する",
+        "subtitle": "資料・公開設定例に基づく教材。稼働環境の取得画面ではありません。",
+        "notice": "設定値と教材注釈を対応付ける",
+        "footer": "01 ネットワークの制御 / 26–30・34–35節 / 公開定義と教材注釈",
+        "layout": "composite",
+        "rows": [
+          {
+            "id": "rule",
+            "label": "ルール名",
+            "value": "vm-certificate-and-linux-packages"
+          },
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM区画"
+          },
+          {
+            "id": "destination",
+            "label": "宛先FQDN",
+            "value": "archive.ubuntu.com"
+          },
+          {
+            "id": "ports",
+            "label": "通信・ポート",
+            "value": "HTTP / 80"
+          },
+          {
+            "id": "action",
+            "label": "種別 / Action",
+            "value": "Application / Allow"
+          }
+        ],
+        "diagram": {
+          "kind": "vertical",
+          "nodes": [
+            {
+              "id": "source",
+              "label": "管理VM",
+              "detail": "Networkは不一致の例"
+            },
+            {
+              "id": "firewall",
+              "label": "Applicationルール",
+              "detail": "WebのFQDNを照合"
+            },
+            {
+              "id": "target",
+              "label": "archive.ubuntu.com",
+              "detail": "HTTP 80"
+            }
+          ],
+          "labels": [
+            "Network不一致",
+            "条件に一致 → Allow"
+          ],
+          "caption": "設定と経路を対応付ける",
+          "bidirectional": false
+        },
+        "note": "対象ルール：vm-certificate-and-linux-packages。未許可先は組み込み許可も確認して最終判定。"
+      },
+      "highlightTargets": [
+        "rule",
+        "action",
+        "firewall"
+      ]
+    }
+  },
+  "groups": [
+    {
+      "viewId": "fw-association-path",
+      "fromTurn": 5,
+      "throughTurn": 10,
+      "questionTurns": [
+        5,
+        8
+      ]
+    },
+    {
+      "viewId": "rule-inputs",
+      "fromTurn": 11,
+      "throughTurn": 14,
+      "questionTurns": [
+        11,
+        13
+      ]
+    },
+    {
+      "viewId": "application-tls",
+      "fromTurn": 15,
+      "throughTurn": 17,
+      "questionTurns": [
+        15
+      ]
+    },
+    {
+      "viewId": "ntp-fqdn",
+      "fromTurn": 18,
+      "throughTurn": 19,
+      "questionTurns": [
+        18
+      ]
+    },
+    {
+      "viewId": "rule-processing",
+      "fromTurn": 20,
+      "throughTurn": 23,
+      "questionTurns": [
+        20,
+        22
+      ]
+    },
+    {
+      "viewId": "hierarchy",
+      "fromTurn": 24,
+      "throughTurn": 26,
+      "questionTurns": [
+        25
+      ]
+    },
+    {
+      "viewId": "priority-comparison",
+      "fromTurn": 27,
+      "throughTurn": 29,
+      "questionTurns": [
+        27
+      ]
+    },
+    {
+      "viewId": "allow-default",
+      "fromTurn": 30,
+      "throughTurn": 31,
+      "questionTurns": [
+        30
+      ]
+    },
+    {
+      "viewId": "agw-apim",
+      "fromTurn": 32,
+      "throughTurn": 35,
+      "questionTurns": [
+        32,
+        34
+      ]
+    },
+    {
+      "viewId": "agw-aca",
+      "fromTurn": 36,
+      "throughTurn": 37,
+      "questionTurns": [
+        36
+      ]
+    },
+    {
+      "viewId": "stateful-return",
+      "fromTurn": 38,
+      "throughTurn": 40,
+      "questionTurns": [
+        38
+      ]
+    },
+    {
+      "viewId": "direct-internal",
+      "fromTurn": 41,
+      "throughTurn": 41,
+      "questionTurns": []
+    },
+    {
+      "viewId": "apim-storage",
+      "fromTurn": 42,
+      "throughTurn": 49,
+      "questionTurns": [
+        42,
+        45,
+        47
+      ]
+    },
+    {
+      "viewId": "apim-platform",
+      "fromTurn": 50,
+      "throughTurn": 52,
+      "questionTurns": [
+        51
+      ]
+    },
+    {
+      "viewId": "ntp-sources",
+      "fromTurn": 53,
+      "throughTurn": 56,
+      "questionTurns": [
+        53,
+        55
+      ]
+    },
+    {
+      "viewId": "vm-aca",
+      "fromTurn": 57,
+      "throughTurn": 59,
+      "questionTurns": [
+        59
+      ]
+    },
+    {
+      "viewId": "custom-dns",
+      "fromTurn": 60,
+      "throughTurn": 63,
+      "questionTurns": [
+        61
+      ]
+    },
+    {
+      "viewId": "dns-proxy",
+      "fromTurn": 64,
+      "throughTurn": 65,
+      "questionTurns": [
+        64
+      ]
+    },
+    {
+      "viewId": "quiz-storage",
+      "fromTurn": 66,
+      "throughTurn": 67,
+      "questionTurns": [
+        66
+      ]
+    },
+    {
+      "viewId": "quiz-ntp",
+      "fromTurn": 68,
+      "throughTurn": 69,
+      "questionTurns": [
+        68
+      ]
+    },
+    {
+      "viewId": "quiz-pe",
+      "fromTurn": 70,
+      "throughTurn": 71,
+      "questionTurns": [
+        70
+      ]
+    },
+    {
+      "viewId": "linux-web",
+      "fromTurn": 72,
+      "throughTurn": 73,
+      "questionTurns": [
+        72
+      ]
+    },
+    {
+      "viewId": "change-review",
+      "fromTurn": 74,
+      "throughTurn": 76,
+      "questionTurns": [
+        74
+      ]
+    },
+    {
+      "viewId": "alert-settings",
+      "fromTurn": 77,
+      "throughTurn": 78,
+      "questionTurns": [
+        77
+      ]
+    },
+    {
+      "viewId": "final-review",
+      "fromTurn": 79,
+      "throughTurn": 80,
+      "questionTurns": [
+        80
+      ]
+    }
+  ]
+}

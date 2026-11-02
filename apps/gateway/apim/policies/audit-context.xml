@@ -1,0 +1,42 @@
+<fragment>
+  <!-- 購読キーの検証を通過した要求に付いた親要求IDを、追跡候補として記録します。
+       この値は呼出元の申告です。申告した購読IDを併記し、実際の親子関係は監査時に確認します。 -->
+  <set-variable name="gatewayAgentTrace" value="@{
+    var result = new JObject(new JProperty(&quot;status&quot;, &quot;none&quot;));
+    try {
+      var name = &quot;X-Core-Agent-Parent-Id&quot;;
+      if (!context.Request.Headers.ContainsKey(name)) { return result.ToString(); }
+      Guid parent;
+      if (context.Request.Headers[name].Length != 1 || !Guid.TryParse(context.Request.Headers.GetValueOrDefault(name, &quot;&quot;), out parent) || parent == Guid.Empty) {
+        result[&quot;status&quot;] = &quot;invalid&quot;; return result.ToString();
+      }
+      var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+      var subscription = context.Subscription == null ? &quot;&quot; : context.Subscription.Id;
+      if (!(bool)decision[&quot;allowed&quot;] || (string)decision[&quot;method&quot;] != &quot;subscriptionKey&quot;
+          || String.IsNullOrWhiteSpace(subscription) || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + subscription) { return result.ToString(); }
+      result[&quot;status&quot;] = &quot;candidate&quot;;
+      result[&quot;claimedParentId&quot;] = parent.ToString(&quot;D&quot;);
+      result[&quot;actorId&quot;] = &quot;subscription:&quot; + subscription;
+    } catch { result = new JObject(new JProperty(&quot;status&quot;, &quot;invalid&quot;)); }
+    return result.ToString(Newtonsoft.Json.Formatting.None);
+  }" />
+  <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
+  <!-- 認可で許可したモデル名だけを選びます。この共通fragmentでは本文を読みません。
+       APIMは未実行分岐にもBody.Asがあると、gRPC等の要求全体を待つ場合があります。
+       HTTPのモデル本文は専用fragmentで読み、ここへ検査済みの名前だけを渡します。 -->
+  <set-variable name="gatewayAuditModel" value="@{
+    try {
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+      var operation = String.IsNullOrEmpty((string)settings[&quot;operationId&quot;]) ? context.Operation.Id : (string)settings[&quot;operationId&quot;];
+      var constraint = settings[&quot;operationConstraints&quot;][operation];
+      var kind = (string)constraint?[&quot;kind&quot;];
+      var model = (string)settings[&quot;websocketModel&quot;] ?? &quot;&quot;;
+      if (context.Variables.ContainsKey(&quot;gatewayAuditBodyModel&quot;)) { model = (string)context.Variables[&quot;gatewayAuditBodyModel&quot;]; }
+      if (kind == &quot;pathModel&quot;) { model = context.Request.MatchedParameters.GetValueOrDefault((string)constraint[&quot;parameter&quot;], &quot;&quot;); }
+      if (constraint?[&quot;model&quot;]?.Type == JTokenType.String) { model = (string)constraint[&quot;model&quot;]; }
+      if (String.IsNullOrEmpty(model) || !System.Text.RegularExpressions.Regex.IsMatch(model, &quot;^[A-Za-z0-9_.-]{1,160}$&quot;)) { return &quot;&quot;; }
+      if ((kind == &quot;pathModel&quot; || kind == &quot;bodyModel&quot; || kind == &quot;statelessResponses&quot;) &amp;&amp; !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model)) { return &quot;&quot;; }
+      return model;
+    } catch { return &quot;&quot;; }
+  }" />
+</fragment>

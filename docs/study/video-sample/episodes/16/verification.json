@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "warnings": [
+    "Duration 17.18 minutes is outside the 14–17 minute target; review editorial pacing."
+  ],
+  "durationSeconds": 1031.0416666666667,
+  "durationMinutes": 17.184,
+  "videoFrames": 24745,
+  "sourceTurns": 85,
+  "editedTurns": 85,
+  "omittedTurnIds": [],
+  "subtitleCues": 191,
+  "roles": {
+    "mako": "Moderator",
+    "manabu": "Product Manager",
+    "ikumi": "Solution Architect"
+  },
+  "voices": {
+    "mako": "Aoede",
+    "manabu": "Charon",
+    "ikumi": "Orus"
+  },
+  "speed": 1,
+  "enhancePronunciation": null,
+  "synthesisProvider": "google-cloud",
+  "synthesisModel": "gemini-3.8-flash-tts",
+  "recordedTurns": 85,
+  "openingCameraSegments": 5,
+  "speechTags": 0,
+  "sourceSpeechTags": 0,
+  "minimumSpeechTailSeconds": 0.141667,
+  "bodyLoopCrossfadeSeconds": 2,
+  "closingBrandSourceSeconds": [
+    63.8,
+    71.8
+  ],
+  "closingDurationSeconds": 8,
+  "mixIntegratedLUFS": -16.03,
+  "mixTruePeakDBTP": -1.5,
+  "sourceBasis": "Current repository study notes and public configuration examples; not a live Azure inspection.",
+  "sha256": "f92c65eeb964cea2650733022e5563c990195d8eceaf7f9a716bb47137406518"
+}

@@ -1,0 +1,20 @@
+{
+  "episodeKey": "15",
+  "status": "cleaned",
+  "completedAt": "2026-11-02T17:04:39.190885+09:00",
+  "planSha256": "46fc7ff39eb74aee49fefbe2ca8ade23a99a84cfd7deed14ec1f331f804645e7",
+  "deletedFiles": 82,
+  "deletedBytes": 323661446,
+  "deletedMiB": 308.668,
+  "keptFilesVerified": 313,
+  "keptHashesMatch": true,
+  "finishedVideoSha256": "6b9f183cc76ab89de8907ede1a7524524e9bd133f83a51a40d7b5a40fd6a5231",
+  "freeBytesBefore": 5438246912,
+  "freeBytesAfter": 5761748992,
+  "observedFreeDeltaBytes": 323502080,
+  "otherEpisodeFilesDeleted": false,
+  "sourcesAndQAManifestsKept": true,
+  "audioOnlyPlaybackAvailable": false,
+  "fullVerificationEvidenceKept": "/path/to/egakumi-core/docs/study/video-sample/episodes/15/verification.json",
+  "fullVerificationAfterCleanup": "Requires WAV reconstruction first; pre-cleanup passed evidence is retained."
+}

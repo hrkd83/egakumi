@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "visualStyle": "teaching-settings-v2",
+  "additionalSynthesisRequests": 0,
+  "authenticationRead": false,
+  "reusedRawRecordings": 87,
+  "originalNarrationAndMixByteIdentical": true,
+  "originalAudioCache": {
+    "signature": "2146d82d8d37b918a9228fdead8ff927aa545896f55697c5127cbefeb6c8238a",
+    "files": {
+      "lesson-narration.wav": "9f28120c29cecc5af2093e4ade12fd32f523d4372fb3ce24287ee0d70f98d648",
+      "lesson-mix.wav": "e392703041361998cd9916040dd8640083acf996ad9bb3789de3e0c37e5ce8f2"
+    }
+  },
+  "newVideoSha256": "2c5efb11437267a27bc2adb3c08b74a145b6d369c5b0594d4441b3ac669038bb",
+  "oldVideoSha256": "ce7f6a6f6f5b991f23c04af2e59d3ab129cceb0f0a30d17f618a2d675b7f0ee8",
+  "durationSeconds": 994.9166666666666
+}

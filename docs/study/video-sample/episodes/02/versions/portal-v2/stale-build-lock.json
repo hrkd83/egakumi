@@ -1,0 +1,6 @@
+{
+  "pid": 52862,
+  "processAbsent": true,
+  "detectedAt": "2026-11-02T04:01:43.926774+00:00",
+  "action": "archived stale lock before latest-spec rebuild"
+}

@@ -1,0 +1,38 @@
+{
+  "released": true,
+  "name": "openai-embeddings-v1",
+  "displayName": "Openai Embeddings V1",
+  "path": "models/openai-embeddings/v1",
+  "backendService": "foundryOpenAi",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "embeddings",
+      "displayName": "Embeddings",
+      "method": "POST",
+      "urlTemplate": "/embeddings",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "embeddings": {
+        "kind": "bodyModel",
+        "maxRequestBytes": 262144,
+        "bodyFormat": "json",
+        "allowedModels": [
+          "text-embedding-3-small",
+          "text-embedding-3-large"
+        ],
+        "arrayLimits": {
+          "input": 16
+        }
+      }
+    }
+  },
+  "serviceClass": "platform"
+}

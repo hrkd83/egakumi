@@ -1,0 +1,668 @@
+{
+  "status": "passed",
+  "requests": 93,
+  "rawSpeechSeconds": 991.28,
+  "requestsRetried": 0,
+  "automaticRetries": 0,
+  "usageMetadataTotals": {
+    "promptTokenCount": 31049,
+    "candidatesTokenCount": 24782,
+    "totalTokenCount": 55831
+  },
+  "sourceAudioSpeedChanged": false,
+  "nonSilentPCM": true,
+  "auditoryOrSpeechRecognitionReviewPerformed": false,
+  "rows": [
+    {
+      "id": "lesson13-turn-001-mako",
+      "seconds": 6.92,
+      "charactersPerSecond": 6.94,
+      "peakDBFS": -1.43,
+      "rmsDBFS": -19.09
+    },
+    {
+      "id": "lesson13-turn-002-manabu",
+      "seconds": 7.72,
+      "charactersPerSecond": 5.7,
+      "peakDBFS": -0.2,
+      "rmsDBFS": -17.99
+    },
+    {
+      "id": "lesson13-turn-003-ikumi",
+      "seconds": 7.96,
+      "charactersPerSecond": 6.16,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -16.03
+    },
+    {
+      "id": "lesson13-turn-004-mako",
+      "seconds": 5.56,
+      "charactersPerSecond": 4.86,
+      "peakDBFS": -0.62,
+      "rmsDBFS": -18.55
+    },
+    {
+      "id": "lesson13-turn-005-mako",
+      "seconds": 9.6,
+      "charactersPerSecond": 6.67,
+      "peakDBFS": -0.2,
+      "rmsDBFS": -18.86
+    },
+    {
+      "id": "lesson13-turn-006-ikumi",
+      "seconds": 11.56,
+      "charactersPerSecond": 6.66,
+      "peakDBFS": -0.41,
+      "rmsDBFS": -17.93
+    },
+    {
+      "id": "lesson13-turn-007-manabu",
+      "seconds": 10.72,
+      "charactersPerSecond": 5.32,
+      "peakDBFS": -0.79,
+      "rmsDBFS": -18.15
+    },
+    {
+      "id": "lesson13-turn-008-ikumi",
+      "seconds": 10.84,
+      "charactersPerSecond": 5.54,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.9
+    },
+    {
+      "id": "lesson13-turn-009-mako",
+      "seconds": 8.48,
+      "charactersPerSecond": 6.84,
+      "peakDBFS": -0.66,
+      "rmsDBFS": -17.26
+    },
+    {
+      "id": "lesson13-turn-010-ikumi",
+      "seconds": 14.0,
+      "charactersPerSecond": 5.71,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -19.17
+    },
+    {
+      "id": "lesson13-turn-011-mako",
+      "seconds": 10.2,
+      "charactersPerSecond": 5.98,
+      "peakDBFS": -2.13,
+      "rmsDBFS": -18.66
+    },
+    {
+      "id": "lesson13-turn-012-manabu",
+      "seconds": 13.56,
+      "charactersPerSecond": 5.38,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.72
+    },
+    {
+      "id": "lesson13-turn-013-mako",
+      "seconds": 7.08,
+      "charactersPerSecond": 4.1,
+      "peakDBFS": -0.64,
+      "rmsDBFS": -18.06
+    },
+    {
+      "id": "lesson13-turn-014-ikumi",
+      "seconds": 12.48,
+      "charactersPerSecond": 7.53,
+      "peakDBFS": -0.6,
+      "rmsDBFS": -16.36
+    },
+    {
+      "id": "lesson13-turn-015-mako",
+      "seconds": 8.88,
+      "charactersPerSecond": 6.08,
+      "peakDBFS": -2.72,
+      "rmsDBFS": -19.45
+    },
+    {
+      "id": "lesson13-turn-016-ikumi",
+      "seconds": 14.12,
+      "charactersPerSecond": 5.74,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.96
+    },
+    {
+      "id": "lesson13-turn-017-manabu",
+      "seconds": 9.92,
+      "charactersPerSecond": 5.95,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.87
+    },
+    {
+      "id": "lesson13-turn-018-mako",
+      "seconds": 6.04,
+      "charactersPerSecond": 8.28,
+      "peakDBFS": -0.88,
+      "rmsDBFS": -17.83
+    },
+    {
+      "id": "lesson13-turn-019-ikumi",
+      "seconds": 12.0,
+      "charactersPerSecond": 7.92,
+      "peakDBFS": -0.2,
+      "rmsDBFS": -16.56
+    },
+    {
+      "id": "lesson13-turn-020-mako",
+      "seconds": 10.6,
+      "charactersPerSecond": 5.28,
+      "peakDBFS": -0.01,
+      "rmsDBFS": -18.16
+    },
+    {
+      "id": "lesson13-turn-021-ikumi",
+      "seconds": 13.84,
+      "charactersPerSecond": 7.15,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.48
+    },
+    {
+      "id": "lesson13-turn-022-manabu",
+      "seconds": 11.68,
+      "charactersPerSecond": 5.74,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.43
+    },
+    {
+      "id": "lesson13-turn-023-mako",
+      "seconds": 7.08,
+      "charactersPerSecond": 6.07,
+      "peakDBFS": -0.6,
+      "rmsDBFS": -16.66
+    },
+    {
+      "id": "lesson13-turn-024-ikumi",
+      "seconds": 13.76,
+      "charactersPerSecond": 7.49,
+      "peakDBFS": -0.58,
+      "rmsDBFS": -16.37
+    },
+    {
+      "id": "lesson13-turn-025-mako",
+      "seconds": 5.8,
+      "charactersPerSecond": 6.03,
+      "peakDBFS": -1.26,
+      "rmsDBFS": -19.29
+    },
+    {
+      "id": "lesson13-turn-026-ikumi",
+      "seconds": 14.12,
+      "charactersPerSecond": 7.29,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -16.62
+    },
+    {
+      "id": "lesson13-turn-027-mako",
+      "seconds": 9.24,
+      "charactersPerSecond": 6.17,
+      "peakDBFS": -0.18,
+      "rmsDBFS": -17.3
+    },
+    {
+      "id": "lesson13-turn-028-ikumi",
+      "seconds": 12.36,
+      "charactersPerSecond": 6.15,
+      "peakDBFS": -0.02,
+      "rmsDBFS": -18.73
+    },
+    {
+      "id": "lesson13-turn-029-mako",
+      "seconds": 6.36,
+      "charactersPerSecond": 6.76,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.14
+    },
+    {
+      "id": "lesson13-turn-030-ikumi",
+      "seconds": 12.48,
+      "charactersPerSecond": 6.25,
+      "peakDBFS": -0.09,
+      "rmsDBFS": -17.32
+    },
+    {
+      "id": "lesson13-turn-031-manabu",
+      "seconds": 9.48,
+      "charactersPerSecond": 6.96,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.98
+    },
+    {
+      "id": "lesson13-turn-032-mako",
+      "seconds": 11.0,
+      "charactersPerSecond": 6.18,
+      "peakDBFS": -2.28,
+      "rmsDBFS": -18.45
+    },
+    {
+      "id": "lesson13-turn-033-ikumi",
+      "seconds": 13.08,
+      "charactersPerSecond": 5.43,
+      "peakDBFS": -0.75,
+      "rmsDBFS": -18.11
+    },
+    {
+      "id": "lesson13-turn-034-mako",
+      "seconds": 8.12,
+      "charactersPerSecond": 5.91,
+      "peakDBFS": -1.2,
+      "rmsDBFS": -18.17
+    },
+    {
+      "id": "lesson13-turn-035-ikumi",
+      "seconds": 13.08,
+      "charactersPerSecond": 6.42,
+      "peakDBFS": -0.16,
+      "rmsDBFS": -18.62
+    },
+    {
+      "id": "lesson13-turn-036-mako",
+      "seconds": 10.0,
+      "charactersPerSecond": 4.8,
+      "peakDBFS": -1.49,
+      "rmsDBFS": -17.82
+    },
+    {
+      "id": "lesson13-turn-037-manabu",
+      "seconds": 13.76,
+      "charactersPerSecond": 5.81,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -19.22
+    },
+    {
+      "id": "lesson13-turn-038-mako",
+      "seconds": 5.52,
+      "charactersPerSecond": 6.88,
+      "peakDBFS": -1.72,
+      "rmsDBFS": -17.32
+    },
+    {
+      "id": "lesson13-turn-039-ikumi",
+      "seconds": 13.0,
+      "charactersPerSecond": 6.69,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.68
+    },
+    {
+      "id": "lesson13-turn-040-mako",
+      "seconds": 7.16,
+      "charactersPerSecond": 5.87,
+      "peakDBFS": -0.41,
+      "rmsDBFS": -17.73
+    },
+    {
+      "id": "lesson13-turn-041-ikumi",
+      "seconds": 15.64,
+      "charactersPerSecond": 5.43,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.11
+    },
+    {
+      "id": "lesson13-turn-042-mako",
+      "seconds": 7.96,
+      "charactersPerSecond": 5.4,
+      "peakDBFS": -1.07,
+      "rmsDBFS": -17.21
+    },
+    {
+      "id": "lesson13-turn-043-ikumi",
+      "seconds": 11.96,
+      "charactersPerSecond": 6.27,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.43
+    },
+    {
+      "id": "lesson13-turn-044-mako",
+      "seconds": 5.04,
+      "charactersPerSecond": 5.95,
+      "peakDBFS": -2.24,
+      "rmsDBFS": -19.4
+    },
+    {
+      "id": "lesson13-turn-045-manabu",
+      "seconds": 14.16,
+      "charactersPerSecond": 6.0,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.36
+    },
+    {
+      "id": "lesson13-turn-046-mako",
+      "seconds": 7.96,
+      "charactersPerSecond": 5.15,
+      "peakDBFS": -1.82,
+      "rmsDBFS": -17.88
+    },
+    {
+      "id": "lesson13-turn-047-ikumi",
+      "seconds": 12.28,
+      "charactersPerSecond": 5.54,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -16.31
+    },
+    {
+      "id": "lesson13-turn-048-mako",
+      "seconds": 7.84,
+      "charactersPerSecond": 5.23,
+      "peakDBFS": -2.05,
+      "rmsDBFS": -18.42
+    },
+    {
+      "id": "lesson13-turn-049-manabu",
+      "seconds": 14.92,
+      "charactersPerSecond": 5.16,
+      "peakDBFS": -0.02,
+      "rmsDBFS": -18.9
+    },
+    {
+      "id": "lesson13-turn-050-mako",
+      "seconds": 6.76,
+      "charactersPerSecond": 5.77,
+      "peakDBFS": -1.51,
+      "rmsDBFS": -18.34
+    },
+    {
+      "id": "lesson13-turn-051-ikumi",
+      "seconds": 12.44,
+      "charactersPerSecond": 6.91,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.25
+    },
+    {
+      "id": "lesson13-turn-052-mako",
+      "seconds": 5.68,
+      "charactersPerSecond": 7.04,
+      "peakDBFS": -2.65,
+      "rmsDBFS": -18.29
+    },
+    {
+      "id": "lesson13-turn-053-ikumi",
+      "seconds": 16.24,
+      "charactersPerSecond": 4.99,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.05
+    },
+    {
+      "id": "lesson13-turn-054-mako",
+      "seconds": 8.08,
+      "charactersPerSecond": 6.56,
+      "peakDBFS": -1.77,
+      "rmsDBFS": -18.34
+    },
+    {
+      "id": "lesson13-turn-055-ikumi",
+      "seconds": 14.56,
+      "charactersPerSecond": 6.39,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.12
+    },
+    {
+      "id": "lesson13-turn-056-mako",
+      "seconds": 4.48,
+      "charactersPerSecond": 7.14,
+      "peakDBFS": -0.27,
+      "rmsDBFS": -16.35
+    },
+    {
+      "id": "lesson13-turn-057-ikumi",
+      "seconds": 14.28,
+      "charactersPerSecond": 6.51,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.93
+    },
+    {
+      "id": "lesson13-turn-058-manabu",
+      "seconds": 15.16,
+      "charactersPerSecond": 5.87,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.76
+    },
+    {
+      "id": "lesson13-turn-059-mako",
+      "seconds": 7.28,
+      "charactersPerSecond": 6.46,
+      "peakDBFS": -4.19,
+      "rmsDBFS": -19.78
+    },
+    {
+      "id": "lesson13-turn-060-ikumi",
+      "seconds": 16.64,
+      "charactersPerSecond": 5.17,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -16.79
+    },
+    {
+      "id": "lesson13-turn-061-mako",
+      "seconds": 7.24,
+      "charactersPerSecond": 5.25,
+      "peakDBFS": -2.08,
+      "rmsDBFS": -18.57
+    },
+    {
+      "id": "lesson13-turn-062-ikumi",
+      "seconds": 14.52,
+      "charactersPerSecond": 6.2,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -17.47
+    },
+    {
+      "id": "lesson13-turn-063-mako",
+      "seconds": 4.44,
+      "charactersPerSecond": 5.63,
+      "peakDBFS": -2.18,
+      "rmsDBFS": -17.85
+    },
+    {
+      "id": "lesson13-turn-064-ikumi",
+      "seconds": 16.16,
+      "charactersPerSecond": 5.88,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -17.09
+    },
+    {
+      "id": "lesson13-turn-065-mako",
+      "seconds": 6.76,
+      "charactersPerSecond": 6.66,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.81
+    },
+    {
+      "id": "lesson13-turn-066-manabu",
+      "seconds": 15.0,
+      "charactersPerSecond": 5.33,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.04
+    },
+    {
+      "id": "lesson13-turn-067-mako",
+      "seconds": 4.8,
+      "charactersPerSecond": 5.62,
+      "peakDBFS": -3.43,
+      "rmsDBFS": -17.94
+    },
+    {
+      "id": "lesson13-turn-068-manabu",
+      "seconds": 11.2,
+      "charactersPerSecond": 6.16,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.07
+    },
+    {
+      "id": "lesson13-turn-069-mako",
+      "seconds": 9.8,
+      "charactersPerSecond": 5.41,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -19.24
+    },
+    {
+      "id": "lesson13-turn-070-ikumi",
+      "seconds": 15.52,
+      "charactersPerSecond": 5.28,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -17.2
+    },
+    {
+      "id": "lesson13-turn-071-manabu",
+      "seconds": 12.44,
+      "charactersPerSecond": 6.19,
+      "peakDBFS": -0.11,
+      "rmsDBFS": -17.44
+    },
+    {
+      "id": "lesson13-turn-072-mako",
+      "seconds": 7.16,
+      "charactersPerSecond": 4.75,
+      "peakDBFS": -2.4,
+      "rmsDBFS": -18.75
+    },
+    {
+      "id": "lesson13-turn-073-ikumi",
+      "seconds": 10.8,
+      "charactersPerSecond": 5.56,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -16.22
+    },
+    {
+      "id": "lesson13-turn-074-mako",
+      "seconds": 8.28,
+      "charactersPerSecond": 5.56,
+      "peakDBFS": -0.97,
+      "rmsDBFS": -20.16
+    },
+    {
+      "id": "lesson13-turn-075-ikumi",
+      "seconds": 14.8,
+      "charactersPerSecond": 5.81,
+      "peakDBFS": -0.17,
+      "rmsDBFS": -17.08
+    },
+    {
+      "id": "lesson13-turn-076-manabu",
+      "seconds": 11.4,
+      "charactersPerSecond": 5.7,
+      "peakDBFS": -0.78,
+      "rmsDBFS": -18.27
+    },
+    {
+      "id": "lesson13-turn-077-mako",
+      "seconds": 15.0,
+      "charactersPerSecond": 5.53,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -16.21
+    },
+    {
+      "id": "lesson13-turn-078-ikumi",
+      "seconds": 14.16,
+      "charactersPerSecond": 6.85,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.11
+    },
+    {
+      "id": "lesson13-turn-079-mako",
+      "seconds": 9.92,
+      "charactersPerSecond": 6.25,
+      "peakDBFS": -1.93,
+      "rmsDBFS": -18.11
+    },
+    {
+      "id": "lesson13-turn-080-manabu",
+      "seconds": 8.0,
+      "charactersPerSecond": 7.25,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.49
+    },
+    {
+      "id": "lesson13-turn-081-mako",
+      "seconds": 12.12,
+      "charactersPerSecond": 5.36,
+      "peakDBFS": -2.05,
+      "rmsDBFS": -19.8
+    },
+    {
+      "id": "lesson13-turn-082-ikumi",
+      "seconds": 11.88,
+      "charactersPerSecond": 6.31,
+      "peakDBFS": -1.35,
+      "rmsDBFS": -18.29
+    },
+    {
+      "id": "lesson13-turn-083-mako",
+      "seconds": 11.88,
+      "charactersPerSecond": 5.22,
+      "peakDBFS": -0.74,
+      "rmsDBFS": -17.92
+    },
+    {
+      "id": "lesson13-turn-084-manabu",
+      "seconds": 7.92,
+      "charactersPerSecond": 6.69,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.15
+    },
+    {
+      "id": "lesson13-turn-085-mako",
+      "seconds": 9.08,
+      "charactersPerSecond": 5.07,
+      "peakDBFS": -0.78,
+      "rmsDBFS": -18.04
+    },
+    {
+      "id": "lesson13-turn-086-ikumi",
+      "seconds": 10.64,
+      "charactersPerSecond": 6.02,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.11
+    },
+    {
+      "id": "lesson13-turn-087-mako",
+      "seconds": 8.52,
+      "charactersPerSecond": 5.16,
+      "peakDBFS": -2.73,
+      "rmsDBFS": -18.12
+    },
+    {
+      "id": "lesson13-turn-088-manabu",
+      "seconds": 12.52,
+      "charactersPerSecond": 5.19,
+      "peakDBFS": -0.61,
+      "rmsDBFS": -18.47
+    },
+    {
+      "id": "lesson13-turn-089-mako",
+      "seconds": 9.92,
+      "charactersPerSecond": 5.75,
+      "peakDBFS": -0.87,
+      "rmsDBFS": -18.99
+    },
+    {
+      "id": "lesson13-turn-090-ikumi",
+      "seconds": 13.32,
+      "charactersPerSecond": 5.41,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -18.1
+    },
+    {
+      "id": "lesson13-turn-091-manabu",
+      "seconds": 14.2,
+      "charactersPerSecond": 5.07,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -17.47
+    },
+    {
+      "id": "lesson13-turn-092-mako",
+      "seconds": 10.44,
+      "charactersPerSecond": 6.61,
+      "peakDBFS": 0.0,
+      "rmsDBFS": -18.8
+    },
+    {
+      "id": "lesson13-turn-093-ikumi",
+      "seconds": 12.92,
+      "charactersPerSecond": 5.5,
+      "peakDBFS": -0.0,
+      "rmsDBFS": -19.12
+    }
+  ]
+}

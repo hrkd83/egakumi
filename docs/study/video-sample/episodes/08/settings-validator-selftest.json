@@ -1,0 +1,119 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T14:12:47.857355+09:00",
+  "verifierSha256": "28ab93f28a20b788f5f4a0509bf77b3a081c98634cda704bd262005ef5fa5534",
+  "scriptSha256": "fee1b1429619b3c77698f67091c2f9850e3f26aeb7b7ee72f786f42be7f8ea69",
+  "inMemoryOnly": true,
+  "caseCount": 18,
+  "cases": [
+    {
+      "case": "changed speech",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "Non-visual inputs changed: $.turns[4].speech"
+    },
+    {
+      "case": "changed delivery/style",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "Non-visual inputs changed: $.turns[4].delivery"
+    },
+    {
+      "case": "changed subtitle chunk",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "Non-visual inputs changed: $.turns[4].subtitleChunks[0].caption"
+    },
+    {
+      "case": "changed gap",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "Non-visual inputs changed: $.turns[4].gapAfterSeconds"
+    },
+    {
+      "case": "missing viewId",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-005-mako: body needs a stable simple viewId"
+    },
+    {
+      "case": "camera key even when empty",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-005-mako: body motion controls found: ['visual.camera']"
+    },
+    {
+      "case": "changed field text in same view",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-006-manabu: menu/text/order/structure changed inside viewId mgmt-vm-overview"
+    },
+    {
+      "case": "changed row order in same view",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-006-manabu: menu/text/order/structure changed inside viewId mgmt-vm-overview"
+    },
+    {
+      "case": "view reappears after another view",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-011-mako: viewId reappears after another view: mgmt-vm-overview"
+    },
+    {
+      "case": "question reveals an answer target",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-073-mako: answer is highlighted during the question"
+    },
+    {
+      "case": "question and answer viewId differ",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-075-ikumi: viewId reappears after another view: mgmt-check-private"
+    },
+    {
+      "case": "duplicate field IDs",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-005-mako: row IDs must be unique simple local IDs"
+    },
+    {
+      "case": "highlight names an absent row",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-005-mako: highlights must name existing rows exactly once"
+    },
+    {
+      "case": "table columns exceed available width",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-022-mako: table columns do not fit the 972px content region"
+    },
+    {
+      "case": "changed SVG route outside highlight group",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "lesson08-turn-013-mako: SVG geometry/text/routes changed beyond red outlines in mgmt-private-path"
+    },
+    {
+      "case": "animated SVG node",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "diagrams/settings-v2/mgmt-private-path-pc-enterprise-vm-roundtrip.svg: forbidden SVG tag animate"
+    },
+    {
+      "case": "non-rectangle hidden as a highlight",
+      "status": "passed",
+      "invalidInputRejected": true,
+      "detectedBy": "diagrams/settings-v2/mgmt-private-path-pc-enterprise-vm-roundtrip.svg: only independent rectangles may be excluded as highlights"
+    },
+    {
+      "case": "only a valid explanatory field highlight changes",
+      "status": "passed",
+      "validInputAccepted": true
+    }
+  ],
+  "sourceFilesChanged": false,
+  "networkRequestsMade": false
+}

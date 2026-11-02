@@ -1,0 +1,3197 @@
+{
+  "status": "review_required",
+  "episodeKey": "17",
+  "createdAt": "2026-11-02T07:29:29.611341+00:00",
+  "scope": "Local raw-audio and generation-metadata screening only",
+  "listeningAssessment": "not performed",
+  "pronunciationAssessment": "未実施。音声認識・聴取による発音、欠落、演技、自然さの確認は行っていない。",
+  "networkRequestsMade": false,
+  "limitations": [
+    "No speech recognition or pronunciation, omissions, acting, or naturalness assessment",
+    "Quiet windows include natural pauses and quiet phonemes; thresholds are review heuristics",
+    "Sample peaks do not measure intersample true peaks; final mix loudness is verified separately",
+    "Character rate is not Japanese mora rate and cannot by itself establish normal speaking speed",
+    "Review flags do not authorize or require another synthesis request"
+  ],
+  "method": {
+    "quietThresholdDbfsRms": -50.0,
+    "windowSeconds": 0.01,
+    "expectedFormat": "mono 24 kHz 16-bit little-endian PCM"
+  },
+  "sourceScriptSha256": "f5b2cac0713fc5617f0bdf00ddf67aab830c0dd9f2a050c746d75c7cc79e0599",
+  "generationConfigSha256": "908006261e671c8fb2bbbaf50ff068f1e646fef8e6686b961154bbb97bdd2d5c",
+  "generationRecordSha256": "38a2c12b0bb34954bf32477124674ddcf848152011d0bad54d08b10a7e9963f8",
+  "summary": {
+    "expectedTurns": 75,
+    "auditedTurns": 75,
+    "rawDurationSeconds": 924.68,
+    "failedTurnIds": [],
+    "reviewTurnIds": [
+      "lesson17-turn-002-manabu",
+      "lesson17-turn-005-ikumi",
+      "lesson17-turn-006-manabu",
+      "lesson17-turn-007-mako",
+      "lesson17-turn-008-ikumi",
+      "lesson17-turn-010-ikumi",
+      "lesson17-turn-011-mako",
+      "lesson17-turn-012-ikumi",
+      "lesson17-turn-013-manabu",
+      "lesson17-turn-015-ikumi",
+      "lesson17-turn-016-ikumi",
+      "lesson17-turn-018-ikumi",
+      "lesson17-turn-019-mako",
+      "lesson17-turn-026-ikumi",
+      "lesson17-turn-027-manabu",
+      "lesson17-turn-031-ikumi",
+      "lesson17-turn-033-ikumi",
+      "lesson17-turn-034-manabu",
+      "lesson17-turn-036-ikumi",
+      "lesson17-turn-038-ikumi",
+      "lesson17-turn-040-ikumi",
+      "lesson17-turn-041-ikumi",
+      "lesson17-turn-043-ikumi",
+      "lesson17-turn-044-manabu",
+      "lesson17-turn-046-ikumi",
+      "lesson17-turn-048-ikumi",
+      "lesson17-turn-050-ikumi",
+      "lesson17-turn-052-ikumi",
+      "lesson17-turn-053-manabu",
+      "lesson17-turn-054-mako",
+      "lesson17-turn-057-manabu",
+      "lesson17-turn-059-ikumi",
+      "lesson17-turn-060-manabu",
+      "lesson17-turn-062-ikumi",
+      "lesson17-turn-063-mako",
+      "lesson17-turn-064-manabu",
+      "lesson17-turn-065-ikumi",
+      "lesson17-turn-066-mako",
+      "lesson17-turn-067-ikumi",
+      "lesson17-turn-068-manabu",
+      "lesson17-turn-070-ikumi",
+      "lesson17-turn-071-manabu",
+      "lesson17-turn-073-manabu",
+      "lesson17-turn-074-ikumi"
+    ],
+    "speakerMedianCharactersPerNonPaddingSecond": {
+      "mako": 5.7692,
+      "manabu": 5.5556,
+      "ikumi": 5.8507
+    },
+    "structuralChecksPassed": true,
+    "allHeuristicsClear": false
+  },
+  "errors": [],
+  "turns": [
+    {
+      "id": "lesson17-turn-001-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 8.08,
+      "frames": 193920,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -4.692,
+      "rmsDbfs": -20.343,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.67,
+      "quietWindowRatio": 0.206683,
+      "leadingQuietSeconds": 0.09,
+      "trailingQuietSeconds": 0.17,
+      "longestInteriorQuietSeconds": 0.31,
+      "nonPaddingDurationSeconds": 7.82,
+      "speechCharacterCount": 58,
+      "charactersPerNonPaddingSecond": 7.4169,
+      "rateRatioToSpeakerMedian": 1.2856
+    },
+    {
+      "id": "lesson17-turn-002-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 10.4,
+      "frames": 249600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.537,
+      "exactFullScaleSamples": 13,
+      "nearFullScaleSamples": 13,
+      "nearFullScaleRatio": 5.208e-05,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 4.409542,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 4.387292,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 4.402375,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 4.416542,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 4.402292,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.54,
+      "quietWindowRatio": 0.244231,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.25,
+      "longestInteriorQuietSeconds": 0.51,
+      "nonPaddingDurationSeconds": 10.14,
+      "speechCharacterCount": 52,
+      "charactersPerNonPaddingSecond": 5.1282,
+      "rateRatioToSpeakerMedian": 0.9231
+    },
+    {
+      "id": "lesson17-turn-003-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 12.88,
+      "frames": 309120,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.542,
+      "rmsDbfs": -19.125,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 3.12,
+      "quietWindowRatio": 0.242236,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.32,
+      "longestInteriorQuietSeconds": 0.32,
+      "nonPaddingDurationSeconds": 12.33,
+      "speechCharacterCount": 67,
+      "charactersPerNonPaddingSecond": 5.4339,
+      "rateRatioToSpeakerMedian": 0.9288
+    },
+    {
+      "id": "lesson17-turn-004-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.88,
+      "frames": 237120,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.809,
+      "rmsDbfs": -19.117,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.7,
+      "quietWindowRatio": 0.172065,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.15,
+      "longestInteriorQuietSeconds": 0.3,
+      "nonPaddingDurationSeconds": 9.5,
+      "speechCharacterCount": 56,
+      "charactersPerNonPaddingSecond": 5.8947,
+      "rateRatioToSpeakerMedian": 1.0218
+    },
+    {
+      "id": "lesson17-turn-005-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 15.32,
+      "frames": 367680,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.342,
+      "exactFullScaleSamples": 7,
+      "nearFullScaleSamples": 7,
+      "nearFullScaleRatio": 1.904e-05,
+      "nearFullScaleLongestRunSamples": 3,
+      "nearFullScaleLongestRunMilliseconds": 0.125,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.839167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 0.834542,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 14.448708,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 3.7,
+      "quietWindowRatio": 0.241514,
+      "leadingQuietSeconds": 0.27,
+      "trailingQuietSeconds": 0.18,
+      "longestInteriorQuietSeconds": 0.95,
+      "nonPaddingDurationSeconds": 14.87,
+      "speechCharacterCount": 87,
+      "charactersPerNonPaddingSecond": 5.8507,
+      "rateRatioToSpeakerMedian": 1.0
+    },
+    {
+      "id": "lesson17-turn-006-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 11.16,
+      "frames": 267840,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -16.907,
+      "exactFullScaleSamples": 29,
+      "nearFullScaleSamples": 29,
+      "nearFullScaleRatio": 0.00010827,
+      "nearFullScaleLongestRunSamples": 6,
+      "nearFullScaleLongestRunMilliseconds": 0.25,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.429833,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 0.424125,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 2.769,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 2.777833,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 2.751708,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 2.42,
+      "quietWindowRatio": 0.216846,
+      "leadingQuietSeconds": 0.2,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 0.39,
+      "nonPaddingDurationSeconds": 10.72,
+      "speechCharacterCount": 78,
+      "charactersPerNonPaddingSecond": 7.2761,
+      "rateRatioToSpeakerMedian": 1.3097
+    },
+    {
+      "id": "lesson17-turn-007-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 11.28,
+      "frames": 270720,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.005,
+      "exactFullScaleSamples": 15,
+      "nearFullScaleSamples": 15,
+      "nearFullScaleRatio": 5.541e-05,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 3.0975,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.101583,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.105625,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.073542,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 3.0895,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.54,
+      "quietWindowRatio": 0.225177,
+      "leadingQuietSeconds": 0.15,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 0.46,
+      "nonPaddingDurationSeconds": 10.89,
+      "speechCharacterCount": 78,
+      "charactersPerNonPaddingSecond": 7.1625,
+      "rateRatioToSpeakerMedian": 1.2415
+    },
+    {
+      "id": "lesson17-turn-008-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.12,
+      "frames": 314880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.696,
+      "exactFullScaleSamples": 23,
+      "nearFullScaleSamples": 23,
+      "nearFullScaleRatio": 7.304e-05,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 4.408625,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 4.393167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 4.400833,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 4.416583,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 1.30925,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 2.44,
+      "quietWindowRatio": 0.185976,
+      "leadingQuietSeconds": 0.25,
+      "trailingQuietSeconds": 0.2,
+      "longestInteriorQuietSeconds": 0.66,
+      "nonPaddingDurationSeconds": 12.67,
+      "speechCharacterCount": 77,
+      "charactersPerNonPaddingSecond": 6.0773,
+      "rateRatioToSpeakerMedian": 1.0387
+    },
+    {
+      "id": "lesson17-turn-009-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.12,
+      "frames": 218880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.548,
+      "rmsDbfs": -19.892,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.03,
+      "quietWindowRatio": 0.222588,
+      "leadingQuietSeconds": 0.2,
+      "trailingQuietSeconds": 0.38,
+      "longestInteriorQuietSeconds": 0.53,
+      "nonPaddingDurationSeconds": 8.54,
+      "speechCharacterCount": 53,
+      "charactersPerNonPaddingSecond": 6.2061,
+      "rateRatioToSpeakerMedian": 1.0757
+    },
+    {
+      "id": "lesson17-turn-010-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.12,
+      "frames": 338880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.998,
+      "exactFullScaleSamples": 33,
+      "nearFullScaleSamples": 33,
+      "nearFullScaleRatio": 9.738e-05,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 5.061833,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 5.04275,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 5.049167,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 5.055542,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 5.068125,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        }
+      ],
+      "quietSeconds": 3.3,
+      "quietWindowRatio": 0.233711,
+      "leadingQuietSeconds": 0.14,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.72,
+      "nonPaddingDurationSeconds": 13.71,
+      "speechCharacterCount": 80,
+      "charactersPerNonPaddingSecond": 5.8352,
+      "rateRatioToSpeakerMedian": 0.9974
+    },
+    {
+      "id": "lesson17-turn-011-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 9.52,
+      "frames": 228480,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.561,
+      "exactFullScaleSamples": 1,
+      "nearFullScaleSamples": 1,
+      "nearFullScaleRatio": 4.38e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 3.847417,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.11,
+      "quietWindowRatio": 0.221639,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.66,
+      "longestInteriorQuietSeconds": 0.32,
+      "nonPaddingDurationSeconds": 8.63,
+      "speechCharacterCount": 47,
+      "charactersPerNonPaddingSecond": 5.4461,
+      "rateRatioToSpeakerMedian": 0.944
+    },
+    {
+      "id": "lesson17-turn-012-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 16.16,
+      "frames": 387840,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -16.772,
+      "exactFullScaleSamples": 52,
+      "nearFullScaleSamples": 52,
+      "nearFullScaleRatio": 0.00013408,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 7.604625,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 8.575,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 8.583583,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 11.882625,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 11.891125,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 4.15,
+      "quietWindowRatio": 0.256807,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 1.02,
+      "nonPaddingDurationSeconds": 15.91,
+      "speechCharacterCount": 90,
+      "charactersPerNonPaddingSecond": 5.6568,
+      "rateRatioToSpeakerMedian": 0.9669
+    },
+    {
+      "id": "lesson17-turn-013-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 10.0,
+      "frames": 240000,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.517,
+      "exactFullScaleSamples": 17,
+      "nearFullScaleSamples": 18,
+      "nearFullScaleRatio": 7.5e-05,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.6905,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 1.701875,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 0.494833,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 1.679083,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 1.667792,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.54,
+      "quietWindowRatio": 0.254,
+      "leadingQuietSeconds": 0.46,
+      "trailingQuietSeconds": 0.3,
+      "longestInteriorQuietSeconds": 0.77,
+      "nonPaddingDurationSeconds": 9.24,
+      "speechCharacterCount": 59,
+      "charactersPerNonPaddingSecond": 6.3853,
+      "rateRatioToSpeakerMedian": 1.1493
+    },
+    {
+      "id": "lesson17-turn-014-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 8.64,
+      "frames": 207360,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.12,
+      "rmsDbfs": -19.374,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.78,
+      "quietWindowRatio": 0.206019,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 0.25,
+      "nonPaddingDurationSeconds": 8.19,
+      "speechCharacterCount": 42,
+      "charactersPerNonPaddingSecond": 5.1282,
+      "rateRatioToSpeakerMedian": 0.8889
+    },
+    {
+      "id": "lesson17-turn-015-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.92,
+      "frames": 334080,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.323,
+      "exactFullScaleSamples": 2,
+      "nearFullScaleSamples": 2,
+      "nearFullScaleRatio": 5.99e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 4.031417,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 3.8,
+      "quietWindowRatio": 0.272989,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.21,
+      "longestInteriorQuietSeconds": 0.98,
+      "nonPaddingDurationSeconds": 13.7,
+      "speechCharacterCount": 81,
+      "charactersPerNonPaddingSecond": 5.9124,
+      "rateRatioToSpeakerMedian": 1.0105
+    },
+    {
+      "id": "lesson17-turn-016-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.44,
+      "frames": 298560,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -17.625,
+      "exactFullScaleSamples": 20,
+      "nearFullScaleSamples": 20,
+      "nearFullScaleRatio": 6.699e-05,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.023917,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 1.024125,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 5.236083,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 5.239333,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 0.484833,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 2.36,
+      "quietWindowRatio": 0.189711,
+      "leadingQuietSeconds": 0.35,
+      "trailingQuietSeconds": 0.23,
+      "longestInteriorQuietSeconds": 0.53,
+      "nonPaddingDurationSeconds": 11.86,
+      "speechCharacterCount": 80,
+      "charactersPerNonPaddingSecond": 6.7454,
+      "rateRatioToSpeakerMedian": 1.1529
+    },
+    {
+      "id": "lesson17-turn-017-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 10.44,
+      "frames": 250560,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.543,
+      "rmsDbfs": -17.304,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.86,
+      "quietWindowRatio": 0.178161,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 0.39,
+      "nonPaddingDurationSeconds": 10.19,
+      "speechCharacterCount": 62,
+      "charactersPerNonPaddingSecond": 6.0844,
+      "rateRatioToSpeakerMedian": 1.0546
+    },
+    {
+      "id": "lesson17-turn-018-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 12.92,
+      "frames": 310080,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -16.677,
+      "exactFullScaleSamples": 37,
+      "nearFullScaleSamples": 37,
+      "nearFullScaleRatio": 0.00011932,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.270167,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 0.277292,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 6.05925,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 7.577083,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 6.036542,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 2.35,
+      "quietWindowRatio": 0.181889,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.22,
+      "longestInteriorQuietSeconds": 0.69,
+      "nonPaddingDurationSeconds": 12.47,
+      "speechCharacterCount": 86,
+      "charactersPerNonPaddingSecond": 6.8966,
+      "rateRatioToSpeakerMedian": 1.1788
+    },
+    {
+      "id": "lesson17-turn-019-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.44,
+      "frames": 298560,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -18.092,
+      "exactFullScaleSamples": 4,
+      "nearFullScaleSamples": 4,
+      "nearFullScaleRatio": 1.34e-05,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 4.094292,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 4.090667,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 4.09075,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.4,
+      "quietWindowRatio": 0.192926,
+      "leadingQuietSeconds": 0.26,
+      "trailingQuietSeconds": 0.18,
+      "longestInteriorQuietSeconds": 0.28,
+      "nonPaddingDurationSeconds": 12.0,
+      "speechCharacterCount": 74,
+      "charactersPerNonPaddingSecond": 6.1667,
+      "rateRatioToSpeakerMedian": 1.0689
+    },
+    {
+      "id": "lesson17-turn-020-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 14.24,
+      "frames": 341760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.373,
+      "rmsDbfs": -17.362,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.9,
+      "quietWindowRatio": 0.203652,
+      "leadingQuietSeconds": 0.24,
+      "trailingQuietSeconds": 0.32,
+      "longestInteriorQuietSeconds": 0.37,
+      "nonPaddingDurationSeconds": 13.68,
+      "speechCharacterCount": 93,
+      "charactersPerNonPaddingSecond": 6.7982,
+      "rateRatioToSpeakerMedian": 1.1619
+    },
+    {
+      "id": "lesson17-turn-021-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.92,
+      "frames": 238080,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.159,
+      "rmsDbfs": -18.298,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.35,
+      "quietWindowRatio": 0.236895,
+      "leadingQuietSeconds": 0.25,
+      "trailingQuietSeconds": 0.31,
+      "longestInteriorQuietSeconds": 0.37,
+      "nonPaddingDurationSeconds": 9.36,
+      "speechCharacterCount": 55,
+      "charactersPerNonPaddingSecond": 5.8761,
+      "rateRatioToSpeakerMedian": 1.0185
+    },
+    {
+      "id": "lesson17-turn-022-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 14.2,
+      "frames": 340800,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.161,
+      "rmsDbfs": -17.103,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 4.07,
+      "quietWindowRatio": 0.28662,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.95,
+      "nonPaddingDurationSeconds": 13.7,
+      "speechCharacterCount": 72,
+      "charactersPerNonPaddingSecond": 5.2555,
+      "rateRatioToSpeakerMedian": 0.8983
+    },
+    {
+      "id": "lesson17-turn-023-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 10.88,
+      "frames": 261120,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.636,
+      "rmsDbfs": -18.481,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.26,
+      "quietWindowRatio": 0.207721,
+      "leadingQuietSeconds": 0.32,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.25,
+      "nonPaddingDurationSeconds": 10.29,
+      "speechCharacterCount": 64,
+      "charactersPerNonPaddingSecond": 6.2196,
+      "rateRatioToSpeakerMedian": 1.0781
+    },
+    {
+      "id": "lesson17-turn-024-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 13.4,
+      "frames": 321600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.13,
+      "rmsDbfs": -16.681,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 3.61,
+      "quietWindowRatio": 0.269403,
+      "leadingQuietSeconds": 0.17,
+      "trailingQuietSeconds": 0.3,
+      "longestInteriorQuietSeconds": 0.54,
+      "nonPaddingDurationSeconds": 12.93,
+      "speechCharacterCount": 80,
+      "charactersPerNonPaddingSecond": 6.1872,
+      "rateRatioToSpeakerMedian": 1.0575
+    },
+    {
+      "id": "lesson17-turn-025-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 11.24,
+      "frames": 269760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.906,
+      "rmsDbfs": -17.551,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.2,
+      "quietWindowRatio": 0.19573,
+      "leadingQuietSeconds": 0.26,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.47,
+      "nonPaddingDurationSeconds": 10.7,
+      "speechCharacterCount": 63,
+      "charactersPerNonPaddingSecond": 5.8879,
+      "rateRatioToSpeakerMedian": 1.0206
+    },
+    {
+      "id": "lesson17-turn-026-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.56,
+      "frames": 325440,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.825,
+      "exactFullScaleSamples": 1,
+      "nearFullScaleSamples": 1,
+      "nearFullScaleRatio": 3.07e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 2.446375,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.75,
+      "quietWindowRatio": 0.202802,
+      "leadingQuietSeconds": 0.14,
+      "trailingQuietSeconds": 0.23,
+      "longestInteriorQuietSeconds": 0.66,
+      "nonPaddingDurationSeconds": 13.19,
+      "speechCharacterCount": 76,
+      "charactersPerNonPaddingSecond": 5.7619,
+      "rateRatioToSpeakerMedian": 0.9848
+    },
+    {
+      "id": "lesson17-turn-027-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 12.04,
+      "frames": 288960,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.171,
+      "exactFullScaleSamples": 61,
+      "nearFullScaleSamples": 61,
+      "nearFullScaleRatio": 0.0002111,
+      "nearFullScaleLongestRunSamples": 7,
+      "nearFullScaleLongestRunMilliseconds": 0.2917,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.869167,
+          "samples": 7,
+          "durationMilliseconds": 0.2917
+        },
+        {
+          "startSeconds": 1.888917,
+          "samples": 7,
+          "durationMilliseconds": 0.2917
+        },
+        {
+          "startSeconds": 1.879083,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 1.839292,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 1.859208,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        }
+      ],
+      "quietSeconds": 3.09,
+      "quietWindowRatio": 0.256645,
+      "leadingQuietSeconds": 0.32,
+      "trailingQuietSeconds": 0.17,
+      "longestInteriorQuietSeconds": 0.94,
+      "nonPaddingDurationSeconds": 11.55,
+      "speechCharacterCount": 59,
+      "charactersPerNonPaddingSecond": 5.1082,
+      "rateRatioToSpeakerMedian": 0.9195
+    },
+    {
+      "id": "lesson17-turn-028-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.4,
+      "frames": 225600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.781,
+      "rmsDbfs": -19.628,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.16,
+      "quietWindowRatio": 0.229787,
+      "leadingQuietSeconds": 0.17,
+      "trailingQuietSeconds": 0.41,
+      "longestInteriorQuietSeconds": 0.2,
+      "nonPaddingDurationSeconds": 8.82,
+      "speechCharacterCount": 50,
+      "charactersPerNonPaddingSecond": 5.6689,
+      "rateRatioToSpeakerMedian": 0.9826
+    },
+    {
+      "id": "lesson17-turn-029-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 14.4,
+      "frames": 345600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.447,
+      "rmsDbfs": -17.828,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 3.39,
+      "quietWindowRatio": 0.235417,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.33,
+      "longestInteriorQuietSeconds": 0.59,
+      "nonPaddingDurationSeconds": 14.06,
+      "speechCharacterCount": 81,
+      "charactersPerNonPaddingSecond": 5.761,
+      "rateRatioToSpeakerMedian": 0.9847
+    },
+    {
+      "id": "lesson17-turn-030-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 10.4,
+      "frames": 249600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.745,
+      "rmsDbfs": -18.981,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.79,
+      "quietWindowRatio": 0.172115,
+      "leadingQuietSeconds": 0.25,
+      "trailingQuietSeconds": 0.13,
+      "longestInteriorQuietSeconds": 0.3,
+      "nonPaddingDurationSeconds": 10.02,
+      "speechCharacterCount": 64,
+      "charactersPerNonPaddingSecond": 6.3872,
+      "rateRatioToSpeakerMedian": 1.1071
+    },
+    {
+      "id": "lesson17-turn-031-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.68,
+      "frames": 304320,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.545,
+      "exactFullScaleSamples": 3,
+      "nearFullScaleSamples": 3,
+      "nearFullScaleRatio": 9.86e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.295833,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 1.016208,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 9.821625,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.11,
+      "quietWindowRatio": 0.166404,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 0.32,
+      "nonPaddingDurationSeconds": 12.2,
+      "speechCharacterCount": 83,
+      "charactersPerNonPaddingSecond": 6.8033,
+      "rateRatioToSpeakerMedian": 1.1628
+    },
+    {
+      "id": "lesson17-turn-032-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.32,
+      "frames": 223680,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.12,
+      "rmsDbfs": -17.457,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.16,
+      "quietWindowRatio": 0.23176,
+      "leadingQuietSeconds": 0.29,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.6,
+      "nonPaddingDurationSeconds": 8.75,
+      "speechCharacterCount": 43,
+      "charactersPerNonPaddingSecond": 4.9143,
+      "rateRatioToSpeakerMedian": 0.8518
+    },
+    {
+      "id": "lesson17-turn-033-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 13.52,
+      "frames": 324480,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.93,
+      "exactFullScaleSamples": 33,
+      "nearFullScaleSamples": 33,
+      "nearFullScaleRatio": 0.0001017,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 3.910542,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 3.90475,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.916417,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.893167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.898958,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 2.12,
+      "quietWindowRatio": 0.156805,
+      "leadingQuietSeconds": 0.26,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.3,
+      "nonPaddingDurationSeconds": 12.98,
+      "speechCharacterCount": 81,
+      "charactersPerNonPaddingSecond": 6.2404,
+      "rateRatioToSpeakerMedian": 1.0666
+    },
+    {
+      "id": "lesson17-turn-034-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 10.48,
+      "frames": 251520,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.827,
+      "exactFullScaleSamples": 17,
+      "nearFullScaleSamples": 17,
+      "nearFullScaleRatio": 6.759e-05,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 7.839625,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 9.176708,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 9.194667,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 9.204125,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 6.497292,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.84,
+      "quietWindowRatio": 0.270992,
+      "leadingQuietSeconds": 0.03,
+      "trailingQuietSeconds": 0.25,
+      "longestInteriorQuietSeconds": 0.78,
+      "nonPaddingDurationSeconds": 10.2,
+      "speechCharacterCount": 55,
+      "charactersPerNonPaddingSecond": 5.3922,
+      "rateRatioToSpeakerMedian": 0.9706
+    },
+    {
+      "id": "lesson17-turn-035-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 8.4,
+      "frames": 201600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.056,
+      "rmsDbfs": -18.832,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.75,
+      "quietWindowRatio": 0.208333,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 0.32,
+      "nonPaddingDurationSeconds": 7.93,
+      "speechCharacterCount": 51,
+      "charactersPerNonPaddingSecond": 6.4313,
+      "rateRatioToSpeakerMedian": 1.1148
+    },
+    {
+      "id": "lesson17-turn-036-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.4,
+      "frames": 345600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.704,
+      "exactFullScaleSamples": 9,
+      "nearFullScaleSamples": 10,
+      "nearFullScaleRatio": 2.894e-05,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 5.830542,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 5.836875,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 5.843042,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 5.849083,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 5.817583,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 4.32,
+      "quietWindowRatio": 0.3,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.23,
+      "longestInteriorQuietSeconds": 0.66,
+      "nonPaddingDurationSeconds": 13.95,
+      "speechCharacterCount": 65,
+      "charactersPerNonPaddingSecond": 4.6595,
+      "rateRatioToSpeakerMedian": 0.7964
+    },
+    {
+      "id": "lesson17-turn-037-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 8.4,
+      "frames": 201600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -3.569,
+      "rmsDbfs": -18.715,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.78,
+      "quietWindowRatio": 0.211905,
+      "leadingQuietSeconds": 0.18,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 0.64,
+      "nonPaddingDurationSeconds": 7.96,
+      "speechCharacterCount": 44,
+      "charactersPerNonPaddingSecond": 5.5276,
+      "rateRatioToSpeakerMedian": 0.9581
+    },
+    {
+      "id": "lesson17-turn-038-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.84,
+      "frames": 308160,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.614,
+      "exactFullScaleSamples": 13,
+      "nearFullScaleSamples": 13,
+      "nearFullScaleRatio": 4.219e-05,
+      "nearFullScaleLongestRunSamples": 8,
+      "nearFullScaleLongestRunMilliseconds": 0.3333,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.750792,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 1.743833,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 1.757958,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 2.24,
+      "quietWindowRatio": 0.174455,
+      "leadingQuietSeconds": 0.13,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.5,
+      "nonPaddingDurationSeconds": 12.44,
+      "speechCharacterCount": 75,
+      "charactersPerNonPaddingSecond": 6.0289,
+      "rateRatioToSpeakerMedian": 1.0305
+    },
+    {
+      "id": "lesson17-turn-039-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.96,
+      "frames": 239040,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.064,
+      "rmsDbfs": -18.975,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.55,
+      "quietWindowRatio": 0.256024,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.25,
+      "longestInteriorQuietSeconds": 1.03,
+      "nonPaddingDurationSeconds": 9.49,
+      "speechCharacterCount": 53,
+      "charactersPerNonPaddingSecond": 5.5848,
+      "rateRatioToSpeakerMedian": 0.968
+    },
+    {
+      "id": "lesson17-turn-040-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.56,
+      "frames": 349440,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -16.734,
+      "exactFullScaleSamples": 16,
+      "nearFullScaleSamples": 16,
+      "nearFullScaleRatio": 4.579e-05,
+      "nearFullScaleLongestRunSamples": 8,
+      "nearFullScaleLongestRunMilliseconds": 0.3333,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 2.813583,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 2.81875,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 6.00775,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 11.429583,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 12.183458,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 3.82,
+      "quietWindowRatio": 0.262363,
+      "leadingQuietSeconds": 0.19,
+      "trailingQuietSeconds": 0.19,
+      "longestInteriorQuietSeconds": 0.6,
+      "nonPaddingDurationSeconds": 14.18,
+      "speechCharacterCount": 67,
+      "charactersPerNonPaddingSecond": 4.725,
+      "rateRatioToSpeakerMedian": 0.8076
+    },
+    {
+      "id": "lesson17-turn-041-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.04,
+      "frames": 288960,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.891,
+      "exactFullScaleSamples": 11,
+      "nearFullScaleSamples": 11,
+      "nearFullScaleRatio": 3.807e-05,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.9085,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 0.914417,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 0.873375,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 0.891167,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 0.902667,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 1.81,
+      "quietWindowRatio": 0.150332,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.33,
+      "longestInteriorQuietSeconds": 0.2,
+      "nonPaddingDurationSeconds": 11.7,
+      "speechCharacterCount": 66,
+      "charactersPerNonPaddingSecond": 5.641,
+      "rateRatioToSpeakerMedian": 0.9642
+    },
+    {
+      "id": "lesson17-turn-042-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 12.76,
+      "frames": 306240,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.921,
+      "rmsDbfs": -18.075,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.83,
+      "quietWindowRatio": 0.143417,
+      "leadingQuietSeconds": 0.13,
+      "trailingQuietSeconds": 0.25,
+      "longestInteriorQuietSeconds": 0.36,
+      "nonPaddingDurationSeconds": 12.38,
+      "speechCharacterCount": 62,
+      "charactersPerNonPaddingSecond": 5.0081,
+      "rateRatioToSpeakerMedian": 0.8681
+    },
+    {
+      "id": "lesson17-turn-043-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.88,
+      "frames": 309120,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.32,
+      "exactFullScaleSamples": 1,
+      "nearFullScaleSamples": 1,
+      "nearFullScaleRatio": 3.23e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 3.634417,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.94,
+      "quietWindowRatio": 0.228261,
+      "leadingQuietSeconds": 0.2,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 1.28,
+      "nonPaddingDurationSeconds": 12.42,
+      "speechCharacterCount": 72,
+      "charactersPerNonPaddingSecond": 5.7971,
+      "rateRatioToSpeakerMedian": 0.9908
+    },
+    {
+      "id": "lesson17-turn-044-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 12.04,
+      "frames": 288960,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.568,
+      "exactFullScaleSamples": 33,
+      "nearFullScaleSamples": 34,
+      "nearFullScaleRatio": 0.00011766,
+      "nearFullScaleLongestRunSamples": 4,
+      "nearFullScaleLongestRunMilliseconds": 0.1667,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.992458,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 1.09325,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.668333,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.787167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.872167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 2.91,
+      "quietWindowRatio": 0.241694,
+      "leadingQuietSeconds": 0.34,
+      "trailingQuietSeconds": 0.22,
+      "longestInteriorQuietSeconds": 1.08,
+      "nonPaddingDurationSeconds": 11.48,
+      "speechCharacterCount": 67,
+      "charactersPerNonPaddingSecond": 5.8362,
+      "rateRatioToSpeakerMedian": 1.0505
+    },
+    {
+      "id": "lesson17-turn-045-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.6,
+      "frames": 230400,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -3.532,
+      "rmsDbfs": -18.398,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.95,
+      "quietWindowRatio": 0.203125,
+      "leadingQuietSeconds": 0.26,
+      "trailingQuietSeconds": 0.41,
+      "longestInteriorQuietSeconds": 0.17,
+      "nonPaddingDurationSeconds": 8.93,
+      "speechCharacterCount": 66,
+      "charactersPerNonPaddingSecond": 7.3908,
+      "rateRatioToSpeakerMedian": 1.2811
+    },
+    {
+      "id": "lesson17-turn-046-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 15.24,
+      "frames": 365760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.599,
+      "exactFullScaleSamples": 3,
+      "nearFullScaleSamples": 3,
+      "nearFullScaleRatio": 8.2e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.251708,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 2.822417,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.46,
+      "quietWindowRatio": 0.161417,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.71,
+      "nonPaddingDurationSeconds": 14.94,
+      "speechCharacterCount": 104,
+      "charactersPerNonPaddingSecond": 6.9612,
+      "rateRatioToSpeakerMedian": 1.1898
+    },
+    {
+      "id": "lesson17-turn-047-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 12.24,
+      "frames": 293760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.859,
+      "rmsDbfs": -17.648,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.93,
+      "quietWindowRatio": 0.15768,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.33,
+      "longestInteriorQuietSeconds": 0.25,
+      "nonPaddingDurationSeconds": 11.69,
+      "speechCharacterCount": 69,
+      "charactersPerNonPaddingSecond": 5.9025,
+      "rateRatioToSpeakerMedian": 1.0231
+    },
+    {
+      "id": "lesson17-turn-048-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 16.72,
+      "frames": 401280,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.858,
+      "exactFullScaleSamples": 17,
+      "nearFullScaleSamples": 17,
+      "nearFullScaleRatio": 4.236e-05,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 10.785208,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 10.797458,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 6.441833,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 10.950458,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 10.955583,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 3.18,
+      "quietWindowRatio": 0.190191,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.2,
+      "longestInteriorQuietSeconds": 0.51,
+      "nonPaddingDurationSeconds": 16.3,
+      "speechCharacterCount": 108,
+      "charactersPerNonPaddingSecond": 6.6258,
+      "rateRatioToSpeakerMedian": 1.1325
+    },
+    {
+      "id": "lesson17-turn-049-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 9.84,
+      "frames": 236160,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.692,
+      "rmsDbfs": -18.791,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 1.33,
+      "quietWindowRatio": 0.135163,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 0.15,
+      "nonPaddingDurationSeconds": 9.36,
+      "speechCharacterCount": 54,
+      "charactersPerNonPaddingSecond": 5.7692,
+      "rateRatioToSpeakerMedian": 1.0
+    },
+    {
+      "id": "lesson17-turn-050-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.24,
+      "frames": 341760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.753,
+      "exactFullScaleSamples": 7,
+      "nearFullScaleSamples": 7,
+      "nearFullScaleRatio": 2.048e-05,
+      "nearFullScaleLongestRunSamples": 3,
+      "nearFullScaleLongestRunMilliseconds": 0.125,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 11.217792,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 11.211333,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 11.204917,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 11.224208,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.9,
+      "quietWindowRatio": 0.203652,
+      "leadingQuietSeconds": 0.25,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.67,
+      "nonPaddingDurationSeconds": 13.7,
+      "speechCharacterCount": 91,
+      "charactersPerNonPaddingSecond": 6.6423,
+      "rateRatioToSpeakerMedian": 1.1353
+    },
+    {
+      "id": "lesson17-turn-051-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 11.24,
+      "frames": 269760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -3.013,
+      "rmsDbfs": -18.92,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.3,
+      "quietWindowRatio": 0.204626,
+      "leadingQuietSeconds": 0.27,
+      "trailingQuietSeconds": 0.21,
+      "longestInteriorQuietSeconds": 0.23,
+      "nonPaddingDurationSeconds": 10.76,
+      "speechCharacterCount": 63,
+      "charactersPerNonPaddingSecond": 5.855,
+      "rateRatioToSpeakerMedian": 1.0149
+    },
+    {
+      "id": "lesson17-turn-052-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.16,
+      "frames": 315840,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.102,
+      "exactFullScaleSamples": 24,
+      "nearFullScaleSamples": 24,
+      "nearFullScaleRatio": 7.599e-05,
+      "nearFullScaleLongestRunSamples": 10,
+      "nearFullScaleLongestRunMilliseconds": 0.4167,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.352,
+          "samples": 10,
+          "durationMilliseconds": 0.4167
+        },
+        {
+          "startSeconds": 0.345417,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 0.358417,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        }
+      ],
+      "quietSeconds": 3.32,
+      "quietWindowRatio": 0.25228,
+      "leadingQuietSeconds": 0.18,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.8,
+      "nonPaddingDurationSeconds": 12.69,
+      "speechCharacterCount": 70,
+      "charactersPerNonPaddingSecond": 5.5162,
+      "rateRatioToSpeakerMedian": 0.9428
+    },
+    {
+      "id": "lesson17-turn-053-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.96,
+      "frames": 335040,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.829,
+      "exactFullScaleSamples": 33,
+      "nearFullScaleSamples": 33,
+      "nearFullScaleRatio": 9.85e-05,
+      "nearFullScaleLongestRunSamples": 6,
+      "nearFullScaleLongestRunMilliseconds": 0.25,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.522708,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 1.530667,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 7.691083,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 1.514625,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 0.933292,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        }
+      ],
+      "quietSeconds": 3.22,
+      "quietWindowRatio": 0.230659,
+      "leadingQuietSeconds": 0.14,
+      "trailingQuietSeconds": 0.2,
+      "longestInteriorQuietSeconds": 0.94,
+      "nonPaddingDurationSeconds": 13.62,
+      "speechCharacterCount": 81,
+      "charactersPerNonPaddingSecond": 5.9471,
+      "rateRatioToSpeakerMedian": 1.0705
+    },
+    {
+      "id": "lesson17-turn-054-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.8,
+      "frames": 355200,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -19.733,
+      "exactFullScaleSamples": 2,
+      "nearFullScaleSamples": 2,
+      "nearFullScaleRatio": 5.63e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 10.669833,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 5.84,
+      "quietWindowRatio": 0.394595,
+      "leadingQuietSeconds": 0.03,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 1.2,
+      "nonPaddingDurationSeconds": 14.51,
+      "speechCharacterCount": 59,
+      "charactersPerNonPaddingSecond": 4.0662,
+      "rateRatioToSpeakerMedian": 0.7048
+    },
+    {
+      "id": "lesson17-turn-055-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 14.12,
+      "frames": 338880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.197,
+      "rmsDbfs": -16.438,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.87,
+      "quietWindowRatio": 0.203258,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.34,
+      "longestInteriorQuietSeconds": 0.29,
+      "nonPaddingDurationSeconds": 13.57,
+      "speechCharacterCount": 80,
+      "charactersPerNonPaddingSecond": 5.8954,
+      "rateRatioToSpeakerMedian": 1.0076
+    },
+    {
+      "id": "lesson17-turn-056-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 10.68,
+      "frames": 256320,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.062,
+      "rmsDbfs": -19.294,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.75,
+      "quietWindowRatio": 0.257491,
+      "leadingQuietSeconds": 0.17,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.58,
+      "nonPaddingDurationSeconds": 10.24,
+      "speechCharacterCount": 59,
+      "charactersPerNonPaddingSecond": 5.7617,
+      "rateRatioToSpeakerMedian": 0.9987
+    },
+    {
+      "id": "lesson17-turn-057-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.72,
+      "frames": 353280,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.861,
+      "exactFullScaleSamples": 3,
+      "nearFullScaleSamples": 3,
+      "nearFullScaleRatio": 8.49e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 6.6205,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 6.605083,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 3.05,
+      "quietWindowRatio": 0.207201,
+      "leadingQuietSeconds": 0.29,
+      "trailingQuietSeconds": 0.21,
+      "longestInteriorQuietSeconds": 0.67,
+      "nonPaddingDurationSeconds": 14.22,
+      "speechCharacterCount": 75,
+      "charactersPerNonPaddingSecond": 5.2743,
+      "rateRatioToSpeakerMedian": 0.9494
+    },
+    {
+      "id": "lesson17-turn-058-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 12.2,
+      "frames": 292800,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -4.43,
+      "rmsDbfs": -19.214,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.18,
+      "quietWindowRatio": 0.178689,
+      "leadingQuietSeconds": 0.28,
+      "trailingQuietSeconds": 0.21,
+      "longestInteriorQuietSeconds": 0.43,
+      "nonPaddingDurationSeconds": 11.71,
+      "speechCharacterCount": 66,
+      "charactersPerNonPaddingSecond": 5.6362,
+      "rateRatioToSpeakerMedian": 0.9769
+    },
+    {
+      "id": "lesson17-turn-059-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.88,
+      "frames": 309120,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.48,
+      "exactFullScaleSamples": 23,
+      "nearFullScaleSamples": 23,
+      "nearFullScaleRatio": 7.44e-05,
+      "nearFullScaleLongestRunSamples": 5,
+      "nearFullScaleLongestRunMilliseconds": 0.2083,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.277375,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 0.2705,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 0.290833,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 0.284167,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 0.2635,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 2.35,
+      "quietWindowRatio": 0.182453,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.29,
+      "nonPaddingDurationSeconds": 12.38,
+      "speechCharacterCount": 74,
+      "charactersPerNonPaddingSecond": 5.9774,
+      "rateRatioToSpeakerMedian": 1.0217
+    },
+    {
+      "id": "lesson17-turn-060-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 13.24,
+      "frames": 317760,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.003,
+      "exactFullScaleSamples": 83,
+      "nearFullScaleSamples": 83,
+      "nearFullScaleRatio": 0.0002612,
+      "nearFullScaleLongestRunSamples": 8,
+      "nearFullScaleLongestRunMilliseconds": 0.3333,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 5.30975,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 5.64975,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 5.644542,
+          "samples": 7,
+          "durationMilliseconds": 0.2917
+        },
+        {
+          "startSeconds": 5.302375,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 5.634292,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        }
+      ],
+      "quietSeconds": 2.49,
+      "quietWindowRatio": 0.188066,
+      "leadingQuietSeconds": 0.2,
+      "trailingQuietSeconds": 0.23,
+      "longestInteriorQuietSeconds": 0.69,
+      "nonPaddingDurationSeconds": 12.81,
+      "speechCharacterCount": 78,
+      "charactersPerNonPaddingSecond": 6.089,
+      "rateRatioToSpeakerMedian": 1.096
+    },
+    {
+      "id": "lesson17-turn-061-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 12.2,
+      "frames": 292800,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.553,
+      "rmsDbfs": -17.775,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.14,
+      "quietWindowRatio": 0.17541,
+      "leadingQuietSeconds": 0.25,
+      "trailingQuietSeconds": 0.24,
+      "longestInteriorQuietSeconds": 0.29,
+      "nonPaddingDurationSeconds": 11.71,
+      "speechCharacterCount": 58,
+      "charactersPerNonPaddingSecond": 4.953,
+      "rateRatioToSpeakerMedian": 0.8585
+    },
+    {
+      "id": "lesson17-turn-062-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 15.08,
+      "frames": 361920,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.992,
+      "exactFullScaleSamples": 4,
+      "nearFullScaleSamples": 4,
+      "nearFullScaleRatio": 1.105e-05,
+      "nearFullScaleLongestRunSamples": 3,
+      "nearFullScaleLongestRunMilliseconds": 0.125,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 4.582458,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 4.591167,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 3.45,
+      "quietWindowRatio": 0.22878,
+      "leadingQuietSeconds": 0.15,
+      "trailingQuietSeconds": 0.35,
+      "longestInteriorQuietSeconds": 0.69,
+      "nonPaddingDurationSeconds": 14.58,
+      "speechCharacterCount": 78,
+      "charactersPerNonPaddingSecond": 5.3498,
+      "rateRatioToSpeakerMedian": 0.9144
+    },
+    {
+      "id": "lesson17-turn-063-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 10.12,
+      "frames": 242880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.355,
+      "exactFullScaleSamples": 7,
+      "nearFullScaleSamples": 7,
+      "nearFullScaleRatio": 2.882e-05,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 6.429375,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 6.434167,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 6.438875,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 6.4245,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.87,
+      "quietWindowRatio": 0.283597,
+      "leadingQuietSeconds": 0.18,
+      "trailingQuietSeconds": 0.54,
+      "longestInteriorQuietSeconds": 0.53,
+      "nonPaddingDurationSeconds": 9.4,
+      "speechCharacterCount": 56,
+      "charactersPerNonPaddingSecond": 5.9574,
+      "rateRatioToSpeakerMedian": 1.0326
+    },
+    {
+      "id": "lesson17-turn-064-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 11.4,
+      "frames": 273600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -15.944,
+      "exactFullScaleSamples": 59,
+      "nearFullScaleSamples": 59,
+      "nearFullScaleRatio": 0.00021564,
+      "nearFullScaleLongestRunSamples": 6,
+      "nearFullScaleLongestRunMilliseconds": 0.25,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.297583,
+          "samples": 6,
+          "durationMilliseconds": 0.25
+        },
+        {
+          "startSeconds": 0.610708,
+          "samples": 5,
+          "durationMilliseconds": 0.2083
+        },
+        {
+          "startSeconds": 3.399083,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.404208,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        },
+        {
+          "startSeconds": 3.425625,
+          "samples": 4,
+          "durationMilliseconds": 0.1667
+        }
+      ],
+      "quietSeconds": 2.63,
+      "quietWindowRatio": 0.230702,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.3,
+      "longestInteriorQuietSeconds": 0.5,
+      "nonPaddingDurationSeconds": 10.87,
+      "speechCharacterCount": 76,
+      "charactersPerNonPaddingSecond": 6.9917,
+      "rateRatioToSpeakerMedian": 1.2585
+    },
+    {
+      "id": "lesson17-turn-065-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 13.2,
+      "frames": 316800,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.79,
+      "exactFullScaleSamples": 1,
+      "nearFullScaleSamples": 1,
+      "nearFullScaleRatio": 3.16e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 0.404125,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 3.47,
+      "quietWindowRatio": 0.262879,
+      "leadingQuietSeconds": 0.29,
+      "trailingQuietSeconds": 0.32,
+      "longestInteriorQuietSeconds": 1.0,
+      "nonPaddingDurationSeconds": 12.59,
+      "speechCharacterCount": 73,
+      "charactersPerNonPaddingSecond": 5.7983,
+      "rateRatioToSpeakerMedian": 0.991
+    },
+    {
+      "id": "lesson17-turn-066-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.72,
+      "frames": 353280,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -20.023,
+      "exactFullScaleSamples": 5,
+      "nearFullScaleSamples": 5,
+      "nearFullScaleRatio": 1.415e-05,
+      "nearFullScaleLongestRunSamples": 3,
+      "nearFullScaleLongestRunMilliseconds": 0.125,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 3.5865,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.580208,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 5.42,
+      "quietWindowRatio": 0.368207,
+      "leadingQuietSeconds": 0.2,
+      "trailingQuietSeconds": 0.23,
+      "longestInteriorQuietSeconds": 0.64,
+      "nonPaddingDurationSeconds": 14.29,
+      "speechCharacterCount": 56,
+      "charactersPerNonPaddingSecond": 3.9188,
+      "rateRatioToSpeakerMedian": 0.6793
+    },
+    {
+      "id": "lesson17-turn-067-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.12,
+      "frames": 290880,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.179,
+      "exactFullScaleSamples": 2,
+      "nearFullScaleSamples": 2,
+      "nearFullScaleRatio": 6.88e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 11.232833,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 11.237458,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.7,
+      "quietWindowRatio": 0.222772,
+      "leadingQuietSeconds": 0.3,
+      "trailingQuietSeconds": 0.26,
+      "longestInteriorQuietSeconds": 0.42,
+      "nonPaddingDurationSeconds": 11.56,
+      "speechCharacterCount": 75,
+      "charactersPerNonPaddingSecond": 6.4879,
+      "rateRatioToSpeakerMedian": 1.1089
+    },
+    {
+      "id": "lesson17-turn-068-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 12.36,
+      "frames": 296640,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -18.435,
+      "exactFullScaleSamples": 2,
+      "nearFullScaleSamples": 2,
+      "nearFullScaleRatio": 6.74e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 8.5775,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        }
+      ],
+      "quietSeconds": 2.81,
+      "quietWindowRatio": 0.227346,
+      "leadingQuietSeconds": 0.21,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.7,
+      "nonPaddingDurationSeconds": 11.88,
+      "speechCharacterCount": 66,
+      "charactersPerNonPaddingSecond": 5.5556,
+      "rateRatioToSpeakerMedian": 1.0
+    },
+    {
+      "id": "lesson17-turn-069-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 13.68,
+      "frames": 328320,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.756,
+      "rmsDbfs": -19.494,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 3.74,
+      "quietWindowRatio": 0.273392,
+      "leadingQuietSeconds": 0.16,
+      "trailingQuietSeconds": 0.39,
+      "longestInteriorQuietSeconds": 0.62,
+      "nonPaddingDurationSeconds": 13.13,
+      "speechCharacterCount": 75,
+      "charactersPerNonPaddingSecond": 5.7121,
+      "rateRatioToSpeakerMedian": 0.9901
+    },
+    {
+      "id": "lesson17-turn-070-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 15.4,
+      "frames": 369600,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.275,
+      "exactFullScaleSamples": 3,
+      "nearFullScaleSamples": 3,
+      "nearFullScaleRatio": 8.12e-06,
+      "nearFullScaleLongestRunSamples": 2,
+      "nearFullScaleLongestRunMilliseconds": 0.0833,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 8.954333,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 7.088292,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 3.79,
+      "quietWindowRatio": 0.246104,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.78,
+      "nonPaddingDurationSeconds": 15.11,
+      "speechCharacterCount": 85,
+      "charactersPerNonPaddingSecond": 5.6254,
+      "rateRatioToSpeakerMedian": 0.9615
+    },
+    {
+      "id": "lesson17-turn-071-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 11.0,
+      "frames": 264000,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": 0.0,
+      "rmsDbfs": -15.976,
+      "exactFullScaleSamples": 14,
+      "nearFullScaleSamples": 14,
+      "nearFullScaleRatio": 5.303e-05,
+      "nearFullScaleLongestRunSamples": 3,
+      "nearFullScaleLongestRunMilliseconds": 0.125,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 6.058708,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 6.067708,
+          "samples": 3,
+          "durationMilliseconds": 0.125
+        },
+        {
+          "startSeconds": 3.761042,
+          "samples": 2,
+          "durationMilliseconds": 0.0833
+        },
+        {
+          "startSeconds": 3.771417,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 3.7715,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.79,
+      "quietWindowRatio": 0.253636,
+      "leadingQuietSeconds": 0.29,
+      "trailingQuietSeconds": 0.27,
+      "longestInteriorQuietSeconds": 0.9,
+      "nonPaddingDurationSeconds": 10.44,
+      "speechCharacterCount": 58,
+      "charactersPerNonPaddingSecond": 5.5556,
+      "rateRatioToSpeakerMedian": 1.0
+    },
+    {
+      "id": "lesson17-turn-072-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 11.08,
+      "frames": 265920,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -2.919,
+      "rmsDbfs": -18.749,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 2.56,
+      "quietWindowRatio": 0.231047,
+      "leadingQuietSeconds": 0.23,
+      "trailingQuietSeconds": 0.22,
+      "longestInteriorQuietSeconds": 0.52,
+      "nonPaddingDurationSeconds": 10.63,
+      "speechCharacterCount": 57,
+      "charactersPerNonPaddingSecond": 5.3622,
+      "rateRatioToSpeakerMedian": 0.9295
+    },
+    {
+      "id": "lesson17-turn-073-manabu",
+      "speaker": "manabu",
+      "voice": "Charon",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping",
+        "Over 0.01% of samples are near full scale"
+      ],
+      "durationSeconds": 14.92,
+      "frames": 358080,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -17.644,
+      "exactFullScaleSamples": 117,
+      "nearFullScaleSamples": 117,
+      "nearFullScaleRatio": 0.00032674,
+      "nearFullScaleLongestRunSamples": 8,
+      "nearFullScaleLongestRunMilliseconds": 0.3333,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 9.797,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 9.807542,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 9.839667,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 9.861875,
+          "samples": 8,
+          "durationMilliseconds": 0.3333
+        },
+        {
+          "startSeconds": 9.776417,
+          "samples": 7,
+          "durationMilliseconds": 0.2917
+        }
+      ],
+      "quietSeconds": 3.58,
+      "quietWindowRatio": 0.239946,
+      "leadingQuietSeconds": 0.01,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.35,
+      "nonPaddingDurationSeconds": 14.63,
+      "speechCharacterCount": 68,
+      "charactersPerNonPaddingSecond": 4.648,
+      "rateRatioToSpeakerMedian": 0.8366
+    },
+    {
+      "id": "lesson17-turn-074-ikumi",
+      "speaker": "ikumi",
+      "voice": "Orus",
+      "errors": [],
+      "reviewFlags": [
+        "Samples reach signed PCM full scale; inspect for clipping"
+      ],
+      "durationSeconds": 14.72,
+      "frames": 353280,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -0.0,
+      "rmsDbfs": -16.417,
+      "exactFullScaleSamples": 2,
+      "nearFullScaleSamples": 2,
+      "nearFullScaleRatio": 5.66e-06,
+      "nearFullScaleLongestRunSamples": 1,
+      "nearFullScaleLongestRunMilliseconds": 0.0417,
+      "nearFullScaleLongestIntervals": [
+        {
+          "startSeconds": 1.4215,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        },
+        {
+          "startSeconds": 6.363125,
+          "samples": 1,
+          "durationMilliseconds": 0.0417
+        }
+      ],
+      "quietSeconds": 2.35,
+      "quietWindowRatio": 0.159647,
+      "leadingQuietSeconds": 0.17,
+      "trailingQuietSeconds": 0.29,
+      "longestInteriorQuietSeconds": 0.32,
+      "nonPaddingDurationSeconds": 14.26,
+      "speechCharacterCount": 82,
+      "charactersPerNonPaddingSecond": 5.7504,
+      "rateRatioToSpeakerMedian": 0.9829
+    },
+    {
+      "id": "lesson17-turn-075-mako",
+      "speaker": "mako",
+      "voice": "Aoede",
+      "errors": [],
+      "reviewFlags": [],
+      "durationSeconds": 14.0,
+      "frames": 336000,
+      "sampleRateHz": 24000,
+      "channels": 1,
+      "sampleWidthBytes": 2,
+      "samplePeakDbfs": -1.502,
+      "rmsDbfs": -19.028,
+      "exactFullScaleSamples": 0,
+      "nearFullScaleSamples": 0,
+      "nearFullScaleRatio": 0.0,
+      "nearFullScaleLongestRunSamples": 0,
+      "nearFullScaleLongestRunMilliseconds": 0.0,
+      "nearFullScaleLongestIntervals": [],
+      "quietSeconds": 3.69,
+      "quietWindowRatio": 0.263571,
+      "leadingQuietSeconds": 0.22,
+      "trailingQuietSeconds": 0.28,
+      "longestInteriorQuietSeconds": 0.36,
+      "nonPaddingDurationSeconds": 13.5,
+      "speechCharacterCount": 71,
+      "charactersPerNonPaddingSecond": 5.2593,
+      "rateRatioToSpeakerMedian": 0.9116
+    }
+  ]
+}

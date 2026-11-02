@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "scriptSha256": "8970902f9a1ab40071a95fdbdc0e7e00d321b327506dd93ebf0636a2c075f55e",
+  "sourceTurns": 85,
+  "activeTurns": 81,
+  "sourceSpeechCharacters": 5606,
+  "activeSpeechCharacters": 5358,
+  "chapters": 8,
+  "activeBodyViewCount": 19,
+  "settingsViewsStable": true,
+  "subtitlesExactlyMatchCaptions": true,
+  "subtitlesMaximumTwoLines": true,
+  "quizQuestionsHaveNoAnswerHighlight": [
+    "lesson12-turn-069-mako",
+    "lesson12-turn-073-mako",
+    "lesson12-turn-077-mako"
+  ],
+  "omittedTurnIds": [
+    "lesson12-turn-057-mako",
+    "lesson12-turn-058-ikumi",
+    "lesson12-turn-059-manabu",
+    "lesson12-turn-060-ikumi"
+  ],
+  "editorialReview": "056 to 061r2 transitions naturally into Chat walkthrough. Preparation-versus-success principle remains in 064 and 084. Episode author independently reviewed this cut.",
+  "visualReview": "Initial previews and final MP4 six-frame contact sheet reviewed. No clipped tables, overlapping text or mismatched diagram targets. Continuous excerpt played from start to ended at normal speed.",
+  "auditoryReviewPerformed": false
+}

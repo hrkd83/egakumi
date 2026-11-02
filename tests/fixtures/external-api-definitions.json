@@ -1,0 +1,425 @@
+{
+  "description": "検証専用の外部API定義。Coreの標準配備例・標準配備対象ではありません。",
+  "apiDefinitions": [
+    {
+      "name": "sample-rest-v1",
+      "displayName": "Sample Rest V1",
+      "path": "tools/sample-rest/v1",
+      "backendService": "external",
+      "backendAudience": "https://provider.example.com",
+      "productId": "tool-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "echo-get",
+          "displayName": "Echo Get",
+          "method": "GET",
+          "urlTemplate": "/echo",
+          "templateParameters": [],
+          "backendUrlTemplate": "/rest/echo"
+        },
+        {
+          "name": "echo",
+          "displayName": "Echo",
+          "method": "POST",
+          "urlTemplate": "/echo",
+          "templateParameters": [],
+          "backendUrlTemplate": "/rest/echo"
+        },
+        {
+          "name": "job-create",
+          "displayName": "Job Create",
+          "method": "POST",
+          "urlTemplate": "/jobs",
+          "templateParameters": [],
+          "backendUrlTemplate": "/rest/jobs"
+        },
+        {
+          "name": "job-get",
+          "displayName": "Job Get",
+          "method": "GET",
+          "urlTemplate": "/jobs/{jobId}",
+          "templateParameters": [
+            {
+              "name": "jobId",
+              "description": "Explicit approved identifier",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "backendUrlTemplate": "/rest/jobs/{jobId}"
+        },
+        {
+          "name": "job-cancel",
+          "displayName": "Job Cancel",
+          "method": "POST",
+          "urlTemplate": "/jobs/{jobId}/cancel",
+          "templateParameters": [
+            {
+              "name": "jobId",
+              "description": "Explicit approved identifier",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "backendUrlTemplate": "/rest/jobs/{jobId}/cancel"
+        },
+        {
+          "name": "file-download",
+          "displayName": "File Download",
+          "method": "GET",
+          "urlTemplate": "/files/{fileId}",
+          "templateParameters": [
+            {
+              "name": "fileId",
+              "description": "Explicit approved identifier",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "backendUrlTemplate": "/rest/files/{fileId}"
+        },
+        {
+          "name": "file-delete",
+          "displayName": "File Delete",
+          "method": "DELETE",
+          "urlTemplate": "/files/{fileId}",
+          "templateParameters": [
+            {
+              "name": "fileId",
+              "description": "Explicit approved identifier",
+              "type": "string",
+              "required": true
+            }
+          ],
+          "backendUrlTemplate": "/rest/files/{fileId}"
+        },
+        {
+          "name": "file-upload",
+          "displayName": "File Upload",
+          "method": "POST",
+          "urlTemplate": "/files",
+          "templateParameters": [],
+          "backendUrlTemplate": "/rest/files"
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "echo-get": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          },
+          "echo": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "json"
+          },
+          "job-create": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "json"
+          },
+          "job-get": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          },
+          "job-cancel": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          },
+          "file-download": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          },
+          "file-delete": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          },
+          "file-upload": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 1048576,
+            "bodyFormat": "multipart",
+            "contentTypes": [
+              "multipart/form-data"
+            ]
+          }
+        }
+      },
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      },
+      "backendUrl": "__TOOLS_HTTP_BACKEND__",
+      "serviceClass": "sample"
+    },
+    {
+      "name": "sample-mcp-v1",
+      "displayName": "Sample Mcp V1",
+      "path": "tools/sample-mcp/v1",
+      "backendService": "external",
+      "backendAudience": "https://provider.example.com",
+      "productId": "tool-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "invoke",
+          "displayName": "Invoke",
+          "method": "POST",
+          "urlTemplate": "/",
+          "templateParameters": []
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "invoke": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          }
+        }
+      },
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      },
+      "apiType": "mcp",
+      "mcpProxy": {
+        "transport": "streamable",
+        "endpoints": [
+          {
+            "name": "message",
+            "uriTemplate": "/mcp"
+          }
+        ]
+      },
+      "backendUrl": "__TOOLS_HTTP_BACKEND__",
+      "serviceClass": "sample"
+    },
+    {
+      "name": "sample-mcp-legacy",
+      "displayName": "Sample Mcp Legacy",
+      "path": "tools/sample-mcp-legacy",
+      "backendService": "external",
+      "backendAudience": "https://provider.example.com",
+      "productId": "tool-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "invoke",
+          "displayName": "Invoke",
+          "method": "POST",
+          "urlTemplate": "/",
+          "templateParameters": []
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "invoke": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          }
+        }
+      },
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      },
+      "apiType": "mcp",
+      "mcpProxy": {
+        "transport": "sse",
+        "endpoints": [
+          {
+            "name": "sse",
+            "uriTemplate": "/legacy/sse"
+          },
+          {
+            "name": "message",
+            "uriTemplate": "/legacy/messages/"
+          }
+        ]
+      },
+      "backendUrl": "__TOOLS_HTTP_BACKEND__",
+      "serviceClass": "sample"
+    },
+    {
+      "name": "sample-a2a-v1",
+      "displayName": "Sample A2A V1",
+      "path": "agents/sample/a2a/v1",
+      "backendService": "external",
+      "backendAudience": "https://provider.example.com",
+      "productId": "tool-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "a2a-rpc",
+          "displayName": "A2A Rpc",
+          "method": "POST",
+          "urlTemplate": "/a2a",
+          "templateParameters": [],
+          "backendUrlTemplate": "/a2a"
+        },
+        {
+          "name": "a2a-card",
+          "displayName": "A2A Card",
+          "method": "GET",
+          "urlTemplate": "/.well-known/agent-card.json",
+          "templateParameters": [],
+          "staticResponse": {
+            "contentType": "application/json",
+            "body": {
+              "protocolVersion": "0.3.0",
+              "name": "Synthetic A2A probe",
+              "description": "External sample; synthetic tasks only",
+              "version": "1.0.0",
+              "url": "https://__PUBLIC_HOST_NAME__/agents/sample/a2a/v1/a2a",
+              "preferredTransport": "JSONRPC",
+              "capabilities": {
+                "streaming": true,
+                "pushNotifications": false
+              },
+              "defaultInputModes": [
+                "text/plain"
+              ],
+              "defaultOutputModes": [
+                "text/plain"
+              ],
+              "securitySchemes": {
+                "bearer": {
+                  "type": "http",
+                  "scheme": "bearer",
+                  "bearerFormat": "JWT"
+                }
+              },
+              "security": [
+                {
+                  "bearer": []
+                }
+              ],
+              "skills": [
+                {
+                  "id": "synthetic-echo",
+                  "name": "Synthetic echo",
+                  "description": "Echo synthetic text",
+                  "tags": [
+                    "sample",
+                    "network",
+                    "a2a"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "a2a-rpc": {
+            "kind": "a2aJsonRpc",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "json",
+            "allowedMethods": [
+              "message/send",
+              "message/stream",
+              "tasks/get",
+              "tasks/cancel"
+            ]
+          },
+          "a2a-card": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          }
+        }
+      },
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      },
+      "backendUrl": "__TOOLS_HTTP_BACKEND__",
+      "serviceClass": "sample"
+    },
+    {
+      "name": "sample-grpc-v1",
+      "displayName": "Sample Grpc V1",
+      "path": "",
+      "backendService": "external",
+      "backendAudience": "https://provider.example.com",
+      "productId": "tool-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "invoke",
+          "displayName": "Invoke",
+          "method": "POST",
+          "urlTemplate": "/",
+          "templateParameters": []
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "invoke": {
+            "kind": "registeredOperation",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "none"
+          }
+        }
+      },
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      },
+      "apiType": "grpc",
+      "grpc": {
+        "definition": "syntax = \"proto3\";\npackage wf.sample.v1;\n\nmessage ProbeRequest { string text = 1; int32 count = 2; }\nmessage ProbeReply { string text = 1; int32 sequence = 2; }\n\nservice Probe {\n  rpc Echo(ProbeRequest) returns (ProbeReply);\n  rpc ServerStream(ProbeRequest) returns (stream ProbeReply);\n  rpc ClientStream(stream ProbeRequest) returns (ProbeReply);\n  rpc Bidi(stream ProbeRequest) returns (stream ProbeReply);\n}\n"
+      },
+      "backendUrl": "__TOOLS_GRPC_BACKEND__",
+      "serviceClass": "sample"
+    },
+    {
+      "name": "sample-hosted-agent-v1",
+      "displayName": "Sample Hosted Agent V1",
+      "path": "agents/sample/v1",
+      "backendService": "external",
+      "backendAudience": "https://ai.azure.com",
+      "productId": "agent-users",
+      "subscriptionKeyHeader": "api-key",
+      "operations": [
+        {
+          "name": "agent-responses",
+          "displayName": "Agent Responses",
+          "method": "POST",
+          "urlTemplate": "/responses",
+          "templateParameters": [],
+          "backendUrlTemplate": "/responses?api-version=v1"
+        }
+      ],
+      "keySubscriptions": [],
+      "authorization": {
+        "mode": "subscriptionKey",
+        "operationConstraints": {
+          "agent-responses": {
+            "kind": "hostedAgentPost",
+            "maxRequestBytes": 65536,
+            "bodyFormat": "json"
+          }
+        }
+      },
+      "backendUrl": "__HOSTED_AGENT_BASE_URL__",
+      "serviceClass": "sample",
+      "backendAuthentication": {
+        "mode": "managedIdentity"
+      }
+    }
+  ]
+}

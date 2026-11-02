@@ -1,0 +1,133 @@
+<fragment>
+  <!--
+    モデル呼出し前の入力上限を検査する共通 fragment です。認可済み操作の制約を読みます。
+    JSON では元本文を保持してサイズ・出力 token・選択肢等を検査し、画像等の binary / multipart は明示サイズと操作側の検査を組み合わせます。
+    応答本文を読み込まないため、生成結果の SSE やストリーミング転送をここで止めません。
+    設定や入力が壊れていれば拒否し、上限なしで継続することはありません。
+  -->
+  <!-- Include before any request transformation or backend authentication.
+       JSON byte length comes from the preserved message. Binary/multipart
+       contracts use explicit Content-Length plus operation validate-content.
+       No response body is read, so streaming remains a direct relay. -->
+  <!-- 入力上限・出力上限を確認します。result は拒否を既定として作り、すべての検査を通ったときだけ許可します。 -->
+  <set-variable name="gatewayLimitDecision" value="@{
+    var result = new JObject(new JProperty(&quot;allowed&quot;, false), new JProperty(&quot;status&quot;, 500), new JProperty(&quot;code&quot;, &quot;LIMITS_NOT_CONFIGURED&quot;));
+    try {
+      var constraint = JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
+      var maxBytes = constraint[&quot;maxRequestBytes&quot;];
+      if (maxBytes == null || maxBytes.Type != JTokenType.Integer || (long)maxBytes &lt; 1 || (long)maxBytes &gt; 4194304) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+      var format = (string)constraint[&quot;bodyFormat&quot;] ?? &quot;json&quot;;
+      if (format == &quot;none&quot;) {
+        result[&quot;allowed&quot;] = true; result[&quot;status&quot;] = 200; result[&quot;code&quot;] = &quot;NO_BODY_CONTRACT&quot;;
+        return result.ToString(Newtonsoft.Json.Formatting.None);
+      }
+      if (format == &quot;binary&quot; || format == &quot;multipart&quot; || format == &quot;text&quot;) {
+        /* Read no binary/multipart body here. The operation validate-content
+           policy separately enforces the bounded upload contract. */
+        var types = constraint[&quot;contentTypes&quot;] as JArray;
+        var actualType = context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim();
+        long length;
+        if (types == null || !types.Any(t =&gt; String.Equals((string)t, actualType, StringComparison.OrdinalIgnoreCase))) {
+          result[&quot;status&quot;] = 415; result[&quot;code&quot;] = &quot;UNSUPPORTED_CONTENT_TYPE&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        if (context.Request.Headers.ContainsKey(&quot;Transfer-Encoding&quot;) || !Int64.TryParse(context.Request.Headers.GetValueOrDefault(&quot;Content-Length&quot;, &quot;&quot;), out length) || length &lt; 0) {
+          result[&quot;status&quot;] = 411; result[&quot;code&quot;] = &quot;BOUNDED_UPLOAD_REQUIRED&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        if (length &gt; (long)maxBytes) {
+          result[&quot;status&quot;] = 413; result[&quot;code&quot;] = &quot;REQUEST_TOO_LARGE&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        result[&quot;allowed&quot;] = true; result[&quot;status&quot;] = 200; result[&quot;code&quot;] = &quot;BOUNDED_UPLOAD&quot;;
+        return result.ToString(Newtonsoft.Json.Formatting.None);
+      }
+      var bytes = context.Request.Body == null ? new byte[0] : context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
+      if (bytes.Length &gt; (long)maxBytes) {
+        result[&quot;status&quot;] = 413;
+        result[&quot;code&quot;] = &quot;REQUEST_TOO_LARGE&quot;;
+        return result.ToString(Newtonsoft.Json.Formatting.None);
+      }
+      var kind = (string)constraint[&quot;kind&quot;];
+      /* Embedding selects an allowed model but does not generate output tokens.
+         The loader requires a token parameter for Chat; Responses always uses
+         its explicit generation contract. Read-only external operations still
+         have the normalized byte bound, without a generation-token field. */
+      if (kind == &quot;statelessResponses&quot; || constraint[&quot;outputTokenParameter&quot;] != null) {
+        var tokenField = (string)constraint[&quot;outputTokenParameter&quot;];
+        var maxTokens = constraint[&quot;maxOutputTokens&quot;];
+        var tokenNames = new string[] { &quot;max_output_tokens&quot;, &quot;max_completion_tokens&quot;, &quot;max_tokens&quot; };
+        if (!tokenNames.Contains(tokenField) || (kind == &quot;statelessResponses&quot; &amp;&amp; tokenField != &quot;max_output_tokens&quot;)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        if (body == null || tokenNames.Any(name =&gt; name != tokenField &amp;&amp; body[name] != null)) {
+          result[&quot;status&quot;] = 400;
+          result[&quot;code&quot;] = &quot;INVALID_OUTPUT_LIMIT&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        /* 同じprofile内でもモデルごとの公表値で検査する。dynamic/nullは
+           不明な上限を捏造せず、未指定のときは上流サービスの自動値へ任せる。 */
+        var byModel = constraint[&quot;maxOutputTokensByModel&quot;] as JObject;
+        var automatic = false;
+        if (byModel != null) {
+          var model = body[&quot;model&quot;];
+          if (model?.Type != JTokenType.String || byModel.Property((string)model) == null) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+          maxTokens = byModel[(string)model];
+          automatic = maxTokens == null || maxTokens.Type == JTokenType.Null;
+        }
+        if (!automatic &amp;&amp; (maxTokens == null || maxTokens.Type != JTokenType.Integer || (long)maxTokens &lt; 1 || (long)maxTokens &gt; 1000000)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var value = body[tokenField];
+        if (value == null &amp;&amp; !automatic) {
+          result[&quot;status&quot;] = 400;
+          result[&quot;code&quot;] = &quot;OUTPUT_LIMIT_REQUIRED&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        if (value != null &amp;&amp; (value.Type != JTokenType.Integer || (long)value &lt; 1 || (long)value &gt; 1000000)) {
+          result[&quot;status&quot;] = 400;
+          result[&quot;code&quot;] = &quot;INVALID_OUTPUT_LIMIT&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        if (value != null &amp;&amp; !automatic &amp;&amp; (long)value &gt; (long)maxTokens) {
+          result[&quot;status&quot;] = 400;
+          result[&quot;code&quot;] = &quot;OUTPUT_LIMIT_EXCEEDED&quot;;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+      }
+      var integers = constraint[&quot;integerLimits&quot;] as JObject;
+      var arrays = constraint[&quot;arrayLimits&quot;] as JObject;
+      var choices = constraint[&quot;stringChoices&quot;] as JObject;
+      if ((integers != null &amp;&amp; integers.Count &gt; 0) || (arrays != null &amp;&amp; arrays.Count &gt; 0) || (choices != null &amp;&amp; choices.Count &gt; 0)) {
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        if (body == null) { throw new Exception(); }
+        /* APIM の Razor 構文では、if の中身が foreach だけでも波括弧が必要です。
+           C# 単独では動く省略記法を使わず、条件と繰り返しの範囲を明示します。 */
+        if (integers != null) {
+          foreach (var field in integers.Properties()) {
+            var value = body[field.Name];
+            if (value == null &amp;&amp; !(bool)field.Value[&quot;required&quot;]) { continue; }
+            if (value == null || value.Type != JTokenType.Integer || (long)value &lt; (long)field.Value[&quot;minimum&quot;] || (long)value &gt; (long)field.Value[&quot;maximum&quot;]) { throw new Exception(); }
+          }
+        }
+        if (arrays != null) {
+          foreach (var field in arrays.Properties()) {
+            var value = body[field.Name] as JArray;
+            if (body[field.Name] != null &amp;&amp; value != null &amp;&amp; value.Count &gt; (int)field.Value) { throw new Exception(); }
+          }
+        }
+        if (choices != null) {
+          foreach (var field in choices.Properties()) {
+            var value = body[field.Name];
+            if (value != null &amp;&amp; (value.Type != JTokenType.String || !((JArray)field.Value).Any(v =&gt; (string)v == (string)value))) { throw new Exception(); }
+          }
+        }
+      }
+      result[&quot;allowed&quot;] = true;
+      result[&quot;status&quot;] = 200;
+      result[&quot;code&quot;] = &quot;REQUEST_WITHIN_LIMITS&quot;;
+      return result.ToString(Newtonsoft.Json.Formatting.None);
+    } catch {
+      result[&quot;status&quot;] = 400;
+      result[&quot;code&quot;] = &quot;INVALID_REQUEST&quot;;
+      return result.ToString(Newtonsoft.Json.Formatting.None);
+    }
+  }" />
+</fragment>

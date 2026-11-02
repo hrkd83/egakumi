@@ -1,0 +1,64 @@
+<policies>
+  <!-- 全APIの入口で、APIMが検証した購読キーと購読IDを確認します。
+       API登録処理がこの共通ポリシーを設定し、各APIはbaseで継承します。 -->
+  <inbound>
+    <!-- App Gateway経由のHTTP要求に付く識別値を検査します。
+         gRPCの専用TCP入口は、API側が指定した経路設定に従って処理します。 -->
+    <choose id="core-trusted-ingress">
+      <when condition="@{
+        var grpc = context.Variables.ContainsKey(&quot;coreNativeGrpc&quot;) &amp;&amp; (bool)context.Variables[&quot;coreNativeGrpc&quot;];
+        return __L7_INGRESS_REQUIRED__ &amp;&amp; !grpc &amp;&amp; (context.Request.Headers.GetValueOrDefault(&quot;X-Core-L7-Ingress&quot;, &quot;&quot;) != &quot;__L7_INGRESS_EXPECTED__&quot; || context.Request.Headers[&quot;X-Core-L7-Ingress&quot;].Length != 1);
+      }">
+        <return-response><set-status code="403" reason="Trusted ingress required" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+      </when>
+    </choose>
+    <!-- 購読の状態とAPIへの利用範囲はAPIMが検証します。
+         この処理は設定したヘッダーが一意であることと、検証済み購読の存在を確認します。 -->
+    <choose id="core-common-authentication">
+      <!-- __CREDENTIAL_LOGIN_ANONYMOUS__ -->
+      <when condition="@(false)">
+        <!-- 接続ログインを使わない構成でも、chooseの分岐形式を一定に保ちます。 -->
+        <set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" />
+      </when>
+      <otherwise>
+        <set-variable name="gatewayKeyHeader" value="{{core-subscription-key-header}}" />
+        <set-variable name="gatewayAuthenticationFailure" value="@{
+          var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
+          if (context.Request.Url.Query.ContainsKey(&quot;subscription-key&quot;) || context.Request.Url.Query.ContainsKey(&quot;api-key&quot;)) { return &quot;Credentials must use the configured headers&quot;; }
+          if (!context.Request.Headers.ContainsKey(keyHeader)) { return &quot;Subscription key required&quot;; }
+          if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+              || context.Request.Headers[keyHeader].Length != 1
+              || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return &quot;Invalid subscription key&quot;; }
+          return &quot;&quot;;
+        }" />
+        <choose>
+          <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;]))">
+            <set-variable name="gatewayAuditPhase" value="rejected" />
+            <set-variable name="gatewayAuditCode" value="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;] == &quot;Subscription key required&quot; ? &quot;AUTHENTICATION_REQUIRED&quot; : &quot;INVALID_AUTHENTICATION&quot;)" />
+            <set-variable name="gatewayAuditStatus" value="@(401)" />
+            __AUTHENTICATION_TELEMETRY_XML__
+            <!-- 値そのものを応答へ含めず、問い合わせ用の要求IDを返します。 -->
+            <return-response>
+              <set-status code="401" reason="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;])" />
+              <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+              <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+            </return-response>
+          </when>
+        </choose>
+        <!-- APIの操作制約、監査、CM接続の利用検査へ検証済みの購読IDを渡します。
+             本人の追加資格情報が必要なAPIは、この後にAPI固有の検証を行います。 -->
+        <set-variable name="gatewaySubscriptionId" value="@(context.Subscription.Id)" />
+        <set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" />
+      </otherwise>
+    </choose>
+  </inbound>
+  <backend><forward-request /></backend>
+  <outbound>
+    <!-- 応答の要求IDを監査ログとそろえ、問い合わせ時に追跡できるようにします。 -->
+    <set-header id="core-response-request-id" name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+  </outbound>
+  <on-error>
+    <!-- APIMの購読検証や下流処理が失敗した応答にも、同じ要求IDを付けます。 -->
+    <set-header id="core-error-request-id" name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+  </on-error>
+</policies>

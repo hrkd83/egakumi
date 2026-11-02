@@ -1,0 +1,6135 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "a2",
+  "episodeNumber": "A2",
+  "episodeId": "a2",
+  "title": "A2 ハブ接続後のDNS・通信制御と切替",
+  "topic": "ハブ接続後のDNS・通信制御と切替",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "現行リポジトリ定義・公開設定例に基づく教材。稼働環境の取得値・実測結果ではない。",
+  "learningObjectives": [
+    "中央DNS・Private DNS・NSG／Firewallの許可・出口IPを整合させ、段階切替、新規接続での検証、切戻し、IaCへの反映と再配備の管理を説明できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "hub-dns"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "hub-private-dns"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "hub-policy"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "hub-rollout"
+    },
+    {
+      "file": "../../setup/07-hub-spoke.md"
+    },
+    {
+      "file": "../../../infra/modules/network.bicep"
+    },
+    {
+      "file": "../../../infra/modules/network-bindings.bicep"
+    },
+    {
+      "file": "../../../infra/modules/portal-dns.bicep"
+    },
+    {
+      "file": "../../../scripts/deployment/lifecycle.py"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "今回の問い",
+      "goal": "接続成功と切替完了の違いを問いにする。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "purpose",
+      "title": "切替の完了条件",
+      "goal": "名前・経路・許可・管理元を一組として整理する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-policy"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "dns",
+      "title": "二つのDNS設定",
+      "goal": "VNetとFW自身のDNS、通信許可と反映を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-dns"
+        }
+      ]
+    },
+    {
+      "id": "private",
+      "title": "8ゾーンと管理元",
+      "goal": "Private LinkとAPIM・ACAの回答、転送と所有を維持する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-private-dns"
+        }
+      ]
+    },
+    {
+      "id": "policy",
+      "title": "許可と実際の送信元",
+      "goal": "NSG・FWの制御を実経路と送信元に合わせる。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-policy"
+        }
+      ]
+    },
+    {
+      "id": "egress",
+      "title": "出口IPを照合する",
+      "goal": "SNAT・許可元・期待値を区別して確認する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-policy"
+        }
+      ]
+    },
+    {
+      "id": "rollout",
+      "title": "保存・準備・段階切替",
+      "goal": "対象範囲ごとに切替可能な手順を整える。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "title": "新しい接続で検証する",
+      "goal": "DNS・経路・制御・送信元を同じ通信で照合する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "title": "切戻しと再配備",
+      "goal": "共有資源への影響を絞り、恒久設定と管理責任をそろえる。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-private-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの確認問題",
+      "goal": "DNS・送信元・再配備の誤解を確認する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-policy"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "まとめと次の問い",
+      "goal": "運用できる切替の条件を整理し、第9回へつなげる。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-private-dns"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-policy"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "hub-rollout"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lessona2-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "ハブ接続後にエーピーアイが一度返れば、切替は完了でしょうか。ディーエヌエスや出口を変えても、次の配備まで同じままか気になります。",
+      "caption": "ハブ接続後にAPIが一度返れば、切替は完了でしょうか。DNSや出口を変えても、次の配備まで同じままか気になります。",
+      "subtitleLines": [
+        "ハブ接続後にAPIが一度返れば、切替は完了でしょうか。",
+        "DNSや出口を変えても、次の配備まで同じままか気になります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ハブ接続後にAPIが一度返れば、切替は完了でしょうか。DNSや出口を変えても、次の配備まで同じままか気になります。",
+          "lines": [
+            "ハブ接続後にAPIが一度返れば、切替は完了でしょうか。",
+            "DNSや出口を変えても、次の配備まで同じままか気になります。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながったら、切替は完了？"
+      }
+    },
+    {
+      "id": "lessona2-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "一度の成功だけでは足りません。新しい接続でも動き、問題があれば戻せることまで、完了条件にしましょう。",
+      "caption": "一度の成功だけでは足りません。新しい接続でも動き、問題があれば戻せることまで、完了条件にしましょう。",
+      "subtitleLines": [
+        "一度の成功だけでは足りません。新しい接続でも動き、",
+        "問題があれば戻せることまで、完了条件にしましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "一度の成功だけでは足りません。新しい接続でも動き、問題があれば戻せることまで、完了条件にしましょう。",
+          "lines": [
+            "一度の成功だけでは足りません。新しい接続でも動き、",
+            "問題があれば戻せることまで、完了条件にしましょう。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながったら、切替は完了？"
+      }
+    },
+    {
+      "id": "lessona2-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今日は中央ディーエヌエスへの切替から、公開通信の許可と送信元、再配備までを追います。前回の往復経路に、名前と管理を合わせます。",
+      "caption": "今日は中央DNSへの切替から、公開通信の許可と送信元、再配備までを追います。前回の往復経路に、名前と管理を合わせます。",
+      "subtitleLines": [
+        "今日は中央DNSへの切替から、公開通信の許可と送信元、",
+        "再配備までを追います。前回の往復経路に、名前と管理を合わせます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日は中央DNSへの切替から、公開通信の許可と送信元、再配備までを追います。前回の往復経路に、名前と管理を合わせます。",
+          "lines": [
+            "今日は中央DNSへの切替から、公開通信の許可と送信元、",
+            "再配備までを追います。前回の往復経路に、名前と管理を合わせます。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながったら、切替は完了？"
+      }
+    },
+    {
+      "id": "lessona2-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "変えた設定を維持できることも大切なんですね。何を保存し、どこで確かめるか、順に見ていきましょう。",
+      "caption": "変えた設定を維持できることも大切なんですね。何を保存し、どこで確かめるか、順に見ていきましょう。",
+      "subtitleLines": [
+        "変えた設定を維持できることも大切なんですね。",
+        "何を保存し、どこで確かめるか、順に見ていきましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "変えた設定を維持できることも大切なんですね。何を保存し、どこで確かめるか、順に見ていきましょう。",
+          "lines": [
+            "変えた設定を維持できることも大切なんですね。",
+            "何を保存し、どこで確かめるか、順に見ていきましょう。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながったら、切替は完了？"
+      }
+    },
+    {
+      "id": "lessona2-turn-005-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "名前の回答、通信の経路、必要な許可、設定の管理元を一組で説明します。利用と保守を続けられる状態を目指します。",
+      "caption": "名前の回答、通信の経路、必要な許可、設定の管理元を一組で説明します。利用と保守を続けられる状態を目指します。",
+      "subtitleLines": [
+        "名前の回答、通信の経路、必要な許可、設定の管理元を一組で説明します。",
+        "利用と保守を続けられる状態を目指します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前の回答、通信の経路、必要な許可、設定の管理元を一組で説明します。利用と保守を続けられる状態を目指します。",
+          "lines": [
+            "名前の回答、通信の経路、必要な許可、設定の管理元を一組で説明します。",
+            "利用と保守を続けられる状態を目指します。"
+          ],
+          "weight": 54
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-completion",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・経路・許可・管理元を一組で確認",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "name",
+            "label": "名前の回答",
+            "value": "必要な公開名・内部名を正しい接続先へ解決"
+          },
+          {
+            "id": "path",
+            "label": "維持する経路",
+            "value": "ローカルFWの入口検査・PE直接接続を維持"
+          },
+          {
+            "id": "owner",
+            "label": "対象と担当",
+            "value": "出口は区画ごとに採用。企業側とCore側の担当を合意"
+          },
+          {
+            "id": "process",
+            "label": "完了までの流れ",
+            "value": "保存 → 準備 → 段階切替 → 検証 → 復旧 → 再配備"
+          }
+        ],
+        "highlightFields": [
+          "name",
+          "owner"
+        ],
+        "heading": "名前・経路・許可・管理元を一組で確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-006-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "エー・ワンの経路を土台に、ローカルファイアウォールの入口検査や、プライベートエンドポイントへの直接接続も維持する前提ですか。",
+      "caption": "A1の経路を土台に、ローカルFirewallの入口検査や、PEへの直接接続も維持する前提ですか。",
+      "subtitleLines": [
+        "A1の経路を土台に、ローカルFirewallの入口検査や、",
+        "PEへの直接接続も維持する前提ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "A1の経路を土台に、ローカルFirewallの入口検査や、PEへの直接接続も維持する前提ですか。",
+          "lines": [
+            "A1の経路を土台に、ローカルFirewallの入口検査や、",
+            "PEへの直接接続も維持する前提ですか。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-completion",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・経路・許可・管理元を一組で確認",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "name",
+            "label": "名前の回答",
+            "value": "必要な公開名・内部名を正しい接続先へ解決"
+          },
+          {
+            "id": "path",
+            "label": "維持する経路",
+            "value": "ローカルFWの入口検査・PE直接接続を維持"
+          },
+          {
+            "id": "owner",
+            "label": "対象と担当",
+            "value": "出口は区画ごとに採用。企業側とCore側の担当を合意"
+          },
+          {
+            "id": "process",
+            "label": "完了までの流れ",
+            "value": "保存 → 準備 → 段階切替 → 検証 → 復旧 → 再配備"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "名前・経路・許可・管理元を一組で確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-007-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "はい。対象区画を個別に選びます。今回も教材と構成定義に基づく接続案で、稼働アジュールへ適用・実測した結果ではありません。",
+      "caption": "はい。対象区画を個別に選びます。今回も教材と構成定義に基づく接続案で、稼働Azureへ適用・実測した結果ではありません。",
+      "subtitleLines": [
+        "はい。対象区画を個別に選びます。今回も教材と構成定義に基づく接続案で、",
+        "稼働Azureへ適用・実測した結果ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。対象区画を個別に選びます。今回も教材と構成定義に基づく接続案で、稼働Azureへ適用・実測した結果ではありません。",
+          "lines": [
+            "はい。対象区画を個別に選びます。今回も教材と構成定義に基づく接続案で、",
+            "稼働Azureへ適用・実測した結果ではありません。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-completion",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・経路・許可・管理元を一組で確認",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "name",
+            "label": "名前の回答",
+            "value": "必要な公開名・内部名を正しい接続先へ解決"
+          },
+          {
+            "id": "path",
+            "label": "維持する経路",
+            "value": "ローカルFWの入口検査・PE直接接続を維持"
+          },
+          {
+            "id": "owner",
+            "label": "対象と担当",
+            "value": "出口は区画ごとに採用。企業側とCore側の担当を合意"
+          },
+          {
+            "id": "process",
+            "label": "完了までの流れ",
+            "value": "保存 → 準備 → 段階切替 → 検証 → 復旧 → 再配備"
+          }
+        ],
+        "highlightFields": [
+          "path"
+        ],
+        "heading": "名前・経路・許可・管理元を一組で確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-008-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "担当をそろえ、現状保存、事前準備、段階切替、検証、復旧、再配備の順で考えます。",
+      "caption": "担当をそろえ、現状保存、事前準備、段階切替、検証、復旧、再配備の順で考えます。",
+      "subtitleLines": [
+        "担当をそろえ、現状保存、事前準備、",
+        "段階切替、検証、復旧、再配備の順で考えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "担当をそろえ、現状保存、事前準備、段階切替、検証、復旧、再配備の順で考えます。",
+          "lines": [
+            "担当をそろえ、現状保存、事前準備、",
+            "段階切替、検証、復旧、再配備の順で考えます。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-completion",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・経路・許可・管理元を一組で確認",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "name",
+            "label": "名前の回答",
+            "value": "必要な公開名・内部名を正しい接続先へ解決"
+          },
+          {
+            "id": "path",
+            "label": "維持する経路",
+            "value": "ローカルFWの入口検査・PE直接接続を維持"
+          },
+          {
+            "id": "owner",
+            "label": "対象と担当",
+            "value": "出口は区画ごとに採用。企業側とCore側の担当を合意"
+          },
+          {
+            "id": "process",
+            "label": "完了までの流れ",
+            "value": "保存 → 準備 → 段階切替 → 検証 → 復旧 → 再配備"
+          }
+        ],
+        "highlightFields": [
+          "process"
+        ],
+        "heading": "名前・経路・許可・管理元を一組で確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-009-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "ブイネットを中央ディーエヌエスへ変えれば、ファイアウォールも同じディーエヌエスを使うと考えてよいでしょうか。",
+      "caption": "VNetを中央DNSへ変えれば、Firewallも同じDNSを使うと考えてよいでしょうか。",
+      "subtitleLines": [
+        "VNetを中央DNSへ変えれば、",
+        "Firewallも同じDNSを使うと考えてよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VNetを中央DNSへ変えれば、Firewallも同じDNSを使うと考えてよいでしょうか。",
+          "lines": [
+            "VNetを中央DNSへ変えれば、",
+            "Firewallも同じDNSを使うと考えてよいでしょうか。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ブイネットクライアントと、ファイアウォール自身がエフキューディーエヌを判定する上流ディーエヌエスは、別に指定できます。",
+      "caption": "VNetクライアントと、Firewall自身がFQDNを判定する上流DNSは、別に指定できます。",
+      "subtitleLines": [
+        "VNetクライアントと、Firewall自身がFQDNを",
+        "判定する上流DNSは、別に指定できます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VNetクライアントと、Firewall自身がFQDNを判定する上流DNSは、別に指定できます。",
+          "lines": [
+            "VNetクライアントと、Firewall自身がFQDNを",
+            "判定する上流DNSは、別に指定できます。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "vnet-ip",
+          "fw-ip"
+        ],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-011-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ブイネット側のディーエヌエス設定へアイピー配列を指定すると、ブイネットのディーエヌエスと、アプリケーションゲートウェイ、エーピーアイエム、管理ブイエムのエヌエスジーにあるディーエヌエス宛先が変わります。未指定か空配列ならアジュール提供ディーエヌエスです。",
+      "caption": "network.dnsServersへIP配列を指定すると、VNetのDNSと、AppGW、APIM、管理VMのNSGにあるDNS宛先が変わります。未指定か空配列ならAzure提供DNSです。",
+      "subtitleLines": [
+        "network.dnsServersへIP配列を指定すると、VNetのDNSと、",
+        "AppGW、APIM、管理VMのNSGにあるDNS宛先が変わります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "network.dnsServersへIP配列を指定すると、VNetのDNSと、AppGW、APIM、管理VMのNSGにあるDNS宛先が変わります。",
+          "lines": [
+            "network.dnsServersへIP配列を指定すると、VNetのDNSと、",
+            "AppGW、APIM、管理VMのNSGにあるDNS宛先が変わります。"
+          ],
+          "weight": 74
+        },
+        {
+          "caption": "未指定か空配列ならAzure提供DNSです。",
+          "lines": [
+            "未指定か空配列ならAzure提供DNSです。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "vnet-ip",
+          "vnet-empty"
+        ],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-012-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "では、ファイアウォール側のディーエヌエス設定の未指定と空配列には、違いがあるんですね。",
+      "caption": "では、network.firewall.dnsServersの未指定と空配列には、違いがあるんですね。",
+      "subtitleLines": [
+        "では、network.firewall.dnsServersの",
+        "未指定と空配列には、違いがあるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、network.firewall.dnsServersの未指定と空配列には、違いがあるんですね。",
+          "lines": [
+            "では、network.firewall.dnsServersの",
+            "未指定と空配列には、違いがあるんですね。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-013-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "あります。未指定ならブイネット側の値を引き継ぎます。明示的な空配列は、ファイアウォール自身がアジュール提供ディーエヌエスを使う指定です。中央ディーエヌエスへ自動で追従しません。",
+      "caption": "あります。未指定ならVNet側の値を引き継ぎます。明示的な空配列は、Firewall自身がAzure提供DNSを使う指定です。中央DNSへ自動で追従しません。",
+      "subtitleLines": [
+        "あります。未指定ならVNet側の値を引き継ぎます。",
+        "明示的な空配列は、Firewall自身がAzure提供DNSを使う指定です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "あります。未指定ならVNet側の値を引き継ぎます。明示的な空配列は、Firewall自身がAzure提供DNSを使う指定です。",
+          "lines": [
+            "あります。未指定ならVNet側の値を引き継ぎます。",
+            "明示的な空配列は、Firewall自身がAzure提供DNSを使う指定です。"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "中央DNSへ自動で追従しません。",
+          "lines": [
+            "中央DNSへ自動で追従しません。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "fw-inherit",
+          "fw-empty"
+        ],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-014-manabu",
+      "speaker": "manabu",
+      "chapterId": "dns",
+      "speech": "似た入力でも、設定場所で意味が違うんですね。必要な名前について、クライアントとファイアウォールの回答を整合させます。",
+      "caption": "似た入力でも、設定場所で意味が違うんですね。必要な名前について、クライアントとFirewallの回答を整合させます。",
+      "subtitleLines": [
+        "似た入力でも、設定場所で意味が違うんですね。必要な名前について、",
+        "クライアントとFirewallの回答を整合させます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "似た入力でも、設定場所で意味が違うんですね。必要な名前について、クライアントとFirewallの回答を整合させます。",
+          "lines": [
+            "似た入力でも、設定場所で意味が違うんですね。必要な名前について、",
+            "クライアントとFirewallの回答を整合させます。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "vnet-ip",
+          "fw-ip"
+        ],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-015-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ディーエヌエス プロキシは有効ですが、ブイネットの問い合わせ先をファイアウォールのプライベート アイピーへ自動変更する設定ではありません。問い合わせ先と上流を確認します。",
+      "caption": "DNS Proxyは有効ですが、VNetの問い合わせ先をFirewallのprivate IPへ自動変更する設定ではありません。問い合わせ先と上流を確認します。",
+      "subtitleLines": [
+        "DNS Proxyは有効ですが、VNetの問い合わせ先をFirewallの",
+        "private IPへ自動変更する設定ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "DNS Proxyは有効ですが、VNetの問い合わせ先をFirewallのprivate IPへ自動変更する設定ではありません。",
+          "lines": [
+            "DNS Proxyは有効ですが、VNetの問い合わせ先をFirewallの",
+            "private IPへ自動変更する設定ではありません。"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "問い合わせ先と上流を確認します。",
+          "lines": [
+            "問い合わせ先と上流を確認します。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-settings",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VNet用DNSとFirewall自身のDNSを分けて確認",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定対象",
+              "width": 340
+            },
+            {
+              "label": "入力・値",
+              "width": 260
+            },
+            {
+              "label": "意味・確認すること",
+              "width": 372
+            }
+          ],
+          "rows": [
+            {
+              "id": "vnet-ip",
+              "cells": [
+                "network.dnsServers",
+                "IP配列",
+                "VNetと対応NSGのDNS宛先を変更"
+              ]
+            },
+            {
+              "id": "vnet-empty",
+              "cells": [
+                "network.dnsServers",
+                "未指定 / []",
+                "Azure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-inherit",
+              "cells": [
+                "network.firewall.dnsServers",
+                "未指定",
+                "VNet側の値を継承"
+              ]
+            },
+            {
+              "id": "fw-empty",
+              "cells": [
+                "network.firewall.dnsServers",
+                "明示 []",
+                "FW自身はAzure提供DNS"
+              ]
+            },
+            {
+              "id": "fw-ip",
+              "cells": [
+                "network.firewall.dnsServers",
+                "IP配列",
+                "FW上流DNSを個別に指定"
+              ]
+            },
+            {
+              "id": "proxy",
+              "cells": [
+                "DNS Proxy / enableProxy",
+                "現行 true",
+                "VNetの宛先は自動変更しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "proxy"
+        ],
+        "heading": "VNet用DNSとFirewall自身のDNSを分けて確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-016-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "中央ディーエヌエスが決まれば、エヌエスジーのディーエヌエス宛先だけ変えればよいのでしょうか。",
+      "caption": "中央DNSが決まれば、NSGのDNS宛先だけ変えればよいのでしょうか。",
+      "subtitleLines": [
+        "中央DNSが決まれば、NSGのDNS宛先だけ変えればよいのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中央DNSが決まれば、NSGのDNS宛先だけ変えればよいのでしょうか。",
+          "lines": [
+            "中央DNSが決まれば、NSGのDNS宛先だけ変えればよいのでしょうか。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-reach",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "中央DNSへの経路・許可とサービス反映",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "DNSへの到達",
+            "value": "往復経路とTCP / UDP 53を用意"
+          },
+          {
+            "id": "custom",
+            "label": "現行custom-dnsの送信元",
+            "value": "APIM・管理VMだけ。AppGW・ACAは含まない"
+          },
+          {
+            "id": "additional",
+            "label": "AppGW / ACAがFW経由なら",
+            "value": "必要な送信元・宛先・53番の許可を追加設計"
+          },
+          {
+            "id": "apply",
+            "label": "反映方法と保守時間",
+            "value": "APIM構成適用・AppGW停止/開始・VM DNS再取得等"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "中央DNSへの経路・許可とサービス反映"
+      }
+    },
+    {
+      "id": "lessona2-turn-017-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "往復経路とティーシーピー、ユーディーピーの53番も必要です。現行カスタム・ディーエヌエスのファイアウォール許可はエーピーアイエムと管理ブイエムだけ。アプリケーションゲートウェイやエーシーエーがファイアウォール経由になるなら、追加の許可を設計します。",
+      "caption": "往復経路とTCP、UDPの53番も必要です。現行custom-dnsのFirewall許可はAPIMと管理VMだけ。AppGWやACAがFirewall経由になるなら、追加の許可を設計します。",
+      "subtitleLines": [
+        "往復経路とTCP、UDPの53番も必要です。現行custom-dnsのFirewall",
+        "許可はAPIMと管理VMだけ。AppGWやACAがFirewall経由になるなら、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "往復経路とTCP、UDPの53番も必要です。現行custom-dnsのFirewall許可はAPIMと管理VMだけ。AppGWやACAがFirewall経由になるなら、",
+          "lines": [
+            "往復経路とTCP、UDPの53番も必要です。現行custom-dnsのFirewall",
+            "許可はAPIMと管理VMだけ。AppGWやACAがFirewall経由になるなら、"
+          ],
+          "weight": 84
+        },
+        {
+          "caption": "追加の許可を設計します。",
+          "lines": [
+            "追加の許可を設計します。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-reach",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "中央DNSへの経路・許可とサービス反映",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "DNSへの到達",
+            "value": "往復経路とTCP / UDP 53を用意"
+          },
+          {
+            "id": "custom",
+            "label": "現行custom-dnsの送信元",
+            "value": "APIM・管理VMだけ。AppGW・ACAは含まない"
+          },
+          {
+            "id": "additional",
+            "label": "AppGW / ACAがFW経由なら",
+            "value": "必要な送信元・宛先・53番の許可を追加設計"
+          },
+          {
+            "id": "apply",
+            "label": "反映方法と保守時間",
+            "value": "APIM構成適用・AppGW停止/開始・VM DNS再取得等"
+          }
+        ],
+        "highlightFields": [
+          "path",
+          "custom",
+          "additional"
+        ],
+        "heading": "中央DNSへの経路・許可とサービス反映"
+      }
+    },
+    {
+      "id": "lessona2-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "反映も計画します。エーピーアイエムのネットワーク構成適用、アプリケーションゲートウェイの停止と開始、管理ブイエムのディーエヌエス再取得や再起動など、必要な手順と保守時間を確認します。",
+      "caption": "反映も計画します。APIMのネットワーク構成適用、AppGWの停止と開始、管理VMのDNS再取得や再起動など、必要な手順と保守時間を確認します。",
+      "subtitleLines": [
+        "反映も計画します。APIMのネットワーク構成適用、AppGWの停止と開始、",
+        "管理VMのDNS再取得や再起動など、必要な手順と保守時間を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "反映も計画します。APIMのネットワーク構成適用、AppGWの停止と開始、管理VMのDNS再取得や再起動など、必要な手順と保守時間を確認します。",
+          "lines": [
+            "反映も計画します。APIMのネットワーク構成適用、AppGWの停止と開始、",
+            "管理VMのDNS再取得や再起動など、必要な手順と保守時間を確認します。"
+          ],
+          "weight": 72
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-dns-reach",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "中央DNSへの経路・許可とサービス反映",
+        "kind": "接続案の設定（教材）",
+        "section": "DNS設定",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "DNSへの到達",
+            "value": "往復経路とTCP / UDP 53を用意"
+          },
+          {
+            "id": "custom",
+            "label": "現行custom-dnsの送信元",
+            "value": "APIM・管理VMだけ。AppGW・ACAは含まない"
+          },
+          {
+            "id": "additional",
+            "label": "AppGW / ACAがFW経由なら",
+            "value": "必要な送信元・宛先・53番の許可を追加設計"
+          },
+          {
+            "id": "apply",
+            "label": "反映方法と保守時間",
+            "value": "APIM構成適用・AppGW停止/開始・VM DNS再取得等"
+          }
+        ],
+        "highlightFields": [
+          "apply"
+        ],
+        "heading": "中央DNSへの経路・許可とサービス反映"
+      }
+    },
+    {
+      "id": "lessona2-turn-019-mako",
+      "speaker": "mako",
+      "chapterId": "private",
+      "speech": "問い合わせ先が変わっても、内部名の回答は維持するんですね。確認するゾーンはいくつありますか。",
+      "caption": "問い合わせ先が変わっても、内部名の回答は維持するんですね。確認するゾーンはいくつありますか。",
+      "subtitleLines": [
+        "問い合わせ先が変わっても、内部名の回答は維持するんですね。",
+        "確認するゾーンはいくつありますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "問い合わせ先が変わっても、内部名の回答は維持するんですね。確認するゾーンはいくつありますか。",
+          "lines": [
+            "問い合わせ先が変わっても、内部名の回答は維持するんですね。",
+            "確認するゾーンはいくつありますか。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-eight-zones",
+        "heading": "Private Link 6ゾーン ＋ APIM・ACA 2ゾーン",
+        "svg": "diagrams/settings-v2/a2-eight-zones-base.svg",
+        "highlightTargets": []
+      }
+    },
+    {
+      "id": "lessona2-turn-020-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "プライベートリンクが六つです。ファウンドリー用の三つと、キー・ボールト、エーシーアール、エスキューエル用の三つ。プライベートエンドポイントのゾーン・グループが管理するレコードと、実際のプライベートエンドポイントのアイピーを対応付けます。",
+      "caption": "Private Linkが六つです。Foundry用の三つと、Key Vault、ACR、SQL用の三つ。PEのzone groupが管理するレコードと、実際のPEのIPを対応付けます。",
+      "subtitleLines": [
+        "Private Linkが六つです。Foundry用の三つと、Key Vault、",
+        "ACR、SQL用の三つ。PEのzone groupが管理するレコードと、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Private Linkが六つです。Foundry用の三つと、Key Vault、ACR、SQL用の三つ。PEのzone groupが管理するレコードと、",
+          "lines": [
+            "Private Linkが六つです。Foundry用の三つと、Key Vault、",
+            "ACR、SQL用の三つ。PEのzone groupが管理するレコードと、"
+          ],
+          "weight": 77
+        },
+        {
+          "caption": "実際のPEのIPを対応付けます。",
+          "lines": [
+            "実際のPEのIPを対応付けます。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-eight-zones",
+        "heading": "Private Link 6ゾーン ＋ APIM・ACA 2ゾーン",
+        "svg": "diagrams/settings-v2/a2-eight-zones-foundry-other.svg",
+        "highlightTargets": [
+          "foundry",
+          "other"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "さらにエーピーアイエムとエーシーエーの内部ゾーンが二つあります。エーピーアイエムは実ゲートウェイ エフキューディーエヌと同名のゾーンで、エイペックスのAレコードを実内部ブイアイピーへ向けます。",
+      "caption": "さらにAPIMとACAの内部ゾーンが二つあります。APIMは実Gateway FQDNと同名のゾーンで、apexのAレコードを実内部VIPへ向けます。",
+      "subtitleLines": [
+        "さらにAPIMとACAの内部ゾーンが二つあります。APIMは実Gateway ",
+        "FQDNと同名のゾーンで、apexのAレコードを実内部VIPへ向けます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "さらにAPIMとACAの内部ゾーンが二つあります。APIMは実Gateway FQDNと同名のゾーンで、apexのAレコードを実内部VIPへ向けます。",
+          "lines": [
+            "さらにAPIMとACAの内部ゾーンが二つあります。APIMは実Gateway ",
+            "FQDNと同名のゾーンで、apexのAレコードを実内部VIPへ向けます。"
+          ],
+          "weight": 75
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-eight-zones",
+        "heading": "Private Link 6ゾーン ＋ APIM・ACA 2ゾーン",
+        "svg": "diagrams/settings-v2/a2-eight-zones-apim.svg",
+        "highlightTargets": [
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-022-manabu",
+      "speaker": "manabu",
+      "chapterId": "private",
+      "speech": "エーシーエーは実デフォルトドメインのゾーンで、ワイルドカードのAレコードが実スタティック アイピーを指します。現行定義にはエイペックスのAレコードがない点も分けて確認するんですね。",
+      "caption": "ACAは実defaultDomainのゾーンで、ワイルドカードのAレコードが実static IPを指します。現行定義にはapexのAレコードがない点も分けて確認するんですね。",
+      "subtitleLines": [
+        "ACAは実defaultDomainのゾーンで、",
+        "ワイルドカードのAレコードが実static IPを指します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ACAは実defaultDomainのゾーンで、ワイルドカードのAレコードが実static IPを指します。",
+          "lines": [
+            "ACAは実defaultDomainのゾーンで、",
+            "ワイルドカードのAレコードが実static IPを指します。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "現行定義にはapexのAレコードがない点も分けて確認するんですね。",
+          "lines": [
+            "現行定義にはapexのAレコードがない点も分けて確認するんですね。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-eight-zones",
+        "heading": "Private Link 6ゾーン ＋ APIM・ACA 2ゾーン",
+        "svg": "diagrams/settings-v2/a2-eight-zones-aca.svg",
+        "highlightTargets": [
+          "aca"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-023-mako",
+      "speaker": "mako",
+      "chapterId": "private",
+      "speech": "八つのゾーンへの参照も必要ですね。ピアリングをつないだだけで、その参照も共有されますか。",
+      "caption": "八つのゾーンへの参照も必要ですね。ピアリングをつないだだけで、その参照も共有されますか。",
+      "subtitleLines": [
+        "八つのゾーンへの参照も必要ですね。",
+        "ピアリングをつないだだけで、その参照も共有されますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "八つのゾーンへの参照も必要ですね。ピアリングをつないだだけで、その参照も共有されますか。",
+          "lines": [
+            "八つのゾーンへの参照も必要ですね。",
+            "ピアリングをつないだだけで、その参照も共有されますか。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-dns-resolution",
+        "heading": "中央DNSの転送と、private IPまでの回答を確認",
+        "svg": "diagrams/settings-v2/a2-dns-resolution-base.svg",
+        "highlightTargets": []
+      }
+    },
+    {
+      "id": "lessona2-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "共有されません。中央ディーエヌエスからアジュール側リゾルバーやフォワーダーへ転送し、解決に使うブイネットへゾーンをリンクします。アジュール提供ディーエヌエスを直接使う側のリンクも維持します。",
+      "caption": "共有されません。中央DNSからAzure側Resolverやforwarderへ転送し、解決に使うVNetへゾーンをリンクします。Azure提供DNSを直接使う側のリンクも維持します。",
+      "subtitleLines": [
+        "共有されません。中央DNSからAzure側Resolverやforwarderへ転送し、",
+        "解決に使うVNetへゾーンをリンクします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "共有されません。中央DNSからAzure側Resolverやforwarderへ転送し、解決に使うVNetへゾーンをリンクします。",
+          "lines": [
+            "共有されません。中央DNSからAzure側Resolverやforwarderへ転送し、",
+            "解決に使うVNetへゾーンをリンクします。"
+          ],
+          "weight": 65
+        },
+        {
+          "caption": "Azure提供DNSを直接使う側のリンクも維持します。",
+          "lines": [
+            "Azure提供DNSを直接使う側のリンクも維持します。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-dns-resolution",
+        "heading": "中央DNSの転送と、private IPまでの回答を確認",
+        "svg": "diagrams/settings-v2/a2-dns-resolution-central-resolver-link.svg",
+        "highlightTargets": [
+          "central",
+          "resolver",
+          "link"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-025-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "エスキューエルならデータベース・ドット・ウィンドウズ・ドット・ネットのような公開ゾーンから条件付き転送し、プライベートリンク名へのシーネーム連鎖と最終のプライベート アイピーを確認します。エーピーアイエムとエーシーエーの内部名も別途参照可能にします。",
+      "caption": "SQLならdatabase.windows.netのような公開ゾーンから条件付き転送し、Private Link名へのCNAME連鎖と最終のprivate IPを確認します。APIMとACAの内部名も別途参照可能にします。",
+      "subtitleLines": [
+        "SQLならdatabase.windows.netのような公開ゾーンから条件付き転送し、",
+        "Private Link名へのCNAME連鎖と最終のprivate IPを確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "SQLならdatabase.windows.netのような公開ゾーンから条件付き転送し、Private Link名へのCNAME連鎖と最終のprivate IPを確認します。",
+          "lines": [
+            "SQLならdatabase.windows.netのような公開ゾーンから条件付き転送し、",
+            "Private Link名へのCNAME連鎖と最終のprivate IPを確認します。"
+          ],
+          "weight": 87
+        },
+        {
+          "caption": "APIMとACAの内部名も別途参照可能にします。",
+          "lines": [
+            "APIMとACAの内部名も別途参照可能にします。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-dns-resolution",
+        "heading": "中央DNSの転送と、private IPまでの回答を確認",
+        "svg": "diagrams/settings-v2/a2-dns-resolution-sql-cname-pe-internal.svg",
+        "highlightTargets": [
+          "sql",
+          "cname",
+          "pe",
+          "internal"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-026-mako",
+      "speaker": "mako",
+      "chapterId": "private",
+      "speech": "ゾーンを残すか中央へ移すかで、管理の分担も違いますね。",
+      "caption": "ゾーンを残すか中央へ移すかで、管理の分担も違いますね。",
+      "subtitleLines": [
+        "ゾーンを残すか中央へ移すかで、管理の分担も違いますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ゾーンを残すか中央へ移すかで、管理の分担も違いますね。",
+          "lines": [
+            "ゾーンを残すか中央へ移すかで、管理の分担も違いますね。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-zone-ownership",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "ゾーンの配置と、更新・削除の管理元",
+        "kind": "接続案の設定（教材）",
+        "section": "Private DNS",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "local",
+            "label": "現在のゾーンを維持",
+            "value": "中央DNSの転送先・解決用VNetリンクを整備"
+          },
+          {
+            "id": "central",
+            "label": "中央ゾーンへ移管",
+            "value": "zone group参照先とAPIM / ACA実IPレコードを変更"
+          },
+          {
+            "id": "iac",
+            "label": "現行IaCの境界",
+            "value": "既存中央ゾーンIDの公開入力なし。コード・配備も対応"
+          },
+          {
+            "id": "owner",
+            "label": "レコードの管理",
+            "value": "手動で二重管理せず、更新・削除の担当を確定"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "ゾーンの配置と、更新・削除の管理元"
+      }
+    },
+    {
+      "id": "lessona2-turn-027-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "中央へ移すなら、ゾーン・グループの参照先と、エーピーアイエム、エーシーエーの実アイピーレコードを向け直します。現行には既存中央ゾーンIDの公開入力がなく、アイアックと配備、削除責任の変更が必要です。",
+      "caption": "中央へ移すなら、zone groupの参照先と、APIM、ACAの実IPレコードを向け直します。現行には既存中央ゾーンIDの公開入力がなく、IaCと配備、削除責任の変更が必要です。",
+      "subtitleLines": [
+        "中央へ移すなら、zone groupの参照先と、APIM、",
+        "ACAの実IPレコードを向け直します。現行には既存中央ゾーンIDの公開入力がなく、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中央へ移すなら、zone groupの参照先と、APIM、ACAの実IPレコードを向け直します。現行には既存中央ゾーンIDの公開入力がなく、",
+          "lines": [
+            "中央へ移すなら、zone groupの参照先と、APIM、",
+            "ACAの実IPレコードを向け直します。現行には既存中央ゾーンIDの公開入力がなく、"
+          ],
+          "weight": 70
+        },
+        {
+          "caption": "IaCと配備、削除責任の変更が必要です。",
+          "lines": [
+            "IaCと配備、削除責任の変更が必要です。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-zone-ownership",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "ゾーンの配置と、更新・削除の管理元",
+        "kind": "接続案の設定（教材）",
+        "section": "Private DNS",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "local",
+            "label": "現在のゾーンを維持",
+            "value": "中央DNSの転送先・解決用VNetリンクを整備"
+          },
+          {
+            "id": "central",
+            "label": "中央ゾーンへ移管",
+            "value": "zone group参照先とAPIM / ACA実IPレコードを変更"
+          },
+          {
+            "id": "iac",
+            "label": "現行IaCの境界",
+            "value": "既存中央ゾーンIDの公開入力なし。コード・配備も対応"
+          },
+          {
+            "id": "owner",
+            "label": "レコードの管理",
+            "value": "手動で二重管理せず、更新・削除の担当を確定"
+          }
+        ],
+        "highlightFields": [
+          "central",
+          "iac"
+        ],
+        "heading": "ゾーンの配置と、更新・削除の管理元"
+      }
+    },
+    {
+      "id": "lessona2-turn-028-manabu",
+      "speaker": "manabu",
+      "chapterId": "private",
+      "speech": "ゾーン・グループのレコードを、手動でも二重管理しない。資源ごとの更新と削除の担当を合わせ、回答の食い違いを防ぎます。",
+      "caption": "zone groupのレコードを、手動でも二重管理しない。資源ごとの更新と削除の担当を合わせ、回答の食い違いを防ぎます。",
+      "subtitleLines": [
+        "zone groupのレコードを、手動でも二重管理しない。",
+        "資源ごとの更新と削除の担当を合わせ、回答の食い違いを防ぎます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "zone groupのレコードを、手動でも二重管理しない。資源ごとの更新と削除の担当を合わせ、回答の食い違いを防ぎます。",
+          "lines": [
+            "zone groupのレコードを、手動でも二重管理しない。",
+            "資源ごとの更新と削除の担当を合わせ、回答の食い違いを防ぎます。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-zone-ownership",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "ゾーンの配置と、更新・削除の管理元",
+        "kind": "接続案の設定（教材）",
+        "section": "Private DNS",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "local",
+            "label": "現在のゾーンを維持",
+            "value": "中央DNSの転送先・解決用VNetリンクを整備"
+          },
+          {
+            "id": "central",
+            "label": "中央ゾーンへ移管",
+            "value": "zone group参照先とAPIM / ACA実IPレコードを変更"
+          },
+          {
+            "id": "iac",
+            "label": "現行IaCの境界",
+            "value": "既存中央ゾーンIDの公開入力なし。コード・配備も対応"
+          },
+          {
+            "id": "owner",
+            "label": "レコードの管理",
+            "value": "手動で二重管理せず、更新・削除の担当を確定"
+          }
+        ],
+        "highlightFields": [
+          "owner"
+        ],
+        "heading": "ゾーンの配置と、更新・削除の管理元"
+      }
+    },
+    {
+      "id": "lessona2-turn-029-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "private",
+      "speech": "エーピーアイの公開ゲートウェイとポータルの公開Aレコードは、アプリケーションゲートウェイの公開アイピーを維持します。内部ディーエヌエスを集約することと、公開名をプライベート アイピーへ一括変更することは別の設計です。",
+      "caption": "APIの公開GatewayとPortalの公開Aレコードは、AppGWの公開IPを維持します。内部DNSを集約することと、公開名をprivate IPへ一括変更することは別の設計です。",
+      "subtitleLines": [
+        "APIの公開GatewayとPortalの公開Aレコードは、",
+        "AppGWの公開IPを維持します。内部DNSを集約することと、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIの公開GatewayとPortalの公開Aレコードは、AppGWの公開IPを維持します。内部DNSを集約することと、",
+          "lines": [
+            "APIの公開GatewayとPortalの公開Aレコードは、",
+            "AppGWの公開IPを維持します。内部DNSを集約することと、"
+          ],
+          "weight": 61
+        },
+        {
+          "caption": "公開名をprivate IPへ一括変更することは別の設計です。",
+          "lines": [
+            "公開名をprivate IPへ一括変更することは別の設計です。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-public-names",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "API公開GatewayとPortalの公開AはAppGWへ",
+        "kind": "接続案の設定（教材）",
+        "section": "Private DNS",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "gateway",
+            "label": "APIの公開Gateway名",
+            "value": "公開A → AppGWの公開IPを維持"
+          },
+          {
+            "id": "portal",
+            "label": "Portalの公開名",
+            "value": "公開A → AppGWの公開IPを維持"
+          },
+          {
+            "id": "scope",
+            "label": "内部DNS集約の範囲",
+            "value": "公開名を一括してprivate IPへ変える設計とは別"
+          }
+        ],
+        "highlightFields": [
+          "gateway",
+          "portal",
+          "scope"
+        ],
+        "heading": "API公開GatewayとPortalの公開AはAppGWへ"
+      }
+    },
+    {
+      "id": "lessona2-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "policy",
+      "speech": "次は許可です。ハブ接続後は、エヌエスジーの許可元をハブ全体のサイダーへ置き換えればよいでしょうか。",
+      "caption": "次は許可です。ハブ接続後は、NSGの許可元をハブ全体のCIDRへ置き換えればよいでしょうか。",
+      "subtitleLines": [
+        "次は許可です。ハブ接続後は、NSGの許可元を",
+        "ハブ全体のCIDRへ置き換えればよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は許可です。ハブ接続後は、NSGの許可元をハブ全体のCIDRへ置き換えればよいでしょうか。",
+          "lines": [
+            "次は許可です。ハブ接続後は、NSGの許可元を",
+            "ハブ全体のCIDRへ置き換えればよいでしょうか。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observed-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "NSGが観測する送信元で、必要な許可を追加",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "照合する設定",
+              "width": 310
+            },
+            {
+              "label": "変更・維持の判断",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "source",
+              "cells": [
+                "送信元CIDR・宛先IP・ポート",
+                "中継やSNAT後にNSGが観測する送信元を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "管理VMの運用元",
+                "運用元設定と実際の送信元を照合"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEの許可",
+                "各サービスの実PE IPへ限定する"
+              ]
+            },
+            {
+              "id": "deny",
+              "cells": [
+                "終端拒否",
+                "4NSGの受信、APIM / 管理VMの送信終端拒否を維持"
+              ]
+            },
+            {
+              "id": "changed",
+              "cells": [
+                "新しい宛先",
+                "中央DNSなど変更した宛先へ必要な許可を追加"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "NSGが観測する送信元で、必要な許可を追加"
+      }
+    },
+    {
+      "id": "lessona2-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "エヌエスジーが実際に観測する送信元を使います。中継やスナットで変わるかを確認し、必要な送信元サイダー、対象アイピー、ポートへ絞ります。管理ブイエムの運用元設定も照合します。",
+      "caption": "NSGが実際に観測する送信元を使います。中継やSNATで変わるかを確認し、必要な送信元CIDR、対象IP、ポートへ絞ります。管理VMの運用元設定も照合します。",
+      "subtitleLines": [
+        "NSGが実際に観測する送信元を使います。中継やSNATで変わるかを確認し、",
+        "必要な送信元CIDR、対象IP、ポートへ絞ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NSGが実際に観測する送信元を使います。中継やSNATで変わるかを確認し、必要な送信元CIDR、対象IP、ポートへ絞ります。",
+          "lines": [
+            "NSGが実際に観測する送信元を使います。中継やSNATで変わるかを確認し、",
+            "必要な送信元CIDR、対象IP、ポートへ絞ります。"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "管理VMの運用元設定も照合します。",
+          "lines": [
+            "管理VMの運用元設定も照合します。"
+          ],
+          "weight": 17
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observed-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "NSGが観測する送信元で、必要な許可を追加",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "照合する設定",
+              "width": 310
+            },
+            {
+              "label": "変更・維持の判断",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "source",
+              "cells": [
+                "送信元CIDR・宛先IP・ポート",
+                "中継やSNAT後にNSGが観測する送信元を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "管理VMの運用元",
+                "運用元設定と実際の送信元を照合"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEの許可",
+                "各サービスの実PE IPへ限定する"
+              ]
+            },
+            {
+              "id": "deny",
+              "cells": [
+                "終端拒否",
+                "4NSGの受信、APIM / 管理VMの送信終端拒否を維持"
+              ]
+            },
+            {
+              "id": "changed",
+              "cells": [
+                "新しい宛先",
+                "中央DNSなど変更した宛先へ必要な許可を追加"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "source",
+          "operator"
+        ],
+        "heading": "NSGが観測する送信元で、必要な許可を追加"
+      }
+    },
+    {
+      "id": "lessona2-turn-032-manabu",
+      "speaker": "manabu",
+      "chapterId": "policy",
+      "speech": "誰のどの作業に必要かを説明できる許可にします。プライベートエンドポイントへの許可も各サービスの実アイピーに絞ったまま維持します。",
+      "caption": "誰のどの作業に必要かを説明できる許可にします。PEへの許可も各サービスの実IPに絞ったまま維持します。",
+      "subtitleLines": [
+        "誰のどの作業に必要かを説明できる許可にします。",
+        "PEへの許可も各サービスの実IPに絞ったまま維持します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "誰のどの作業に必要かを説明できる許可にします。PEへの許可も各サービスの実IPに絞ったまま維持します。",
+          "lines": [
+            "誰のどの作業に必要かを説明できる許可にします。",
+            "PEへの許可も各サービスの実IPに絞ったまま維持します。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observed-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "NSGが観測する送信元で、必要な許可を追加",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "照合する設定",
+              "width": 310
+            },
+            {
+              "label": "変更・維持の判断",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "source",
+              "cells": [
+                "送信元CIDR・宛先IP・ポート",
+                "中継やSNAT後にNSGが観測する送信元を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "管理VMの運用元",
+                "運用元設定と実際の送信元を照合"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEの許可",
+                "各サービスの実PE IPへ限定する"
+              ]
+            },
+            {
+              "id": "deny",
+              "cells": [
+                "終端拒否",
+                "4NSGの受信、APIM / 管理VMの送信終端拒否を維持"
+              ]
+            },
+            {
+              "id": "changed",
+              "cells": [
+                "新しい宛先",
+                "中央DNSなど変更した宛先へ必要な許可を追加"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "pe"
+        ],
+        "heading": "NSGが観測する送信元で、必要な許可を追加"
+      }
+    },
+    {
+      "id": "lessona2-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "四つのエヌエスジーと受信の終端拒否、エーピーアイエムと管理ブイエムの送信終端拒否も維持します。新しい中央ディーエヌエスなど、変えた宛先へ必要な許可を追加します。",
+      "caption": "四つのNSGと受信の終端拒否、APIMと管理VMの送信終端拒否も維持します。新しい中央DNSなど、変えた宛先へ必要な許可を追加します。",
+      "subtitleLines": [
+        "四つのNSGと受信の終端拒否、APIMと管理VMの送信終端拒否も維持します。",
+        "新しい中央DNSなど、変えた宛先へ必要な許可を追加します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "四つのNSGと受信の終端拒否、APIMと管理VMの送信終端拒否も維持します。新しい中央DNSなど、変えた宛先へ必要な許可を追加します。",
+          "lines": [
+            "四つのNSGと受信の終端拒否、APIMと管理VMの送信終端拒否も維持します。",
+            "新しい中央DNSなど、変えた宛先へ必要な許可を追加します。"
+          ],
+          "weight": 67
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observed-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "NSGが観測する送信元で、必要な許可を追加",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "照合する設定",
+              "width": 310
+            },
+            {
+              "label": "変更・維持の判断",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "source",
+              "cells": [
+                "送信元CIDR・宛先IP・ポート",
+                "中継やSNAT後にNSGが観測する送信元を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "管理VMの運用元",
+                "運用元設定と実際の送信元を照合"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEの許可",
+                "各サービスの実PE IPへ限定する"
+              ]
+            },
+            {
+              "id": "deny",
+              "cells": [
+                "終端拒否",
+                "4NSGの受信、APIM / 管理VMの送信終端拒否を維持"
+              ]
+            },
+            {
+              "id": "changed",
+              "cells": [
+                "新しい宛先",
+                "中央DNSなど変更した宛先へ必要な許可を追加"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "deny",
+          "changed"
+        ],
+        "heading": "NSGが観測する送信元で、必要な許可を追加"
+      }
+    },
+    {
+      "id": "lessona2-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "policy",
+      "speech": "既定のバーチャルネットワークタグも、以前と同じ範囲とは限らないんですね。",
+      "caption": "既定のVirtualNetworkタグも、以前と同じ範囲とは限らないんですね。",
+      "subtitleLines": [
+        "既定のVirtualNetworkタグも、以前と同じ範囲とは限らないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "既定のVirtualNetworkタグも、以前と同じ範囲とは限らないんですね。",
+          "lines": [
+            "既定のVirtualNetworkタグも、以前と同じ範囲とは限らないんですね。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-virtualnetwork-tag",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VirtualNetworkタグの範囲を再確認",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "タグが含む範囲",
+            "value": "自VNetだけでなく、ピアリング先等も含む"
+          },
+          {
+            "id": "effective",
+            "label": "接続後の実効NSG",
+            "value": "既定許可も含めて照合"
+          },
+          {
+            "id": "focus",
+            "label": "特に確認する区画",
+            "value": "独自の送信終端拒否がないAppGW・PE"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "VirtualNetworkタグの範囲を再確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "自ブイネットだけでなく、ピアリング先なども含みます。特に独自の送信終端拒否がないアプリケーションゲートウェイとプライベートエンドポイントでは、既定許可も含む実効エヌエスジーを接続後に確認します。",
+      "caption": "自VNetだけでなく、ピアリング先なども含みます。特に独自の送信終端拒否がないAppGWとPEでは、既定許可も含む実効NSGを接続後に確認します。",
+      "subtitleLines": [
+        "自VNetだけでなく、ピアリング先なども含みます。",
+        "特に独自の送信終端拒否がないAppGWとPEでは、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自VNetだけでなく、ピアリング先なども含みます。特に独自の送信終端拒否がないAppGWとPEでは、",
+          "lines": [
+            "自VNetだけでなく、ピアリング先なども含みます。",
+            "特に独自の送信終端拒否がないAppGWとPEでは、"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "既定許可も含む実効NSGを接続後に確認します。",
+          "lines": [
+            "既定許可も含む実効NSGを接続後に確認します。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-virtualnetwork-tag",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "VirtualNetworkタグの範囲を再確認",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "タグが含む範囲",
+            "value": "自VNetだけでなく、ピアリング先等も含む"
+          },
+          {
+            "id": "effective",
+            "label": "接続後の実効NSG",
+            "value": "既定許可も含めて照合"
+          },
+          {
+            "id": "focus",
+            "label": "特に確認する区画",
+            "value": "独自の送信終端拒否がないAppGW・PE"
+          }
+        ],
+        "highlightFields": [
+          "range",
+          "effective",
+          "focus"
+        ],
+        "heading": "VirtualNetworkタグの範囲を再確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-036-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "アプリケーションゲートウェイの基盤通信、エーピーアイエムの管理通信と直接復路、ローカルファイアウォールの入口検査は残します。プライベートエンドポイントやエーピーアイエムからエーシーエーへの直接通信も、公開出口と混同しません。",
+      "caption": "AppGWの基盤通信、APIMの管理通信と直接復路、ローカルFirewallの入口検査は残します。PEやAPIMからACAへの直接通信も、公開出口と混同しません。",
+      "subtitleLines": [
+        "AppGWの基盤通信、APIMの管理通信と直接復路、",
+        "ローカルFirewallの入口検査は残します。PEやAPIMからACAへの直接通信も、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGWの基盤通信、APIMの管理通信と直接復路、ローカルFirewallの入口検査は残します。PEやAPIMからACAへの直接通信も、",
+          "lines": [
+            "AppGWの基盤通信、APIMの管理通信と直接復路、",
+            "ローカルFirewallの入口検査は残します。PEやAPIMからACAへの直接通信も、"
+          ],
+          "weight": 69
+        },
+        {
+          "caption": "公開出口と混同しません。",
+          "lines": [
+            "公開出口と混同しません。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-preserve-controls",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "基盤・入口・private接続の制御を維持",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "platform",
+            "label": "Azure基盤・APIM管理",
+            "value": "AppGW基盤通信、APIM管理通信と直接復路を維持"
+          },
+          {
+            "id": "local",
+            "label": "内部入口の検査",
+            "value": "AppGW ↔ ローカルFW ↔ APIM / ACAを維持"
+          },
+          {
+            "id": "direct",
+            "label": "直接通信",
+            "value": "PEへの接続・APIM → ACAを公開出口と区別"
+          },
+          {
+            "id": "auth",
+            "label": "到達性と認証",
+            "value": "Public Network Access/IAMを一括緩和しない。SSH認証維持"
+          }
+        ],
+        "highlightFields": [
+          "platform",
+          "local",
+          "direct"
+        ],
+        "heading": "基盤・入口・private接続の制御を維持"
+      }
+    },
+    {
+      "id": "lessona2-turn-037-manabu",
+      "speaker": "manabu",
+      "chapterId": "policy",
+      "speech": "つながらない対策として、パブリック・ネットワーク・アクセスやアイアムをまとめて緩めることもしません。管理ブイエムへ届く経路と、エスエスエイチで本人を確認する仕組みも別に維持します。",
+      "caption": "つながらない対策として、Public Network AccessやIAMをまとめて緩めることもしません。管理VMへ届く経路と、SSHで本人を確認する仕組みも別に維持します。",
+      "subtitleLines": [
+        "つながらない対策として、Public Network AccessやIAMを",
+        "まとめて緩めることもしません。管理VMへ届く経路と、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "つながらない対策として、Public Network AccessやIAMをまとめて緩めることもしません。管理VMへ届く経路と、",
+          "lines": [
+            "つながらない対策として、Public Network AccessやIAMを",
+            "まとめて緩めることもしません。管理VMへ届く経路と、"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "SSHで本人を確認する仕組みも別に維持します。",
+          "lines": [
+            "SSHで本人を確認する仕組みも別に維持します。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-preserve-controls",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "基盤・入口・private接続の制御を維持",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "platform",
+            "label": "Azure基盤・APIM管理",
+            "value": "AppGW基盤通信、APIM管理通信と直接復路を維持"
+          },
+          {
+            "id": "local",
+            "label": "内部入口の検査",
+            "value": "AppGW ↔ ローカルFW ↔ APIM / ACAを維持"
+          },
+          {
+            "id": "direct",
+            "label": "直接通信",
+            "value": "PEへの接続・APIM → ACAを公開出口と区別"
+          },
+          {
+            "id": "auth",
+            "label": "到達性と認証",
+            "value": "Public Network Access/IAMを一括緩和しない。SSH認証維持"
+          }
+        ],
+        "highlightFields": [
+          "auth"
+        ],
+        "heading": "基盤・入口・private接続の制御を維持"
+      }
+    },
+    {
+      "id": "lessona2-turn-038-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "ハブファイアウォールには、対象区画の実効設定から依存先を追加します。アイピーやタグとポートのネットワークルール、Webのエフキューディーエヌを扱うアプリケーションルールを使い分けます。",
+      "caption": "ハブFirewallには、対象区画の実効設定から依存先を追加します。IPやタグとポートのNetworkルール、WebのFQDNを扱うApplicationルールを使い分けます。",
+      "subtitleLines": [
+        "ハブFirewallには、対象区画の実効設定から依存先を追加します。",
+        "IPやタグとポートのNetworkルール、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ハブFirewallには、対象区画の実効設定から依存先を追加します。IPやタグとポートのNetworkルール、",
+          "lines": [
+            "ハブFirewallには、対象区画の実効設定から依存先を追加します。",
+            "IPやタグとポートのNetworkルール、"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "WebのFQDNを扱うApplicationルールを使い分けます。",
+          "lines": [
+            "WebのFQDNを扱うApplicationルールを使い分けます。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-firewall-rules",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "ハブFirewallの依存先と評価順を確認",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "規則・確認点",
+              "width": 320
+            },
+            {
+              "label": "用途と注意",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "Networkルール",
+                "IP・サービス・タグ・ポート。先に一致すると評価終了"
+              ]
+            },
+            {
+              "id": "application",
+              "cells": [
+                "Applicationルール",
+                "Web宛てのFQDNを扱う"
+              ]
+            },
+            {
+              "id": "wide",
+              "cells": [
+                "広いTCP 443許可",
+                "FQDN制御の代わりにしない"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央ポリシー",
+                "対象区画の実効依存先、既定拒否と企業ルールを照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "network",
+          "application",
+          "central"
+        ],
+        "heading": "ハブFirewallの依存先と評価順を確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "policy",
+      "speech": "ネットワークが先に一致すると、その通信はアプリケーションで評価されません。広いティーシーピーの443番許可でエフキューディーエヌ制御を代替せず、中央の既定拒否や企業の規則も照合します。",
+      "caption": "Networkが先に一致すると、その通信はApplicationで評価されません。広いTCPの443番許可でFQDN制御を代替せず、中央の既定拒否や企業の規則も照合します。",
+      "subtitleLines": [
+        "Networkが先に一致すると、その通信はApplicationで評価されません。",
+        "広いTCPの443番許可でFQDN制御を代替せず、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Networkが先に一致すると、その通信はApplicationで評価されません。広いTCPの443番許可でFQDN制御を代替せず、",
+          "lines": [
+            "Networkが先に一致すると、その通信はApplicationで評価されません。",
+            "広いTCPの443番許可でFQDN制御を代替せず、"
+          ],
+          "weight": 66
+        },
+        {
+          "caption": "中央の既定拒否や企業の規則も照合します。",
+          "lines": [
+            "中央の既定拒否や企業の規則も照合します。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-firewall-rules",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "ハブFirewallの依存先と評価順を確認",
+        "kind": "接続案の設定（教材）",
+        "section": "通信の許可",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "規則・確認点",
+              "width": 320
+            },
+            {
+              "label": "用途と注意",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "Networkルール",
+                "IP・サービス・タグ・ポート。先に一致すると評価終了"
+              ]
+            },
+            {
+              "id": "application",
+              "cells": [
+                "Applicationルール",
+                "Web宛てのFQDNを扱う"
+              ]
+            },
+            {
+              "id": "wide",
+              "cells": [
+                "広いTCP 443許可",
+                "FQDN制御の代わりにしない"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央ポリシー",
+                "対象区画の実効依存先、既定拒否と企業ルールを照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "network",
+          "wide",
+          "central"
+        ],
+        "heading": "ハブFirewallの依存先と評価順を確認"
+      }
+    },
+    {
+      "id": "lessona2-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "egress",
+      "speech": "企業内接続なら、ファイアウォールを通っても元の送信元アイピーのままだと考えてよいですか。",
+      "caption": "企業内接続なら、Firewallを通っても元の送信元IPのままだと考えてよいですか。",
+      "subtitleLines": [
+        "企業内接続なら、Firewallを通っても元の",
+        "送信元IPのままだと考えてよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "企業内接続なら、Firewallを通っても元の送信元IPのままだと考えてよいですか。",
+          "lines": [
+            "企業内接続なら、Firewallを通っても元の",
+            "送信元IPのままだと考えてよいですか。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-snat",
+        "heading": "SNATの方式と、公開出口の実送信元を照合",
+        "svg": "diagrams/settings-v2/a2-snat-base.svg",
+        "highlightTargets": []
+      }
+    },
+    {
+      "id": "lessona2-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "方式を区別します。ネットワークルールは宛先やスナット除外の設定で変わります。アプリケーションルールは常にスナットする仕様で、ネットワークの除外設定と同じではありません。",
+      "caption": "方式を区別します。Networkルールは宛先やSNAT除外の設定で変わります。Applicationルールは常にSNATする仕様で、Networkの除外設定と同じではありません。",
+      "subtitleLines": [
+        "方式を区別します。Networkルールは宛先やSNAT除外の設定で変わります。",
+        "Applicationルールは常にSNATする仕様で、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "方式を区別します。Networkルールは宛先やSNAT除外の設定で変わります。Applicationルールは常にSNATする仕様で、",
+          "lines": [
+            "方式を区別します。Networkルールは宛先やSNAT除外の設定で変わります。",
+            "Applicationルールは常にSNATする仕様で、"
+          ],
+          "weight": 66
+        },
+        {
+          "caption": "Networkの除外設定と同じではありません。",
+          "lines": [
+            "Networkの除外設定と同じではありません。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-snat",
+        "heading": "SNATの方式と、公開出口の実送信元を照合",
+        "svg": "diagrams/settings-v2/a2-snat-network-application.svg",
+        "highlightTargets": [
+          "network",
+          "application"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-042-manabu",
+      "speaker": "manabu",
+      "chapterId": "egress",
+      "speech": "ファイアウォールの前後の送信元と復路で、許可を説明するんですね。",
+      "caption": "Firewallの前後の送信元と復路で、許可を説明するんですね。",
+      "subtitleLines": [
+        "Firewallの前後の送信元と復路で、許可を説明するんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Firewallの前後の送信元と復路で、許可を説明するんですね。",
+          "lines": [
+            "Firewallの前後の送信元と復路で、許可を説明するんですね。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-snat",
+        "heading": "SNATの方式と、公開出口の実送信元を照合",
+        "svg": "diagrams/settings-v2/a2-snat-fw-target.svg",
+        "highlightTargets": [
+          "fw",
+          "target"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-043-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "公開出口をハブへ移した区画では、新しい接続で公開スナット元を確認します。外部接続先や公開アプリケーションゲートウェイが必要とする許可元と、実際の出口を合わせます。",
+      "caption": "公開出口をハブへ移した区画では、新しい接続で公開SNAT元を確認します。外部接続先や公開AppGWが必要とする許可元と、実際の出口を合わせます。",
+      "subtitleLines": [
+        "公開出口をハブへ移した区画では、新しい接続で公開SNAT元を確認します。",
+        "外部接続先や公開AppGWが必要とする許可元と、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開出口をハブへ移した区画では、新しい接続で公開SNAT元を確認します。外部接続先や公開AppGWが必要とする許可元と、",
+          "lines": [
+            "公開出口をハブへ移した区画では、新しい接続で公開SNAT元を確認します。",
+            "外部接続先や公開AppGWが必要とする許可元と、"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "実際の出口を合わせます。",
+          "lines": [
+            "実際の出口を合わせます。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-snat",
+        "heading": "SNATの方式と、公開出口の実送信元を照合",
+        "svg": "diagrams/settings-v2/a2-snat-public.svg",
+        "highlightTargets": [
+          "public"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-044-mako",
+      "speaker": "mako",
+      "chapterId": "egress",
+      "speech": "構成にある証明書の確認用許可や、期待する出口アイピーは、ハブの公開アイピーへ自動で変わるのでしょうか。",
+      "caption": "構成にある証明書の確認用許可や、期待する出口IPは、ハブの公開IPへ自動で変わるのでしょうか。",
+      "subtitleLines": [
+        "構成にある証明書の確認用許可や、期待する出口IPは、",
+        "ハブの公開IPへ自動で変わるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "構成にある証明書の確認用許可や、期待する出口IPは、ハブの公開IPへ自動で変わるのでしょうか。",
+          "lines": [
+            "構成にある証明書の確認用許可や、期待する出口IPは、",
+            "ハブの公開IPへ自動で変わるのでしょうか。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-egress-expectation",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "出口の実測と、許可元・期待値を対応付ける",
+        "kind": "接続案の設定（教材）",
+        "section": "送信元と出口",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "確認対象",
+              "width": 320
+            },
+            {
+              "label": "現行の参照・意味",
+              "width": 310
+            },
+            {
+              "label": "ハブ出口採用時の対応",
+              "width": 342
+            }
+          ],
+          "rows": [
+            {
+              "id": "observer",
+              "cells": [
+                "allow-certificate-observer",
+                "ローカルFW公開IPを参照",
+                "新しい実送信元と許可を照合"
+              ]
+            },
+            {
+              "id": "expected",
+              "cells": [
+                "expectedEgressIp",
+                "ローカルFW公開IP（期待値）",
+                "自動実測・ハブIPへの自動追従なし"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portal → 公開Gateway",
+                "公開呼出しの実送信元",
+                "接続先・公開AppGWの許可元と照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "出口の実測と、許可元・期待値を対応付ける"
+      }
+    },
+    {
+      "id": "lessona2-turn-045-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "変わりません。現行のアロー・サーティフィケート・オブザーバーと期待する出口アイピーは、ローカルファイアウォールの公開アイピーを参照しています。採用した出口に合わせて管理元を更新します。",
+      "caption": "変わりません。現行のallow-certificate-observerとexpectedEgressIpは、ローカルFirewallの公開IPを参照しています。採用した出口に合わせて管理元を更新します。",
+      "subtitleLines": [
+        "変わりません。現行のallow-certificate-observerとexpectedEgressIpは、",
+        "ローカルFirewallの公開IPを参照しています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "変わりません。現行のallow-certificate-observerとexpectedEgressIpは、ローカルFirewallの公開IPを参照しています。",
+          "lines": [
+            "変わりません。現行のallow-certificate-observerとexpectedEgressIpは、",
+            "ローカルFirewallの公開IPを参照しています。"
+          ],
+          "weight": 81
+        },
+        {
+          "caption": "採用した出口に合わせて管理元を更新します。",
+          "lines": [
+            "採用した出口に合わせて管理元を更新します。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-egress-expectation",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "出口の実測と、許可元・期待値を対応付ける",
+        "kind": "接続案の設定（教材）",
+        "section": "送信元と出口",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "確認対象",
+              "width": 320
+            },
+            {
+              "label": "現行の参照・意味",
+              "width": 310
+            },
+            {
+              "label": "ハブ出口採用時の対応",
+              "width": 342
+            }
+          ],
+          "rows": [
+            {
+              "id": "observer",
+              "cells": [
+                "allow-certificate-observer",
+                "ローカルFW公開IPを参照",
+                "新しい実送信元と許可を照合"
+              ]
+            },
+            {
+              "id": "expected",
+              "cells": [
+                "expectedEgressIp",
+                "ローカルFW公開IP（期待値）",
+                "自動実測・ハブIPへの自動追従なし"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portal → 公開Gateway",
+                "公開呼出しの実送信元",
+                "接続先・公開AppGWの許可元と照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "observer",
+          "expected"
+        ],
+        "heading": "出口の実測と、許可元・期待値を対応付ける"
+      }
+    },
+    {
+      "id": "lessona2-turn-046-manabu",
+      "speaker": "manabu",
+      "chapterId": "egress",
+      "speech": "期待値を保存することと、実際の出口を観測することも別です。ポータルから公開ゲートウェイへ呼び出す通信も、実送信元で許可と結果を照合しましょう。",
+      "caption": "期待値を保存することと、実際の出口を観測することも別です。Portalから公開Gatewayへ呼び出す通信も、実送信元で許可と結果を照合しましょう。",
+      "subtitleLines": [
+        "期待値を保存することと、実際の出口を観測することも別です。",
+        "Portalから公開Gatewayへ呼び出す通信も、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "期待値を保存することと、実際の出口を観測することも別です。Portalから公開Gatewayへ呼び出す通信も、",
+          "lines": [
+            "期待値を保存することと、実際の出口を観測することも別です。",
+            "Portalから公開Gatewayへ呼び出す通信も、"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "実送信元で許可と結果を照合しましょう。",
+          "lines": [
+            "実送信元で許可と結果を照合しましょう。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-egress-expectation",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "出口の実測と、許可元・期待値を対応付ける",
+        "kind": "接続案の設定（教材）",
+        "section": "送信元と出口",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "確認対象",
+              "width": 320
+            },
+            {
+              "label": "現行の参照・意味",
+              "width": 310
+            },
+            {
+              "label": "ハブ出口採用時の対応",
+              "width": 342
+            }
+          ],
+          "rows": [
+            {
+              "id": "observer",
+              "cells": [
+                "allow-certificate-observer",
+                "ローカルFW公開IPを参照",
+                "新しい実送信元と許可を照合"
+              ]
+            },
+            {
+              "id": "expected",
+              "cells": [
+                "expectedEgressIp",
+                "ローカルFW公開IP（期待値）",
+                "自動実測・ハブIPへの自動追従なし"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portal → 公開Gateway",
+                "公開呼出しの実送信元",
+                "接続先・公開AppGWの許可元と照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "expected",
+          "portal"
+        ],
+        "heading": "出口の実測と、許可元・期待値を対応付ける"
+      }
+    },
+    {
+      "id": "lessona2-turn-047-mako",
+      "speaker": "mako",
+      "chapterId": "rollout",
+      "speech": "切り替える順番へつなげます。最初は、元へ戻すための保存からですね。",
+      "caption": "切り替える順番へつなげます。最初は、元へ戻すための保存からですね。",
+      "subtitleLines": [
+        "切り替える順番へつなげます。最初は、元へ戻すための保存からですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "切り替える順番へつなげます。最初は、元へ戻すための保存からですね。",
+          "lines": [
+            "切り替える順番へつなげます。最初は、元へ戻すための保存からですね。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-before-cutover",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "現状保存と事前準備を、切替前にそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "段階・対象",
+              "width": 300
+            },
+            {
+              "label": "保存・準備する内容",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "現状の構成",
+                "CIDR・peering・4RTの全経路と伝搬"
+              ]
+            },
+            {
+              "id": "settings",
+              "cells": [
+                "名前と制御",
+                "VNet / FW DNS、NSG / FW、ゾーン・リンク・レコード"
+              ]
+            },
+            {
+              "id": "criteria",
+              "cells": [
+                "出口と復旧条件",
+                "出口IP・対象と担当・合格条件・切戻し条件"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央側の準備",
+                "許可・復路、DNS転送・参照、ログ検索先"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "切替前の直接照会",
+                "中央DNSへ問い合わせ、公開名・内部名の回答を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "保守経路と権限",
+                "両側peering、管理VMへの到達と作業権限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "現状保存と事前準備を、切替前にそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rollout",
+      "speech": "はい。アドレス、ピアリング、四つのルートテーブルの全経路と伝搬、ブイネットとファイアウォールのディーエヌエスを保存します。エヌエスジーとファイアウォール、ゾーン、リンク、レコード、出口アイピーも対象です。",
+      "caption": "はい。アドレス、ピアリング、四つのルートテーブルの全経路と伝搬、VNetとFirewallのDNSを保存します。NSGとFirewall、ゾーン、リンク、レコード、出口IPも対象です。",
+      "subtitleLines": [
+        "はい。アドレス、ピアリング、四つのルートテーブルの全経路と伝搬、",
+        "VNetとFirewallのDNSを保存します。NSGとFirewall、ゾーン、リンク、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。アドレス、ピアリング、四つのルートテーブルの全経路と伝搬、VNetとFirewallのDNSを保存します。NSGとFirewall、ゾーン、リンク、",
+          "lines": [
+            "はい。アドレス、ピアリング、四つのルートテーブルの全経路と伝搬、",
+            "VNetとFirewallのDNSを保存します。NSGとFirewall、ゾーン、リンク、"
+          ],
+          "weight": 77
+        },
+        {
+          "caption": "レコード、出口IPも対象です。",
+          "lines": [
+            "レコード、出口IPも対象です。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-before-cutover",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "現状保存と事前準備を、切替前にそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "段階・対象",
+              "width": 300
+            },
+            {
+              "label": "保存・準備する内容",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "現状の構成",
+                "CIDR・peering・4RTの全経路と伝搬"
+              ]
+            },
+            {
+              "id": "settings",
+              "cells": [
+                "名前と制御",
+                "VNet / FW DNS、NSG / FW、ゾーン・リンク・レコード"
+              ]
+            },
+            {
+              "id": "criteria",
+              "cells": [
+                "出口と復旧条件",
+                "出口IP・対象と担当・合格条件・切戻し条件"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央側の準備",
+                "許可・復路、DNS転送・参照、ログ検索先"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "切替前の直接照会",
+                "中央DNSへ問い合わせ、公開名・内部名の回答を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "保守経路と権限",
+                "両側peering、管理VMへの到達と作業権限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "network",
+          "settings",
+          "criteria"
+        ],
+        "heading": "現状保存と事前準備を、切替前にそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-049-manabu",
+      "speaker": "manabu",
+      "chapterId": "rollout",
+      "speech": "対象と担当、合格条件、切戻し条件を決めます。元の値と、復旧できる範囲を先に明確にします。",
+      "caption": "対象と担当、合格条件、切戻し条件を決めます。元の値と、復旧できる範囲を先に明確にします。",
+      "subtitleLines": [
+        "対象と担当、合格条件、切戻し条件を決めます。",
+        "元の値と、復旧できる範囲を先に明確にします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "対象と担当、合格条件、切戻し条件を決めます。元の値と、復旧できる範囲を先に明確にします。",
+          "lines": [
+            "対象と担当、合格条件、切戻し条件を決めます。",
+            "元の値と、復旧できる範囲を先に明確にします。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-before-cutover",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "現状保存と事前準備を、切替前にそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "段階・対象",
+              "width": 300
+            },
+            {
+              "label": "保存・準備する内容",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "現状の構成",
+                "CIDR・peering・4RTの全経路と伝搬"
+              ]
+            },
+            {
+              "id": "settings",
+              "cells": [
+                "名前と制御",
+                "VNet / FW DNS、NSG / FW、ゾーン・リンク・レコード"
+              ]
+            },
+            {
+              "id": "criteria",
+              "cells": [
+                "出口と復旧条件",
+                "出口IP・対象と担当・合格条件・切戻し条件"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央側の準備",
+                "許可・復路、DNS転送・参照、ログ検索先"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "切替前の直接照会",
+                "中央DNSへ問い合わせ、公開名・内部名の回答を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "保守経路と権限",
+                "両側peering、管理VMへの到達と作業権限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "criteria"
+        ],
+        "heading": "現状保存と事前準備を、切替前にそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rollout",
+      "speech": "中央側の許可と復路、ディーエヌエス転送とゾーン参照、ログ検索先を準備します。切替前に中央ディーエヌエスへ直接問い合わせ、公開名と内部名の回答を確かめます。両側のピアリング、必要な許可、管理ブイエムへの保守経路と権限も確保します。",
+      "caption": "中央側の許可・復路、DNS転送・ゾーン参照、ログ検索先を準備します。切替前に中央DNSへ直接問い合わせ、公開名と内部名の回答を確かめます。両側のピアリング、必要な許可、管理VMへの保守経路と権限も確保します。",
+      "subtitleLines": [
+        "中央側の許可・復路、DNS転送・ゾーン参照、",
+        "ログ検索先を準備します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中央側の許可・復路、DNS転送・ゾーン参照、ログ検索先を準備します。",
+          "lines": [
+            "中央側の許可・復路、DNS転送・ゾーン参照、",
+            "ログ検索先を準備します。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "切替前に中央DNSへ直接問い合わせ、公開名と内部名の回答を確かめます。",
+          "lines": [
+            "切替前に中央DNSへ直接問い合わせ、",
+            "公開名と内部名の回答を確かめます。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "両側のピアリング、必要な許可、管理VMへの保守経路と権限も確保します。",
+          "lines": [
+            "両側のピアリング、必要な許可、",
+            "管理VMへの保守経路と権限も確保します。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-before-cutover",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "現状保存と事前準備を、切替前にそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "段階・対象",
+              "width": 300
+            },
+            {
+              "label": "保存・準備する内容",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "現状の構成",
+                "CIDR・peering・4RTの全経路と伝搬"
+              ]
+            },
+            {
+              "id": "settings",
+              "cells": [
+                "名前と制御",
+                "VNet / FW DNS、NSG / FW、ゾーン・リンク・レコード"
+              ]
+            },
+            {
+              "id": "criteria",
+              "cells": [
+                "出口と復旧条件",
+                "出口IP・対象と担当・合格条件・切戻し条件"
+              ]
+            },
+            {
+              "id": "central",
+              "cells": [
+                "中央側の準備",
+                "許可・復路、DNS転送・参照、ログ検索先"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "切替前の直接照会",
+                "中央DNSへ問い合わせ、公開名・内部名の回答を確認"
+              ]
+            },
+            {
+              "id": "operator",
+              "cells": [
+                "保守経路と権限",
+                "両側peering、管理VMへの到達と作業権限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "central",
+          "query",
+          "operator"
+        ],
+        "heading": "現状保存と事前準備を、切替前にそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-051-mako",
+      "speaker": "mako",
+      "chapterId": "rollout",
+      "speech": "準備が整ったら、ディーエヌエス、区画別の出口、経路伝搬を全部同時に変えるのでしょうか。",
+      "caption": "準備が整ったら、DNS、区画別の出口、経路伝搬を全部同時に変えるのでしょうか。",
+      "subtitleLines": [
+        "準備が整ったら、DNS、区画別の出口、",
+        "経路伝搬を全部同時に変えるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "準備が整ったら、DNS、区画別の出口、経路伝搬を全部同時に変えるのでしょうか。",
+          "lines": [
+            "準備が整ったら、DNS、区画別の出口、",
+            "経路伝搬を全部同時に変えるのでしょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-cutover-stages",
+        "heading": "許可・経路を先に準備し、段階的に切り替える",
+        "svg": "diagrams/settings-v2/a2-cutover-stages-base.svg",
+        "highlightTargets": []
+      }
+    },
+    {
+      "id": "lessona2-turn-052-manabu",
+      "speaker": "manabu",
+      "chapterId": "rollout",
+      "speech": "影響範囲ごとに分けて切り替えます。何を変えた結果かを追え、合格と判断できる単位を企業側と合わせることが大切です。",
+      "caption": "影響範囲ごとに分けて切り替えます。何を変えた結果かを追え、合格と判断できる単位を企業側と合わせることが大切です。",
+      "subtitleLines": [
+        "影響範囲ごとに分けて切り替えます。何を変えた結果かを追え、",
+        "合格と判断できる単位を企業側と合わせることが大切です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "影響範囲ごとに分けて切り替えます。何を変えた結果かを追え、合格と判断できる単位を企業側と合わせることが大切です。",
+          "lines": [
+            "影響範囲ごとに分けて切り替えます。何を変えた結果かを追え、",
+            "合格と判断できる単位を企業側と合わせることが大切です。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-cutover-stages",
+        "heading": "許可・経路を先に準備し、段階的に切り替える",
+        "svg": "diagrams/settings-v2/a2-cutover-stages-unit.svg",
+        "highlightTargets": [
+          "unit"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-053-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rollout",
+      "speech": "必要なエヌエスジーとファイアウォール許可を先に用意し、対象のディーエヌエス、出口ユーディーアール、伝搬を変更して、各サービスへ反映します。許可と経路を用意する前に切り替えないようにします。",
+      "caption": "必要なNSGとFirewall許可を先に用意し、対象のDNS、出口UDR、伝搬を変更して、各サービスへ反映します。許可と経路を用意する前に切り替えないようにします。",
+      "subtitleLines": [
+        "必要なNSGとFirewall許可を先に用意し、対象のDNS、",
+        "出口UDR、伝搬を変更して、各サービスへ反映します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "必要なNSGとFirewall許可を先に用意し、対象のDNS、出口UDR、伝搬を変更して、各サービスへ反映します。",
+          "lines": [
+            "必要なNSGとFirewall許可を先に用意し、対象のDNS、",
+            "出口UDR、伝搬を変更して、各サービスへ反映します。"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "許可と経路を用意する前に切り替えないようにします。",
+          "lines": [
+            "許可と経路を用意する前に切り替えないようにします。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-cutover-stages",
+        "heading": "許可・経路を先に準備し、段階的に切り替える",
+        "svg": "diagrams/settings-v2/a2-cutover-stages-prepare-change-apply.svg",
+        "highlightTargets": [
+          "prepare",
+          "change",
+          "apply"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-054-mako",
+      "speaker": "mako",
+      "chapterId": "rollout",
+      "speech": "中央ディーエヌエスへ切り替えてから、エーピーアイエムの公開通信を確かめる主例ですね。名前解決と公開宛ての要求は、別の通信として追います。",
+      "caption": "中央DNSへ切り替えてから、APIMの公開通信を確かめる主例ですね。名前解決と公開宛ての要求は、別の通信として追います。",
+      "subtitleLines": [
+        "中央DNSへ切り替えてから、APIMの公開通信を確かめる主例ですね。",
+        "名前解決と公開宛ての要求は、別の通信として追います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中央DNSへ切り替えてから、APIMの公開通信を確かめる主例ですね。名前解決と公開宛ての要求は、別の通信として追います。",
+          "lines": [
+            "中央DNSへ切り替えてから、APIMの公開通信を確かめる主例ですね。",
+            "名前解決と公開宛ての要求は、別の通信として追います。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "a2-cutover-stages",
+        "heading": "許可・経路を先に準備し、段階的に切り替える",
+        "svg": "diagrams/settings-v2/a2-cutover-stages-separate.svg",
+        "highlightTargets": [
+          "separate"
+        ]
+      }
+    },
+    {
+      "id": "lessona2-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "verify",
+      "speech": "切替後に、さっき開いていたエーピーアイ画面が動けば合格、としてよいでしょうか。",
+      "caption": "切替後に、さっき開いていたAPI画面が動けば合格、としてよいでしょうか。",
+      "subtitleLines": [
+        "切替後に、さっき開いていたAPI画面が動けば合格、としてよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "切替後に、さっき開いていたAPI画面が動けば合格、としてよいでしょうか。",
+          "lines": [
+            "切替後に、さっき開いていたAPI画面が動けば合格、としてよいでしょうか。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-new-connection",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "新しい接続を開始し、同じ通信で照合",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "名前の回答",
+            "value": "8ゾーンの実FQDN・公開名・外部名を確認"
+          },
+          {
+            "id": "route",
+            "label": "実効経路",
+            "value": "宛先ごとに入口・公開出口・社内・中央DNSへの往復を確認"
+          },
+          {
+            "id": "allow",
+            "label": "許可とログ",
+            "value": "NSG判定・Firewallログを照合"
+          },
+          {
+            "id": "source",
+            "label": "実送信元",
+            "value": "公開先が見たSNAT元を確認"
+          },
+          {
+            "id": "services",
+            "label": "機能と保守の範囲",
+            "value": "API / Portal / PE・管理・SSH・証明書・イメージ・監視"
+          }
+        ],
+        "highlightFields": [],
+        "notice": "古いDNS回答や既存接続の成功に依存しない",
+        "heading": "新しい接続を開始し、同じ通信で照合"
+      }
+    },
+    {
+      "id": "lessona2-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "verify",
+      "speech": "新しい接続で確認します。古いディーエヌエス回答や既存接続の状態が残るためです。変更後のディーエヌエスを使い、期待する宛先へ新しく要求したことを確かめます。",
+      "caption": "新しい接続で確認します。古いDNS回答や既存接続の状態が残るためです。変更後のDNSを使い、期待する宛先へ新しく要求したことを確かめます。",
+      "subtitleLines": [
+        "新しい接続で確認します。古いDNS回答や既存接続の",
+        "状態が残るためです。変更後のDNSを使い、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "新しい接続で確認します。古いDNS回答や既存接続の状態が残るためです。変更後のDNSを使い、",
+          "lines": [
+            "新しい接続で確認します。古いDNS回答や既存接続の",
+            "状態が残るためです。変更後のDNSを使い、"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "期待する宛先へ新しく要求したことを確かめます。",
+          "lines": [
+            "期待する宛先へ新しく要求したことを確かめます。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-new-connection",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "新しい接続を開始し、同じ通信で照合",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "名前の回答",
+            "value": "8ゾーンの実FQDN・公開名・外部名を確認"
+          },
+          {
+            "id": "route",
+            "label": "実効経路",
+            "value": "宛先ごとに入口・公開出口・社内・中央DNSへの往復を確認"
+          },
+          {
+            "id": "allow",
+            "label": "許可とログ",
+            "value": "NSG判定・Firewallログを照合"
+          },
+          {
+            "id": "source",
+            "label": "実送信元",
+            "value": "公開先が見たSNAT元を確認"
+          },
+          {
+            "id": "services",
+            "label": "機能と保守の範囲",
+            "value": "API / Portal / PE・管理・SSH・証明書・イメージ・監視"
+          }
+        ],
+        "highlightFields": [
+          "dns"
+        ],
+        "notice": "古いDNS回答や既存接続の成功に依存しない",
+        "heading": "新しい接続を開始し、同じ通信で照合"
+      }
+    },
+    {
+      "id": "lessona2-turn-057-manabu",
+      "speaker": "manabu",
+      "chapterId": "verify",
+      "speech": "成功か失敗かに加え、どのアイピーへ解決し、どの経路を通り、どこで許可されたかをそろえるんですね。",
+      "caption": "成功か失敗かに加え、どのIPへ解決し、どの経路を通り、どこで許可されたかをそろえるんですね。",
+      "subtitleLines": [
+        "成功か失敗かに加え、どのIPへ解決し、どの経路を通り、",
+        "どこで許可されたかをそろえるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "成功か失敗かに加え、どのIPへ解決し、どの経路を通り、どこで許可されたかをそろえるんですね。",
+          "lines": [
+            "成功か失敗かに加え、どのIPへ解決し、どの経路を通り、",
+            "どこで許可されたかをそろえるんですね。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-new-connection",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "新しい接続を開始し、同じ通信で照合",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "名前の回答",
+            "value": "8ゾーンの実FQDN・公開名・外部名を確認"
+          },
+          {
+            "id": "route",
+            "label": "実効経路",
+            "value": "宛先ごとに入口・公開出口・社内・中央DNSへの往復を確認"
+          },
+          {
+            "id": "allow",
+            "label": "許可とログ",
+            "value": "NSG判定・Firewallログを照合"
+          },
+          {
+            "id": "source",
+            "label": "実送信元",
+            "value": "公開先が見たSNAT元を確認"
+          },
+          {
+            "id": "services",
+            "label": "機能と保守の範囲",
+            "value": "API / Portal / PE・管理・SSH・証明書・イメージ・監視"
+          }
+        ],
+        "highlightFields": [
+          "dns",
+          "route",
+          "allow"
+        ],
+        "notice": "古いDNS回答や既存接続の成功に依存しない",
+        "heading": "新しい接続を開始し、同じ通信で照合"
+      }
+    },
+    {
+      "id": "lessona2-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "verify",
+      "speech": "八つのゾーンに関わる実エフキューディーエヌ、公開名、外部名を確認します。実効経路、エヌエスジー判定、ファイアウォールログ、公開先が見たスナット元を、同じ通信で照合します。",
+      "caption": "八つのゾーンに関わる実FQDN、公開名、外部名を確認します。実効経路、NSG判定、Firewallログ、公開先が見たSNAT元を、同じ通信で照合します。",
+      "subtitleLines": [
+        "八つのゾーンに関わる実FQDN、公開名、外部名を確認します。",
+        "実効経路、NSG判定、Firewallログ、公開先が見たSNAT元を、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "八つのゾーンに関わる実FQDN、公開名、外部名を確認します。実効経路、NSG判定、Firewallログ、公開先が見たSNAT元を、",
+          "lines": [
+            "八つのゾーンに関わる実FQDN、公開名、外部名を確認します。",
+            "実効経路、NSG判定、Firewallログ、公開先が見たSNAT元を、"
+          ],
+          "weight": 65
+        },
+        {
+          "caption": "同じ通信で照合します。",
+          "lines": [
+            "同じ通信で照合します。"
+          ],
+          "weight": 11
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-new-connection",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "新しい接続を開始し、同じ通信で照合",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "名前の回答",
+            "value": "8ゾーンの実FQDN・公開名・外部名を確認"
+          },
+          {
+            "id": "route",
+            "label": "実効経路",
+            "value": "宛先ごとに入口・公開出口・社内・中央DNSへの往復を確認"
+          },
+          {
+            "id": "allow",
+            "label": "許可とログ",
+            "value": "NSG判定・Firewallログを照合"
+          },
+          {
+            "id": "source",
+            "label": "実送信元",
+            "value": "公開先が見たSNAT元を確認"
+          },
+          {
+            "id": "services",
+            "label": "機能と保守の範囲",
+            "value": "API / Portal / PE・管理・SSH・証明書・イメージ・監視"
+          }
+        ],
+        "highlightFields": [
+          "dns",
+          "route",
+          "allow",
+          "source"
+        ],
+        "notice": "古いDNS回答や既存接続の成功に依存しない",
+        "heading": "新しい接続を開始し、同じ通信で照合"
+      }
+    },
+    {
+      "id": "lessona2-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "verify",
+      "speech": "エーピーアイとポータル、プライベートエンドポイントに加え、エーピーアイエム管理、エスエスエイチ、証明書更新、イメージ取得とビルド、監視も対象です。入口の往復、公開出口、社内や中央ディーエヌエスへの往復を比較します。",
+      "caption": "APIとPortal、PEに加え、APIM管理、SSH、証明書更新、イメージ取得とビルド、監視も対象です。入口の往復、公開出口、社内や中央DNSへの往復を比較します。",
+      "subtitleLines": [
+        "APIとPortal、PEに加え、APIM管理、SSH、証明書更新、",
+        "イメージ取得とビルド、監視も対象です。入口の往復、公開出口、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIとPortal、PEに加え、APIM管理、SSH、証明書更新、イメージ取得とビルド、監視も対象です。入口の往復、公開出口、",
+          "lines": [
+            "APIとPortal、PEに加え、APIM管理、SSH、証明書更新、",
+            "イメージ取得とビルド、監視も対象です。入口の往復、公開出口、"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "社内や中央DNSへの往復を比較します。",
+          "lines": [
+            "社内や中央DNSへの往復を比較します。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-new-connection",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "新しい接続を開始し、同じ通信で照合",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "名前の回答",
+            "value": "8ゾーンの実FQDN・公開名・外部名を確認"
+          },
+          {
+            "id": "route",
+            "label": "実効経路",
+            "value": "宛先ごとに入口・公開出口・社内・中央DNSへの往復を確認"
+          },
+          {
+            "id": "allow",
+            "label": "許可とログ",
+            "value": "NSG判定・Firewallログを照合"
+          },
+          {
+            "id": "source",
+            "label": "実送信元",
+            "value": "公開先が見たSNAT元を確認"
+          },
+          {
+            "id": "services",
+            "label": "機能と保守の範囲",
+            "value": "API / Portal / PE・管理・SSH・証明書・イメージ・監視"
+          }
+        ],
+        "highlightFields": [
+          "services"
+        ],
+        "notice": "古いDNS回答や既存接続の成功に依存しない",
+        "heading": "新しい接続を開始し、同じ通信で照合"
+      }
+    },
+    {
+      "id": "lessona2-turn-060-mako",
+      "speaker": "mako",
+      "chapterId": "verify",
+      "speech": "ログが残ることと、担当者に異常が通知されることも、分けて確認する必要がありますね。",
+      "caption": "ログが残ることと、担当者に異常が通知されることも、分けて確認する必要がありますね。",
+      "subtitleLines": [
+        "ログが残ることと、担当者に異常が通知されることも、",
+        "分けて確認する必要がありますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログが残ることと、担当者に異常が通知されることも、分けて確認する必要がありますね。",
+          "lines": [
+            "ログが残ることと、担当者に異常が通知されることも、",
+            "分けて確認する必要がありますね。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observability",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "中央側の診断・通知・担当も確定する",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "logs",
+            "label": "ログの収集と検索先",
+            "value": "中央Firewall・DNS・peeringの診断を確認"
+          },
+          {
+            "id": "alerts",
+            "label": "異常の通知",
+            "value": "アラート条件・通知先・対応担当を合意"
+          },
+          {
+            "id": "scope",
+            "label": "Core既存通知の範囲",
+            "value": "共有ハブ資源まで自動で覆うとは扱わない"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "中央側の診断・通知・担当も確定する"
+      }
+    },
+    {
+      "id": "lessona2-turn-061-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "verify",
+      "speech": "はい。中央ファイアウォール、ディーエヌエス、ピアリングの診断やアラート、担当を企業側と決めます。コアの既存通知が、共有ハブ資源まで自動で覆うとは扱いません。",
+      "caption": "はい。中央Firewall、DNS、ピアリングの診断やアラート、担当を企業側と決めます。Coreの既存通知が、共有ハブ資源まで自動で覆うとは扱いません。",
+      "subtitleLines": [
+        "はい。中央Firewall、DNS、ピアリングの診断やアラート、",
+        "担当を企業側と決めます。Coreの既存通知が、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。中央Firewall、DNS、ピアリングの診断やアラート、担当を企業側と決めます。Coreの既存通知が、",
+          "lines": [
+            "はい。中央Firewall、DNS、ピアリングの診断やアラート、",
+            "担当を企業側と決めます。Coreの既存通知が、"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "共有ハブ資源まで自動で覆うとは扱いません。",
+          "lines": [
+            "共有ハブ資源まで自動で覆うとは扱いません。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-observability",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "中央側の診断・通知・担当も確定する",
+        "kind": "接続案の設定（教材）",
+        "section": "切替と検証",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "logs",
+            "label": "ログの収集と検索先",
+            "value": "中央Firewall・DNS・peeringの診断を確認"
+          },
+          {
+            "id": "alerts",
+            "label": "異常の通知",
+            "value": "アラート条件・通知先・対応担当を合意"
+          },
+          {
+            "id": "scope",
+            "label": "Core既存通知の範囲",
+            "value": "共有ハブ資源まで自動で覆うとは扱わない"
+          }
+        ],
+        "highlightFields": [
+          "logs",
+          "alerts",
+          "scope"
+        ],
+        "heading": "中央側の診断・通知・担当も確定する"
+      }
+    },
+    {
+      "id": "lessona2-turn-062-mako",
+      "speaker": "mako",
+      "chapterId": "restore",
+      "speech": "不合格なら保存した設定へ戻しますね。企業ハブ全体も、接続前へ戻すのでしょうか。",
+      "caption": "不合格なら保存した設定へ戻しますね。企業ハブ全体も、接続前へ戻すのでしょうか。",
+      "subtitleLines": [
+        "不合格なら保存した設定へ戻しますね。",
+        "企業ハブ全体も、接続前へ戻すのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "不合格なら保存した設定へ戻しますね。企業ハブ全体も、接続前へ戻すのでしょうか。",
+          "lines": [
+            "不合格なら保存した設定へ戻しますね。",
+            "企業ハブ全体も、接続前へ戻すのでしょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-rollback",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "保存したCore側の変更範囲へ戻す",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "scope",
+            "label": "切戻す対象",
+            "value": "合意したCore側のDNS・出口・伝搬・許可・参照等"
+          },
+          {
+            "id": "shared",
+            "label": "共有資源の扱い",
+            "value": "共有ハブ全体や他スポークの設定は巻き戻さない"
+          },
+          {
+            "id": "verify",
+            "label": "復旧後の確認",
+            "value": "同じ通信を新しい接続で再確認"
+          },
+          {
+            "id": "persist",
+            "label": "継続採用する設定",
+            "value": "config・IaC・配備処理へ反映し、次回upの値を確認"
+          }
+        ],
+        "highlightFields": [],
+        "heading": "保存したCore側の変更範囲へ戻す"
+      }
+    },
+    {
+      "id": "lessona2-turn-063-manabu",
+      "speaker": "manabu",
+      "chapterId": "restore",
+      "speech": "戻すのは、合意したコア側の変更範囲です。共有ハブ全体や他スポークの設定を巻き戻さず、中央側の担当と対象を合わせます。復旧後も同じ通信を確認します。",
+      "caption": "戻すのは、合意したCore側の変更範囲です。共有ハブ全体や他スポークの設定を巻き戻さず、中央側の担当と対象を合わせます。復旧後も同じ通信を確認します。",
+      "subtitleLines": [
+        "戻すのは、合意したCore側の変更範囲です。共有ハブ全体や",
+        "他スポークの設定を巻き戻さず、中央側の担当と対象を合わせます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "戻すのは、合意したCore側の変更範囲です。共有ハブ全体や他スポークの設定を巻き戻さず、中央側の担当と対象を合わせます。",
+          "lines": [
+            "戻すのは、合意したCore側の変更範囲です。共有ハブ全体や",
+            "他スポークの設定を巻き戻さず、中央側の担当と対象を合わせます。"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "復旧後も同じ通信を確認します。",
+          "lines": [
+            "復旧後も同じ通信を確認します。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-rollback",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "保存したCore側の変更範囲へ戻す",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "scope",
+            "label": "切戻す対象",
+            "value": "合意したCore側のDNS・出口・伝搬・許可・参照等"
+          },
+          {
+            "id": "shared",
+            "label": "共有資源の扱い",
+            "value": "共有ハブ全体や他スポークの設定は巻き戻さない"
+          },
+          {
+            "id": "verify",
+            "label": "復旧後の確認",
+            "value": "同じ通信を新しい接続で再確認"
+          },
+          {
+            "id": "persist",
+            "label": "継続採用する設定",
+            "value": "config・IaC・配備処理へ反映し、次回upの値を確認"
+          }
+        ],
+        "highlightFields": [
+          "scope",
+          "shared",
+          "verify"
+        ],
+        "heading": "保存したCore側の変更範囲へ戻す"
+      }
+    },
+    {
+      "id": "lessona2-turn-064-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "restore",
+      "speech": "継続採用する変更は、設定ファイル、アイアック、配備処理へ反映します。手動でハブ向けにしたユーディーアールが、次回のアップでも同じになるかは、宣言する管理元を見て判断します。",
+      "caption": "継続採用する変更は、config、IaC、配備処理へ反映します。手動でハブ向けにしたUDRが、次回のupでも同じになるかは、宣言する管理元を見て判断します。",
+      "subtitleLines": [
+        "継続採用する変更は、config、IaC、配備処理へ反映します。",
+        "手動でハブ向けにしたUDRが、次回のupでも同じになるかは、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "継続採用する変更は、config、IaC、配備処理へ反映します。手動でハブ向けにしたUDRが、次回のupでも同じになるかは、",
+          "lines": [
+            "継続採用する変更は、config、IaC、配備処理へ反映します。",
+            "手動でハブ向けにしたUDRが、次回のupでも同じになるかは、"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "宣言する管理元を見て判断します。",
+          "lines": [
+            "宣言する管理元を見て判断します。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-rollback",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "保存したCore側の変更範囲へ戻す",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "scope",
+            "label": "切戻す対象",
+            "value": "合意したCore側のDNS・出口・伝搬・許可・参照等"
+          },
+          {
+            "id": "shared",
+            "label": "共有資源の扱い",
+            "value": "共有ハブ全体や他スポークの設定は巻き戻さない"
+          },
+          {
+            "id": "verify",
+            "label": "復旧後の確認",
+            "value": "同じ通信を新しい接続で再確認"
+          },
+          {
+            "id": "persist",
+            "label": "継続採用する設定",
+            "value": "config・IaC・配備処理へ反映し、次回upの値を確認"
+          }
+        ],
+        "highlightFields": [
+          "persist"
+        ],
+        "heading": "保存したCore側の変更範囲へ戻す"
+      }
+    },
+    {
+      "id": "lessona2-turn-065-mako",
+      "speaker": "mako",
+      "chapterId": "restore",
+      "speech": "既存ルートを保持すれば、手動変更も恒久化されますか。",
+      "caption": "既存ルートを保持すれば、手動変更も恒久化されますか。",
+      "subtitleLines": [
+        "既存ルートを保持すれば、手動変更も恒久化されますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "既存ルートを保持すれば、手動変更も恒久化されますか。",
+          "lines": [
+            "既存ルートを保持すれば、手動変更も恒久化されますか。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-redeployment",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "既存経路の保持と、再配備・撤去の管理",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "管理するもの",
+              "width": 310
+            },
+            {
+              "label": "現行の挙動と確認する責任",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "keep",
+              "cells": [
+                "4RTの既存ルート",
+                "親RT更新へ引き継ぐ。恒久化の保証とは別"
+              ]
+            },
+            {
+              "id": "apply",
+              "cells": [
+                "Bicepの同名ルート・伝搬",
+                "宣言値を再適用。出口がローカルFWへ戻り得る"
+              ]
+            },
+            {
+              "id": "zone",
+              "cells": [
+                "中央ゾーンとレコード",
+                "PE / zone group更新・削除の影響と管理元を合意"
+              ]
+            },
+            {
+              "id": "down",
+              "cells": [
+                "down時の解除担当",
+                "両側peering・中央ゾーン参照・FW許可・Gateway共有"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "heading": "既存経路の保持と、再配備・撤去の管理"
+      }
+    },
+    {
+      "id": "lessona2-turn-066-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "restore",
+      "speech": "言えません。四つのルートテーブルの既存経路を親の更新へ引き継ぎますが、バイセップが宣言する同名ルートと伝搬設定は再適用されます。出口がローカルファイアウォールへ戻る可能性があります。",
+      "caption": "言えません。四つのルートテーブルの既存経路を親の更新へ引き継ぎますが、Bicepが宣言する同名ルートと伝搬設定は再適用されます。出口がローカルFirewallへ戻る可能性があります。",
+      "subtitleLines": [
+        "言えません。四つのルートテーブルの既存経路を親の更新へ引き継ぎますが、",
+        "Bicepが宣言する同名ルートと伝搬設定は再適用されます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "言えません。四つのルートテーブルの既存経路を親の更新へ引き継ぎますが、Bicepが宣言する同名ルートと伝搬設定は再適用されます。",
+          "lines": [
+            "言えません。四つのルートテーブルの既存経路を親の更新へ引き継ぎますが、",
+            "Bicepが宣言する同名ルートと伝搬設定は再適用されます。"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "出口がローカルFirewallへ戻る可能性があります。",
+          "lines": [
+            "出口がローカルFirewallへ戻る可能性があります。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-redeployment",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "既存経路の保持と、再配備・撤去の管理",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "管理するもの",
+              "width": 310
+            },
+            {
+              "label": "現行の挙動と確認する責任",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "keep",
+              "cells": [
+                "4RTの既存ルート",
+                "親RT更新へ引き継ぐ。恒久化の保証とは別"
+              ]
+            },
+            {
+              "id": "apply",
+              "cells": [
+                "Bicepの同名ルート・伝搬",
+                "宣言値を再適用。出口がローカルFWへ戻り得る"
+              ]
+            },
+            {
+              "id": "zone",
+              "cells": [
+                "中央ゾーンとレコード",
+                "PE / zone group更新・削除の影響と管理元を合意"
+              ]
+            },
+            {
+              "id": "down",
+              "cells": [
+                "down時の解除担当",
+                "両側peering・中央ゾーン参照・FW許可・Gateway共有"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "keep",
+          "apply"
+        ],
+        "heading": "既存経路の保持と、再配備・撤去の管理"
+      }
+    },
+    {
+      "id": "lessona2-turn-067-manabu",
+      "speaker": "manabu",
+      "chapterId": "restore",
+      "speech": "中央ゾーンは、資源とレコードの所有範囲を決めます。プライベートエンドポイントやゾーン・グループの更新・削除が中央レコードへ及ぶ影響も、配備担当と共有します。",
+      "caption": "中央ゾーンは、資源とレコードの所有範囲を決めます。PEやzone groupの更新・削除が中央レコードへ及ぶ影響も、配備担当と共有します。",
+      "subtitleLines": [
+        "中央ゾーンは、資源とレコードの所有範囲を決めます。",
+        "PEやzone groupの更新・削除が中央レコードへ及ぶ影響も、配備担当と共有します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中央ゾーンは、資源とレコードの所有範囲を決めます。PEやzone groupの更新・削除が中央レコードへ及ぶ影響も、配備担当と共有します。",
+          "lines": [
+            "中央ゾーンは、資源とレコードの所有範囲を決めます。",
+            "PEやzone groupの更新・削除が中央レコードへ及ぶ影響も、配備担当と共有します。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-redeployment",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "既存経路の保持と、再配備・撤去の管理",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "管理するもの",
+              "width": 310
+            },
+            {
+              "label": "現行の挙動と確認する責任",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "keep",
+              "cells": [
+                "4RTの既存ルート",
+                "親RT更新へ引き継ぐ。恒久化の保証とは別"
+              ]
+            },
+            {
+              "id": "apply",
+              "cells": [
+                "Bicepの同名ルート・伝搬",
+                "宣言値を再適用。出口がローカルFWへ戻り得る"
+              ]
+            },
+            {
+              "id": "zone",
+              "cells": [
+                "中央ゾーンとレコード",
+                "PE / zone group更新・削除の影響と管理元を合意"
+              ]
+            },
+            {
+              "id": "down",
+              "cells": [
+                "down時の解除担当",
+                "両側peering・中央ゾーン参照・FW許可・Gateway共有"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "zone"
+        ],
+        "heading": "既存経路の保持と、再配備・撤去の管理"
+      }
+    },
+    {
+      "id": "lessona2-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "restore",
+      "speech": "ダウンのときの両側ピアリング、中央ゾーン参照、ファイアウォール許可、ゲートウェイ共有の解除担当も定めます。疎通だけでなく、次回配備と撤去まで管理できて完了です。",
+      "caption": "downのときの両側ピアリング、中央ゾーン参照、Firewall許可、Gateway共有の解除担当も定めます。疎通だけでなく、次回配備と撤去まで管理できて完了です。",
+      "subtitleLines": [
+        "downのときの両側ピアリング、中央ゾーン参照、Firewall許可、",
+        "Gateway共有の解除担当も定めます。疎通だけでなく、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "downのときの両側ピアリング、中央ゾーン参照、Firewall許可、Gateway共有の解除担当も定めます。疎通だけでなく、",
+          "lines": [
+            "downのときの両側ピアリング、中央ゾーン参照、Firewall許可、",
+            "Gateway共有の解除担当も定めます。疎通だけでなく、"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "次回配備と撤去まで管理できて完了です。",
+          "lines": [
+            "次回配備と撤去まで管理できて完了です。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-redeployment",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "既存経路の保持と、再配備・撤去の管理",
+        "kind": "接続案の設定（教材）",
+        "section": "切戻しと再配備",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "table": {
+          "columns": [
+            {
+              "label": "管理するもの",
+              "width": 310
+            },
+            {
+              "label": "現行の挙動と確認する責任",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "keep",
+              "cells": [
+                "4RTの既存ルート",
+                "親RT更新へ引き継ぐ。恒久化の保証とは別"
+              ]
+            },
+            {
+              "id": "apply",
+              "cells": [
+                "Bicepの同名ルート・伝搬",
+                "宣言値を再適用。出口がローカルFWへ戻り得る"
+              ]
+            },
+            {
+              "id": "zone",
+              "cells": [
+                "中央ゾーンとレコード",
+                "PE / zone group更新・削除の影響と管理元を合意"
+              ]
+            },
+            {
+              "id": "down",
+              "cells": [
+                "down時の解除担当",
+                "両側peering・中央ゾーン参照・FW許可・Gateway共有"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "down"
+        ],
+        "heading": "既存経路の保持と、再配備・撤去の管理"
+      }
+    },
+    {
+      "id": "lessona2-turn-069-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "三つ確認しましょう。一つ目。ブイネットだけ中央ディーエヌエスへ変え、ファイアウォール側のディーエヌエス設定は明示的な空配列のままです。ファイアウォールも中央ディーエヌエスを使いますか。",
+      "caption": "三つ確認しましょう。一つ目。VNetだけ中央DNSへ変え、Firewall側のdnsServersは明示的な空配列のままです。Firewallも中央DNSを使いますか。",
+      "subtitleLines": [
+        "三つ確認しましょう。一つ目。VNetだけ中央DNSへ変え、",
+        "Firewall側のdnsServersは明示的な空配列のままです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "三つ確認しましょう。一つ目。VNetだけ中央DNSへ変え、Firewall側のdnsServersは明示的な空配列のままです。",
+          "lines": [
+            "三つ確認しましょう。一つ目。VNetだけ中央DNSへ変え、",
+            "Firewall側のdnsServersは明示的な空配列のままです。"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "Firewallも中央DNSを使いますか。",
+          "lines": [
+            "Firewallも中央DNSを使いますか。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-dns",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認①：VNetだけ中央DNSなら、FWも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "VNetは中央DNS。FW側dnsServersは明示 []"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "Firewall自身も中央DNSを使う"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "Firewall自身はAzure提供DNSを使う"
+          }
+        ],
+        "highlightFields": [],
+        "notice": "設定対象と入力の意味を考える",
+        "heading": "確認①：VNetだけ中央DNSなら、FWも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "使いません。明示的な空配列なら、ファイアウォール自身はアジュール提供ディーエヌエスを使います。未指定の場合の継承と区別し、クライアントとファイアウォールの解決結果をそれぞれ確認します。",
+      "caption": "使いません。明示的な空配列なら、Firewall自身はAzure提供DNSを使います。未指定の場合の継承と区別し、クライアントとFirewallの解決結果をそれぞれ確認します。",
+      "subtitleLines": [
+        "使いません。明示的な空配列なら、Firewall自身は",
+        "Azure提供DNSを使います。未指定の場合の継承と区別し、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "使いません。明示的な空配列なら、Firewall自身はAzure提供DNSを使います。未指定の場合の継承と区別し、",
+          "lines": [
+            "使いません。明示的な空配列なら、Firewall自身は",
+            "Azure提供DNSを使います。未指定の場合の継承と区別し、"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "クライアントとFirewallの解決結果をそれぞれ確認します。",
+          "lines": [
+            "クライアントとFirewallの解決結果をそれぞれ確認します。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-dns",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認①：VNetだけ中央DNSなら、FWも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "VNetは中央DNS。FW側dnsServersは明示 []"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "Firewall自身も中央DNSを使う"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "Firewall自身はAzure提供DNSを使う"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "設定対象と入力の意味を考える",
+        "heading": "確認①：VNetだけ中央DNSなら、FWも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-071-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "誰が使う設定かを言葉にする。ディーエヌエス プロキシだけで、問い合わせ先がそろうとも判断しません。",
+      "caption": "誰が使う設定かを言葉にする。DNS Proxyだけで、問い合わせ先がそろうとも判断しません。",
+      "subtitleLines": [
+        "誰が使う設定かを言葉にする。DNS Proxyだけで、",
+        "問い合わせ先がそろうとも判断しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "誰が使う設定かを言葉にする。DNS Proxyだけで、問い合わせ先がそろうとも判断しません。",
+          "lines": [
+            "誰が使う設定かを言葉にする。DNS Proxyだけで、",
+            "問い合わせ先がそろうとも判断しません。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-dns",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認①：VNetだけ中央DNSなら、FWも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "VNetは中央DNS。FW側dnsServersは明示 []"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "Firewall自身も中央DNSを使う"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "Firewall自身はAzure提供DNSを使う"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "設定対象と入力の意味を考える",
+        "heading": "確認①：VNetだけ中央DNSなら、FWも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-072-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二つ目。ハブにつないだので、エヌエスジーの許可元をハブサイダー全体へ置き換えてよいでしょうか。",
+      "caption": "二つ目。ハブにつないだので、NSGの許可元をハブCIDR全体へ置き換えてよいでしょうか。",
+      "subtitleLines": [
+        "二つ目。ハブにつないだので、",
+        "NSGの許可元をハブCIDR全体へ置き換えてよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "二つ目。ハブにつないだので、NSGの許可元をハブCIDR全体へ置き換えてよいでしょうか。",
+          "lines": [
+            "二つ目。ハブにつないだので、",
+            "NSGの許可元をハブCIDR全体へ置き換えてよいでしょうか。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認②：ハブCIDR全体の許可へ置き換える？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "Coreを企業ハブへ接続した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "NSGの許可元をハブCIDR全体へ置き換える"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "実送信元・宛先・ポートで必要な分を許可する"
+          }
+        ],
+        "highlightFields": [],
+        "notice": "接続範囲と、通信許可の範囲を分けて考える",
+        "heading": "確認②：ハブCIDR全体の許可へ置き換える？"
+      }
+    },
+    {
+      "id": "lessona2-turn-073-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "実送信元、宛先、ポートへ絞ります。スナットとバーチャルネットワークタグの影響を確認し、終端拒否とプライベートエンドポイントの限定許可を維持します。",
+      "caption": "実送信元、宛先、ポートへ絞ります。SNATとVirtualNetworkタグの影響を確認し、終端拒否とPEの限定許可を維持します。",
+      "subtitleLines": [
+        "実送信元、宛先、ポートへ絞ります。SNATとVirtualNetwork",
+        "タグの影響を確認し、終端拒否とPEの限定許可を維持します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "実送信元、宛先、ポートへ絞ります。SNATとVirtualNetworkタグの影響を確認し、終端拒否とPEの限定許可を維持します。",
+          "lines": [
+            "実送信元、宛先、ポートへ絞ります。SNATとVirtualNetwork",
+            "タグの影響を確認し、終端拒否とPEの限定許可を維持します。"
+          ],
+          "weight": 65
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認②：ハブCIDR全体の許可へ置き換える？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "Coreを企業ハブへ接続した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "NSGの許可元をハブCIDR全体へ置き換える"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "実送信元・宛先・ポートで必要な分を許可する"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "接続範囲と、通信許可の範囲を分けて考える",
+        "heading": "確認②：ハブCIDR全体の許可へ置き換える？"
+      }
+    },
+    {
+      "id": "lessona2-turn-074-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "接続の追加と、許可の全面拡大は別です。誰のどんな通信を通すかを、経路と送信元から説明しましょう。",
+      "caption": "接続の追加と、許可の全面拡大は別です。誰のどんな通信を通すかを、経路と送信元から説明しましょう。",
+      "subtitleLines": [
+        "接続の追加と、許可の全面拡大は別です。",
+        "誰のどんな通信を通すかを、経路と送信元から説明しましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続の追加と、許可の全面拡大は別です。誰のどんな通信を通すかを、経路と送信元から説明しましょう。",
+          "lines": [
+            "接続の追加と、許可の全面拡大は別です。",
+            "誰のどんな通信を通すかを、経路と送信元から説明しましょう。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-source",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認②：ハブCIDR全体の許可へ置き換える？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "Coreを企業ハブへ接続した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "NSGの許可元をハブCIDR全体へ置き換える"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "実送信元・宛先・ポートで必要な分を許可する"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "接続範囲と、通信許可の範囲を分けて考える",
+        "heading": "確認②：ハブCIDR全体の許可へ置き換える？"
+      }
+    },
+    {
+      "id": "lessona2-turn-075-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後です。デフォルト・イーグレスを手動でハブファイアウォールへ変えました。次のアップも、既存ルート保持で同じになりますか。",
+      "caption": "最後です。default-egressを手動でハブFirewallへ変えました。次のupも、既存ルート保持で同じになりますか。",
+      "subtitleLines": [
+        "最後です。default-egressを手動でハブFirewallへ変えました。",
+        "次のupも、既存ルート保持で同じになりますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後です。default-egressを手動でハブFirewallへ変えました。次のupも、既存ルート保持で同じになりますか。",
+          "lines": [
+            "最後です。default-egressを手動でハブFirewallへ変えました。",
+            "次のupも、既存ルート保持で同じになりますか。"
+          ],
+          "weight": 63
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-up",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認③：手動UDRは、次のupでも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "default-egressを手動でハブFWへ変更した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "既存ルート保持があるので、次のupも必ず維持"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "同名ルート・伝搬の再適用を確認し、正本へ反映"
+          }
+        ],
+        "highlightFields": [],
+        "notice": "一度の疎通と、再配備での維持を区別する",
+        "heading": "確認③：手動UDRは、次のupでも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-076-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "いいえ。同名ルートと伝搬はバイセップの値を再適用します。正本へ恒久変更を反映し、次回の適用値と差分を確認します。切戻しと撤去の責任も決めます。",
+      "caption": "いいえ。同名ルートと伝搬はBicepの値を再適用します。正本へ恒久変更を反映し、次回の適用値と差分を確認します。切戻しと撤去の責任も決めます。",
+      "subtitleLines": [
+        "いいえ。同名ルートと伝搬はBicepの値を再適用します。",
+        "正本へ恒久変更を反映し、次回の適用値と差分を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。同名ルートと伝搬はBicepの値を再適用します。正本へ恒久変更を反映し、次回の適用値と差分を確認します。",
+          "lines": [
+            "いいえ。同名ルートと伝搬はBicepの値を再適用します。",
+            "正本へ恒久変更を反映し、次回の適用値と差分を確認します。"
+          ],
+          "weight": 56
+        },
+        {
+          "caption": "切戻しと撤去の責任も決めます。",
+          "lines": [
+            "切戻しと撤去の責任も決めます。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-up",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認③：手動UDRは、次のupでも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "default-egressを手動でハブFWへ変更した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "既存ルート保持があるので、次のupも必ず維持"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "同名ルート・伝搬の再適用を確認し、正本へ反映"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "一度の疎通と、再配備での維持を区別する",
+        "heading": "確認③：手動UDRは、次のupでも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-077-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "保存、検証、復旧、再配備を一続きとして管理し、通信の成功を運用へつなげるんですね。",
+      "caption": "保存、検証、復旧、再配備を一続きとして管理し、通信の成功を運用へつなげるんですね。",
+      "subtitleLines": [
+        "保存、検証、復旧、再配備を一続きとして管理し、",
+        "通信の成功を運用へつなげるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "保存、検証、復旧、再配備を一続きとして管理し、通信の成功を運用へつなげるんですね。",
+          "lines": [
+            "保存、検証、復旧、再配備を一続きとして管理し、",
+            "通信の成功を運用へつなげるんですね。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-quiz-up",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "確認③：手動UDRは、次のupでも同じ？",
+        "kind": "接続案の設定（教材）",
+        "section": "確認問題",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "given",
+            "label": "前提",
+            "value": "default-egressを手動でハブFWへ変更した"
+          },
+          {
+            "id": "a",
+            "label": "選択肢 A",
+            "value": "既存ルート保持があるので、次のupも必ず維持"
+          },
+          {
+            "id": "b",
+            "label": "選択肢 B",
+            "value": "同名ルート・伝搬の再適用を確認し、正本へ反映"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ],
+        "notice": "一度の疎通と、再配備での維持を区別する",
+        "heading": "確認③：手動UDRは、次のupでも同じ？"
+      }
+    },
+    {
+      "id": "lessona2-turn-078-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今日の要点です。ブイネットとファイアウォールのディーエヌエスを分け、八つのゾーンの回答、転送、参照とレコードの管理元をそろえます。",
+      "caption": "今日の要点です。VNetとFirewallのDNSを分け、八つのゾーンの回答、転送、参照とレコードの管理元をそろえます。",
+      "subtitleLines": [
+        "今日の要点です。VNetとFirewallのDNSを分け、",
+        "八つのゾーンの回答、転送、参照とレコードの管理元をそろえます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の要点です。VNetとFirewallのDNSを分け、八つのゾーンの回答、転送、参照とレコードの管理元をそろえます。",
+          "lines": [
+            "今日の要点です。VNetとFirewallのDNSを分け、",
+            "八つのゾーンの回答、転送、参照とレコードの管理元をそろえます。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-summary",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・許可・送信元と、切替後の管理をそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "DNSと8ゾーン",
+            "value": "VNet / FWを分け、転送・参照・レコード管理元を確認"
+          },
+          {
+            "id": "policy",
+            "label": "通信の許可と送信元",
+            "value": "NSG / FW、SNAT・出口IPを同じ新規接続で照合"
+          },
+          {
+            "id": "process",
+            "label": "切替と運用",
+            "value": "保存・準備 → 段階切替 → 検証 → 復旧・監視"
+          },
+          {
+            "id": "iac",
+            "label": "再配備と撤去",
+            "value": "IaC・配備処理と、中央側を含む担当を確定"
+          },
+          {
+            "id": "next",
+            "label": "次回 第9回",
+            "value": "WAFの検査と誤検知への対応"
+          }
+        ],
+        "highlightFields": [
+          "dns"
+        ],
+        "heading": "名前・許可・送信元と、切替後の管理をそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-079-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "エヌエスジーとファイアウォールの許可は実送信元で合わせ、スナットと出口アイピーを確認します。名前、経路、許可、送信元を、同じ新しい接続について照合してください。",
+      "caption": "NSGとFirewallの許可は実送信元で合わせ、SNATと出口IPを確認します。名前、経路、許可、送信元を、同じ新しい接続について照合してください。",
+      "subtitleLines": [
+        "NSGとFirewallの許可は実送信元で合わせ、",
+        "SNATと出口IPを確認します。名前、経路、許可、送信元を、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NSGとFirewallの許可は実送信元で合わせ、SNATと出口IPを確認します。名前、経路、許可、送信元を、",
+          "lines": [
+            "NSGとFirewallの許可は実送信元で合わせ、",
+            "SNATと出口IPを確認します。名前、経路、許可、送信元を、"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "同じ新しい接続について照合してください。",
+          "lines": [
+            "同じ新しい接続について照合してください。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "設定の違いと図の矢印を順に確かめる、穏やかで明瞭な説明。技術用語の前後を少し区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-summary",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・許可・送信元と、切替後の管理をそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "DNSと8ゾーン",
+            "value": "VNet / FWを分け、転送・参照・レコード管理元を確認"
+          },
+          {
+            "id": "policy",
+            "label": "通信の許可と送信元",
+            "value": "NSG / FW、SNAT・出口IPを同じ新規接続で照合"
+          },
+          {
+            "id": "process",
+            "label": "切替と運用",
+            "value": "保存・準備 → 段階切替 → 検証 → 復旧・監視"
+          },
+          {
+            "id": "iac",
+            "label": "再配備と撤去",
+            "value": "IaC・配備処理と、中央側を含む担当を確定"
+          },
+          {
+            "id": "next",
+            "label": "次回 第9回",
+            "value": "WAFの検査と誤検知への対応"
+          }
+        ],
+        "highlightFields": [
+          "policy"
+        ],
+        "heading": "名前・許可・送信元と、切替後の管理をそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-080-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "保存と準備から段階的に切り替え、切戻し、監視担当、アイアックと再配備、撤去まで管理する。これが完了条件です。",
+      "caption": "保存と準備から段階的に切り替え、切戻し、監視担当、IaCと再配備、撤去まで管理する。これが完了条件です。",
+      "subtitleLines": [
+        "保存と準備から段階的に切り替え、切戻し、監視担当、",
+        "IaCと再配備、撤去まで管理する。これが完了条件です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "保存と準備から段階的に切り替え、切戻し、監視担当、IaCと再配備、撤去まで管理する。これが完了条件です。",
+          "lines": [
+            "保存と準備から段階的に切り替え、切戻し、監視担当、",
+            "IaCと再配備、撤去まで管理する。これが完了条件です。"
+          ],
+          "weight": 52
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-summary",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・許可・送信元と、切替後の管理をそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "DNSと8ゾーン",
+            "value": "VNet / FWを分け、転送・参照・レコード管理元を確認"
+          },
+          {
+            "id": "policy",
+            "label": "通信の許可と送信元",
+            "value": "NSG / FW、SNAT・出口IPを同じ新規接続で照合"
+          },
+          {
+            "id": "process",
+            "label": "切替と運用",
+            "value": "保存・準備 → 段階切替 → 検証 → 復旧・監視"
+          },
+          {
+            "id": "iac",
+            "label": "再配備と撤去",
+            "value": "IaC・配備処理と、中央側を含む担当を確定"
+          },
+          {
+            "id": "next",
+            "label": "次回 第9回",
+            "value": "WAFの検査と誤検知への対応"
+          }
+        ],
+        "highlightFields": [
+          "process",
+          "iac"
+        ],
+        "heading": "名前・許可・送信元と、切替後の管理をそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-081-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次は第9回、ワフの検査と誤検知への対応です。通信の道筋から、入口で受けた要求を何に基づいて止めるかへ進みます。",
+      "caption": "次は第9回、WAFの検査と誤検知への対応です。通信の道筋から、入口で受けた要求を何に基づいて止めるかへ進みます。",
+      "subtitleLines": [
+        "次は第9回、WAFの検査と誤検知への対応です。通信の道筋から、",
+        "入口で受けた要求を何に基づいて止めるかへ進みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は第9回、WAFの検査と誤検知への対応です。通信の道筋から、入口で受けた要求を何に基づいて止めるかへ進みます。",
+          "lines": [
+            "次は第9回、WAFの検査と誤検知への対応です。通信の道筋から、",
+            "入口で受けた要求を何に基づいて止めるかへ進みます。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える、自然な質問と短い納得。相手へ穏やかに確かめ、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-summary",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・許可・送信元と、切替後の管理をそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "DNSと8ゾーン",
+            "value": "VNet / FWを分け、転送・参照・レコード管理元を確認"
+          },
+          {
+            "id": "policy",
+            "label": "通信の許可と送信元",
+            "value": "NSG / FW、SNAT・出口IPを同じ新規接続で照合"
+          },
+          {
+            "id": "process",
+            "label": "切替と運用",
+            "value": "保存・準備 → 段階切替 → 検証 → 復旧・監視"
+          },
+          {
+            "id": "iac",
+            "label": "再配備と撤去",
+            "value": "IaC・配備処理と、中央側を含む担当を確定"
+          },
+          {
+            "id": "next",
+            "label": "次回 第9回",
+            "value": "WAFの検査と誤検知への対応"
+          }
+        ],
+        "highlightFields": [
+          "next"
+        ],
+        "heading": "名前・許可・送信元と、切替後の管理をそろえる"
+      }
+    },
+    {
+      "id": "lessona2-turn-082-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "攻撃の検査と、正しいデータを通すための調整を扱います。経路と確認先を土台に、各層の防御を見ていきましょう。",
+      "caption": "攻撃の検査と、正しいデータを通すための調整を扱います。経路と確認先を土台に、各層の防御を見ていきましょう。",
+      "subtitleLines": [
+        "攻撃の検査と、正しいデータを通すための調整を扱います。",
+        "経路と確認先を土台に、各層の防御を見ていきましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "攻撃の検査と、正しいデータを通すための調整を扱います。経路と確認先を土台に、各層の防御を見ていきましょう。",
+          "lines": [
+            "攻撃の検査と、正しいデータを通すための調整を扱います。",
+            "経路と確認先を土台に、各層の防御を見ていきましょう。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的や判断を、同僚へ落ち着いて語る。何をもって完了とするかを明確にし、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "a2-summary",
+        "areaLabel": "ハブ接続後の設定と切替",
+        "title": "名前・許可・送信元と、切替後の管理をそろえる",
+        "kind": "接続案の設定（教材）",
+        "section": "切替の範囲",
+        "menu": [
+          "切替の範囲",
+          "DNS設定",
+          "Private DNS",
+          "通信の許可",
+          "送信元と出口",
+          "切替と検証",
+          "切戻しと再配備",
+          "確認問題"
+        ],
+        "subtitle": "教材・現行定義に基づく確認項目。稼働環境の取得値ではない",
+        "footer": "実FQDN・IP・経路・許可は対象環境で照合し、設定とレコードの管理元を確定する",
+        "fields": [
+          {
+            "id": "dns",
+            "label": "DNSと8ゾーン",
+            "value": "VNet / FWを分け、転送・参照・レコード管理元を確認"
+          },
+          {
+            "id": "policy",
+            "label": "通信の許可と送信元",
+            "value": "NSG / FW、SNAT・出口IPを同じ新規接続で照合"
+          },
+          {
+            "id": "process",
+            "label": "切替と運用",
+            "value": "保存・準備 → 段階切替 → 検証 → 復旧・監視"
+          },
+          {
+            "id": "iac",
+            "label": "再配備と撤去",
+            "value": "IaC・配備処理と、中央側を含む担当を確定"
+          },
+          {
+            "id": "next",
+            "label": "次回 第9回",
+            "value": "WAFの検査と誤検知への対応"
+          }
+        ],
+        "highlightFields": [
+          "next"
+        ],
+        "heading": "名前・許可・送信元と、切替後の管理をそろえる"
+      }
+    }
+  ],
+  "episodeLabel": "必修 A2",
+  "seriesLabel": "ハブ＆スポーク対応 / A1の続き",
+  "description": "中央DNSへの切替から、Private DNS・NSGとFirewall・送信元と出口IPの照合、新規接続の検証、切戻しと再配備までを説明する。",
+  "visualStyle": "teaching-settings-v2"
+}

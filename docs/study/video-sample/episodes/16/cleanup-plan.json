@@ -1,0 +1,2342 @@
+{
+  "schemaVersion": 1,
+  "episodeKey": "16",
+  "preparedAt": "2026-11-02T16:59:52.023329+09:00",
+  "policy": "docs/study/CONTENT-PLAN.md#完成後のデータ整理",
+  "scope": "docs/study/video-sample/output/lesson-16-gemini",
+  "status": "prepared-before-deletion",
+  "completionChecks": {
+    "productionRecord": "episodes/16/production.md",
+    "verification": "passed",
+    "browserContinuousPreview": "passed",
+    "acceptedMp4Sha256": "f92c65eeb964cea2650733022e5563c990195d8eceaf7f9a716bb47137406518",
+    "generationState": "complete",
+    "successfulOriginalRecordings": 85,
+    "buildLog": "normal completion",
+    "busyLocks": []
+  },
+  "dependencyReview": {
+    "externalVersionOrEpisodeDependency": false,
+    "versionsRevisionsHistory": [],
+    "knownEffects": [
+      "index.html audio-only players reference these WAVs",
+      "--reuse-audio true and full verification require restored WAVs"
+    ],
+    "preservedOriginals": "85 *-raw.wav and 85 *-raw.json, requests-sent, generation/configuration/attempts/cache, source and shared assets"
+  },
+  "deleteCandidates": [
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-narration.wav",
+      "bytes": 98980078,
+      "mtimeNs": 1793604829634917313,
+      "sha256": "8276ed5f4b4df7e7ef932719fe51570ee87a058f7d0bdf269c76bb159078da7f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-mix.wav",
+      "bytes": 197960078,
+      "mtimeNs": 1793604877556694428,
+      "sha256": "292a4a14c9eb9b457075a7e6e090a0a296153a4cf8fad05d43687ac73f163c2c"
+    }
+  ],
+  "deleteBytes": 296940156,
+  "retainedFiles": [
+    {
+      "path": "docs/study/03-subscription-management.html",
+      "bytes": 88331,
+      "mtimeNs": 1793531824107181064,
+      "sha256": "c0532141b88bedcc62b709504670ad146fd03894f57fe59585b50f0fd41e467d"
+    },
+    {
+      "path": "docs/study/CONTENT-PLAN.md",
+      "bytes": 25946,
+      "mtimeNs": 1793606055713098900,
+      "sha256": "7f9bbf4b64d7a53825b145d7da5127e1c32fe6991677dc3ce1a93857deed9d85"
+    },
+    {
+      "path": "docs/study/video-sample/PRODUCTION-GUIDE.md",
+      "bytes": 23212,
+      "mtimeNs": 1793591108711076633,
+      "sha256": "a32ca0209a2c17fc3ce2d07016b9d9bbdf4d64ac9407fe0f384ac3a92240bbc5"
+    },
+    {
+      "path": "docs/study/video-sample/SETTINGS-VIEW.md",
+      "bytes": 9464,
+      "mtimeNs": 1793590899659216307,
+      "sha256": "c3db22777611133ff0b30d41e673bf1c8a91e4bfb5c093ee0b6f9edbec878b47"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/animation-sources.json",
+      "bytes": 594,
+      "mtimeNs": 1793543583130529265,
+      "sha256": "7cf0b3d037cde4dfd9641b916e7c268ea64f35dfe1975ef3184c57708e197c74"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-common-closing.mp4",
+      "bytes": 383865,
+      "mtimeNs": 1793543583129784771,
+      "sha256": "0ad787188dbea63f92474b28dc82953b3b74d5ba90abc0830c89cfb6ff03d1e7"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-logo-intro.mp4",
+      "bytes": 511293,
+      "mtimeNs": 1793542772740058694,
+      "sha256": "6dfed994bd568e9abf3aa1166fc90c759381f66710380c602bd0a48c7fa10ff9"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-symbol.webp",
+      "bytes": 94116,
+      "mtimeNs": 1793541427386546182,
+      "sha256": "0391e29223d61b2a4044984536f3d73d143d2f73a7225300d71c05bd3dff28d5"
+    },
+    {
+      "path": "docs/study/video-sample/assets/brand/egakumi-wordmark.webp",
+      "bytes": 100612,
+      "mtimeNs": 1793541427388341392,
+      "sha256": "e34c9213ca2449b18ac8ef99402f6e5879f6bee3c01d2d5a2a001be9f3a78db5"
+    },
+    {
+      "path": "docs/study/video-sample/assets/music/brand-theme.mp3",
+      "bytes": 1780181,
+      "mtimeNs": 1793541445057602820,
+      "sha256": "6f587b489c90d4f9dbf2483cb53d6768e3136aaf38689ec3050685d0c374b7dc"
+    },
+    {
+      "path": "docs/study/video-sample/assets/music/main-bgm.mp3",
+      "bytes": 4571477,
+      "mtimeNs": 1793541445890777946,
+      "sha256": "5b6c96c6672046028f95e091d15ca27fc123869fd2ae73c8628c926b5630b3e2"
+    },
+    {
+      "path": "docs/study/video-sample/assets/music/manifest.json",
+      "bytes": 5637,
+      "mtimeNs": 1793542347368477845,
+      "sha256": "8dfdc22c4cb46fca27455ba773b253d7b1fc58ccf0405ce248c3035f9be9cab9"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/ikumi.webp",
+      "bytes": 438162,
+      "mtimeNs": 1789863035786177006,
+      "sha256": "cb5e18a859dd5143c038f97a99067c80a256517b85c6974414a0b4dc3bd72388"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/mako.webp",
+      "bytes": 416238,
+      "mtimeNs": 1789863035768677164,
+      "sha256": "e5d3b4eb3610e1e654e57afd45890b09238204d6a42ac854e275fbeb7efa60f6"
+    },
+    {
+      "path": "docs/study/video-sample/assets/portraits/manabu.webp",
+      "bytes": 406980,
+      "mtimeNs": 1789863035784582945,
+      "sha256": "ce0838bb4b1cb5f235c1b590c0f37945bac6839af9ec6f22db630bc2636b7d3c"
+    },
+    {
+      "path": "docs/study/video-sample/build-hologram.mjs",
+      "bytes": 13070,
+      "mtimeNs": 1793548257111101813,
+      "sha256": "bb70789c548b550adf2b7fe119b39d10e618be06da2d1aaad48583649112ddf7"
+    },
+    {
+      "path": "docs/study/video-sample/build-lesson.mjs",
+      "bytes": 29670,
+      "mtimeNs": 1793548257071793469,
+      "sha256": "f80f5dfd1d6a27b3e2228e4b0000f4a1fb8c5063e886549a4c53d1c97468ffa5"
+    },
+    {
+      "path": "docs/study/video-sample/build-opening.mjs",
+      "bytes": 9498,
+      "mtimeNs": 1793548257147906015,
+      "sha256": "cf78ccec4ec3b97a41414c8df424e734b6134d5d8fa15f5c74eb953162e72f08"
+    },
+    {
+      "path": "docs/study/video-sample/build.mjs",
+      "bytes": 10382,
+      "mtimeNs": 1793548257167287727,
+      "sha256": "fc2f72f0fa6724be2eca8b0651c986a581ad00e7d49f7a346c90c0c77baf3c8d"
+    },
+    {
+      "path": "docs/study/video-sample/check-production.py",
+      "bytes": 3101,
+      "mtimeNs": 1793590657304027765,
+      "sha256": "c5f015c9f7d6d22fa0f596f38e90d23801e375fbafb9598070495aa88f9282e8"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/audio-audit.json",
+      "bytes": 58954,
+      "mtimeNs": 1793604635525590483,
+      "sha256": "d07770bcbd96b1224b0b8dad2c51996c8ada92f475d4b6307e0766694e4de6c9"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/audio-audit.py",
+      "bytes": 8413,
+      "mtimeNs": 1793604415433103405,
+      "sha256": "aa0ee6cbcb107490f196dc331abe7b5308068addfdd14154b82d68a8a44f67a0"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/audio-review.json",
+      "bytes": 18354,
+      "mtimeNs": 1793604694619747587,
+      "sha256": "994395dea374533348656269c86f4988f812776ad5a90a02bb068e021a83a87d"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/author-script.py",
+      "bytes": 42422,
+      "mtimeNs": 1793603919756229679,
+      "sha256": "254d057da1ada1e6932758da11a4ef45ba67cedfd8e6859cc0fef50b6642d391"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/brief.md",
+      "bytes": 1225,
+      "mtimeNs": 1793603524971920546,
+      "sha256": "b7ef16870ac3dc169628b5100162d58053c9136a3598c8f5d663e6c8a1b67a8f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/browser-review.json",
+      "bytes": 930,
+      "mtimeNs": 1793605603527121857,
+      "sha256": "90654186c3a4b8cc9060acad4a86c6e37440d595236bc45596c984ed0c070a33"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/build-low-disk.mjs",
+      "bytes": 10054,
+      "mtimeNs": 1793605012821442099,
+      "sha256": "07415ae7c27b6cdda4496c4ce1868dd58ba0f70334e9f3ae2a0d26ba005a639b"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/check-episode.py",
+      "bytes": 2613,
+      "mtimeNs": 1793603703485328225,
+      "sha256": "1953e8ba09589d6f925efa5afa2e8224a35faf0c9ff0a44b591220d6fd338583"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/content-notes.md",
+      "bytes": 3862,
+      "mtimeNs": 1793603996024528381,
+      "sha256": "3e1d961e582ce8f4c3e2b606ca1e20e00bdbad8c0691f29ff51544e021bdf480"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/content-review.md",
+      "bytes": 1992,
+      "mtimeNs": 1793604264801360710,
+      "sha256": "384a5d417715026d3859bf6d821f6d4979048faf3e2aad2071547b27bb743d16"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-display.svg",
+      "bytes": 5429,
+      "mtimeNs": 1793603798086051259,
+      "sha256": "441774a52529df1a1d8e4e4d7bcb7075605046e82fa558076d9c66155eb79153"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-generated.svg",
+      "bytes": 5429,
+      "mtimeNs": 1793603798085815470,
+      "sha256": "f24f7da7207c6923d185fe330e5aa13e104ceb43eb8270b4851b4899c9e1fe9f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-login.svg",
+      "bytes": 5429,
+      "mtimeNs": 1793603798086382297,
+      "sha256": "ec2410736e8e9e5ea605c6802382adec971c704dcc39d3b45e7edce7c26ceedc"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-neutral-qa.png",
+      "bytes": 87173,
+      "mtimeNs": 1793603786035185470,
+      "sha256": "7447626cdbd14a9a2c9c9541753f35907bb596cfb01375a46020723213412e93"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-neutral.svg",
+      "bytes": 5326,
+      "mtimeNs": 1793603798085153727,
+      "sha256": "614d804e64fc9270e6da9d66fa9d12863b84563607e29c57e81e55cb815ceb80"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-source.svg",
+      "bytes": 5429,
+      "mtimeNs": 1793603798085602014,
+      "sha256": "515a7428f7ec8ce5e740b6fea08784b4575a7980d67cc8e5b6f94aa520f4847c"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/catalog-storage.svg",
+      "bytes": 5429,
+      "mtimeNs": 1793603798086219924,
+      "sha256": "ad51d83a6c0bb515df9629e341d3b9d04a35f1906ac13d9b79ce5bf4a9ac6841"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-ledger.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798088349318,
+      "sha256": "956ad36de2e50a20f8135333e0902028ae4eb779ad9bc59342e7650b74857751"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-neutral-qa.png",
+      "bytes": 93927,
+      "mtimeNs": 1793603786084187566,
+      "sha256": "20ab93f16f42f1e6d025654caaa4c008938c76663a9254733b4ce793f966be93"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-neutral.svg",
+      "bytes": 5789,
+      "mtimeNs": 1793603798086606420,
+      "sha256": "424234206dfe8402e61002b164b74986de5f7b0505719bba8a69431ef6347c12"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-permission.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798087472077,
+      "sha256": "af4d94bc0f9fe39002f856b630771f1fd35fc0ed3e258f40b8441c9109e9550a"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-request.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798086873667,
+      "sha256": "490c70c0d9ee74a741539aae91829e32aa215688d81a4b71c1bb95ec6b491e04"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-result.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798088193445,
+      "sha256": "b511c1cbf169561192a8e8cb20cf6c453e51f006142d77733078f23ded47fc93"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-secret.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798087885489,
+      "sha256": "bd0224f7d5d09bf7dce7cc7ba047c879dee332e33a2bccc3977c04953bc11412"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-send.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798088048821,
+      "sha256": "b511c1cbf169561192a8e8cb20cf6c453e51f006142d77733078f23ded47fc93"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/diagrams/execution-subscription.svg",
+      "bytes": 5892,
+      "mtimeNs": 1793603798088533982,
+      "sha256": "2274e5195b6bae38944d75791b9c9e1fd2a2dfe27e0c204fb689058570a04eff"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/cast.png",
+      "bytes": 671840,
+      "mtimeNs": 1793605388029361034,
+      "sha256": "6071750e2a937d841d97676e596365e9c974110640ae50ffd443a6adbd6bcd4e"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/closing-end.png",
+      "bytes": 211056,
+      "mtimeNs": 1793605393701968374,
+      "sha256": "f103e5529b05cd04c27ec0a5183ccee529fc837e7b527d66ff897aeac10d72d4"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/closing.png",
+      "bytes": 300662,
+      "mtimeNs": 1793605393446161444,
+      "sha256": "b298c6fce6842a1c9423b3473ac7f099b0507af438854d0bcd7471ec776b8d17"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-1.png",
+      "bytes": 1191507,
+      "mtimeNs": 1793605475795859646,
+      "sha256": "1a7f2e10bfca8d3beedac9c358a23c4cd1c2fbec855302a14f0eb06c5a974923"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-2.png",
+      "bytes": 699805,
+      "mtimeNs": 1793605476172297407,
+      "sha256": "e501464c942b265910d35cdd2a2ebf06f300b27906bed46e3baef66ccc2e9dcb"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-3.png",
+      "bytes": 621533,
+      "mtimeNs": 1793605476621423573,
+      "sha256": "55ffe4aff860037d8aea1bee9aaffdfb321d68b38a1d4cd57acfd885c9779dfd"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-4.png",
+      "bytes": 519127,
+      "mtimeNs": 1793605476984980300,
+      "sha256": "db3562a34b9e4ac756541ab1e1ec0a26a0b12abf1e0d889ecd876dd2bbe0951d"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-5.png",
+      "bytes": 528324,
+      "mtimeNs": 1793605477237604731,
+      "sha256": "22ac3a11b47fada4ac657b262a0725e1de2192036adb8234a1e0915c326ef9d8"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/contact-6.png",
+      "bytes": 216068,
+      "mtimeNs": 1793605477519256232,
+      "sha256": "409178a06a265b3f66dccdf8062597939c6bfb62cc1b6e01f21b1142f11b563d"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/logo.png",
+      "bytes": 396932,
+      "mtimeNs": 1793605387672582266,
+      "sha256": "40dfec3f1b37ebd98e43f026c15635508c501cc794e50e3781356b39a3978701"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/manifest.json",
+      "bytes": 1974,
+      "mtimeNs": 1793605393706956978,
+      "sha256": "5c1f609cd6952673468ce7ae8cad536068e717799519514deac0071f4dc5a5d1"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-001.png",
+      "bytes": 639765,
+      "mtimeNs": 1793605388476599551,
+      "sha256": "db57a516c791ff8a11271b570c069829a150ba40bfb2661b3237b2ad5ccabdc3"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-002.png",
+      "bytes": 816344,
+      "mtimeNs": 1793605388804584753,
+      "sha256": "20d44523a9a8517431892753b06dd72c61523920cd7138e261a163e0ddfb9ea5"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-003.png",
+      "bytes": 649706,
+      "mtimeNs": 1793605389030777606,
+      "sha256": "fefcdf776c911c46a73c551815a3e298a0568c496b101e7173e31052c6df5d6f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-022.png",
+      "bytes": 363426,
+      "mtimeNs": 1793605389264495636,
+      "sha256": "f9dd7d80e3d2cfd9d8014f0d772a433a197555a5120d8df04fc343ea7e296deb"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-023.png",
+      "bytes": 365884,
+      "mtimeNs": 1793605389556560767,
+      "sha256": "10744c8c0d95bf8d8fb3ea3730ecdc5da934feb3e66e6ed06dfc3ddc8e336891"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-026.png",
+      "bytes": 377110,
+      "mtimeNs": 1793605389924536590,
+      "sha256": "ffa79fff7fa46b684628c7e91de0aa49e5e22144c1313dee0790e8c895301733"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-033.png",
+      "bytes": 412152,
+      "mtimeNs": 1793605390367596305,
+      "sha256": "614461ccac0d8cd124833373e647901adcef74d87aa4ace5061580eeb74720f0"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-036.png",
+      "bytes": 432302,
+      "mtimeNs": 1793605390744507740,
+      "sha256": "9b913a56bad1c5619cb61f938b2c76a0eefe0429ca0d3ae491483d7c05b0a6d2"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-043.png",
+      "bytes": 373528,
+      "mtimeNs": 1793605391122110183,
+      "sha256": "2b200afcebee609363452ebf8e81c679f074758d8ce5b7a625afe0abbeafd30d"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-044.png",
+      "bytes": 392247,
+      "mtimeNs": 1793605391324237987,
+      "sha256": "e3bc0c7e84d6ebe942a1fe478cbbc7e19388e6a95006cd35182078a5a1468ee4"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-045.png",
+      "bytes": 363425,
+      "mtimeNs": 1793605391577145964,
+      "sha256": "ff3a90d3cd7876fe35dbfb311b52d8f0f0b1b40ec632faee6c940ce788efa752"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-070.png",
+      "bytes": 360066,
+      "mtimeNs": 1793605391803307109,
+      "sha256": "d5eb9b9b27c625db487356726c0e43140ca9ea0cb655aff909017911d73c691a"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-071.png",
+      "bytes": 347911,
+      "mtimeNs": 1793605392084689731,
+      "sha256": "92de681431d22a8520691cefba853dc5aa181ff9493356a43f2ab8002add9f7a"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-074.png",
+      "bytes": 317807,
+      "mtimeNs": 1793605392228421059,
+      "sha256": "9aedf0fc6ede83b2fa0d6c021f2a2960e806c602bbbf136d67ad9e2bbe114fce"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-075.png",
+      "bytes": 316946,
+      "mtimeNs": 1793605392450665572,
+      "sha256": "0700053c75887cdba86f81a693e9b1124e96b2b26bcae1ce55ac2fe7ee55d40f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-078.png",
+      "bytes": 359638,
+      "mtimeNs": 1793605392628744535,
+      "sha256": "27ed543d42482e0e5e95009e5d65143ab36843045b2396203dffafc19cd3bac5"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-079.png",
+      "bytes": 349559,
+      "mtimeNs": 1793605392886556365,
+      "sha256": "a56a49e5484a86783a2b8856e29f11ca33ce51f86bb8e7a178e352419f95949f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-frames/turn-083.png",
+      "bytes": 378999,
+      "mtimeNs": 1793605393151593658,
+      "sha256": "8c9ff32f234a781bc1d1659e72662fa363998da41496d7f50975545c0e914005"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/final-production-check.json",
+      "bytes": 1755,
+      "mtimeNs": 1793605494124020985,
+      "sha256": "5d29c55da935dc21cc589d95ee96beed9c1f8dc3b86d071046dde169bb2c8bf1"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/finish-script.py",
+      "bytes": 4336,
+      "mtimeNs": 1793604049400521021,
+      "sha256": "3ab052b815b420b79a72522a7090b430eb3c82cdff265440a860725ff5ce25f6"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/generation.json",
+      "bytes": 219468,
+      "mtimeNs": 1793604115433745856,
+      "sha256": "414225d87d7339011a7c08193cd75a507e043e9f9629357f2e4ad2e615dcf8cf"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/preproduction-verification.json",
+      "bytes": 5752,
+      "mtimeNs": 1793605494247992066,
+      "sha256": "9b43c22d58281d419c368d8d0f8f484b741cb75d1edc9689586765bdfa7e249c"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/production.md",
+      "bytes": 9594,
+      "mtimeNs": 1793605603527845658,
+      "sha256": "2d877a83bfd0a8160474a7ea61f35986f52303d8b1ea9994baef6dd9a5895fb0"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-final.py",
+      "bytes": 1146,
+      "mtimeNs": 1793605131677630060,
+      "sha256": "b4ab1f0a039e2432e3b2336cba17347b3467302f650d84ae4b700db306947e42"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-1.png",
+      "bytes": 623000,
+      "mtimeNs": 1793604087457475644,
+      "sha256": "ccd6500a4d02763ab20e5ba7a75832e2e48aaffac5d71f6334dbc644f3e11a10"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-2.png",
+      "bytes": 412606,
+      "mtimeNs": 1793604087524358963,
+      "sha256": "6a63fea6c191a589caf357aae8deecf41505baf02e5e8dc37cb23199c5fcf14d"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-3.png",
+      "bytes": 382118,
+      "mtimeNs": 1793604087590124211,
+      "sha256": "92c9604061830def8208a6afad4dffa72d3df5e0c4b7cf553bc99a31759a593e"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-4.png",
+      "bytes": 380831,
+      "mtimeNs": 1793604087657427358,
+      "sha256": "f98a6d3d2cbe5ef9cb9782f0e4d1ea277ea35f7192b8ea2751636cdc9648a2c3"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-5.png",
+      "bytes": 412414,
+      "mtimeNs": 1793604087725667579,
+      "sha256": "f28739ebe7cdd7ea82aed5436b4cc9712b8bde47cfab23edb9a08c13f02ed556"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/contact-6.png",
+      "bytes": 438810,
+      "mtimeNs": 1793604087791953238,
+      "sha256": "dbc4242288c16a0bc3a1e5fc24758de64b44852ec86fc3b5283aa87679c5ae3f"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/qa-previews/manifest.json",
+      "bytes": 673,
+      "mtimeNs": 1793604087792569065,
+      "sha256": "e8fb2a8909b51c0cbc95a358b1f9bf020f859659f3330115af3856214a6e6265"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/render-diagrams.mjs",
+      "bytes": 4268,
+      "mtimeNs": 1793603798004376892,
+      "sha256": "b810471196215a358df06d549bbd1e8f121367bdb63c8606a2dee7cbf8c6abb6"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/script.json",
+      "bytes": 227276,
+      "mtimeNs": 1793604115370603122,
+      "sha256": "abe01abacc295b40ecddd0972d3043dc500745d89a719cf7ef394106ed4398f1"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/serve.py",
+      "bytes": 2128,
+      "mtimeNs": 1793604383957576919,
+      "sha256": "910e391d6f0ddd3ee0125b0ad6146e2b53a08e127fa95c0d4767fcf5b0ae218a"
+    },
+    {
+      "path": "docs/study/video-sample/episodes/16/verification.json",
+      "bytes": 1155,
+      "mtimeNs": 1793605439582443511,
+      "sha256": "5b0c35002abaa7404ef1ca37b8c9516613500b67eaaf5f9bc2a58df706aa8633"
+    },
+    {
+      "path": "docs/study/video-sample/generate-gemini-audition.py",
+      "bytes": 21079,
+      "mtimeNs": 1793545769536902194,
+      "sha256": "92a127741ff67c59b8c371bc536d21814416e424dd2c4413a9db08e094a34b32"
+    },
+    {
+      "path": "docs/study/video-sample/generate-gemini-lesson.py",
+      "bytes": 24723,
+      "mtimeNs": 1793548032368780843,
+      "sha256": "89d389624de5d8d5d6c97aa09e370ad96452571d40af2ed65d68e14959804166"
+    },
+    {
+      "path": "docs/study/video-sample/hologram-visual.mjs",
+      "bytes": 17592,
+      "mtimeNs": 1793548257129272141,
+      "sha256": "766f287fcce7ffe64c78bbfc885adb7930937d64b97c4efdeb70d87257a593c2"
+    },
+    {
+      "path": "docs/study/video-sample/lesson-audio-cache.mjs",
+      "bytes": 1684,
+      "mtimeNs": 1793546089252104596,
+      "sha256": "7c44f56ca6e7b2f123ea1e857a79afdb98412d1285e7df56222f672210a58290"
+    },
+    {
+      "path": "docs/study/video-sample/lesson-visual.mjs",
+      "bytes": 24279,
+      "mtimeNs": 1793590438129878139,
+      "sha256": "a3a75cbff6f82665c02e52e16fd8626f408cf4cb14e9caaf4560e0a2b60cffd8"
+    },
+    {
+      "path": "docs/study/video-sample/make-conversation-preview.py",
+      "bytes": 15839,
+      "mtimeNs": 1793591058353429168,
+      "sha256": "b8827e2edb8f3b320013fee4484c743cd5d68ebfa4079f925a216237b0e0982d"
+    },
+    {
+      "path": "docs/study/video-sample/new-episode.py",
+      "bytes": 8311,
+      "mtimeNs": 1793590657245766198,
+      "sha256": "c81c35dc4ce0a739d4e04f75247064516c670872e16ccb594a999e7b3ebbd706"
+    },
+    {
+      "path": "docs/study/video-sample/opening-visual.mjs",
+      "bytes": 7630,
+      "mtimeNs": 1793548257186063310,
+      "sha256": "4fccb499aa9fe95192af43d0a8aec512c9f908fd585745910c27cc2b9b22215d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/audio-cache.json",
+      "bytes": 289,
+      "mtimeNs": 1793604877966955870,
+      "sha256": "e193d4ea6cfaa8e0b2916963ba587f1b0c88fbd2431c2c8fc551da995118100e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/build-attempt-02.log",
+      "bytes": 370,
+      "mtimeNs": 1793604925238937715,
+      "sha256": "e3e19284614c462c58b951516578666d1c6f6d3ac35c5958aead162873117e1b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/build.log",
+      "bytes": 932,
+      "mtimeNs": 1793605316096169790,
+      "sha256": "1cb0bd00f6451f9e1a7bd638265f1965c2bee2d7c6c217e0e19b521bb79499e0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/conversation-preview.html",
+      "bytes": 995,
+      "mtimeNs": 1793605391092988071,
+      "sha256": "8131d0cfc41cdfdec4a717f4b8504d915699aa6962ce43c48d78829d80bda055"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/conversation-preview.json",
+      "bytes": 1566,
+      "mtimeNs": 1793605391092744693,
+      "sha256": "ed5840e0c25e3005842d699a6825c99ac811ceb6b33ddffc96429fb6ddac2d1b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/conversation-preview.mp4",
+      "bytes": 1908971,
+      "mtimeNs": 1793605389601680077,
+      "sha256": "9d0f4f31266cf3542243f28cf7802a230c590c2a107acf6aef304177a2d238a6"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/egakumi-common-closing.mp4",
+      "bytes": 387290,
+      "mtimeNs": 1793605316032971879,
+      "sha256": "5c9d3e28994437b2cdf4b90a869cbfa700517f6aae3ca36fff1b20d66d3bfaf9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/egakumi-study-16.mp4",
+      "bytes": 51011121,
+      "mtimeNs": 1793605315024226842,
+      "sha256": "f92c65eeb964cea2650733022e5563c990195d8eceaf7f9a716bb47137406518"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/gemini-attempts.json",
+      "bytes": 526074,
+      "mtimeNs": 1793604620635985784,
+      "sha256": "21b8fec42c003b64a2fc043ff0d390bdd82bd2fc757beff6b4e13ae0aaf9814d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/generation.json",
+      "bytes": 538480,
+      "mtimeNs": 1793604620639818826,
+      "sha256": "3e9047d5bb1e63e0cc6bb06f8db5c28d0ac69f3404650811460e6da2c056997a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/index.html",
+      "bytes": 4107,
+      "mtimeNs": 1793605316092248450,
+      "sha256": "29f72d0b25a9de0d21b6892adb68fdf963f69f0f47a2cbbc8099f0cd12a98597"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-captions.vtt",
+      "bytes": 24034,
+      "mtimeNs": 1793605314719717349,
+      "sha256": "1633e862a322e25354883a8b567485d5a6fe606c7b0b779071d2af3fb35feee8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-export.json",
+      "bytes": 446,
+      "mtimeNs": 1793605316091219729,
+      "sha256": "b7b848ba2e39287b40e79a9abf3dd91f4f398d476ba747d95bc3b839022637fe"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-poster.png",
+      "bytes": 346706,
+      "mtimeNs": 1793605158551009665,
+      "sha256": "cac52d9e677ac5036895187c8467af20439357c915b7f59126f4bef499fb6420"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-timeline.json",
+      "bytes": 506569,
+      "mtimeNs": 1793605314734977455,
+      "sha256": "f07108546083d2d6e4a3061748c390c88501ffbe112997d5993491c36f7fcf42"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson-transcript.md",
+      "bytes": 17364,
+      "mtimeNs": 1793605314735480045,
+      "sha256": "aa0449210279ac0b283c32404fed575dc21c6fc3df01ca8bd4ae2a1282a7a250"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-001-mako-raw.json",
+      "bytes": 5471,
+      "mtimeNs": 1793604246034421698,
+      "sha256": "bb9571906abd04389f377fce3f5fdee962ce13d3f023bb56f0284d2671839c96"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-001-mako-raw.wav",
+      "bytes": 380188,
+      "mtimeNs": 1793604246037263084,
+      "sha256": "5ece6d5e9f75ae7e80846ce04c6997abcfb83edd93296bf069b5549fba3dec7a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-002-manabu-raw.json",
+      "bytes": 5943,
+      "mtimeNs": 1793604249756414023,
+      "sha256": "f008a8425fbacbddc20b371398d6954455d66ffe32c14d12d4519fd7f1c2a9b1"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-002-manabu-raw.wav",
+      "bytes": 464668,
+      "mtimeNs": 1793604249756819727,
+      "sha256": "8be7ea5be7fe393d2c9f322b88d863a97a76060a33ab2c443e6922beb4181c00"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-003-ikumi-raw.json",
+      "bytes": 5896,
+      "mtimeNs": 1793604253308091355,
+      "sha256": "8035559d34e01cbc01f425a024ec4f572630f032245bf858d7b896f0e0e3bc7b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-003-ikumi-raw.wav",
+      "bytes": 449308,
+      "mtimeNs": 1793604253309076469,
+      "sha256": "551460da94c924aa16e6c0247e02d385024db2eb8a2f414d7aee427f34f267a7"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-004-mako-raw.json",
+      "bytes": 5670,
+      "mtimeNs": 1793604256245437283,
+      "sha256": "8ffc42965eb1102564edc4dde080ed3294527414dce5cbbd27f5ef910aeee77d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-004-mako-raw.wav",
+      "bytes": 289948,
+      "mtimeNs": 1793604256245862112,
+      "sha256": "eb99aa675a3caaaf1597daa7c83053160f244e816b4e8f4e3003ea2d78301087"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-005-mako-raw.json",
+      "bytes": 5575,
+      "mtimeNs": 1793604260202530859,
+      "sha256": "5728e112e7a5acc46933ba47a864b5f80767d3ba01a531b27acdeb4db5972f20"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-005-mako-raw.wav",
+      "bytes": 483868,
+      "mtimeNs": 1793604260203231602,
+      "sha256": "b20eb71ae1ab1297fdb21f76d503b41967e93e0024fc1629eb6d840a6890bf93"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-006-manabu-raw.json",
+      "bytes": 5972,
+      "mtimeNs": 1793604264940350250,
+      "sha256": "1391bbc6d585d56e8f91eac42d1cdcb05e6e8502ed7e47d3624a2de62fc1e1f5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-006-manabu-raw.wav",
+      "bytes": 654748,
+      "mtimeNs": 1793604264940928035,
+      "sha256": "809fb59f2bd439863581650516cbdcf19eff91db2b86cf1f485b6def31a6eb41"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-007-ikumi-raw.json",
+      "bytes": 6026,
+      "mtimeNs": 1793604269529437123,
+      "sha256": "dc4aff114c73d056e616ba48aafa7f0bab3fdd2e3174d58aecf7c766064d847c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-007-ikumi-raw.wav",
+      "bytes": 576028,
+      "mtimeNs": 1793604269529925284,
+      "sha256": "a173a603f0d06e2e25f69a65bf6588f1b86f864e2a00f28967ce3b25e66dabfb"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-008-mako-raw.json",
+      "bytes": 5891,
+      "mtimeNs": 1793604273822608776,
+      "sha256": "a52a0849b80b52f4d999e2d5ef9848575ecabb5574b933c3734d04510d186673"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-008-mako-raw.wav",
+      "bytes": 504988,
+      "mtimeNs": 1793604273822909314,
+      "sha256": "1c234fa4226848d20ce77e01de23be0401ac61c26e80e48638dbf10e8f5c792f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-009-mako-raw.json",
+      "bytes": 5681,
+      "mtimeNs": 1793604277254674525,
+      "sha256": "6b589cdd3eb99decb28a75287044f45ca2e8362674d9c89ef01492d3edab8858"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-009-mako-raw.wav",
+      "bytes": 399388,
+      "mtimeNs": 1793604277255344601,
+      "sha256": "5c6448f194bb7bb09a4810181498ba926dc63c0b73e401b233483b184ebefe54"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-010-ikumi-raw.json",
+      "bytes": 5920,
+      "mtimeNs": 1793604282104779327,
+      "sha256": "92be57878228721d459391e9bc524dc381600c28a1fccf7d5274430b5c81965b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-010-ikumi-raw.wav",
+      "bytes": 577948,
+      "mtimeNs": 1793604282105403404,
+      "sha256": "7eebb98520d2c046a971c1236a2e5b44f1af821604d1346d3fc3c9f1eae0ef86"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-011-manabu-raw.json",
+      "bytes": 6014,
+      "mtimeNs": 1793604286314372926,
+      "sha256": "e1268202cc547e466f5a9e32c9d06a43c8fa48d3dedfdf910106a9f572744ece"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-011-manabu-raw.wav",
+      "bytes": 508828,
+      "mtimeNs": 1793604286315225500,
+      "sha256": "a14607c3cf4bd0942ab9115af9519bb1fdc3271ecba65f1b3c0d499774de702c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-012-ikumi-raw.json",
+      "bytes": 6019,
+      "mtimeNs": 1793604290751227318,
+      "sha256": "6df6f55ce3c0c4d7b9a512974f30a6b118a7e82c145a92f930337445ed12b62d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-012-ikumi-raw.wav",
+      "bytes": 570268,
+      "mtimeNs": 1793604290751706188,
+      "sha256": "9741af7d6f2f1dfe3df8458ad5d802decdf75b77622ea248c50ec4c84a8c1b44"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-013-mako-raw.json",
+      "bytes": 5937,
+      "mtimeNs": 1793604294788510945,
+      "sha256": "a5d2082114c62eefce978c503e377742502e0e7bbbeb84d53e3572fe7cc4ff7f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-013-mako-raw.wav",
+      "bytes": 508828,
+      "mtimeNs": 1793604294788802067,
+      "sha256": "e856e060d80b42420ef3f192bdd326f075057438baad098fddc70ce2958e716f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-014-mako-raw.json",
+      "bytes": 5696,
+      "mtimeNs": 1793604298701117752,
+      "sha256": "72096226bfa22a54b7ac6b2024a8512aa472dd33be52f2c3d6d7ab7a84247ba8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-014-mako-raw.wav",
+      "bytes": 470428,
+      "mtimeNs": 1793604298703234104,
+      "sha256": "5e688aa92338f0ff41a9014400bf94b5031a3ecd25a80094232ccd5368140509"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-015-ikumi-raw.json",
+      "bytes": 5903,
+      "mtimeNs": 1793604303316462257,
+      "sha256": "6944932930e9838ca1e0f3d589541f2e6aaefeabac170c663fef9abde2fd2e5b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-015-ikumi-raw.wav",
+      "bytes": 629788,
+      "mtimeNs": 1793604303318509568,
+      "sha256": "b03c8e1677cf58343b8133efc56a48888bc28b2ae0ca9dbc028871e1a1921cec"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-016-manabu-raw.json",
+      "bytes": 6248,
+      "mtimeNs": 1793604308276028960,
+      "sha256": "06adf147da745cf931e6ab33135a0de32c565c2837ae10cd0226a090d069c886"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-016-manabu-raw.wav",
+      "bytes": 627868,
+      "mtimeNs": 1793604308276822326,
+      "sha256": "316668446ae2fdbe562a256bfae33f13712c900a1015b8c5739154afe7986c36"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-017-ikumi-raw.json",
+      "bytes": 6007,
+      "mtimeNs": 1793604312129474990,
+      "sha256": "fddd0fb6582fcb32de36842fd35d18e68348dfc58bd49d60c1e9562ddd58627a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-017-ikumi-raw.wav",
+      "bytes": 495388,
+      "mtimeNs": 1793604312130257898,
+      "sha256": "152404952397b21084eaf61435b131c0e25e24319a06bdff4f5c4063cb1e62e2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-018-mako-raw.json",
+      "bytes": 5718,
+      "mtimeNs": 1793604315424289056,
+      "sha256": "4f43771eef7f2eb91a6c11f11de8ac75b6b69c76ce713e967b3e81758e09811b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-018-mako-raw.wav",
+      "bytes": 401308,
+      "mtimeNs": 1793604315425562542,
+      "sha256": "a3373061620d447beebf1d2a7caf2197d947e86b3bd77814ab99693b04b29737"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-019-ikumi-raw.json",
+      "bytes": 6149,
+      "mtimeNs": 1793604320338526915,
+      "sha256": "9bf1d6710374f2bd14cee5f4890e5870aa01610566785940cf9e1e88540c8df3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-019-ikumi-raw.wav",
+      "bytes": 654748,
+      "mtimeNs": 1793604320339441905,
+      "sha256": "d2e5428663ba585da8b953ee443b56923596bb292208b30dc07b178649721335"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-020-manabu-raw.json",
+      "bytes": 6050,
+      "mtimeNs": 1793604324673627615,
+      "sha256": "f97665e8e228fdf7a1e82d51387e253b504b8b5981040f0690a8022463e43965"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-020-manabu-raw.wav",
+      "bytes": 516508,
+      "mtimeNs": 1793604324674335816,
+      "sha256": "5ac89d3cff0caf3482d1af0fdcf06c306d1c259a200b306a79b9e2f6644e5913"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-021-mako-raw.json",
+      "bytes": 5843,
+      "mtimeNs": 1793604329203728250,
+      "sha256": "503b1e04715d1591ed35f1acae52a9b3874fa28846c57d74df37357a3f33ec6c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-021-mako-raw.wav",
+      "bytes": 566428,
+      "mtimeNs": 1793604329204254453,
+      "sha256": "7c3f1b7edb22322669a543a8c1f878513ba0564aa1a5a8b0c77d299d9e9e3fa8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-022-mako-raw.json",
+      "bytes": 5838,
+      "mtimeNs": 1793604333545822458,
+      "sha256": "4a2c98bca78516f118e2888e0f9db472c2188cf866e4f5c905137bfe43385ec9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-022-mako-raw.wav",
+      "bytes": 501148,
+      "mtimeNs": 1793604333546666324,
+      "sha256": "8965fe081809a433bd46985c0672f836b645db5257615024f45012fb0f458be3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-023-ikumi-raw.json",
+      "bytes": 6217,
+      "mtimeNs": 1793604339508328449,
+      "sha256": "78723f36442dbba1f069182c686a8d7c44e978825b8fcbe67d776e4e8e822b39"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-023-ikumi-raw.wav",
+      "bytes": 796828,
+      "mtimeNs": 1793604339509374896,
+      "sha256": "0e0af36354073cf9c0d21f74354a88a6aa0885b3b125fa174c9edddb66501ef8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-024-manabu-raw.json",
+      "bytes": 6215,
+      "mtimeNs": 1793604343650293820,
+      "sha256": "6aec8c0d694868be52b6c4f10ad6cf473e50b352f5f117e7a6daaf465b8889bf"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-024-manabu-raw.wav",
+      "bytes": 506908,
+      "mtimeNs": 1793604343652945708,
+      "sha256": "540ab6d15c500aa2efea9a4d7d6974eebfdfd7a073a2a17b0aa0c94612804cfb"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-025-ikumi-raw.json",
+      "bytes": 6074,
+      "mtimeNs": 1793604348238345120,
+      "sha256": "b7883de9e8e23a39dac832352edc345e760707d8c1420920e016c381099be01d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-025-ikumi-raw.wav",
+      "bytes": 604828,
+      "mtimeNs": 1793604348239342567,
+      "sha256": "7848aac5de5b2131c1874ace9da9b177519b9087109bdf4cb063228804b1e178"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-026-ikumi-raw.json",
+      "bytes": 6245,
+      "mtimeNs": 1793604353105565029,
+      "sha256": "07ee1df8c6867d8276058039a5a8d20fe989efb0b957143464452b1f16322f6d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-026-ikumi-raw.wav",
+      "bytes": 610588,
+      "mtimeNs": 1793604353106458853,
+      "sha256": "ba20e505d0efe5dd2b5ebfdd1d90e01411401ce179c38f4687e41fc67d84f419"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-027-mako-raw.json",
+      "bytes": 6108,
+      "mtimeNs": 1793604357817209661,
+      "sha256": "5a414774b22b3b5fc011c57e4cf9b2d8f5a172cdb0d477c46c37add2c43a22be"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-027-mako-raw.wav",
+      "bytes": 600988,
+      "mtimeNs": 1793604357817535157,
+      "sha256": "2b95c062422e3e8a7d71736e766ce7692544e2d51ee67da04838575e3cedae2a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-028-mako-raw.json",
+      "bytes": 5751,
+      "mtimeNs": 1793604361541110340,
+      "sha256": "5668059f2a961ee7b11259cc792e78042ed3a3df27e16a89940b109481152c2b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-028-mako-raw.wav",
+      "bytes": 445468,
+      "mtimeNs": 1793604361541976956,
+      "sha256": "595d554b98ebe6e75b16671a4ab600b5e9050fe68e6ba2b167d0e301039d16f2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-029-ikumi-raw.json",
+      "bytes": 5956,
+      "mtimeNs": 1793604366311718251,
+      "sha256": "181eed436e2e6a94fe8f5a1aacd387e09451e04b488fb5e36766f442b2f14e89"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-029-ikumi-raw.wav",
+      "bytes": 629788,
+      "mtimeNs": 1793604366312587242,
+      "sha256": "6fdcd74410db71ce5ee43e85792d7235800285073356bad90ddfea1c35bf98be"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-030-ikumi-raw.json",
+      "bytes": 6170,
+      "mtimeNs": 1793604371147572958,
+      "sha256": "52d872cd2e4dbcca7cc0b14de2b08a9c753bfa18526476a005fe8f409ada560c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-030-ikumi-raw.wav",
+      "bytes": 639388,
+      "mtimeNs": 1793604371148465531,
+      "sha256": "45a31cd9456f881f10d0ff9f0b104ed5957e6addee86a4c9e47c3677e472c5aa"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-031-manabu-raw.json",
+      "bytes": 6168,
+      "mtimeNs": 1793604375502519027,
+      "sha256": "655e4fd76051d892238120700c5d1a602fa6c52deea5f9e3fe78cf23e85eea36"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-031-manabu-raw.wav",
+      "bytes": 549148,
+      "mtimeNs": 1793604375503618307,
+      "sha256": "8b25c7c792317024d97d1d72633d28a111a4b97e2825bbadc5dd8fa298e4e741"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-032-mako-raw.json",
+      "bytes": 5908,
+      "mtimeNs": 1793604379552630098,
+      "sha256": "a6a4be6026eb9db8fecd39a5cf513cbf438befd228efb9a6348d6ba488e3c000"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-032-mako-raw.wav",
+      "bytes": 483868,
+      "mtimeNs": 1793604379553806544,
+      "sha256": "16d0d309ec874f4b80d2154dd2c2e4f2ac808c5821c4e57ee7b46eff131ae380"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-033-mako-raw.json",
+      "bytes": 5948,
+      "mtimeNs": 1793604384316302959,
+      "sha256": "6ca8574f22ddd8e7b1378cd252ac61f237b79069b054967a69fe4b62fa7cf405"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-033-mako-raw.wav",
+      "bytes": 612508,
+      "mtimeNs": 1793604384316649164,
+      "sha256": "99c4f5699b4da326977e163c80452dd88ca91c3ab5a159def692ee1b9f06a8d3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-034-ikumi-raw.json",
+      "bytes": 6108,
+      "mtimeNs": 1793604389280235657,
+      "sha256": "5e478550d4e49b75feb84f125bf97247001fdc5777cf89030c3ad10440e94c87"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-034-ikumi-raw.wav",
+      "bytes": 704668,
+      "mtimeNs": 1793604389280887566,
+      "sha256": "be2868e22ca8fc502576723b6d36c54472816db94b572779c62f219a511930cd"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-035-manabu-raw.json",
+      "bytes": 6091,
+      "mtimeNs": 1793604393619169732,
+      "sha256": "0b8d9d81654d9b7fc1e6679d7a756b7e3861e9315c3078df74df49b7d32b80f9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-035-manabu-raw.wav",
+      "bytes": 551068,
+      "mtimeNs": 1793604393619661810,
+      "sha256": "05bbef1f4303feca5175160faef668977e8caafcd2dfebcb38356ffc7a5c8124"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-036-ikumi-raw.json",
+      "bytes": 6131,
+      "mtimeNs": 1793604398478778307,
+      "sha256": "b19e2e7a6e39ed2fd28890fde0f5b5b4a0b4a89a1a526bc471359cf3fe5ed539"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-036-ikumi-raw.wav",
+      "bytes": 660508,
+      "mtimeNs": 1793604398479539840,
+      "sha256": "c55364f3059bdf6836bb59734a56c263b71ac8d29f1799b62a28edc8fabcfc8d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-037-ikumi-raw.json",
+      "bytes": 6060,
+      "mtimeNs": 1793604402438506313,
+      "sha256": "97a2c2c945220f81373f25ddfca63bdb63963a295908b2e6666a45cdb1ad4fdb"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-037-ikumi-raw.wav",
+      "bytes": 483868,
+      "mtimeNs": 1793604402439075182,
+      "sha256": "59db8c5d942c6afd8bbf258f9d0c2f6d5d5942409b20bf5d493947f4c3bed42a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-038-mako-raw.json",
+      "bytes": 6053,
+      "mtimeNs": 1793604407220121230,
+      "sha256": "01e23d1d95d027b4b63725d427f4cee24f1b018318a192e912885b0186019240"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-038-mako-raw.wav",
+      "bytes": 625948,
+      "mtimeNs": 1793604407220936472,
+      "sha256": "f6379480af5db712864c8ec279b9030a965a35d67189b12ae95de03a8f280a5a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-039-mako-raw.json",
+      "bytes": 5715,
+      "mtimeNs": 1793604410327503655,
+      "sha256": "5fb90039a17dccd17f46f41a951d8e9ab7b14cdc1f6c13c2b833c886b538e38d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-039-mako-raw.wav",
+      "bytes": 374428,
+      "mtimeNs": 1793604410327924317,
+      "sha256": "f5c3d3417e5f6a22954946c8bc27a807dfb2e9f41544a92d218bcd013d3cbe03"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-040-ikumi-raw.json",
+      "bytes": 5857,
+      "mtimeNs": 1793604415371988190,
+      "sha256": "30d1f6e441f7382d0c1441f7132f07dab2a4c05053604122e953988ddeb94c00"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-040-ikumi-raw.wav",
+      "bytes": 658588,
+      "mtimeNs": 1793604415373257801,
+      "sha256": "efa5617364432d4cfb971213047a7d5dd80a678e1b5be3af104f7fa48001c632"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-041-manabu-raw.json",
+      "bytes": 6183,
+      "mtimeNs": 1793604419182043897,
+      "sha256": "c344a893d866307a1540e641b43b7c6287aac4be318eaf0342af00efb3f3f723"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-041-manabu-raw.wav",
+      "bytes": 474268,
+      "mtimeNs": 1793604419183339424,
+      "sha256": "d570f252e9dd6a8e4021202425c4887f3e8f73945289a37375b856557b750923"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-042-ikumi-raw.json",
+      "bytes": 6016,
+      "mtimeNs": 1793604423079541284,
+      "sha256": "beabc6bdf4a3d2e7c065f194007e321843ff2a69f6af03035439c90a2329efcd"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-042-ikumi-raw.wav",
+      "bytes": 499228,
+      "mtimeNs": 1793604423079884405,
+      "sha256": "aad1394117884f864521c6fdecbd019a1102b8444e14d454f5a5b5664761c4b3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-043-mako-raw.json",
+      "bytes": 5719,
+      "mtimeNs": 1793604426656091139,
+      "sha256": "022a19f7cffecd42663a6bd9d4f0ba549260371c474d5253763c9685ed130415"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-043-mako-raw.wav",
+      "bytes": 403228,
+      "mtimeNs": 1793604426656387427,
+      "sha256": "f75edad5aec084052550ecb133b07478bf48ea2fef71073e01bb8ec5c613e479"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-044-ikumi-raw.json",
+      "bytes": 5980,
+      "mtimeNs": 1793604431779329281,
+      "sha256": "fd6f2f21a5089428b067d93587bc4fe7b2851d8c658ee49f953a7c308d84fcc1"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-044-ikumi-raw.wav",
+      "bytes": 662428,
+      "mtimeNs": 1793604431781577965,
+      "sha256": "fcbd44200a247bf2d59d3569f58c27b540863f733b06ebec35a278f74c978a4e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-045-ikumi-raw.json",
+      "bytes": 6225,
+      "mtimeNs": 1793604436417676330,
+      "sha256": "0dfb12f9ec896b097950132790cc741e30cdd14cde79b42d0c8a11040e9dd1e8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-045-ikumi-raw.wav",
+      "bytes": 599068,
+      "mtimeNs": 1793604436419407103,
+      "sha256": "7c6d1672b40abbd0fb884e38771afe52e6614d3bf95ba605f6018a17db56dd32"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-046-manabu-raw.json",
+      "bytes": 6108,
+      "mtimeNs": 1793604440510751729,
+      "sha256": "7bdaa59a7537aab4592a9093ef259e81f08643532153f59379c15941fbc07cd0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-046-manabu-raw.wav",
+      "bytes": 518428,
+      "mtimeNs": 1793604440512219296,
+      "sha256": "b0f5b5417c42e9aa994828003d9252ff901b69e8550efbe5d8fb51c458609b03"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-047-mako-raw.json",
+      "bytes": 5798,
+      "mtimeNs": 1793604444019160612,
+      "sha256": "9cb64e6efb3f6d3181ef60f4ffffa5a82317de6ab0ea7ec7d0eafc929fe7d9fd"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-047-mako-raw.wav",
+      "bytes": 447388,
+      "mtimeNs": 1793604444020410348,
+      "sha256": "075678d5cb2a2fadfaea181293b2d1f3fb504341c80929a53a636e459ae1f6ee"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-048-ikumi-raw.json",
+      "bytes": 6229,
+      "mtimeNs": 1793604449088631127,
+      "sha256": "bdadc7a12402a471250a3edaf72279b9971d2ec67cbeee72a9fb3f77f1a30b9a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-048-ikumi-raw.wav",
+      "bytes": 679708,
+      "mtimeNs": 1793604449089845155,
+      "sha256": "75094e54171151690adddb7c75de21acd84643ce20ea1626b767c0357a6287e7"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-049-manabu-raw.json",
+      "bytes": 6168,
+      "mtimeNs": 1793604453646340214,
+      "sha256": "38e3efad3da58172d4a110b412af79ee934b66c3d18ce5c066b584e6443b5953"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-049-manabu-raw.wav",
+      "bytes": 558748,
+      "mtimeNs": 1793604453647192746,
+      "sha256": "b8ceea9137fc46e065da0fd9753174296bca11668f68b7b8f6500cb871bfba1c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-050-ikumi-raw.json",
+      "bytes": 6227,
+      "mtimeNs": 1793604458528188673,
+      "sha256": "81651de0c8a4b72684dfc6787b7c938074051a77b05fe7c3e47f82deb6be4895"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-050-ikumi-raw.wav",
+      "bytes": 673948,
+      "mtimeNs": 1793604458530092027,
+      "sha256": "d20d7727f4755663868e744aef70f6554ccb04860a3eca6b51fa6e621a368b1c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-051-mako-raw.json",
+      "bytes": 5883,
+      "mtimeNs": 1793604462304196831,
+      "sha256": "120ac6f10241e611f05e25b0f0b6688594f6eab572c0b1b6a846e94c4dbbc7fc"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-051-mako-raw.wav",
+      "bytes": 497308,
+      "mtimeNs": 1793604462304728950,
+      "sha256": "de793e8b81e251352f5bc1c841c0fa30444b96a46b7f966512bb1e2d731a4e8b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-052-mako-raw.json",
+      "bytes": 5598,
+      "mtimeNs": 1793604465537306022,
+      "sha256": "81206994eb60448e08fec410b57fae8ace4afc414df83c3c16429300031696d0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-052-mako-raw.wav",
+      "bytes": 389788,
+      "mtimeNs": 1793604465538778922,
+      "sha256": "7d14b54d58faa6d75a77312d78c5dadbf20081caf99b424384ec8adb48627b30"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-053-ikumi-raw.json",
+      "bytes": 5988,
+      "mtimeNs": 1793604470377595055,
+      "sha256": "f518cc03de7a9bd14f396b8fc3d2bc153fa0d078d7494487fbec1596fa3391a2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-053-ikumi-raw.wav",
+      "bytes": 675868,
+      "mtimeNs": 1793604470378174090,
+      "sha256": "983ca3e34b74e3b017bf395b84061c4ff91568687e5035524e25752f75797d76"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-054-manabu-raw.json",
+      "bytes": 6023,
+      "mtimeNs": 1793604474732240294,
+      "sha256": "a1ee5d74e40079365f1834b57def1e18f541b929c03af113ae63105f0cb3955c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-054-manabu-raw.wav",
+      "bytes": 514588,
+      "mtimeNs": 1793604474738400561,
+      "sha256": "5fb43a941c3a3106c8afc7e9779b060668d746a87a71492be7d2af5175b47dff"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-055-ikumi-raw.json",
+      "bytes": 5926,
+      "mtimeNs": 1793604479464316372,
+      "sha256": "57a3ca56e85bfb5c418e83b3ff26f96c6b96e56165e779838805acdbd5c31df5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-055-ikumi-raw.wav",
+      "bytes": 587548,
+      "mtimeNs": 1793604479464995864,
+      "sha256": "9d5a1c90b0c7355b2f62f5b6f35aaf44c9a65076bbf140a65fff9c7e38d3ef5c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-056-mako-raw.json",
+      "bytes": 5843,
+      "mtimeNs": 1793604483249961176,
+      "sha256": "2b0a23c13e842f210acc56789bb725ab323cf6049f7160fe9cfb6e748294ff60"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-056-mako-raw.wav",
+      "bytes": 462748,
+      "mtimeNs": 1793604483250542294,
+      "sha256": "0229371ff6cbb2c9d57eddbf1fa2aecc67044cff716226d070146f83aedc6f85"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-057-mako-raw.json",
+      "bytes": 5720,
+      "mtimeNs": 1793604487083295339,
+      "sha256": "a66a34be93732593fe4086610ef1918bef9c7cf9f2549421bc5a745dbd5183a7"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-057-mako-raw.wav",
+      "bytes": 491548,
+      "mtimeNs": 1793604487084849947,
+      "sha256": "11369723ab4ed17840adc68d1634e1113d2696abf0e5af5a6c73a9e24476af23"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-058-ikumi-raw.json",
+      "bytes": 5981,
+      "mtimeNs": 1793604492276829972,
+      "sha256": "882a9318e00d2888d29be8c298a0159e5919e540a79d1713ce5447eb437b64bc"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-058-ikumi-raw.wav",
+      "bytes": 693148,
+      "mtimeNs": 1793604492277817837,
+      "sha256": "36b72a4d3a90119cf36b8af79290b3b96512fe6b0ba9f76b5862d86aef9f718d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-059-manabu-raw.json",
+      "bytes": 6029,
+      "mtimeNs": 1793604496218037637,
+      "sha256": "364da23a804556fb96eb0e57e0dce9b2399389df0783eea935be069fde915089"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-059-manabu-raw.wav",
+      "bytes": 493468,
+      "mtimeNs": 1793604496218817212,
+      "sha256": "f53ba8e279badbfa8fb07d632f0e67438d7f40082061aefd4524d983fb70ffa6"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-060-ikumi-raw.json",
+      "bytes": 6270,
+      "mtimeNs": 1793604500990675818,
+      "sha256": "3eac20744e22c8cd6d4f1017b69a518d5dd1f95130c8e6f8e9599b110eb4b5ed"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-060-ikumi-raw.wav",
+      "bytes": 647068,
+      "mtimeNs": 1793604500992358383,
+      "sha256": "08234d4b48692d98440518978e4edea0cbdbee6c324c6173edebc08df8696673"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-061-mako-raw.json",
+      "bytes": 5856,
+      "mtimeNs": 1793604504841210171,
+      "sha256": "e8c605ba6a1c588d965c49146a14f871396152016659d7194943085a0e72b3f5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-061-mako-raw.wav",
+      "bytes": 466588,
+      "mtimeNs": 1793604504841915955,
+      "sha256": "022d4bf6310e9f4df391ab5cf67e68df89b7b6c62c36862889658fd35dead98e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-062-ikumi-raw.json",
+      "bytes": 5839,
+      "mtimeNs": 1793604509626697380,
+      "sha256": "a305109d5716466b771b7cd8da01697336c7a004d35c7b9a214e6ac8cc685275"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-062-ikumi-raw.wav",
+      "bytes": 647068,
+      "mtimeNs": 1793604509627180541,
+      "sha256": "2b14eff89699b0cc75827c619eac425639505b76a9c9d5a95cb6674533d6b0da"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-063-ikumi-raw.json",
+      "bytes": 6295,
+      "mtimeNs": 1793604514545873477,
+      "sha256": "62a72c85b062d62e802a454fb24a8d0ed24a9c692913e28ccc0af5976977fec1"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-063-ikumi-raw.wav",
+      "bytes": 654748,
+      "mtimeNs": 1793604514546891925,
+      "sha256": "b3b78496e1a7e7aa8e82323d2980698da01816bf6e3d60c4c38dd71ea89f5c06"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-064-ikumi-raw.json",
+      "bytes": 6478,
+      "mtimeNs": 1793604519763926179,
+      "sha256": "5bebdc8e0c3cf65e49e88b0e0db28e0ae34cac9c5cb2caa0761a20166b759f3b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-064-ikumi-raw.wav",
+      "bytes": 739228,
+      "mtimeNs": 1793604519764873544,
+      "sha256": "7c8f02f6a0e4c8211959a3335011773c1a102aa534ad97ecd5296844254c7ed4"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-065-manabu-raw.json",
+      "bytes": 6258,
+      "mtimeNs": 1793604524920971873,
+      "sha256": "b6a1acb57d2d98e3100e8d2ca36d2858371fabfaac7e220544999e00f0affe05"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-065-manabu-raw.wav",
+      "bytes": 706588,
+      "mtimeNs": 1793604524921811656,
+      "sha256": "a9d14217b22fb7f988999ec287c44233e2e1b86d63aa578f18cce28d4a7ccde6"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-066-mako-raw.json",
+      "bytes": 5828,
+      "mtimeNs": 1793604529447728836,
+      "sha256": "9c2e1dd0ae349d290b87e9e1ddc87aa3053224efc9647f9f53d96493573bebf6"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-066-mako-raw.wav",
+      "bytes": 581788,
+      "mtimeNs": 1793604529449183112,
+      "sha256": "7c598d38b88d97107d1391b4e24a35455183fa9ef864d04464f10a860f581eec"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-067-ikumi-raw.json",
+      "bytes": 6026,
+      "mtimeNs": 1793604534983614520,
+      "sha256": "46315337c1ae9c9139b1c6a68157838b4ff02aa425a37eae4e60e5e794874b8b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-067-ikumi-raw.wav",
+      "bytes": 743068,
+      "mtimeNs": 1793604534985521541,
+      "sha256": "eab0ae5060bb78231bcf076d4cf9e23241652787a9543774ed18cfd9746700e5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-068-ikumi-raw.json",
+      "bytes": 6309,
+      "mtimeNs": 1793604540726505050,
+      "sha256": "12851bc8f4e637004417f454fe7a3c4e330bc37323f800b379804bb238473960"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-068-ikumi-raw.wav",
+      "bytes": 771868,
+      "mtimeNs": 1793604540728073742,
+      "sha256": "5ee8434b7ece63f7f5b0cdd92b5e6117ed8aea45a64abcb70bb5b93775f0a6b0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-069-manabu-raw.json",
+      "bytes": 6254,
+      "mtimeNs": 1793604544847690145,
+      "sha256": "d2eeec7ec02e4d0e27c6bb6afcaa6aac7ebde6f7cd590a60660eb37ea0da70b2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-069-manabu-raw.wav",
+      "bytes": 522268,
+      "mtimeNs": 1793604544848836800,
+      "sha256": "79bc992ea65e1502ccdb6ed71fe7d0ece105be424ea14be77903af899e31a50e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-070-mako-raw.json",
+      "bytes": 6056,
+      "mtimeNs": 1793604550228065385,
+      "sha256": "e6fc4c36f93a1bb992b1e9ced62d2366720c3d980a2c8d525754c454f910815b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-070-mako-raw.wav",
+      "bytes": 708508,
+      "mtimeNs": 1793604550229531952,
+      "sha256": "b805220b9d3ac90fc264a5d6a7ab7761ba11bbd810d421a5ca9efa2cf7930605"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-071-manabu-raw.json",
+      "bytes": 6171,
+      "mtimeNs": 1793604555667428236,
+      "sha256": "06969be860a20b4fb44898179e3ff285aa19629a97c94ef0e956d79830667534"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-071-manabu-raw.wav",
+      "bytes": 643228,
+      "mtimeNs": 1793604555669728920,
+      "sha256": "0a999912a116835eb843a565b0626cb14f3fa2b6a5980f7cef5cfd2a4b8a5bed"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-072-ikumi-raw.json",
+      "bytes": 6022,
+      "mtimeNs": 1793604560720335681,
+      "sha256": "6a07e79918d0e8d39f7c58a7c01d63e6011810326f6495d8ea6cdd2bbc993272"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-072-ikumi-raw.wav",
+      "bytes": 622108,
+      "mtimeNs": 1793604560721560584,
+      "sha256": "472b8f02e9402c9ef497d19d7f05408c332a76fc9c22eed9cf78b364c19cffb0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-073-mako-raw.json",
+      "bytes": 5760,
+      "mtimeNs": 1793604564232358149,
+      "sha256": "ad7acfd9aaee41e473f5fa906ea8d9e50fb1a719781e51bbc1efbd07ea6f938b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-073-mako-raw.wav",
+      "bytes": 391708,
+      "mtimeNs": 1793604564233749051,
+      "sha256": "8bf16b78af24d36acad04e72f995ed8fdd883d3f902fd0719f9eedc52a20ba7e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-074-mako-raw.json",
+      "bytes": 6000,
+      "mtimeNs": 1793604569236480996,
+      "sha256": "d09eb3af79c00452491751b925f5c06e1bb868aeb4558df548a294f32fa3db15"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-074-mako-raw.wav",
+      "bytes": 670108,
+      "mtimeNs": 1793604569236883533,
+      "sha256": "bc2b4093cf014d2ae869e23d5d04174e3eeb7ae3d36ea921495956fd6be8d5ad"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-075-ikumi-raw.json",
+      "bytes": 6250,
+      "mtimeNs": 1793604574186644259,
+      "sha256": "7f2fb8932f43fb04cecf369409ce22ed3b1487b3f2ec673a50d43b5bd2aa43bf"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-075-ikumi-raw.wav",
+      "bytes": 660508,
+      "mtimeNs": 1793604574187936161,
+      "sha256": "3e0736431741b341b97539105f426048a82f067f5369112746ba005725309638"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-076-manabu-raw.json",
+      "bytes": 6066,
+      "mtimeNs": 1793604578727668401,
+      "sha256": "12f48ed4bebeef14b8af1243171fce820987861ae80bafcf19521bfed62361de"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-076-manabu-raw.wav",
+      "bytes": 533788,
+      "mtimeNs": 1793604578729223467,
+      "sha256": "9d9f118f1fbc9749e9ab94dd8a1fa5f7405ecd2319354543d1620297910983be"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-077-mako-raw.json",
+      "bytes": 5869,
+      "mtimeNs": 1793604583134951154,
+      "sha256": "001c9d005017f9697851da88615625803074a77f7d49feae97774bf478cb8ee7"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-077-mako-raw.wav",
+      "bytes": 595228,
+      "mtimeNs": 1793604583136844176,
+      "sha256": "14b21b0423d6fcfd689540c8b5106a8138fd7c26f170010bf6fef174ea5d28da"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-078-mako-raw.json",
+      "bytes": 6026,
+      "mtimeNs": 1793604588017673479,
+      "sha256": "717f9ed920c2446677e26b8b17cee064bbbc97fc68d2356b8c79d6f5de32939d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-078-mako-raw.wav",
+      "bytes": 639388,
+      "mtimeNs": 1793604588020140786,
+      "sha256": "8b021a9e634e086b5ff818042535bc86a383544f0878838b53d1e121cbe898a9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-079-manabu-raw.json",
+      "bytes": 6025,
+      "mtimeNs": 1793604592853909306,
+      "sha256": "666573b0c8a4183dffbfd8fb7a6972fbd91968056f301679347567e3608b81fc"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-079-manabu-raw.wav",
+      "bytes": 610588,
+      "mtimeNs": 1793604592855004670,
+      "sha256": "d9f93b2c2a48df7ba8394c23b9c58022bb5b7a136b2ffe414b0a6172ab602129"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-080-ikumi-raw.json",
+      "bytes": 6308,
+      "mtimeNs": 1793604598418328849,
+      "sha256": "5be18b57b12a54b1c092b3ce8d65d2d5828d666520206e001e10a32ac0240a1c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-080-ikumi-raw.wav",
+      "bytes": 714268,
+      "mtimeNs": 1793604598419765625,
+      "sha256": "d29b4a140eaa3c98054666d0de3cee0e0a6ca94926787d78f1d29f8afd2f7e3a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-081-mako-raw.json",
+      "bytes": 6038,
+      "mtimeNs": 1793604602837337642,
+      "sha256": "89542e20dc6cc586efe452c255352de15a36641b37437876c80248d01b55962c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-081-mako-raw.wav",
+      "bytes": 524188,
+      "mtimeNs": 1793604602838413714,
+      "sha256": "2d3d678def3cd1a62861484348fc1f3c245e55838c866f750d29ed3748712f9d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-082-mako-raw.json",
+      "bytes": 5848,
+      "mtimeNs": 1793604606300930801,
+      "sha256": "e6c658f4b5b762677f61071c4228933d58ed2efd59094a8da86f50f0900ce355"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-082-mako-raw.wav",
+      "bytes": 428188,
+      "mtimeNs": 1793604606301735292,
+      "sha256": "5365c080e018e732edcb83b55e6e94be9850279bfad1c5ac3218262fec69589d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-083-ikumi-raw.json",
+      "bytes": 6156,
+      "mtimeNs": 1793604611217767007,
+      "sha256": "3ea7d2de3a1cce35fcb629e20c7e7408c913d4c306aea983425fad3ba1f197cd"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-083-ikumi-raw.wav",
+      "bytes": 693148,
+      "mtimeNs": 1793604611218370959,
+      "sha256": "c0707a09b72136c633b013eeac337f811e5b52eb9a1d2e42327ed0d76f958511"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-084-manabu-raw.json",
+      "bytes": 6384,
+      "mtimeNs": 1793604615800985318,
+      "sha256": "a0f72af7d7098b7bfcbdcd4e15a02577905cac23b11dd09d84bf6cd596a77daf"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-084-manabu-raw.wav",
+      "bytes": 602908,
+      "mtimeNs": 1793604615809687599,
+      "sha256": "2c83fc1424f87fff389b2c5b9db5d494e61eccd2f3a9896dc7d28514171d5b08"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-085-mako-raw.json",
+      "bytes": 6182,
+      "mtimeNs": 1793604620622257057,
+      "sha256": "e688cf23ff70829171071b5c09be8cc616fa2c94bbb898536faddbc61bb35af7"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/lesson16-turn-085-mako-raw.wav",
+      "bytes": 625948,
+      "mtimeNs": 1793604620623323212,
+      "sha256": "a16c32a0814bf8f99a62f676f8c755f5fdf5fbc35342e086f05cc5b1fda3ba19"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-001-mako.json",
+      "bytes": 1567,
+      "mtimeNs": 1793604242945669697,
+      "sha256": "b7e476f80f773e35a10320fb3a969241277376b30098bd4bd49e25a86c24dc7e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-002-manabu.json",
+      "bytes": 1780,
+      "mtimeNs": 1793604246048596711,
+      "sha256": "a5db33e592f2c367f0b96e35cdba68bf3ed11d4c5622de3c6ecb0602a3df907b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-003-ikumi.json",
+      "bytes": 1766,
+      "mtimeNs": 1793604249761187055,
+      "sha256": "f6cec7a40a80587aaa2fc3cb0186efe39bbfc9d5312403a7366f2e7b3a2d857f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-004-mako.json",
+      "bytes": 1713,
+      "mtimeNs": 1793604253317959832,
+      "sha256": "4d8fbcc79ff9f6ef233559c40d2cc1a0067e4c18383389c443d41e0d12836995"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-005-mako.json",
+      "bytes": 1610,
+      "mtimeNs": 1793604256249247700,
+      "sha256": "c6d874182e84055f6a7b177630da65bfc70213c1fac57e351d80f71fa7d8938a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-006-manabu.json",
+      "bytes": 1746,
+      "mtimeNs": 1793604260209928113,
+      "sha256": "9a569c9e809f00a95208079b573b2aac273ac626881820b6930b5cc4b4fa5738"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-007-ikumi.json",
+      "bytes": 1771,
+      "mtimeNs": 1793604264944399373,
+      "sha256": "63fbbdd894f2d3236f089e7827d231eae9198fc027ed7cf647b690b14fc84ca8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-008-mako.json",
+      "bytes": 1748,
+      "mtimeNs": 1793604269533505954,
+      "sha256": "0007ad927826d3e352926f42a06366383689b7029b9d279ecceb903c28d1971b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-009-mako.json",
+      "bytes": 1673,
+      "mtimeNs": 1793604273826116196,
+      "sha256": "9884386129f4eab9f88e740f276c0c88afcfee190c18749ff11c599119135bed"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-010-ikumi.json",
+      "bytes": 1722,
+      "mtimeNs": 1793604277262124861,
+      "sha256": "b4c4a45caf7e2fb143af23ae169faf56b0e161fb5e91ebf0eab040bba57066bc"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-011-manabu.json",
+      "bytes": 1796,
+      "mtimeNs": 1793604282117301651,
+      "sha256": "a0dc219be3a3e593914604c87dd9008ce1d83c5e9ec841b0c15a078b95e8b813"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-012-ikumi.json",
+      "bytes": 1762,
+      "mtimeNs": 1793604286323904198,
+      "sha256": "c4b111dcc992db3ac8baa7d0680d9463dee3f31421431a53852bb650b54e3283"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-013-mako.json",
+      "bytes": 1772,
+      "mtimeNs": 1793604290755663854,
+      "sha256": "b81feaa9b4dd2617044f8b6676cac218e1c14902214f9e212e0408d72979aceb"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-014-mako.json",
+      "bytes": 1682,
+      "mtimeNs": 1793604294792144947,
+      "sha256": "1e18b79da59cd0b49e47b997eb6f7ff11c7f5a0f7e5de6677c27deecacddadc8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-015-ikumi.json",
+      "bytes": 1704,
+      "mtimeNs": 1793604298719791175,
+      "sha256": "6340b735636b8061d6350f76e27643fb2bbd10d90bcc86288caea190676bb20d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-016-manabu.json",
+      "bytes": 1850,
+      "mtimeNs": 1793604303329765530,
+      "sha256": "312c2ce78e54a4909e595f3e903276c46b35b697e4188aa69e5bced357c38bb5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-017-ikumi.json",
+      "bytes": 1793,
+      "mtimeNs": 1793604308285101279,
+      "sha256": "423a8432cfa40f6aa2bb79f36c1fd061182dceea5b5edb44ee00dca9accc6c82"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-018-mako.json",
+      "bytes": 1695,
+      "mtimeNs": 1793604312137335905,
+      "sha256": "e61c9e41b561c7b4a919e31fdec3b23c9192b980baad735a4b029a3b0280eaf4"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-019-ikumi.json",
+      "bytes": 1738,
+      "mtimeNs": 1793604315432587591,
+      "sha256": "afcb2ec76844491062ee44a184550779d6950ca75b903cdcbd1c7957ae5b62c9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-020-manabu.json",
+      "bytes": 1812,
+      "mtimeNs": 1793604320345230342,
+      "sha256": "088466f3bc08e7a2a0ddc0eb302f6d1b3e70c753022a33fa6b191ac00901ae65"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-021-mako.json",
+      "bytes": 1715,
+      "mtimeNs": 1793604324678580020,
+      "sha256": "d52654efdef50ff958f0de34c70d84dd88eb690a6f0ca65097bbeb5ae27d3b09"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-022-mako.json",
+      "bytes": 1722,
+      "mtimeNs": 1793604329211233002,
+      "sha256": "d4af27a7d0957512a3e24ad97f7b609cc4c3a9624b105080cea641740c482ea4"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-023-ikumi.json",
+      "bytes": 1832,
+      "mtimeNs": 1793604333556522134,
+      "sha256": "86957d5ba6eef1ca637fb77a43fc32b81adf1482b3861aa990a7ab19c4784a9f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-024-manabu.json",
+      "bytes": 1879,
+      "mtimeNs": 1793604339518596255,
+      "sha256": "2f6cd5c4ffd200860c37ba4a210bbbb4311120fa6488dce61fed92fbc7ebd45d"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-025-ikumi.json",
+      "bytes": 1790,
+      "mtimeNs": 1793604343661285451,
+      "sha256": "efee83d0bef65adf0199017eae4286292fb333fcdcc0473a976cd700f91651a1"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-026-ikumi.json",
+      "bytes": 1850,
+      "mtimeNs": 1793604348250887735,
+      "sha256": "222bde83cef08d9818b1c2eb7e38e1a0ad07ab493a4bf0bf84ffbd16068f3152"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-027-mako.json",
+      "bytes": 1830,
+      "mtimeNs": 1793604353114658139,
+      "sha256": "835d2079a6e144a531003368cf62c7cdc643f883b82195864f20719f8115fa9e"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-028-mako.json",
+      "bytes": 1706,
+      "mtimeNs": 1793604357822174982,
+      "sha256": "dbed90685ce1eca97ff48f502e0e16d0e93dd32edc753c773ae659beaf3da926"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-029-ikumi.json",
+      "bytes": 1717,
+      "mtimeNs": 1793604361550822944,
+      "sha256": "33813381abb9d8964fa06fe371d8ca76b364693aef1c44d5c25f41d3d25f1661"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-030-ikumi.json",
+      "bytes": 1828,
+      "mtimeNs": 1793604366322253804,
+      "sha256": "852a9e46206b14b241c49ede86d9265ac50c2e4e055dc520c6315338c34e6d0c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-031-manabu.json",
+      "bytes": 1839,
+      "mtimeNs": 1793604371157721598,
+      "sha256": "15aee9233d53e9ef86aa56ebc244fd5520096a409e82ce9ce1a30ac7e2e592dc"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-032-mako.json",
+      "bytes": 1751,
+      "mtimeNs": 1793604375520433000,
+      "sha256": "221b349e387bc017e7037c29378001f277a07e07b2d36e5147957bcd5c69b2a8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-033-mako.json",
+      "bytes": 1745,
+      "mtimeNs": 1793604379567364397,
+      "sha256": "1849e97883c4c01852b4b3456f1e52ead0a244113bc7cacc4ce42efaeec569ef"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-034-ikumi.json",
+      "bytes": 1786,
+      "mtimeNs": 1793604384322322436,
+      "sha256": "19235d8d66d81275540f69ed960468097cdf12a3ad8b0c11b29b259952bdbd7f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-035-manabu.json",
+      "bytes": 1812,
+      "mtimeNs": 1793604389286574297,
+      "sha256": "7db3721415e1bb187125a434638974a05dcf2f29c9b6d04481797b8bd9f698e3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-036-ikumi.json",
+      "bytes": 1798,
+      "mtimeNs": 1793604393625359457,
+      "sha256": "3cb6d9d178a967952cb2c799efa3350817973c2d3d67159f9af1ad79bbda93b0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-037-ikumi.json",
+      "bytes": 1801,
+      "mtimeNs": 1793604398488822657,
+      "sha256": "4982f85f0509bc7a0e593bcb8697513ffdc327e86c8892cefda5efae5ebbe38a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-038-mako.json",
+      "bytes": 1784,
+      "mtimeNs": 1793604402449922773,
+      "sha256": "50b80fa108d2d7925738aeec438b05fea392cfde237b6496c2c79a97a082d027"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-039-mako.json",
+      "bytes": 1706,
+      "mtimeNs": 1793604407228123310,
+      "sha256": "ad18858a3b19f81dcd17015b780d233ff0f1edac846cc1f0476bfb64065e5efa"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-040-ikumi.json",
+      "bytes": 1675,
+      "mtimeNs": 1793604410334354622,
+      "sha256": "5c7583f4c88fce6e17cddfd3b8afa421ae20215ca94596b11cb59705c0826c64"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-041-manabu.json",
+      "bytes": 1788,
+      "mtimeNs": 1793604415384112892,
+      "sha256": "34ef69926f99e91e87c3e0973fe0411d8427949feba141929ee4b33ea38ef7d9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-042-ikumi.json",
+      "bytes": 1717,
+      "mtimeNs": 1793604419201422562,
+      "sha256": "119c82a3be5ee670bb2dfbdb9f29a200b6eab125c5ed67614cad354a38d86288"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-043-mako.json",
+      "bytes": 1688,
+      "mtimeNs": 1793604423086803455,
+      "sha256": "a07937edaaa5ea258d592cdaebf140a1dccc7823471019278d949ac10606d1bf"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-044-ikumi.json",
+      "bytes": 1735,
+      "mtimeNs": 1793604426662807025,
+      "sha256": "0cd769b6730ddc98b21bc212d9f3c95c007a8f8e4ac98c65d541a0e1759bbcd5"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-045-ikumi.json",
+      "bytes": 1801,
+      "mtimeNs": 1793604431793133299,
+      "sha256": "9ee8950ec3ae276e1eef5a7790dff57f8e028728ba156d4a427fd2ea05324505"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-046-manabu.json",
+      "bytes": 1809,
+      "mtimeNs": 1793604436433451785,
+      "sha256": "13090514089203bae77dad614155a40bcc5672060afff723ce5fa4ae1002ab47"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-047-mako.json",
+      "bytes": 1724,
+      "mtimeNs": 1793604440527630213,
+      "sha256": "7ec27d96e65397b150f48a41851b65c11931fb42cdb607e1d28d7f276503da84"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-048-ikumi.json",
+      "bytes": 1765,
+      "mtimeNs": 1793604444038666818,
+      "sha256": "b5a2c38b62f644d64ca94a74bca6d808dce04cc4eba031527a8c178b20ef4ea2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-049-manabu.json",
+      "bytes": 1848,
+      "mtimeNs": 1793604449100963035,
+      "sha256": "d428338e5fba1687aa46f7f642eae81c3bc2350cb301aa9e24f8a4f37c0e11f2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-050-ikumi.json",
+      "bytes": 1777,
+      "mtimeNs": 1793604453657163055,
+      "sha256": "7f263639c8254346ec3e62007b8d5b790413f9bdef15673a1ee6d32d2418b310"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-051-mako.json",
+      "bytes": 1748,
+      "mtimeNs": 1793604458547093677,
+      "sha256": "e44e7cb63ff3c68efca291792583f51483b68cd96e2a44b5f1ca337ea93cc627"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-052-mako.json",
+      "bytes": 1646,
+      "mtimeNs": 1793604462310451138,
+      "sha256": "ea827ac09474cf49c22537feca37ab40f11885891514f4ab254a9c5e0a381923"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-053-ikumi.json",
+      "bytes": 1717,
+      "mtimeNs": 1793604465554549294,
+      "sha256": "aebca26a21ca56964439b3caf66584d91b7f96c443987cd82d6749f669980102"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-054-manabu.json",
+      "bytes": 1803,
+      "mtimeNs": 1793604470388417438,
+      "sha256": "a9663ddc65c91e32a4a4b67f46c6b1647de1dd38c07c2e382299059080db12d0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-055-ikumi.json",
+      "bytes": 1726,
+      "mtimeNs": 1793604474751724750,
+      "sha256": "9154973df9d0a99583f340a1a685a41cea38319460c4e69795f4fc1112e8f9cb"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-056-mako.json",
+      "bytes": 1733,
+      "mtimeNs": 1793604479476058870,
+      "sha256": "61a2618ef099d90aa5b7c5442fefef73d05eebfc81aeb38666f780f90150fcd3"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-057-mako.json",
+      "bytes": 1682,
+      "mtimeNs": 1793604483259778653,
+      "sha256": "785ddaa7aa3adda48a57855db2532e2b523ee43811b84a54f902399bd2bda8ef"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-058-ikumi.json",
+      "bytes": 1735,
+      "mtimeNs": 1793604487100533528,
+      "sha256": "beb00085f247fd1061ef8dde1987faa4ab0af07c6c34bbe485ff6b8c8c709251"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-059-manabu.json",
+      "bytes": 1797,
+      "mtimeNs": 1793604492284423640,
+      "sha256": "e9e7d649e894025233c293fe90319399f8c340b99a691cba99ec7281b9b19076"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-060-ikumi.json",
+      "bytes": 1789,
+      "mtimeNs": 1793604496235837486,
+      "sha256": "4d0ca21576efb21e48ccef1767e6114834851a4715235660df1e7ebd0971208c"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-061-mako.json",
+      "bytes": 1761,
+      "mtimeNs": 1793604501006294566,
+      "sha256": "0092aab5808b4bc0cbc66e4bc938e124df5b570488633126ba327c3460ede5b9"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-062-ikumi.json",
+      "bytes": 1685,
+      "mtimeNs": 1793604504849737245,
+      "sha256": "1e0eab4052f0dbb680fa0fe5364821fcb72923ab63ebc7e0561fab65b9215962"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-063-ikumi.json",
+      "bytes": 1807,
+      "mtimeNs": 1793604509635795156,
+      "sha256": "1aff39172bbfd280a303312fbcf11dc5dd408b844ace11a0f0cd701d9b380e08"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-064-ikumi.json",
+      "bytes": 1883,
+      "mtimeNs": 1793604514556027076,
+      "sha256": "be43f3d030d805360621c936d7001d05da926dd5c2ae2e1cffad3bfc36b55d52"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-065-manabu.json",
+      "bytes": 1876,
+      "mtimeNs": 1793604519771668053,
+      "sha256": "4293b250892de987f8265e4df164bd5bc553db242854e0c5732735e74c35360f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-066-mako.json",
+      "bytes": 1730,
+      "mtimeNs": 1793604524934426727,
+      "sha256": "b8631ac43dda0c738566b35d834fbdcee692caefa2f252f3a0f35b61a18e8976"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-067-ikumi.json",
+      "bytes": 1747,
+      "mtimeNs": 1793604529467922367,
+      "sha256": "3507077042934fe7d337dca87aa79e61e8d81c6364b0dd977f2896c656b13ee8"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-068-ikumi.json",
+      "bytes": 1867,
+      "mtimeNs": 1793604535001847323,
+      "sha256": "bc8c647446416ef3f49ab8f265bcae0947c6aeb733b04acad82044ac7df61aba"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-069-manabu.json",
+      "bytes": 1839,
+      "mtimeNs": 1793604540747316909,
+      "sha256": "4038751da1048d3ff1c5d1f3deba8b2a575d557aaaeeec0587894b8da011927b"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-070-mako.json",
+      "bytes": 1766,
+      "mtimeNs": 1793604544874251275,
+      "sha256": "3fac576779be2ce78f2c5e3930c78babc9eba2ecc29d91d131937c551ebe638f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-071-manabu.json",
+      "bytes": 1831,
+      "mtimeNs": 1793604550246336812,
+      "sha256": "abd16760d88b2dce451299b56abe880ac776102f653a2d79fe28c7a619619565"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-072-ikumi.json",
+      "bytes": 1772,
+      "mtimeNs": 1793604555688993337,
+      "sha256": "9de12e8fc3e429798132c0873559139664631d1de62daa4131fe5f859db2c4a6"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-073-mako.json",
+      "bytes": 1709,
+      "mtimeNs": 1793604560743961550,
+      "sha256": "886c9c05340ffdf0ef57a4f55c35670ef260f13669ab8edc9c5126cc681301ea"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-074-mako.json",
+      "bytes": 1760,
+      "mtimeNs": 1793604564251279112,
+      "sha256": "bb37acfd426d6d3212b69b5d79828e771e8c6ad65285cf479a4aa70bdf7bd7af"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-075-ikumi.json",
+      "bytes": 1865,
+      "mtimeNs": 1793604569244859614,
+      "sha256": "7086db5142f10ec62a9191c7fd3f5063a54d4f6c82a7890a0f6574ff26b73503"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-076-manabu.json",
+      "bytes": 1819,
+      "mtimeNs": 1793604574207215453,
+      "sha256": "6b8dee8053dcc97642c81217972f93b293ac32c96f692f62d534314eacbdf06a"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-077-mako.json",
+      "bytes": 1727,
+      "mtimeNs": 1793604578736314016,
+      "sha256": "519966266c9d11e18408a56999a4900c8ae94911107350e7e1470a6bbdad573f"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-078-mako.json",
+      "bytes": 1763,
+      "mtimeNs": 1793604583155479974,
+      "sha256": "1ecb9628e1316b31e10eea0bd36b018b4dab755ac22902279eea97ccabf382d0"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-079-manabu.json",
+      "bytes": 1786,
+      "mtimeNs": 1793604588041821927,
+      "sha256": "9928ee7acc9cad263e308a9f00052bae5eadf0c602ff01a737b6f176eef6ebae"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-080-ikumi.json",
+      "bytes": 1805,
+      "mtimeNs": 1793604592866494837,
+      "sha256": "0ed438f1abc960f0dbe720cad2912f76d686a00340fc333baa12f8d03f49d0f2"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-081-mako.json",
+      "bytes": 1808,
+      "mtimeNs": 1793604598433518726,
+      "sha256": "eca55c179071623a20231f57dfe23a13fa2c06ca74e7f178e3feb68966afedf4"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-082-mako.json",
+      "bytes": 1752,
+      "mtimeNs": 1793604602858087543,
+      "sha256": "5f092310afe8f6132b7306a3016affa75e21ef12f42dbb2346469108d6951509"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-083-ikumi.json",
+      "bytes": 1811,
+      "mtimeNs": 1793604606312464260,
+      "sha256": "633e5783bc8b2dc8c35c0b60b064f03115e87059094bf8fa290796d344e549f4"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-084-manabu.json",
+      "bytes": 1939,
+      "mtimeNs": 1793604611226528371,
+      "sha256": "8f33f821269b0a63c73ecde34d0e452117926116c6b1d15d640aee9059e223aa"
+    },
+    {
+      "path": "docs/study/video-sample/output/lesson-16-gemini/requests-sent/lesson16-turn-085-mako.json",
+      "bytes": 1860,
+      "mtimeNs": 1793604615821996800,
+      "sha256": "7695e39a1e9c5cbeb51a9aa39d096e185f52bf061130f377f7f91b0d702ba247"
+    },
+    {
+      "path": "docs/study/video-sample/package-lock.json",
+      "bytes": 20177,
+      "mtimeNs": 1793548340260028386,
+      "sha256": "256d3aba9bf59800a0d1ade4a01d5f049c22bbab3a8baa295f811fbac8c66749"
+    },
+    {
+      "path": "docs/study/video-sample/package.json",
+      "bytes": 333,
+      "mtimeNs": 1793548340259175963,
+      "sha256": "4ecd2d3d5c4bf1b553b57372a6d0978d64547ee663b9c3276a58ef8893407906"
+    },
+    {
+      "path": "docs/study/video-sample/podcast-cast-gemini.json",
+      "bytes": 7247,
+      "mtimeNs": 1793546080449494441,
+      "sha256": "a39ee34833e93620099eccc5015fb86f705cab6295584ae15477abe37bcc1a1b"
+    },
+    {
+      "path": "docs/study/video-sample/portrait-sources.json",
+      "bytes": 969,
+      "mtimeNs": 1793533486299039427,
+      "sha256": "8d3803648296e626b5d490e6b5b3a04db6f5fbad501aa83c12ed82af05c84662"
+    },
+    {
+      "path": "docs/study/video-sample/prepare-gemini-lesson.py",
+      "bytes": 11449,
+      "mtimeNs": 1793547926491863302,
+      "sha256": "0149f0b49b7ba46016f5df0eb20c2f3f33e1b4c976abc92b2587fbff19808286"
+    },
+    {
+      "path": "docs/study/video-sample/production-profile.json",
+      "bytes": 7047,
+      "mtimeNs": 1793591148701760500,
+      "sha256": "a1e1f70eeaf9a9896f53afe8356c2ffafaf7e7310e658f8cfb7efe51f360fe80"
+    },
+    {
+      "path": "docs/study/video-sample/serve-episode.py",
+      "bytes": 1226,
+      "mtimeNs": 1793547762917093724,
+      "sha256": "b586ac846f8e277058422da35af26fa7e04a7c56c99049f502bc70396ce6fc7d"
+    },
+    {
+      "path": "docs/study/video-sample/settings-view-examples.json",
+      "bytes": 1952,
+      "mtimeNs": 1793590657331464029,
+      "sha256": "9d6b17d0f08f818a319e032fbb857a2f4f13587bbb7f37f77f3d0ef9c765c029"
+    },
+    {
+      "path": "docs/study/video-sample/settings-visual.mjs",
+      "bytes": 9310,
+      "mtimeNs": 1793590520992154660,
+      "sha256": "a9a2704fffaf0b816589f3a70c8d68ed76a10d68d3070052f07026bc43e7d103"
+    },
+    {
+      "path": "docs/study/video-sample/speaker-names.json",
+      "bytes": 370,
+      "mtimeNs": 1793540169613929951,
+      "sha256": "193046de2a1e0260937ba89f818ffc0c5738d32db588245efc31a9a1fc3a5494"
+    },
+    {
+      "path": "docs/study/video-sample/verify-lesson.py",
+      "bytes": 30778,
+      "mtimeNs": 1793547829349615882,
+      "sha256": "90af3ac574251ab67666ec1b98a2d2a0832922d7f34dec395485f0bf3d825b63"
+    }
+  ],
+  "freeBytesBefore": 5985513472,
+  "restoreCommand": "node docs/study/video-sample/episodes/16/build-low-disk.mjs --script episodes/16/script.json --generation-config episodes/16/generation.json --cast podcast-cast-gemini.json --output lesson-16-gemini",
+  "additionalSynthesisRequired": false,
+  "recordsToUpdateAfterRetentionCheck": [
+    "docs/study/video-sample/episodes/16/production.md"
+  ]
+}

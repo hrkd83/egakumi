@@ -1,0 +1,788 @@
+{
+  "schemaVersion": 1,
+  "purpose": "第2回をAzure Portalの教材用再現画面中心へ改訂する映像案。音声・字幕・尺は現行と同一。",
+  "sourceScriptSha256": "6bc1ababf2b3e9602b96d1d0bc3045f489af5a1236627a13f87db35833b1dbda",
+  "scope": "episodes/02 only; script.json and shared renderer remain root-owned",
+  "speechChangesRequired": false,
+  "durations": "Existing generated audio; total 925.208333 seconds / 15:25.208",
+  "counts": {
+    "portal": 70,
+    "diagram": 6,
+    "hologram": 4
+  },
+  "universalDisclosure": "教材用の再現画面・設定例（実環境の取得画面ではない）",
+  "designNotes": [
+    "Azure Portal風の青いヘッダー、パンくず、リソース名、左ナビ、設定・レコード一覧を一貫させる。",
+    "1画面につき主に1項目を枠・行選択で強調し、説明吹出しは1つ。装飾で新しい架空のPortal機能を作らない。",
+    "図を使う6台詞は短い差し込みとして保持し、026でDNS図からデータ経路図へ明確に切り替える。",
+    "通常は画面間で同じゾーン名・リソース名・private IP等の説明値を維持する。全値を教材例と表示する。",
+    "Portalに実在する項目の表示名は公式資料調査結果でrootが確定する。未確認のIaC専用属性は画面外の注記へ。",
+    "小さい本物のスクリーンショットを縮小するより、内容を絞った再現で本文表の文字を十分大きくする。"
+  ],
+  "criticalAccuracyNotes": [
+    "[]と未指定はリポジトリの入力仕様。Firewall Portalに[]や未指定というラジオボタンを作らない。",
+    "Private DNS zoneのVNetリンクは参照するVNetの関連付け。PEのzone groupは別の設定で、データ経路の矢印ではない。",
+    "ACAは@のAがない。頂点SOAなど全レコードがないようには描かない。",
+    "Cloud Shellは別送信元。APIM/ACAの名前解決確認をCloud Shellからの同一結果として扱わない。",
+    "APIMのInternalモードとpublicNetworkAccess=Enabledという定義を区別。Portal上の未確認のフィールドは創作しない。",
+    "PE/NSG/経路/サービス認証がそれぞれ別の確認対象であることを継続する。"
+  ],
+  "recommendedSequence": [
+    "resources → Private Endpoint Overview → NIC IP configurations",
+    "Key VaultのDNS解決図 → データ経路図 → Private DNS zones一覧",
+    "Private DNS zone Virtual network links → Private Endpoint DNS configuration",
+    "VNet DNS servers → Firewall Policy DNS settings",
+    "APIM Private DNS records → ACA Environment properties → ACA Private DNS records",
+    "Public DNS records → APIM Networking",
+    "送信元の確認記録 → PE/NIC/IP構成/レコードとの照合",
+    "SQL PE・送信元・ACA recordsetsによる確認3問 → 設定画面でまとめ → NSG予告"
+  ],
+  "turns": [
+    {
+      "turnId": "lesson02-turn-001-mako",
+      "chapterId": "opening",
+      "surface": "hologram",
+      "screenId": "opening",
+      "focus": "3人と今回の問い",
+      "callout": "同じ名前でも、送信元をそろえる",
+      "caption": "同じサービス名なのに、手元のPCでは調べられて、アプリからはつながらない。これって、名前の問題なんでしょうか？"
+    },
+    {
+      "turnId": "lesson02-turn-002-manabu",
+      "chapterId": "opening",
+      "surface": "hologram",
+      "screenId": "opening",
+      "focus": "話者MANABU",
+      "callout": "どのDNSへ問い合わせたか",
+      "caption": "あり得ます。誰が、どのDNSに聞くかで、接続先のIPが変わるからです。まず答えをそろえたいですね。"
+    },
+    {
+      "turnId": "lesson02-turn-003-ikumi",
+      "chapterId": "opening",
+      "surface": "hologram",
+      "screenId": "opening",
+      "focus": "話者IKUMI",
+      "callout": "公開名・内部名・PEのIP",
+      "caption": "今日は公開名、内部名、それからPrivate EndpointのIPを、一本の流れで追ってみましょう。"
+    },
+    {
+      "turnId": "lesson02-turn-004-mako",
+      "chapterId": "opening",
+      "surface": "hologram",
+      "screenId": "opening",
+      "focus": "話者MAKO",
+      "callout": "設定画面を順にたどる",
+      "caption": "名前が分かれば終わり、ではないんですね。MANABU、IKUMI、送信元から順に教えてください。"
+    },
+    {
+      "turnId": "lesson02-turn-005-manabu",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "resourceInventory",
+      "focus": "Key Vault / Private Endpoint / Private DNS zone",
+      "callout": "まず接続先を名前から決める",
+      "caption": "前回は要求がどの区画を通るかを見ました。今日はその一歩手前。アプリが接続する宛先を、名前からどう決めるかを扱います。"
+    },
+    {
+      "turnId": "lesson02-turn-006-mako",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsKv",
+      "focus": "レコードの名前とIPアドレス列",
+      "callout": "名前の回答で通信先が変わる",
+      "caption": "URLの名前が、接続するときにはIPへ変わる。その対応がずれると、調べる経路も変わるんですね。"
+    },
+    {
+      "turnId": "lesson02-turn-007-ikumi",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "FQDNとIPアドレスの対応行",
+      "callout": "通常のFQDNを使って接続する",
+      "caption": "そうです。FQDNは省略しない完全なドメイン名です。アプリはその名前をDNSで解決し、得られたIPへ通信を始めます。"
+    },
+    {
+      "turnId": "lesson02-turn-008-manabu",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "返されるIPアドレス",
+      "callout": "許可を変える前に宛先を確認",
+      "caption": "許可規則を広げる前に、接続しようとしている宛先をそろえましょう。想定と違うIPなら、違う相手への通信を調べてしまいます。"
+    },
+    {
+      "turnId": "lesson02-turn-009-mako",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "resourceInventory",
+      "focus": "この回で開くリソースの行",
+      "callout": "役割と対応を確認する",
+      "caption": "名前とIPの対応を説明できて、どの送信元で確かめるかを選べることがゴールですね。細かい値を暗記する必要はありますか？"
+    },
+    {
+      "turnId": "lesson02-turn-010-ikumi",
+      "chapterId": "why",
+      "surface": "portal",
+      "screenId": "resourceInventory",
+      "focus": "教材用再現画面の表示",
+      "callout": "構築定義と公開設定例が根拠",
+      "caption": "まず役割を押さえれば大丈夫です。今回も教材の構築定義と公開設定例が基準です。稼働Azureから取得した実測値ではありません。"
+    },
+    {
+      "turnId": "lesson02-turn-012-mako",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "privateEndpointOverviewKv",
+      "focus": "接続先リソースとネットワークインターフェイス",
+      "callout": "PE区画にあるのは接続口",
+      "caption": "では、Private Endpointからお願いします。前回のPE区画には、サービス本体が入っているわけではありませんでしたね。"
+    },
+    {
+      "turnId": "lesson02-turn-013-ikumi",
+      "chapterId": "pe",
+      "surface": "diagram",
+      "screenId": "dataPath",
+      "focus": "中央PE・右Key Vault本体",
+      "callout": "接続口とサービス本体を区別",
+      "caption": "はい。Private EndpointはAzureサービスへprivate IPで接続する入口です。中央がVNet内の接続口、右がKey Vault本体です。",
+      "originalVisualFromTurn": "lesson02-turn-013-ikumi",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-015-ikumi",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "privateEndpointInventory",
+      "focus": "Foundry / Key Vault / ACR / SQLの4行",
+      "callout": "4種類の用途を確認する",
+      "caption": "この基盤の4種類です。FoundryはAI、Key Vaultは証明書や秘密情報。ACRはイメージ、SQLはPortalと認証窓口のデータ保存先へつなぎます。"
+    },
+    {
+      "turnId": "lesson02-turn-016-mako",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsAcr",
+      "focus": "レジストリ名とデータ名の行",
+      "callout": "PEの数とIPの数は一致しない",
+      "caption": "4種類のPEだから、private IPも4個、と数えてよいのでしょうか。接続先の一覧を作るときに、そう考えそうです。"
+    },
+    {
+      "turnId": "lesson02-turn-017-ikumi",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsAcr",
+      "focus": "複数FQDN・複数IPの行",
+      "callout": "全ての用途別接続先を確認",
+      "caption": "決めつけません。一つのPEが複数のIPを持つ場合があります。Foundryの用途別の名前や、ACRのデータ側の接続先も確認します。"
+    },
+    {
+      "turnId": "lesson02-turn-018-ikumi",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "nicIpConfigurations",
+      "focus": "IP構成一覧の全行",
+      "callout": "NICの全IP構成を照合する",
+      "caption": "構築処理はAzureが返したPEのNICから全IP構成を読み、整理して後段のNSGなどへ渡します。先頭のIPだけを使う方法ではありません。"
+    },
+    {
+      "turnId": "lesson02-turn-019-mako",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "serviceNetworkingKv",
+      "focus": "パブリックネットワークアクセス",
+      "callout": "PEを作るだけでは閉じない",
+      "caption": "PEを作れば、外からは閉じられて、中の利用者は自由に操作できる。そういうセットの機能ではないんですね。"
+    },
+    {
+      "turnId": "lesson02-turn-020-manabu",
+      "chapterId": "pe",
+      "surface": "portal",
+      "screenId": "serviceNetworkingKv",
+      "focus": "無効の選択状態",
+      "callout": "公開接続・通信許可・認証は別設定",
+      "caption": "はい。PE、DNS、公開接続の制限、通信許可、操作権限は別です。この4種類のサービス本体では公開アクセスを無効にしますが、認証も必要です。"
+    },
+    {
+      "turnId": "lesson02-turn-021-mako",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "通常FQDNとPrivate Link名",
+      "callout": "アプリにはどの名前を設定する？",
+      "caption": "Key Vaultで名前を追ってみたいです。アプリには、Private Link用の長い名前を直接設定するのでしょうか？"
+    },
+    {
+      "turnId": "lesson02-turn-022-ikumi",
+      "chapterId": "links",
+      "surface": "diagram",
+      "screenId": "dnsChain",
+      "focus": "上の通常FQDNと中央のPrivate Link名",
+      "callout": "公開DNSのCNAMEから案内される",
+      "caption": "通常の接続先FQDNを使います。図の上がボールト名を含む通常名です。公開DNSのCNAMEで、中央のPrivate Link名へつながります。",
+      "originalVisualFromTurn": "lesson02-turn-022-ikumi",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-023-mako",
+      "chapterId": "links",
+      "surface": "diagram",
+      "screenId": "dnsChain",
+      "focus": "通常FQDNからPrivate Link名への矢印",
+      "callout": "CNAMEは別の名前への案内",
+      "caption": "CNAMEは別の名前への案内ですね。この時点では、まだ接続先のIPが決まっていない、と。",
+      "originalVisualFromTurn": "lesson02-turn-023-mako",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-024-ikumi",
+      "chapterId": "links",
+      "surface": "diagram",
+      "screenId": "dnsChain",
+      "focus": "中央Private Link名と下のPE IP",
+      "callout": "Private DNSのAがPEのIPを返す",
+      "caption": "そのとおりです。リンクされたPrivate DNSゾーンのAレコードが、中央の名前に対応する、Key Vault PEの実private IPを返します。",
+      "originalVisualFromTurn": "lesson02-turn-024-ikumi",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-025-manabu",
+      "chapterId": "links",
+      "surface": "diagram",
+      "screenId": "dnsChain",
+      "focus": "名前解決の順番",
+      "callout": "アプリの要求が名前を通過するわけではない",
+      "caption": "名前を調べる順番と、データが流れる順番を区別しましょう。アプリの要求が、並んだ名前を一つずつ通過するわけではありません。",
+      "originalVisualFromTurn": "lesson02-turn-022-ikumi",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-026-ikumi",
+      "chapterId": "links",
+      "surface": "diagram",
+      "screenId": "dataPath",
+      "focus": "アプリからPE・サービス本体への経路",
+      "callout": "DNSは中継装置ではない",
+      "caption": "アプリは得られたIPへ接続します。Private DNSゾーンは名前の対応表で、中継装置ではありません。ここで、図をデータ通信へ切り替えています。",
+      "originalVisualFromTurn": "lesson02-turn-026-ikumi",
+      "reason": "語りの図・位置への参照と一致させ、DNS解決順とデータ通信を区別する"
+    },
+    {
+      "turnId": "lesson02-turn-027-mako",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsZonesFoundry",
+      "focus": "Private Link用6ゾーンの一覧",
+      "callout": "PEとは別にゾーンを数える",
+      "caption": "では、Private Link用のゾーンはいくつあるんですか？PEの数とは別に数える必要がありそうですね。"
+    },
+    {
+      "turnId": "lesson02-turn-028-ikumi",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsZonesFoundry",
+      "focus": "Foundry用3ゾーンの行",
+      "callout": "3ゾーンを同じFoundry PEへ関連付ける",
+      "caption": "6ゾーンです。図の3つはCognitive系、OpenAI系、Services系の名前を扱い、同じFoundry PEへ関連付けます。"
+    },
+    {
+      "turnId": "lesson02-turn-029-ikumi",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsZonesAll",
+      "focus": "Key Vault / ACR / SQL用の3行",
+      "callout": "対象サービスに合うゾーンか照合",
+      "caption": "残りはKey Vault、ACR、SQL用です。全部暗唱するより、サービスに合うゾーンとPEが結び付くか、資料の一覧と照合しましょう。"
+    },
+    {
+      "turnId": "lesson02-turn-030-mako",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsVirtualNetworkLinks",
+      "focus": "左メニューとVNetリンク行",
+      "callout": "PE側のzone groupとは別の関連付け",
+      "caption": "VNetリンクとDNS zone groupは、どちらもつなぐ設定に見えます。役割はどう違うのでしょう？"
+    },
+    {
+      "turnId": "lesson02-turn-031-ikumi",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsVirtualNetworkLinks",
+      "focus": "リンク先VNet",
+      "callout": "このVNetからゾーンを参照する設定",
+      "caption": "VNetリンクは、このVNetからゾーンを参照するための関連付けです。PEのDNS zone groupは、PEにゾーンIDを指定し、DNSレコードを連携させます。"
+    },
+    {
+      "turnId": "lesson02-turn-032-manabu",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "Private DNS zone groupの関連付け",
+      "callout": "PEとレコードの連携はPE側で確認",
+      "caption": "どの範囲から名前を引くかと、どの接続口のレコードを連携するか、ですね。片方だけで両方の役割を満たしたとは判断できません。"
+    },
+    {
+      "turnId": "lesson02-turn-033-ikumi",
+      "chapterId": "links",
+      "surface": "portal",
+      "screenId": "privateDnsVirtualNetworkLinks",
+      "focus": "自動登録：無効",
+      "callout": "VM名の自動登録とPE連携を区別",
+      "caption": "このVNetリンクはVM名の自動登録を無効にしています。PE用のAレコードも、別のBicepで手書きして二重管理する定義ではありません。"
+    },
+    {
+      "turnId": "lesson02-turn-034-mako",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "vnetDnsServers",
+      "focus": "DNSサーバー設定の選択肢",
+      "callout": "問い合わせるDNSも確認する",
+      "caption": "リンクができたら、VNetの全員が必ずその答えを使うのでしょうか。聞きに行くDNSも関係するんですよね。"
+    },
+    {
+      "turnId": "lesson02-turn-035-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "vnetDnsServers",
+      "focus": "Azure提供 / カスタムの選択",
+      "callout": "教材の公開入力例 [] はAzure提供DNS",
+      "caption": "はい。VNetのDNSサーバー設定を見ます。公開params例は空配列でAzure提供DNSを使います。独自DNSなら、そのDNSが必要な名前を解決できる準備が要ります。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-036-manabu",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "privateDnsVirtualNetworkLinks",
+      "focus": "VNetリンク行",
+      "callout": "独自DNSの転送設定は別途必要",
+      "caption": "VNetリンクだけで、独自DNSへ転送設定まで入るわけではありません。企業のDNSへ変えるなら、名前を解決できる参照先や転送も用意します。"
+    },
+    {
+      "turnId": "lesson02-turn-037-mako",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "firewallPolicyDns",
+      "focus": "DNS設定ブレード",
+      "callout": "Firewall自身のDNSも別に見る",
+      "caption": "Firewall側にもDNSサーバーの入力があります。VNetの入力を変えれば、そちらも同じように変わりますか？"
+    },
+    {
+      "turnId": "lesson02-turn-038-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "firewallPolicyDns",
+      "focus": "上流DNSサーバー欄",
+      "callout": "IaCで未指定ならVNet入力を使う",
+      "caption": "二つは別です。Firewall側は、自身が名前を解決するための上流DNSです。Firewall側のキーが未指定なら、VNetのDNS入力を使います。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-039-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "firewallPolicyDns",
+      "focus": "Azure提供DNSの選択",
+      "callout": "IaCで明示した [] はAzure提供DNS",
+      "caption": "ただし、Firewall側に空配列を明示するとAzure提供DNSの指定です。VNetを独自DNSへ変えても、その空配列は独自DNSへ置き換わりません。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-040-mako",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "firewallPolicyDns",
+      "focus": "DNSサーバー欄",
+      "callout": "未指定と [] の差はIaC入力の差",
+      "caption": "ああ、未指定と、空の配列を書くことの意味が違うんですね。変更時はVNetとFirewallの両方を見る必要がありそうです。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-041-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "firewallPolicyDns",
+      "focus": "DNS proxy：有効",
+      "callout": "クライアントのDNS参照先は別に設定",
+      "caption": "DNS proxyが有効でも、それだけでクライアントの問い合わせ先は変わりません。Firewallへ問い合わせるなら、クライアント側のDNS設定も対応させます。"
+    },
+    {
+      "turnId": "lesson02-turn-043-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "nsgDnsRules",
+      "focus": "TCP/UDP 53の宛先DNS",
+      "callout": "実際の問い合わせ経路の許可を確認",
+      "caption": "DNS通信ではTCPとUDPの53番を確認します。対応するNSG規則や、独自DNS用のFirewall規則も、実際の問い合わせ経路に沿って確認します。"
+    },
+    {
+      "turnId": "lesson02-turn-044-ikumi",
+      "chapterId": "dns",
+      "surface": "portal",
+      "screenId": "privateDnsVirtualNetworkLinks",
+      "focus": "VNetリンクの設定",
+      "callout": "教材定義はInternet fallbackを有効化しない",
+      "caption": "ゾーン内にない名前が、必ず公開DNSへ逃がされるとも扱いません。この定義はInternet fallbackを有効にする指定ではなく、名前ごとの確認が必要です。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-045-mako",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsZonesInternal",
+      "focus": "APIMとACA用の2ゾーン",
+      "callout": "内部名の全てがPE向けではない",
+      "caption": "6ゾーンのほかに、APIMとACAにも内部の名前があります。この二つもPEへ接続するための名前ですか？"
+    },
+    {
+      "turnId": "lesson02-turn-046-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsZonesInternal",
+      "focus": "6+2の計8ゾーンの一覧",
+      "callout": "APIM・ACA自身のPEは作らない",
+      "caption": "この構成では違います。APIMとACA自身のPEは作らず、内部入口用のPrivate DNSゾーンを二つ追加します。先ほどと合わせて計8ゾーンです。"
+    },
+    {
+      "turnId": "lesson02-turn-047-manabu",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsZonesInternal",
+      "focus": "Private Linkと内部入口のゾーンの違い",
+      "callout": "privateな名前だけでPEと決めない",
+      "caption": "内部IPへ名前を対応させる目的は似ていますが、接続口の種類が異なります。privateな名前を見ただけで、PEだと決めないことが大切です。"
+    },
+    {
+      "turnId": "lesson02-turn-048-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsApim",
+      "focus": "@ / A / 実内部VIPの行",
+      "callout": "@はこのAPIM名ゾーンの頂点",
+      "caption": "APIMは自身の実FQDNと同じ名前のゾーンを作り、頂点のAレコードを実内部VIPへ対応付けます。アットマークが、ゾーンの頂点です。"
+    },
+    {
+      "turnId": "lesson02-turn-049-mako",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsApim",
+      "focus": "ゾーン名の完全なFQDN",
+      "callout": "azure-api.net全体を覆わない",
+      "caption": "APIMの名前そのものをゾーンにする。共通のazure-api.net全体を、自分たちのゾーンにするわけではない、と。"
+    },
+    {
+      "turnId": "lesson02-turn-050-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsApim",
+      "focus": "@のAレコードの値",
+      "callout": "作成後の実内部VIPと照合",
+      "caption": "はい。対象APIMの完全な名前へ絞ります。広い親ドメインを覆うと、別の名前への回答も影響し得ます。内部VIPも作成後の実値を使います。"
+    },
+    {
+      "turnId": "lesson02-turn-051-mako",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "acaEnvironmentOverview",
+      "focus": "defaultDomainと内部入口のstatic IP",
+      "callout": "環境とアプリの名前を区別",
+      "caption": "ACAはアプリ名が付いた長い名前ですね。Portalのアプリ名と、環境のドメイン名は、どうつながりますか？"
+    },
+    {
+      "turnId": "lesson02-turn-052-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "* / A / 実staticIpの行",
+      "callout": "環境ドメインの子のアプリ名を解決",
+      "caption": "環境の実defaultDomainをゾーン名にします。ワイルドカードのAを実staticIpへ向け、Portalなどの子のアプリ名を解決します。"
+    },
+    {
+      "turnId": "lesson02-turn-053-mako",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "*のAと@のSOAの行",
+      "callout": "ワイルドカードは頂点のAではない",
+      "caption": "ワイルドカードがあれば、環境のドメイン名だけでも同じIPになりますか？子の名前がない場合です。"
+    },
+    {
+      "turnId": "lesson02-turn-054-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "* / A の行、@ / Aは存在しない",
+      "callout": "アプリの完全なFQDNで確認する",
+      "caption": "この定義に頂点のAレコードはありません。子の名前を扱うアスタリスクと、頂点のアットマークは区別し、内部アプリの完全な名前で確認してください。"
+    },
+    {
+      "turnId": "lesson02-turn-055-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "AレコードとTTL 300秒",
+      "callout": "この内部AレコードはBicepが明示的に作る",
+      "caption": "APIMの頂点のAとACAのワイルドカードのAは、Bicepが明示的に作ります。PEのzone group連携とは別です。公開configでは、両方のTTLが300秒です。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-056-manabu",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "publicDnsRecordsGateway",
+      "focus": "Gateway・Portal公開名のAレコード",
+      "callout": "公開名はAppGWの公開IPへ向ける",
+      "caption": "利用者向けGatewayとPortalの公開名は、公開DNSでAppGWの公開IPへ向けます。APIMの内部VIPやACAの内部IPへ直接つなぐ名前ではありません。"
+    },
+    {
+      "turnId": "lesson02-turn-057-ikumi",
+      "chapterId": "internal",
+      "surface": "portal",
+      "screenId": "apimNetworking",
+      "focus": "仮想ネットワーク：Internal",
+      "callout": "公開ネットワーク設定Enabledは教材のBicep注記",
+      "caption": "APIMはInternal VNetモードですが、管理面もあるため公開ネットワーク設定はEnabledです。内部名があれば全部Disabled、とはまとめません。",
+      "annotationBoundary": "IaCの入力・実装定義を説明する注記。Azure Portalの実在フィールドとして描かない。"
+    },
+    {
+      "turnId": "lesson02-turn-058-mako",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "確認元：手元PCの記録",
+      "callout": "手元の結果をそのままアプリ側へ当てはめない",
+      "caption": "名前が原因か調べるとき、手元PCで名前を確認し、正しければDNSの調査は終わりにできますか？",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-059-manabu",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "実際の送信元欄",
+      "callout": "問題の通信を始める場所で確かめる",
+      "caption": "手元の結果を、アプリ側へそのまま当てはめることはできません。問題の通信を始める場所で、同じ名前の回答を確認しましょう。",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-060-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "送信元・時刻・問い合わせDNS・FQDN",
+      "callout": "同じ通信の確認条件をそろえる",
+      "caption": "送信元、確認時刻、問い合わせるDNS、アプリが使うFQDNをそろえます。管理VMの処理ならVM側、ACAの処理ならACA側の条件を見ます。",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-061-mako",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "CNAMEとAddressの項目",
+      "callout": "最後のIPだけでなく案内先も見る",
+      "caption": "同じ名前に加えて、誰が誰に聞いたかまで記録するんですね。結果では、最後のIPだけ見れば十分でしょうか？",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-062-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "通常名・Private Link名・対象PE IP",
+      "callout": "送信元のDNS確認結果とこの設定を照合",
+      "caption": "CNAMEも追えると、どの名前へ案内されたか分かります。Key Vaultなら通常名からPrivate Link名へ進み、対象PEのIPが返るかを照合します。"
+    },
+    {
+      "turnId": "lesson02-turn-063-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "nicIpConfigurations",
+      "focus": "全IP構成と関連PE",
+      "callout": "返ったprivate IPが対象PEのIPか比べる",
+      "caption": "PE側の接続先、接続の種類、接続状態と、実NICの全IP構成を比べます。private IPらしい値が返っただけで、正しいPEだとは判断しません。"
+    },
+    {
+      "turnId": "lesson02-turn-064-manabu",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "公開IP / 別内部IP / 名前なし の確認記録",
+      "callout": "期待する宛先との違いで調査先を絞る",
+      "caption": "公開IPが返ったのか、別の内部IPなのか、名前が見つからないのか。期待する宛先との違いを分けると、確認する設定を絞れます。",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-065-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsKv",
+      "focus": "zone groupと対象ゾーン",
+      "callout": "VNetリンクとレコードも続けて照合",
+      "caption": "PEの名前なら、ゾーン、VNetリンク、zone group、Aレコードを照合します。独自DNSでは、そのDNSから対象ゾーンを解決する構成も含めます。"
+    },
+    {
+      "turnId": "lesson02-turn-066-mako",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsApim",
+      "focus": "@ / A の値とVIP",
+      "callout": "ACAでは* / Aとstatic IPを同じ考え方で比べる",
+      "caption": "APIMやACAなら、明示的に作ったAレコードと内部入口の実IPを比べるんですね。接続口の種類が、確認場所の選択に役立ちます。"
+    },
+    {
+      "turnId": "lesson02-turn-067-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsApim",
+      "focus": "TTLとAレコードの値",
+      "callout": "変更と反映は分けて確認する",
+      "caption": "はい。変更直後ならTTLやキャッシュ、サービスへの反映も見ます。設定を書き換えたことと、各サービスが新しい設定で動くことを分けて確かめます。"
+    },
+    {
+      "turnId": "lesson02-turn-068-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "apimNetworking",
+      "focus": "ネットワーク構成の適用",
+      "callout": "AppGW再起動・VM DNS再取得もサービス別に確認",
+      "caption": "APIMのネットワーク構成適用、AppGWのStopとStart、VMのDNS再取得などが資料の確認点です。反映方法と保守時間はサービスごとに調べます。"
+    },
+    {
+      "turnId": "lesson02-turn-069-manabu",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "vnetDnsServersCustom",
+      "focus": "カスタムDNSの参照先",
+      "callout": "中央DNSへの切替前に解決と到達を用意",
+      "caption": "中央DNSへの切替も、先に名前の参照先とDNSへの到達を用意します。VNetピアリングだけでPrivate DNSの解決設定まで共有されるとは考えません。"
+    },
+    {
+      "turnId": "lesson02-turn-070-ikumi",
+      "chapterId": "checking",
+      "surface": "portal",
+      "screenId": "privateEndpointOverviewKv",
+      "focus": "対象PEのIPと接続状態",
+      "callout": "名前解決後はNSG・経路・認証へ進む",
+      "caption": "期待するIPが返ったら、NSG、具体的な経路、サービス認証へ進みます。名前解決の成功は、後続の通信や操作の成功を保証しません。"
+    },
+    {
+      "turnId": "lesson02-turn-071-mako",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsSql",
+      "focus": "SQL PEのIP回答",
+      "callout": "この段階だけでSQLを操作できる？",
+      "caption": "三つ確かめます。一問目。ACAからSQLの名前を引くと、対象のSQL PEのIPが返りました。これでデータベースを操作できる、と言えますか？"
+    },
+    {
+      "turnId": "lesson02-turn-072-manabu",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsSql",
+      "focus": "PEの接続口のIP",
+      "callout": "到達・認証・操作権限の確認が続く",
+      "caption": "まだ言えません。期待する接続口が分かった段階です。そのIPへの到達と、サービスの認証、操作権限を続けて確認します。"
+    },
+    {
+      "turnId": "lesson02-turn-073-ikumi",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateEndpointDnsSql",
+      "focus": "SQLサービスとの関連付け",
+      "callout": "SQLのEntra認証はDNSとは別",
+      "caption": "正解です。このSQLはEntra認証です。名前が正しくても、接続の許可やサービス側の権限をDNSが設定してくれるわけではありません。"
+    },
+    {
+      "turnId": "lesson02-turn-074-mako",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "手元PCとAPIMの送信元欄",
+      "callout": "APIM側の確認を省略できる？",
+      "caption": "二問目。手元PCからKey Vaultの名前を解決できました。同じ名前を使うAPIM側では、確認を省略してよいでしょうか？",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-075-ikumi",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "vnetDnsServers",
+      "focus": "実際の送信元が使うDNS",
+      "callout": "DNSと回答を対象PEのIP群へ照合",
+      "caption": "省略できません。DNSや参照ゾーンが同じとは限らないからです。実際の送信元が使うDNSと回答を確認し、対象PEのIP群と照合します。"
+    },
+    {
+      "turnId": "lesson02-turn-077-mako",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "* / A とゾーン頂点の違い",
+      "callout": "環境ドメインだけでAが返らないのはPEの故障？",
+      "caption": "三問目。ACAにワイルドカードのAがありますが、環境のドメイン名だけでは期待するAが返りません。PEの故障でしょうか？"
+    },
+    {
+      "turnId": "lesson02-turn-078-ikumi",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "@ / A がないこと",
+      "callout": "このACAは環境の内部入口を使う",
+      "caption": "そうは言えません。このACAは自身のPEを作らず、定義に頂点のAもありません。子のアプリ名か、ゾーン頂点か、問い合わせた名前を区別します。"
+    },
+    {
+      "turnId": "lesson02-turn-079-mako",
+      "chapterId": "quiz",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsAca",
+      "focus": "* と @ の役割",
+      "callout": "問い合わせ名とレコードの対象をそろえる",
+      "caption": "なるほど。どの名前でも同じではなく、レコードの対象を見るんですね。アスタリスクとアットマークの違いが、確認につながりました。"
+    },
+    {
+      "turnId": "lesson02-turn-080-manabu",
+      "chapterId": "summary",
+      "surface": "portal",
+      "screenId": "privateDnsRecordsKv",
+      "focus": "Private Link名のAレコード",
+      "callout": "通常名からPE IPへの対応を振り返る",
+      "caption": "一つ目は、通常名からPrivate Link名を経てPEの実private IPを得る関係です。名前解決の順番と、データ通信の中継順を区別しましょう。"
+    },
+    {
+      "turnId": "lesson02-turn-081-ikumi",
+      "chapterId": "summary",
+      "surface": "portal",
+      "screenId": "privateDnsZonesAll",
+      "focus": "Private Link6ゾーンと内部2ゾーン",
+      "callout": "接続口の種類と公開入口を区別",
+      "caption": "二つ目は接続口の種類。4種類のPEと6ゾーンに加え、APIMとACAには内部入口用ゾーンがあります。公開名はAppGWの公開入口へ向けます。"
+    },
+    {
+      "turnId": "lesson02-turn-082-mako",
+      "chapterId": "summary",
+      "surface": "portal",
+      "screenId": "sourceDnsObservation",
+      "focus": "送信元→DNS→回答IP→実体照合",
+      "callout": "説明できる確認記録をそろえる",
+      "caption": "三つ目は送信元をそろえること。どこから、どのDNSに何を聞き、どのIPが返ったか。対象PEや内部入口の実IPと比べるんですね。",
+      "annotationBoundary": "送信元のDNS確認記録（教材例）をPortal UIの外側に置く。Cloud ShellやAPIMの架空シェルの結果に見せない。"
+    },
+    {
+      "turnId": "lesson02-turn-084-ikumi",
+      "chapterId": "summary",
+      "surface": "portal",
+      "screenId": "nsgRulesPreview",
+      "focus": "受信/送信・優先順位の列",
+      "callout": "次回はこの通信の許可・拒否を判断",
+      "caption": "次回はNSGです。今回そろえた送信元と宛先に対し、送信と受信の規則がどう評価されるか、優先順位と状態追跡を使って判断します。"
+    },
+    {
+      "turnId": "lesson02-turn-085-mako",
+      "chapterId": "summary",
+      "surface": "portal",
+      "screenId": "nsgRulesPreview",
+      "focus": "次回の設定箇所を示す",
+      "callout": "次回：NSGの評価を確かめる",
+      "caption": "宛先が決まったら、その通信は許可されるのか。次はそこを確かめます。今日もありがとうございました。では、次回の勉強会でお会いしましょう。"
+    }
+  ]
+}

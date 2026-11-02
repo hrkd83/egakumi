@@ -1,0 +1,17 @@
+{
+  "projectId": "egakumi-example",
+  "projectNumber": "123456789012",
+  "displayName": "Egakumi Media Example",
+  "organizationDomain": "example.com",
+  "purpose": "egakumi study media speech generation",
+  "state": "example-unconfigured",
+  "generationApis": {
+    "aiplatform.googleapis.com": "enable-in-your-project",
+    "texttospeech.googleapis.com": "enable-in-your-project"
+  },
+  "billing": "Example only. Configure billing in your own Google Cloud project before generation.",
+  "credentialPolicy": "Use existing signed-in user or ADC. No API keys or service-account keys stored in this repository.",
+  "consoleUrl": "https://console.cloud.google.com/welcome?project=egakumi-example",
+  "cliAuth": "Example account developer@example.com. Authenticate an account you control; this export contains no credentials.",
+  "publicationNote": "Sanitized example metadata. These values do not identify the original production environment."
+}

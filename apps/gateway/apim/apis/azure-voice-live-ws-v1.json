@@ -1,0 +1,39 @@
+{
+  "released": true,
+  "name": "azure-voice-live-ws-v1",
+  "displayName": "Azure Voice Live Ws V1",
+  "path": "models/voice-live/v1/ws",
+  "backendService": "external",
+  "backendAudience": "https://ai.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "invoke",
+      "displayName": "Invoke",
+      "method": "GET",
+      "urlTemplate": "/",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "invoke": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none"
+      }
+    }
+  },
+  "backendUrl": "__VOICE_LIVE_WS_BASE_URL__",
+  "apiType": "websocket",
+  "websocket": {
+    "queryParameters": {
+      "api-version": "__VOICE_LIVE_API_VERSION__",
+      "model": "__VOICE_LIVE_MODEL__"
+    }
+  },
+  "serviceClass": "platform"
+}

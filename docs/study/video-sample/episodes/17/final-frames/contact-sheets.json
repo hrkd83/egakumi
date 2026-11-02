@@ -1,0 +1,28 @@
+{
+  "sourceSha256": "7fe51205c1797bbbfbf65c8ae9263a5bec63d92bca2bcb177a2e486c91f4818d",
+  "sheets": [
+    "contact-1.png",
+    "contact-2.png"
+  ],
+  "frames": [
+    "01-intro-logo.png",
+    "02-cast-wide.png",
+    "03-opening-mako-centered.png",
+    "04-opening-manabu-centered.png",
+    "05-opening-ikumi-centered.png",
+    "06-management-flow.png",
+    "07-key-reveal.png",
+    "08-suspend.png",
+    "09-resume.png",
+    "10-ownership-transfer.png",
+    "11-inventory-review.png",
+    "12-delete-202-pending.png",
+    "13-delete-confirmed.png",
+    "14-limit-save-and-audit.png",
+    "15-limits-flow.png",
+    "16-quiz-question.png",
+    "17-quiz-answer.png",
+    "18-closing-logo.png",
+    "19-closing-end.png"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "table": "AGWAccessLogs",
+  "stream": "Microsoft-Table-AGWAccessLogs",
+  "transformKql": "source | extend RequestQuery = '', OriginalRequestUriWithArgs = tostring(split(OriginalRequestUriWithArgs, '?')[0]), RequestUri = tostring(split(RequestUri, '?')[0])"
+}

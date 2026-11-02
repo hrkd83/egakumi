@@ -1,0 +1,39 @@
+{
+  "released": true,
+  "name": "openai-realtime-observer-v1",
+  "displayName": "Openai Realtime Observer V1",
+  "path": "models/openai-realtime/v1/observer",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "invoke",
+      "displayName": "Invoke",
+      "method": "GET",
+      "urlTemplate": "/",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "invoke": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none"
+      }
+    }
+  },
+  "backendUrl": "__REALTIME_OBSERVER_WS_BASE_URL__",
+  "apiType": "websocket",
+  "websocket": {
+    "realtimeObserver": {
+      "sessionTtlSeconds": 600,
+      "publicCallPath": "/models/openai-realtime/v1/calls"
+    }
+  },
+  "serviceClass": "platform"
+}

@@ -1,0 +1,5439 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "08",
+  "episodeNumber": 8,
+  "episodeId": "08",
+  "title": "第8回 基盤管理者の接続と作業実行",
+  "topic": "基盤管理者の接続と作業実行",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "教材41〜43節と現行リポジトリ定義・公開設定例に基づく説明。稼働中Azureへ接続・取得・実測した結果ではない。企業側のprivate接続をこのIaCが構築する説明はしない。",
+  "learningObjectives": [
+    "管理VMのprivate IPへの到達経路、受信NSG、SSHの待受・認証を段階ごとに説明できる。",
+    "初期管理ユーザーの公開鍵とEntra SSH、VMログイン権限と管理操作・サービス利用権限を区別できる。",
+    "Managed Run Commandの入口から、VMの下流接続と実行結果・成果物の確認まで説明できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "maintenance-network"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "maintenance-auth"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "maintenance-command"
+    },
+    {
+      "file": "../../../infra/modules/management.bicep"
+    },
+    {
+      "file": "../../../infra/modules/network-bindings.bicep"
+    },
+    {
+      "file": "../../../infra/modules/network.bicep"
+    },
+    {
+      "file": "../../../guest/configure-audit.sh"
+    },
+    {
+      "file": "../../../params/production.example.json"
+    },
+    {
+      "file": "../../../config/production.json"
+    },
+    {
+      "file": "../../../infra/modules/management-audit.bicep"
+    },
+    {
+      "file": "../../../infra/modules/certificate.bicep"
+    },
+    {
+      "file": "../../../scripts/deployment/helpers/image_build.py"
+    },
+    {
+      "file": "../../../scripts/deployment/helpers/portal_image.py"
+    },
+    {
+      "file": "../../../scripts/deployment/helpers/credential_image.py"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "network-egress-management"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "鍵があれば、管理VMへ入れる？",
+      "goal": "接続と作業実行に複数の入口・条件があると捉える",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-command"
+        }
+      ]
+    },
+    {
+      "id": "purpose",
+      "title": "管理VMの目的と確認する順番",
+      "goal": "管理VMの用途と教材の参照範囲を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "title": "private IPまでの到達経路",
+      "goal": "企業側で用意する経路と基盤内の設定を分ける",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        }
+      ]
+    },
+    {
+      "id": "nsg",
+      "title": "管理VMの受信許可",
+      "goal": "運用元配列・実際の送信元・ポートと規則を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "公開鍵とEntra SSHの認証",
+      "goal": "二つの認証方式と空の割り当て、OS保護を区別する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-auth"
+        }
+      ]
+    },
+    {
+      "id": "command",
+      "title": "Azure管理面からの作業実行",
+      "goal": "SSHとManaged Run Commandの入口・権限・結果を区別する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-command"
+        }
+      ]
+    },
+    {
+      "id": "downstream",
+      "title": "VMからの接続と失敗箇所",
+      "goal": "依存先接続と認証を作業の入口から分けて調べる",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-command"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの問いで理解を確かめる",
+      "goal": "経路・NSG・認証・管理実行の混同を自分で訂正する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-auth"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-command"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "今日の到達点と、次の問い",
+      "goal": "接続から作業結果まで説明し、A1のハブ接続へ進む",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-network"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-auth"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "maintenance-command"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson08-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "管理ブイエムって公開アイピーがないんですよね。鍵さえ持っていれば、手元のパソコンから入れるんですか？",
+      "caption": "管理VMって公開IPがないんですよね。鍵さえ持っていれば、手元のパソコンから入れるんですか？",
+      "subtitleLines": [
+        "管理VMって公開IPがないんですよね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理VMって公開IPがないんですよね。",
+          "lines": [
+            "管理VMって公開IPがないんですよね。"
+          ],
+          "weight": 19
+        },
+        {
+          "caption": "鍵さえ持っていれば、手元のパソコンから入れるんですか？",
+          "lines": [
+            "鍵さえ持っていれば、手元のパソコンから入れるんですか？"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "基盤管理者の接続と作業実行"
+      }
+    },
+    {
+      "id": "lesson08-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "鍵は、入ってよい人かを確かめるものですね。その前に、ブイエムまで届く道と、通信の許可をそろえる必要があります。",
+      "caption": "鍵は、入ってよい人かを確かめるものですね。その前に、VMまで届く道と、通信の許可をそろえる必要があります。",
+      "subtitleLines": [
+        "鍵は、入ってよい人かを確かめるものですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "鍵は、入ってよい人かを確かめるものですね。",
+          "lines": [
+            "鍵は、入ってよい人かを確かめるものですね。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "その前に、VMまで届く道と、通信の許可をそろえる必要があります。",
+          "lines": [
+            "その前に、VMまで届く道と、通信の許可をそろえる必要があります。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "基盤管理者の接続と作業実行"
+      }
+    },
+    {
+      "id": "lesson08-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "それに、自動配備はエスエスエイチだけではありません。今日は、基盤管理者の接続と、アジュール管理面からの作業実行を分けて追います。",
+      "caption": "それに、自動配備はSSHだけではありません。今日は、基盤管理者の接続と、Azure管理面からの作業実行を分けて追います。",
+      "subtitleLines": [
+        "それに、自動配備はSSHだけではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "それに、自動配備はSSHだけではありません。",
+          "lines": [
+            "それに、自動配備はSSHだけではありません。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "今日は、基盤管理者の接続と、Azure管理面からの作業実行を分けて追います。",
+          "lines": [
+            "今日は、基盤管理者の接続と、Azure管理面からの作業実行を分けて追います。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "基盤管理者の接続と作業実行"
+      }
+    },
+    {
+      "id": "lesson08-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "なるほど。どこへ届き、何で本人を確かめ、どの入口から作業するのか。そこを図でつなげましょう。",
+      "caption": "なるほど。どこへ届き、何で本人を確かめ、どの入口から作業するのか。そこを図でつなげましょう。",
+      "subtitleLines": [
+        "なるほど。どこへ届き、何で本人を確かめ、",
+        "どの入口から作業するのか。そこを図でつなげましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "なるほど。どこへ届き、何で本人を確かめ、どの入口から作業するのか。そこを図でつなげましょう。",
+          "lines": [
+            "なるほど。どこへ届き、何で本人を確かめ、",
+            "どの入口から作業するのか。そこを図でつなげましょう。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "基盤管理者の接続と作業実行"
+      }
+    },
+    {
+      "id": "lesson08-turn-005-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "最初に、管理ブイエムは何をする場所ですか。普段のエーピーアイ要求を受けるアプリも、このブイエムで動かすのでしょうか。",
+      "caption": "最初に、管理VMは何をする場所ですか。普段のAPI要求を受けるアプリも、このVMで動かすのでしょうか。",
+      "subtitleLines": [
+        "最初に、管理VMは何をする場所ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最初に、管理VMは何をする場所ですか。",
+          "lines": [
+            "最初に、管理VMは何をする場所ですか。"
+          ],
+          "weight": 19
+        },
+        {
+          "caption": "普段のAPI要求を受けるアプリも、このVMで動かすのでしょうか。",
+          "lines": [
+            "普段のAPI要求を受けるアプリも、このVMで動かすのでしょうか。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMは、基盤の作業場所",
+        "cards": [
+          {
+            "id": "0",
+            "title": "証明書",
+            "body": [
+              "取得・更新",
+              "初期化の処理"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "内部保守",
+            "body": [
+              "private IPだけを持つ",
+              "Linux管理VM"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "イメージビルド",
+            "body": [
+              "Portal・Brokerの構築",
+              "業務の常駐層と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-006-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "証明書の取得や更新、内部の保守、イメージビルドのための作業場所です。業務の常駐実行層を、管理用のブイエムに同居させる用途ではありません。",
+      "caption": "証明書の取得や更新、内部の保守、イメージビルドのための作業場所です。業務の常駐実行層を、管理用のVMに同居させる用途ではありません。",
+      "subtitleLines": [
+        "証明書の取得や更新、内部の保守、イメージビルドのための作業場所です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "証明書の取得や更新、内部の保守、イメージビルドのための作業場所です。",
+          "lines": [
+            "証明書の取得や更新、内部の保守、イメージビルドのための作業場所です。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "業務の常駐実行層を、管理用のVMに同居させる用途ではありません。",
+          "lines": [
+            "業務の常駐実行層を、管理用のVMに同居させる用途ではありません。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMは、基盤の作業場所",
+        "cards": [
+          {
+            "id": "0",
+            "title": "証明書",
+            "body": [
+              "取得・更新",
+              "初期化の処理"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "内部保守",
+            "body": [
+              "private IPだけを持つ",
+              "Linux管理VM"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "イメージビルド",
+            "body": [
+              "Portal・Brokerの構築",
+              "業務の常駐層と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-007-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "リポジトリでは、リナックスの管理ブイエムを専用の区画へ置きます。ニックが持つのはプライベート アイピーブイフォーだけで、パブリック アイピーは付けません。",
+      "caption": "リポジトリでは、Linuxの管理VMを専用の区画へ置きます。NICが持つのはprivate IPv4だけで、Public IPは付けません。",
+      "subtitleLines": [
+        "リポジトリでは、Linuxの管理VMを専用の区画へ置きます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "リポジトリでは、Linuxの管理VMを専用の区画へ置きます。",
+          "lines": [
+            "リポジトリでは、Linuxの管理VMを専用の区画へ置きます。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "NICが持つのはprivate IPv4だけで、Public IPは付けません。",
+          "lines": [
+            "NICが持つのはprivate IPv4だけで、Public IPは付けません。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMは、基盤の作業場所",
+        "cards": [
+          {
+            "id": "0",
+            "title": "証明書",
+            "body": [
+              "取得・更新",
+              "初期化の処理"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "内部保守",
+            "body": [
+              "private IPだけを持つ",
+              "Linux管理VM"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "イメージビルド",
+            "body": [
+              "Portal・Brokerの構築",
+              "業務の常駐層と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-008-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "外へ公開しない作業場所なんですね。でも、管理者が使うには、どこかからつながる必要はありますね。",
+      "caption": "外へ公開しない作業場所なんですね。でも、管理者が使うには、どこかからつながる必要はありますね。",
+      "subtitleLines": [
+        "外へ公開しない作業場所なんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "外へ公開しない作業場所なんですね。",
+          "lines": [
+            "外へ公開しない作業場所なんですね。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "でも、管理者が使うには、どこかからつながる必要はありますね。",
+          "lines": [
+            "でも、管理者が使うには、どこかからつながる必要はありますね。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMは、基盤の作業場所",
+        "cards": [
+          {
+            "id": "0",
+            "title": "証明書",
+            "body": [
+              "取得・更新",
+              "初期化の処理"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "内部保守",
+            "body": [
+              "private IPだけを持つ",
+              "Linux管理VM"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "イメージビルド",
+            "body": [
+              "Portal・Brokerの構築",
+              "業務の常駐層と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-009-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "そうです。安全に作業できる理由を、ひとつの設定で片付けないことが大事です。届く道、通信の許可、オーエスへのログインを順に確かめます。",
+      "caption": "そうです。安全に作業できる理由を、ひとつの設定で片付けないことが大事です。届く道、通信の許可、OSへのログインを順に確かめます。",
+      "subtitleLines": [
+        "そうです。安全に作業できる理由を、ひとつの設定で片付けないことが大事です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そうです。安全に作業できる理由を、ひとつの設定で片付けないことが大事です。",
+          "lines": [
+            "そうです。安全に作業できる理由を、ひとつの設定で片付けないことが大事です。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "届く道、通信の許可、OSへのログインを順に確かめます。",
+          "lines": [
+            "届く道、通信の許可、OSへのログインを順に確かめます。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSH接続を、3段階で確かめる",
+        "cards": [
+          {
+            "id": "0",
+            "title": "① 到達する",
+            "body": [
+              "private IPへの経路",
+              "往路と復路を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "② 通信を許可する",
+            "body": [
+              "NSGの接続元・宛先",
+              "プロトコルとポート"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "③ OSへログインする",
+            "body": [
+              "SSHの待受と認証",
+              "公開鍵 または Entra SSH"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "説明の根拠は、教材の四十一節から四十三節と、現在のリポジトリ定義や公開設定例です。ここで、稼働中のアジュールへ接続して実測した結果を紹介するわけではありません。",
+      "caption": "説明の根拠は、教材の41節から43節と、現在のリポジトリ定義や公開設定例です。ここで、稼働中のAzureへ接続して実測した結果を紹介するわけではありません。",
+      "subtitleLines": [
+        "説明の根拠は、教材の41節から43節と、現在のリポジトリ定義や公開設定例です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "説明の根拠は、教材の41節から43節と、現在のリポジトリ定義や公開設定例です。",
+          "lines": [
+            "説明の根拠は、教材の41節から43節と、現在のリポジトリ定義や公開設定例です。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "ここで、稼働中のAzureへ接続して実測した結果を紹介するわけではありません。",
+          "lines": [
+            "ここで、稼働中のAzureへ接続して実測した結果を紹介するわけではありません。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "この回で説明する構成の範囲",
+        "cards": [
+          {
+            "id": "0",
+            "title": "根拠",
+            "body": [
+              "教材41〜43節",
+              "リポジトリ定義・公開例"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "今回の説明",
+            "body": [
+              "経路・NSG・SSH認証",
+              "Azure管理面の実行"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "実環境との照合",
+            "body": [
+              "VM/NICの出力を確認",
+              "稼働環境の実測ではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-011-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "では、まず道をたどり、そのあとにエヌエスジーと認証を重ねる。この順番で、エスエスエイチ接続を組み立てていきましょう。",
+      "caption": "では、まず道をたどり、そのあとにNSGと認証を重ねる。この順番で、SSH接続を組み立てていきましょう。",
+      "subtitleLines": [
+        "では、まず道をたどり、そのあとにNSGと認証を重ねる。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、まず道をたどり、そのあとにNSGと認証を重ねる。",
+          "lines": [
+            "では、まず道をたどり、そのあとにNSGと認証を重ねる。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "この順番で、SSH接続を組み立てていきましょう。",
+          "lines": [
+            "この順番で、SSH接続を組み立てていきましょう。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSH接続を、3段階で確かめる",
+        "cards": [
+          {
+            "id": "0",
+            "title": "① 到達する",
+            "body": [
+              "private IPへの経路",
+              "往路と復路を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "② 通信を許可する",
+            "body": [
+              "NSGの接続元・宛先",
+              "プロトコルとポート"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "③ OSへログインする",
+            "body": [
+              "SSHの待受と認証",
+              "公開鍵 または Entra SSH"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-012-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "図の左が運用端末、右が管理ブイエムです。端末からブイエムのプライベート アイピーまで届く、企業側の接続経路が必要です。戻りの経路も含めて用意します。",
+      "caption": "図の左が運用端末、右が管理VMです。端末からVMのprivate IPまで届く、企業側の接続経路が必要です。戻りの経路も含めて用意します。",
+      "subtitleLines": [
+        "図の左が運用端末、右が管理VMです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図の左が運用端末、右が管理VMです。",
+          "lines": [
+            "図の左が運用端末、右が管理VMです。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "端末からVMのprivate IPまで届く、企業側の接続経路が必要です。",
+          "lines": [
+            "端末からVMのprivate IPまで届く、企業側の接続経路が必要です。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "戻りの経路も含めて用意します。",
+          "lines": [
+            "戻りの経路も含めて用意します。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "private IPへ届く経路を、先に用意する",
+        "nodes": [
+          {
+            "id": "pc",
+            "label": "運用端末",
+            "detail": "接続元を確認",
+            "x": 20,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "enterprise",
+            "label": "企業側の接続経路",
+            "detail": "環境ごとに設計・準備",
+            "x": 330,
+            "y": 190,
+            "width": 250,
+            "height": 100
+          },
+          {
+            "id": "nsg",
+            "label": "管理VMのNSG",
+            "detail": "送信元とTCP 22",
+            "x": 670,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "vm",
+            "label": "管理VM",
+            "detail": "実際のprivate IP",
+            "x": 970,
+            "y": 190,
+            "width": 210,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "pc",
+            "to": "enterprise"
+          },
+          {
+            "from": "enterprise",
+            "to": "nsg"
+          },
+          {
+            "from": "nsg",
+            "to": "vm"
+          }
+        ],
+        "focus": [
+          "enterprise"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "その企業側の経路は、この基盤の配備を実行すると、自動で全部できるのでしょうか。",
+      "caption": "その企業側の経路は、この基盤の配備を実行すると、自動で全部できるのでしょうか。",
+      "subtitleLines": [
+        "その企業側の経路は、この基盤の配備を実行すると、自動で全部できるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その企業側の経路は、この基盤の配備を実行すると、自動で全部できるのでしょうか。",
+          "lines": [
+            "その企業側の経路は、この基盤の配備を実行すると、自動で全部できるのでしょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "private IPへ届く経路を、先に用意する",
+        "nodes": [
+          {
+            "id": "pc",
+            "label": "運用端末",
+            "detail": "接続元を確認",
+            "x": 20,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "enterprise",
+            "label": "企業側の接続経路",
+            "detail": "環境ごとに設計・準備",
+            "x": 330,
+            "y": 190,
+            "width": 250,
+            "height": 100
+          },
+          {
+            "id": "nsg",
+            "label": "管理VMのNSG",
+            "detail": "送信元とTCP 22",
+            "x": 670,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "vm",
+            "label": "管理VM",
+            "detail": "実際のprivate IP",
+            "x": 970,
+            "y": 190,
+            "width": 210,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "pc",
+            "to": "enterprise"
+          },
+          {
+            "from": "enterprise",
+            "to": "nsg"
+          },
+          {
+            "from": "nsg",
+            "to": "vm"
+          }
+        ],
+        "focus": [
+          "pc",
+          "vm"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "現在のインフラは、ブイピーエヌ ゲートウェイ、バスティオン、ブイネットピアリングを作りません。どの接続方式を採るかは、企業側と基盤側で決め、必要な経路を別に準備します。",
+      "caption": "現在のinfraは、VPN Gateway、Bastion、VNetピアリングを作りません。どの接続方式を採るかは、企業側と基盤側で決め、必要な経路を別に準備します。",
+      "subtitleLines": [
+        "現在のinfraは、VPN Gateway、Bastion、VNetピアリングを作りません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "現在のinfraは、VPN Gateway、Bastion、VNetピアリングを作りません。",
+          "lines": [
+            "現在のinfraは、VPN Gateway、Bastion、VNetピアリングを作りません。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "どの接続方式を採るかは、企業側と基盤側で決め、必要な経路を別に準備します。",
+          "lines": [
+            "どの接続方式を採るかは、企業側と基盤側で決め、必要な経路を別に準備します。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路の準備と、NSG設定は別の作業",
+        "cards": [
+          {
+            "id": "0",
+            "title": "企業側で準備",
+            "body": [
+              "private IPへの接続経路",
+              "往復の到達性を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "このIaCの範囲",
+            "body": [
+              "VPN Gatewayは作らない",
+              "Bastion・peeringも作らない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "許可元CIDR",
+            "body": [
+              "NSGが見る送信元IP",
+              "端末の公開IPと即断しない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-015-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "利用者が困るのは、設定したつもりなのに、接続できる前提がそろっていないことです。接続方式の担当と、基盤内の許可設定の担当を合わせておきたいですね。",
+      "caption": "利用者が困るのは、設定したつもりなのに、接続できる前提がそろっていないことです。接続方式の担当と、基盤内の許可設定の担当を合わせておきたいですね。",
+      "subtitleLines": [
+        "利用者が困るのは、設定したつもりなのに、接続できる前提がそろっていないことです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者が困るのは、設定したつもりなのに、接続できる前提がそろっていないことです。",
+          "lines": [
+            "利用者が困るのは、設定したつもりなのに、接続できる前提がそろっていないことです。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "接続方式の担当と、基盤内の許可設定の担当を合わせておきたいですね。",
+          "lines": [
+            "接続方式の担当と、基盤内の許可設定の担当を合わせておきたいですね。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路の準備と、NSG設定は別の作業",
+        "cards": [
+          {
+            "id": "0",
+            "title": "企業側で準備",
+            "body": [
+              "private IPへの接続経路",
+              "往復の到達性を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "このIaCの範囲",
+            "body": [
+              "VPN Gatewayは作らない",
+              "Bastion・peeringも作らない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "許可元CIDR",
+            "body": [
+              "NSGが見る送信元IP",
+              "端末の公開IPと即断しない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-016-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "たとえば、手元の公開アイピーをエヌエスジーの許可元に書いても、プライベート アイピーへ向かう道そのものは増えないんですね。",
+      "caption": "たとえば、手元の公開IPをNSGの許可元に書いても、private IPへ向かう道そのものは増えないんですね。",
+      "subtitleLines": [
+        "たとえば、手元の公開IPをNSGの許可元に書いても、",
+        "private IPへ向かう道そのものは増えないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえば、手元の公開IPをNSGの許可元に書いても、private IPへ向かう道そのものは増えないんですね。",
+          "lines": [
+            "たとえば、手元の公開IPをNSGの許可元に書いても、",
+            "private IPへ向かう道そのものは増えないんですね。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路の準備と、NSG設定は別の作業",
+        "cards": [
+          {
+            "id": "0",
+            "title": "企業側で準備",
+            "body": [
+              "private IPへの接続経路",
+              "往復の到達性を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "このIaCの範囲",
+            "body": [
+              "VPN Gatewayは作らない",
+              "Bastion・peeringも作らない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "許可元CIDR",
+            "body": [
+              "NSGが見る送信元IP",
+              "端末の公開IPと即断しない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-017-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "はい。エヌエスジーは条件に合う通信を許可する仕組みです。ブイピーエヌを作ったり、公開アイピーのないブイエムをインターネットから直接到達できるようにしたりするものではありません。",
+      "caption": "はい。NSGは条件に合う通信を許可する仕組みです。VPNを作ったり、公開IPのないVMをInternetから直接到達できるようにしたりするものではありません。",
+      "subtitleLines": [
+        "はい。NSGは条件に合う通信を許可する仕組みです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。NSGは条件に合う通信を許可する仕組みです。",
+          "lines": [
+            "はい。NSGは条件に合う通信を許可する仕組みです。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "VPNを作ったり、公開IPのないVMをInternetから直接到達できるようにしたりするものではありません。",
+          "lines": [
+            "VPNを作ったり、",
+            "公開IPのないVMをInternetから直接到達できるようにしたりするものではありません。"
+          ],
+          "weight": 54
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "private IPへ届く経路を、先に用意する",
+        "nodes": [
+          {
+            "id": "pc",
+            "label": "運用端末",
+            "detail": "接続元を確認",
+            "x": 20,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "enterprise",
+            "label": "企業側の接続経路",
+            "detail": "環境ごとに設計・準備",
+            "x": 330,
+            "y": 190,
+            "width": 250,
+            "height": 100
+          },
+          {
+            "id": "nsg",
+            "label": "管理VMのNSG",
+            "detail": "送信元とTCP 22",
+            "x": 670,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "vm",
+            "label": "管理VM",
+            "detail": "実際のprivate IP",
+            "x": 970,
+            "y": 190,
+            "width": 210,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "pc",
+            "to": "enterprise"
+          },
+          {
+            "from": "enterprise",
+            "to": "nsg"
+          },
+          {
+            "from": "nsg",
+            "to": "vm"
+          }
+        ],
+        "focus": [
+          "enterprise"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-018-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "接続先のプライベート アイピーは、資料に出ているサブネットから、このあたりだろう、と決めてもよいですか。",
+      "caption": "接続先のprivate IPは、資料に出ているサブネットから、このあたりだろう、と決めてもよいですか。",
+      "subtitleLines": [
+        "接続先のprivate IPは、資料に出ているサブネットから、",
+        "このあたりだろう、と決めてもよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続先のprivate IPは、資料に出ているサブネットから、このあたりだろう、と決めてもよいですか。",
+          "lines": [
+            "接続先のprivate IPは、資料に出ているサブネットから、",
+            "このあたりだろう、と決めてもよいですか。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "宛先は、対象VM/NICの出力から確認",
+        "cards": [
+          {
+            "id": "0",
+            "title": "NICの定義",
+            "body": [
+              "Dynamic private IPv4",
+              "Public IPなし"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "接続先の選定",
+            "body": [
+              "VM/NICの実出力を確認",
+              "private IPを推測しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "同じ接続を照合",
+            "body": [
+              "接続元 → 宛先IP",
+              "プロトコル・ポート"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-019-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "推測しません。このニックは動的なプライベート アイピー割り当てです。対象のブイエムやニックの実出力から、今回接続するアイピーを確認します。サブネットの範囲と、ブイエムの実アイピーは別です。",
+      "caption": "推測しません。このNICは動的なprivate IP割り当てです。対象のVMやNICの実出力から、今回接続するIPを確認します。サブネットの範囲と、VMの実IPは別です。",
+      "subtitleLines": [
+        "推測しません。このNICは動的なprivate IP割り当てです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "推測しません。このNICは動的なprivate IP割り当てです。",
+          "lines": [
+            "推測しません。このNICは動的なprivate IP割り当てです。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "対象のVMやNICの実出力から、今回接続するIPを確認します。",
+          "lines": [
+            "対象のVMやNICの実出力から、今回接続するIPを確認します。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "サブネットの範囲と、VMの実IPは別です。",
+          "lines": [
+            "サブネットの範囲と、VMの実IPは別です。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "宛先は、対象VM/NICの出力から確認",
+        "cards": [
+          {
+            "id": "0",
+            "title": "NICの定義",
+            "body": [
+              "Dynamic private IPv4",
+              "Public IPなし"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "接続先の選定",
+            "body": [
+              "VM/NICの実出力を確認",
+              "private IPを推測しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "同じ接続を照合",
+            "body": [
+              "接続元 → 宛先IP",
+              "プロトコル・ポート"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-020-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "環境名だけで対象を決めず、作業するブイエムと実際の宛先を一致させるわけですね。接続が失敗したときも、その宛先を基準に調べられます。",
+      "caption": "環境名だけで対象を決めず、作業するVMと実際の宛先を一致させるわけですね。接続が失敗したときも、その宛先を基準に調べられます。",
+      "subtitleLines": [
+        "環境名だけで対象を決めず、作業するVMと実際の宛先を一致させるわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "環境名だけで対象を決めず、作業するVMと実際の宛先を一致させるわけですね。",
+          "lines": [
+            "環境名だけで対象を決めず、作業するVMと実際の宛先を一致させるわけですね。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "接続が失敗したときも、その宛先を基準に調べられます。",
+          "lines": [
+            "接続が失敗したときも、その宛先を基準に調べられます。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "宛先は、対象VM/NICの出力から確認",
+        "cards": [
+          {
+            "id": "0",
+            "title": "NICの定義",
+            "body": [
+              "Dynamic private IPv4",
+              "Public IPなし"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "接続先の選定",
+            "body": [
+              "VM/NICの実出力を確認",
+              "private IPを推測しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "同じ接続を照合",
+            "body": [
+              "接続元 → 宛先IP",
+              "プロトコル・ポート"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "端末、企業側の経路、管理ブイエムの実アイピーを一本の線で追います。次は、その通信をエヌエスジーがどの条件で受け入れるかを重ねましょう。",
+      "caption": "端末、企業側の経路、管理VMの実IPを一本の線で追います。次は、その通信をNSGがどの条件で受け入れるかを重ねましょう。",
+      "subtitleLines": [
+        "端末、企業側の経路、管理VMの実IPを一本の線で追います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "端末、企業側の経路、管理VMの実IPを一本の線で追います。",
+          "lines": [
+            "端末、企業側の経路、管理VMの実IPを一本の線で追います。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "次は、その通信をNSGがどの条件で受け入れるかを重ねましょう。",
+          "lines": [
+            "次は、その通信をNSGがどの条件で受け入れるかを重ねましょう。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "private IPへ届く経路を、先に用意する",
+        "nodes": [
+          {
+            "id": "pc",
+            "label": "運用端末",
+            "detail": "接続元を確認",
+            "x": 20,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "enterprise",
+            "label": "企業側の接続経路",
+            "detail": "環境ごとに設計・準備",
+            "x": 330,
+            "y": 190,
+            "width": 250,
+            "height": 100
+          },
+          {
+            "id": "nsg",
+            "label": "管理VMのNSG",
+            "detail": "送信元とTCP 22",
+            "x": 670,
+            "y": 190,
+            "width": 220,
+            "height": 100
+          },
+          {
+            "id": "vm",
+            "label": "管理VM",
+            "detail": "実際のprivate IP",
+            "x": 970,
+            "y": 190,
+            "width": 210,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "pc",
+            "to": "enterprise"
+          },
+          {
+            "from": "enterprise",
+            "to": "nsg"
+          },
+          {
+            "from": "nsg",
+            "to": "vm"
+          }
+        ],
+        "focus": [
+          "enterprise"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "nsg",
+      "speech": "運用元を指定する配列が、管理ブイエムへの許可元になるんですね。そこには、どのアイピーを書くのでしょう。",
+      "caption": "運用元を指定する配列が、管理VMへの許可元になるんですね。そこには、どのIPを書くのでしょう。",
+      "subtitleLines": [
+        "運用元を指定する配列が、管理VMへの許可元になるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "運用元を指定する配列が、管理VMへの許可元になるんですね。",
+          "lines": [
+            "運用元を指定する配列が、管理VMへの許可元になるんですね。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "そこには、どのIPを書くのでしょう。",
+          "lines": [
+            "そこには、どのIPを書くのでしょう。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "運用元を指定した場合の受信許可",
+        "cards": [
+          {
+            "id": "0",
+            "title": "接続元",
+            "body": [
+              "operatorAddressPrefixes",
+              "実際の送信元CIDR"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "許可の条件",
+            "body": [
+              "宛先は管理VMの実IP",
+              "公開configは TCP 22"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "規則の評価",
+            "body": [
+              "Allow / 優先度100",
+              "環境固有の追加規則も確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-023-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "nsg",
+      "speech": "エヌエスジーが実際に見る送信元アイピーに合うサイダーです。途中の接続構成によって見え方を確認します。手元の端末が知っている公開アイピーと、必ず同じだとは決めません。",
+      "caption": "NSGが実際に見る送信元IPに合うCIDRです。途中の接続構成によって見え方を確認します。手元の端末が知っている公開IPと、必ず同じだとは決めません。",
+      "subtitleLines": [
+        "NSGが実際に見る送信元IPに合うCIDRです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NSGが実際に見る送信元IPに合うCIDRです。",
+          "lines": [
+            "NSGが実際に見る送信元IPに合うCIDRです。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "途中の接続構成によって見え方を確認します。",
+          "lines": [
+            "途中の接続構成によって見え方を確認します。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "手元の端末が知っている公開IPと、必ず同じだとは決めません。",
+          "lines": [
+            "手元の端末が知っている公開IPと、必ず同じだとは決めません。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "運用元を指定した場合の受信許可",
+        "cards": [
+          {
+            "id": "0",
+            "title": "接続元",
+            "body": [
+              "operatorAddressPrefixes",
+              "実際の送信元CIDR"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "許可の条件",
+            "body": [
+              "宛先は管理VMの実IP",
+              "公開configは TCP 22"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "規則の評価",
+            "body": [
+              "Allow / 優先度100",
+              "環境固有の追加規則も確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-024-manabu",
+      "speaker": "manabu",
+      "chapterId": "nsg",
+      "speech": "接続元の範囲を選ぶときも、便利そうな広い範囲へ変える前に、実際の経路を確かめる。許可の理由を説明できる状態にしたいですね。",
+      "caption": "接続元の範囲を選ぶときも、便利そうな広い範囲へ変える前に、実際の経路を確かめる。許可の理由を説明できる状態にしたいですね。",
+      "subtitleLines": [
+        "接続元の範囲を選ぶときも、便利そうな広い範囲へ変える前に、実際の経路を確かめる。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続元の範囲を選ぶときも、便利そうな広い範囲へ変える前に、実際の経路を確かめる。",
+          "lines": [
+            "接続元の範囲を選ぶときも、便利そうな広い範囲へ変える前に、実際の経路を確かめる。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "許可の理由を説明できる状態にしたいですね。",
+          "lines": [
+            "許可の理由を説明できる状態にしたいですね。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "運用元を指定した場合の受信許可",
+        "cards": [
+          {
+            "id": "0",
+            "title": "接続元",
+            "body": [
+              "operatorAddressPrefixes",
+              "実際の送信元CIDR"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "許可の条件",
+            "body": [
+              "宛先は管理VMの実IP",
+              "公開configは TCP 22"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "規則の評価",
+            "body": [
+              "Allow / 優先度100",
+              "環境固有の追加規則も確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-025-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "nsg",
+      "speech": "運用元を指定すると、運用元管理規則は優先度百のアローになります。宛先は管理ブイエムの実アイピー、プロトコルとポートは設定から取り、公開コンフィグではティーシーピー 二十二番です。",
+      "caption": "運用元を指定すると、運用元管理規則は優先度100のAllowになります。宛先は管理VMの実IP、プロトコルとポートは設定から取り、公開configではTCP 22です。",
+      "subtitleLines": [
+        "運用元を指定すると、運用元管理規則は優先度100のAllowになります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "運用元を指定すると、運用元管理規則は優先度100のAllowになります。",
+          "lines": [
+            "運用元を指定すると、運用元管理規則は優先度100のAllowになります。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "宛先は管理VMの実IP、プロトコルとポートは設定から取り、公開configではTCP 22です。",
+          "lines": [
+            "宛先は管理VMの実IP、プロトコルとポートは設定から取り、",
+            "公開configではTCP 22です。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "運用元を指定した場合の受信許可",
+        "cards": [
+          {
+            "id": "0",
+            "title": "接続元",
+            "body": [
+              "operatorAddressPrefixes",
+              "実際の送信元CIDR"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "許可の条件",
+            "body": [
+              "宛先は管理VMの実IP",
+              "公開configは TCP 22"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "規則の評価",
+            "body": [
+              "Allow / 優先度100",
+              "環境固有の追加規則も確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-026-mako",
+      "speaker": "mako",
+      "chapterId": "nsg",
+      "speech": "公開例では、その運用元配列が空です。空なら、全部の送信元を許可する、という意味ではないんですね。",
+      "caption": "公開例では、その運用元配列が空です。空なら、全部の送信元を許可する、という意味ではないんですね。",
+      "subtitleLines": [
+        "公開例では、その運用元配列が空です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開例では、その運用元配列が空です。",
+          "lines": [
+            "公開例では、その運用元配列が空です。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "空なら、全部の送信元を許可する、という意味ではないんですね。",
+          "lines": [
+            "空なら、全部の送信元を許可する、という意味ではないんですね。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開例：運用元配列が空の場合",
+        "cards": [
+          {
+            "id": "0",
+            "title": "設定",
+            "body": [
+              "operatorAddressPrefixes",
+              "[]"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "運用元の規則",
+            "body": [
+              "allow-operator-management",
+              "Deny / 優先度4080"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "最終拒否",
+            "body": [
+              "先に一致しない受信",
+              "Deny / 優先度4096"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-027-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "nsg",
+      "speech": "ええ。同じ名前の規則が、優先度四千八十のデナイになります。一般のエスエスエイチ受信許可は作りません。先に一致しなかった受信は、優先度四千九十六でも拒否します。",
+      "caption": "ええ。同じ名前の規則が、優先度4080のDenyになります。一般のSSH受信許可は作りません。先に一致しなかった受信は、優先度4096でも拒否します。",
+      "subtitleLines": [
+        "ええ。同じ名前の規則が、優先度4080のDenyになります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ええ。同じ名前の規則が、優先度4080のDenyになります。",
+          "lines": [
+            "ええ。同じ名前の規則が、優先度4080のDenyになります。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "一般のSSH受信許可は作りません。",
+          "lines": [
+            "一般のSSH受信許可は作りません。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "先に一致しなかった受信は、優先度4096でも拒否します。",
+          "lines": [
+            "先に一致しなかった受信は、優先度4096でも拒否します。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開例：運用元配列が空の場合",
+        "cards": [
+          {
+            "id": "0",
+            "title": "設定",
+            "body": [
+              "operatorAddressPrefixes",
+              "[]"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "運用元の規則",
+            "body": [
+              "allow-operator-management",
+              "Deny / 優先度4080"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "最終拒否",
+            "body": [
+              "先に一致しない受信",
+              "Deny / 優先度4096"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-028-mako",
+      "speaker": "mako",
+      "chapterId": "nsg",
+      "speech": "名前にアローと書いてあっても、実際の動作はデナイになり得る。名前だけ見て判断すると、取り違えそうです。",
+      "caption": "名前にallowと書いてあっても、実際の動作はDenyになり得る。名前だけ見て判断すると、取り違えそうです。",
+      "subtitleLines": [
+        "名前にallowと書いてあっても、実際の動作はDenyになり得る。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前にallowと書いてあっても、実際の動作はDenyになり得る。",
+          "lines": [
+            "名前にallowと書いてあっても、実際の動作はDenyになり得る。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "名前だけ見て判断すると、取り違えそうです。",
+          "lines": [
+            "名前だけ見て判断すると、取り違えそうです。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開例：運用元配列が空の場合",
+        "cards": [
+          {
+            "id": "0",
+            "title": "設定",
+            "body": [
+              "operatorAddressPrefixes",
+              "[]"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "運用元の規則",
+            "body": [
+              "allow-operator-management",
+              "Deny / 優先度4080"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "最終拒否",
+            "body": [
+              "先に一致しない受信",
+              "Deny / 優先度4096"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-029-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "nsg",
+      "speech": "見るのは規則名だけでなく、優先度、方向、送信元、宛先、ポート、アローかデナイかです。環境で追加した規則があれば、その優先順位も一緒に確認します。",
+      "caption": "見るのは規則名だけでなく、優先度、方向、送信元、宛先、ポート、AllowかDenyかです。環境で追加した規則があれば、その優先順位も一緒に確認します。",
+      "subtitleLines": [
+        "見るのは規則名だけでなく、優先度、方向、",
+        "送信元、宛先、ポート、AllowかDenyかです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "見るのは規則名だけでなく、優先度、方向、送信元、宛先、ポート、AllowかDenyかです。",
+          "lines": [
+            "見るのは規則名だけでなく、優先度、方向、",
+            "送信元、宛先、ポート、AllowかDenyかです。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "環境で追加した規則があれば、その優先順位も一緒に確認します。",
+          "lines": [
+            "環境で追加した規則があれば、その優先順位も一緒に確認します。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "運用元を指定した場合の受信許可",
+        "cards": [
+          {
+            "id": "0",
+            "title": "接続元",
+            "body": [
+              "operatorAddressPrefixes",
+              "実際の送信元CIDR"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "許可の条件",
+            "body": [
+              "宛先は管理VMの実IP",
+              "公開configは TCP 22"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "規則の評価",
+            "body": [
+              "Allow / 優先度100",
+              "環境固有の追加規則も確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "nsg",
+      "speech": "では、エヌエスジーのポートを二十二から別の番号に変えれば、リナックスのエスエスエイチもその番号で待ち受け始めますか。",
+      "caption": "では、NSGのポートを22から別の番号に変えれば、LinuxのSSHもその番号で待ち受け始めますか。",
+      "subtitleLines": [
+        "では、NSGのポートを22から別の番号に変えれば、",
+        "LinuxのSSHもその番号で待ち受け始めますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、NSGのポートを22から別の番号に変えれば、LinuxのSSHもその番号で待ち受け始めますか。",
+          "lines": [
+            "では、NSGのポートを22から別の番号に変えれば、",
+            "LinuxのSSHもその番号で待ち受け始めますか。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "NSGのポートと、Linuxの待受を合わせる",
+        "cards": [
+          {
+            "id": "0",
+            "title": "NSG設定",
+            "body": [
+              "operatorProtocol",
+              "operatorPorts"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開config",
+            "body": [
+              "Tcp / 22",
+              "一般のSSH接続の指定"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "OS設定",
+            "body": [
+              "sshdの待受を確認",
+              "NSG変更で自動変更されない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "nsg",
+      "speech": "いいえ。運用ポートの設定は、ネットワーク側の条件です。それを変えただけで、リナックスの待受ポートも変更する実装ではありません。エヌエスジーとオーエスの待受を合わせて確認します。",
+      "caption": "いいえ。運用ポートの設定は、ネットワーク側の条件です。それを変えただけで、Linuxの待受ポートも変更する実装ではありません。NSGとOSの待受を合わせて確認します。",
+      "subtitleLines": [
+        "いいえ。運用ポートの設定は、ネットワーク側の条件です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。運用ポートの設定は、ネットワーク側の条件です。",
+          "lines": [
+            "いいえ。運用ポートの設定は、ネットワーク側の条件です。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "それを変えただけで、Linuxの待受ポートも変更する実装ではありません。",
+          "lines": [
+            "それを変えただけで、Linuxの待受ポートも変更する実装ではありません。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "NSGとOSの待受を合わせて確認します。",
+          "lines": [
+            "NSGとOSの待受を合わせて確認します。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "NSGのポートと、Linuxの待受を合わせる",
+        "cards": [
+          {
+            "id": "0",
+            "title": "NSG設定",
+            "body": [
+              "operatorProtocol",
+              "operatorPorts"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開config",
+            "body": [
+              "Tcp / 22",
+              "一般のSSH接続の指定"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "OS設定",
+            "body": [
+              "sshdの待受を確認",
+              "NSG変更で自動変更されない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-032-manabu",
+      "speaker": "manabu",
+      "chapterId": "nsg",
+      "speech": "道があること、通信を通せること、オーエスが受け付けること。ひとつずつ別の役割として見ると、次に確認すべき場所が絞れますね。",
+      "caption": "道があること、通信を通せること、OSが受け付けること。ひとつずつ別の役割として見ると、次に確認すべき場所が絞れますね。",
+      "subtitleLines": [
+        "道があること、通信を通せること、OSが受け付けること。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "道があること、通信を通せること、OSが受け付けること。",
+          "lines": [
+            "道があること、通信を通せること、OSが受け付けること。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "ひとつずつ別の役割として見ると、次に確認すべき場所が絞れますね。",
+          "lines": [
+            "ひとつずつ別の役割として見ると、次に確認すべき場所が絞れますね。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSH接続を、3段階で確かめる",
+        "cards": [
+          {
+            "id": "0",
+            "title": "① 到達する",
+            "body": [
+              "private IPへの経路",
+              "往路と復路を確認"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "② 通信を許可する",
+            "body": [
+              "NSGの接続元・宛先",
+              "プロトコルとポート"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "③ OSへログインする",
+            "body": [
+              "SSHの待受と認証",
+              "公開鍵 または Entra SSH"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-033-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "ティーシーピーでブイエムまで届いたら、次はログインですね。認証の入口は、公開鍵とエントラ エスエスエイチの二つですか。",
+      "caption": "TCPでVMまで届いたら、次はログインですね。認証の入口は、公開鍵とEntra SSHの二つですか。",
+      "subtitleLines": [
+        "TCPでVMまで届いたら、次はログインですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "TCPでVMまで届いたら、次はログインですね。",
+          "lines": [
+            "TCPでVMまで届いたら、次はログインですね。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "認証の入口は、公開鍵とEntra SSHの二つですか。",
+          "lines": [
+            "認証の入口は、公開鍵とEntra SSHの二つですか。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "到達後に、選んだSSH方式でログインする",
+        "nodes": [
+          {
+            "id": "key",
+            "label": "公開鍵ログイン",
+            "detail": "初期管理ユーザー",
+            "x": 30,
+            "y": 80,
+            "width": 320,
+            "height": 100
+          },
+          {
+            "id": "entra",
+            "label": "Entra SSH",
+            "detail": "拡張とVMログイン権限",
+            "x": 30,
+            "y": 310,
+            "width": 320,
+            "height": 100
+          },
+          {
+            "id": "ssh",
+            "label": "管理VMのSSH",
+            "detail": "OSの待受と認証",
+            "x": 520,
+            "y": 190,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "session",
+            "label": "保守セッション",
+            "detail": "接続ユーザーとして作業",
+            "x": 920,
+            "y": 190,
+            "width": 260,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "key",
+            "to": "ssh",
+            "points": [
+              [
+                350,
+                130
+              ],
+              [
+                440,
+                130
+              ],
+              [
+                440,
+                220
+              ],
+              [
+                520,
+                220
+              ]
+            ]
+          },
+          {
+            "from": "entra",
+            "to": "ssh",
+            "points": [
+              [
+                350,
+                360
+              ],
+              [
+                440,
+                360
+              ],
+              [
+                440,
+                260
+              ],
+              [
+                520,
+                260
+              ]
+            ]
+          },
+          {
+            "from": "ssh",
+            "to": "session"
+          }
+        ],
+        "focus": [
+          "key",
+          "entra"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-034-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "はい。初期管理ユーザーの公開鍵ログインと、エントラ エスエスエイチを分けて管理します。どちらの方式を使う場合も、そこまでの経路とエヌエスジー許可は先に必要です。",
+      "caption": "はい。初期管理ユーザーの公開鍵ログインと、Entra SSHを分けて管理します。どちらの方式を使う場合も、そこまでの経路とNSG許可は先に必要です。",
+      "subtitleLines": [
+        "はい。初期管理ユーザーの公開鍵ログインと、Entra SSHを分けて管理します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。初期管理ユーザーの公開鍵ログインと、Entra SSHを分けて管理します。",
+          "lines": [
+            "はい。初期管理ユーザーの公開鍵ログインと、Entra SSHを分けて管理します。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "どちらの方式を使う場合も、そこまでの経路とNSG許可は先に必要です。",
+          "lines": [
+            "どちらの方式を使う場合も、そこまでの経路とNSG許可は先に必要です。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "到達後に、選んだSSH方式でログインする",
+        "nodes": [
+          {
+            "id": "key",
+            "label": "公開鍵ログイン",
+            "detail": "初期管理ユーザー",
+            "x": 30,
+            "y": 80,
+            "width": 320,
+            "height": 100
+          },
+          {
+            "id": "entra",
+            "label": "Entra SSH",
+            "detail": "拡張とVMログイン権限",
+            "x": 30,
+            "y": 310,
+            "width": 320,
+            "height": 100
+          },
+          {
+            "id": "ssh",
+            "label": "管理VMのSSH",
+            "detail": "OSの待受と認証",
+            "x": 520,
+            "y": 190,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "session",
+            "label": "保守セッション",
+            "detail": "接続ユーザーとして作業",
+            "x": 920,
+            "y": 190,
+            "width": 260,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "key",
+            "to": "ssh",
+            "points": [
+              [
+                350,
+                130
+              ],
+              [
+                440,
+                130
+              ],
+              [
+                440,
+                220
+              ],
+              [
+                520,
+                220
+              ]
+            ]
+          },
+          {
+            "from": "entra",
+            "to": "ssh",
+            "points": [
+              [
+                350,
+                360
+              ],
+              [
+                440,
+                360
+              ],
+              [
+                440,
+                260
+              ],
+              [
+                520,
+                260
+              ]
+            ]
+          },
+          {
+            "from": "ssh",
+            "to": "session"
+          }
+        ],
+        "focus": [
+          "ssh"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-035-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "公開鍵の方式では、ブイエムに何を置いて、手元に何を残すのでしょう。",
+      "caption": "公開鍵の方式では、VMに何を置いて、手元に何を残すのでしょう。",
+      "subtitleLines": [
+        "公開鍵の方式では、VMに何を置いて、手元に何を残すのでしょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開鍵の方式では、VMに何を置いて、手元に何を残すのでしょう。",
+          "lines": [
+            "公開鍵の方式では、VMに何を置いて、手元に何を残すのでしょう。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開鍵ログインで、VMへ渡すもの",
+        "cards": [
+          {
+            "id": "0",
+            "title": "VMへ設定",
+            "body": [
+              "初期管理ユーザー",
+              "authorized_keysへ公開鍵"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "手元で保持",
+            "body": [
+              "対応する秘密鍵",
+              "教材や出力へ転載しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "認証の分担",
+            "body": [
+              "鍵方式のログイン",
+              "Entraロールを重ねて",
+              "必須にはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-036-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "指定した初期管理ユーザーのオーソライズド キーズへ、公開鍵を設定します。対応する秘密鍵は手元で保持し、アジュールへ渡しません。教材や通常の出力へ、秘密鍵を転載することもしません。",
+      "caption": "指定した初期管理ユーザーのauthorized_keysへ、公開鍵を設定します。対応する秘密鍵は手元で保持し、Azureへ渡しません。教材や通常の出力へ、秘密鍵を転載することもしません。",
+      "subtitleLines": [
+        "指定した初期管理ユーザーのauthorized_keysへ、公開鍵を設定します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "指定した初期管理ユーザーのauthorized_keysへ、公開鍵を設定します。",
+          "lines": [
+            "指定した初期管理ユーザーのauthorized_keysへ、公開鍵を設定します。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "対応する秘密鍵は手元で保持し、Azureへ渡しません。",
+          "lines": [
+            "対応する秘密鍵は手元で保持し、Azureへ渡しません。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "教材や通常の出力へ、秘密鍵を転載することもしません。",
+          "lines": [
+            "教材や通常の出力へ、秘密鍵を転載することもしません。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開鍵ログインで、VMへ渡すもの",
+        "cards": [
+          {
+            "id": "0",
+            "title": "VMへ設定",
+            "body": [
+              "初期管理ユーザー",
+              "authorized_keysへ公開鍵"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "手元で保持",
+            "body": [
+              "対応する秘密鍵",
+              "教材や出力へ転載しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "認証の分担",
+            "body": [
+              "鍵方式のログイン",
+              "Entraロールを重ねて",
+              "必須にはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-037-manabu",
+      "speaker": "manabu",
+      "chapterId": "auth",
+      "speech": "配備に渡す公開鍵と、ログインする側が守る秘密鍵を分けるんですね。鍵の内容を共有する前に、どちらの鍵なのかを確認する必要があります。",
+      "caption": "配備に渡す公開鍵と、ログインする側が守る秘密鍵を分けるんですね。鍵の内容を共有する前に、どちらの鍵なのかを確認する必要があります。",
+      "subtitleLines": [
+        "配備に渡す公開鍵と、ログインする側が守る秘密鍵を分けるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "配備に渡す公開鍵と、ログインする側が守る秘密鍵を分けるんですね。",
+          "lines": [
+            "配備に渡す公開鍵と、ログインする側が守る秘密鍵を分けるんですね。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "鍵の内容を共有する前に、どちらの鍵なのかを確認する必要があります。",
+          "lines": [
+            "鍵の内容を共有する前に、どちらの鍵なのかを確認する必要があります。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開鍵ログインで、VMへ渡すもの",
+        "cards": [
+          {
+            "id": "0",
+            "title": "VMへ設定",
+            "body": [
+              "初期管理ユーザー",
+              "authorized_keysへ公開鍵"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "手元で保持",
+            "body": [
+              "対応する秘密鍵",
+              "教材や出力へ転載しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "認証の分担",
+            "body": [
+              "鍵方式のログイン",
+              "Entraロールを重ねて",
+              "必須にはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-038-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "その公開鍵でログインするときにも、エントラのブイエムログインロールを必ず追加で持っている必要がありますか。",
+      "caption": "その公開鍵でログインするときにも、EntraのVMログインロールを必ず追加で持っている必要がありますか。",
+      "subtitleLines": [
+        "その公開鍵でログインするときにも、",
+        "EntraのVMログインロールを必ず追加で持っている必要がありますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その公開鍵でログインするときにも、EntraのVMログインロールを必ず追加で持っている必要がありますか。",
+          "lines": [
+            "その公開鍵でログインするときにも、",
+            "EntraのVMログインロールを必ず追加で持っている必要がありますか。"
+          ],
+          "weight": 52
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開鍵ログインで、VMへ渡すもの",
+        "cards": [
+          {
+            "id": "0",
+            "title": "VMへ設定",
+            "body": [
+              "初期管理ユーザー",
+              "authorized_keysへ公開鍵"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "手元で保持",
+            "body": [
+              "対応する秘密鍵",
+              "教材や出力へ転載しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "認証の分担",
+            "body": [
+              "鍵方式のログイン",
+              "Entraロールを重ねて",
+              "必須にはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "この実装は、初期ユーザーの公開鍵ログインに、そのロールを重ねて必須とはしていません。公開鍵で入る仕組みと、エントラで入る仕組みを混ぜないで読みます。",
+      "caption": "この実装は、初期ユーザーの公開鍵ログインに、そのロールを重ねて必須とはしていません。公開鍵で入る仕組みと、Entraで入る仕組みを混ぜないで読みます。",
+      "subtitleLines": [
+        "この実装は、初期ユーザーの公開鍵ログインに、",
+        "そのロールを重ねて必須とはしていません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この実装は、初期ユーザーの公開鍵ログインに、そのロールを重ねて必須とはしていません。",
+          "lines": [
+            "この実装は、初期ユーザーの公開鍵ログインに、",
+            "そのロールを重ねて必須とはしていません。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "公開鍵で入る仕組みと、Entraで入る仕組みを混ぜないで読みます。",
+          "lines": [
+            "公開鍵で入る仕組みと、Entraで入る仕組みを混ぜないで読みます。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "公開鍵ログインで、VMへ渡すもの",
+        "cards": [
+          {
+            "id": "0",
+            "title": "VMへ設定",
+            "body": [
+              "初期管理ユーザー",
+              "authorized_keysへ公開鍵"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "手元で保持",
+            "body": [
+              "対応する秘密鍵",
+              "教材や出力へ転載しない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "認証の分担",
+            "body": [
+              "鍵方式のログイン",
+              "Entraロールを重ねて",
+              "必須にはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "では、エントラ エスエスエイチを選ぶ場合は、どこに設定が加わるのでしょう。",
+      "caption": "では、Entra SSHを選ぶ場合は、どこに設定が加わるのでしょう。",
+      "subtitleLines": [
+        "では、Entra SSHを選ぶ場合は、どこに設定が加わるのでしょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、Entra SSHを選ぶ場合は、どこに設定が加わるのでしょう。",
+          "lines": [
+            "では、Entra SSHを選ぶ場合は、どこに設定が加わるのでしょう。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Entra SSHでそろえる設定",
+        "cards": [
+          {
+            "id": "0",
+            "title": "ログイン拡張",
+            "body": [
+              "AADSSHLoginForLinux",
+              "VMへ導入"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "割り当て",
+            "body": [
+              "loginAssignments",
+              "対象ID・種類・ロール"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "VM単位の権限",
+            "body": [
+              "Virtual Machine User Login",
+              "または Administrator Login"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "ブイエムにエントラ エスエスエイチのログイン拡張を導入します。さらに、ログイン割り当ての対象アイディー、対象の種類、選んだロールに従い、ブイエム単体のスコープでログイン権限を付けます。",
+      "caption": "VMにEntra SSHのログイン拡張を導入します。さらに、ログイン割り当ての対象ID、対象の種類、選んだロールに従い、VM単体のスコープでログイン権限を付けます。",
+      "subtitleLines": [
+        "VMにEntra SSHのログイン拡張を導入します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VMにEntra SSHのログイン拡張を導入します。",
+          "lines": [
+            "VMにEntra SSHのログイン拡張を導入します。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "さらに、ログイン割り当ての対象ID、対象の種類、選んだロールに従い、VM単体のスコープでログイン権限を付けます。",
+          "lines": [
+            "さらに、ログイン割り当ての対象ID、対象の種類、",
+            "選んだロールに従い、VM単体のスコープでログイン権限を付けます。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Entra SSHでそろえる設定",
+        "cards": [
+          {
+            "id": "0",
+            "title": "ログイン拡張",
+            "body": [
+              "AADSSHLoginForLinux",
+              "VMへ導入"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "割り当て",
+            "body": [
+              "loginAssignments",
+              "対象ID・種類・ロール"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "VM単位の権限",
+            "body": [
+              "Virtual Machine User Login",
+              "または Administrator Login"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-042-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "ロールは、一般ログイン用のバーチャル マシン ユーザー ログインか、管理者ログイン用のバーチャル マシン アドミニストレーター ログインです。拡張があるだけで、誰でも入れるわけではありません。",
+      "caption": "ロールは、一般ログイン用のVirtual Machine User Loginか、管理者ログイン用のVirtual Machine Administrator Loginです。拡張があるだけで、誰でも入れるわけではありません。",
+      "subtitleLines": [
+        "ロールは、一般ログイン用のVirtual Machine User Loginか、",
+        "管理者ログイン用のVirtual Machine Administrator Loginです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ロールは、一般ログイン用のVirtual Machine User Loginか、管理者ログイン用のVirtual Machine Administrator Loginです。",
+          "lines": [
+            "ロールは、一般ログイン用のVirtual Machine User Loginか、",
+            "管理者ログイン用のVirtual Machine Administrator Loginです。"
+          ],
+          "weight": 88
+        },
+        {
+          "caption": "拡張があるだけで、誰でも入れるわけではありません。",
+          "lines": [
+            "拡張があるだけで、誰でも入れるわけではありません。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Entra SSHでそろえる設定",
+        "cards": [
+          {
+            "id": "0",
+            "title": "ログイン拡張",
+            "body": [
+              "AADSSHLoginForLinux",
+              "VMへ導入"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "割り当て",
+            "body": [
+              "loginAssignments",
+              "対象ID・種類・ロール"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "VM単位の権限",
+            "body": [
+              "Virtual Machine User Login",
+              "または Administrator Login"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-043-manabu",
+      "speaker": "manabu",
+      "chapterId": "auth",
+      "speech": "人がブイエムへ入る権限と、ブイエムがキーボールトなどを利用する権限も別ですね。同じアジュールの権限でも、誰が何に使うかを見ないと判断できません。",
+      "caption": "人がVMへ入る権限と、VMがKey Vaultなどを利用する権限も別ですね。同じAzureの権限でも、誰が何に使うかを見ないと判断できません。",
+      "subtitleLines": [
+        "人がVMへ入る権限と、VMがKey Vaultなどを利用する権限も別ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "人がVMへ入る権限と、VMがKey Vaultなどを利用する権限も別ですね。",
+          "lines": [
+            "人がVMへ入る権限と、VMがKey Vaultなどを利用する権限も別ですね。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "同じAzureの権限でも、誰が何に使うかを見ないと判断できません。",
+          "lines": [
+            "同じAzureの権限でも、誰が何に使うかを見ないと判断できません。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "誰が、何に対して使う権限か",
+        "cards": [
+          {
+            "id": "0",
+            "title": "人 → VM",
+            "body": [
+              "Entra SSHログイン",
+              "VMログインRBAC"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "配備主体 → 管理API",
+            "body": [
+              "Managed Run Command",
+              "管理操作の権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "VM → サービス",
+            "body": [
+              "VMのマネージドID等",
+              "Key Vault等の利用権限"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-044-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "公開例のログイン割り当て配列も空です。これは、公開鍵のログインまで無効にした値でしょうか。",
+      "caption": "公開例のログイン割り当て配列も空です。これは、公開鍵のログインまで無効にした値でしょうか。",
+      "subtitleLines": [
+        "公開例のログイン割り当て配列も空です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開例のログイン割り当て配列も空です。",
+          "lines": [
+            "公開例のログイン割り当て配列も空です。"
+          ],
+          "weight": 19
+        },
+        {
+          "caption": "これは、公開鍵のログインまで無効にした値でしょうか。",
+          "lines": [
+            "これは、公開鍵のログインまで無効にした値でしょうか。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "loginAssignments=[] を正確に読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "このIaCの動作",
+            "body": [
+              "VMログインロールを",
+              "追加しない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開鍵方式",
+            "body": [
+              "初期ユーザーの鍵を",
+              "無効にする指定ではない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "既存権限",
+            "body": [
+              "上位スコープからの継承等",
+              "別途、実環境で確認する"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-045-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "このアイアックから、エントラのブイエムログインロールを追加しないという意味です。初期ユーザーの鍵を無効にしませんし、上位から継承した権限が存在しない、と確認した値でもありません。",
+      "caption": "このIaCから、EntraのVMログインロールを追加しないという意味です。初期ユーザーの鍵を無効にしませんし、上位から継承した権限が存在しない、と確認した値でもありません。",
+      "subtitleLines": [
+        "このIaCから、EntraのVMログインロールを追加しないという意味です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "このIaCから、EntraのVMログインロールを追加しないという意味です。",
+          "lines": [
+            "このIaCから、EntraのVMログインロールを追加しないという意味です。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "初期ユーザーの鍵を無効にしませんし、上位から継承した権限が存在しない、と確認した値でもありません。",
+          "lines": [
+            "初期ユーザーの鍵を無効にしませんし、",
+            "上位から継承した権限が存在しない、と確認した値でもありません。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "loginAssignments=[] を正確に読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "このIaCの動作",
+            "body": [
+              "VMログインロールを",
+              "追加しない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開鍵方式",
+            "body": [
+              "初期ユーザーの鍵を",
+              "無効にする指定ではない"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "既存権限",
+            "body": [
+              "上位スコープからの継承等",
+              "別途、実環境で確認する"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-046-mako",
+      "speaker": "mako",
+      "chapterId": "auth",
+      "speech": "鍵やエントラを使えるようにする一方で、パスワードやルートの直接ログインは、開放するのでしょうか。",
+      "caption": "鍵やEntraを使えるようにする一方で、パスワードやrootの直接ログインは、開放するのでしょうか。",
+      "subtitleLines": [
+        "鍵やEntraを使えるようにする一方で、",
+        "パスワードやrootの直接ログインは、開放するのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "鍵やEntraを使えるようにする一方で、パスワードやrootの直接ログインは、開放するのでしょうか。",
+          "lines": [
+            "鍵やEntraを使えるようにする一方で、",
+            "パスワードやrootの直接ログインは、開放するのでしょうか。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "OSのSSH設定も、接続条件の一部",
+        "cards": [
+          {
+            "id": "0",
+            "title": "パスワードを閉じる",
+            "body": [
+              "PasswordAuthentication no",
+              "対話型認証も無効"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "root直接ログインを閉じる",
+            "body": [
+              "PermitRootLogin no",
+              "公開鍵経路は維持"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "適用を確認",
+            "body": [
+              "sshd -t と実効設定",
+              "検証後にreload"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-047-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "開放しません。ブイエム定義でパスワード認証を無効にし、監査設定でもパスワードと対話型認証、ルートの直接ログインを閉じます。公開鍵の経路は有効に保ちます。",
+      "caption": "開放しません。VM定義でパスワード認証を無効にし、監査設定でもパスワードと対話型認証、rootの直接ログインを閉じます。公開鍵の経路は有効に保ちます。",
+      "subtitleLines": [
+        "開放しません。VM定義でパスワード認証を無効にし、",
+        "監査設定でもパスワードと対話型認証、rootの直接ログインを閉じます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "開放しません。VM定義でパスワード認証を無効にし、監査設定でもパスワードと対話型認証、rootの直接ログインを閉じます。",
+          "lines": [
+            "開放しません。VM定義でパスワード認証を無効にし、",
+            "監査設定でもパスワードと対話型認証、rootの直接ログインを閉じます。"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "公開鍵の経路は有効に保ちます。",
+          "lines": [
+            "公開鍵の経路は有効に保ちます。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "OSのSSH設定も、接続条件の一部",
+        "cards": [
+          {
+            "id": "0",
+            "title": "パスワードを閉じる",
+            "body": [
+              "PasswordAuthentication no",
+              "対話型認証も無効"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "root直接ログインを閉じる",
+            "body": [
+              "PermitRootLogin no",
+              "公開鍵経路は維持"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "適用を確認",
+            "body": [
+              "sshd -t と実効設定",
+              "検証後にreload"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "auth",
+      "speech": "設定は書くだけで完了とせず、エスエスエイチディーの構文と実効設定を確かめてからリロードします。選んだログイン方式が成立するかを、オーエス側の設定まで見て確認します。",
+      "caption": "設定は書くだけで完了とせず、sshdの構文と実効設定を確かめてからreloadします。選んだログイン方式が成立するかを、OS側の設定まで見て確認します。",
+      "subtitleLines": [
+        "設定は書くだけで完了とせず、sshdの構文と実効設定を確かめてからreloadします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "設定は書くだけで完了とせず、sshdの構文と実効設定を確かめてからreloadします。",
+          "lines": [
+            "設定は書くだけで完了とせず、sshdの構文と実効設定を確かめてからreloadします。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "選んだログイン方式が成立するかを、OS側の設定まで見て確認します。",
+          "lines": [
+            "選んだログイン方式が成立するかを、OS側の設定まで見て確認します。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "OSのSSH設定も、接続条件の一部",
+        "cards": [
+          {
+            "id": "0",
+            "title": "パスワードを閉じる",
+            "body": [
+              "PasswordAuthentication no",
+              "対話型認証も無効"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "root直接ログインを閉じる",
+            "body": [
+              "PermitRootLogin no",
+              "公開鍵経路は維持"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "適用を確認",
+            "body": [
+              "sshd -t と実効設定",
+              "検証後にreload"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-049-mako",
+      "speaker": "mako",
+      "chapterId": "command",
+      "speech": "ここまでの話だと、管理ブイエムで何かするには、毎回手元からエスエスエイチで入るように聞こえます。自動構築も同じ入口ですか。",
+      "caption": "ここまでの話だと、管理VMで何かするには、毎回手元からSSHで入るように聞こえます。自動構築も同じ入口ですか。",
+      "subtitleLines": [
+        "ここまでの話だと、管理VMで何かするには、",
+        "毎回手元からSSHで入るように聞こえます。自動構築も同じ入口ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまでの話だと、管理VMで何かするには、毎回手元からSSHで入るように聞こえます。自動構築も同じ入口ですか。",
+          "lines": [
+            "ここまでの話だと、管理VMで何かするには、",
+            "毎回手元からSSHで入るように聞こえます。自動構築も同じ入口ですか。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHとRun Command、入口を取り違えない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "運用者のSSH",
+            "body": [
+              "private IPまでの経路",
+              "NSG許可・OS認証"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Managed Run Command",
+            "body": [
+              "Azure管理APIとVM agent",
+              "配備主体の管理操作権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "共通の後続処理",
+            "body": [
+              "VMから処理先への通信",
+              "経路・許可・サービス認証"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "自動構築は、それだけではありません。マネージド ラン コマンドは、アジュール管理エーピーアイからブイエム エージェントを使い、ブイエム上のスクリプトを実行する管理経路です。",
+      "caption": "自動構築は、それだけではありません。Managed Run Commandは、Azure管理APIからVM agentを使い、VM上のスクリプトを実行する管理経路です。",
+      "subtitleLines": [
+        "自動構築は、それだけではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自動構築は、それだけではありません。",
+          "lines": [
+            "自動構築は、それだけではありません。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "Managed Run Commandは、Azure管理APIからVM agentを使い、VM上のスクリプトを実行する管理経路です。",
+          "lines": [
+            "Managed Run Commandは、Azure管理APIからVM agentを使い、",
+            "VM上のスクリプトを実行する管理経路です。"
+          ],
+          "weight": 66
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Managed Run Commandは、Azure管理面から実行する",
+        "nodes": [
+          {
+            "id": "deployer",
+            "label": "配備実行主体",
+            "detail": "管理操作の権限",
+            "x": 20,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "api",
+            "label": "Azure管理API",
+            "detail": "Run Commandの指示",
+            "x": 330,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "agent",
+            "label": "VM agent",
+            "detail": "管理指示を処理",
+            "x": 640,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "work",
+            "label": "VM内の作業",
+            "detail": "指定スクリプトを実行",
+            "x": 950,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "deployer",
+            "to": "api"
+          },
+          {
+            "from": "api",
+            "to": "agent"
+          },
+          {
+            "from": "agent",
+            "to": "work"
+          }
+        ],
+        "focus": [
+          "api",
+          "agent"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-051-manabu",
+      "speaker": "manabu",
+      "chapterId": "command",
+      "speech": "人が対話しながら保守する接続と、決めた処理を配備として実行する入口を分けるわけですね。作業の目的から、どちらを調べるか決められます。",
+      "caption": "人が対話しながら保守する接続と、決めた処理を配備として実行する入口を分けるわけですね。作業の目的から、どちらを調べるか決められます。",
+      "subtitleLines": [
+        "人が対話しながら保守する接続と、",
+        "決めた処理を配備として実行する入口を分けるわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "人が対話しながら保守する接続と、決めた処理を配備として実行する入口を分けるわけですね。",
+          "lines": [
+            "人が対話しながら保守する接続と、",
+            "決めた処理を配備として実行する入口を分けるわけですね。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "作業の目的から、どちらを調べるか決められます。",
+          "lines": [
+            "作業の目的から、どちらを調べるか決められます。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Managed Run Commandは、Azure管理面から実行する",
+        "nodes": [
+          {
+            "id": "deployer",
+            "label": "配備実行主体",
+            "detail": "管理操作の権限",
+            "x": 20,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "api",
+            "label": "Azure管理API",
+            "detail": "Run Commandの指示",
+            "x": 330,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "agent",
+            "label": "VM agent",
+            "detail": "管理指示を処理",
+            "x": 640,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "work",
+            "label": "VM内の作業",
+            "detail": "指定スクリプトを実行",
+            "x": 950,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "deployer",
+            "to": "api"
+          },
+          {
+            "from": "api",
+            "to": "agent"
+          },
+          {
+            "from": "agent",
+            "to": "work"
+          }
+        ],
+        "focus": [
+          "deployer"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "この基盤では、リナックス監査設定の適用、証明書の初期化、ポータルやブローカーのイメージビルドを、その管理実行で進めます。",
+      "caption": "この基盤では、Linux監査設定の適用、証明書の初期化、PortalやBrokerのイメージビルドを、その管理実行で進めます。",
+      "subtitleLines": [
+        "この基盤では、Linux監査設定の適用、証明書の初期化、",
+        "PortalやBrokerのイメージビルドを、その管理実行で進めます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この基盤では、Linux監査設定の適用、証明書の初期化、PortalやBrokerのイメージビルドを、その管理実行で進めます。",
+          "lines": [
+            "この基盤では、Linux監査設定の適用、証明書の初期化、",
+            "PortalやBrokerのイメージビルドを、その管理実行で進めます。"
+          ],
+          "weight": 63
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "この基盤でManaged Run Commandが担う作業",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Linux監査設定",
+            "body": [
+              "SSH・時刻・認証ログ",
+              "管理VMの基本設定"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "証明書の初期化",
+            "body": [
+              "certificate bootstrap",
+              "VM上の初期処理"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "イメージビルド",
+            "body": [
+              "Portal / Broker",
+              "管理VMで構築"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "command",
+      "speech": "では、その処理を依頼する人がエスエスエイチの秘密鍵を持っていれば、ラン コマンドも実行できるのでしょうか。",
+      "caption": "では、その処理を依頼する人がSSHの秘密鍵を持っていれば、Run Commandも実行できるのでしょうか。",
+      "subtitleLines": [
+        "では、その処理を依頼する人がSSHの秘密鍵を持っていれば、",
+        "Run Commandも実行できるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、その処理を依頼する人がSSHの秘密鍵を持っていれば、Run Commandも実行できるのでしょうか。",
+          "lines": [
+            "では、その処理を依頼する人がSSHの秘密鍵を持っていれば、",
+            "Run Commandも実行できるのでしょうか。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Managed Run Commandは、Azure管理面から実行する",
+        "nodes": [
+          {
+            "id": "deployer",
+            "label": "配備実行主体",
+            "detail": "管理操作の権限",
+            "x": 20,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "api",
+            "label": "Azure管理API",
+            "detail": "Run Commandの指示",
+            "x": 330,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "agent",
+            "label": "VM agent",
+            "detail": "管理指示を処理",
+            "x": 640,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          },
+          {
+            "id": "work",
+            "label": "VM内の作業",
+            "detail": "指定スクリプトを実行",
+            "x": 950,
+            "y": 190,
+            "width": 240,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "deployer",
+            "to": "api"
+          },
+          {
+            "from": "api",
+            "to": "agent"
+          },
+          {
+            "from": "agent",
+            "to": "work"
+          }
+        ],
+        "focus": [
+          "deployer"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-054-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "鍵だけでは、その管理操作の権限を得られません。配備実行主体に必要なラン コマンド等の権限を確認します。エントラ エスエスエイチのブイエムログインロールとも別です。",
+      "caption": "鍵だけでは、その管理操作の権限を得られません。配備実行主体に必要なRun Command等の権限を確認します。Entra SSHのVMログインロールとも別です。",
+      "subtitleLines": [
+        "鍵だけでは、その管理操作の権限を得られません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "鍵だけでは、その管理操作の権限を得られません。",
+          "lines": [
+            "鍵だけでは、その管理操作の権限を得られません。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "配備実行主体に必要なRun Command等の権限を確認します。",
+          "lines": [
+            "配備実行主体に必要なRun Command等の権限を確認します。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "Entra SSHのVMログインロールとも別です。",
+          "lines": [
+            "Entra SSHのVMログインロールとも別です。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "誰が、何に対して使う権限か",
+        "cards": [
+          {
+            "id": "0",
+            "title": "人 → VM",
+            "body": [
+              "Entra SSHログイン",
+              "VMログインRBAC"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "配備主体 → 管理API",
+            "body": [
+              "Managed Run Command",
+              "管理操作の権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "VM → サービス",
+            "body": [
+              "VMのマネージドID等",
+              "Key Vault等の利用権限"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "command",
+      "speech": "運用元配列が空で、エヌエスジーが一般のエスエスエイチ受信を許可していない場合は、自動構築まで止める指定になるのでしょうか。",
+      "caption": "運用元配列が空で、NSGが一般のSSH受信を許可していない場合は、自動構築まで止める指定になるのでしょうか。",
+      "subtitleLines": [
+        "運用元配列が空で、NSGが一般のSSH受信を許可していない場合は、",
+        "自動構築まで止める指定になるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "運用元配列が空で、NSGが一般のSSH受信を許可していない場合は、自動構築まで止める指定になるのでしょうか。",
+          "lines": [
+            "運用元配列が空で、NSGが一般のSSH受信を許可していない場合は、",
+            "自動構築まで止める指定になるのでしょうか。"
+          ],
+          "weight": 54
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHとRun Command、入口を取り違えない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "運用者のSSH",
+            "body": [
+              "private IPまでの経路",
+              "NSG許可・OS認証"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Managed Run Command",
+            "body": [
+              "Azure管理APIとVM agent",
+              "配備主体の管理操作権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "共通の後続処理",
+            "body": [
+              "VMから処理先への通信",
+              "経路・許可・サービス認証"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "いいえ。運用元配列は、ブイエムへの受信エヌエスジーの指定です。アジュール管理エーピーアイのラン コマンドを止めるフラグではありません。初期構築のために、常にインターネットへティーシーピー 二十二番を開ける説明にはなりません。",
+      "caption": "いいえ。運用元配列は、VMへの受信NSGの指定です。Azure管理APIのRun Commandを止めるフラグではありません。初期構築のために、常にInternetへTCP 22を開ける説明にはなりません。",
+      "subtitleLines": [
+        "いいえ。運用元配列は、VMへの受信NSGの指定です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。運用元配列は、VMへの受信NSGの指定です。",
+          "lines": [
+            "いいえ。運用元配列は、VMへの受信NSGの指定です。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "Azure管理APIのRun Commandを止めるフラグではありません。",
+          "lines": [
+            "Azure管理APIのRun Commandを止めるフラグではありません。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "初期構築のために、常にInternetへTCP 22を開ける説明にはなりません。",
+          "lines": [
+            "初期構築のために、常にInternetへTCP 22を開ける説明にはなりません。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHとRun Command、入口を取り違えない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "運用者のSSH",
+            "body": [
+              "private IPまでの経路",
+              "NSG許可・OS認証"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Managed Run Command",
+            "body": [
+              "Azure管理APIとVM agent",
+              "配備主体の管理操作権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "共通の後続処理",
+            "body": [
+              "VMから処理先への通信",
+              "経路・許可・サービス認証"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-057-manabu",
+      "speaker": "manabu",
+      "chapterId": "command",
+      "speech": "エスエスエイチで入れないことと、自動実行できないことを同じ原因だと決めない。いま使っている作業の入口に合わせて、権限や状態を調べたいですね。",
+      "caption": "SSHで入れないことと、自動実行できないことを同じ原因だと決めない。いま使っている作業の入口に合わせて、権限や状態を調べたいですね。",
+      "subtitleLines": [
+        "SSHで入れないことと、自動実行できないことを同じ原因だと決めない。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "SSHで入れないことと、自動実行できないことを同じ原因だと決めない。",
+          "lines": [
+            "SSHで入れないことと、自動実行できないことを同じ原因だと決めない。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "いま使っている作業の入口に合わせて、権限や状態を調べたいですね。",
+          "lines": [
+            "いま使っている作業の入口に合わせて、権限や状態を調べたいですね。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHとRun Command、入口を取り違えない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "運用者のSSH",
+            "body": [
+              "private IPまでの経路",
+              "NSG許可・OS認証"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Managed Run Command",
+            "body": [
+              "Azure管理APIとVM agent",
+              "配備主体の管理操作権限"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "共通の後続処理",
+            "body": [
+              "VMから処理先への通信",
+              "経路・許可・サービス認証"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-058-mako",
+      "speaker": "mako",
+      "chapterId": "command",
+      "speech": "管理エーピーアイから受け付けた、と返ってきたら、ブイエムの作業も成功したと考えてよいですか。",
+      "caption": "管理APIから受け付けた、と返ってきたら、VMの作業も成功したと考えてよいですか。",
+      "subtitleLines": [
+        "管理APIから受け付けた、と返ってきたら、VMの作業も成功したと考えてよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理APIから受け付けた、と返ってきたら、VMの作業も成功したと考えてよいですか。",
+          "lines": [
+            "管理APIから受け付けた、と返ってきたら、VMの作業も成功したと考えてよいですか。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "APIの受付と、作業の完了を分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理面",
+            "body": [
+              "受付やprovisioningState",
+              "だけで作業成功としない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "VM内の実行結果",
+            "body": [
+              "instanceViewの",
+              "executionState",
+              "exitCodeも確認"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "ビルド成果物",
+            "body": [
+              "成功状態・終了コード0",
+              "ソースhashとimage digest"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "受付や管理リソースの状態だけで、作業成功とはしません。ブイエム内の実行状態と終了コードを確認します。ビルドでは、さらに期待する成果物が返ったかを照合します。",
+      "caption": "受付や管理リソースの状態だけで、作業成功とはしません。VM内の実行状態と終了コードを確認します。ビルドでは、さらに期待する成果物が返ったかを照合します。",
+      "subtitleLines": [
+        "受付や管理リソースの状態だけで、作業成功とはしません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "受付や管理リソースの状態だけで、作業成功とはしません。",
+          "lines": [
+            "受付や管理リソースの状態だけで、作業成功とはしません。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "VM内の実行状態と終了コードを確認します。",
+          "lines": [
+            "VM内の実行状態と終了コードを確認します。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "ビルドでは、さらに期待する成果物が返ったかを照合します。",
+          "lines": [
+            "ビルドでは、さらに期待する成果物が返ったかを照合します。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "APIの受付と、作業の完了を分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理面",
+            "body": [
+              "受付やprovisioningState",
+              "だけで作業成功としない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "VM内の実行結果",
+            "body": [
+              "instanceViewの",
+              "executionState",
+              "exitCodeも確認"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "ビルド成果物",
+            "body": [
+              "成功状態・終了コード0",
+              "ソースhashとimage digest"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-060-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "command",
+      "speech": "共通のビルド処理は、実行状態がサクシーディッドで終了コードがゼロかを見ます。そのうえで、ソースのハッシュやイメージのダイジェストを確かめて、構築結果を扱います。",
+      "caption": "共通のビルド処理は、実行状態がSucceededで終了コードがゼロかを見ます。そのうえで、ソースのハッシュやイメージのdigestを確かめて、構築結果を扱います。",
+      "subtitleLines": [
+        "共通のビルド処理は、実行状態がSucceededで終了コードがゼロかを見ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "共通のビルド処理は、実行状態がSucceededで終了コードがゼロかを見ます。",
+          "lines": [
+            "共通のビルド処理は、実行状態がSucceededで終了コードがゼロかを見ます。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "そのうえで、ソースのハッシュやイメージのdigestを確かめて、構築結果を扱います。",
+          "lines": [
+            "そのうえで、ソースのハッシュやイメージのdigestを確かめて、構築結果を扱います。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "APIの受付と、作業の完了を分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理面",
+            "body": [
+              "受付やprovisioningState",
+              "だけで作業成功としない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "VM内の実行結果",
+            "body": [
+              "instanceViewの",
+              "executionState",
+              "exitCodeも確認"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "ビルド成果物",
+            "body": [
+              "成功状態・終了コード0",
+              "ソースhashとimage digest"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-061-mako",
+      "speaker": "mako",
+      "chapterId": "downstream",
+      "speech": "ブイエム内の作業が動き出しても、そこから接続先へ届くかは、また別の確認になるんですね。",
+      "caption": "VM内の作業が動き出しても、そこから接続先へ届くかは、また別の確認になるんですね。",
+      "subtitleLines": [
+        "VM内の作業が動き出しても、そこから接続先へ届くかは、",
+        "また別の確認になるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VM内の作業が動き出しても、そこから接続先へ届くかは、また別の確認になるんですね。",
+          "lines": [
+            "VM内の作業が動き出しても、そこから接続先へ届くかは、",
+            "また別の確認になるんですね。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "作業の入口と、VMからの接続先は別に確かめる",
+        "nodes": [
+          {
+            "id": "vm1",
+            "label": "管理VM",
+            "detail": "公開依存先への処理",
+            "x": 25,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "経路上の通信を判定",
+            "x": 460,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "public",
+            "label": "公開依存先",
+            "detail": "許可された接続先",
+            "x": 895,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "vm2",
+            "label": "管理VM",
+            "detail": "PE宛ての処理",
+            "x": 25,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Private Endpoint",
+            "detail": "対象サービスの接続口",
+            "x": 460,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "service",
+            "label": "対象サービス",
+            "detail": "サービス側の認証・権限",
+            "x": 895,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "vm1",
+            "to": "fw"
+          },
+          {
+            "from": "fw",
+            "to": "public"
+          },
+          {
+            "from": "vm2",
+            "to": "pe",
+            "dashed": true,
+            "color": "#8bcaff"
+          },
+          {
+            "from": "pe",
+            "to": "service",
+            "dashed": true,
+            "color": "#8bcaff"
+          }
+        ],
+        "focus": [
+          "vm1",
+          "vm2"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-062-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "その通りです。エスエスエイチで始めてもラン コマンドで始めても、ブイエムから外部やプライベート エンドポイントへアクセスする処理には、ブイエム側の接続条件が残ります。",
+      "caption": "その通りです。SSHで始めてもRun Commandで始めても、VMから外部やPrivate Endpointへアクセスする処理には、VM側の接続条件が残ります。",
+      "subtitleLines": [
+        "その通りです。SSHで始めてもRun Commandで始めても、VMから",
+        "外部やPrivate Endpointへアクセスする処理には、VM側の接続条件が残ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その通りです。SSHで始めてもRun Commandで始めても、VMから外部やPrivate Endpointへアクセスする処理には、VM側の接続条件が残ります。",
+          "lines": [
+            "その通りです。SSHで始めてもRun Commandで始めても、VMから",
+            "外部やPrivate Endpointへアクセスする処理には、VM側の接続条件が残ります。"
+          ],
+          "weight": 81
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "どちらの実行方式にも残る、下流の条件",
+        "cards": [
+          {
+            "id": "0",
+            "title": "名前解決",
+            "body": [
+              "VMから見たDNS",
+              "接続先の名前とIP"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "経路と通信許可",
+            "body": [
+              "送信NSG・UDR",
+              "経路上のFirewall"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "サービス認証",
+            "body": [
+              "処理先の利用権限",
+              "VMログイン権限と区別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-063-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "接続先の名前をどう解決したか、送信エヌエスジーとユーディーアールはどうなっているか、経路上のファイアウォールが許可するか。最後に、サービスを使う権限も必要です。",
+      "caption": "接続先の名前をどう解決したか、送信NSGとUDRはどうなっているか、経路上のFirewallが許可するか。最後に、サービスを使う権限も必要です。",
+      "subtitleLines": [
+        "接続先の名前をどう解決したか、送信NSGとUDRはどうなっているか、",
+        "経路上のFirewallが許可するか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続先の名前をどう解決したか、送信NSGとUDRはどうなっているか、経路上のFirewallが許可するか。",
+          "lines": [
+            "接続先の名前をどう解決したか、送信NSGとUDRはどうなっているか、",
+            "経路上のFirewallが許可するか。"
+          ],
+          "weight": 53
+        },
+        {
+          "caption": "最後に、サービスを使う権限も必要です。",
+          "lines": [
+            "最後に、サービスを使う権限も必要です。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "どちらの実行方式にも残る、下流の条件",
+        "cards": [
+          {
+            "id": "0",
+            "title": "名前解決",
+            "body": [
+              "VMから見たDNS",
+              "接続先の名前とIP"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "経路と通信許可",
+            "body": [
+              "送信NSG・UDR",
+              "経路上のFirewall"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "サービス認証",
+            "body": [
+              "処理先の利用権限",
+              "VMログイン権限と区別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-064-manabu",
+      "speaker": "manabu",
+      "chapterId": "downstream",
+      "speech": "作業を開始できたことと、その作業に必要なサービスを利用できることを分ける。ここが分かると、受信設定だけを触って遠回りするのを減らせます。",
+      "caption": "作業を開始できたことと、その作業に必要なサービスを利用できることを分ける。ここが分かると、受信設定だけを触って遠回りするのを減らせます。",
+      "subtitleLines": [
+        "作業を開始できたことと、その作業に必要なサービスを利用できることを分ける。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "作業を開始できたことと、その作業に必要なサービスを利用できることを分ける。",
+          "lines": [
+            "作業を開始できたことと、その作業に必要なサービスを利用できることを分ける。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "ここが分かると、受信設定だけを触って遠回りするのを減らせます。",
+          "lines": [
+            "ここが分かると、受信設定だけを触って遠回りするのを減らせます。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "どちらの実行方式にも残る、下流の条件",
+        "cards": [
+          {
+            "id": "0",
+            "title": "名前解決",
+            "body": [
+              "VMから見たDNS",
+              "接続先の名前とIP"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "経路と通信許可",
+            "body": [
+              "送信NSG・UDR",
+              "経路上のFirewall"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "サービス認証",
+            "body": [
+              "処理先の利用権限",
+              "VMログイン権限と区別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-065-mako",
+      "speaker": "mako",
+      "chapterId": "downstream",
+      "speech": "たとえば、ブイエムでビルドを始められたのに、依存先への接続で失敗したとします。まず、エスエスエイチの受信許可を広げますか。",
+      "caption": "たとえば、VMでビルドを始められたのに、依存先への接続で失敗したとします。まず、SSHの受信許可を広げますか。",
+      "subtitleLines": [
+        "たとえば、VMでビルドを始められたのに、依存先への接続で失敗したとします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえば、VMでビルドを始められたのに、依存先への接続で失敗したとします。",
+          "lines": [
+            "たとえば、VMでビルドを始められたのに、依存先への接続で失敗したとします。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "まず、SSHの受信許可を広げますか。",
+          "lines": [
+            "まず、SSHの受信許可を広げますか。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "作業の入口と、VMからの接続先は別に確かめる",
+        "nodes": [
+          {
+            "id": "vm1",
+            "label": "管理VM",
+            "detail": "公開依存先への処理",
+            "x": 25,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "経路上の通信を判定",
+            "x": 460,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "public",
+            "label": "公開依存先",
+            "detail": "許可された接続先",
+            "x": 895,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "vm2",
+            "label": "管理VM",
+            "detail": "PE宛ての処理",
+            "x": 25,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Private Endpoint",
+            "detail": "対象サービスの接続口",
+            "x": 460,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "service",
+            "label": "対象サービス",
+            "detail": "サービス側の認証・権限",
+            "x": 895,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "vm1",
+            "to": "fw"
+          },
+          {
+            "from": "fw",
+            "to": "public"
+          },
+          {
+            "from": "vm2",
+            "to": "pe",
+            "dashed": true,
+            "color": "#8bcaff"
+          },
+          {
+            "from": "pe",
+            "to": "service",
+            "dashed": true,
+            "color": "#8bcaff"
+          }
+        ],
+        "focus": [
+          "vm1",
+          "vm2"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-066-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "処理がどこまで進んだかを見ます。ブイエムから依存先への失敗なら、その名前解決、選ばれた経路、通信許可、処理先の認証を調べます。ラン コマンドだから無条件に通るわけではありません。",
+      "caption": "処理がどこまで進んだかを見ます。VMから依存先への失敗なら、その名前解決、選ばれた経路、通信許可、処理先の認証を調べます。Run Commandだから無条件に通るわけではありません。",
+      "subtitleLines": [
+        "処理がどこまで進んだかを見ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "処理がどこまで進んだかを見ます。",
+          "lines": [
+            "処理がどこまで進んだかを見ます。"
+          ],
+          "weight": 16
+        },
+        {
+          "caption": "VMから依存先への失敗なら、その名前解決、選ばれた経路、通信許可、処理先の認証を調べます。",
+          "lines": [
+            "VMから依存先への失敗なら、その名前解決、",
+            "選ばれた経路、通信許可、処理先の認証を調べます。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "Run Commandだから無条件に通るわけではありません。",
+          "lines": [
+            "Run Commandだから無条件に通るわけではありません。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "作業の入口と、VMからの接続先は別に確かめる",
+        "nodes": [
+          {
+            "id": "vm1",
+            "label": "管理VM",
+            "detail": "公開依存先への処理",
+            "x": 25,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "経路上の通信を判定",
+            "x": 460,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "public",
+            "label": "公開依存先",
+            "detail": "許可された接続先",
+            "x": 895,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "vm2",
+            "label": "管理VM",
+            "detail": "PE宛ての処理",
+            "x": 25,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Private Endpoint",
+            "detail": "対象サービスの接続口",
+            "x": 460,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "service",
+            "label": "対象サービス",
+            "detail": "サービス側の認証・権限",
+            "x": 895,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "vm1",
+            "to": "fw"
+          },
+          {
+            "from": "fw",
+            "to": "public"
+          },
+          {
+            "from": "vm2",
+            "to": "pe",
+            "dashed": true,
+            "color": "#8bcaff"
+          },
+          {
+            "from": "pe",
+            "to": "service",
+            "dashed": true,
+            "color": "#8bcaff"
+          }
+        ],
+        "focus": [
+          "fw",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-067-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "図の上は公開依存先へファイアウォールを経由する例、下はピーイー宛ての直接経路の例です。どちらを確認するかは、実際の宛先と実効経路に合わせます。",
+      "caption": "図の上は公開依存先へFirewallを経由する例、下はPE宛ての直接経路の例です。どちらを確認するかは、実際の宛先と実効経路に合わせます。",
+      "subtitleLines": [
+        "図の上は公開依存先へFirewallを経由する例、下はPE宛ての直接経路の例です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図の上は公開依存先へFirewallを経由する例、下はPE宛ての直接経路の例です。",
+          "lines": [
+            "図の上は公開依存先へFirewallを経由する例、下はPE宛ての直接経路の例です。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "どちらを確認するかは、実際の宛先と実効経路に合わせます。",
+          "lines": [
+            "どちらを確認するかは、実際の宛先と実効経路に合わせます。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "作業の入口と、VMからの接続先は別に確かめる",
+        "nodes": [
+          {
+            "id": "vm1",
+            "label": "管理VM",
+            "detail": "公開依存先への処理",
+            "x": 25,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "経路上の通信を判定",
+            "x": 460,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "public",
+            "label": "公開依存先",
+            "detail": "許可された接続先",
+            "x": 895,
+            "y": 70,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "vm2",
+            "label": "管理VM",
+            "detail": "PE宛ての処理",
+            "x": 25,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Private Endpoint",
+            "detail": "対象サービスの接続口",
+            "x": 460,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          },
+          {
+            "id": "service",
+            "label": "対象サービス",
+            "detail": "サービス側の認証・権限",
+            "x": 895,
+            "y": 330,
+            "width": 270,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "vm1",
+            "to": "fw"
+          },
+          {
+            "from": "fw",
+            "to": "public"
+          },
+          {
+            "from": "vm2",
+            "to": "pe",
+            "dashed": true,
+            "color": "#8bcaff"
+          },
+          {
+            "from": "pe",
+            "to": "service",
+            "dashed": true,
+            "color": "#8bcaff"
+          }
+        ],
+        "focus": [
+          "fw",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-068-mako",
+      "speaker": "mako",
+      "chapterId": "downstream",
+      "speech": "逆に、人がエスエスエイチで入れない場合は、今回の三段階に戻ればよさそうですね。具体的には、どこからですか。",
+      "caption": "逆に、人がSSHで入れない場合は、今回の三段階に戻ればよさそうですね。具体的には、どこからですか。",
+      "subtitleLines": [
+        "逆に、人がSSHで入れない場合は、",
+        "今回の三段階に戻ればよさそうですね。具体的には、どこからですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "逆に、人がSSHで入れない場合は、今回の三段階に戻ればよさそうですね。具体的には、どこからですか。",
+          "lines": [
+            "逆に、人がSSHで入れない場合は、",
+            "今回の三段階に戻ればよさそうですね。具体的には、どこからですか。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHで入れないときの確認順",
+        "cards": [
+          {
+            "id": "0",
+            "title": "到達経路",
+            "body": [
+              "対象private IP",
+              "接続元からの往復"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "NSGと待受",
+            "body": [
+              "実際の送信元と規則",
+              "OSのSSH待受"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "選んだ認証方式",
+            "body": [
+              "公開鍵の対応",
+              "またはEntraログイン権限"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-069-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "まず対象のプライベート アイピーと、接続元からの経路。次にエヌエスジーが観測する送信元と規則、オーエスのエスエスエイチ待受です。そこまでそろったら、選んだ公開鍵やエントラの認証を確かめます。",
+      "caption": "まず対象のprivate IPと、接続元からの経路。次にNSGが観測する送信元と規則、OSのSSH待受です。そこまでそろったら、選んだ公開鍵やEntraの認証を確かめます。",
+      "subtitleLines": [
+        "まず対象のprivate IPと、接続元からの経路。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず対象のprivate IPと、接続元からの経路。",
+          "lines": [
+            "まず対象のprivate IPと、接続元からの経路。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "次にNSGが観測する送信元と規則、OSのSSH待受です。",
+          "lines": [
+            "次にNSGが観測する送信元と規則、OSのSSH待受です。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "そこまでそろったら、選んだ公開鍵やEntraの認証を確かめます。",
+          "lines": [
+            "そこまでそろったら、選んだ公開鍵やEntraの認証を確かめます。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHで入れないときの確認順",
+        "cards": [
+          {
+            "id": "0",
+            "title": "到達経路",
+            "body": [
+              "対象private IP",
+              "接続元からの往復"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "NSGと待受",
+            "body": [
+              "実際の送信元と規則",
+              "OSのSSH待受"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "選んだ認証方式",
+            "body": [
+              "公開鍵の対応",
+              "またはEntraログイン権限"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-070-manabu",
+      "speaker": "manabu",
+      "chapterId": "downstream",
+      "speech": "いきなり鍵の作り直しをするのではなく、止まった段階を確かめる。経路がない状態で認証を変えても、接続の前提はそろいませんからね。",
+      "caption": "いきなり鍵の作り直しをするのではなく、止まった段階を確かめる。経路がない状態で認証を変えても、接続の前提はそろいませんからね。",
+      "subtitleLines": [
+        "いきなり鍵の作り直しをするのではなく、止まった段階を確かめる。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いきなり鍵の作り直しをするのではなく、止まった段階を確かめる。",
+          "lines": [
+            "いきなり鍵の作り直しをするのではなく、止まった段階を確かめる。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "経路がない状態で認証を変えても、接続の前提はそろいませんからね。",
+          "lines": [
+            "経路がない状態で認証を変えても、接続の前提はそろいませんからね。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "SSHで入れないときの確認順",
+        "cards": [
+          {
+            "id": "0",
+            "title": "到達経路",
+            "body": [
+              "対象private IP",
+              "接続元からの往復"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "NSGと待受",
+            "body": [
+              "実際の送信元と規則",
+              "OSのSSH待受"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "選んだ認証方式",
+            "body": [
+              "公開鍵の対応",
+              "またはEntraログイン権限"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "downstream",
+      "speech": "自動処理の失敗なら、調べる並びも変わりますか。人のエスエスエイチと同じ一覧だけでは足りませんね。",
+      "caption": "自動処理の失敗なら、調べる並びも変わりますか。人のSSHと同じ一覧だけでは足りませんね。",
+      "subtitleLines": [
+        "自動処理の失敗なら、調べる並びも変わりますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自動処理の失敗なら、調べる並びも変わりますか。",
+          "lines": [
+            "自動処理の失敗なら、調べる並びも変わりますか。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "人のSSHと同じ一覧だけでは足りませんね。",
+          "lines": [
+            "人のSSHと同じ一覧だけでは足りませんね。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "自動処理が失敗したときの確認順",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理操作",
+            "body": [
+              "配備主体の権限",
+              "VM agent・実行状態"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "VMからの通信",
+            "body": [
+              "DNS・送信NSG・UDR",
+              "経路上のFirewall"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "処理結果",
+            "body": [
+              "サービス側の認証",
+              "終了コード・成果物"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "downstream",
+      "speech": "配備主体の管理操作権限、ブイエム エージェントと実行状態を確認し、ブイエムから依存先への接続と処理先の認証へ進みます。終了コードや成果物も見て、開始の失敗と作業中の失敗を分けます。",
+      "caption": "配備主体の管理操作権限、VM agentと実行状態を確認し、VMから依存先への接続と処理先の認証へ進みます。終了コードや成果物も見て、開始の失敗と作業中の失敗を分けます。",
+      "subtitleLines": [
+        "配備主体の管理操作権限、VM agentと実行状態を確認し、",
+        "VMから依存先への接続と処理先の認証へ進みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "配備主体の管理操作権限、VM agentと実行状態を確認し、VMから依存先への接続と処理先の認証へ進みます。",
+          "lines": [
+            "配備主体の管理操作権限、VM agentと実行状態を確認し、",
+            "VMから依存先への接続と処理先の認証へ進みます。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "終了コードや成果物も見て、開始の失敗と作業中の失敗を分けます。",
+          "lines": [
+            "終了コードや成果物も見て、開始の失敗と作業中の失敗を分けます。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "自動処理が失敗したときの確認順",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理操作",
+            "body": [
+              "配備主体の権限",
+              "VM agent・実行状態"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "VMからの通信",
+            "body": [
+              "DNS・送信NSG・UDR",
+              "経路上のFirewall"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "処理結果",
+            "body": [
+              "サービス側の認証",
+              "終了コード・成果物"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-073-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "では、三つ確認しましょう。ひとつ目。管理ブイエムに入るため、手元の公開アイピーを許可元へ追加しました。これだけでエスエスエイチできる、と言えますか。",
+      "caption": "では、三つ確認しましょう。ひとつ目。管理VMに入るため、手元の公開IPを許可元へ追加しました。これだけでSSHできる、と言えますか。",
+      "subtitleLines": [
+        "では、三つ確認しましょう。ひとつ目。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、三つ確認しましょう。ひとつ目。",
+          "lines": [
+            "では、三つ確認しましょう。ひとつ目。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "管理VMに入るため、手元の公開IPを許可元へ追加しました。",
+          "lines": [
+            "管理VMに入るため、手元の公開IPを許可元へ追加しました。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "これだけでSSHできる、と言えますか。",
+          "lines": [
+            "これだけでSSHできる、と言えますか。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認① 公開IPを許可元に書けば、SSHできる？",
+        "bullets": [
+          "管理VMにPublic IPはある？",
+          "private IPまでの経路は用意済み？",
+          "NSG許可・OS認証もそろっている？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-074-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "まだ言えません。パブリック アイピーのないブイエムなので、プライベート アイピーへ届く経路が必要です。許可元を記入しただけでは、その経路を作れません。",
+      "caption": "まだ言えません。Public IPのないVMなので、private IPへ届く経路が必要です。許可元を記入しただけでは、その経路を作れません。",
+      "subtitleLines": [
+        "まだ言えません。Public IPのないVMなので、private IPへ届く経路が必要です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まだ言えません。Public IPのないVMなので、private IPへ届く経路が必要です。",
+          "lines": [
+            "まだ言えません。Public IPのないVMなので、private IPへ届く経路が必要です。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "許可元を記入しただけでは、その経路を作れません。",
+          "lines": [
+            "許可元を記入しただけでは、その経路を作れません。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認① 公開IPを許可元に書けば、SSHできる？",
+        "bullets": [
+          "管理VMにPublic IPはある？",
+          "private IPまでの経路は用意済み？",
+          "NSG許可・OS認証もそろっている？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "さらに、エヌエスジーが見る送信元と宛先、ポートを合わせ、オーエスの待受と認証を確認します。届く道、許可、ログインの三段階で答えられれば大丈夫です。",
+      "caption": "さらに、NSGが見る送信元と宛先、ポートを合わせ、OSの待受と認証を確認します。届く道、許可、ログインの三段階で答えられれば大丈夫です。",
+      "subtitleLines": [
+        "さらに、NSGが見る送信元と宛先、ポートを合わせ、OSの待受と認証を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "さらに、NSGが見る送信元と宛先、ポートを合わせ、OSの待受と認証を確認します。",
+          "lines": [
+            "さらに、NSGが見る送信元と宛先、ポートを合わせ、OSの待受と認証を確認します。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "届く道、許可、ログインの三段階で答えられれば大丈夫です。",
+          "lines": [
+            "届く道、許可、ログインの三段階で答えられれば大丈夫です。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認① 公開IPを許可元に書けば、SSHできる？",
+        "bullets": [
+          "管理VMにPublic IPはある？",
+          "private IPまでの経路は用意済み？",
+          "NSG許可・OS認証もそろっている？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-076-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ふたつ目。運用元配列とログイン割り当て配列が、どちらも空です。鍵ログインも、自動実行も、まとめて無効になったのでしょうか。",
+      "caption": "ふたつ目。運用元配列とログイン割り当て配列が、どちらも空です。鍵ログインも、自動実行も、まとめて無効になったのでしょうか。",
+      "subtitleLines": [
+        "ふたつ目。運用元配列とログイン割り当て配列が、どちらも空です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ふたつ目。運用元配列とログイン割り当て配列が、どちらも空です。",
+          "lines": [
+            "ふたつ目。運用元配列とログイン割り当て配列が、どちらも空です。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "鍵ログインも、自動実行も、まとめて無効になったのでしょうか。",
+          "lines": [
+            "鍵ログインも、自動実行も、まとめて無効になったのでしょうか。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認② 配列が空なら、何が止まる？",
+        "bullets": [
+          "operatorAddressPrefixes=[] は何の設定？",
+          "loginAssignments=[] は何を追加しない？",
+          "鍵ログインやRun Commandも一緒に無効になる？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-077-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "運用元配列は受信エヌエスジー、ログイン割り当て配列はエントラロールの追加です。初期ユーザーの鍵を無効にする指定でも、ラン コマンドを停止する指定でもありません。",
+      "caption": "運用元配列は受信NSG、ログイン割り当て配列はEntraロールの追加です。初期ユーザーの鍵を無効にする指定でも、Run Commandを停止する指定でもありません。",
+      "subtitleLines": [
+        "運用元配列は受信NSG、ログイン割り当て配列はEntraロールの追加です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "運用元配列は受信NSG、ログイン割り当て配列はEntraロールの追加です。",
+          "lines": [
+            "運用元配列は受信NSG、ログイン割り当て配列はEntraロールの追加です。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "初期ユーザーの鍵を無効にする指定でも、Run Commandを停止する指定でもありません。",
+          "lines": [
+            "初期ユーザーの鍵を無効にする指定でも、",
+            "Run Commandを停止する指定でもありません。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認② 配列が空なら、何が止まる？",
+        "bullets": [
+          "operatorAddressPrefixes=[] は何の設定？",
+          "loginAssignments=[] は何を追加しない？",
+          "鍵ログインやRun Commandも一緒に無効になる？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-078-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "空という見た目が同じでも、設定が担当する対象は違います。どの入口に何を追加する値なのか、と読み直すと判断しやすいですね。",
+      "caption": "空という見た目が同じでも、設定が担当する対象は違います。どの入口に何を追加する値なのか、と読み直すと判断しやすいですね。",
+      "subtitleLines": [
+        "空という見た目が同じでも、設定が担当する対象は違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "空という見た目が同じでも、設定が担当する対象は違います。",
+          "lines": [
+            "空という見た目が同じでも、設定が担当する対象は違います。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "どの入口に何を追加する値なのか、と読み直すと判断しやすいですね。",
+          "lines": [
+            "どの入口に何を追加する値なのか、と読み直すと判断しやすいですね。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認② 配列が空なら、何が止まる？",
+        "bullets": [
+          "operatorAddressPrefixes=[] は何の設定？",
+          "loginAssignments=[] は何を追加しない？",
+          "鍵ログインやRun Commandも一緒に無効になる？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-079-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "みっつ目。ラン コマンドのエーピーアイは受け付けられましたが、ビルドが失敗しました。何を確認して、作業の成否を説明しますか。",
+      "caption": "みっつ目。Run CommandのAPIは受け付けられましたが、ビルドが失敗しました。何を確認して、作業の成否を説明しますか。",
+      "subtitleLines": [
+        "みっつ目。Run CommandのAPIは受け付けられましたが、ビルドが失敗しました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "みっつ目。Run CommandのAPIは受け付けられましたが、ビルドが失敗しました。",
+          "lines": [
+            "みっつ目。Run CommandのAPIは受け付けられましたが、ビルドが失敗しました。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "何を確認して、作業の成否を説明しますか。",
+          "lines": [
+            "何を確認して、作業の成否を説明しますか。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認③ Run Commandでビルドが失敗したら？",
+        "bullets": [
+          "API受付を、作業成功と同一視していない？",
+          "実行状態・終了コード・成果物は？",
+          "VMから依存先への接続と認証は？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-080-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "ブイエム内の実行状態、終了コード、成果物を見ます。接続で止まったならブイエムから依存先へのディーエヌエス、経路、許可、認証を照合し、受信エヌエスジーだけが原因だとは判断しません。",
+      "caption": "VM内の実行状態、終了コード、成果物を見ます。接続で止まったならVMから依存先へのDNS、経路、許可、認証を照合し、受信NSGだけが原因だとは判断しません。",
+      "subtitleLines": [
+        "VM内の実行状態、終了コード、成果物を見ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VM内の実行状態、終了コード、成果物を見ます。",
+          "lines": [
+            "VM内の実行状態、終了コード、成果物を見ます。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "接続で止まったならVMから依存先へのDNS、経路、許可、認証を照合し、受信NSGだけが原因だとは判断しません。",
+          "lines": [
+            "接続で止まったならVMから依存先へのDNS、経路、許可、",
+            "認証を照合し、受信NSGだけが原因だとは判断しません。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認③ Run Commandでビルドが失敗したら？",
+        "bullets": [
+          "API受付を、作業成功と同一視していない？",
+          "実行状態・終了コード・成果物は？",
+          "VMから依存先への接続と認証は？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-081-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "実行できる権限、処理が進むための通信、正しい成果物。この三つを結果まで結び付けると、次に直す場所を選べます。",
+      "caption": "実行できる権限、処理が進むための通信、正しい成果物。この三つを結果まで結び付けると、次に直す場所を選べます。",
+      "subtitleLines": [
+        "実行できる権限、処理が進むための通信、正しい成果物。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "実行できる権限、処理が進むための通信、正しい成果物。",
+          "lines": [
+            "実行できる権限、処理が進むための通信、正しい成果物。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "この三つを結果まで結び付けると、次に直す場所を選べます。",
+          "lines": [
+            "この三つを結果まで結び付けると、次に直す場所を選べます。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "quiz",
+        "heading": "確認③ Run Commandでビルドが失敗したら？",
+        "bullets": [
+          "API受付を、作業成功と同一視していない？",
+          "実行状態・終了コード・成果物は？",
+          "VMから依存先への接続と認証は？"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-082-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "管理ブイエムに接続する話と、ブイエムで作業を動かす話がつながりました。最後に、基盤管理者として説明できる形にまとめましょう。",
+      "caption": "管理VMに接続する話と、VMで作業を動かす話がつながりました。最後に、基盤管理者として説明できる形にまとめましょう。",
+      "subtitleLines": [
+        "管理VMに接続する話と、VMで作業を動かす話がつながりました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理VMに接続する話と、VMで作業を動かす話がつながりました。",
+          "lines": [
+            "管理VMに接続する話と、VMで作業を動かす話がつながりました。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "最後に、基盤管理者として説明できる形にまとめましょう。",
+          "lines": [
+            "最後に、基盤管理者として説明できる形にまとめましょう。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "summary",
+        "heading": "接続と実行を、役割で説明する",
+        "bullets": [
+          "private IPへの到達 → NSG → SSH待受・認証",
+          "公開鍵・Entra SSH・管理操作・VMの権限を区別",
+          "Run Commandでも、下流接続と実行結果を確認"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-083-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "エスエスエイチは、プライベート アイピーへの到達経路、エヌエスジーの許可、オーエスの待受と認証をそろえます。認証では、初期ユーザーの公開鍵とエントラ エスエスエイチを分けて読みます。",
+      "caption": "SSHは、private IPへの到達経路、NSGの許可、OSの待受と認証をそろえます。認証では、初期ユーザーの公開鍵とEntra SSHを分けて読みます。",
+      "subtitleLines": [
+        "SSHは、private IPへの到達経路、NSGの許可、OSの待受と認証をそろえます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "SSHは、private IPへの到達経路、NSGの許可、OSの待受と認証をそろえます。",
+          "lines": [
+            "SSHは、private IPへの到達経路、NSGの許可、OSの待受と認証をそろえます。"
+          ],
+          "weight": 44
+        },
+        {
+          "caption": "認証では、初期ユーザーの公開鍵とEntra SSHを分けて読みます。",
+          "lines": [
+            "認証では、初期ユーザーの公開鍵とEntra SSHを分けて読みます。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "summary",
+        "heading": "接続と実行を、役割で説明する",
+        "bullets": [
+          "private IPへの到達 → NSG → SSH待受・認証",
+          "公開鍵・Entra SSH・管理操作・VMの権限を区別",
+          "Run Commandでも、下流接続と実行結果を確認"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-084-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "自動作業はアジュール管理面の入口と権限を確認する。そして、どちらの方式でも、ブイエムから処理先への接続と作業結果まで確かめる。ここが今日の到達点ですね。",
+      "caption": "自動作業はAzure管理面の入口と権限を確認する。そして、どちらの方式でも、VMから処理先への接続と作業結果まで確かめる。ここが今日の到達点ですね。",
+      "subtitleLines": [
+        "自動作業はAzure管理面の入口と権限を確認する。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自動作業はAzure管理面の入口と権限を確認する。",
+          "lines": [
+            "自動作業はAzure管理面の入口と権限を確認する。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "そして、どちらの方式でも、VMから処理先への接続と作業結果まで確かめる。ここが今日の到達点ですね。",
+          "lines": [
+            "そして、どちらの方式でも、",
+            "VMから処理先への接続と作業結果まで確かめる。ここが今日の到達点ですね。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "技術の用途や判断の理由を、同僚へ返す落ち着いた会話として話す。結論を急いで強調せず、意味の切れ目で短く区切る。",
+      "visual": {
+        "layout": "summary",
+        "heading": "接続と実行を、役割で説明する",
+        "bullets": [
+          "private IPへの到達 → NSG → SSH待受・認証",
+          "公開鍵・Entra SSH・管理操作・VMの権限を区別",
+          "Run Commandでも、下流接続と実行結果を確認"
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-085-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次は必修エーワン、ハブ アンド スポーク接続と往復経路です。企業ハブへつなぐとき、今日見た道筋は、どこが変わるのでしょう。",
+      "caption": "次は必修A1、ハブ＆スポーク接続と往復経路です。企業ハブへつなぐとき、今日見た道筋は、どこが変わるのでしょう。",
+      "subtitleLines": [
+        "次は必修A1、ハブ＆スポーク接続と往復経路です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は必修A1、ハブ＆スポーク接続と往復経路です。",
+          "lines": [
+            "次は必修A1、ハブ＆スポーク接続と往復経路です。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "企業ハブへつなぐとき、今日見た道筋は、どこが変わるのでしょう。",
+          "lines": [
+            "企業ハブへつなぐとき、今日見た道筋は、どこが変わるのでしょう。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.18,
+      "delivery": "視聴者を代表して、直前の説明を受けた具体的な疑問を自然に尋ねる。確認や納得は短く、質問の語尾を穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "次回は必修A1：ハブ＆スポーク接続と往復経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "今日の基準",
+            "body": [
+              "独立VNetの管理接続",
+              "経路・許可・権限"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "接続後の設計",
+            "body": [
+              "企業ハブへの接続",
+              "往路と復路の整合"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "次の問い",
+            "body": [
+              "何をハブへ集約する？",
+              "どのローカル経路を維持する？"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson08-turn-086-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "何をハブへ集約し、どのローカル経路を維持するか。往路と復路をそろえる考え方で追っていきます。それでは、また次の勉強会で。",
+      "caption": "何をハブへ集約し、どのローカル経路を維持するか。往路と復路をそろえる考え方で追っていきます。それでは、また次の勉強会で。",
+      "subtitleLines": [
+        "何をハブへ集約し、どのローカル経路を維持するか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "何をハブへ集約し、どのローカル経路を維持するか。",
+          "lines": [
+            "何をハブへ集約し、どのローカル経路を維持するか。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "往路と復路をそろえる考え方で追っていきます。それでは、また次の勉強会で。",
+          "lines": [
+            "往路と復路をそろえる考え方で追っていきます。それでは、また次の勉強会で。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を指しながら、直前の問いに明瞭で穏やかに答える。技術用語を読み飛ばさず、短い句のまとまりで自然に区切る。",
+      "visual": {
+        "layout": "cards",
+        "heading": "次回は必修A1：ハブ＆スポーク接続と往復経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "今日の基準",
+            "body": [
+              "独立VNetの管理接続",
+              "経路・許可・権限"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "接続後の設計",
+            "body": [
+              "企業ハブへの接続",
+              "往路と復路の整合"
+            ]
+          },
+          {
+            "id": "2",
+            "title": "次の問い",
+            "body": [
+              "何をハブへ集約する？",
+              "どのローカル経路を維持する？"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "pronunciation": {
+    "SSH": "エスエスエイチ",
+    "NSG": "エヌエスジー",
+    "VM": "ブイエム",
+    "Entra": "エントラ",
+    "Managed Run Command": "マネージド ラン コマンド",
+    "VM agent": "ブイエム エージェント",
+    "CIDR": "サイダー",
+    "UDR": "ユーディーアール",
+    "PE": "ピーイー",
+    "IaC": "アイアック",
+    "digest": "ダイジェスト",
+    "Succeeded": "サクシーディッド",
+    "authorized_keys": "オーソライズド キーズ",
+    "sshd": "エスエスエイチディー",
+    "OS": "オーエス",
+    "ID": "アイディー",
+    "A1": "エーワン",
+    "VPN": "ブイピーエヌ"
+  }
+}

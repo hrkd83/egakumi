@@ -1,0 +1,50 @@
+{
+  "released": true,
+  "name": "openai-audio-v1",
+  "displayName": "OpenAI File Transcription V1",
+  "path": "models/openai-audio/v1",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "audio-transcriptions",
+      "displayName": "OpenAI File Transcription",
+      "method": "POST",
+      "urlTemplate": "/deployments/{deployment}/transcriptions",
+      "templateParameters": [
+        {
+          "name": "deployment",
+          "description": "登録を許可したモデルの配備名。本文で別モデルへ変更せず、このパスに束縛します。",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "backendUrlTemplate": "/openai/deployments/{deployment}/audio/transcriptions?api-version=2025-04-01-preview"
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "audio-transcriptions": {
+        "kind": "pathModel",
+        "bodyFormat": "multipart",
+        "maxRequestBytes": 4194304,
+        "parameter": "deployment",
+        "allowedModels": [
+          "gpt-transcribe"
+        ],
+        "contentTypes": [
+          "multipart/form-data"
+        ]
+      }
+    }
+  },
+  "backendUrl": "__OPENAI_RESOURCE_BASE_URL__",
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform"
+}

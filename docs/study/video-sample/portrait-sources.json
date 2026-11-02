@@ -1,0 +1,25 @@
+{
+  "portraits": [
+    {
+      "person": "mako",
+      "file": "assets/portraits/mako.webp",
+      "source": "/path/to/source-portraits/public/images/talents/portraits/mako.webp",
+      "sha256": "e5d3b4eb3610e1e654e57afd45890b09238204d6a42ac854e275fbeb7efa60f6",
+      "transform": "none; source bytes preserved"
+    },
+    {
+      "person": "manabu",
+      "file": "assets/portraits/manabu.webp",
+      "source": "/path/to/source-portraits/public/images/talents/portraits/manabu.webp",
+      "sha256": "ce0838bb4b1cb5f235c1b590c0f37945bac6839af9ec6f22db630bc2636b7d3c",
+      "transform": "none; source bytes preserved"
+    },
+    {
+      "person": "ikumi",
+      "file": "assets/portraits/ikumi.webp",
+      "source": "/path/to/source-portraits/public/images/talents/portraits/ikumi.webp",
+      "sha256": "cb5e18a859dd5143c038f97a99067c80a256517b85c6974414a0b4dc3bd72388",
+      "transform": "none; source bytes preserved"
+    }
+  ]
+}

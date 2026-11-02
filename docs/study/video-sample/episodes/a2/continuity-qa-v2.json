@@ -1,0 +1,118 @@
+{
+  "status": "passed",
+  "automatedStatus": "needs_review",
+  "review": {
+    "status": "passed",
+    "disposition": "Reviewed hash-bound I-frame refresh retained separately"
+  },
+  "scope": "Encoded uninterrupted body-region frame difference; playback and listening are separate",
+  "sourceSha256": "efda01133acc670f24c18fdf0305d1fc4499dd3b63c5bef398aa641764a90e2c",
+  "previewSha256": "70d987a2756a4e39a34e6186aa70c02f7da057803aedf7ee214a86a9e06df819",
+  "crop": [
+    65,
+    204,
+    1207,
+    511
+  ],
+  "videoFrames": 1551,
+  "adjacentFramePairs": 1550,
+  "durationSeconds": 64.625,
+  "turnIds": [
+    "lessona2-turn-009-mako",
+    "lessona2-turn-010-ikumi",
+    "lessona2-turn-011-ikumi",
+    "lessona2-turn-012-mako",
+    "lessona2-turn-013-ikumi",
+    "lessona2-turn-014-manabu"
+  ],
+  "expectedTurnTransitionsSeconds": [
+    7.5,
+    15.166667,
+    33.541667,
+    41.125,
+    54.625
+  ],
+  "largeDifferenceThresholdY": 0.3,
+  "largeDifferences": [
+    {
+      "pairIndex": 179,
+      "seconds": 7.5,
+      "meanYDifference": 3.93916,
+      "matchesTurnBoundary": true
+    },
+    {
+      "pairIndex": 249,
+      "seconds": 10.416667,
+      "meanYDifference": 0.434625,
+      "matchesTurnBoundary": false
+    },
+    {
+      "pairIndex": 363,
+      "seconds": 15.166667,
+      "meanYDifference": 3.91862,
+      "matchesTurnBoundary": true
+    },
+    {
+      "pairIndex": 804,
+      "seconds": 33.541667,
+      "meanYDifference": 3.91695,
+      "matchesTurnBoundary": true
+    },
+    {
+      "pairIndex": 986,
+      "seconds": 41.125,
+      "meanYDifference": 3.94523,
+      "matchesTurnBoundary": true
+    },
+    {
+      "pairIndex": 1310,
+      "seconds": 54.625,
+      "meanYDifference": 7.81631,
+      "matchesTurnBoundary": true
+    }
+  ],
+  "reviewedCodecRefreshDifferences": [
+    {
+      "pairIndex": 249,
+      "seconds": 10.416667,
+      "meanYDifference": 0.434625,
+      "matchesTurnBoundary": false,
+      "frameMetadata": {
+        "key_frame": 1,
+        "best_effort_timestamp_time": "10.416667",
+        "pict_type": "I"
+      },
+      "review": {
+        "pairIndex": 249,
+        "seconds": 10.416667,
+        "meanYDifference": 0.434625,
+        "classification": "Reviewed encoded I-frame refresh; no composition or red-outline movement",
+        "inspection": "Decoded frames 249 and 250 viewed at 1600x900 and a 12x amplified body difference image. Menu, table, text and red outlines occupy the same positions; residual differences follow existing edges.",
+        "decodedBodyMeanRGBDifference": 0.7381160451832672,
+        "decodedBodyRGBSamplesOver8Fraction": 0.004144123402785772,
+        "registrationMeanRGBDifference": {
+          "zeroPixelOffset": 0.7266192397594661,
+          "minimumAnyOnePixelOffset": 5.65391474196385,
+          "maximumAnyOnePixelOffset": 10.514180798278247
+        },
+        "beforeFrame": {
+          "index": 249,
+          "keyFrame": false,
+          "pictType": "P"
+        },
+        "afterFrame": {
+          "index": 250,
+          "keyFrame": true,
+          "pictType": "I"
+        }
+      }
+    }
+  ],
+  "unexplainedLargeDifferences": [],
+  "maximumOtherFrameDifferenceY": 0.434625,
+  "limitations": [
+    "Encoded GOP refresh can produce small residual differences.",
+    "Composition and red-outline timing also require source audit and decoded-frame inspection.",
+    "This is not audio recognition or pronunciation/naturalness listening."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "released": true,
+  "name": "openai-realtime-control-v1",
+  "displayName": "Openai Realtime Control V1",
+  "path": "models/openai-realtime/v1",
+  "backendService": "foundryOpenAi",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "realtime-create",
+      "displayName": "Realtime Create",
+      "method": "POST",
+      "urlTemplate": "/calls",
+      "templateParameters": []
+    },
+    {
+      "name": "realtime-hangup",
+      "displayName": "Realtime Hangup",
+      "method": "POST",
+      "urlTemplate": "/calls/{callId}/hangup",
+      "templateParameters": [
+        {
+          "name": "callId",
+          "description": "Explicit approved identifier",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "realtime-create": {
+        "kind": "realtimeCreate",
+        "maxRequestBytes": 131072,
+        "bodyFormat": "json",
+        "model": "gpt-realtime-2.1",
+        "sessionTtlSeconds": 600,
+        "publicCallPath": "/models/openai-realtime/v1/calls",
+        "initialOutputTokens": 512
+      },
+      "realtime-hangup": {
+        "kind": "realtimeHangup",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none",
+        "sessionTtlSeconds": 600,
+        "publicCallPath": "/models/openai-realtime/v1/calls"
+      }
+    }
+  },
+  "serviceClass": "platform"
+}

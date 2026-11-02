@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "visualStyle": "teaching-settings-v2",
+  "url": "http://127.0.0.1:54700/",
+  "duration": 994.916667,
+  "playbackRate": 1,
+  "readyState": 4,
+  "seekable": [
+    [
+      0,
+      994.916667
+    ]
+  ],
+  "videoError": null,
+  "chapterTargetSeconds": 693.5833333333334,
+  "observedChapterTime": 693.6087,
+  "chapterPlaybackPaused": false,
+  "returnedToStart": true,
+  "tabKeptAsDeliverable": true,
+  "conversationPreview": {
+    "url": "http://127.0.0.1:54700/conversation-preview.html",
+    "duration": 49.375,
+    "observedPlaybackTimes": [
+      0.199536,
+      17.901609,
+      41.624157,
+      49.375
+    ],
+    "playbackRate": 1,
+    "ended": true,
+    "error": null,
+    "seekingDuringPlayback": false,
+    "screensObservedAtSeconds": [
+      17.901609,
+      41.624157
+    ],
+    "continuousUncutSource": true
+  },
+  "listeningVerified": false,
+  "note": "Previous port 51321 was no longer serving; launched this episode on a fresh loopback-only port."
+}

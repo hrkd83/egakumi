@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "mainVideo": {
+    "url": "http://127.0.0.1:58645/",
+    "duration": 949.458333,
+    "playbackRate": 1,
+    "observedPlayingAtSeconds": 6.583908,
+    "videoWidth": 1600,
+    "videoHeight": 900,
+    "mediaError": null
+  },
+  "continuousPreview": {
+    "url": "http://127.0.0.1:58645/conversation-preview.html",
+    "duration": 47.125,
+    "observedProgressSeconds": [
+      0.222672,
+      31.955013,
+      47.125
+    ],
+    "playbackRate": 1,
+    "ended": true,
+    "mediaError": null,
+    "seekingDuringReview": false
+  },
+  "visualReview": "Fixed policy-order view retained across question, answer, supplement. Final MP4 frames and final preview corrections visually inspected.",
+  "listeningReview": "Not performed: audio content recognition/listening unavailable in the provided tools."
+}

@@ -1,0 +1,51 @@
+{
+  "edition": "teaching-settings-connectivity-v3",
+  "baseScript": "versions/settings-v2/script.json",
+  "newTurnIds": [
+    "lesson02-turn-011a3-mako",
+    "lesson02-turn-011b3-ikumi",
+    "lesson02-turn-011c3-mako",
+    "lesson02-turn-011d3-ikumi",
+    "lesson02-turn-011e3-manabu",
+    "lesson02-turn-011f3-ikumi"
+  ],
+  "rerecordedTurn": {
+    "old": "lesson02-turn-012-mako",
+    "current": "lesson02-turn-012r3-mako",
+    "reason": "The immediately preceding spoken context changed; preserve words while recording the new style context."
+  },
+  "unchangedOriginalTurnCount": 79,
+  "newRecordingCount": 7,
+  "totalTurnCount": 86,
+  "comparison": {
+    "viewId": "connectivity-comparison",
+    "baselineSha256": "26e94e2ad2131053cf2dc3379fa9216c866b24513f1730c9e7a8ac88abaef02d",
+    "turnIds": [
+      "lesson02-turn-011a3-mako",
+      "lesson02-turn-011b3-ikumi",
+      "lesson02-turn-011c3-mako",
+      "lesson02-turn-011d3-ikumi",
+      "lesson02-turn-011e3-manabu",
+      "lesson02-turn-011f3-ikumi"
+    ]
+  },
+  "continuousPreview": {
+    "fromTurn": "lesson02-turn-011a3-mako",
+    "throughTurn": "lesson02-turn-011d3-ikumi",
+    "note": "Two complete question/answer exchanges covering the PE layout and the APIM/ACA subnet layout."
+  },
+  "sources": [
+    {
+      "title": "Private Endpoint overview",
+      "url": "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview"
+    },
+    {
+      "title": "API Management virtual network concepts",
+      "url": "https://learn.microsoft.com/en-us/azure/api-management/virtual-network-concepts"
+    },
+    {
+      "title": "Container Apps virtual network configuration",
+      "url": "https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks"
+    }
+  ]
+}

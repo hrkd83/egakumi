@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "title": "Gemini TTS 会話・発音比較",
+  "topic": "egakumiのネットワーク全体像",
+  "status": "prepared-not-generated",
+  "date": "2026-11-01",
+  "targetSeconds": 60,
+  "speed": 1.0,
+  "speedPolicy": "モデルへの指示は通常速度。生成後の速度・ピッチ変換はしない。",
+  "language": "ja-JP",
+  "globalStyle": "日本語の技術勉強会を3人で進める、落ち着いたポッドキャストの会話。目の前の相手へ自然に話しかけ、通常の速さで話す。短い相づち、問いかけ、納得した反応に抑揚を付ける。本文の言葉は追加・省略せず、句読点で短く間を取る。人名はマコ、マナブ、イクミ。APIはエーピーアイ、APIMはエーピーアイエム、PEはピーイー、NSGはエヌエスジーと読む。",
+  "members": {
+    "mako": {
+      "name": "MAKO",
+      "spokenName": "マコ",
+      "role": "Moderator",
+      "voice": "Aoede",
+      "catalogGender": "Female",
+      "catalogDescription": "Breezy",
+      "selectionStatus": "provisional",
+      "portrait": "assets/portraits/mako.webp",
+      "style": "視聴者の疑問を一緒に考える進行役。明るさは控えめに、質問の語尾は自然に上げる。理解がつながった反応は、短い納得として返す。"
+    },
+    "manabu": {
+      "name": "MANABU",
+      "spokenName": "マナブ",
+      "role": "Product Manager",
+      "voice": "Charon",
+      "catalogGender": "Male",
+      "catalogDescription": "Informative",
+      "selectionStatus": "provisional",
+      "portrait": "assets/portraits/manabu.webp",
+      "style": "親しみのある落ち着いた声で、目的や理由を短い返答として話す。相手に言い聞かせるのではなく、一緒に整理する会話にする。"
+    },
+    "ikumi": {
+      "name": "IKUMI",
+      "spokenName": "イクミ",
+      "role": "Solution Architect",
+      "voice": "Orus",
+      "catalogGender": "Male",
+      "catalogDescription": "Firm",
+      "selectionStatus": "provisional",
+      "portrait": "assets/portraits/ikumi.webp",
+      "style": "仕組みを知る同僚として、明瞭で穏やかに説明する。技術用語の前後は少し区切り、質問への返答として自然に話す。"
+    }
+  },
+  "models": [
+    {
+      "key": "gemini-3-8-flash",
+      "id": "gemini-3.8-flash-tts",
+      "label": "Gemini 3.8 Flash TTS",
+      "apiFamily": "agent-platform-generate-content",
+      "endpointTemplate": "https://aiplatform.googleapis.com/v1/projects/{projectId}/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent",
+      "styleField": "contents[].parts[].speechMetadata.style",
+      "textField": "contents[].parts[].text",
+      "defaultAudio": "WAV / PCM 16-bit / 24 kHz / mono"
+    },
+    {
+      "key": "gemini-2-5-pro",
+      "id": "gemini-2.5-pro-tts",
+      "label": "Gemini 2.5 Pro TTS",
+      "apiFamily": "cloud-text-to-speech",
+      "endpointTemplate": "https://texttospeech.googleapis.com/v1/text:synthesize",
+      "styleField": "input.prompt",
+      "textField": "input.text",
+      "defaultAudio": "LINEAR16 WAV / PCM 16-bit / 24 kHz / mono"
+    }
+  ],
+  "comparisonPolicy": {
+    "sameText": true,
+    "samePrebuiltVoiceNames": true,
+    "sameStyleInstructions": true,
+    "sourceAudioUnchanged": true,
+    "playbackLoudnessTargetLUFS": -16,
+    "bgm": false,
+    "paralinguisticTags": "比較の条件をそろえるため本文タグは入れず、相づち・フィラーは同じ本文へ明記する。演技はstyleで指示する。",
+    "multiSpeaker": "3人を1リクエストにせず、9つの話者ターンを個別生成して連結する。",
+    "adoption": "3人のGoogle音声は暫定候補。既存のDragonHD配役は変更しない。"
+  },
+  "inputFilePolicy": {
+    "directory": "output/gemini-audition/{model.key}/",
+    "rawWav": "{turn.id}.wav",
+    "example": "output/gemini-audition/gemini-3-8-flash/turn-01-mako.wav"
+  },
+  "turns": [
+    {
+      "id": "turn-01-mako",
+      "speaker": "mako",
+      "speech": "えっと、マナブさん、イクミさん。エガクミのAPIって、最初はどこに届くんですか？",
+      "caption": "えっと、MANABUさん、IKUMIさん。egakumiのAPIって、最初はどこに届くんですか？",
+      "delivery": "最初の素朴な問い。相手の顔を見て、少し考えながら質問する。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-02-manabu",
+      "speaker": "manabu",
+      "speech": "公開入口のApplication Gatewayだね。利用者に見える窓口と、内部の処理を分けているんだ。",
+      "caption": "公開入口のApplication Gatewayだね。利用者に見える窓口と、内部の処理を分けているんだ。",
+      "delivery": "問いを受けて、まず結論を返し、理由を添える。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-03-mako",
+      "speaker": "mako",
+      "speech": "あ、APIMが直接受けるわけじゃないんですね。その先は？",
+      "caption": "あ、APIMが直接受けるわけじゃないんですね。その先は？",
+      "delivery": "意外なことに気づいた軽い反応から、続きの問いへつなぐ。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-04-ikumi",
+      "speaker": "ikumi",
+      "speech": "通常のAPIなら、Firewallを通ってAPIMへ進む。認証や入力の確認は、APIMで行うよ。",
+      "caption": "通常のAPIなら、Firewallを通ってAPIMへ進む。認証や入力の確認は、APIMで行うよ。",
+      "delivery": "図を指しながら、経路と処理の違いが伝わるように短く説明する。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-05-mako",
+      "speaker": "mako",
+      "speech": "なるほど。区画を分ければ、通信も自動的に止まる、ということですか？",
+      "caption": "なるほど。区画を分ければ、通信も自動的に止まる、ということですか？",
+      "delivery": "理解を確かめる問い。自信満々に断言せず、相手へ確認する。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-06-manabu",
+      "speaker": "manabu",
+      "speech": "そこは別だよ、マコさん。配置は管理の土台で、通す条件はNSGやFirewallで決めるんだ。",
+      "caption": "そこは別だよ、MAKOさん。配置は管理の土台で、通す条件はNSGやFirewallで決めるんだ。",
+      "delivery": "思い違いを責めず、穏やかに訂正する。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-07-mako",
+      "speaker": "mako",
+      "speech": "そうなんだ。イクミさん、APIMからFoundryへ行くときも、Firewall経由ですか？",
+      "caption": "そうなんだ。IKUMIさん、APIMからFoundryへ行くときも、Firewall経由ですか？",
+      "delivery": "相づちの後に、もう一つの経路を確かめる。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-08-ikumi",
+      "speaker": "ikumi",
+      "speech": "ううん、PEへは直接接続するよ。入口とバックエンドでは経路が違う。戻り道も、区間ごとに確認するんだ。",
+      "caption": "ううん、PEへは直接接続するよ。入口とバックエンドでは経路が違う。戻り道も、区間ごとに確認するんだ。",
+      "delivery": "最初の否定は柔らかく、区間で変わる点を丁寧に伝える。",
+      "gapAfterSeconds": 0.14
+    },
+    {
+      "id": "turn-09-mako",
+      "speaker": "mako",
+      "speech": "ああ、図が読めてきました。まず、どこに置くかと、どこを通るかを分けて見るんですね。",
+      "caption": "ああ、図が読めてきました。まず、どこに置くかと、どこを通るかを分けて見るんですね。",
+      "delivery": "理解がつながった、ほっとした納得。大げさな笑いや歓声にはしない。",
+      "gapAfterSeconds": 0.25
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://docs.cloud.google.com/text-to-speech/docs/gemini-tts#voice_options",
+      "verifiedDate": "2026-11-01",
+      "supports": "Aoede Female / Charon Male / Orus Male、両モデルで使うプリセット名と日本語ja-JP対応。"
+    },
+    {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/overview",
+      "verifiedDate": "2026-11-01",
+      "supports": "3.8プリセットの特性、24kHz mono WAV、parts.textとspeechMetadata.style、単一話者Console試聴、3人は個別生成。"
+    },
+    {
+      "file": "../01-network-control.html#network-overview",
+      "supports": "通常APIのAppGW→Firewall→APIM、PEへの直接経路。"
+    }
+  ],
+  "preparedDate": "2026-11-02"
+}

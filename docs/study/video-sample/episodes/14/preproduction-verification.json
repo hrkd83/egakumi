@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T06:39:56.225112+00:00",
+  "episode": "14",
+  "turnCount": 80,
+  "captionChars": 5526,
+  "speechChars": 5697,
+  "visualStyle": "teaching-settings-v2",
+  "bodyViews": 17,
+  "bodyCamera": "fixed",
+  "allQuestionHighlightsNeutral": true,
+  "captionContentComplete": true,
+  "sameViewGeometryHeld": true,
+  "scriptSha256": "8ff486e2d61a91355b5748a0f50c79b1beb5468e659237eb9035637d4c4225f3",
+  "errors": [],
+  "scope": "Local source/schema/continuity checks; no speech synthesis or final video validation."
+}

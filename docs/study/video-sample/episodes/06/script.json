@@ -1,0 +1,5897 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "06",
+  "episodeNumber": 6,
+  "episodeId": "06",
+  "title": "第6回 外向き通信と出口IP",
+  "topic": "外向き通信と出口IP",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "2026-11-01参照の教材・現行リポジトリ定義・公開設定例に基づく。稼働中Azureの取得値・実測結果ではない。",
+  "learningObjectives": [
+    "Web依存先の許可、生成されるFQDN、SNAT、出口IPの期待値と実測の違いを説明できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-base-applications"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-portal-applications"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-generated-settings"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "egress-explicit"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "egress-snat"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "今回の問い",
+      "goal": "許可先と出口IPが外部サービス接続の条件になると理解する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-base-applications"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-explicit"
+        }
+      ]
+    },
+    {
+      "id": "purpose",
+      "title": "外向き通信の見る順番",
+      "goal": "宛先・経路・送信元を同じ通信について確認する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-base-applications"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-explicit"
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "title": "Web依存先を許可する",
+      "goal": "送信元と用途でAPIM・管理VM・ACAのWeb依存先を分ける。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-base-applications"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-portal-applications"
+        }
+      ]
+    },
+    {
+      "id": "generated",
+      "title": "設定から生成されるFQDN",
+      "goal": "入力JSONと設定生成・API公開・配備後の許可先を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-generated-settings"
+        }
+      ]
+    },
+    {
+      "id": "egress",
+      "title": "公開IPを持たないVMの出口",
+      "goal": "暗黙の出口無効化・経路・許可・公開IPを区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-explicit"
+        }
+      ]
+    },
+    {
+      "id": "snat",
+      "title": "接続先から見える送信元",
+      "goal": "Network・Application・PE直接接続のSNATの違いを説明する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-snat"
+        }
+      ]
+    },
+    {
+      "id": "measure",
+      "title": "期待値と実測を分ける",
+      "goal": "期待値の受け渡しと自動実測の未実装を区別し、測定条件を整理する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-snat"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの問いで確かめる",
+      "goal": "生成許可先・非SNAT設定・実測済みの三つの誤解を解く。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-generated-settings"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-snat"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "まとめと次の問い",
+      "goal": "同じ通信の宛先・経路・見える送信元を説明し、次回の調査へつなぐ。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-base-applications"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-explicit"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "egress-snat"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson06-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "外部エーピーアイの接続先から「許可する送信元アイピーを教えて」と言われました。ポータルの利用者のアイピーを伝えるんですか。",
+      "caption": "外部APIの接続先から「許可する送信元IPを教えて」と言われました。Portalの利用者のIPを伝えるんですか。",
+      "subtitleLines": [
+        "外部APIの接続先から「許可する送信元IPを教えて」と言われました。",
+        "Portalの利用者のIPを伝えるんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "外部APIの接続先から「許可する送信元IPを教えて」と言われました。Portalの利用者のIPを伝えるんですか。",
+          "lines": [
+            "外部APIの接続先から「許可する送信元IPを教えて」と言われました。",
+            "Portalの利用者のIPを伝えるんですか。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "外向き通信と出口IP"
+      }
+    },
+    {
+      "id": "lesson06-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "実際に外へ接続するのが誰かで変わります。宛先の許可と、相手から見える出口をそろえて考えましょう。",
+      "caption": "実際に外へ接続するのが誰かで変わります。宛先の許可と、相手から見える出口をそろえて考えましょう。",
+      "subtitleLines": [
+        "実際に外へ接続するのが誰かで変わります。宛先の許可と、",
+        "相手から見える出口をそろえて考えましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "実際に外へ接続するのが誰かで変わります。宛先の許可と、相手から見える出口をそろえて考えましょう。",
+          "lines": [
+            "実際に外へ接続するのが誰かで変わります。宛先の許可と、",
+            "相手から見える出口をそろえて考えましょう。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "外向き通信と出口IP"
+      }
+    },
+    {
+      "id": "lesson06-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今回はWeb依存先、設定から増えるホスト名、スナットを追い、出口アイピーの期待値と実測を分けて確認します。",
+      "caption": "今回はWeb依存先、設定から増えるホスト名、SNATを追い、出口IPの期待値と実測を分けて確認します。",
+      "subtitleLines": [
+        "今回はWeb依存先、設定から増えるホスト名、SNATを追い、",
+        "出口IPの期待値と実測を分けて確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今回はWeb依存先、設定から増えるホスト名、SNATを追い、出口IPの期待値と実測を分けて確認します。",
+          "lines": [
+            "今回はWeb依存先、設定から増えるホスト名、SNATを追い、",
+            "出口IPの期待値と実測を分けて確認します。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "外向き通信と出口IP"
+      }
+    },
+    {
+      "id": "lesson06-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "送ってよい相手と、こちらが何者に見えるか。一本の通信で見ていくんですね。",
+      "caption": "送ってよい相手と、こちらが何者に見えるか。一本の通信で見ていくんですね。",
+      "subtitleLines": [
+        "送ってよい相手と、こちらが何者に見えるか。一本の通信で見ていくんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送ってよい相手と、こちらが何者に見えるか。一本の通信で見ていくんですね。",
+          "lines": [
+            "送ってよい相手と、こちらが何者に見えるか。一本の通信で見ていくんですね。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "外向き通信と出口IP"
+      }
+    },
+    {
+      "id": "lesson06-turn-005-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "外部エーピーアイだけでなく、証明書の検証やパッケージ取得も外向き通信です。依存先へ届かなければ、アプリの起動や更新で困ります。",
+      "caption": "外部APIだけでなく、証明書の検証やパッケージ取得も外向き通信です。依存先へ届かなければ、アプリの起動や更新で困ります。",
+      "subtitleLines": [
+        "外部APIだけでなく、証明書の検証やパッケージ取得も外向き通信です。",
+        "依存先へ届かなければ、アプリの起動や更新で困ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "外部APIだけでなく、証明書の検証やパッケージ取得も外向き通信です。依存先へ届かなければ、アプリの起動や更新で困ります。",
+          "lines": [
+            "外部APIだけでなく、証明書の検証やパッケージ取得も外向き通信です。",
+            "依存先へ届かなければ、アプリの起動や更新で困ります。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-reading",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "title": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "送信元・用途・宛先",
+                "APIM / 管理VM / ACA のWeb依存先"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "経路",
+                "公開宛てはFirewall経由。PE直接経路は別"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元",
+                "接続先から見えるIPと期待値を確認"
+              ]
+            },
+            {
+              "id": "basis",
+              "cells": [
+                "この教材の根拠",
+                "定義・公開設定例。稼働Azureの実測ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "permit"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-006-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "必要だからとインターネット全体を許可すると、接続の用途が分からなくなりそうです。",
+      "caption": "必要だからとインターネット全体を許可すると、接続の用途が分からなくなりそうです。",
+      "subtitleLines": [
+        "必要だからとインターネット全体を許可すると、",
+        "接続の用途が分からなくなりそうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "必要だからとインターネット全体を許可すると、接続の用途が分からなくなりそうです。",
+          "lines": [
+            "必要だからとインターネット全体を許可すると、",
+            "接続の用途が分からなくなりそうです。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-reading",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "title": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "送信元・用途・宛先",
+                "APIM / 管理VM / ACA のWeb依存先"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "経路",
+                "公開宛てはFirewall経由。PE直接経路は別"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元",
+                "接続先から見えるIPと期待値を確認"
+              ]
+            },
+            {
+              "id": "basis",
+              "cells": [
+                "この教材の根拠",
+                "定義・公開設定例。稼働Azureの実測ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-007-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "はい。まず、どの区画が、何のために、どのホストへ接続するかをそろえます。次に経路と、相手に見える送信元を確認します。",
+      "caption": "はい。まず、どの区画が、何のために、どのホストへ接続するかをそろえます。次に経路と、相手に見える送信元を確認します。",
+      "subtitleLines": [
+        "はい。まず、どの区画が、何のために、どのホストへ接続するかをそろえます。",
+        "次に経路と、相手に見える送信元を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。まず、どの区画が、何のために、どのホストへ接続するかをそろえます。次に経路と、相手に見える送信元を確認します。",
+          "lines": [
+            "はい。まず、どの区画が、何のために、どのホストへ接続するかをそろえます。",
+            "次に経路と、相手に見える送信元を確認します。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-reading",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "title": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "送信元・用途・宛先",
+                "APIM / 管理VM / ACA のWeb依存先"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "経路",
+                "公開宛てはFirewall経由。PE直接経路は別"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元",
+                "接続先から見えるIPと期待値を確認"
+              ]
+            },
+            {
+              "id": "basis",
+              "cells": [
+                "この教材の根拠",
+                "定義・公開設定例。稼働Azureの実測ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "permit",
+          "path",
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-008-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "説明は教材とリポジトリ定義、公開設定例に基づきます。稼働中のアジュールから、実際の出口アイピーを取得した結果ではありません。",
+      "caption": "説明は教材とリポジトリ定義、公開設定例に基づきます。稼働中のAzureから、実際の出口IPを取得した結果ではありません。",
+      "subtitleLines": [
+        "説明は教材とリポジトリ定義、公開設定例に基づきます。",
+        "稼働中のAzureから、実際の出口IPを取得した結果ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "説明は教材とリポジトリ定義、公開設定例に基づきます。稼働中のAzureから、実際の出口IPを取得した結果ではありません。",
+          "lines": [
+            "説明は教材とリポジトリ定義、公開設定例に基づきます。",
+            "稼働中のAzureから、実際の出口IPを取得した結果ではありません。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-reading",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "title": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "送信元・用途・宛先",
+                "APIM / 管理VM / ACA のWeb依存先"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "経路",
+                "公開宛てはFirewall経由。PE直接経路は別"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元",
+                "接続先から見えるIPと期待値を確認"
+              ]
+            },
+            {
+              "id": "basis",
+              "cells": [
+                "この教材の根拠",
+                "定義・公開設定例。稼働Azureの実測ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "basis"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-009-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "では許可の設定から始め、構成から期待できることと、測って分かることを分けましょう。",
+      "caption": "では許可の設定から始め、構成から期待できることと、測って分かることを分けましょう。",
+      "subtitleLines": [
+        "では許可の設定から始め、構成から期待できることと、",
+        "測って分かることを分けましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では許可の設定から始め、構成から期待できることと、測って分かることを分けましょう。",
+          "lines": [
+            "では許可の設定から始め、構成から期待できることと、",
+            "測って分かることを分けましょう。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-reading",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "title": "外向き通信は、許可・経路・送信元をそろえて読む",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "送信元・用途・宛先",
+                "APIM / 管理VM / ACA のWeb依存先"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "経路",
+                "公開宛てはFirewall経由。PE直接経路は別"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元",
+                "接続先から見えるIPと期待値を確認"
+              ]
+            },
+            {
+              "id": "basis",
+              "cells": [
+                "この教材の根拠",
+                "定義・公開設定例。稼働Azureの実測ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "permit",
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "アプリケーションルールは、送信元とWebのプロトコル、ポート、ホスト名を組み合わせます。ファイアウォールへ到達する経路が前提です。",
+      "caption": "Applicationルールは、送信元とWebのプロトコル、ポート、ホスト名を組み合わせます。Firewallへ到達する経路が前提です。",
+      "subtitleLines": [
+        "Applicationルールは、送信元とWebのプロトコル、ポート、",
+        "ホスト名を組み合わせます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Applicationルールは、送信元とWebのプロトコル、ポート、ホスト名を組み合わせます。",
+          "lines": [
+            "Applicationルールは、送信元とWebのプロトコル、ポート、",
+            "ホスト名を組み合わせます。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "Firewallへ到達する経路が前提です。",
+          "lines": [
+            "Firewallへ到達する経路が前提です。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "application-conditions",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "Applicationルールで照合する条件",
+        "title": "Applicationルールで照合する条件",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画 / 管理VM区画 / ACA区画"
+          },
+          {
+            "id": "protocol",
+            "label": "プロトコル・ポート",
+            "value": "HTTP 80 / HTTPS 443"
+          },
+          {
+            "id": "fqdn",
+            "label": "宛先",
+            "value": "設定されたFQDN"
+          },
+          {
+            "id": "evaluation",
+            "label": "適用する前提",
+            "value": "Firewall経由。Networkで未一致のWeb通信"
+          }
+        ],
+        "highlightFields": [
+          "source",
+          "protocol",
+          "fqdn"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-011-mako",
+      "speaker": "mako",
+      "chapterId": "web",
+      "speech": "エイチティーティーピーエスの443番を使っていれば、どのホストにも接続できる、という許可ではないんですね。",
+      "caption": "HTTPSの443番を使っていれば、どのホストにも接続できる、という許可ではないんですね。",
+      "subtitleLines": [
+        "HTTPSの443番を使っていれば、どのホストにも接続できる、",
+        "という許可ではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "HTTPSの443番を使っていれば、どのホストにも接続できる、という許可ではないんですね。",
+          "lines": [
+            "HTTPSの443番を使っていれば、どのホストにも接続できる、",
+            "という許可ではないんですね。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "application-conditions",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "Applicationルールで照合する条件",
+        "title": "Applicationルールで照合する条件",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画 / 管理VM区画 / ACA区画"
+          },
+          {
+            "id": "protocol",
+            "label": "プロトコル・ポート",
+            "value": "HTTP 80 / HTTPS 443"
+          },
+          {
+            "id": "fqdn",
+            "label": "宛先",
+            "value": "設定されたFQDN"
+          },
+          {
+            "id": "evaluation",
+            "label": "適用する前提",
+            "value": "Firewall経由。Networkで未一致のWeb通信"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson06-turn-012-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "そうです。設定されたエフキューディーエヌ、つまり完全なホスト名の条件も確認します。ただしネットワークルールに一致した通信は、アプリケーションでもう一度許可を求めません。",
+      "caption": "そうです。設定されたFQDN、つまり完全なホスト名の条件も確認します。ただしNetworkルールに一致した通信は、Applicationでもう一度許可を求めません。",
+      "subtitleLines": [
+        "そうです。設定されたFQDN、つまり完全なホスト名の条件も確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そうです。設定されたFQDN、つまり完全なホスト名の条件も確認します。",
+          "lines": [
+            "そうです。設定されたFQDN、つまり完全なホスト名の条件も確認します。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "ただしNetworkルールに一致した通信は、Applicationでもう一度許可を求めません。",
+          "lines": [
+            "ただしNetworkルールに一致した通信は、",
+            "Applicationでもう一度許可を求めません。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "application-conditions",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "Applicationルールで照合する条件",
+        "title": "Applicationルールで照合する条件",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "APIM区画 / 管理VM区画 / ACA区画"
+          },
+          {
+            "id": "protocol",
+            "label": "プロトコル・ポート",
+            "value": "HTTP 80 / HTTPS 443"
+          },
+          {
+            "id": "fqdn",
+            "label": "宛先",
+            "value": "設定されたFQDN"
+          },
+          {
+            "id": "evaluation",
+            "label": "適用する前提",
+            "value": "Firewall経由。Networkで未一致のWeb通信"
+          }
+        ],
+        "highlightFields": [
+          "fqdn",
+          "evaluation"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-013-manabu",
+      "speaker": "manabu",
+      "chapterId": "web",
+      "speech": "送信元ごとに用途を見ると、許可の理由が分かります。エーピーアイエムには証明書チェーンや失効情報の取得先、管理基盤の更新先が必要です。",
+      "caption": "送信元ごとに用途を見ると、許可の理由が分かります。APIMには証明書チェーンや失効情報の取得先、管理基盤の更新先が必要です。",
+      "subtitleLines": [
+        "送信元ごとに用途を見ると、許可の理由が分かります。",
+        "APIMには証明書チェーンや失効情報の取得先、管理基盤の更新先が必要です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送信元ごとに用途を見ると、許可の理由が分かります。APIMには証明書チェーンや失効情報の取得先、管理基盤の更新先が必要です。",
+          "lines": [
+            "送信元ごとに用途を見ると、許可の理由が分かります。",
+            "APIMには証明書チェーンや失効情報の取得先、管理基盤の更新先が必要です。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-vm-web",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "APIMと管理VMのWeb依存先を分ける",
+        "title": "APIMと管理VMのWeb依存先を分ける",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "表の用途説明は教材注釈。送信元ごとの規則を確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim-cert",
+              "cells": [
+                "APIM / 証明書",
+                "証明書チェーン・失効情報の取得先"
+              ]
+            },
+            {
+              "id": "apim-update",
+              "cells": [
+                "APIM / 管理基盤の更新",
+                "Windows更新先・基盤FQDN"
+              ]
+            },
+            {
+              "id": "vm-cert",
+              "cells": [
+                "管理VM / 証明書",
+                "証明書検証に必要な取得先"
+              ]
+            },
+            {
+              "id": "vm-package",
+              "cells": [
+                "管理VM / Linuxパッケージ",
+                "Ubuntu・Microsoftの配布先"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "宛先の書式",
+                "固定ホスト / *.windowsupdate.com 等"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim-cert",
+          "apim-update"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-014-mako",
+      "speaker": "mako",
+      "chapterId": "web",
+      "speech": "資料にウィンドウズ更新先がありますが、管理VMもウィンドウズにする、という意味ですか。",
+      "caption": "資料にWindows更新先がありますが、管理VMもWindowsにする、という意味ですか。",
+      "subtitleLines": [
+        "資料にWindows更新先がありますが、",
+        "管理VMもWindowsにする、という意味ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "資料にWindows更新先がありますが、管理VMもWindowsにする、という意味ですか。",
+          "lines": [
+            "資料にWindows更新先がありますが、",
+            "管理VMもWindowsにする、という意味ですか。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-vm-web",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "APIMと管理VMのWeb依存先を分ける",
+        "title": "APIMと管理VMのWeb依存先を分ける",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "表の用途説明は教材注釈。送信元ごとの規則を確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim-cert",
+              "cells": [
+                "APIM / 証明書",
+                "証明書チェーン・失効情報の取得先"
+              ]
+            },
+            {
+              "id": "apim-update",
+              "cells": [
+                "APIM / 管理基盤の更新",
+                "Windows更新先・基盤FQDN"
+              ]
+            },
+            {
+              "id": "vm-cert",
+              "cells": [
+                "管理VM / 証明書",
+                "証明書検証に必要な取得先"
+              ]
+            },
+            {
+              "id": "vm-package",
+              "cells": [
+                "管理VM / Linuxパッケージ",
+                "Ubuntu・Microsoftの配布先"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "宛先の書式",
+                "固定ホスト / *.windowsupdate.com 等"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-015-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "いいえ。ここはエーピーアイエム管理基盤の依存先です。管理VMには別の規則があり、証明書の検証先と、ウブントゥやマイクロソフトのパッケージ配布先を許可します。",
+      "caption": "いいえ。ここはAPIM管理基盤の依存先です。管理VMには別の規則があり、証明書の検証先と、UbuntuやMicrosoftのパッケージ配布先を許可します。",
+      "subtitleLines": [
+        "いいえ。ここはAPIM管理基盤の依存先です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。ここはAPIM管理基盤の依存先です。",
+          "lines": [
+            "いいえ。ここはAPIM管理基盤の依存先です。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "管理VMには別の規則があり、証明書の検証先と、UbuntuやMicrosoftのパッケージ配布先を許可します。",
+          "lines": [
+            "管理VMには別の規則があり、証明書の検証先と、",
+            "UbuntuやMicrosoftのパッケージ配布先を許可します。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-vm-web",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "APIMと管理VMのWeb依存先を分ける",
+        "title": "APIMと管理VMのWeb依存先を分ける",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "表の用途説明は教材注釈。送信元ごとの規則を確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim-cert",
+              "cells": [
+                "APIM / 証明書",
+                "証明書チェーン・失効情報の取得先"
+              ]
+            },
+            {
+              "id": "apim-update",
+              "cells": [
+                "APIM / 管理基盤の更新",
+                "Windows更新先・基盤FQDN"
+              ]
+            },
+            {
+              "id": "vm-cert",
+              "cells": [
+                "管理VM / 証明書",
+                "証明書検証に必要な取得先"
+              ]
+            },
+            {
+              "id": "vm-package",
+              "cells": [
+                "管理VM / Linuxパッケージ",
+                "Ubuntu・Microsoftの配布先"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "宛先の書式",
+                "固定ホスト / *.windowsupdate.com 等"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim-update",
+          "vm-cert",
+          "vm-package"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-016-manabu",
+      "speaker": "manabu",
+      "chapterId": "web",
+      "speech": "同じ証明書や更新でも、誰のための通信かを分ける。不要な許可を別の送信元へ広げずに済みます。",
+      "caption": "同じ証明書や更新でも、誰のための通信かを分ける。不要な許可を別の送信元へ広げずに済みます。",
+      "subtitleLines": [
+        "同じ証明書や更新でも、誰のための通信かを分ける。",
+        "不要な許可を別の送信元へ広げずに済みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "同じ証明書や更新でも、誰のための通信かを分ける。不要な許可を別の送信元へ広げずに済みます。",
+          "lines": [
+            "同じ証明書や更新でも、誰のための通信かを分ける。",
+            "不要な許可を別の送信元へ広げずに済みます。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-vm-web",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "APIMと管理VMのWeb依存先を分ける",
+        "title": "APIMと管理VMのWeb依存先を分ける",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "表の用途説明は教材注釈。送信元ごとの規則を確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim-cert",
+              "cells": [
+                "APIM / 証明書",
+                "証明書チェーン・失効情報の取得先"
+              ]
+            },
+            {
+              "id": "apim-update",
+              "cells": [
+                "APIM / 管理基盤の更新",
+                "Windows更新先・基盤FQDN"
+              ]
+            },
+            {
+              "id": "vm-cert",
+              "cells": [
+                "管理VM / 証明書",
+                "証明書検証に必要な取得先"
+              ]
+            },
+            {
+              "id": "vm-package",
+              "cells": [
+                "管理VM / Linuxパッケージ",
+                "Ubuntu・Microsoftの配布先"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "宛先の書式",
+                "固定ホスト / *.windowsupdate.com 等"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim-cert",
+          "vm-cert"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-017-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "ホスト名の書き方も確認します。固定ホスト一つの指定と、アスタリスクを含むワイルドカードでは、対象が同じとは限りません。変更時は範囲も読みます。",
+      "caption": "ホスト名の書き方も確認します。固定ホスト一つの指定と、アスタリスクを含むワイルドカードでは、対象が同じとは限りません。変更時は範囲も読みます。",
+      "subtitleLines": [
+        "ホスト名の書き方も確認します。固定ホスト一つの指定と、",
+        "アスタリスクを含むワイルドカードでは、対象が同じとは限りません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ホスト名の書き方も確認します。固定ホスト一つの指定と、アスタリスクを含むワイルドカードでは、対象が同じとは限りません。",
+          "lines": [
+            "ホスト名の書き方も確認します。固定ホスト一つの指定と、",
+            "アスタリスクを含むワイルドカードでは、対象が同じとは限りません。"
+          ],
+          "weight": 59
+        },
+        {
+          "caption": "変更時は範囲も読みます。",
+          "lines": [
+            "変更時は範囲も読みます。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-vm-web",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "APIMと管理VMのWeb依存先を分ける",
+        "title": "APIMと管理VMのWeb依存先を分ける",
+        "kind": "ネットワーク",
+        "section": "通信の許可",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "表の用途説明は教材注釈。送信元ごとの規則を確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim-cert",
+              "cells": [
+                "APIM / 証明書",
+                "証明書チェーン・失効情報の取得先"
+              ]
+            },
+            {
+              "id": "apim-update",
+              "cells": [
+                "APIM / 管理基盤の更新",
+                "Windows更新先・基盤FQDN"
+              ]
+            },
+            {
+              "id": "vm-cert",
+              "cells": [
+                "管理VM / 証明書",
+                "証明書検証に必要な取得先"
+              ]
+            },
+            {
+              "id": "vm-package",
+              "cells": [
+                "管理VM / Linuxパッケージ",
+                "Ubuntu・Microsoftの配布先"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "宛先の書式",
+                "固定ホスト / *.windowsupdate.com 等"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "wildcard"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-018-mako",
+      "speaker": "mako",
+      "chapterId": "web",
+      "speech": "ポータルやビルドは、エーピーアイの実行先だけを許可すれば足りますか。",
+      "caption": "Portalやビルドは、APIの実行先だけを許可すれば足りますか。",
+      "subtitleLines": [
+        "Portalやビルドは、APIの実行先だけを許可すれば足りますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Portalやビルドは、APIの実行先だけを許可すれば足りますか。",
+          "lines": [
+            "Portalやビルドは、APIの実行先だけを許可すれば足りますか。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "portal-build-web",
+        "heading": "実行基盤・ビルド・Portal試用の依存先",
+        "svg": "diagrams/portal-build-web--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-019-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "エーシーエーには起動・実行基盤や認証の依存先があります。管理VMのビルドにはギットハブ、エヌピーエム、ドッカー、パイソンやオーエスのパッケージ取得先があります。",
+      "caption": "ACAには起動・実行基盤や認証の依存先があります。管理VMのビルドにはGitHub、npm、Docker、PythonやOSのパッケージ取得先があります。",
+      "subtitleLines": [
+        "ACAには起動・実行基盤や認証の依存先があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ACAには起動・実行基盤や認証の依存先があります。",
+          "lines": [
+            "ACAには起動・実行基盤や認証の依存先があります。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "管理VMのビルドにはGitHub、npm、Docker、PythonやOSのパッケージ取得先があります。",
+          "lines": [
+            "管理VMのビルドにはGitHub、npm、Docker、",
+            "PythonやOSのパッケージ取得先があります。"
+          ],
+          "weight": 52
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "portal-build-web",
+        "heading": "実行基盤・ビルド・Portal試用の依存先",
+        "svg": "diagrams/portal-build-web--aca-build.svg",
+        "highlightRows": [
+          "aca",
+          "build"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-020-manabu",
+      "speaker": "manabu",
+      "chapterId": "web",
+      "speech": "実行中のアプリと、アプリを作って配備する工程は依存先が違います。エーシーアールのプライベートエンドポイントへの通信を、この公開Web許可で通す説明ではありません。",
+      "caption": "実行中のアプリと、アプリを作って配備する工程は依存先が違います。ACRのPEへの通信を、この公開Web許可で通す説明ではありません。",
+      "subtitleLines": [
+        "実行中のアプリと、アプリを作って配備する工程は依存先が違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "実行中のアプリと、アプリを作って配備する工程は依存先が違います。",
+          "lines": [
+            "実行中のアプリと、アプリを作って配備する工程は依存先が違います。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "ACRのPEへの通信を、この公開Web許可で通す説明ではありません。",
+          "lines": [
+            "ACRのPEへの通信を、この公開Web許可で通す説明ではありません。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "portal-build-web",
+        "heading": "実行基盤・ビルド・Portal試用の依存先",
+        "svg": "diagrams/portal-build-web--build-pe.svg",
+        "highlightRows": [
+          "build",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "web",
+      "speech": "ポータルサーバーから公開Gatewayを試す通信もあります。選択環境のゲートウェイ・オリジンからホスト一つを取り出して許可し、エーシーエーの外向き既定経路でファイアウォールを通ります。",
+      "caption": "Portalサーバーから公開Gatewayを試す通信もあります。選択環境のgatewayOriginからホスト一つを取り出して許可し、ACAの外向き既定経路でFirewallを通ります。",
+      "subtitleLines": [
+        "Portalサーバーから公開Gatewayを試す通信もあります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Portalサーバーから公開Gatewayを試す通信もあります。",
+          "lines": [
+            "Portalサーバーから公開Gatewayを試す通信もあります。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "選択環境のgatewayOriginからホスト一つを取り出して許可し、ACAの外向き既定経路でFirewallを通ります。",
+          "lines": [
+            "選択環境のgatewayOriginからホスト一つを取り出して許可し、",
+            "ACAの外向き既定経路でFirewallを通ります。"
+          ],
+          "weight": 61
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "portal-build-web",
+        "heading": "実行基盤・ビルド・Portal試用の依存先",
+        "svg": "diagrams/portal-build-web--gateway.svg",
+        "highlightRows": [
+          "gateway"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "web",
+      "speech": "利用者のブラウザーと、ポータルサーバーからの通信は別。送信元をエーシーエーとして読むんですね。",
+      "caption": "利用者のブラウザーと、Portalサーバーからの通信は別。送信元をACAとして読むんですね。",
+      "subtitleLines": [
+        "利用者のブラウザーと、Portalサーバーからの通信は別。",
+        "送信元をACAとして読むんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者のブラウザーと、Portalサーバーからの通信は別。送信元をACAとして読むんですね。",
+          "lines": [
+            "利用者のブラウザーと、Portalサーバーからの通信は別。",
+            "送信元をACAとして読むんですね。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "portal-build-web",
+        "heading": "実行基盤・ビルド・Portal試用の依存先",
+        "svg": "diagrams/portal-build-web--portal.svg",
+        "highlightRows": [
+          "portal"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-023-mako",
+      "speaker": "mako",
+      "chapterId": "generated",
+      "speech": "公開設定例では、エーピーアイエム用や管理VM用の許可エフキューディーエヌ配列が空です。承認済みの外部接続先はないと読めますか。",
+      "caption": "公開設定例では、APIM用や管理VM用の許可FQDN配列が空です。承認済みの外部接続先はないと読めますか。",
+      "subtitleLines": [
+        "公開設定例では、APIM用や管理VM用の許可FQDN配列が空です。",
+        "承認済みの外部接続先はないと読めますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開設定例では、APIM用や管理VM用の許可FQDN配列が空です。承認済みの外部接続先はないと読めますか。",
+          "lines": [
+            "公開設定例では、APIM用や管理VM用の許可FQDN配列が空です。",
+            "承認済みの外部接続先はないと読めますか。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "generated-fqdns",
+        "heading": "入力の空配列を、最終許可と同一視しない",
+        "svg": "diagrams/generated-fqdns--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "入力ジェイソンだけでは決められません。証明書などの設定からホストが補われ、エーピーアイの公開工程でも追加されます。入力と生成後と配備後を対応付けて読みます。",
+      "caption": "入力JSONだけでは決められません。証明書などの設定からホストが補われ、APIの公開工程でも追加されます。入力と生成後と配備後を対応付けて読みます。",
+      "subtitleLines": [
+        "入力JSONだけでは決められません。",
+        "証明書などの設定からホストが補われ、APIの公開工程でも追加されます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "入力JSONだけでは決められません。証明書などの設定からホストが補われ、APIの公開工程でも追加されます。",
+          "lines": [
+            "入力JSONだけでは決められません。",
+            "証明書などの設定からホストが補われ、APIの公開工程でも追加されます。"
+          ],
+          "weight": 53
+        },
+        {
+          "caption": "入力と生成後と配備後を対応付けて読みます。",
+          "lines": [
+            "入力と生成後と配備後を対応付けて読みます。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "generated-fqdns",
+        "heading": "入力の空配列を、最終許可と同一視しない",
+        "svg": "diagrams/generated-fqdns--generate-reflect.svg",
+        "highlightRows": [
+          "generate",
+          "reflect"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-025-manabu",
+      "speaker": "manabu",
+      "chapterId": "generated",
+      "speech": "設定例は、選択した機能を組み立てる前の入口でもあるわけですね。空配列を、完成した許可一覧だと思わないようにします。",
+      "caption": "設定例は、選択した機能を組み立てる前の入口でもあるわけですね。空配列を、完成した許可一覧だと思わないようにします。",
+      "subtitleLines": [
+        "設定例は、選択した機能を組み立てる前の入口でもあるわけですね。",
+        "空配列を、完成した許可一覧だと思わないようにします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "設定例は、選択した機能を組み立てる前の入口でもあるわけですね。空配列を、完成した許可一覧だと思わないようにします。",
+          "lines": [
+            "設定例は、選択した機能を組み立てる前の入口でもあるわけですね。",
+            "空配列を、完成した許可一覧だと思わないようにします。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "generated-fqdns",
+        "heading": "入力の空配列を、最終許可と同一視しない",
+        "svg": "diagrams/generated-fqdns--input-reflect.svg",
+        "highlightRows": [
+          "input",
+          "reflect"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "証明書のディーエヌエスプラグイン方式では、選択したアクミのシーエー、ディーエヌエス事業者のエーピーアイ、パワーシェル配布先などが管理VMの許可先へ加わります。",
+      "caption": "証明書のDNSプラグイン方式では、選択したACMEのCA、DNS事業者のAPI、PowerShell配布先などが管理VMの許可先へ加わります。",
+      "subtitleLines": [
+        "証明書のDNSプラグイン方式では、選択したACMEのCA、",
+        "DNS事業者のAPI、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "証明書のDNSプラグイン方式では、選択したACMEのCA、DNS事業者のAPI、",
+          "lines": [
+            "証明書のDNSプラグイン方式では、選択したACMEのCA、",
+            "DNS事業者のAPI、"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "PowerShell配布先などが管理VMの許可先へ加わります。",
+          "lines": [
+            "PowerShell配布先などが管理VMの許可先へ加わります。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "certificate-generation",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "証明書の選択設定から管理VMの許可先を生成",
+        "title": "証明書の選択設定から管理VMの許可先を生成",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "全DNS事業者のAPIを一括許可するという意味ではない",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ca",
+              "cells": [
+                "ACME CA",
+                "production / staging の選択に対応"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS API",
+                "Cloudflare / Route53 / Azure から選択"
+              ]
+            },
+            {
+              "id": "powershell",
+              "cells": [
+                "PowerShell配布先",
+                "cdn.oneget.org / *.powershellgallery.com"
+              ]
+            },
+            {
+              "id": "entry",
+              "cells": [
+                "公開ホストの検証",
+                "公開Gateway / Portal のホスト"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "ca",
+          "dns",
+          "powershell"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "generated",
+      "speech": "ディーエヌエス事業者を変えても、全部の事業者エーピーアイを一括で開けるわけではないんですね。",
+      "caption": "DNS事業者を変えても、全部の事業者APIを一括で開けるわけではないんですね。",
+      "subtitleLines": [
+        "DNS事業者を変えても、",
+        "全部の事業者APIを一括で開けるわけではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "DNS事業者を変えても、全部の事業者APIを一括で開けるわけではないんですね。",
+          "lines": [
+            "DNS事業者を変えても、",
+            "全部の事業者APIを一括で開けるわけではないんですね。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "certificate-generation",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "証明書の選択設定から管理VMの許可先を生成",
+        "title": "証明書の選択設定から管理VMの許可先を生成",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "全DNS事業者のAPIを一括許可するという意味ではない",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ca",
+              "cells": [
+                "ACME CA",
+                "production / staging の選択に対応"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS API",
+                "Cloudflare / Route53 / Azure から選択"
+              ]
+            },
+            {
+              "id": "powershell",
+              "cells": [
+                "PowerShell配布先",
+                "cdn.oneget.org / *.powershellgallery.com"
+              ]
+            },
+            {
+              "id": "entry",
+              "cells": [
+                "公開ホストの検証",
+                "公開Gateway / Portal のホスト"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "はい。クラウドフレアならそのエーピーアイ、ルート・フィフティースリーならそのエーピーアイ、アジュールなら管理エーピーアイという具合です。シーエーもプロダクションとステージングで選択が変わります。",
+      "caption": "はい。CloudflareならそのAPI、Route53ならそのAPI、Azureなら管理APIという具合です。CAもproductionとstagingで選択が変わります。",
+      "subtitleLines": [
+        "はい。CloudflareならそのAPI、",
+        "Route53ならそのAPI、Azureなら管理APIという具合です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。CloudflareならそのAPI、Route53ならそのAPI、Azureなら管理APIという具合です。",
+          "lines": [
+            "はい。CloudflareならそのAPI、",
+            "Route53ならそのAPI、Azureなら管理APIという具合です。"
+          ],
+          "weight": 56
+        },
+        {
+          "caption": "CAもproductionとstagingで選択が変わります。",
+          "lines": [
+            "CAもproductionとstagingで選択が変わります。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "certificate-generation",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "証明書の選択設定から管理VMの許可先を生成",
+        "title": "証明書の選択設定から管理VMの許可先を生成",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "全DNS事業者のAPIを一括許可するという意味ではない",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ca",
+              "cells": [
+                "ACME CA",
+                "production / staging の選択に対応"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS API",
+                "Cloudflare / Route53 / Azure から選択"
+              ]
+            },
+            {
+              "id": "powershell",
+              "cells": [
+                "PowerShell配布先",
+                "cdn.oneget.org / *.powershellgallery.com"
+              ]
+            },
+            {
+              "id": "entry",
+              "cells": [
+                "公開ホストの検証",
+                "公開Gateway / Portal のホスト"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "ca",
+          "dns"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-029-manabu",
+      "speaker": "manabu",
+      "chapterId": "generated",
+      "speech": "公開Gatewayやポータルのホストも、配備後の入口確認のために追加されます。用途までたどれると、保守がしやすいですね。",
+      "caption": "公開GatewayやPortalのホストも、配備後の入口確認のために追加されます。用途までたどれると、保守がしやすいですね。",
+      "subtitleLines": [
+        "公開GatewayやPortalのホストも、",
+        "配備後の入口確認のために追加されます。用途までたどれると、保守がしやすいですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開GatewayやPortalのホストも、配備後の入口確認のために追加されます。用途までたどれると、保守がしやすいですね。",
+          "lines": [
+            "公開GatewayやPortalのホストも、",
+            "配備後の入口確認のために追加されます。用途までたどれると、保守がしやすいですね。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "certificate-generation",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "証明書の選択設定から管理VMの許可先を生成",
+        "title": "証明書の選択設定から管理VMの許可先を生成",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "全DNS事業者のAPIを一括許可するという意味ではない",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ca",
+              "cells": [
+                "ACME CA",
+                "production / staging の選択に対応"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS API",
+                "Cloudflare / Route53 / Azure から選択"
+              ]
+            },
+            {
+              "id": "powershell",
+              "cells": [
+                "PowerShell配布先",
+                "cdn.oneget.org / *.powershellgallery.com"
+              ]
+            },
+            {
+              "id": "entry",
+              "cells": [
+                "公開ホストの検証",
+                "公開Gateway / Portal のホスト"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "entry"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "generated",
+      "speech": "新しく外部エーピーアイを公開するときは、どの部分を許可先へ反映しますか。URLのパスまで見るんでしょうか。",
+      "caption": "新しく外部APIを公開するときは、どの部分を許可先へ反映しますか。URLのパスまで見るんでしょうか。",
+      "subtitleLines": [
+        "新しく外部APIを公開するときは、",
+        "どの部分を許可先へ反映しますか。URLのパスまで見るんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "新しく外部APIを公開するときは、どの部分を許可先へ反映しますか。URLのパスまで見るんでしょうか。",
+          "lines": [
+            "新しく外部APIを公開するときは、",
+            "どの部分を許可先へ反映しますか。URLのパスまで見るんでしょうか。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "対象はエーピーアイ本体やオペレーションで上書きした、外部エイチティーティーピーエスまたはダブリューエスエスバックエンドのディーエヌエスホストです。ティーエルエスの443番で、明示されたホストを追加する範囲です。",
+      "caption": "対象はAPI本体やOperationで上書きした、外部HTTPSまたはWSSバックエンドのDNSホストです。TLSの443番で、明示されたホストを追加する範囲です。",
+      "subtitleLines": [
+        "対象はAPI本体やOperationで上書きした、",
+        "外部HTTPSまたはWSSバックエンドのDNSホストです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "対象はAPI本体やOperationで上書きした、外部HTTPSまたはWSSバックエンドのDNSホストです。",
+          "lines": [
+            "対象はAPI本体やOperationで上書きした、",
+            "外部HTTPSまたはWSSバックエンドのDNSホストです。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "TLSの443番で、明示されたホストを追加する範囲です。",
+          "lines": [
+            "TLSの443番で、明示されたホストを追加する範囲です。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "backend"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-032-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "本人接続に必要なアジュール管理エーピーアイや、プロバイダーのアイデンティティ・エンドポイントのホストも反映します。ホストの許可と、パスや本人認証の判断は別です。",
+      "caption": "本人接続に必要なAzure管理APIや、ProviderのidentityEndpointのホストも反映します。ホストの許可と、パスや本人認証の判断は別です。",
+      "subtitleLines": [
+        "本人接続に必要なAzure管理APIや、",
+        "ProviderのidentityEndpointのホストも反映します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本人接続に必要なAzure管理APIや、ProviderのidentityEndpointのホストも反映します。",
+          "lines": [
+            "本人接続に必要なAzure管理APIや、",
+            "ProviderのidentityEndpointのホストも反映します。"
+          ],
+          "weight": 56
+        },
+        {
+          "caption": "ホストの許可と、パスや本人認証の判断は別です。",
+          "lines": [
+            "ホストの許可と、パスや本人認証の判断は別です。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "identity"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-033-mako",
+      "speaker": "mako",
+      "chapterId": "generated",
+      "speech": "では、エーピーアイの接続先を変更したら、古いホストの許可は自動で消えるんですか。",
+      "caption": "では、APIの接続先を変更したら、古いホストの許可は自動で消えるんですか。",
+      "subtitleLines": [
+        "では、APIの接続先を変更したら、",
+        "古いホストの許可は自動で消えるんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、APIの接続先を変更したら、古いホストの許可は自動で消えるんですか。",
+          "lines": [
+            "では、APIの接続先を変更したら、",
+            "古いホストの許可は自動で消えるんですか。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-034-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "エーピーアイ公開は追加方式です。未登録ホストを足し、既存ルールと宛先を保持します。エーピーアイの削除や変更だけで、旧エフキューディーエヌは自動削除されません。",
+      "caption": "API公開は追加方式です。未登録ホストを足し、既存ルールと宛先を保持します。APIの削除や変更だけで、旧FQDNは自動削除されません。",
+      "subtitleLines": [
+        "API公開は追加方式です。未登録ホストを足し、",
+        "既存ルールと宛先を保持します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "API公開は追加方式です。未登録ホストを足し、既存ルールと宛先を保持します。",
+          "lines": [
+            "API公開は追加方式です。未登録ホストを足し、",
+            "既存ルールと宛先を保持します。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "APIの削除や変更だけで、旧FQDNは自動削除されません。",
+          "lines": [
+            "APIの削除や変更だけで、旧FQDNは自動削除されません。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "append",
+          "delete"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-035-manabu",
+      "speaker": "manabu",
+      "chapterId": "generated",
+      "speech": "変更の成功と、古い許可の要否は別の確認ですね。次回の基盤配備も、所有や送信元、エイチティーティーピーエスの境界を検査したエーピーアイエム許可を引き継ぎます。",
+      "caption": "変更の成功と、古い許可の要否は別の確認ですね。次回の基盤配備も、所有や送信元、HTTPSの境界を検査したAPIM許可を引き継ぎます。",
+      "subtitleLines": [
+        "変更の成功と、古い許可の要否は別の確認ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "変更の成功と、古い許可の要否は別の確認ですね。",
+          "lines": [
+            "変更の成功と、古い許可の要否は別の確認ですね。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "次回の基盤配備も、所有や送信元、HTTPSの境界を検査したAPIM許可を引き継ぎます。",
+          "lines": [
+            "次回の基盤配備も、所有や送信元、",
+            "HTTPSの境界を検査したAPIM許可を引き継ぎます。"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "api-publication-fqdns",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "API公開でホストを追加し、既存許可を保持する",
+        "title": "API公開でホストを追加し、既存許可を保持する",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "対象は明示DNSホスト。URLパスや本人認証の判断とは別",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "backend",
+              "cells": [
+                "外部バックエンド",
+                "API / Operation のHTTPS・WSS / TLS 443"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "本人接続",
+                "management.azure.com / identityEndpoint"
+              ]
+            },
+            {
+              "id": "append",
+              "cells": [
+                "API公開時の更新",
+                "未登録のDNSホストを追加。既存宛先を保持"
+              ]
+            },
+            {
+              "id": "delete",
+              "cells": [
+                "APIの削除・変更",
+                "旧FQDNの許可は自動削除しない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "次回基盤配備への引継ぎ",
+                "所有・APIM送信元・HTTPS境界を検査"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "delete",
+          "retain"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-036-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "generated",
+      "speech": "追加ルールにも注意します。広いネットワーク許可に一致すると、アプリケーションのホスト条件へ進みません。ポータルの配備も専用のGatewayグループを扱い、基盤グループと区別します。",
+      "caption": "追加ルールにも注意します。広いNetwork許可に一致すると、Applicationのホスト条件へ進みません。Portalの配備も専用のGatewayグループを扱い、基盤グループと区別します。",
+      "subtitleLines": [
+        "追加ルールにも注意します。広いNetwork許可に一致すると、",
+        "Applicationのホスト条件へ進みません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "追加ルールにも注意します。広いNetwork許可に一致すると、Applicationのホスト条件へ進みません。",
+          "lines": [
+            "追加ルールにも注意します。広いNetwork許可に一致すると、",
+            "Applicationのホスト条件へ進みません。"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "Portalの配備も専用のGatewayグループを扱い、基盤グループと区別します。",
+          "lines": [
+            "Portalの配備も専用のGatewayグループを扱い、",
+            "基盤グループと区別します。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "additional-rules",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "追加ルールの種別と、変更するグループを確認",
+        "title": "追加ルールの種別と、変更するグループを確認",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "network",
+              "cells": [
+                "追加Networkルール",
+                "一致した通信はApplicationへ進まない"
+              ]
+            },
+            {
+              "id": "application",
+              "cells": [
+                "追加Applicationルール",
+                "送信元と必要なWeb FQDNを絞る"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portal公開Gateway用",
+                "rcg-portal-gateway を更新"
+              ]
+            },
+            {
+              "id": "base",
+              "cells": [
+                "基盤用のグループ",
+                "rcg-portal を置き換えない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "network",
+          "portal",
+          "base"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-037-mako",
+      "speaker": "mako",
+      "chapterId": "egress",
+      "speech": "必要なホストを許可できました。次は出口です。管理VMは公開アイピーを持たないのに、公開依存先へ接続できるんですか。",
+      "caption": "必要なホストを許可できました。次は出口です。管理VMは公開IPを持たないのに、公開依存先へ接続できるんですか。",
+      "subtitleLines": [
+        "必要なホストを許可できました。次は出口です。",
+        "管理VMは公開IPを持たないのに、公開依存先へ接続できるんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "必要なホストを許可できました。次は出口です。管理VMは公開IPを持たないのに、公開依存先へ接続できるんですか。",
+          "lines": [
+            "必要なホストを許可できました。次は出口です。",
+            "管理VMは公開IPを持たないのに、公開依存先へ接続できるんですか。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-038-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "できます。標準構成では、管理VMの既定ユーディーアールがファイアウォールを次ホップにします。許可がそろえば、公開依存先へ出る経路があります。",
+      "caption": "できます。標準構成では、管理VMの既定UDRがFirewallを次ホップにします。許可がそろえば、公開依存先へ出る経路があります。",
+      "subtitleLines": [
+        "できます。標準構成では、",
+        "管理VMの既定UDRがFirewallを次ホップにします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "できます。標準構成では、管理VMの既定UDRがFirewallを次ホップにします。",
+          "lines": [
+            "できます。標準構成では、",
+            "管理VMの既定UDRがFirewallを次ホップにします。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "許可がそろえば、公開依存先へ出る経路があります。",
+          "lines": [
+            "許可がそろえば、公開依存先へ出る経路があります。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--route.svg",
+        "highlightRows": [
+          "route"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-039-manabu",
+      "speaker": "manabu",
+      "chapterId": "egress",
+      "speech": "自分の公開アイピーがなくても、外へ接続する手段はあります。共通の出口を明示し、そこで許可と送信元を管理する構成です。",
+      "caption": "自分の公開IPがなくても、外へ接続する手段はあります。共通の出口を明示し、そこで許可と送信元を管理する構成です。",
+      "subtitleLines": [
+        "自分の公開IPがなくても、外へ接続する手段はあります。",
+        "共通の出口を明示し、そこで許可と送信元を管理する構成です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自分の公開IPがなくても、外へ接続する手段はあります。共通の出口を明示し、そこで許可と送信元を管理する構成です。",
+          "lines": [
+            "自分の公開IPがなくても、外へ接続する手段はあります。",
+            "共通の出口を明示し、そこで許可と送信元を管理する構成です。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--vm-fw.svg",
+        "highlightRows": [
+          "vm",
+          "fw"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "egress",
+      "speech": "サブネットのデフォルトアウトバウンドアクセスがフォルスなのは、外向き通信を全部拒否する設定、ではないんですね。",
+      "caption": "サブネットのdefaultOutboundAccessがfalseなのは、外向き通信を全部拒否する設定、ではないんですね。",
+      "subtitleLines": [
+        "サブネットのdefaultOutboundAccessがfalseなのは、",
+        "外向き通信を全部拒否する設定、ではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "サブネットのdefaultOutboundAccessがfalseなのは、外向き通信を全部拒否する設定、ではないんですね。",
+          "lines": [
+            "サブネットのdefaultOutboundAccessがfalseなのは、",
+            "外向き通信を全部拒否する設定、ではないんですね。"
+          ],
+          "weight": 61
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "はい。暗黙の公開出口に依存するのを避ける設定です。ユーディーアールの転送先、エヌエスジーやファイアウォールの許可、スナットとはそれぞれ別です。それぞれを確認します。",
+      "caption": "はい。暗黙の公開出口に依存するのを避ける設定です。UDRの転送先、NSGやFirewallの許可、SNATとはそれぞれ別です。それぞれを確認します。",
+      "subtitleLines": [
+        "はい。暗黙の公開出口に依存するのを避ける設定です。UDRの転送先、",
+        "NSGやFirewallの許可、SNATとはそれぞれ別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。暗黙の公開出口に依存するのを避ける設定です。UDRの転送先、NSGやFirewallの許可、SNATとはそれぞれ別です。",
+          "lines": [
+            "はい。暗黙の公開出口に依存するのを避ける設定です。UDRの転送先、",
+            "NSGやFirewallの許可、SNATとはそれぞれ別です。"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "それぞれを確認します。",
+          "lines": [
+            "それぞれを確認します。"
+          ],
+          "weight": 11
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--implicit-allow.svg",
+        "highlightRows": [
+          "implicit",
+          "allow"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-042-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "この属性はアプリケーションゲートウェイ、エーピーアイエム、プライベートエンドポイント、管理VM、エーシーエーの五つのサブネットに明示されています。ファイアウォール区画には指定していません。区画ごとに確認します。",
+      "caption": "この属性はAppGW、APIM、PE、管理VM、ACAの五つのサブネットに明示されています。Firewall区画には指定していません。区画ごとに確認します。",
+      "subtitleLines": [
+        "この属性はAppGW、APIM、PE、管理VM、",
+        "ACAの五つのサブネットに明示されています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この属性はAppGW、APIM、PE、管理VM、ACAの五つのサブネットに明示されています。",
+          "lines": [
+            "この属性はAppGW、APIM、PE、管理VM、",
+            "ACAの五つのサブネットに明示されています。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "Firewall区画には指定していません。区画ごとに確認します。",
+          "lines": [
+            "Firewall区画には指定していません。区画ごとに確認します。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "vm-explicit-egress",
+        "heading": "管理VMの公開IP・既定経路・暗黙出口を分ける",
+        "svg": "diagrams/vm-explicit-egress--subnets.svg",
+        "highlightRows": [
+          "subnets"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-043-mako",
+      "speaker": "mako",
+      "chapterId": "egress",
+      "speech": "相手へ伝える公開アイピーは、利用者が接続するアプリケーションゲートウェイのアドレスですか。",
+      "caption": "相手へ伝える公開IPは、利用者が接続するAppGWのアドレスですか。",
+      "subtitleLines": [
+        "相手へ伝える公開IPは、利用者が接続するAppGWのアドレスですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "相手へ伝える公開IPは、利用者が接続するAppGWのアドレスですか。",
+          "lines": [
+            "相手へ伝える公開IPは、利用者が接続するAppGWのアドレスですか。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-ip-resources",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "AppGWの入口IPと、Firewallの出口IPは別",
+        "title": "AppGWの入口IPと、Firewallの出口IPは別",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "実IPは環境の出力から取得。実環境の追加資源は未調査",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ingress",
+              "cells": [
+                "AppGW / pip-agw-<stem>",
+                "利用者向けの公開フロントエンド"
+              ]
+            },
+            {
+              "id": "egress",
+              "cells": [
+                "Firewall / pip-afw-<stem>",
+                "Standard / IPv4 / Static。公開宛ての送信元"
+              ]
+            },
+            {
+              "id": "route",
+              "cells": [
+                "APIM・管理VM・ACA",
+                "既定UDR：0.0.0.0/0 → Firewall"
+              ]
+            },
+            {
+              "id": "direct",
+              "cells": [
+                "具体的な経路・管理例外",
+                "PE / VNet内の直接経路等を優先"
+              ]
+            },
+            {
+              "id": "scope",
+              "cells": [
+                "この教材の標準Bicep",
+                "NAT Gateway・LB outboundRulesの定義なし"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "別です。アプリケーションゲートウェイの公開アイピーは入口で、ファイアウォールの公開アイピーが公開宛ての標準出口です。ファイアウォールにはスタンダード、アイピーバージョンフォー、スタティックの公開アイピーを関連付けています。",
+      "caption": "別です。AppGWの公開IPは入口で、Firewallの公開IPが公開宛ての標準出口です。FirewallにはStandard、IPv4、Staticの公開IPを関連付けています。",
+      "subtitleLines": [
+        "別です。AppGWの公開IPは入口で、",
+        "Firewallの公開IPが公開宛ての標準出口です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "別です。AppGWの公開IPは入口で、Firewallの公開IPが公開宛ての標準出口です。",
+          "lines": [
+            "別です。AppGWの公開IPは入口で、",
+            "Firewallの公開IPが公開宛ての標準出口です。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "FirewallにはStandard、IPv4、Staticの公開IPを関連付けています。",
+          "lines": [
+            "FirewallにはStandard、IPv4、",
+            "Staticの公開IPを関連付けています。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-ip-resources",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "AppGWの入口IPと、Firewallの出口IPは別",
+        "title": "AppGWの入口IPと、Firewallの出口IPは別",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "実IPは環境の出力から取得。実環境の追加資源は未調査",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ingress",
+              "cells": [
+                "AppGW / pip-agw-<stem>",
+                "利用者向けの公開フロントエンド"
+              ]
+            },
+            {
+              "id": "egress",
+              "cells": [
+                "Firewall / pip-afw-<stem>",
+                "Standard / IPv4 / Static。公開宛ての送信元"
+              ]
+            },
+            {
+              "id": "route",
+              "cells": [
+                "APIM・管理VM・ACA",
+                "既定UDR：0.0.0.0/0 → Firewall"
+              ]
+            },
+            {
+              "id": "direct",
+              "cells": [
+                "具体的な経路・管理例外",
+                "PE / VNet内の直接経路等を優先"
+              ]
+            },
+            {
+              "id": "scope",
+              "cells": [
+                "この教材の標準Bicep",
+                "NAT Gateway・LB outboundRulesの定義なし"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "ingress",
+          "egress"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-045-manabu",
+      "speaker": "manabu",
+      "chapterId": "egress",
+      "speech": "ただし、全部の宛先がその出口を使うとは言えませんね。プライベートエンドポイントへ向かう通信を、インターネット向けと一緒にしないことが大切です。",
+      "caption": "ただし、全部の宛先がその出口を使うとは言えませんね。PEへ向かう通信を、インターネット向けと一緒にしないことが大切です。",
+      "subtitleLines": [
+        "ただし、全部の宛先がその出口を使うとは言えませんね。",
+        "PEへ向かう通信を、インターネット向けと一緒にしないことが大切です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ただし、全部の宛先がその出口を使うとは言えませんね。PEへ向かう通信を、インターネット向けと一緒にしないことが大切です。",
+          "lines": [
+            "ただし、全部の宛先がその出口を使うとは言えませんね。",
+            "PEへ向かう通信を、インターネット向けと一緒にしないことが大切です。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-ip-resources",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "AppGWの入口IPと、Firewallの出口IPは別",
+        "title": "AppGWの入口IPと、Firewallの出口IPは別",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "実IPは環境の出力から取得。実環境の追加資源は未調査",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ingress",
+              "cells": [
+                "AppGW / pip-agw-<stem>",
+                "利用者向けの公開フロントエンド"
+              ]
+            },
+            {
+              "id": "egress",
+              "cells": [
+                "Firewall / pip-afw-<stem>",
+                "Standard / IPv4 / Static。公開宛ての送信元"
+              ]
+            },
+            {
+              "id": "route",
+              "cells": [
+                "APIM・管理VM・ACA",
+                "既定UDR：0.0.0.0/0 → Firewall"
+              ]
+            },
+            {
+              "id": "direct",
+              "cells": [
+                "具体的な経路・管理例外",
+                "PE / VNet内の直接経路等を優先"
+              ]
+            },
+            {
+              "id": "scope",
+              "cells": [
+                "この教材の標準Bicep",
+                "NAT Gateway・LB outboundRulesの定義なし"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "direct"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "エーピーアイエム、管理VM、エーシーエーの既定経路はファイアウォール向けですが、より具体的なプライベートエンドポイントやVNet内経路、管理用の例外があります。アプリケーションゲートウェイにも同じ既定経路を一律追加する説明ではありません。",
+      "caption": "APIM、管理VM、ACAの既定経路はFirewall向けですが、より具体的なPEやVNet内経路、管理用の例外があります。AppGWにも同じ既定経路を一律追加する説明ではありません。",
+      "subtitleLines": [
+        "APIM、管理VM、ACAの既定経路はFirewall向けですが、",
+        "より具体的なPEやVNet内経路、管理用の例外があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIM、管理VM、ACAの既定経路はFirewall向けですが、より具体的なPEやVNet内経路、管理用の例外があります。",
+          "lines": [
+            "APIM、管理VM、ACAの既定経路はFirewall向けですが、",
+            "より具体的なPEやVNet内経路、管理用の例外があります。"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "AppGWにも同じ既定経路を一律追加する説明ではありません。",
+          "lines": [
+            "AppGWにも同じ既定経路を一律追加する説明ではありません。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-ip-resources",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "AppGWの入口IPと、Firewallの出口IPは別",
+        "title": "AppGWの入口IPと、Firewallの出口IPは別",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "実IPは環境の出力から取得。実環境の追加資源は未調査",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ingress",
+              "cells": [
+                "AppGW / pip-agw-<stem>",
+                "利用者向けの公開フロントエンド"
+              ]
+            },
+            {
+              "id": "egress",
+              "cells": [
+                "Firewall / pip-afw-<stem>",
+                "Standard / IPv4 / Static。公開宛ての送信元"
+              ]
+            },
+            {
+              "id": "route",
+              "cells": [
+                "APIM・管理VM・ACA",
+                "既定UDR：0.0.0.0/0 → Firewall"
+              ]
+            },
+            {
+              "id": "direct",
+              "cells": [
+                "具体的な経路・管理例外",
+                "PE / VNet内の直接経路等を優先"
+              ]
+            },
+            {
+              "id": "scope",
+              "cells": [
+                "この教材の標準Bicep",
+                "NAT Gateway・LB outboundRulesの定義なし"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "route",
+          "direct"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-047-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "egress",
+      "speech": "現行バイセップにはナットゲートウェイやロードバランサーの外向き規則を作る定義はありません。ただし、実環境に別途追加された資源がないと調査した結果ではありません。",
+      "caption": "現行BicepにはNAT GatewayやLoad Balancerの外向き規則を作る定義はありません。ただし、実環境に別途追加された資源がないと調査した結果ではありません。",
+      "subtitleLines": [
+        "現行BicepにはNAT Gatewayや",
+        "Load Balancerの外向き規則を作る定義はありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "現行BicepにはNAT GatewayやLoad Balancerの外向き規則を作る定義はありません。",
+          "lines": [
+            "現行BicepにはNAT Gatewayや",
+            "Load Balancerの外向き規則を作る定義はありません。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "ただし、実環境に別途追加された資源がないと調査した結果ではありません。",
+          "lines": [
+            "ただし、実環境に別途追加された資源がないと調査した結果ではありません。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-ip-resources",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "AppGWの入口IPと、Firewallの出口IPは別",
+        "title": "AppGWの入口IPと、Firewallの出口IPは別",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "実IPは環境の出力から取得。実環境の追加資源は未調査",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "ingress",
+              "cells": [
+                "AppGW / pip-agw-<stem>",
+                "利用者向けの公開フロントエンド"
+              ]
+            },
+            {
+              "id": "egress",
+              "cells": [
+                "Firewall / pip-afw-<stem>",
+                "Standard / IPv4 / Static。公開宛ての送信元"
+              ]
+            },
+            {
+              "id": "route",
+              "cells": [
+                "APIM・管理VM・ACA",
+                "既定UDR：0.0.0.0/0 → Firewall"
+              ]
+            },
+            {
+              "id": "direct",
+              "cells": [
+                "具体的な経路・管理例外",
+                "PE / VNet内の直接経路等を優先"
+              ]
+            },
+            {
+              "id": "scope",
+              "cells": [
+                "この教材の標準Bicep",
+                "NAT Gateway・LB outboundRulesの定義なし"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "scope"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-048-mako",
+      "speaker": "mako",
+      "chapterId": "snat",
+      "speech": "では、ファイアウォールを通ると、送信元はどう変わるんですか。ここでスナットが出てきますね。",
+      "caption": "では、Firewallを通ると、送信元はどう変わるんですか。ここでSNATが出てきますね。",
+      "subtitleLines": [
+        "では、Firewallを通ると、",
+        "送信元はどう変わるんですか。ここでSNATが出てきますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、Firewallを通ると、送信元はどう変わるんですか。ここでSNATが出てきますね。",
+          "lines": [
+            "では、Firewallを通ると、",
+            "送信元はどう変わるんですか。ここでSNATが出てきますね。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "public-snat",
+        "heading": "SNATで、外部から見える公開送信元が変わる",
+        "svg": "diagrams/public-snat--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-049-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "スナットは、通信の送信元アイピーなどを変換する仕組みです。エーピーアイエム、管理VM、エーシーエーから公開宛てへ出る標準経路では、ファイアウォールの公開アイピーに変換されます。",
+      "caption": "SNATは、通信の送信元IPなどを変換する仕組みです。APIM、管理VM、ACAから公開宛てへ出る標準経路では、Firewallの公開IPに変換されます。",
+      "subtitleLines": [
+        "SNATは、通信の送信元IPなどを変換する仕組みです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "SNATは、通信の送信元IPなどを変換する仕組みです。",
+          "lines": [
+            "SNATは、通信の送信元IPなどを変換する仕組みです。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "APIM、管理VM、ACAから公開宛てへ出る標準経路では、Firewallの公開IPに変換されます。",
+          "lines": [
+            "APIM、管理VM、ACAから公開宛てへ出る標準経路では、",
+            "Firewallの公開IPに変換されます。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "public-snat",
+        "heading": "SNATで、外部から見える公開送信元が変わる",
+        "svg": "diagrams/public-snat--fw-meaning-ip.svg",
+        "highlightRows": [
+          "fw",
+          "meaning",
+          "ip"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-050-manabu",
+      "speaker": "manabu",
+      "chapterId": "snat",
+      "speech": "そのため外部サービスは、管理VMやエーシーエーのプライベート アイピーではなく、ファイアウォールの公開アイピーを送信元として見ます。相手の許可元アイピーを考える出発点ですね。",
+      "caption": "そのため外部サービスは、管理VMやACAのprivate IPではなく、Firewallの公開IPを送信元として見ます。相手の許可元IPを考える出発点ですね。",
+      "subtitleLines": [
+        "そのため外部サービスは、管理VMやACAのprivate IPではなく、",
+        "Firewallの公開IPを送信元として見ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのため外部サービスは、管理VMやACAのprivate IPではなく、Firewallの公開IPを送信元として見ます。",
+          "lines": [
+            "そのため外部サービスは、管理VMやACAのprivate IPではなく、",
+            "Firewallの公開IPを送信元として見ます。"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "相手の許可元IPを考える出発点ですね。",
+          "lines": [
+            "相手の許可元IPを考える出発点ですね。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "public-snat",
+        "heading": "SNATで、外部から見える公開送信元が変わる",
+        "svg": "diagrams/public-snat--dest-permit.svg",
+        "highlightRows": [
+          "dest",
+          "permit"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-051-mako",
+      "speaker": "mako",
+      "chapterId": "snat",
+      "speech": "でも内部のアプリケーションゲートウェイからエーピーアイエムへの通信は、アプリケーションゲートウェイ区画を送信元にしてエヌエスジーを許可していました。そこもファイアウォールのアイピーに変わりますか。",
+      "caption": "でも内部のAppGWからAPIMへの通信は、AppGW区画を送信元にしてNSGを許可していました。そこもFirewallのIPに変わりますか。",
+      "subtitleLines": [
+        "でも内部のAppGWからAPIMへの通信は、",
+        "AppGW区画を送信元にしてNSGを許可していました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "でも内部のAppGWからAPIMへの通信は、AppGW区画を送信元にしてNSGを許可していました。",
+          "lines": [
+            "でも内部のAppGWからAPIMへの通信は、",
+            "AppGW区画を送信元にしてNSGを許可していました。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "そこもFirewallのIPに変わりますか。",
+          "lines": [
+            "そこもFirewallのIPに変わりますか。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "ネットワークルールでプライベート宛てへ中継する場合、公開例ではスナットしません。アプリケーションゲートウェイのプライベート アイピーを保持するので、エーピーアイエム側エヌエスジーがアプリケーションゲートウェイ区画として照合できます。",
+      "caption": "Networkルールでprivate宛てへ中継する場合、公開例ではSNATしません。AppGWのprivate IPを保持するので、APIM側NSGがAppGW区画として照合できます。",
+      "subtitleLines": [
+        "Networkルールでprivate宛てへ中継する場合、",
+        "公開例ではSNATしません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Networkルールでprivate宛てへ中継する場合、公開例ではSNATしません。",
+          "lines": [
+            "Networkルールでprivate宛てへ中継する場合、",
+            "公開例ではSNATしません。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "AppGWのprivate IPを保持するので、APIM側NSGがAppGW区画として照合できます。",
+          "lines": [
+            "AppGWのprivate IPを保持するので、",
+            "APIM側NSGがAppGW区画として照合できます。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--target.svg",
+        "highlightRows": [
+          "target"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-053-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "ここで使うスナットのプライベートレンジズは、ネットワークルールでスナットしない宛先範囲です。公開例のアイアナ・プライベート・レンジズという設定を、許可する送信元一覧とは読まないでください。",
+      "caption": "ここで使うsnat.privateRangesは、NetworkルールでSNATしない宛先範囲です。公開例のIANAPrivateRangesという設定を、許可する送信元一覧とは読まないでください。",
+      "subtitleLines": [
+        "ここで使うsnat.privateRangesは、",
+        "NetworkルールでSNATしない宛先範囲です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで使うsnat.privateRangesは、NetworkルールでSNATしない宛先範囲です。",
+          "lines": [
+            "ここで使うsnat.privateRangesは、",
+            "NetworkルールでSNATしない宛先範囲です。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "公開例のIANAPrivateRangesという設定を、許可する送信元一覧とは読まないでください。",
+          "lines": [
+            "公開例のIANAPrivateRangesという設定を、",
+            "許可する送信元一覧とは読まないでください。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--ranges.svg",
+        "highlightRows": [
+          "ranges"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-054-mako",
+      "speaker": "mako",
+      "chapterId": "snat",
+      "speech": "その範囲にあれば通信をアローする、という意味でもないんですね。経路と許可は別に要る。",
+      "caption": "その範囲にあれば通信をAllowする、という意味でもないんですね。経路と許可は別に要る。",
+      "subtitleLines": [
+        "その範囲にあれば通信をAllowする、",
+        "という意味でもないんですね。経路と許可は別に要る。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その範囲にあれば通信をAllowする、という意味でもないんですね。経路と許可は別に要る。",
+          "lines": [
+            "その範囲にあれば通信をAllowする、",
+            "という意味でもないんですね。経路と許可は別に要る。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--allow.svg",
+        "highlightRows": [
+          "allow"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-055-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "そのとおりです。また、同じプライベートRangesという名前でも、アイディーピーエスの方向分類用とは別です。どの設定内の値かも確かめます。",
+      "caption": "そのとおりです。また、同じprivateRangesという名前でも、IDPSの方向分類用とは別です。どの設定内の値かも確かめます。",
+      "subtitleLines": [
+        "そのとおりです。また、同じprivateRangesという名前でも、",
+        "IDPSの方向分類用とは別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのとおりです。また、同じprivateRangesという名前でも、IDPSの方向分類用とは別です。",
+          "lines": [
+            "そのとおりです。また、同じprivateRangesという名前でも、",
+            "IDPSの方向分類用とは別です。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "どの設定内の値かも確かめます。",
+          "lines": [
+            "どの設定内の値かも確かめます。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--idps.svg",
+        "highlightRows": [
+          "idps"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-056-manabu",
+      "speaker": "manabu",
+      "chapterId": "snat",
+      "speech": "送信元を保持する設計だから、復路も同じファイアウォールへ戻す経路と組み合わせる。第4回で見た往復経路が、ここにもつながりますね。",
+      "caption": "送信元を保持する設計だから、復路も同じFirewallへ戻す経路と組み合わせる。第4回で見た往復経路が、ここにもつながりますね。",
+      "subtitleLines": [
+        "送信元を保持する設計だから、復路も同じFirewallへ戻す",
+        "経路と組み合わせる。第4回で見た往復経路が、ここにもつながりますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送信元を保持する設計だから、復路も同じFirewallへ戻す経路と組み合わせる。第4回で見た往復経路が、ここにもつながりますね。",
+          "lines": [
+            "送信元を保持する設計だから、復路も同じFirewallへ戻す",
+            "経路と組み合わせる。第4回で見た往復経路が、ここにもつながりますね。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-network-snat",
+        "heading": "Networkのprivate宛ては、送信元を保持する",
+        "svg": "diagrams/private-network-snat--fw-allow.svg",
+        "highlightRows": [
+          "fw",
+          "allow"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-057-mako",
+      "speaker": "mako",
+      "chapterId": "snat",
+      "speech": "ネットワークでプライベート宛てを変換しないなら、アプリケーションルールでも同じ除外が効きますか。",
+      "caption": "Networkでprivate宛てを変換しないなら、Applicationルールでも同じ除外が効きますか。",
+      "subtitleLines": [
+        "Networkでprivate宛てを変換しないなら、",
+        "Applicationルールでも同じ除外が効きますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Networkでprivate宛てを変換しないなら、Applicationルールでも同じ除外が効きますか。",
+          "lines": [
+            "Networkでprivate宛てを変換しないなら、",
+            "Applicationルールでも同じ除外が効きますか。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "そこは異なります。アプリケーションルールは透明プロキシを通し、宛先がプライベートでもスナットする仕様です。ネットワーク用の非スナット設定を、そのまま当てはめません。",
+      "caption": "そこは異なります。Applicationルールは透明プロキシを通し、宛先がprivateでもSNATする仕様です。Network用の非SNAT設定を、そのまま当てはめません。",
+      "subtitleLines": [
+        "そこは異なります。Applicationルールは透明プロキシを通し、",
+        "宛先がprivateでもSNATする仕様です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこは異なります。Applicationルールは透明プロキシを通し、宛先がprivateでもSNATする仕様です。",
+          "lines": [
+            "そこは異なります。Applicationルールは透明プロキシを通し、",
+            "宛先がprivateでもSNATする仕様です。"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "Network用の非SNAT設定を、そのまま当てはめません。",
+          "lines": [
+            "Network用の非SNAT設定を、そのまま当てはめません。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--application.svg",
+        "highlightRows": [
+          "application"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "現在の標準アプリケーションルールは公開エフキューディーエヌ向けです。プライベート宛てのアプリケーション通信が、標準で存在するという意味ではありません。",
+      "caption": "現在の標準Applicationルールは公開FQDN向けです。private宛てのApplication通信が、標準で存在するという意味ではありません。",
+      "subtitleLines": [
+        "現在の標準Applicationルールは公開FQDN向けです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "現在の標準Applicationルールは公開FQDN向けです。",
+          "lines": [
+            "現在の標準Applicationルールは公開FQDN向けです。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "private宛てのApplication通信が、標準で存在するという意味ではありません。",
+          "lines": [
+            "private宛てのApplication通信が、",
+            "標準で存在するという意味ではありません。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--application.svg",
+        "highlightRows": [
+          "application"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-060-mako",
+      "speaker": "mako",
+      "chapterId": "snat",
+      "speech": "もう一つ、プライベートエンドポイントへの直接接続では、ファイアウォールによる送信元の変換を考える必要はありますか。",
+      "caption": "もう一つ、PEへの直接接続では、Firewallによる送信元の変換を考える必要はありますか。",
+      "subtitleLines": [
+        "もう一つ、PEへの直接接続では、",
+        "Firewallによる送信元の変換を考える必要はありますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "もう一つ、PEへの直接接続では、Firewallによる送信元の変換を考える必要はありますか。",
+          "lines": [
+            "もう一つ、PEへの直接接続では、",
+            "Firewallによる送信元の変換を考える必要はありますか。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--base.svg",
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-061-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "snat",
+      "speech": "ファイアウォールを通らないので、ファイアウォールによるスナットはありません。対象の送信元とプライベートエンドポイント側の制御を確認し、ファイアウォール公開アイピーを送信元にした通信として扱いません。",
+      "caption": "Firewallを通らないので、FirewallによるSNATはありません。対象の送信元とPE側の制御を確認し、Firewall公開IPを送信元にした通信として扱いません。",
+      "subtitleLines": [
+        "Firewallを通らないので、",
+        "FirewallによるSNATはありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Firewallを通らないので、FirewallによるSNATはありません。",
+          "lines": [
+            "Firewallを通らないので、",
+            "FirewallによるSNATはありません。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "対象の送信元とPE側の制御を確認し、Firewall公開IPを送信元にした通信として扱いません。",
+          "lines": [
+            "対象の送信元とPE側の制御を確認し、",
+            "Firewall公開IPを送信元にした通信として扱いません。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--pe.svg",
+        "highlightRows": [
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-062-manabu",
+      "speaker": "manabu",
+      "chapterId": "snat",
+      "speech": "エイチティーティーピーヘッダーの元利用者情報と、エヌエスジーが照合するネットワーク送信元は別です。アプリケーションゲートウェイは内部へ新しい接続を作るので、制御箇所ごとに見える相手を確認します。",
+      "caption": "HTTPヘッダーの元利用者情報と、NSGが照合するネットワーク送信元は別です。AppGWは内部へ新しい接続を作るので、制御箇所ごとに見える相手を確認します。",
+      "subtitleLines": [
+        "HTTPヘッダーの元利用者情報と、",
+        "NSGが照合するネットワーク送信元は別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "HTTPヘッダーの元利用者情報と、NSGが照合するネットワーク送信元は別です。",
+          "lines": [
+            "HTTPヘッダーの元利用者情報と、",
+            "NSGが照合するネットワーク送信元は別です。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "AppGWは内部へ新しい接続を作るので、制御箇所ごとに見える相手を確認します。",
+          "lines": [
+            "AppGWは内部へ新しい接続を作るので、",
+            "制御箇所ごとに見える相手を確認します。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "snat-by-path",
+        "heading": "ルール種別と直接経路で、SNATの扱いを分ける",
+        "svg": "diagrams/snat-by-path--sender.svg",
+        "highlightRows": [
+          "sender"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-063-mako",
+      "speaker": "mako",
+      "chapterId": "measure",
+      "speech": "出口の仕組みが分かりました。ポータルには期待する出口アイピーを渡す設定がありますよね。それで実測済みと言えますか。",
+      "caption": "出口の仕組みが分かりました。Portalには期待する出口IPを渡す設定がありますよね。それで実測済みと言えますか。",
+      "subtitleLines": [
+        "出口の仕組みが分かりました。Portalには",
+        "期待する出口IPを渡す設定がありますよね。それで実測済みと言えますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "出口の仕組みが分かりました。Portalには期待する出口IPを渡す設定がありますよね。それで実測済みと言えますか。",
+          "lines": [
+            "出口の仕組みが分かりました。Portalには",
+            "期待する出口IPを渡す設定がありますよね。それで実測済みと言えますか。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "expected-vs-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "期待値の受渡しと、実測・照合を分ける",
+        "title": "期待値の受渡しと、実測・照合を分ける",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "期待値・確認先があることと、実測結果があることは別",
+        "fields": [
+          {
+            "id": "output",
+            "label": "infra出力 expectedEgressIp",
+            "value": "Firewallの公開IPを期待値として出力"
+          },
+          {
+            "id": "env",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP へ渡す"
+          },
+          {
+            "id": "probe",
+            "label": "出口確認先の通信許可",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "現在のPortal実装",
+            "value": "この環境変数による自動実測・照合処理はない"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson06-turn-064-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "measure",
+      "speech": "まだ言えません。infraはファイアウォールの公開アイピーをエクスペクテッド・イーグレス・アイピーとして出力し、ポータル配備はエクスペクテッド・イーグレス・アイピーという環境変数へ渡しています。",
+      "caption": "まだ言えません。infraはFirewallの公開IPをexpectedEgressIpとして出力し、Portal配備はEXPECTED_EGRESS_IPという環境変数へ渡しています。",
+      "subtitleLines": [
+        "まだ言えません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まだ言えません。",
+          "lines": [
+            "まだ言えません。"
+          ],
+          "weight": 8
+        },
+        {
+          "caption": "infraはFirewallの公開IPをexpectedEgressIpとして出力し、",
+          "lines": [
+            "infraはFirewallの公開IPを",
+            "expectedEgressIpとして出力し、"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "Portal配備はEXPECTED_EGRESS_IPという環境変数へ渡しています。",
+          "lines": [
+            "Portal配備はEXPECTED_EGRESS_IP",
+            "という環境変数へ渡しています。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "expected-vs-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "期待値の受渡しと、実測・照合を分ける",
+        "title": "期待値の受渡しと、実測・照合を分ける",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "期待値・確認先があることと、実測結果があることは別",
+        "fields": [
+          {
+            "id": "output",
+            "label": "infra出力 expectedEgressIp",
+            "value": "Firewallの公開IPを期待値として出力"
+          },
+          {
+            "id": "env",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP へ渡す"
+          },
+          {
+            "id": "probe",
+            "label": "出口確認先の通信許可",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "現在のPortal実装",
+            "value": "この環境変数による自動実測・照合処理はない"
+          }
+        ],
+        "highlightFields": [
+          "output",
+          "env"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-065-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "measure",
+      "speech": "さらに、出口確認用のエーピーアイ・アイピファイ・ドット・オーグへの通信許可もあります。ただし、現在のポータルコードには、その環境変数を使う出口アイピーの自動実測・照合処理はありません。",
+      "caption": "さらに、出口確認用のapi.ipify.orgへの通信許可もあります。ただし、現在のPortalコードには、その環境変数を使う出口IPの自動実測・照合処理はありません。",
+      "subtitleLines": [
+        "さらに、出口確認用のapi.ipify.orgへの通信許可もあります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "さらに、出口確認用のapi.ipify.orgへの通信許可もあります。",
+          "lines": [
+            "さらに、出口確認用のapi.ipify.orgへの通信許可もあります。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "ただし、現在のPortalコードには、その環境変数を使う出口IPの自動実測・照合処理はありません。",
+          "lines": [
+            "ただし、現在のPortalコードには、",
+            "その環境変数を使う出口IPの自動実測・照合処理はありません。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "expected-vs-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "期待値の受渡しと、実測・照合を分ける",
+        "title": "期待値の受渡しと、実測・照合を分ける",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "期待値・確認先があることと、実測結果があることは別",
+        "fields": [
+          {
+            "id": "output",
+            "label": "infra出力 expectedEgressIp",
+            "value": "Firewallの公開IPを期待値として出力"
+          },
+          {
+            "id": "env",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP へ渡す"
+          },
+          {
+            "id": "probe",
+            "label": "出口確認先の通信許可",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "現在のPortal実装",
+            "value": "この環境変数による自動実測・照合処理はない"
+          }
+        ],
+        "highlightFields": [
+          "probe",
+          "automatic"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-066-manabu",
+      "speaker": "manabu",
+      "chapterId": "measure",
+      "speech": "期待値と確認用の宛先が用意されている。そこまでは設定から説明できますが、測って一致した証拠は別に必要なんですね。",
+      "caption": "期待値と確認用の宛先が用意されている。そこまでは設定から説明できますが、測って一致した証拠は別に必要なんですね。",
+      "subtitleLines": [
+        "期待値と確認用の宛先が用意されている。",
+        "そこまでは設定から説明できますが、測って一致した証拠は別に必要なんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "期待値と確認用の宛先が用意されている。そこまでは設定から説明できますが、測って一致した証拠は別に必要なんですね。",
+          "lines": [
+            "期待値と確認用の宛先が用意されている。",
+            "そこまでは設定から説明できますが、測って一致した証拠は別に必要なんですね。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "expected-vs-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "期待値の受渡しと、実測・照合を分ける",
+        "title": "期待値の受渡しと、実測・照合を分ける",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "期待値・確認先があることと、実測結果があることは別",
+        "fields": [
+          {
+            "id": "output",
+            "label": "infra出力 expectedEgressIp",
+            "value": "Firewallの公開IPを期待値として出力"
+          },
+          {
+            "id": "env",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP へ渡す"
+          },
+          {
+            "id": "probe",
+            "label": "出口確認先の通信許可",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "現在のPortal実装",
+            "value": "この環境変数による自動実測・照合処理はない"
+          }
+        ],
+        "highlightFields": [
+          "output",
+          "automatic"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-067-mako",
+      "speaker": "mako",
+      "chapterId": "measure",
+      "speech": "私の端末から確認サイトへアクセスして、その値を期待値と比べればよいですか。",
+      "caption": "私の端末から確認サイトへアクセスして、その値を期待値と比べればよいですか。",
+      "subtitleLines": [
+        "私の端末から確認サイトへアクセスして、",
+        "その値を期待値と比べればよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "私の端末から確認サイトへアクセスして、その値を期待値と比べればよいですか。",
+          "lines": [
+            "私の端末から確認サイトへアクセスして、",
+            "その値を期待値と比べればよいですか。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "measurement-origin",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "対象の実行場所から、同じ条件で出口を測る",
+        "title": "対象の実行場所から、同じ条件で出口を測る",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "端末からの測定は、その端末の出口を測るもの",
+        "fields": [
+          {
+            "id": "target",
+            "label": "実行場所",
+            "value": "Portalの出口は、対象Portalの実行場所から確認"
+          },
+          {
+            "id": "expected",
+            "label": "期待値",
+            "value": "対象環境の出力から取得したFirewall公開IP"
+          },
+          {
+            "id": "probe",
+            "label": "確認先",
+            "value": "許可された出口確認先へ対象から接続"
+          },
+          {
+            "id": "record",
+            "label": "結果の記録",
+            "value": "環境 / 実行場所 / 時刻 / 確認先 / 観測値"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson06-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "measure",
+      "speech": "端末の出口を測っても、ポータルの出口を測ったことにはなりません。対象環境の期待値を取得し、対象の実行場所から確認先へ接続して比較します。",
+      "caption": "端末の出口を測っても、Portalの出口を測ったことにはなりません。対象環境の期待値を取得し、対象の実行場所から確認先へ接続して比較します。",
+      "subtitleLines": [
+        "端末の出口を測っても、Portalの出口を測ったことにはなりません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "端末の出口を測っても、Portalの出口を測ったことにはなりません。",
+          "lines": [
+            "端末の出口を測っても、Portalの出口を測ったことにはなりません。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "対象環境の期待値を取得し、対象の実行場所から確認先へ接続して比較します。",
+          "lines": [
+            "対象環境の期待値を取得し、対象の実行場所から確認先へ接続して比較します。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "measurement-origin",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "対象の実行場所から、同じ条件で出口を測る",
+        "title": "対象の実行場所から、同じ条件で出口を測る",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "端末からの測定は、その端末の出口を測るもの",
+        "fields": [
+          {
+            "id": "target",
+            "label": "実行場所",
+            "value": "Portalの出口は、対象Portalの実行場所から確認"
+          },
+          {
+            "id": "expected",
+            "label": "期待値",
+            "value": "対象環境の出力から取得したFirewall公開IP"
+          },
+          {
+            "id": "probe",
+            "label": "確認先",
+            "value": "許可された出口確認先へ対象から接続"
+          },
+          {
+            "id": "record",
+            "label": "結果の記録",
+            "value": "環境 / 実行場所 / 時刻 / 確認先 / 観測値"
+          }
+        ],
+        "highlightFields": [
+          "target",
+          "expected",
+          "probe"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-069-manabu",
+      "speaker": "manabu",
+      "chapterId": "measure",
+      "speech": "どの環境のどこから、いつ、どの確認先へ接続したかも記録します。後から同じ条件で説明しやすくなります。",
+      "caption": "どの環境のどこから、いつ、どの確認先へ接続したかも記録します。後から同じ条件で説明しやすくなります。",
+      "subtitleLines": [
+        "どの環境のどこから、いつ、どの確認先へ接続したかも記録します。",
+        "後から同じ条件で説明しやすくなります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "どの環境のどこから、いつ、どの確認先へ接続したかも記録します。後から同じ条件で説明しやすくなります。",
+          "lines": [
+            "どの環境のどこから、いつ、どの確認先へ接続したかも記録します。",
+            "後から同じ条件で説明しやすくなります。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "measurement-origin",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "対象の実行場所から、同じ条件で出口を測る",
+        "title": "対象の実行場所から、同じ条件で出口を測る",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "端末からの測定は、その端末の出口を測るもの",
+        "fields": [
+          {
+            "id": "target",
+            "label": "実行場所",
+            "value": "Portalの出口は、対象Portalの実行場所から確認"
+          },
+          {
+            "id": "expected",
+            "label": "期待値",
+            "value": "対象環境の出力から取得したFirewall公開IP"
+          },
+          {
+            "id": "probe",
+            "label": "確認先",
+            "value": "許可された出口確認先へ対象から接続"
+          },
+          {
+            "id": "record",
+            "label": "結果の記録",
+            "value": "環境 / 実行場所 / 時刻 / 確認先 / 観測値"
+          }
+        ],
+        "highlightFields": [
+          "record"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-070-mako",
+      "speaker": "mako",
+      "chapterId": "measure",
+      "speech": "もし違うアイピーが返ったら、すぐに許可元アイピーをその値へ書き換えてよいんでしょうか。",
+      "caption": "もし違うIPが返ったら、すぐに許可元IPをその値へ書き換えてよいんでしょうか。",
+      "subtitleLines": [
+        "もし違うIPが返ったら、",
+        "すぐに許可元IPをその値へ書き換えてよいんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "もし違うIPが返ったら、すぐに許可元IPをその値へ書き換えてよいんでしょうか。",
+          "lines": [
+            "もし違うIPが返ったら、",
+            "すぐに許可元IPをその値へ書き換えてよいんでしょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "unexpected-egress",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "出口IPが違うときに、比較条件と経路を確かめる",
+        "title": "出口IPが違うときに、比較条件と経路を確かめる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "origin",
+              "cells": [
+                "比較の条件",
+                "同じ環境・実行場所からの通信か"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "実効経路・出口資源",
+                "FW / ハブ集約など、実際に通る出口は何か"
+              ]
+            },
+            {
+              "id": "limit",
+              "cells": [
+                "観測の範囲",
+                "確認先1件の結果を全宛先へ一般化しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEへの直接経路",
+                "公開宛ての出口IP確認とは別"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "そろえる根拠",
+                "対象環境の出力 / 実際の経路 / 観測結果"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-071-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "measure",
+      "speech": "まず同じ環境と実行場所を比べているか、対象の実効経路と出口資源は何かを確かめます。ハブ集約出口へ変更した場合など、期待する経路自体が変わることもあります。",
+      "caption": "まず同じ環境と実行場所を比べているか、対象の実効経路と出口資源は何かを確かめます。ハブ集約出口へ変更した場合など、期待する経路自体が変わることもあります。",
+      "subtitleLines": [
+        "まず同じ環境と実行場所を比べているか、",
+        "対象の実効経路と出口資源は何かを確かめます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず同じ環境と実行場所を比べているか、対象の実効経路と出口資源は何かを確かめます。",
+          "lines": [
+            "まず同じ環境と実行場所を比べているか、",
+            "対象の実効経路と出口資源は何かを確かめます。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "ハブ集約出口へ変更した場合など、期待する経路自体が変わることもあります。",
+          "lines": [
+            "ハブ集約出口へ変更した場合など、期待する経路自体が変わることもあります。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "unexpected-egress",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "出口IPが違うときに、比較条件と経路を確かめる",
+        "title": "出口IPが違うときに、比較条件と経路を確かめる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "origin",
+              "cells": [
+                "比較の条件",
+                "同じ環境・実行場所からの通信か"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "実効経路・出口資源",
+                "FW / ハブ集約など、実際に通る出口は何か"
+              ]
+            },
+            {
+              "id": "limit",
+              "cells": [
+                "観測の範囲",
+                "確認先1件の結果を全宛先へ一般化しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEへの直接経路",
+                "公開宛ての出口IP確認とは別"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "そろえる根拠",
+                "対象環境の出力 / 実際の経路 / 観測結果"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "origin",
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "measure",
+      "speech": "確認先一件の観測を、全宛先の出口へ広げないことも大切です。特にプライベートエンドポイントの直接経路は別です。確認できた通信の範囲と、未確認の範囲を分けて記録します。",
+      "caption": "確認先一件の観測を、全宛先の出口へ広げないことも大切です。特にPEの直接経路は別です。確認できた通信の範囲と、未確認の範囲を分けて記録します。",
+      "subtitleLines": [
+        "確認先一件の観測を、全宛先の出口へ広げないことも大切です。",
+        "特にPEの直接経路は別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "確認先一件の観測を、全宛先の出口へ広げないことも大切です。特にPEの直接経路は別です。",
+          "lines": [
+            "確認先一件の観測を、全宛先の出口へ広げないことも大切です。",
+            "特にPEの直接経路は別です。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "確認できた通信の範囲と、未確認の範囲を分けて記録します。",
+          "lines": [
+            "確認できた通信の範囲と、未確認の範囲を分けて記録します。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "unexpected-egress",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "出口IPが違うときに、比較条件と経路を確かめる",
+        "title": "出口IPが違うときに、比較条件と経路を確かめる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "origin",
+              "cells": [
+                "比較の条件",
+                "同じ環境・実行場所からの通信か"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "実効経路・出口資源",
+                "FW / ハブ集約など、実際に通る出口は何か"
+              ]
+            },
+            {
+              "id": "limit",
+              "cells": [
+                "観測の範囲",
+                "確認先1件の結果を全宛先へ一般化しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEへの直接経路",
+                "公開宛ての出口IP確認とは別"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "そろえる根拠",
+                "対象環境の出力 / 実際の経路 / 観測結果"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "limit",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-073-manabu",
+      "speaker": "manabu",
+      "chapterId": "measure",
+      "speech": "相手の許可元アイピーを管理するときは、対象環境の実出力、実際の経路、観測結果をそろえる。構成図の想像でアイピーの実値を決めないんですね。",
+      "caption": "相手の許可元IPを管理するときは、対象環境の実出力、実際の経路、観測結果をそろえる。構成図の想像でIPの実値を決めないんですね。",
+      "subtitleLines": [
+        "相手の許可元IPを管理するときは、対象環境の実出力、実際の経路、",
+        "観測結果をそろえる。構成図の想像でIPの実値を決めないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "相手の許可元IPを管理するときは、対象環境の実出力、実際の経路、観測結果をそろえる。構成図の想像でIPの実値を決めないんですね。",
+          "lines": [
+            "相手の許可元IPを管理するときは、対象環境の実出力、実際の経路、",
+            "観測結果をそろえる。構成図の想像でIPの実値を決めないんですね。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "unexpected-egress",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "出口IPが違うときに、比較条件と経路を確かめる",
+        "title": "出口IPが違うときに、比較条件と経路を確かめる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "origin",
+              "cells": [
+                "比較の条件",
+                "同じ環境・実行場所からの通信か"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "実効経路・出口資源",
+                "FW / ハブ集約など、実際に通る出口は何か"
+              ]
+            },
+            {
+              "id": "limit",
+              "cells": [
+                "観測の範囲",
+                "確認先1件の結果を全宛先へ一般化しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "PEへの直接経路",
+                "公開宛ての出口IP確認とは別"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "そろえる根拠",
+                "対象環境の出力 / 実際の経路 / 観測結果"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "evidence"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ここで三つ確認します。一つ目。公開パラメーター例の許可エフキューディーエヌ配列が空でした。外部接続先の最終許可も空だと判断できますか。",
+      "caption": "ここで三つ確認します。一つ目。公開params例の許可FQDN配列が空でした。外部接続先の最終許可も空だと判断できますか。",
+      "subtitleLines": [
+        "ここで三つ確認します。一つ目。公開params例の許可FQDN配列が空でした。",
+        "外部接続先の最終許可も空だと判断できますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで三つ確認します。一つ目。公開params例の許可FQDN配列が空でした。外部接続先の最終許可も空だと判断できますか。",
+          "lines": [
+            "ここで三つ確認します。一つ目。公開params例の許可FQDN配列が空でした。",
+            "外部接続先の最終許可も空だと判断できますか。"
+          ],
+          "weight": 61
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-generated",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認1：入力の空配列から、最終許可を判断できる？",
+        "title": "確認1：入力の空配列から、最終許可を判断できる？",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "入力の状態と、生成・配備後の状態を比べる",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "input",
+              "cells": [
+                "公開params例",
+                "apimAllowedFqdns / managementAllowedFqdns：[]"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "設定生成・API公開",
+                "入力から配備する設定を組み立てる工程"
+              ]
+            },
+            {
+              "id": "deployed",
+              "cells": [
+                "確認する最終状態",
+                "生成設定と、Azure上に配備したルール"
+              ]
+            },
+            {
+              "id": "retained",
+              "cells": [
+                "旧FQDNの許可",
+                "API公開は既存宛先を保持する追加方式"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson06-turn-075-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "できません。設定生成やエーピーアイ公開でホストが追加されます。入力ジェイソン、生成された設定、アジュール上のルールを対応付けて、最終的な許可先を確認します。",
+      "caption": "できません。設定生成やAPI公開でホストが追加されます。入力JSON、生成された設定、Azure上のルールを対応付けて、最終的な許可先を確認します。",
+      "subtitleLines": [
+        "できません。設定生成やAPI公開でホストが追加されます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "できません。設定生成やAPI公開でホストが追加されます。",
+          "lines": [
+            "できません。設定生成やAPI公開でホストが追加されます。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "入力JSON、生成された設定、Azure上のルールを対応付けて、最終的な許可先を確認します。",
+          "lines": [
+            "入力JSON、生成された設定、Azure上のルールを対応付けて、",
+            "最終的な許可先を確認します。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-generated",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認1：入力の空配列から、最終許可を判断できる？",
+        "title": "確認1：入力の空配列から、最終許可を判断できる？",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "入力の状態と、生成・配備後の状態を比べる",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "input",
+              "cells": [
+                "公開params例",
+                "apimAllowedFqdns / managementAllowedFqdns：[]"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "設定生成・API公開",
+                "入力から配備する設定を組み立てる工程"
+              ]
+            },
+            {
+              "id": "deployed",
+              "cells": [
+                "確認する最終状態",
+                "生成設定と、Azure上に配備したルール"
+              ]
+            },
+            {
+              "id": "retained",
+              "cells": [
+                "旧FQDNの許可",
+                "API公開は既存宛先を保持する追加方式"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "generate",
+          "deployed"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-076-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "エーピーアイ公開は追加方式なので、削除したエーピーアイの旧エフキューディーエヌが残ることにも注意します。追加できたことだけで、不要な許可の整理まで終わったとは判断しません。",
+      "caption": "API公開は追加方式なので、削除したAPIの旧FQDNが残ることにも注意します。追加できたことだけで、不要な許可の整理まで終わったとは判断しません。",
+      "subtitleLines": [
+        "API公開は追加方式なので、",
+        "削除したAPIの旧FQDNが残ることにも注意します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "API公開は追加方式なので、削除したAPIの旧FQDNが残ることにも注意します。",
+          "lines": [
+            "API公開は追加方式なので、",
+            "削除したAPIの旧FQDNが残ることにも注意します。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "追加できたことだけで、不要な許可の整理まで終わったとは判断しません。",
+          "lines": [
+            "追加できたことだけで、不要な許可の整理まで終わったとは判断しません。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-generated",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認1：入力の空配列から、最終許可を判断できる？",
+        "title": "確認1：入力の空配列から、最終許可を判断できる？",
+        "kind": "ネットワーク",
+        "section": "宛先の生成",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "入力の状態と、生成・配備後の状態を比べる",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "input",
+              "cells": [
+                "公開params例",
+                "apimAllowedFqdns / managementAllowedFqdns：[]"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "設定生成・API公開",
+                "入力から配備する設定を組み立てる工程"
+              ]
+            },
+            {
+              "id": "deployed",
+              "cells": [
+                "確認する最終状態",
+                "生成設定と、Azure上に配備したルール"
+              ]
+            },
+            {
+              "id": "retained",
+              "cells": [
+                "旧FQDNの許可",
+                "API公開は既存宛先を保持する追加方式"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "retained"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二つ目。ネットワークのスナットのプライベートレンジズに宛先が入っています。これなら通信が許可され、エヌエスジーやファイアウォールのアローは確認しなくてよいですか。",
+      "caption": "二つ目。Networkのsnat.privateRangesに宛先が入っています。これなら通信が許可され、NSGやFirewallのAllowは確認しなくてよいですか。",
+      "subtitleLines": [
+        "二つ目。Networkのsnat.privateRangesに",
+        "宛先が入っています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "二つ目。Networkのsnat.privateRangesに宛先が入っています。",
+          "lines": [
+            "二つ目。Networkのsnat.privateRangesに",
+            "宛先が入っています。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "これなら通信が許可され、NSGやFirewallのAllowは確認しなくてよいですか。",
+          "lines": [
+            "これなら通信が許可され、",
+            "NSGやFirewallのAllowは確認しなくてよいですか。"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-private-ranges",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "title": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "送信元変換と、通信を許可する判断を区別する",
+        "fields": [
+          {
+            "id": "ranges",
+            "label": "Network / snat.privateRanges",
+            "value": "NetworkでSNATしない宛先範囲"
+          },
+          {
+            "id": "permit",
+            "label": "通信許可・経路",
+            "value": "NSG / FirewallのAllowと、往復経路"
+          },
+          {
+            "id": "application",
+            "label": "Applicationの扱い",
+            "value": "透明プロキシによるSNATはNetworkと別"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson06-turn-078-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "いいえ。これはネットワークでスナットしない宛先範囲です。通信許可ではありません。経路とアローを別に確認し、アプリケーションにも同じ除外が効くとは考えません。",
+      "caption": "いいえ。これはNetworkでSNATしない宛先範囲です。通信許可ではありません。経路とAllowを別に確認し、Applicationにも同じ除外が効くとは考えません。",
+      "subtitleLines": [
+        "いいえ。これはNetworkでSNATしない宛先範囲です。",
+        "通信許可ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。これはNetworkでSNATしない宛先範囲です。通信許可ではありません。",
+          "lines": [
+            "いいえ。これはNetworkでSNATしない宛先範囲です。",
+            "通信許可ではありません。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "経路とAllowを別に確認し、Applicationにも同じ除外が効くとは考えません。",
+          "lines": [
+            "経路とAllowを別に確認し、",
+            "Applicationにも同じ除外が効くとは考えません。"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-private-ranges",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "title": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "送信元変換と、通信を許可する判断を区別する",
+        "fields": [
+          {
+            "id": "ranges",
+            "label": "Network / snat.privateRanges",
+            "value": "NetworkでSNATしない宛先範囲"
+          },
+          {
+            "id": "permit",
+            "label": "通信許可・経路",
+            "value": "NSG / FirewallのAllowと、往復経路"
+          },
+          {
+            "id": "application",
+            "label": "Applicationの扱い",
+            "value": "透明プロキシによるSNATはNetworkと別"
+          }
+        ],
+        "highlightFields": [
+          "ranges",
+          "permit",
+          "application"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-079-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "送信元を変えるかと、送ってよいかは違う判断。設定の名前が似ていても、何を決める値なのかを説明するのが大事ですね。",
+      "caption": "送信元を変えるかと、送ってよいかは違う判断。設定の名前が似ていても、何を決める値なのかを説明するのが大事ですね。",
+      "subtitleLines": [
+        "送信元を変えるかと、送ってよいかは違う判断。設定の名前が似ていても、",
+        "何を決める値なのかを説明するのが大事ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送信元を変えるかと、送ってよいかは違う判断。設定の名前が似ていても、何を決める値なのかを説明するのが大事ですね。",
+          "lines": [
+            "送信元を変えるかと、送ってよいかは違う判断。設定の名前が似ていても、",
+            "何を決める値なのかを説明するのが大事ですね。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-private-ranges",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "title": "確認2：非SNATの範囲なら、Allow確認は不要？",
+        "kind": "ネットワーク",
+        "section": "出口とSNAT",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "送信元変換と、通信を許可する判断を区別する",
+        "fields": [
+          {
+            "id": "ranges",
+            "label": "Network / snat.privateRanges",
+            "value": "NetworkでSNATしない宛先範囲"
+          },
+          {
+            "id": "permit",
+            "label": "通信許可・経路",
+            "value": "NSG / FirewallのAllowと、往復経路"
+          },
+          {
+            "id": "application",
+            "label": "Applicationの扱い",
+            "value": "透明プロキシによるSNATはNetworkと別"
+          }
+        ],
+        "highlightFields": [
+          "ranges",
+          "permit"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-080-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後です。期待値の環境変数があり、出口確認先も許可されています。ポータルの出口アイピーは自動測定され、一致確認も済んでいますか。",
+      "caption": "最後です。期待値の環境変数があり、出口確認先も許可されています。Portalの出口IPは自動測定され、一致確認も済んでいますか。",
+      "subtitleLines": [
+        "最後です。期待値の環境変数があり、出口確認先も許可されています。",
+        "Portalの出口IPは自動測定され、一致確認も済んでいますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後です。期待値の環境変数があり、出口確認先も許可されています。Portalの出口IPは自動測定され、一致確認も済んでいますか。",
+          "lines": [
+            "最後です。期待値の環境変数があり、出口確認先も許可されています。",
+            "Portalの出口IPは自動測定され、一致確認も済んでいますか。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認3：期待値と確認先があれば、自動照合済み？",
+        "title": "確認3：期待値と確認先があれば、自動照合済み？",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "確認できた通信の範囲と、設定から分かることを分ける",
+        "fields": [
+          {
+            "id": "expected",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP"
+          },
+          {
+            "id": "probe",
+            "label": "通信を許可する確認先",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "自動実測・照合の実装",
+            "value": "現在のPortalコードには処理なし"
+          },
+          {
+            "id": "evidence",
+            "label": "一致を確認する根拠",
+            "value": "対象の実行場所からの測定結果と期待値"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson06-turn-081-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "いいえ。自動実測・照合処理はありません。対象の実行場所から測り、期待値と比べて初めて、その通信について一致を確認したと言えます。",
+      "caption": "いいえ。自動実測・照合処理はありません。対象の実行場所から測り、期待値と比べて初めて、その通信について一致を確認したと言えます。",
+      "subtitleLines": [
+        "いいえ。自動実測・照合処理はありません。対象の実行場所から測り、",
+        "期待値と比べて初めて、その通信について一致を確認したと言えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。自動実測・照合処理はありません。対象の実行場所から測り、期待値と比べて初めて、その通信について一致を確認したと言えます。",
+          "lines": [
+            "いいえ。自動実測・照合処理はありません。対象の実行場所から測り、",
+            "期待値と比べて初めて、その通信について一致を確認したと言えます。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認3：期待値と確認先があれば、自動照合済み？",
+        "title": "確認3：期待値と確認先があれば、自動照合済み？",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "確認できた通信の範囲と、設定から分かることを分ける",
+        "fields": [
+          {
+            "id": "expected",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP"
+          },
+          {
+            "id": "probe",
+            "label": "通信を許可する確認先",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "自動実測・照合の実装",
+            "value": "現在のPortalコードには処理なし"
+          },
+          {
+            "id": "evidence",
+            "label": "一致を確認する根拠",
+            "value": "対象の実行場所からの測定結果と期待値"
+          }
+        ],
+        "highlightFields": [
+          "automatic",
+          "evidence"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-082-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "三問とも、設定の一部から結果全体を決めつけないことが共通していますね。送信元、宛先、経路、確認した事実をそろえて判断します。",
+      "caption": "三問とも、設定の一部から結果全体を決めつけないことが共通していますね。送信元、宛先、経路、確認した事実をそろえて判断します。",
+      "subtitleLines": [
+        "三問とも、設定の一部から結果全体を決めつけないことが共通していますね。",
+        "送信元、宛先、経路、確認した事実をそろえて判断します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "三問とも、設定の一部から結果全体を決めつけないことが共通していますね。送信元、宛先、経路、確認した事実をそろえて判断します。",
+          "lines": [
+            "三問とも、設定の一部から結果全体を決めつけないことが共通していますね。",
+            "送信元、宛先、経路、確認した事実をそろえて判断します。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-measured",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "確認3：期待値と確認先があれば、自動照合済み？",
+        "title": "確認3：期待値と確認先があれば、自動照合済み？",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "notice": "確認できた通信の範囲と、設定から分かることを分ける",
+        "fields": [
+          {
+            "id": "expected",
+            "label": "Portalの環境変数",
+            "value": "EXPECTED_EGRESS_IP"
+          },
+          {
+            "id": "probe",
+            "label": "通信を許可する確認先",
+            "value": "api.ipify.org"
+          },
+          {
+            "id": "automatic",
+            "label": "自動実測・照合の実装",
+            "value": "現在のPortalコードには処理なし"
+          },
+          {
+            "id": "evidence",
+            "label": "一致を確認する根拠",
+            "value": "対象の実行場所からの測定結果と期待値"
+          }
+        ],
+        "highlightFields": [
+          "expected",
+          "evidence"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-083-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今日の流れを振り返ります。まず、Web依存先を送信元と用途で分けて許可する。許可先は入力だけでなく、設定生成やエーピーアイ公開による追加まで読みます。",
+      "caption": "今日の流れを振り返ります。まず、Web依存先を送信元と用途で分けて許可する。許可先は入力だけでなく、設定生成やAPI公開による追加まで読みます。",
+      "subtitleLines": [
+        "今日の流れを振り返ります。まず、",
+        "Web依存先を送信元と用途で分けて許可する。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の流れを振り返ります。まず、Web依存先を送信元と用途で分けて許可する。",
+          "lines": [
+            "今日の流れを振り返ります。まず、",
+            "Web依存先を送信元と用途で分けて許可する。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "許可先は入力だけでなく、設定生成やAPI公開による追加まで読みます。",
+          "lines": [
+            "許可先は入力だけでなく、設定生成やAPI公開による追加まで読みます。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-summary",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信を、設定から観測結果まで説明する",
+        "title": "外向き通信を、設定から観測結果まで説明する",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "1 / Web依存先",
+                "送信元・用途・FQDNをそろえて許可"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "2 / 生成される宛先",
+                "入力・設定生成・API公開・配備結果を照合"
+              ]
+            },
+            {
+              "id": "snat",
+              "cells": [
+                "3 / 出口と送信元",
+                "経路・Network / Application / PEを区別"
+              ]
+            },
+            {
+              "id": "measurement",
+              "cells": [
+                "4 / 出口IPの確認",
+                "期待値と、対象から測った実測を分ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "permit",
+          "generate"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-084-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "次に、どの出口を通り、相手からどの送信元に見えるか。入口のアプリケーションゲートウェイ公開アイピーと、公開宛てのファイアウォール出口アイピーを区別し、スナットの設定を確認します。",
+      "caption": "次に、どの出口を通り、相手からどの送信元に見えるか。入口のAppGW公開IPと、公開宛てのFirewall出口IPを区別し、SNATの設定を確認します。",
+      "subtitleLines": [
+        "次に、どの出口を通り、相手からどの送信元に見えるか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次に、どの出口を通り、相手からどの送信元に見えるか。",
+          "lines": [
+            "次に、どの出口を通り、相手からどの送信元に見えるか。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "入口のAppGW公開IPと、公開宛てのFirewall出口IPを区別し、SNATの設定を確認します。",
+          "lines": [
+            "入口のAppGW公開IPと、公開宛てのFirewall出口IPを区別し、",
+            "SNATの設定を確認します。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-summary",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信を、設定から観測結果まで説明する",
+        "title": "外向き通信を、設定から観測結果まで説明する",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "1 / Web依存先",
+                "送信元・用途・FQDNをそろえて許可"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "2 / 生成される宛先",
+                "入力・設定生成・API公開・配備結果を照合"
+              ]
+            },
+            {
+              "id": "snat",
+              "cells": [
+                "3 / 出口と送信元",
+                "経路・Network / Application / PEを区別"
+              ]
+            },
+            {
+              "id": "measurement",
+              "cells": [
+                "4 / 出口IPの確認",
+                "期待値と、対象から測った実測を分ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "snat"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-085-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "ネットワーク、アプリケーション、プライベートエンドポイントへの直接接続で扱いが違います。そして出口アイピーの期待値を渡す設定と、対象から測定して一致を確認することを分けてください。",
+      "caption": "Network、Application、PEへの直接接続で扱いが違います。そして出口IPの期待値を渡す設定と、対象から測定して一致を確認することを分けてください。",
+      "subtitleLines": [
+        "Network、Application、",
+        "PEへの直接接続で扱いが違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Network、Application、PEへの直接接続で扱いが違います。",
+          "lines": [
+            "Network、Application、",
+            "PEへの直接接続で扱いが違います。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "そして出口IPの期待値を渡す設定と、対象から測定して一致を確認することを分けてください。",
+          "lines": [
+            "そして出口IPの期待値を渡す設定と、",
+            "対象から測定して一致を確認することを分けてください。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "図の対象を順に示すように、設定と結果の違いを明瞭に説明する。通常速度を保つ。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "egress-summary",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "外向き通信を、設定から観測結果まで説明する",
+        "title": "外向き通信を、設定から観測結果まで説明する",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "table": {
+          "columns": [
+            {
+              "label": "設定・確認対象",
+              "width": 320
+            },
+            {
+              "label": "値・対応する通信",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "permit",
+              "cells": [
+                "1 / Web依存先",
+                "送信元・用途・FQDNをそろえて許可"
+              ]
+            },
+            {
+              "id": "generate",
+              "cells": [
+                "2 / 生成される宛先",
+                "入力・設定生成・API公開・配備結果を照合"
+              ]
+            },
+            {
+              "id": "snat",
+              "cells": [
+                "3 / 出口と送信元",
+                "経路・Network / Application / PEを区別"
+              ]
+            },
+            {
+              "id": "measurement",
+              "cells": [
+                "4 / 出口IPの確認",
+                "期待値と、対象から測った実測を分ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "snat",
+          "measurement"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-086-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次回は、つながらない一つの通信について、ディーエヌエス、実効経路、エヌエスジー、ファイアウォールログをどう照合するかを見ていきます。",
+      "caption": "次回は、つながらない一つの通信について、DNS、実効経路、NSG、Firewallログをどう照合するかを見ていきます。",
+      "subtitleLines": [
+        "次回は、つながらない一つの通信について、DNS、実効経路、NSG、",
+        "Firewallログをどう照合するかを見ていきます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次回は、つながらない一つの通信について、DNS、実効経路、NSG、Firewallログをどう照合するかを見ていきます。",
+          "lines": [
+            "次回は、つながらない一つの通信について、DNS、実効経路、NSG、",
+            "Firewallログをどう照合するかを見ていきます。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。文末の質問と納得を区別し、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "next-troubleshooting",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "第7回：同じ通信の調査材料をそろえる",
+        "title": "第7回：同じ通信の調査材料をそろえる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "fields": [
+          {
+            "id": "question",
+            "label": "調査の起点",
+            "value": "どこから / どこへ / どの経路で"
+          },
+          {
+            "id": "configuration",
+            "label": "確認する設定・状態",
+            "value": "DNS / 実効経路 / NSG"
+          },
+          {
+            "id": "logs",
+            "label": "判断の記録",
+            "value": "Firewallログと、対象の通信を照合"
+          }
+        ],
+        "highlightFields": [
+          "configuration",
+          "logs"
+        ]
+      }
+    },
+    {
+      "id": "lesson06-turn-087-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "どこからどこへ、どの経路で、何を確認したか。今日の見方を使って、次は調査の材料をそろえましょう。",
+      "caption": "どこからどこへ、どの経路で、何を確認したか。今日の見方を使って、次は調査の材料をそろえましょう。",
+      "subtitleLines": [
+        "どこからどこへ、どの経路で、何を確認したか。今日の見方を使って、",
+        "次は調査の材料をそろえましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "どこからどこへ、どの経路で、何を確認したか。今日の見方を使って、次は調査の材料をそろえましょう。",
+          "lines": [
+            "どこからどこへ、どの経路で、何を確認したか。今日の見方を使って、",
+            "次は調査の材料をそろえましょう。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "運用する人の目的と判断につなげる。落ち着いた対話で、結論を明確にする。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "next-troubleshooting",
+        "areaLabel": "第6回 / 外向き通信の設定",
+        "heading": "第7回：同じ通信の調査材料をそろえる",
+        "title": "第7回：同じ通信の調査材料をそろえる",
+        "kind": "ネットワーク",
+        "section": "期待値と実測",
+        "menu": [
+          "通信の許可",
+          "宛先の生成",
+          "出口とSNAT",
+          "期待値と実測"
+        ],
+        "subtitle": "設定と通信の対応を確認する教材ビュー",
+        "footer": "教材・リポジトリ定義・公開設定例に基づく。稼働環境の取得画面ではない。",
+        "fields": [
+          {
+            "id": "question",
+            "label": "調査の起点",
+            "value": "どこから / どこへ / どの経路で"
+          },
+          {
+            "id": "configuration",
+            "label": "確認する設定・状態",
+            "value": "DNS / 実効経路 / NSG"
+          },
+          {
+            "id": "logs",
+            "label": "判断の記録",
+            "value": "Firewallログと、対象の通信を照合"
+          }
+        ],
+        "highlightFields": [
+          "question"
+        ]
+      }
+    }
+  ],
+  "description": "Web依存先の許可から、生成されるFQDN、SNAT、出口IPの期待値と実測までを、一つの通信に沿って確認する。",
+  "visualStyle": "teaching-settings-v2"
+}

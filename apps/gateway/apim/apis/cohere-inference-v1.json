@@ -1,0 +1,77 @@
+{
+  "released": true,
+  "name": "cohere-inference-v1",
+  "displayName": "Cohere Inference V1",
+  "path": "models/cohere/v1",
+  "backendService": "foundryServices",
+  "backendAudience": "https://ai.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "cohere-embeddings",
+      "displayName": "Cohere Text Embeddings",
+      "method": "POST",
+      "urlTemplate": "/embed",
+      "templateParameters": [],
+      "backendUrlTemplate": "/providers/cohere/v2/embed"
+    },
+    {
+      "name": "rerank",
+      "displayName": "Rerank",
+      "method": "POST",
+      "urlTemplate": "/rerank",
+      "templateParameters": [],
+      "backendUrlTemplate": "/providers/cohere/v2/rerank"
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "cohere-embeddings": {
+        "kind": "bodyModel",
+        "bodyFormat": "json",
+        "maxRequestBytes": 262144,
+        "allowedModels": [
+          "embed-v-4-0"
+        ],
+        "arrayLimits": {
+          "texts": 16,
+          "embedding_types": 1
+        },
+        "stringChoices": {
+          "input_type": [
+            "search_document",
+            "search_query",
+            "classification",
+            "clustering"
+          ]
+        }
+      },
+      "rerank": {
+        "kind": "bodyModel",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "json",
+        "allowedModels": [
+          "Cohere-rerank-v4.0-fast",
+          "Cohere-rerank-v4.0-pro"
+        ],
+        "arrayLimits": {
+          "documents": 8
+        },
+        "integerLimits": {
+          "top_n": {
+            "minimum": 1,
+            "maximum": 3,
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform"
+}

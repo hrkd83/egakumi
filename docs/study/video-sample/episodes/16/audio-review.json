@@ -1,0 +1,798 @@
+{
+  "episode": "16",
+  "mechanicalOnly": true,
+  "listeningPerformed": false,
+  "speechRecognitionPerformed": false,
+  "originalsModified": false,
+  "networkRequestsMade": false,
+  "trigger": "Six raw turns flagged by near-full-scale ratio >0.01% and run >=8 samples.",
+  "finding": "The six flagged originals include brief exact full-scale plateaus. This confirms small clipped peaks in the generated PCM rather than only near-threshold samples. No zero/corrupt waveform, long-silence, excessive-RMS or duration flags were found by audio-audit.py.",
+  "decision": "Proceed with the approved loudnorm pipeline, preserve originals, and record this raw-waveform limitation. The rare sub-millisecond peaks alone do not require regeneration; their audibility remains unassessed. Loudness normalization lowers playback peaks but cannot reconstruct clipped original samples.",
+  "turns": [
+    {
+      "id": "lesson16-turn-002-manabu",
+      "sampleRateHz": 24000,
+      "totalSamples": 228480,
+      "nearThresholdSampleCount": 35,
+      "nearThresholdPercentage": 0.015319,
+      "fullScalePositiveSampleCount": 35,
+      "fullScaleNegativeSampleCount": 0,
+      "nearThresholdValueHistogram": {
+        "32767": 35
+      },
+      "nearThresholdRunCount": 10,
+      "longestNearThresholdRunSamples": 9,
+      "longestFullScaleFlatRunSamples": 9,
+      "fullScaleFlatRunsAtLeast3Samples": 5,
+      "longestRuns": [
+        {
+          "startSeconds": 0.33875,
+          "lengthSamples": 9,
+          "durationMilliseconds": 0.375,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            19257,
+            22394,
+            25885,
+            28774,
+            30683
+          ],
+          "followingSamples": [
+            32248,
+            29889,
+            27428,
+            24546,
+            21044
+          ]
+        },
+        {
+          "startSeconds": 0.345542,
+          "lengthSamples": 7,
+          "durationMilliseconds": 0.291667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            20591,
+            25620,
+            28427,
+            29972,
+            32359
+          ],
+          "followingSamples": [
+            32657,
+            31271,
+            27529,
+            24890,
+            22664
+          ]
+        },
+        {
+          "startSeconds": 0.331833,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            22236,
+            25177,
+            28434,
+            29454,
+            30791
+          ],
+          "followingSamples": [
+            31424,
+            30681,
+            28864,
+            26947,
+            25655
+          ]
+        },
+        {
+          "startSeconds": 0.352042,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            21967,
+            25115,
+            28536,
+            30798,
+            30576
+          ],
+          "followingSamples": [
+            32754,
+            32767,
+            29891,
+            26758,
+            25488
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    },
+    {
+      "id": "lesson16-turn-006-manabu",
+      "sampleRateHz": 24000,
+      "totalSamples": 323520,
+      "nearThresholdSampleCount": 62,
+      "nearThresholdPercentage": 0.019164,
+      "fullScalePositiveSampleCount": 60,
+      "fullScaleNegativeSampleCount": 1,
+      "nearThresholdValueHistogram": {
+        "-32768": 1,
+        "32760": 1,
+        "32767": 60
+      },
+      "nearThresholdRunCount": 15,
+      "longestNearThresholdRunSamples": 8,
+      "longestFullScaleFlatRunSamples": 8,
+      "fullScaleFlatRunsAtLeast3Samples": 10,
+      "longestRuns": [
+        {
+          "startSeconds": 0.59275,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            10393,
+            16908,
+            23059,
+            27658,
+            32447
+          ],
+          "followingSamples": [
+            32234,
+            29660,
+            26817,
+            23615,
+            20812
+          ]
+        },
+        {
+          "startSeconds": 0.598833,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            8964,
+            16266,
+            21268,
+            27199,
+            30831
+          ],
+          "followingSamples": [
+            29912,
+            27194,
+            24678,
+            19933,
+            18187
+          ]
+        },
+        {
+          "startSeconds": 0.605,
+          "lengthSamples": 7,
+          "durationMilliseconds": 0.291667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            11969,
+            16301,
+            24211,
+            27289,
+            31872
+          ],
+          "followingSamples": [
+            30667,
+            25108,
+            19844,
+            18889,
+            11284
+          ]
+        },
+        {
+          "startSeconds": 0.586708,
+          "lengthSamples": 6,
+          "durationMilliseconds": 0.25,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            18108,
+            22868,
+            26782,
+            28624,
+            32651
+          ],
+          "followingSamples": [
+            31145,
+            29782,
+            28733,
+            25236,
+            24018
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    },
+    {
+      "id": "lesson16-turn-019-ikumi",
+      "sampleRateHz": 24000,
+      "totalSamples": 323520,
+      "nearThresholdSampleCount": 40,
+      "nearThresholdPercentage": 0.012364,
+      "fullScalePositiveSampleCount": 40,
+      "fullScaleNegativeSampleCount": 0,
+      "nearThresholdValueHistogram": {
+        "32767": 40
+      },
+      "nearThresholdRunCount": 10,
+      "longestNearThresholdRunSamples": 10,
+      "longestFullScaleFlatRunSamples": 10,
+      "fullScaleFlatRunsAtLeast3Samples": 7,
+      "longestRuns": [
+        {
+          "startSeconds": 5.465708,
+          "lengthSamples": 10,
+          "durationMilliseconds": 0.416667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            15401,
+            21043,
+            25298,
+            28341,
+            30285
+          ],
+          "followingSamples": [
+            30504,
+            28970,
+            25543,
+            22153,
+            20648
+          ]
+        },
+        {
+          "startSeconds": 5.471375,
+          "lengthSamples": 6,
+          "durationMilliseconds": 0.25,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            26291,
+            29477,
+            32263,
+            32767,
+            31918
+          ],
+          "followingSamples": [
+            30616,
+            25814,
+            24381,
+            22887,
+            20326
+          ]
+        },
+        {
+          "startSeconds": 0.889583,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            18591,
+            25561,
+            23586,
+            24842,
+            27698
+          ],
+          "followingSamples": [
+            26562,
+            24831,
+            22356,
+            16821,
+            9341
+          ]
+        },
+        {
+          "startSeconds": 0.916792,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            3859,
+            13952,
+            24064,
+            29123,
+            31629
+          ],
+          "followingSamples": [
+            32114,
+            23624,
+            15102,
+            6979,
+            -1326
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    },
+    {
+      "id": "lesson16-turn-040-ikumi",
+      "sampleRateHz": 24000,
+      "totalSamples": 325440,
+      "nearThresholdSampleCount": 45,
+      "nearThresholdPercentage": 0.013827,
+      "fullScalePositiveSampleCount": 45,
+      "fullScaleNegativeSampleCount": 0,
+      "nearThresholdValueHistogram": {
+        "32767": 45
+      },
+      "nearThresholdRunCount": 16,
+      "longestNearThresholdRunSamples": 10,
+      "longestFullScaleFlatRunSamples": 10,
+      "fullScaleFlatRunsAtLeast3Samples": 4,
+      "longestRuns": [
+        {
+          "startSeconds": 0.357708,
+          "lengthSamples": 10,
+          "durationMilliseconds": 0.416667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            21817,
+            24051,
+            27339,
+            29904,
+            31172
+          ],
+          "followingSamples": [
+            30314,
+            27349,
+            23674,
+            21861,
+            19505
+          ]
+        },
+        {
+          "startSeconds": 0.353083,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            22471,
+            26078,
+            28489,
+            29673,
+            31731
+          ],
+          "followingSamples": [
+            32383,
+            28003,
+            27350,
+            24281,
+            21318
+          ]
+        },
+        {
+          "startSeconds": 3.62775,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            -1812,
+            2587,
+            11581,
+            18186,
+            26626
+          ],
+          "followingSamples": [
+            29178,
+            23427,
+            12029,
+            8267,
+            5727
+          ]
+        },
+        {
+          "startSeconds": 3.623083,
+          "lengthSamples": 4,
+          "durationMilliseconds": 0.166667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            4698,
+            7835,
+            16408,
+            24997,
+            32048
+          ],
+          "followingSamples": [
+            27789,
+            20939,
+            18173,
+            11251,
+            6498
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    },
+    {
+      "id": "lesson16-turn-072-ikumi",
+      "sampleRateHz": 24000,
+      "totalSamples": 307200,
+      "nearThresholdSampleCount": 76,
+      "nearThresholdPercentage": 0.02474,
+      "fullScalePositiveSampleCount": 76,
+      "fullScaleNegativeSampleCount": 0,
+      "nearThresholdValueHistogram": {
+        "32767": 76
+      },
+      "nearThresholdRunCount": 20,
+      "longestNearThresholdRunSamples": 8,
+      "longestFullScaleFlatRunSamples": 8,
+      "fullScaleFlatRunsAtLeast3Samples": 14,
+      "longestRuns": [
+        {
+          "startSeconds": 10.245167,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            4557,
+            10732,
+            16870,
+            23176,
+            29750
+          ],
+          "followingSamples": [
+            32436,
+            26079,
+            21000,
+            17368,
+            13081
+          ]
+        },
+        {
+          "startSeconds": 10.26825,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            -1953,
+            1949,
+            8579,
+            16246,
+            24880
+          ],
+          "followingSamples": [
+            32009,
+            24254,
+            14655,
+            6885,
+            1855
+          ]
+        },
+        {
+          "startSeconds": 10.276042,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            -2061,
+            3884,
+            12364,
+            20175,
+            27729
+          ],
+          "followingSamples": [
+            28029,
+            18952,
+            8758,
+            -388,
+            -5179
+          ]
+        },
+        {
+          "startSeconds": 10.283917,
+          "lengthSamples": 5,
+          "durationMilliseconds": 0.208333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            4724,
+            11859,
+            19324,
+            26351,
+            32287
+          ],
+          "followingSamples": [
+            32657,
+            30814,
+            24410,
+            15278,
+            5698
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    },
+    {
+      "id": "lesson16-turn-079-manabu",
+      "sampleRateHz": 24000,
+      "totalSamples": 301440,
+      "nearThresholdSampleCount": 61,
+      "nearThresholdPercentage": 0.020236,
+      "fullScalePositiveSampleCount": 61,
+      "fullScaleNegativeSampleCount": 0,
+      "nearThresholdValueHistogram": {
+        "32767": 61
+      },
+      "nearThresholdRunCount": 14,
+      "longestNearThresholdRunSamples": 8,
+      "longestFullScaleFlatRunSamples": 8,
+      "fullScaleFlatRunsAtLeast3Samples": 10,
+      "longestRuns": [
+        {
+          "startSeconds": 1.985625,
+          "lengthSamples": 8,
+          "durationMilliseconds": 0.333333,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            18784,
+            22183,
+            26166,
+            28999,
+            30815
+          ],
+          "followingSamples": [
+            31218,
+            28891,
+            26264,
+            23079,
+            19730
+          ]
+        },
+        {
+          "startSeconds": 1.818208,
+          "lengthSamples": 7,
+          "durationMilliseconds": 0.291667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            22237,
+            25702,
+            28917,
+            30974,
+            32719
+          ],
+          "followingSamples": [
+            31586,
+            29161,
+            26303,
+            24034,
+            21029
+          ]
+        },
+        {
+          "startSeconds": 1.990958,
+          "lengthSamples": 7,
+          "durationMilliseconds": 0.291667,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            18413,
+            21700,
+            24450,
+            28063,
+            31408
+          ],
+          "followingSamples": [
+            31649,
+            29116,
+            25891,
+            22634,
+            19631
+          ]
+        },
+        {
+          "startSeconds": 1.794625,
+          "lengthSamples": 6,
+          "durationMilliseconds": 0.25,
+          "runValues": [
+            32767,
+            32767,
+            32767,
+            32767,
+            32767,
+            32767
+          ],
+          "precedingSamples": [
+            24792,
+            27284,
+            29386,
+            31043,
+            32482
+          ],
+          "followingSamples": [
+            31543,
+            29893,
+            27929,
+            25446,
+            22693
+          ]
+        }
+      ],
+      "finding": "Brief exact full-scale flat peaks are present."
+    }
+  ]
+}

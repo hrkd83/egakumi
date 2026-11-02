@@ -1,0 +1,42 @@
+{
+  "status": "passed",
+  "warnings": [],
+  "durationSeconds": 1008.4583333333334,
+  "durationMinutes": 16.808,
+  "videoFrames": 24203,
+  "sourceTurns": 79,
+  "editedTurns": 78,
+  "omittedTurnIds": [
+    "lesson15-turn-051-mako"
+  ],
+  "subtitleCues": 176,
+  "roles": {
+    "mako": "Moderator",
+    "manabu": "Product Manager",
+    "ikumi": "Solution Architect"
+  },
+  "voices": {
+    "mako": "Aoede",
+    "manabu": "Charon",
+    "ikumi": "Orus"
+  },
+  "speed": 1,
+  "enhancePronunciation": null,
+  "synthesisProvider": "google-cloud",
+  "synthesisModel": "gemini-3.8-flash-tts",
+  "recordedTurns": 78,
+  "openingCameraSegments": 4,
+  "speechTags": 0,
+  "sourceSpeechTags": 0,
+  "minimumSpeechTailSeconds": 0.141667,
+  "bodyLoopCrossfadeSeconds": 2,
+  "closingBrandSourceSeconds": [
+    63.8,
+    71.8
+  ],
+  "closingDurationSeconds": 8,
+  "mixIntegratedLUFS": -15.99,
+  "mixTruePeakDBTP": -1.5,
+  "sourceBasis": "Current repository study notes and public configuration examples; not a live Azure inspection.",
+  "sha256": "6b9f183cc76ab89de8907ede1a7524524e9bd133f83a51a40d7b5a40fd6a5231"
+}

@@ -1,0 +1,313 @@
+{
+  "status": "passed",
+  "scriptSha256": "acfda6f5f9039284159c26ccf3db1023f3969dfb5ca7dadd67eab68d9b97b9b7",
+  "scope": "Mechanical source, subtitle, settings geometry and view-base checks; semantic/visual/listening reviews separate",
+  "turnCount": 80,
+  "speechCharacters": 5233,
+  "subtitleChunks": 139,
+  "viewCount": 26,
+  "views": {
+    "waf09-route": {
+      "turnIds": [
+        "lesson09-turn-005-mako",
+        "lesson09-turn-006-ikumi",
+        "lesson09-turn-007-manabu",
+        "lesson09-turn-008-ikumi"
+      ],
+      "layout": "svg",
+      "svgFiles": [
+        "diagrams/route-none.svg",
+        "diagrams/route-waf.svg",
+        "diagrams/route-apim.svg"
+      ]
+    },
+    "waf09-routes": {
+      "turnIds": [
+        "lesson09-turn-009-mako",
+        "lesson09-turn-010-ikumi",
+        "lesson09-turn-011-ikumi",
+        "lesson09-turn-012-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-mode": {
+      "turnIds": [
+        "lesson09-turn-013-mako",
+        "lesson09-turn-014-ikumi",
+        "lesson09-turn-015-manabu",
+        "lesson09-turn-016-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-parts": {
+      "turnIds": [
+        "lesson09-turn-017-mako",
+        "lesson09-turn-018-ikumi",
+        "lesson09-turn-019-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-score": {
+      "turnIds": [
+        "lesson09-turn-020-mako",
+        "lesson09-turn-021-ikumi",
+        "lesson09-turn-022-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-logs": {
+      "turnIds": [
+        "lesson09-turn-023-manabu",
+        "lesson09-turn-024-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-limits": {
+      "turnIds": [
+        "lesson09-turn-025-mako",
+        "lesson09-turn-026-ikumi",
+        "lesson09-turn-027-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-defaults": {
+      "turnIds": [
+        "lesson09-turn-028-mako",
+        "lesson09-turn-029-ikumi",
+        "lesson09-turn-030-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-file": {
+      "turnIds": [
+        "lesson09-turn-031-mako",
+        "lesson09-turn-032-ikumi",
+        "lesson09-turn-033-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-scope": {
+      "turnIds": [
+        "lesson09-turn-034-mako",
+        "lesson09-turn-035-ikumi",
+        "lesson09-turn-036-manabu"
+      ],
+      "layout": "svg",
+      "svgFiles": [
+        "diagrams/scope-none.svg",
+        "diagrams/scope-uri.svg"
+      ]
+    },
+    "waf09-compose": {
+      "turnIds": [
+        "lesson09-turn-037-ikumi",
+        "lesson09-turn-038-mako",
+        "lesson09-turn-039-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-existing": {
+      "turnIds": [
+        "lesson09-turn-040-mako",
+        "lesson09-turn-041-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-false": {
+      "turnIds": [
+        "lesson09-turn-042-mako",
+        "lesson09-turn-043-manabu",
+        "lesson09-turn-044-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-callback": {
+      "turnIds": [
+        "lesson09-turn-045-mako",
+        "lesson09-turn-046-ikumi",
+        "lesson09-turn-047-ikumi",
+        "lesson09-turn-048-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-boundary": {
+      "turnIds": [
+        "lesson09-turn-049-mako",
+        "lesson09-turn-050-ikumi",
+        "lesson09-turn-051-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-othercallback": {
+      "turnIds": [
+        "lesson09-turn-052-ikumi",
+        "lesson09-turn-053-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-allow": {
+      "turnIds": [
+        "lesson09-turn-054-mako",
+        "lesson09-turn-055-ikumi",
+        "lesson09-turn-056-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-raw": {
+      "turnIds": [
+        "lesson09-turn-057-mako",
+        "lesson09-turn-058-ikumi",
+        "lesson09-turn-059-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-raw-complement": {
+      "turnIds": [
+        "lesson09-turn-060-mako",
+        "lesson09-turn-061-ikumi",
+        "lesson09-turn-062-manabu"
+      ],
+      "layout": "svg",
+      "svgFiles": [
+        "diagrams/complement-none.svg",
+        "diagrams/complement-block.svg",
+        "diagrams/complement-limit.svg"
+      ]
+    },
+    "waf09-document": {
+      "turnIds": [
+        "lesson09-turn-063-mako",
+        "lesson09-turn-064-ikumi",
+        "lesson09-turn-065-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-verify": {
+      "turnIds": [
+        "lesson09-turn-066-mako",
+        "lesson09-turn-067-ikumi"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-quiz-score": {
+      "turnIds": [
+        "lesson09-turn-068-mako",
+        "lesson09-turn-069-ikumi",
+        "lesson09-turn-070-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-quiz-policy": {
+      "turnIds": [
+        "lesson09-turn-071-mako",
+        "lesson09-turn-072-ikumi",
+        "lesson09-turn-073-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-quiz-exclude": {
+      "turnIds": [
+        "lesson09-turn-074-mako",
+        "lesson09-turn-075-ikumi",
+        "lesson09-turn-076-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-summary": {
+      "turnIds": [
+        "lesson09-turn-077-mako",
+        "lesson09-turn-078-ikumi",
+        "lesson09-turn-079-manabu"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    },
+    "waf09-next": {
+      "turnIds": [
+        "lesson09-turn-080-mako"
+      ],
+      "layout": "settings",
+      "svgFiles": []
+    }
+  },
+  "sources": [
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "purpose"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "ingress"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "request-order"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "policy"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "settings"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "scope"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "exclusions"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "payloads"
+    },
+    {
+      "file": "../../../infra/modules/application-gateway.bicep"
+    },
+    {
+      "file": "../../../config/test.json"
+    },
+    {
+      "file": "../../../config/production.json"
+    },
+    {
+      "file": "../../../apps/gateway/waf-data-exclusions.json"
+    },
+    {
+      "file": "../../../apps/gateway/waf-raw-body-controls.json"
+    },
+    {
+      "file": "../../../scripts/waf_policy.py"
+    }
+  ],
+  "settingsRendererCheckedTurns": 66,
+  "errors": [],
+  "warnings": [
+    "waf09-route: compare 3 SVG variants for invariant geometry and answer reveal",
+    "waf09-scope: compare 2 SVG variants for invariant geometry and answer reveal",
+    "waf09-raw-complement: compare 3 SVG variants for invariant geometry and answer reveal"
+  ]
+}

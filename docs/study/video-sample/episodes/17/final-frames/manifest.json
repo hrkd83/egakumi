@@ -1,0 +1,538 @@
+{
+  "status": "extracted-for-visual-review",
+  "createdAt": "2026-11-02T16:47:17.977884+09:00",
+  "episodeKey": "17",
+  "sourceType": "completed-mp4",
+  "sourceFile": "/path/to/egakumi-core/docs/study/video-sample/output/lesson-17-gemini/egakumi-study-17.mp4",
+  "sourceSha256": "7fe51205c1797bbbfbf65c8ae9263a5bec63d92bca2bcb177a2e486c91f4818d",
+  "sourceScriptSha256": "f5b2cac0713fc5617f0bdf00ddf67aab830c0dd9f2a050c746d75c7cc79e0599",
+  "sourceTimelineSha256": "7d5ed9afee2e619db05c2277c6edbb22211bc9c2e335e7c4d5791703576c3ea7",
+  "sourceExportSha256": "f2b122a6828f0751cc01cede0f72ecbf3d64ad010c70ddf46e3ff7fe3e359e6c",
+  "durationSeconds": 964.4583333333334,
+  "frameCount": 23147,
+  "width": 1600,
+  "height": 900,
+  "fps": 24,
+  "frames": [
+    {
+      "file": "01-intro-logo.png",
+      "label": "intro-logo",
+      "reason": "冒頭4秒の共通ロゴを確認する。",
+      "sceneId": "logo",
+      "frame": 58,
+      "seconds": 2.4166666666666665,
+      "sceneStartSeconds": 0,
+      "sceneEndSeconds": 4,
+      "phase": "logo",
+      "chapterId": null,
+      "speaker": null,
+      "layout": null,
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "subtitleCue": null,
+      "sha256": "515e76d786547c1adf113e8b7be81e103486753ee1d4135ace3bb9969f05d021"
+    },
+    {
+      "file": "02-cast-wide.png",
+      "label": "cast-wide",
+      "reason": "3人の顔・名前・英語の役割を一緒に確認する。",
+      "sceneId": "cast-establish",
+      "frame": 108,
+      "seconds": 4.5,
+      "sceneStartSeconds": 4,
+      "sceneEndSeconds": 5.125,
+      "phase": "opening",
+      "chapterId": null,
+      "speaker": null,
+      "layout": null,
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "subtitleCue": null,
+      "sha256": "534d8618b474def2179b8002eaa287441b87883465f76614312b1c2acd23d789"
+    },
+    {
+      "file": "03-opening-mako-centered.png",
+      "label": "opening-mako-centered",
+      "reason": "滑らかな移動の後に話者が中央へ収まり、名前・役割・字幕を読めるか確認する。",
+      "sceneId": "lesson17-turn-001-mako",
+      "frame": 224,
+      "seconds": 9.333333333333334,
+      "sceneStartSeconds": 5.125,
+      "sceneEndSeconds": 13.5,
+      "phase": "opening",
+      "chapterId": "opening",
+      "speaker": "mako",
+      "layout": "hologram",
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "発行したAPIキーを、別のチームへ引き継ぎたいんです。",
+        "所有グループを変えたら、今までのキーも使えなくなるんでしょうか。"
+      ],
+      "subtitleCue": {
+        "start": 5.125,
+        "end": 13.5
+      },
+      "sha256": "cab987d9a6e2e00686786cc1c0fd566bacba5a97f0f38536c9085fe5c8f2b2b5"
+    },
+    {
+      "file": "04-opening-manabu-centered.png",
+      "label": "opening-manabu-centered",
+      "reason": "滑らかな移動の後に話者が中央へ収まり、名前・役割・字幕を読めるか確認する。",
+      "sceneId": "lesson17-turn-002-manabu",
+      "frame": 418,
+      "seconds": 17.416666666666668,
+      "sceneStartSeconds": 13.5,
+      "sceneEndSeconds": 24.166666666666668,
+      "phase": "opening",
+      "chapterId": "opening",
+      "speaker": "manabu",
+      "layout": "hologram",
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "引継ぎと利用停止は、目的が違いますね。",
+        "誰が管理するか、使える状態か、どれだけ使えるか。"
+      ],
+      "subtitleCue": {
+        "start": 13.5,
+        "end": 21.375
+      },
+      "sha256": "c5e3266dd927062981017041916008d90f1c86c04997a7c42898a84765a342ec"
+    },
+    {
+      "file": "05-opening-ikumi-centered.png",
+      "label": "opening-ikumi-centered",
+      "reason": "滑らかな移動の後に話者が中央へ収まり、名前・役割・字幕を読めるか確認する。",
+      "sceneId": "lesson17-turn-003-ikumi",
+      "frame": 652,
+      "seconds": 27.166666666666668,
+      "sceneStartSeconds": 24.166666666666668,
+      "sceneEndSeconds": 37.333333333333336,
+      "phase": "opening",
+      "chapterId": "opening",
+      "speaker": "ikumi",
+      "layout": "hologram",
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "今回は発行後の管理です。",
+        "表示、停止と再開、移管、棚卸し、削除。"
+      ],
+      "subtitleCue": {
+        "start": 24.166666666666668,
+        "end": 30.166666666666668
+      },
+      "sha256": "39b7fc2c0aee32f5684feb9272f0468c62448a7ccb4eefbca72e9f810a0bca52"
+    },
+    {
+      "file": "06-management-flow.png",
+      "label": "management-flow",
+      "reason": "PortalからSQLとAPIMへの管理処理の分担図と、その図に対応する字幕。",
+      "sceneId": "lesson17-turn-008-ikumi",
+      "frame": 2130,
+      "seconds": 88.75,
+      "sceneStartSeconds": 87.08333333333333,
+      "sceneEndSeconds": 100.41666666666667,
+      "phase": "body",
+      "chapterId": "roles",
+      "speaker": "ikumi",
+      "layout": "svg",
+      "viewId": "lesson17-management-flow",
+      "svg": "diagrams/management-flow.svg",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "はい。",
+        "キー実値を持つのはAPIMです。"
+      ],
+      "subtitleCue": {
+        "start": 87.08333333333333,
+        "end": 90.41666666666666
+      },
+      "sha256": "30d03965201e7ecb9c95c1ee843a22d47fd847d46939116572d16e75a35af4c3"
+    },
+    {
+      "file": "07-key-reveal.png",
+      "label": "key-reveal",
+      "reason": "対象確認・listSecrets・SQL表示監査の設定項目と赤枠。",
+      "sceneId": "lesson17-turn-012-ikumi",
+      "frame": 3319,
+      "seconds": 138.29166666666666,
+      "sceneStartSeconds": 135.08333333333334,
+      "sceneEndSeconds": 151.45833333333334,
+      "phase": "body",
+      "chapterId": "state",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-reveal",
+      "svg": null,
+      "highlightFields": [
+        "get",
+        "secret",
+        "audit",
+        "store"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "実値はAPIMから取得します。",
+        "まずGETで対象と製品スコープを確認し、"
+      ],
+      "subtitleCue": {
+        "start": 135.08333333333334,
+        "end": 141.5
+      },
+      "sha256": "12158916a36819044e5ac7df171430c4600033174e61d5735dc224ab838efa36"
+    },
+    {
+      "file": "08-suspend.png",
+      "label": "suspend",
+      "reason": "停止のsuspended行と、保持するID・キーの行の赤枠。",
+      "sceneId": "lesson17-turn-015-ikumi",
+      "frame": 4176,
+      "seconds": 174.0,
+      "sceneStartSeconds": 170.54166666666666,
+      "sceneEndSeconds": 184.66666666666666,
+      "phase": "body",
+      "chapterId": "state",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-state",
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [
+        "suspend",
+        "same"
+      ],
+      "subtitleLinesAtExtraction": [
+        "停止は、",
+        "同じAPIMサブスクリプションの状態をsuspendedへ変更します。"
+      ],
+      "subtitleCue": {
+        "start": 170.54166666666666,
+        "end": 177.5
+      },
+      "sha256": "a2c32c17a92ec02fab46f78d4e082c5d7efcc0d9028e4dcb7eb2b07044cf63b2"
+    },
+    {
+      "file": "09-resume.png",
+      "label": "resume",
+      "reason": "再開のactive行と、停止から変わる赤枠。",
+      "sceneId": "lesson17-turn-016-ikumi",
+      "frame": 4552,
+      "seconds": 189.66666666666666,
+      "sceneStartSeconds": 184.66666666666666,
+      "sceneEndSeconds": 197.33333333333334,
+      "phase": "body",
+      "chapterId": "state",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-state",
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [
+        "resume",
+        "same"
+      ],
+      "subtitleLinesAtExtraction": [
+        "再開では、同じAPIMサブスクリプションをactiveへ戻します。",
+        "GETで現在の対象と状態を確認し、必要ならPATCHします。"
+      ],
+      "subtitleCue": {
+        "start": 184.66666666666666,
+        "end": 194.625
+      },
+      "sha256": "718a85853c63e6f38da30db31cb9f386c6b0b015d92ae5ac376a6bc8d5e6e6ff"
+    },
+    {
+      "file": "10-ownership-transfer.png",
+      "label": "ownership-transfer",
+      "reason": "所有グループと移管監査を更新し、同じAPIM実体を使う説明。",
+      "sceneId": "lesson17-turn-024-ikumi",
+      "frame": 6914,
+      "seconds": 288.0833333333333,
+      "sceneStartSeconds": 285.125,
+      "sceneEndSeconds": 298.75,
+      "phase": "body",
+      "chapterId": "transfer",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-transfer",
+      "svg": null,
+      "highlightFields": [
+        "save",
+        "same"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "作り直しません。",
+        "同じAPIMサブスクリプションとキーを継続します。"
+      ],
+      "subtitleCue": {
+        "start": 285.125,
+        "end": 291
+      },
+      "sha256": "837c3348f860629629e154cdf976eff2ed1e3d46f6f34f8b4d8d48e342d9924f"
+    },
+    {
+      "file": "11-inventory-review.png",
+      "label": "inventory-review",
+      "reason": "棚卸しの日時・本人・監査と、状態を勝手に変えない説明。",
+      "sceneId": "lesson17-turn-029-ikumi",
+      "frame": 8420,
+      "seconds": 350.8333333333333,
+      "sceneStartSeconds": 347.125,
+      "sceneEndSeconds": 361.75,
+      "phase": "body",
+      "chapterId": "review-delete",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-review",
+      "svg": null,
+      "highlightFields": [
+        "check",
+        "review",
+        "audit"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "棚卸しは確認記録です。",
+        "APIMの実在や製品、状態を確かめ、SQLへ確認日時と本人、"
+      ],
+      "subtitleCue": {
+        "start": 347.125,
+        "end": 354.5833333333333
+      },
+      "sha256": "a814d4c14d2e55985fed3d65363e39cc4887556e0d014484b0655d7f109a478f"
+    },
+    {
+      "file": "12-delete-202-pending.png",
+      "label": "delete-202-pending",
+      "reason": "削除202受付中とdeletingに対応する赤枠。",
+      "sceneId": "lesson17-turn-031-ikumi",
+      "frame": 9010,
+      "seconds": 375.4166666666667,
+      "sceneStartSeconds": 372.375,
+      "sceneEndSeconds": 385.2916666666667,
+      "phase": "body",
+      "chapterId": "review-delete",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-delete",
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [
+        "start",
+        "pending"
+      ],
+      "subtitleLinesAtExtraction": [
+        "APIMの対象を確認し、",
+        "SQLをdeletingにしてDELETEを要求します。"
+      ],
+      "subtitleCue": {
+        "start": 372.375,
+        "end": 378.5
+      },
+      "sha256": "65abc0446854a3f8d97dc06d311dcd185b4213cb224594496dd3574dc0ae3071"
+    },
+    {
+      "file": "13-delete-confirmed.png",
+      "label": "delete-confirmed",
+      "reason": "完了確認後のdeleted・削除監査に対応する赤枠。",
+      "sceneId": "lesson17-turn-033-ikumi",
+      "frame": 9575,
+      "seconds": 398.9583333333333,
+      "sceneStartSeconds": 394.8333333333333,
+      "sceneEndSeconds": 408.5833333333333,
+      "phase": "body",
+      "chapterId": "review-delete",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-delete",
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [
+        "done"
+      ],
+      "subtitleLinesAtExtraction": [
+        "再照会でAPIMの不在などを確認してから、",
+        "SQLをdeletedへ進めて削除監査を保存します。"
+      ],
+      "subtitleCue": {
+        "start": 394.8333333333333,
+        "end": 403.0833333333333
+      },
+      "sha256": "ee661bf964b9f67f6c69b1052140dd7c8a7d1daba4f4bf5b7a1a04a76b5b1c1a"
+    },
+    {
+      "file": "14-limit-save-and-audit.png",
+      "label": "limit-save-and-audit",
+      "reason": "現在所属・版比較・制限設定と監査を保存する説明。",
+      "sceneId": "lesson17-turn-041-ikumi",
+      "frame": 11868,
+      "seconds": 494.5,
+      "sceneStartSeconds": 490.4166666666667,
+      "sceneEndSeconds": 502.6666666666667,
+      "phase": "body",
+      "chapterId": "limits",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-version",
+      "svg": null,
+      "highlightFields": [
+        "check",
+        "input"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "版数は、古い画面から他の変更を上書きしないための値です。",
+        "現在所属や承認、キー状態も確認し、"
+      ],
+      "subtitleCue": {
+        "start": 490.4166666666667,
+        "end": 498.625
+      },
+      "sha256": "6faf84b843ee951b5f7f7ad00880678cd94e467c83259040389d38a470afd3d0"
+    },
+    {
+      "file": "15-limits-flow.png",
+      "label": "limits-flow",
+      "reason": "設定保存とAPI利用時の内部照会を分けた補助図。",
+      "sceneId": "lesson17-turn-048-ikumi",
+      "frame": 13941,
+      "seconds": 580.875,
+      "sceneStartSeconds": 578.75,
+      "sceneEndSeconds": 595.7083333333334,
+      "phase": "body",
+      "chapterId": "limits",
+      "speaker": "ikumi",
+      "layout": "svg",
+      "viewId": "lesson17-limits-flow",
+      "svg": "diagrams/limits-flow.svg",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "はい。",
+        "管理画面は設定と監査をSQLへ保存します。"
+      ],
+      "subtitleCue": {
+        "start": 578.75,
+        "end": 583.0416666666666
+      },
+      "sha256": "2ed3cc884496469ff526103533e2ec44e584e31e7c00590a19b9775f1ca35ae1"
+    },
+    {
+      "file": "16-quiz-question.png",
+      "label": "quiz-question",
+      "reason": "制限反映の確認問題。質問中は正答の赤枠がないこと。",
+      "sceneId": "lesson17-turn-069-mako",
+      "frame": 20670,
+      "seconds": 861.25,
+      "sceneStartSeconds": 858.875,
+      "sceneEndSeconds": 872.7916666666666,
+      "phase": "body",
+      "chapterId": "check",
+      "speaker": "mako",
+      "layout": "settings",
+      "viewId": "lesson17-check-limits",
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "最後です。",
+        "制限を保存した直後、以前の上限が使われました。"
+      ],
+      "subtitleCue": {
+        "start": 858.875,
+        "end": 863.625
+      },
+      "sha256": "53fbe1b85da8a9074b542bf159a6704f6236bd25571672e952f77076422a44d3"
+    },
+    {
+      "file": "17-quiz-answer.png",
+      "label": "quiz-answer",
+      "reason": "同じviewId・構図を保った回答。Bだけを赤枠で示すこと。",
+      "sceneId": "lesson17-turn-070-ikumi",
+      "frame": 21078,
+      "seconds": 878.25,
+      "sceneStartSeconds": 872.7916666666666,
+      "sceneEndSeconds": 888.4166666666666,
+      "phase": "body",
+      "chapterId": "check",
+      "speaker": "ikumi",
+      "layout": "settings",
+      "viewId": "lesson17-check-limits",
+      "svg": null,
+      "highlightFields": [
+        "b"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "Bのように、SQLへの保存とAPIMの取得・適用を分けます。",
+        "三十秒のキャッシュを考慮し、保存した版と値を確認します。"
+      ],
+      "subtitleCue": {
+        "start": 872.7916666666666,
+        "end": 883.7083333333333
+      },
+      "sha256": "ee7e007c6bf96d3cd81269229f88cbb76c7ab7f679053b0c852651eb5b253de4"
+    },
+    {
+      "file": "18-closing-logo.png",
+      "label": "closing-logo",
+      "reason": "共通8秒クロージング中盤のロゴを確認する。",
+      "sceneId": "closing",
+      "frame": 23027,
+      "seconds": 959.4583333333334,
+      "sceneStartSeconds": 956.4583333333334,
+      "sceneEndSeconds": 964.4583333333334,
+      "phase": "closing",
+      "chapterId": null,
+      "speaker": null,
+      "layout": null,
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "subtitleCue": null,
+      "sha256": "b298c6fce6842a1c9423b3473ac7f099b0507af438854d0bcd7471ec776b8d17"
+    },
+    {
+      "file": "19-closing-end.png",
+      "label": "closing-end",
+      "reason": "最終フレームの暗転・画面終了を確認する。",
+      "sceneId": "closing",
+      "frame": 23146,
+      "seconds": 964.4166666666666,
+      "sceneStartSeconds": 956.4583333333334,
+      "sceneEndSeconds": 964.4583333333334,
+      "phase": "closing",
+      "chapterId": null,
+      "speaker": null,
+      "layout": null,
+      "viewId": null,
+      "svg": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "subtitleCue": null,
+      "sha256": "9a0ac6dce7ee86342e3f445ff31e300a0ea4a3bb873c58c8c5e1d4a40c69d22d"
+    }
+  ],
+  "selectionPolicy": "字幕cueの中央。冒頭はカメラ移動完了後。ロゴは明示位置。19枚。",
+  "visualReviewPerformedByThisScript": false,
+  "networkRequestsMade": false
+}

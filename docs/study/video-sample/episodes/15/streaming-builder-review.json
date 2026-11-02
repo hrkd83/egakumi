@@ -1,0 +1,21 @@
+{
+  "status": "reviewed",
+  "sharedBuilderSha256": "f80f5dfd1d6a27b3e2228e4b0000f4a1fb8c5063e886549a4c53d1c97468ffa5",
+  "episodeBuilderSha256": "d517359ebe8ff0f6143d944c51dfdaf8f319ac363dda47396b64250b49d11a40",
+  "changedBehavior": [
+    "stream identical PNG buffers into ffmpeg in timeline frame order",
+    "repeat each buffer for the same integer frame count",
+    "remove individual render-work WAVs after narration and mix completion",
+    "read and delete temporary logo PNGs in frame order"
+  ],
+  "preserved": [
+    "shared lesson-visual.mjs and settings-visual.mjs",
+    "audio normalization, BGM, ducking, closing source",
+    "scene durations, subtitle cues, opening camera metadata",
+    "24fps, bt709, H.264 CRF18, yuv420p, stereo AAC",
+    "export/player and standard verification contract"
+  ],
+  "independentReview": "No stop-worthy defect; frame order, holds, color and metadata match standard builder.",
+  "finalStandardVerification": "passed",
+  "exportSha256": "6b9f183cc76ab89de8907ede1a7524524e9bd133f83a51a40d7b5a40fd6a5231"
+}

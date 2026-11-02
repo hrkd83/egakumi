@@ -1,0 +1,657 @@
+{
+  "status": "extracted-for-visual-review",
+  "createdAt": "2026-11-02T06:45:28.580010+00:00",
+  "episodeKey": "14",
+  "sourceType": "completed-mp4",
+  "sourceFile": "/path/to/egakumi-core/docs/study/video-sample/output/lesson-14-gemini/egakumi-study-14.mp4",
+  "sourceSha256": "453c85f91462895b6aa73061eab977d01789d429b2254015420195d45b983da9",
+  "sourceTimelineSha256": "b383a9069d97cf86266d897b5793a2d38134fa4a9641be682768168913d06410",
+  "sourceExportSha256": "c91291084062a9cbe38013372f10a0b15948933bf1b0a5fcc3b820e0a445c6fd",
+  "width": 1600,
+  "height": 900,
+  "fps": 24,
+  "frames": [
+    {
+      "label": "intro-logo",
+      "sceneId": "logo",
+      "frame": 58,
+      "seconds": 2.4166666666666665,
+      "phase": "logo",
+      "speaker": null,
+      "viewId": null,
+      "layout": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "file": "01-intro-logo.png",
+      "sha256": "515e76d786547c1adf113e8b7be81e103486753ee1d4135ace3bb9969f05d021"
+    },
+    {
+      "label": "cast-wide",
+      "sceneId": "cast-establish",
+      "frame": 108,
+      "seconds": 4.5,
+      "phase": "opening",
+      "speaker": null,
+      "viewId": null,
+      "layout": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "file": "02-cast-wide.png",
+      "sha256": "9fbb38d5260bff9591014164c2c666768bd6c2a716d964a8bfea62a294edbd55"
+    },
+    {
+      "label": "opening-mako-centered",
+      "sceneId": "lesson14-turn-001-mako",
+      "frame": 171,
+      "seconds": 7.125,
+      "phase": "opening",
+      "speaker": "mako",
+      "viewId": null,
+      "layout": "hologram",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "会社が登録されていて、Portalにもログインできた。",
+        "それなら、"
+      ],
+      "file": "03-opening-mako-centered.png",
+      "sha256": "2aae6d19cfb1bbac516582108da3f4cdb763b6147774ff2cff68efebf61c18d4"
+    },
+    {
+      "label": "opening-manabu-centered",
+      "sceneId": "lesson14-turn-002-manabu",
+      "frame": 409,
+      "seconds": 17.041666666666668,
+      "phase": "opening",
+      "speaker": "manabu",
+      "viewId": null,
+      "layout": "hologram",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "そこは分けて考えたいですね。本人が誰か、",
+        "どのキーを管理できるか、費用をどの会社へ帰属させるか。"
+      ],
+      "file": "04-opening-manabu-centered.png",
+      "sha256": "5f66ed824bb7328535cb221c553d43f1a8caca4bb8e8850361eb94701f3d9c08"
+    },
+    {
+      "label": "opening-ikumi-centered",
+      "sceneId": "lesson14-turn-003-ikumi",
+      "frame": 670,
+      "seconds": 27.916666666666668,
+      "phase": "opening",
+      "speaker": "ikumi",
+      "viewId": null,
+      "layout": "hologram",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "今日は、その三つをPortal、SQL、",
+        "APIMの役割へ結び付けます。"
+      ],
+      "file": "05-opening-ikumi-centered.png",
+      "sha256": "3f3e6fcf1af10afaeaf59bbd2cef6473f082d6eb5f758a7c728cc76fa1687c64"
+    },
+    {
+      "label": "three-axes",
+      "sceneId": "lesson14-turn-005-manabu",
+      "frame": 1218,
+      "seconds": 50.75,
+      "phase": "body",
+      "speaker": "manabu",
+      "viewId": "lesson14-three-axes",
+      "layout": "settings",
+      "highlightFields": [
+        "person",
+        "owner",
+        "company"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "はい。本人は操作した人を識別するため。",
+        "所有グループはチームでキーを管理するため。会社は、"
+      ],
+      "file": "06-three-axes.png",
+      "sha256": "2dbe28eebd72f3166bce5f632840a1c374db29dce6027c8c454e926ad2fa0c48"
+    },
+    {
+      "label": "roles-sql",
+      "sceneId": "lesson14-turn-009-ikumi",
+      "frame": 2339,
+      "seconds": 97.45833333333333,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-roles",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "sql"
+      ],
+      "subtitleLinesAtExtraction": [
+        "SQLはログイン状態、会社、",
+        "キーの台帳や監査などを持ちます。誰の操作で何が変わったか、"
+      ],
+      "file": "07-roles-sql.png",
+      "sha256": "214348e108a04ce7036aef0fac55afe0909b3e922893b9897679ec0f8055c0a8"
+    },
+    {
+      "label": "roles-apim",
+      "sceneId": "lesson14-turn-011-ikumi",
+      "frame": 2828,
+      "seconds": 117.83333333333333,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-roles",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "apim"
+      ],
+      "subtitleLinesAtExtraction": [
+        "キー実値を持つのはAPIMです。",
+        "APIMサブスクリプションと、そのキーを管理します。"
+      ],
+      "file": "08-roles-apim.png",
+      "sha256": "1b39efa978b3af6960d16ec0edc1cddc1400a75a62205bf10d1dc0b55fcb13d6"
+    },
+    {
+      "label": "roles-diagram",
+      "sceneId": "lesson14-turn-014-ikumi",
+      "frame": 3661,
+      "seconds": 152.54166666666666,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-roles-flow",
+      "layout": "svg",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "そうです。",
+        "ブラウザーがSQLへ直接つながる構成としては読みません。"
+      ],
+      "file": "09-roles-diagram.png",
+      "sha256": "9b96ecb87864a94c603b9d4c09ea1e060ebd04e8570320527390892628363afe"
+    },
+    {
+      "label": "runtime",
+      "sceneId": "lesson14-turn-016-ikumi",
+      "frame": 4227,
+      "seconds": 176.125,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-runtime",
+      "layout": "settings",
+      "highlightFields": [
+        "http",
+        "schema",
+        "observe"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "はい。PortalのContainer Appは常駐する",
+        "HTTP処理です。SQL初期化Jobは配備時の準備、"
+      ],
+      "file": "10-runtime.png",
+      "sha256": "128c2828f183b3974e08b6b990fb7f046cca8bd0ac04f51215a64342ead58b53"
+    },
+    {
+      "label": "login",
+      "sceneId": "lesson14-turn-019-ikumi",
+      "frame": 5124,
+      "seconds": 213.5,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-login",
+      "layout": "settings",
+      "highlightFields": [
+        "id",
+        "auth"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "Microsoft Entra IDで本人を確認し、",
+        "Better Authが認証とログイン状態を管理します。"
+      ],
+      "file": "11-login.png",
+      "sha256": "692119d4b39cf28a7bf53455b342a72627b5c1346f494be453d14b39095b7095"
+    },
+    {
+      "label": "sql-session",
+      "sceneId": "lesson14-turn-024-ikumi",
+      "frame": 6420,
+      "seconds": 267.5,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-login",
+      "layout": "settings",
+      "highlightFields": [
+        "session"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "以後はCookieと、SQLにあるセッションの有効期限を照",
+        "合して本人を識別します。ブラウザー側の情報と、"
+      ],
+      "file": "12-sql-session.png",
+      "sha256": "84a0afc344cc8c33b9b8e3168d7269e10aa92f17e9e4d947b4055f3f6736436f"
+    },
+    {
+      "label": "authentication-data",
+      "sceneId": "lesson14-turn-028-ikumi",
+      "frame": 7535,
+      "seconds": 313.9583333333333,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-auth-data",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "session",
+        "verify"
+      ],
+      "subtitleLinesAtExtraction": [
+        "Sessionはセッショントークンと有効期限を持ち、",
+        "同じくUserを参照します。"
+      ],
+      "file": "13-authentication-data.png",
+      "sha256": "1ce9e5690137a79d2b85476a15b0a3a3fea1a6aa1df134a642c1091643c25257"
+    },
+    {
+      "label": "group-ownership",
+      "sceneId": "lesson14-turn-032-ikumi",
+      "frame": 8766,
+      "seconds": 365.25,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-no-direct",
+      "layout": "settings",
+      "highlightFields": [
+        "ownership",
+        "relation"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "いいえ。APIキーの所有者はEntraグループです。",
+        "本人とAPIキーを直接結ぶSQLの外部キーはなく、"
+      ],
+      "file": "14-group-ownership.png",
+      "sha256": "f9838c5415491dda473d0815e3f867aaebd0fdca264187c215e1196a85e098b5"
+    },
+    {
+      "label": "identity-diagram",
+      "sceneId": "lesson14-turn-035-ikumi",
+      "frame": 9603,
+      "seconds": 400.125,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-identity-flow",
+      "layout": "svg",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "最初に、セッションから識別した本人IDを使い、",
+        "Graphで現在の所属グループを照会します。次に、"
+      ],
+      "file": "15-identity-diagram.png",
+      "sha256": "eddaf20d7837876fa8a11db7abbe1ebd4f230d9eb99b09ae1bf4c854f140bd37"
+    },
+    {
+      "label": "company-attribution",
+      "sceneId": "lesson14-turn-041-ikumi",
+      "frame": 11231,
+      "seconds": 467.9583333333333,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-authorization",
+      "layout": "settings",
+      "highlightFields": [
+        "company"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "キーに登録されたcompanyIdから利用会社を参照します",
+        "。この値は費用帰属の対応です。会社名が同じ、"
+      ],
+      "file": "16-company-attribution.png",
+      "sha256": "d13a2e5e2943e07cc2fb88f5503144a7b35b32d0540d0d92c0ec2e3a5392a5ab"
+    },
+    {
+      "label": "subscription-term-no-outline",
+      "sceneId": "lesson14-turn-044-ikumi",
+      "frame": 12132,
+      "seconds": 505.5,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-authorization",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "なお、ここでいうAPIMサブスクリプションは、",
+        "APIの利用許可を管理する単位です。Azureリソースの課"
+      ],
+      "file": "17-subscription-term-no-outline.png",
+      "sha256": "73a48334444c4cfe398779552c67ecf976378cebea921aaa088e202b63d3e3c2"
+    },
+    {
+      "label": "company-data",
+      "sceneId": "lesson14-turn-049-ikumi",
+      "frame": 13482,
+      "seconds": 561.75,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-company-data",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "company",
+        "key",
+        "audit"
+      ],
+      "subtitleLinesAtExtraction": [
+        "データでは、会社ID、会社名、",
+        "選択可能状態を会社の表へ保存します。"
+      ],
+      "file": "18-company-data.png",
+      "sha256": "ee25d9b6f11406f24bcbe0999d082ba5a574f33de1dda616377e35f9bb42af4f"
+    },
+    {
+      "label": "company-create",
+      "sceneId": "lesson14-turn-054-ikumi",
+      "frame": 14933,
+      "seconds": 622.2083333333334,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-company-operation",
+      "layout": "settings",
+      "highlightFields": [
+        "create",
+        "candidate",
+        "select"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "有効な会社だけを候補として返します。",
+        "APIキーを払い出すときは、"
+      ],
+      "file": "19-company-create.png",
+      "sha256": "a95f68f7510675a54a79245e5f8cb1126c7f1f426f44d2b3a3032eb3bab8ceef"
+    },
+    {
+      "label": "company-update",
+      "sceneId": "lesson14-turn-056-ikumi",
+      "frame": 15453,
+      "seconds": 643.875,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-company-update",
+      "layout": "settings",
+      "highlightFields": [
+        "concurrent",
+        "save"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "読込時の更新日時と現在値を比較して、",
+        "更新の競合を確認します。会社情報と、"
+      ],
+      "file": "20-company-update.png",
+      "sha256": "e9a7e589ef79e3156eb2a18f21d376d977fb021b5ef16b54142b56b9bccd49f7"
+    },
+    {
+      "label": "company-disabled",
+      "sceneId": "lesson14-turn-058-ikumi",
+      "frame": 15993,
+      "seconds": 666.375,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-company-update",
+      "layout": "settings",
+      "highlightFields": [
+        "disabled"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "選択停止後も、既存キーの会社参照は保持します。",
+        "新しく選ぶ候補から外す操作であり、"
+      ],
+      "file": "21-company-disabled.png",
+      "sha256": "7f361ea4c8a360f7f0a66b31dfb0f056abc64d042789da03189086846b47524f"
+    },
+    {
+      "label": "company-rename",
+      "sceneId": "lesson14-turn-061-ikumi",
+      "frame": 16783,
+      "seconds": 699.2916666666666,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-company-update",
+      "layout": "settings",
+      "highlightFields": [
+        "rename"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "この会社管理機能が保存するのはSQLです。",
+        "通常のAPIMサブスクリプションの表示名との差分は、"
+      ],
+      "file": "22-company-rename.png",
+      "sha256": "75e2135b684bcaad0b2bab6231e3af1d892956dc01da3bae4fe80e5ac5ecde36"
+    },
+    {
+      "label": "example",
+      "sceneId": "lesson14-turn-063-ikumi",
+      "frame": 17430,
+      "seconds": 726.25,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-case",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "person",
+        "group",
+        "member"
+      ],
+      "subtitleLinesAtExtraction": [
+        "まず、ログイン中の本人を識別できているかです。",
+        "次にGraphで、その人が現在、"
+      ],
+      "file": "23-example.png",
+      "sha256": "93c957ff57d3d7302ee3127b455845fb755bf60c80bb36362ca61ce39e1e1467"
+    },
+    {
+      "label": "quiz1-question",
+      "sceneId": "lesson14-turn-069-mako",
+      "frame": 19263,
+      "seconds": 802.625,
+      "phase": "body",
+      "speaker": "mako",
+      "viewId": "lesson14-check-login",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "確認問題です。",
+        "同じ会社の二人がPortalにログインできました。"
+      ],
+      "file": "24-quiz1-question.png",
+      "sha256": "5f3a131ab0b80183eae5be37c583dbe4a8fdcc2436167651825348c95fd3a594"
+    },
+    {
+      "label": "quiz1-answer",
+      "sceneId": "lesson14-turn-070-manabu",
+      "frame": 19536,
+      "seconds": 814.0,
+      "phase": "body",
+      "speaker": "manabu",
+      "viewId": "lesson14-check-login",
+      "layout": "settings",
+      "highlightFields": [
+        "group"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "言い切れません。本人としてログインできることと、",
+        "対象キーの管理権限は別です。現在所属するグループと、"
+      ],
+      "file": "25-quiz1-answer.png",
+      "sha256": "dc093b6f862055a694bb09f68db7e7287ef921a58b321009082af6a8108c96ac"
+    },
+    {
+      "label": "quiz2-question",
+      "sceneId": "lesson14-turn-072-mako",
+      "frame": 20068,
+      "seconds": 836.1666666666666,
+      "phase": "body",
+      "speaker": "mako",
+      "viewId": "lesson14-check-disable",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "二問目です。会社を選択停止にしました。A、",
+        "既存キーもすべて自動停止。B、新規候補から外れ、"
+      ],
+      "file": "26-quiz2-question.png",
+      "sha256": "70a2f67ea8205960b97533e5410ce921189af70c02b4f9ec6809acedda39000a"
+    },
+    {
+      "label": "quiz2-answer",
+      "sceneId": "lesson14-turn-073-manabu",
+      "frame": 20445,
+      "seconds": 851.875,
+      "phase": "body",
+      "speaker": "manabu",
+      "viewId": "lesson14-check-disable",
+      "layout": "settings",
+      "highlightFields": [
+        "choice2"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "答えはBです。今後の選択候補から外すことと、",
+        "既存キーの利用を止めることは別です。"
+      ],
+      "file": "27-quiz2-answer.png",
+      "sha256": "bd5745f8df0b3d061ded6f5404dad2c9f729ef562c89f9ee53ff8711e44b6b6e"
+    },
+    {
+      "label": "quiz3-question",
+      "sceneId": "lesson14-turn-075-mako",
+      "frame": 20972,
+      "seconds": 873.8333333333334,
+      "phase": "body",
+      "speaker": "mako",
+      "viewId": "lesson14-check-key",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "最後です。SQLにキーの台帳がありました。では、",
+        "そのキー実値もSQLに保存されていると判断してよいでしょう"
+      ],
+      "file": "28-quiz3-question.png",
+      "sha256": "2824610b6019165ab3c7663647b3bbef4a938b8d4afa980e5aef91ede19dfa65"
+    },
+    {
+      "label": "quiz3-answer",
+      "sceneId": "lesson14-turn-076-ikumi",
+      "frame": 21267,
+      "seconds": 886.125,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-check-key",
+      "layout": "settings",
+      "highlightFields": [
+        "sql",
+        "apim"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "キー実値を保持する場所はAPIMです。",
+        "SQLは会社や所有などの台帳と監査、"
+      ],
+      "file": "29-quiz3-answer.png",
+      "sha256": "a13dd8cb03fe3f99f95476701434123689edff552dcbffbef57c756974e18443"
+    },
+    {
+      "label": "summary",
+      "sceneId": "lesson14-turn-079-ikumi",
+      "frame": 22260,
+      "seconds": 927.5,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-summary",
+      "layout": "settings",
+      "highlightFields": [
+        "identity",
+        "owner",
+        "secrets"
+      ],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [
+        "確認先も対応させてください。",
+        "本人はEntraとSQLセッション、現在所属はGraph、"
+      ],
+      "file": "30-summary.png",
+      "sha256": "37fcb0a2fa3f60457fbf91149c29d4b9b0ecf227f929279d080abd0fcda06701"
+    },
+    {
+      "label": "closing-logo",
+      "sceneId": "closing",
+      "frame": 23009,
+      "seconds": 958.7083333333334,
+      "phase": "closing",
+      "speaker": null,
+      "viewId": null,
+      "layout": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "file": "31-closing-logo.png",
+      "sha256": "b298c6fce6842a1c9423b3473ac7f099b0507af438854d0bcd7471ec776b8d17"
+    },
+    {
+      "label": "closing-end",
+      "sceneId": "closing",
+      "frame": 23128,
+      "seconds": 963.6666666666666,
+      "phase": "closing",
+      "speaker": null,
+      "viewId": null,
+      "layout": null,
+      "highlightFields": [],
+      "highlightRows": [],
+      "subtitleLinesAtExtraction": [],
+      "file": "32-closing-end.png",
+      "sha256": "9a0ac6dce7ee86342e3f445ff31e300a0ea4a3bb873c58c8c5e1d4a40c69d22d"
+    },
+    {
+      "label": "account-data-microsoft-wrap",
+      "sceneId": "lesson14-turn-026-ikumi",
+      "frame": 7016,
+      "seconds": 292.3333333333333,
+      "phase": "body",
+      "speaker": "ikumi",
+      "viewId": "lesson14-auth-data",
+      "layout": "settings",
+      "highlightFields": [],
+      "highlightRows": [
+        "user",
+        "account"
+      ],
+      "subtitleLinesAtExtraction": [
+        "Userは本人のレコードです。Accountは",
+        "Microsoftアカウントとの対応を持ち、"
+      ],
+      "file": "33-account-data-microsoft-wrap.png",
+      "sha256": "58bf926ea59a7a7d1f5eaed970fe61ea828a8478a096bc943345f233ba63d3de"
+    }
+  ],
+  "visualReviewPerformedByThisScript": false,
+  "networkRequestsMade": false
+}

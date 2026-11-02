@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="550" viewBox="0 0 1100 550" role="img" aria-labelledby="title desc">
+  <title id="title">通常RESTにおけるAPIMサブスクリプション検証・API・Operationの実行順</title>
+  <desc id="desc">上段を左から右へ、次に下段を右から左へ読む。1はAPIMサブスクリプションの標準検証、2は共通入口、3はAPI共通のprofile・サイズ・model検査、4はAPIMサブスクリプションプロファイル取得と回数・トークン制御、5はMIやCMによる下流認証の準備、6はOperation固有の入力検査とURI変換、7は業務呼出し。Operationのbase要素でAPI inboundを先に実行するため、固有検査で拒否しても計数・認証準備が済んでいる場合がある。SSMLガードはAPIMサブスクリプションの標準検証後、Operationのbase前に実行する。文書解析などはinboundのsend-requestで業務を呼び出す。return-responseは以降の処理を終了し、on-errorは例外発生時だけの別経路である。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M1 1 7 4 1 7" fill="none" stroke="#547c67" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; fill: #244c40; }
+    .heading { font-size: 22px; font-weight: 650; }
+    .label { font-size: 20px; font-weight: 600; }
+    .copy { font-size: 18px; fill: #617462; }
+    .step { font-size: 18px; font-weight: 600; fill: #547c67; }
+    .node { fill: #fffefa; stroke: #b6c8ad; stroke-width: 1.4; }
+    .flow { fill: none; stroke: #547c67; stroke-width: 1.8; marker-end: url(#arrow); }
+  </style>
+  <rect x="8" y="8" width="1084" height="534" rx="12" fill="#f7f9f3" stroke="#bdcfb4" stroke-width="1.4"/>
+  <text x="32" y="43" class="heading">通常REST：APIの処理を終えてから、Operation固有の処理へ</text>
+
+  <rect x="32" y="70" width="244" height="123" rx="6" class="node"/>
+  <text x="50" y="100" class="step">01</text>
+  <text x="50" y="123" class="label" style="font-size:18px"><tspan x="50">APIMサブスクリプション</tspan><tspan x="50" dy="24">の標準検証</tspan></text>
+  <text x="50" y="176" class="copy">キーの状態・利用範囲</text>
+  <path d="M282 132 H290" class="flow"/>
+
+  <rect x="296" y="70" width="244" height="123" rx="6" class="node"/>
+  <text x="314" y="100" class="step">02</text>
+  <text x="314" y="134" class="label">共通入口</text>
+  <text x="314" y="165" class="copy">入口証明・キー形式</text>
+  <path d="M546 132 H554" class="flow"/>
+
+  <rect x="560" y="70" width="244" height="123" rx="6" class="node"/>
+  <text x="578" y="100" class="step">03</text>
+  <text x="578" y="134" class="label">API共通検査</text>
+  <text x="578" y="165" class="copy">profile・サイズ・model</text>
+  <path d="M810 132 H818" class="flow"/>
+
+  <rect x="824" y="70" width="244" height="123" rx="6" class="node"/>
+  <text x="842" y="100" class="step">04</text>
+  <text x="842" y="123" class="label" style="font-size:18px"><tspan x="842">APIMサブスクリプション</tspan><tspan x="842" dy="24">のプロファイル取得</tspan></text>
+  <text x="842" y="176" class="copy">回数・token制御</text>
+  <path d="M946 193 V225" class="flow"/>
+
+  <rect x="824" y="235" width="244" height="110" rx="6" class="node"/>
+  <text x="842" y="264" class="step">05</text>
+  <text x="842" y="295" class="label">下流認証の準備</text>
+  <text x="842" y="325" class="copy">MI・CM等</text>
+  <path d="M816 290 H682" class="flow"/>
+
+  <rect x="428" y="235" width="244" height="110" rx="6" fill="#edf3e7" stroke="#547c67" stroke-width="2"/>
+  <text x="446" y="264" class="step">06</text>
+  <text x="446" y="295" class="label">Operation固有処理</text>
+  <text x="446" y="325" class="copy">入力検査・URI変換</text>
+  <path d="M420 290 H286" class="flow"/>
+
+  <rect x="32" y="235" width="244" height="110" rx="6" class="node"/>
+  <text x="50" y="264" class="step">07</text>
+  <text x="50" y="295" class="label">業務呼出し</text>
+  <text x="50" y="325" class="copy">通常はbackendで転送</text>
+
+  <path d="M32 366 H1068" fill="none" stroke="#d5e0d0" stroke-width="1.4"/>
+  <text x="32" y="395" class="copy">Operationの &lt;base /&gt; で、API inbound（02〜05）を先に実行する。</text>
+  <text x="32" y="425" class="copy">固有検査の拒否でも、回数の計数・下流認証の準備が済んでいる場合がある。</text>
+  <text x="32" y="455" class="copy">SSMLガードは &lt;base /&gt; 前、APIMサブスクリプションの標準検証後。文書等はinboundのsend-requestで呼ぶ。</text>
+  <text x="32" y="485" class="copy">return-response は以降の処理を終了する。それ以前の内部呼出しがないという意味ではない。</text>
+  <text x="32" y="515" class="copy">on-error は例外発生時の別経路。正常処理の最後に必ず実行する段階ではない。</text>
+</svg>

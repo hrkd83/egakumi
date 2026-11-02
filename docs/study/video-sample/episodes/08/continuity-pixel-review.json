@@ -1,0 +1,256 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T14:22:05.823303+09:00",
+  "visualStyle": "teaching-settings-v2",
+  "clips": {
+    "private-route": {
+      "file": "continuous-previews/private-route/conversation-preview.mp4",
+      "durationSeconds": 55.791667,
+      "firstTurn": "lesson08-turn-013-mako",
+      "lastTurn": "lesson08-turn-017-ikumi",
+      "frames": 1339,
+      "sha256": "f4c58c97dd7d671762dae8682a92ca341e182cebe2bd20c3a98dd7ce272c766c"
+    },
+    "managed-command": {
+      "file": "conversation-preview.mp4",
+      "durationSeconds": 60.5,
+      "firstTurn": "lesson08-turn-053-mako",
+      "lastTurn": "lesson08-turn-057-manabu",
+      "frames": 1452,
+      "sha256": "912ab64bd9fea493d4aeacabbf7fa32abfd685c8431dc38f96b4ba43449d80e5"
+    }
+  },
+  "method": {
+    "reference": "Each clip's first decoded frame; decoded frame timestamps start at zero.",
+    "measurement": "All decoded frames: grayscale luminance SSIM and MSE/PSNR against a cloned first frame using FFmpeg.",
+    "exactCrops": true,
+    "regions": {
+      "header": [
+        65,
+        204,
+        1207,
+        135
+      ],
+      "menu": [
+        65,
+        340,
+        192,
+        346
+      ]
+    },
+    "secondaryAlignment": "At the lowest-SSIM frame in each clip/region, test all integer dx/dy shifts from -2 to +2 pixels on an inner crop with a two-pixel border excluded.",
+    "similarityHeuristicMinimum": 0.995,
+    "alignmentCondition": "The best tested shift must be exactly (0,0).",
+    "thresholdMeaning": "Screen-change/motion screening threshold, not a claim of bit-identical lossy pixels. No RMSE pass threshold was imposed."
+  },
+  "results": [
+    {
+      "clip": "private-route",
+      "region": "header",
+      "cropXYWH": [
+        65,
+        204,
+        1207,
+        135
+      ],
+      "referenceFrameZeroBased": 0,
+      "framesCompared": 1339,
+      "allFramesCovered": true,
+      "ssimMinimum": 0.998409,
+      "ssimMean": 0.9986027662434653,
+      "minimumSsimFrameZeroBased": 1008,
+      "minimumSsimTimeSeconds": 42.0,
+      "maximumMSE": 3.08,
+      "maximumRMSE": 1.7549928774784245,
+      "maximumRMSEPercentOf255": 0.6882325009719312,
+      "maximumMseFrameZeroBased": 252,
+      "lowestSsimFrameAlignment": {
+        "testedShiftPixels": [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ],
+        "best": {
+          "dx": 0,
+          "dy": 0,
+          "mse": 3.1216043859816107
+        },
+        "nextBest": {
+          "dx": -1,
+          "dy": 0,
+          "mse": 445.2519083969466
+        },
+        "zeroShiftMSE": 3.1216043859816107
+      },
+      "firstAndWorstImages": {
+        "first": "continuity-private-route-header-first.png",
+        "worst": "continuity-private-route-header-worst.png"
+      },
+      "ssimLog": "settings-qa/continuity-private-route-header-ssim.log",
+      "psnrLog": "settings-qa/continuity-private-route-header-psnr.log",
+      "status": "passed"
+    },
+    {
+      "clip": "private-route",
+      "region": "menu",
+      "cropXYWH": [
+        65,
+        340,
+        192,
+        346
+      ],
+      "referenceFrameZeroBased": 0,
+      "framesCompared": 1339,
+      "allFramesCovered": true,
+      "ssimMinimum": 0.998586,
+      "ssimMean": 0.9989224070201643,
+      "minimumSsimFrameZeroBased": 752,
+      "minimumSsimTimeSeconds": 31.333333333333332,
+      "maximumMSE": 0.77,
+      "maximumRMSE": 0.8774964387392122,
+      "maximumRMSEPercentOf255": 0.3441162504859656,
+      "maximumMseFrameZeroBased": 250,
+      "lowestSsimFrameAlignment": {
+        "testedShiftPixels": [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ],
+        "best": {
+          "dx": 0,
+          "dy": 0,
+          "mse": 0.7422701256687819
+        },
+        "nextBest": {
+          "dx": -1,
+          "dy": 0,
+          "mse": 273.5804715689934
+        },
+        "zeroShiftMSE": 0.7422701256687819
+      },
+      "firstAndWorstImages": {
+        "first": "continuity-private-route-menu-first.png",
+        "worst": "continuity-private-route-menu-worst.png"
+      },
+      "ssimLog": "settings-qa/continuity-private-route-menu-ssim.log",
+      "psnrLog": "settings-qa/continuity-private-route-menu-psnr.log",
+      "status": "passed"
+    },
+    {
+      "clip": "managed-command",
+      "region": "header",
+      "cropXYWH": [
+        65,
+        204,
+        1207,
+        135
+      ],
+      "referenceFrameZeroBased": 0,
+      "framesCompared": 1452,
+      "allFramesCovered": true,
+      "ssimMinimum": 0.998362,
+      "ssimMean": 0.9986353457300275,
+      "minimumSsimFrameZeroBased": 758,
+      "minimumSsimTimeSeconds": 31.583333333333332,
+      "maximumMSE": 3.47,
+      "maximumRMSE": 1.862793601019716,
+      "maximumRMSEPercentOf255": 0.7305072945175356,
+      "maximumMseFrameZeroBased": 252,
+      "lowestSsimFrameAlignment": {
+        "testedShiftPixels": [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ],
+        "best": {
+          "dx": 0,
+          "dy": 0,
+          "mse": 3.477191245804065
+        },
+        "nextBest": {
+          "dx": -1,
+          "dy": 0,
+          "mse": 504.6466467419238
+        },
+        "zeroShiftMSE": 3.477191245804065
+      },
+      "firstAndWorstImages": {
+        "first": "continuity-managed-command-header-first.png",
+        "worst": "continuity-managed-command-header-worst.png"
+      },
+      "ssimLog": "settings-qa/continuity-managed-command-header-ssim.log",
+      "psnrLog": "settings-qa/continuity-managed-command-header-psnr.log",
+      "status": "passed"
+    },
+    {
+      "clip": "managed-command",
+      "region": "menu",
+      "cropXYWH": [
+        65,
+        340,
+        192,
+        346
+      ],
+      "referenceFrameZeroBased": 0,
+      "framesCompared": 1452,
+      "allFramesCovered": true,
+      "ssimMinimum": 0.9987,
+      "ssimMean": 0.998952479338843,
+      "minimumSsimFrameZeroBased": 1221,
+      "minimumSsimTimeSeconds": 50.875,
+      "maximumMSE": 0.76,
+      "maximumRMSE": 0.8717797887081347,
+      "maximumRMSEPercentOf255": 0.34187442694436654,
+      "maximumMseFrameZeroBased": 750,
+      "lowestSsimFrameAlignment": {
+        "testedShiftPixels": [
+          -2,
+          -1,
+          0,
+          1,
+          2
+        ],
+        "best": {
+          "dx": 0,
+          "dy": 0,
+          "mse": 0.7446030857285056
+        },
+        "nextBest": {
+          "dx": -1,
+          "dy": 0,
+          "mse": 272.044855045415
+        },
+        "zeroShiftMSE": 0.7446030857285056
+      },
+      "firstAndWorstImages": {
+        "first": "continuity-managed-command-menu-first.png",
+        "worst": "continuity-managed-command-menu-worst.png"
+      },
+      "ssimLog": "settings-qa/continuity-managed-command-menu-ssim.log",
+      "psnrLog": "settings-qa/continuity-managed-command-menu-psnr.log",
+      "status": "passed"
+    }
+  ],
+  "uniqueClipFramesCompared": 2791,
+  "regionFrameComparisons": 5582,
+  "comparisonsViewed": [
+    "settings-qa/continuity-private-route-comparison.png",
+    "settings-qa/continuity-managed-command-comparison.png"
+  ],
+  "visualComparisonFinding": "First/lowest-SSIM header and menu crops retain the same labels, selected menu entry, geometry and position.",
+  "conclusion": "No visible header/menu pan, zoom, reset or view switch was found in the two complete conversation clips. Small nonzero differences are consistent with lossy compression: every SSIM is >=0.998362 and all four worst-frame alignment tests favor zero shift by a large margin.",
+  "limitations": [
+    "Only the stated header/menu regions of these two conversation clips were measured.",
+    "The main diagram region, changing red outlines, subtitle band and speaker rail are excluded; their pixel identity is not asserted.",
+    "Luminance measurements do not prove exact chroma identity or rule out every subpixel change.",
+    "Whole-video decode and uninterrupted browser playback were performed separately by the production lead; no listening claim is made here."
+  ],
+  "networkRequestsMade": false,
+  "dependenciesInstalled": false
+}

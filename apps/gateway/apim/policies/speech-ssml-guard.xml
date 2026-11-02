@@ -1,0 +1,69 @@
+<fragment>
+  <!-- AppGW custom-rule RequestBody documentation does not list SSML. Run before
+       inherited authentication/backend policies, without parsing/expanding XML.
+       Preserve the original bytes and skip literal examples in comments/CDATA.
+       UTF-8/16/32 XML delimiters are decoded; no entity resolver is invoked. -->
+  <set-variable name="speechSsmlDeclarationRejected" value="@{
+    if (context.Request.Body == null) { return false; }
+    var bytes = context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
+    if (bytes == null || bytes.Length == 0) { return false; }
+    /* Reject recognized non-ASCII-compatible XML encodings outside UTF-16/32
+       instead of guessing (EBCDIC and unusual UCS-4 byte orders). */
+    if (bytes.Length &gt;= 4 &amp;&amp; ((bytes[0] == 0x4c &amp;&amp; bytes[1] == 0x6f &amp;&amp; bytes[2] == 0xa7 &amp;&amp; bytes[3] == 0x94) || (bytes[0] == 0 &amp;&amp; bytes[1] == 0 &amp;&amp; bytes[2] == 0xff &amp;&amp; bytes[3] == 0xfe) || (bytes[0] == 0xfe &amp;&amp; bytes[1] == 0xff &amp;&amp; bytes[2] == 0 &amp;&amp; bytes[3] == 0) || (bytes[0] == 0 &amp;&amp; bytes[1] == 0 &amp;&amp; bytes[2] != 0 &amp;&amp; bytes[3] == 0) || (bytes[0] == 0 &amp;&amp; bytes[1] != 0 &amp;&amp; bytes[2] == 0 &amp;&amp; bytes[3] == 0))) { return true; }
+    var encoding = System.Text.Encoding.UTF8;
+    if (bytes.Length &gt;= 4 &amp;&amp; ((bytes[0] == 0xff &amp;&amp; bytes[1] == 0xfe &amp;&amp; bytes[2] == 0 &amp;&amp; bytes[3] == 0) || (bytes[0] != 0 &amp;&amp; bytes[1] == 0 &amp;&amp; bytes[2] == 0 &amp;&amp; bytes[3] == 0))) { encoding = System.Text.Encoding.UTF32; }
+    else if (bytes.Length &gt;= 4 &amp;&amp; ((bytes[0] == 0 &amp;&amp; bytes[1] == 0 &amp;&amp; bytes[2] == 0xfe &amp;&amp; bytes[3] == 0xff) || (bytes[0] == 0 &amp;&amp; bytes[1] == 0 &amp;&amp; bytes[2] == 0 &amp;&amp; bytes[3] != 0))) { encoding = System.Text.Encoding.GetEncoding(12001); }
+    else if (bytes.Length &gt;= 2 &amp;&amp; ((bytes[0] == 0xff &amp;&amp; bytes[1] == 0xfe) || (bytes[0] != 0 &amp;&amp; bytes[1] == 0))) { encoding = System.Text.Encoding.Unicode; }
+    else if (bytes.Length &gt;= 2 &amp;&amp; ((bytes[0] == 0xfe &amp;&amp; bytes[1] == 0xff) || (bytes[0] == 0 &amp;&amp; bytes[1] != 0))) { encoding = System.Text.Encoding.BigEndianUnicode; }
+    var xml = encoding.GetString(bytes).ToLowerInvariant();
+    var position = 0;
+    while (position &lt; xml.Length) {
+      var start = xml.IndexOf(&quot;&lt;&quot;, position, StringComparison.Ordinal);
+      if (start &lt; 0) { return false; }
+      if (start + 4 &lt;= xml.Length &amp;&amp; xml.Substring(start, 4) == &quot;&lt;!--&quot;) {
+        var end = xml.IndexOf(&quot;--&gt;&quot;, start + 4, StringComparison.Ordinal);
+        if (end &lt; 0) { return false; }
+        position = end + 3;
+      } else if (start + 9 &lt;= xml.Length &amp;&amp; xml.Substring(start, 9) == &quot;&lt;![cdata[&quot;) {
+        var end = xml.IndexOf(&quot;]]&gt;&quot;, start + 9, StringComparison.Ordinal);
+        if (end &lt; 0) { return false; }
+        position = end + 3;
+      } else if (start + 2 &lt;= xml.Length &amp;&amp; xml.Substring(start, 2) == &quot;&lt;?&quot;) {
+        var end = xml.IndexOf(&quot;?&gt;&quot;, start + 2, StringComparison.Ordinal);
+        if (end &lt; 0) { return false; }
+        position = end + 2;
+      } else if (start + 2 &lt;= xml.Length &amp;&amp; xml.Substring(start, 2) == &quot;&lt;!&quot;) {
+        var keyword = start + 2;
+        while (keyword &lt; xml.Length &amp;&amp; (xml[keyword] == ' ' || xml[keyword] == '\t' || xml[keyword] == '\r' || xml[keyword] == '\n')) { keyword++; }
+        foreach (var declaration in new [] { &quot;doctype&quot;, &quot;entity&quot; }) {
+          var end = keyword + declaration.Length;
+          if (end &lt;= xml.Length &amp;&amp; xml.Substring(keyword, declaration.Length) == declaration &amp;&amp; (end == xml.Length || !(Char.IsLetterOrDigit(xml[end]) || xml[end] == '_' || xml[end] == ':' || xml[end] == '-' || xml[end] == '.'))) { return true; }
+        }
+        position = start + 2;
+      } else {
+        /* Skip a normal tag, respecting quoted attribute values. A nested raw
+           '&lt;' is malformed XML; still resume there so it cannot hide a DTD. */
+        position = start + 1;
+        var quote = '\0';
+        while (position &lt; xml.Length) {
+          var current = xml[position++];
+          if (quote != '\0') { if (current == quote) { quote = '\0'; } }
+          else if (current == '\'' || current == '&quot;') { quote = current; }
+          else if (current == '&gt;') { break; }
+          else if (current == '&lt;') { position--; break; }
+        }
+      }
+    }
+    return false;
+  }" />
+  <choose>
+    <when condition="@((bool)context.Variables[&quot;speechSsmlDeclarationRejected&quot;])">
+      <return-response>
+        <set-status code="400" reason="Invalid Speech markup" />
+        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-body>{"error":{"code":"InvalidSpeechMarkup","message":"DTD and entity declarations are not allowed in Speech markup."}}</set-body>
+      </return-response>
+    </when>
+  </choose>
+</fragment>

@@ -1,0 +1,38 @@
+{
+  "released": true,
+  "name": "microsoft-decision-v1",
+  "displayName": "Microsoft Decision V1",
+  "path": "models/microsoft-decision/v1",
+  "backendService": "foundryServices",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "systemone",
+      "displayName": "Decision Noul Choice Score",
+      "method": "POST",
+      "urlTemplate": "/systemone",
+      "templateParameters": [],
+      "backendUrlTemplate": "/providers/microsoft/v1/systemone"
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "systemone": {
+        "kind": "bodyModel",
+        "maxRequestBytes": 8192,
+        "bodyFormat": "json",
+        "allowedModels": [
+          "decision-1"
+        ]
+      }
+    }
+  },
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform"
+}

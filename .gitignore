@@ -1,0 +1,33 @@
+.azure/
+.state/
+secrets/
+params/*.local.json
+infra/main.parameters.json
+infra/*.json
+!infra/bicepconfig.json
+!infra/log-privacy.json
+__pycache__/
+*.pfx
+*.pem
+*.key
+
+# ローカルの実行環境・証跡・秘密ファイルは配布しません。
+.tools/
+.venv/
+.venv-*/
+artifacts/
+outputs/
+*.log
+*.pyc
+*.cer
+*.token
+.env
+.env.*
+.DS_Store
+
+# 手元で保管する旧秘密・試験資材は公開しません。
+/Archives/
+
+# Core sample portal
+apps/portal/node_modules/
+apps/portal/.next/

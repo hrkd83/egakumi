@@ -1,0 +1,19 @@
+{
+  "logoIntro": {
+    "path": "egakumi-logo-intro.mp4",
+    "sha256": "6dfed994bd568e9abf3aa1166fc90c759381f66710380c602bd0a48c7fa10ff9",
+    "durationSeconds": 4,
+    "source": "Approved egakumi logo sting from output/episode-opening/egakumi-logo-sting.mp4",
+    "containsEpisodeSpecificContent": false
+  },
+  "commonClosing": {
+    "path": "egakumi-common-closing.mp4",
+    "sha256": "0ad787188dbea63f92474b28dc82953b3b74d5ba90abc0830c89cfb6ff03d1e7",
+    "durationSeconds": 8,
+    "brandMusicSourceSeconds": [
+      63.8,
+      71.8
+    ],
+    "containsEpisodeSpecificContent": false
+  }
+}

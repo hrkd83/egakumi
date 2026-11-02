@@ -1,0 +1,83 @@
+{
+  "released": true,
+  "name": "azure-speech-v1",
+  "displayName": "Azure Speech V1",
+  "path": "models/azure-speech/v1",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "tts",
+      "displayName": "Tts",
+      "method": "POST",
+      "urlTemplate": "/synthesize",
+      "templateParameters": [],
+      "backendUrlTemplate": "/cognitiveservices/v1",
+      "backendOverride": {
+        "backendService": "external",
+        "backendUrl": "__SPEECH_TTS_BASE_URL__",
+        "backendAudience": "https://cognitiveservices.azure.com",
+        "backendAuthentication": {
+          "mode": "speechEntra",
+          "resourceId": "__SPEECH_RESOURCE_ID__"
+        },
+        "backendHeaders": {
+          "X-Microsoft-OutputFormat": "riff-16khz-16bit-mono-pcm"
+        }
+      }
+    },
+    {
+      "name": "stt",
+      "displayName": "Stt",
+      "method": "POST",
+      "urlTemplate": "/recognize",
+      "templateParameters": [],
+      "backendUrlTemplate": "/speech/recognition/conversation/cognitiveservices/v1?language=ja-JP&format=detailed",
+      "backendOverride": {
+        "backendService": "external",
+        "backendUrl": "__SPEECH_STT_BASE_URL__",
+        "backendAudience": "https://cognitiveservices.azure.com",
+        "backendAuthentication": {
+          "mode": "speechEntra",
+          "resourceId": "__SPEECH_RESOURCE_ID__"
+        },
+        "backendHeaders": {
+          "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000"
+        }
+      }
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "tts": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 8192,
+        "bodyFormat": "text",
+        "contentTypes": [
+          "application/ssml+xml"
+        ]
+      },
+      "stt": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 1048576,
+        "bodyFormat": "binary",
+        "contentTypes": [
+          "audio/wav"
+        ]
+      }
+    }
+  },
+  "backendUrl": "__SPEECH_TTS_BASE_URL__",
+  "backendAuthentication": {
+    "mode": "speechEntra",
+    "resourceId": "__SPEECH_RESOURCE_ID__"
+  },
+  "backendHeaders": {
+    "X-Microsoft-OutputFormat": "riff-16khz-16bit-mono-pcm"
+  },
+  "serviceClass": "platform"
+}

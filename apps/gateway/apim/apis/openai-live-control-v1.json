@@ -1,0 +1,40 @@
+{
+  "released": true,
+  "name": "openai-live-control-v1",
+  "displayName": "OpenAI Live WebRTC Control",
+  "path": "models/openai-live/v1",
+  "backendService": "foundryOpenAi",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "live-create",
+      "displayName": "Create Live WebRTC session",
+      "method": "POST",
+      "urlTemplate": "/sessions",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "live-create": {
+        "kind": "liveCreate",
+        "maxRequestBytes": 131072,
+        "bodyFormat": "json",
+        "model": "gpt-live-1",
+        "stringChoices": {
+          "voice": [
+            "marin"
+          ]
+        }
+      }
+    }
+  },
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform"
+}

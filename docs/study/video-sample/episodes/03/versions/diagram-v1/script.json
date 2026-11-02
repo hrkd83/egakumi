@@ -1,0 +1,4039 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "03",
+  "episodeNumber": 3,
+  "episodeId": "03",
+  "title": "第3回 NSGによる通信制御",
+  "topic": "NSGによる通信制御",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 1260,
+  "durationPolicy": "ユーザー追加指定により実際の設定値の解説を優先し、15分を超えてよい。通常速度の実音声で確定し、尺合わせの加速や無音追加を行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "2026-11-01参照の教材・現行リポジトリ定義・公開設定例に基づく。追加管理規則なし、gRPC有効の標準例。稼働Azureの取得値・疎通実測ではない。",
+  "learningObjectives": [
+    "関連付けた区画を基準に送信・受信を区別し、適用するNSGを選ぶ。",
+    "同じNSGの同じ方向で、小さい優先度から最初に一致するAccessを判定する。",
+    "許可済み接続の応答と、新しい接続の許可を区別する。",
+    "代表的なAPI・PE通信の許可と拒否を、両端の規則から説明する。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-associations"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-evaluation"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-agw"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-apim-private"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-apim-platform"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-pe"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-management"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-options"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "nsg-checks"
+    },
+    {
+      "file": "../../../params/production.example.json"
+    },
+    {
+      "file": "../../../config/production.json"
+    },
+    {
+      "file": "../../../infra/modules/network.bicep"
+    },
+    {
+      "file": "../../../infra/modules/network-bindings.bicep"
+    },
+    {
+      "file": "../../../infra/modules/portal-network.bicep"
+    },
+    {
+      "file": "../../../infra/modules/credential-broker-network.bicep"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "同じ443でも、通れる相手が違う？",
+      "goal": "今回の問いと到達点をつかむ",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-associations"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-checks"
+        }
+      ]
+    },
+    {
+      "id": "map",
+      "title": "4つのNSGと、送信・受信の向き",
+      "goal": "区画とNSGの対応、両端の判定を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-associations"
+        }
+      ]
+    },
+    {
+      "id": "rules",
+      "title": "小さい優先度から、最初の一致まで",
+      "goal": "条件と優先順位で判定する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-evaluation"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-agw"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "title": "通常APIの入口を、両端で確かめる",
+      "goal": "AppGWと管理VMからAPIMへの差を判断する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-agw"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-apim-private"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-checks"
+        }
+      ]
+    },
+    {
+      "id": "pe",
+      "title": "同じPE区画でも、接続先を分ける",
+      "goal": "APIM・AppGW・ACA・管理VMのPE向け通信を比較する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-pe"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-management"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-checks"
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "title": "許可した接続の応答と、新規接続",
+      "goal": "状態追跡とルール変更後の確認を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-evaluation"
+        }
+      ]
+    },
+    {
+      "id": "platform",
+      "title": "基盤通信と、NSGの外にある判断",
+      "goal": "基盤依存・DNS・Firewall・認証の分担を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-apim-platform"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-evaluation"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-management"
+        }
+      ]
+    },
+    {
+      "id": "options",
+      "title": "名前より、Accessと優先度を読む",
+      "goal": "条件付き規則と重なる規則の結果を判断する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-options"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-management"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "3つの通信を、自分で判定する",
+      "goal": "送信・受信・優先順位を組み合わせて回答する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-checks"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-options"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "判定の順番を持ち帰る",
+      "goal": "到達点を振り返り、次回UDRへつなぐ",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "nsg-checks"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "udr-associations"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson03-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "イクミさん、同じ443番なのに、エーピーアイエムからは通れて、アップゲートウェイからは通れない接続があるんですか？",
+      "caption": "イクミさん、同じ443番なのに、APIMからは通れて、AppGWからは通れない接続があるんですか？",
+      "subtitleLines": [
+        "イクミさん、同じ443番なのに、APIMからは通れて、",
+        "AppGWからは通れない接続があるんですか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "NSGによる通信制御"
+      }
+    },
+    {
+      "id": "lesson03-turn-002-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "あります。宛先ポートが同じでも、送信元や接続先が違えば、エヌエスジーの判定は変わります。",
+      "caption": "あります。宛先ポートが同じでも、送信元や接続先が違えば、NSGの判定は変わります。",
+      "subtitleLines": [
+        "あります。宛先ポートが同じでも、送信元や接続先が違えば、NSGの判定は変わります。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "NSGによる通信制御"
+      }
+    },
+    {
+      "id": "lesson03-turn-003-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "必要な相手だけにつなぐためですね。今日は、表を眺めるだけでなく、一つの通信を自分で判定してみましょう。",
+      "caption": "必要な相手だけにつなぐためですね。今日は、表を眺めるだけでなく、一つの通信を自分で判定してみましょう。",
+      "subtitleLines": [
+        "必要な相手だけにつなぐためですね。今日は、",
+        "表を眺めるだけでなく、一つの通信を自分で判定してみましょう。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "NSGによる通信制御"
+      }
+    },
+    {
+      "id": "lesson03-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "なるほど。行き先と方向を決めて、どの規則に当たるのか。そこから見ていきます。",
+      "caption": "なるほど。行き先と方向を決めて、どの規則に当たるのか。そこから見ていきます。",
+      "subtitleLines": [
+        "なるほど。行き先と方向を決めて、どの規則に当たるのか。そこから見ていきます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "NSGによる通信制御"
+      }
+    },
+    {
+      "id": "lesson03-turn-005-manabu",
+      "speaker": "manabu",
+      "chapterId": "map",
+      "speech": "前回は、名前からプライベートな接続先を調べました。ただ、正しいアイピーが分かっても、そこへ通信できるとは限りません。",
+      "caption": "前回は、名前からプライベートな接続先を調べました。ただ、正しいIPが分かっても、そこへ通信できるとは限りません。",
+      "subtitleLines": [
+        "前回は、名前からプライベートな接続先を調べました。ただ、",
+        "正しいIPが分かっても、そこへ通信できるとは限りません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "同じ通信を、3つの観点で判定する",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "どの方向？",
+            "body": [
+              "区画を基準に",
+              "送信と受信を読む"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "どの規則？",
+            "body": [
+              "小さい優先度から",
+              "最初の一致で決める"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "新規？ 応答？",
+            "body": [
+              "接続の状態を追跡",
+              "変更後は新規で確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-006-mako",
+      "speaker": "mako",
+      "chapterId": "map",
+      "speech": "名前解決の次に、通信を許可する条件を確認するんですね。区画を分けただけでは、全部が遮断されるわけではない。",
+      "caption": "名前解決の次に、通信を許可する条件を確認するんですね。区画を分けただけでは、全部が遮断されるわけではない。",
+      "subtitleLines": [
+        "名前解決の次に、通信を許可する条件を確認するんですね。",
+        "区画を分けただけでは、全部が遮断されるわけではない。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "id": "lesson03-turn-007-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "map",
+      "speech": "はい。この基盤では、アップゲートウェイ、エーピーアイエム、プライベートエンドポイント、管理ブイエムの四つの区画に、それぞれエヌエスジーを関連付けています。",
+      "caption": "はい。この基盤では、AppGW、APIM、Private Endpoint、管理VMの四つの区画に、それぞれNSGを関連付けています。",
+      "subtitleLines": [
+        "はい。この基盤では、AppGW、APIM、Private Endpoint、",
+        "管理VMの四つの区画に、それぞれNSGを関連付けています。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "speaker": "mako",
+      "caption": "実際の設定値も当てはめてみたいです。区画という言葉を、公開例のアドレス範囲へ置き換えると、どうなりますか？",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/cidrs.svg",
+        "heading": "公開設定例のCIDRを、規則の条件へ当てはめる"
+      },
+      "chapterId": "map",
+      "speech": "実際の設定値も当てはめてみたいです。区画という言葉を、公開例のアドレス範囲へ置き換えると、どうなりますか？",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-008-mako",
+      "subtitleLines": [
+        "実際の設定値も当てはめてみたいです。区画という言葉を、",
+        "公開例のアドレス範囲へ置き換えると、どうなりますか？"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "AppGW区画は10.40.0.0/24、PE区画は10.40.1.0/24です。APIM区画は10.40.2.64/26を使います。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/cidrs-focus-9.svg",
+        "heading": "公開設定例のCIDRを、規則の条件へ当てはめる"
+      },
+      "chapterId": "map",
+      "speech": "アップゲートウェイ区画は、十ドット四十ドットゼロドットゼロ、スラッシュ二十四。ピーイー区画は、十ドット四十ドット一ドットゼロ、スラッシュ二十四です。エーピーアイエム区画は、十ドット四十ドット二ドット六十四、スラッシュ二十六を使います。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-009-ikumi",
+      "subtitleLines": [
+        "AppGW区画は10.40.0.0/24、PE区画は10.40.1.0/24です。",
+        "APIM区画は10.40.2.64/26を使います。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "管理VM区画は10.40.2.128/26、ACA区画は10.40.2.192/26。Firewall区画は10.40.2.0/26です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/cidrs-focus-10.svg",
+        "heading": "公開設定例のCIDRを、規則の条件へ当てはめる"
+      },
+      "chapterId": "map",
+      "speech": "管理ブイエム区画は、十ドット四十ドット二ドット百二十八、スラッシュ二十六。エーシーエー区画は、十ドット四十ドット二ドット百九十二、スラッシュ二十六。ファイアウォール区画は、十ドット四十ドット二ドットゼロ、スラッシュ二十六です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-010-ikumi",
+      "subtitleLines": [
+        "管理VM区画は10.40.2.128/26、ACA区画は10.40.2.192/26。",
+        "Firewall区画は10.40.2.0/26です。"
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "これらは公開paramsの固定範囲です。一方、管理VM単体やPEの実IPは、作成後に取得します。区画の先頭IPを、機器の実IPと決めつけないようにしましょう。",
+      "visual": {
+        "layout": "cards",
+        "heading": "固定値と、作成後に決まる実IPを区別する",
+        "cards": [
+          {
+            "title": "入力の正本",
+            "body": [
+              "params/production.example.json",
+              "CIDR・クライアント・運用元・DNS",
+              "config/production.json",
+              "gRPC・KV・監視の有効設定"
+            ]
+          },
+          {
+            "title": "作成後の実IP",
+            "body": [
+              "PEのNICから全IPを取得",
+              "管理VM単体の実IPも取得",
+              "値を架空の末尾で補わない",
+              "対象環境の入力と実ルールを照合"
+            ]
+          }
+        ]
+      },
+      "chapterId": "map",
+      "speech": "これらは公開パラメーターの固定範囲です。一方、管理ブイエム単体やピーイーの実アイピーは、作成後に取得します。区画の先頭アイピーを、機器の実アイピーと決めつけないようにしましょう。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-011-manabu",
+      "subtitleLines": [
+        "これらは公開paramsの固定範囲です。一方、管理VM単体やPEの実IPは、",
+        "作成後に取得します。区画の先頭IPを、機器の実IPと決めつけないようにしましょう。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-012-mako",
+      "speaker": "mako",
+      "chapterId": "map",
+      "speech": "六つの区画すべてに、同じ設定を置くわけではないんですね。残りの二つはどうなりますか？",
+      "caption": "六つの区画すべてに、同じ設定を置くわけではないんですね。残りの二つはどうなりますか？",
+      "subtitleLines": [
+        "六つの区画すべてに、同じ設定を置くわけでは",
+        "ないんですね。残りの二つはどうなりますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "id": "lesson03-turn-013-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "map",
+      "speech": "アジュールファイアウォールとコンテナーアップスの区画には、エヌエスジーを関連付けていません。ファイアウォールのポリシーや、接続先のエヌエスジーなども見ます。",
+      "caption": "Azure FirewallとContainer Appsの区画には、NSGを関連付けていません。Firewallのポリシーや、接続先のNSGなども見ます。",
+      "subtitleLines": [
+        "Azure FirewallとContainer Appsの区画には、NSGを関連付けていません。",
+        "Firewallのポリシーや、接続先のNSGなども見ます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "id": "lesson03-turn-014-manabu",
+      "speaker": "manabu",
+      "chapterId": "map",
+      "speech": "だから、まず対象の通信と、それに適用する制御を選びます。存在しないエーシーエー用エヌエスジーの許可規則を探しても、答えは出ません。",
+      "caption": "だから、まず対象の通信と、それに適用する制御を選びます。存在しないACA用NSGの許可規則を探しても、答えは出ません。",
+      "subtitleLines": [
+        "だから、まず対象の通信と、それに適用する制御を選びます。",
+        "存在しないACA用NSGの許可規則を探しても、答えは出ません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "id": "lesson03-turn-015-mako",
+      "speaker": "mako",
+      "chapterId": "map",
+      "speech": "ここにある受信と送信は、利用者から見た向きでしょうか。それとも、機器から見た向きでしょうか？",
+      "caption": "ここにある受信と送信は、利用者から見た向きでしょうか。それとも、機器から見た向きでしょうか？",
+      "subtitleLines": [
+        "ここにある受信と送信は、利用者から見た向きでしょうか。",
+        "それとも、機器から見た向きでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからPEへ：送信と受信を両方見る",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "APIM用NSG：送信",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "PE用NSG：受信",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "Foundry",
+            "detail": "サービス本体",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "TCP 443"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "Private Link"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-016-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "map",
+      "speech": "関連付けた区画を基準にします。エーピーアイエムからファウンドリーのピーイーへ新しく接続するなら、エーピーアイエム側は送信、ピーイー側は受信です。",
+      "caption": "関連付けた区画を基準にします。APIMからFoundryのPEへ新しく接続するなら、APIM側は送信、PE側は受信です。",
+      "subtitleLines": [
+        "関連付けた区画を基準にします。APIMからFoundryのPEへ",
+        "新しく接続するなら、APIM側は送信、PE側は受信です。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからPEへ：送信と受信を両方見る",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "APIM用NSG：送信",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "PE用NSG：受信",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "Foundry",
+            "detail": "サービス本体",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "TCP 443"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "Private Link"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-017-mako",
+      "speaker": "mako",
+      "chapterId": "map",
+      "speech": "一つの矢印に対して、出る側と入る側で、見る規則が二組あるんですね。片方のアローだけでは決まらない。",
+      "caption": "一つの矢印に対して、出る側と入る側で、見る規則が二組あるんですね。片方のAllowだけでは決まらない。",
+      "subtitleLines": [
+        "一つの矢印に対して、出る側と入る側で、見る規則が",
+        "二組あるんですね。片方のAllowだけでは決まらない。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからPEへ：送信と受信を両方見る",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "APIM用NSG：送信",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "PE用NSG：受信",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "Foundry",
+            "detail": "サービス本体",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "TCP 443"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "Private Link"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "map",
+      "speech": "そのとおりです。またピーイー区画は、ネットワークポリシーでエヌエスジーを有効にしています。関連付けに加え、ピーイーへ適用する設定も必要です。",
+      "caption": "そのとおりです。またPE区画は、ネットワークポリシーでNSGを有効にしています。関連付けに加え、PEへ適用する設定も必要です。",
+      "subtitleLines": [
+        "そのとおりです。またPE区画は、ネットワークポリシーでNSGを",
+        "有効にしています。関連付けに加え、PEへ適用する設定も必要です。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "PEにもNSGを適用する設定",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "PE区画にNSGを関連付け",
+            "body": [
+              "サービスごとの接続口を守る",
+              "送信元・PE実IP・ポートを照合"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "PEのネットワークポリシー",
+            "body": [
+              "privateEndpointNetworkPolicies",
+              "NetworkSecurityGroupEnabled",
+              "この基盤はNSGを有効化"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-019-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "では、エヌエスジーの一行を読んでみましょう。何が同じなら、その規則に一致するといえるんですか？",
+      "caption": "では、NSGの一行を読んでみましょう。何が同じなら、その規則に一致するといえるんですか？",
+      "subtitleLines": [
+        "では、NSGの一行を読んでみましょう。何が同じなら、",
+        "その規則に一致するといえるんですか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "何が一致すれば、同じ規則になる？",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "アドレス",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP範囲"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "ポートとプロトコル",
+            "body": [
+              "送信元ポート：*",
+              "宛先ポート：443など",
+              "TCP / UDPなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "判定",
+            "body": [
+              "適用する方向",
+              "優先度の小さい順",
+              "Access: Allow / Deny"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "先に公開入口も確認します。Web受信100は、クライアント許可元からAppGW区画のTCP80と443。公開例の許可元は0.0.0.0/0です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-inbound-focus-20.svg",
+        "heading": "AppGW受信：公開入口と基盤通信を分ける"
+      },
+      "chapterId": "rules",
+      "speech": "先に公開入口も確認します。Web受信100は、クライアント許可元からアップゲートウェイ区画のティーシーピー80と443。公開例の許可元は0.0.0.0/0です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-020-ikumi",
+      "subtitleLines": [
+        "先に公開入口も確認します。Web受信100は、",
+        "クライアント許可元からAppGW区画のTCP80と443。公開例の許可元は0.0.0.0/0です。"
+      ]
+    },
+    {
+      "speaker": "mako",
+      "caption": "全IPv4を入口として許可する値なんですね。でも、AzureがAppGWを管理する通信とは、目的が違います。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-inbound.svg",
+        "heading": "AppGW受信：公開入口と基盤通信を分ける"
+      },
+      "chapterId": "rules",
+      "speech": "全アイピーブイフォーを入口として許可する値なんですね。でも、Azureがアップゲートウェイを管理する通信とは、目的が違います。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-021-mako",
+      "subtitleLines": [
+        "全IPv4を入口として許可する値なんですね。でも、",
+        "AzureがAppGWを管理する通信とは、目的が違います。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "基盤管理は受信110。GatewayManagerから、宛先は任意、TCP65200から65535です。受信120はAzureLoadBalancerからの全プロトコル・全ポートです。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-inbound-focus-22.svg",
+        "heading": "AppGW受信：公開入口と基盤通信を分ける"
+      },
+      "chapterId": "rules",
+      "speech": "基盤管理は受信110。ゲートウェイマネージャーから、宛先は任意、ティーシーピー65200から65535です。受信120はアジュールロードバランサーからの全プロトコル・全ポートです。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-022-ikumi",
+      "subtitleLines": [
+        "基盤管理は受信110。GatewayManagerから、宛先は任意、TCP65200から65535で",
+        "す。受信120はAzureLoadBalancerからの全プロトコル・全ポートです。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-023-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "送信元と宛先のアドレス、送信元と宛先のポート、それにプロトコルを照合します。教材の表にあるポートは、宛先ポートです。",
+      "caption": "送信元と宛先のアドレス、送信元と宛先のポート、それにプロトコルを照合します。教材の表にあるポートは、宛先ポートです。",
+      "subtitleLines": [
+        "送信元と宛先のアドレス、送信元と宛先のポート、",
+        "それにプロトコルを照合します。教材の表にあるポートは、宛先ポートです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "何が一致すれば、同じ規則になる？",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "アドレス",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP範囲"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "ポートとプロトコル",
+            "body": [
+              "送信元ポート：*",
+              "宛先ポート：443など",
+              "TCP / UDPなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "判定",
+            "body": [
+              "適用する方向",
+              "優先度の小さい順",
+              "Access: Allow / Deny"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-024-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "同じ相手でも、Webの通信と別の用途を分けられるわけですね。この基盤では、送信元ポートは任意にしています。",
+      "caption": "同じ相手でも、Webの通信と別の用途を分けられるわけですね。この基盤では、送信元ポートは任意にしています。",
+      "subtitleLines": [
+        "同じ相手でも、Webの通信と別の用途を分けられるわけですね。",
+        "この基盤では、送信元ポートは任意にしています。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "何が一致すれば、同じ規則になる？",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "アドレス",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP範囲"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "ポートとプロトコル",
+            "body": [
+              "送信元ポート：*",
+              "宛先ポート：443など",
+              "TCP / UDPなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "判定",
+            "body": [
+              "適用する方向",
+              "優先度の小さい順",
+              "Access: Allow / Deny"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-025-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "ティーシーピーの443番を許可した行は、ユーディーピーの443番にも使えるんですか？ 数字は同じですよね。",
+      "caption": "TCPの443番を許可した行は、UDPの443番にも使えるんですか？ 数字は同じですよね。",
+      "subtitleLines": [
+        "TCPの443番を許可した行は、UDPの443番にも使えるんですか？ 数字は同じですよね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "何が一致すれば、同じ規則になる？",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "アドレス",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP範囲"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "ポートとプロトコル",
+            "body": [
+              "送信元ポート：*",
+              "宛先ポート：443など",
+              "TCP / UDPなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "判定",
+            "body": [
+              "適用する方向",
+              "優先度の小さい順",
+              "Access: Allow / Deny"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "いいえ。プロトコルも条件です。アドレスだけ、あるいはポートの数字だけを見て、一致したと判断しないようにします。",
+      "caption": "いいえ。プロトコルも条件です。アドレスだけ、あるいはポートの数字だけを見て、一致したと判断しないようにします。",
+      "subtitleLines": [
+        "いいえ。プロトコルも条件です。アドレスだけ、あるいは",
+        "ポートの数字だけを見て、一致したと判断しないようにします。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "何が一致すれば、同じ規則になる？",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "アドレス",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP範囲"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "ポートとプロトコル",
+            "body": [
+              "送信元ポート：*",
+              "宛先ポート：443など",
+              "TCP / UDPなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "判定",
+            "body": [
+              "適用する方向",
+              "優先度の小さい順",
+              "Access: Allow / Deny"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "条件の一致が分かったら、次は優先順位ですね。数字が大きい規則ほど、強いんでしょうか？",
+      "caption": "条件の一致が分かったら、次は優先順位ですね。数字が大きい規則ほど、強いんでしょうか？",
+      "subtitleLines": [
+        "条件の一致が分かったら、次は優先順位ですね。",
+        "数字が大きい規則ほど、強いんでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "逆です。同じエヌエスジーの同じ方向で、数字の小さい順に調べます。そして最初に一致した規則の、アローかデナイで判定を終えます。",
+      "caption": "逆です。同じNSGの同じ方向で、数字の小さい順に調べます。そして最初に一致した規則の、AllowかDenyで判定を終えます。",
+      "subtitleLines": [
+        "逆です。同じNSGの同じ方向で、数字の小さい順に調べます。",
+        "そして最初に一致した規則の、AllowかDenyで判定を終えます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-029-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "後ろにデナイがあるから、最後に全部拒否される、という読み方ではありません。先にアローへ一致すれば、そこで決まります。",
+      "caption": "後ろにDenyがあるから、最後に全部拒否される、という読み方ではありません。先にAllowへ一致すれば、そこで決まります。",
+      "subtitleLines": [
+        "後ろにDenyがあるから、最後に全部拒否される、という読み方で",
+        "はありません。先にAllowへ一致すれば、そこで決まります。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "なるほど。では、どの個別規則にも一致しなかった通信は、どこへ進むんでしょう？",
+      "caption": "なるほど。では、どの個別規則にも一致しなかった通信は、どこへ進むんでしょう？",
+      "subtitleLines": [
+        "なるほど。では、どの個別規則にも一致しなかった通信は、どこへ進むんでしょう？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "独自の終端拒否がある方向では、優先度4096のデナイに一致します。送受信元もポートも任意なので、残りの通信を拒否します。",
+      "caption": "独自の終端拒否がある方向では、優先度4096のDenyに一致します。送受信元もポートも任意なので、残りの通信を拒否します。",
+      "subtitleLines": [
+        "独自の終端拒否がある方向では、優先度4096のDenyに一致します。",
+        "送受信元もポートも任意なので、残りの通信を拒否します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-032-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "その後には、Azureの既定ルールもあるんですね。VNet内なら許可、という規則は使われないんですか？",
+      "caption": "その後には、Azureの既定ルールもあるんですね。VNet内なら許可、という規則は使われないんですか？",
+      "subtitleLines": [
+        "その後には、Azureの既定ルールもあるんですね。",
+        "VNet内なら許可、という規則は使われないんですか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "既定ルールは65000以降です。4096で先に拒否されれば、そこまで進みません。独自の終端拒否がない方向では、既定ルールも評価します。",
+      "caption": "既定ルールは65000以降です。4096で先に拒否されれば、そこまで進みません。独自の終端拒否がない方向では、既定ルールも評価します。",
+      "subtitleLines": [
+        "既定ルールは65000以降です。4096で先に拒否されれば、そこまで進みません。",
+        "独自の終端拒否がない方向では、既定ルールも評価します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-034-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "ここで区画の表に戻ると、受信の4096は四つのエヌエスジー全部。送信の4096は、エーピーアイエムと管理ブイエムだけです。この違いが判定に効きます。",
+      "caption": "ここで区画の表に戻ると、受信の4096は四つのNSG全部。送信の4096は、APIMと管理VMだけです。この違いが判定に効きます。",
+      "subtitleLines": [
+        "ここで区画の表に戻ると、受信の4096は四つのNSG全部。",
+        "送信の4096は、APIMと管理VMだけです。この違いが判定に効きます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/associations.svg",
+        "heading": "6つの区画に、4つのNSG"
+      }
+    },
+    {
+      "id": "lesson03-turn-035-mako",
+      "speaker": "mako",
+      "chapterId": "api",
+      "speech": "通常APIの内部中継を追いましょう。アップゲートウェイからエーピーアイエムへ送るティーシーピーの80番は、どう判定しますか？",
+      "caption": "通常APIの内部中継を追いましょう。AppGWからAPIMへ送るTCPの80番は、どう判定しますか？",
+      "subtitleLines": [
+        "通常APIの内部中継を追いましょう。",
+        "AppGWからAPIMへ送るTCPの80番は、どう判定しますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通常APIの内部中継：AppGW → APIM",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "AppGW",
+            "detail": "送信100：TCP 80",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Firewall",
+            "detail": "経路上で別に判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "APIM",
+            "detail": "受信100：TCP 80",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "中継要求"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "同じ宛先"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n2"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-036-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api",
+      "speech": "まずアップゲートウェイの送信100、アロー、エーピーアイエム、エイチティーティーピーです。アップゲートウェイ区画からエーピーアイエム区画のティーシーピー80なので、この規則でアローになります。",
+      "caption": "まずAppGWの送信100、allow-apim-httpです。AppGW区画からAPIM区画のTCP80なので、この規則でAllowになります。",
+      "subtitleLines": [
+        "まずAppGWの送信100、allow-apim-httpです。",
+        "AppGW区画からAPIM区画のTCP80なので、この規則でAllowになります。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通常APIの内部中継：AppGW → APIM",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "AppGW",
+            "detail": "送信100：TCP 80",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Firewall",
+            "detail": "経路上で別に判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "APIM",
+            "detail": "受信100：TCP 80",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "中継要求"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "同じ宛先"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n2"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-037-mako",
+      "speaker": "mako",
+      "chapterId": "api",
+      "speech": "受けるエーピーアイエム側では、送信ではなく受信の表を見る。こちらも100という数字がありますね。",
+      "caption": "受けるAPIM側では、送信ではなく受信の表を見る。こちらも100という数字がありますね。",
+      "subtitleLines": [
+        "受けるAPIM側では、送信ではなく受信の表を見る。",
+        "こちらも100という数字がありますね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通常APIの内部中継：AppGW → APIM",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "AppGW",
+            "detail": "送信100：TCP 80",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Firewall",
+            "detail": "経路上で別に判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "APIM",
+            "detail": "受信100：TCP 80",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "中継要求"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "同じ宛先"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n2"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-038-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api",
+      "speech": "受信100のアロー、エージーダブリュー、エーピーアイです。送信元はアップゲートウェイ区画、宛先はエーピーアイエム区画、ティーシーピー80が一致し、こちらもアローです。",
+      "caption": "受信100のallow-agw-apiです。送信元はAppGW区画、宛先はAPIM区画、TCP80が一致し、こちらもAllowです。",
+      "subtitleLines": [
+        "受信100のallow-agw-apiです。送信元はAppGW区画、",
+        "宛先はAPIM区画、TCP80が一致し、こちらもAllowです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通常APIの内部中継：AppGW → APIM",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "AppGW",
+            "detail": "送信100：TCP 80",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Firewall",
+            "detail": "経路上で別に判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "APIM",
+            "detail": "受信100：TCP 80",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "中継要求"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "同じ宛先"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n2"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-039-manabu",
+      "speaker": "manabu",
+      "chapterId": "api",
+      "speech": "二つの100は別々のエヌエスジーの規則です。数字が同じだから対になるのではなく、同じ通信の条件が、両方へ一致しています。",
+      "caption": "二つの100は別々のNSGの規則です。数字が同じだから対になるのではなく、同じ通信の条件が、両方へ一致しています。",
+      "subtitleLines": [
+        "二つの100は別々のNSGの規則です。数字が同じだから対に",
+        "なるのではなく、同じ通信の条件が、両方へ一致しています。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通常APIの内部中継：AppGW → APIM",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "AppGW",
+            "detail": "送信100：TCP 80",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Firewall",
+            "detail": "経路上で別に判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "APIM",
+            "detail": "受信100：TCP 80",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "中継要求"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "同じ宛先"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n2"
+        ]
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "AppGWの送信110はKey Vaultの実PE IP群へTCP443、送信120はgRPC用のAPIM宛てTCP443です。送信200では、Internetへの全プロトコル・全ポートを許可します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-outbound-focus-40.svg",
+        "heading": "AppGW送信：具体許可の後に、既定規則も見る"
+      },
+      "chapterId": "api",
+      "speech": "アップゲートウェイの送信110はキーボルトの実ピーイー アイピー群へティーシーピー443、送信120はジーアールピーシー用のエーピーアイエム宛てティーシーピー443です。送信200では、インターネットへの全プロトコル・全ポートを許可します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-040-ikumi",
+      "subtitleLines": [
+        "AppGWの送信110はKey Vaultの実PE IP群へTCP443、",
+        "送信120はgRPC用のAPIM宛てTCP443です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGWの送信110はKey Vaultの実PE IP群へTCP443、送信120はgRPC用のAPIM宛てTCP443です。",
+          "lines": [
+            "AppGWの送信110はKey Vaultの実PE IP群へTCP443、",
+            "送信120はgRPC用のAPIM宛てTCP443です。"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "送信200では、Internetへの全プロトコル・全ポートを許可します。",
+          "lines": [
+            "送信200では、Internetへの全プロトコル・全ポートを許可します。"
+          ],
+          "weight": 36
+        }
+      ]
+    },
+    {
+      "speaker": "mako",
+      "caption": "Internetへの許可が広いのは、通常のAppGW v2の基盤要件を保つため。APIMと同じ送信4096拒否を、そのまま追加できないんですね。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-outbound-focus-41.svg",
+        "heading": "AppGW送信：具体許可の後に、既定規則も見る"
+      },
+      "chapterId": "api",
+      "speech": "インターネットへの許可が広いのは、通常のアップゲートウェイ v2の基盤要件を保つため。エーピーアイエムと同じ送信4096拒否を、そのまま追加できないんですね。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-041-mako",
+      "subtitleLines": [
+        "Internetへの許可が広いのは、通常のAppGW v2の基盤要件を保つため。",
+        "APIMと同じ送信4096拒否を、そのまま追加できないんですね。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "はい。またAppGWからACAへのTCP443に専用NSG許可はありません。送信終端拒否がなく、既定のVNet内許可を使い、経路上のFirewallで制御します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/agw-outbound.svg",
+        "heading": "AppGW送信：具体許可の後に、既定規則も見る"
+      },
+      "chapterId": "api",
+      "speech": "はい。またアップゲートウェイからエーシーエーへのティーシーピー443に専用エヌエスジー許可はありません。送信終端拒否がなく、既定のVNet内許可を使い、経路上のファイアウォールで制御します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-042-ikumi",
+      "subtitleLines": [
+        "はい。またAppGWからACAへのTCP443に専用NSG許可はありません。",
+        "送信終端拒否がなく、既定のVNet内許可を使い、経路上のFirewallで制御します。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-043-mako",
+      "speaker": "mako",
+      "chapterId": "api",
+      "speech": "エーピーアイエムの宛先は、実際の内部ブイアイピー一個を指定しているわけではないんですか？",
+      "caption": "APIMの宛先は、実際の内部VIP一個を指定しているわけではないんですか？",
+      "subtitleLines": [
+        "APIMの宛先は、実際の内部VIP一個を指定しているわけではないんですか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "NSGのAPIM宛先は、専用区画",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "NSGで許可する宛先",
+            "body": [
+              "APIM区画のCIDR",
+              "内部LB背後のノードも含む",
+              "送信元とポートは絞る"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "別の指定と区別する",
+            "body": [
+              "接続URL・UDR・Firewall",
+              "APIMの実内部VIPを使用",
+              "指定対象を混同しない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api",
+      "speech": "エヌエスジーではエーピーアイエムの専用区画を指定します。内部ロードバランサーの背後のノードも含めるためです。送信元とポートまで広げる意味ではありません。",
+      "caption": "NSGではAPIMの専用区画を指定します。内部ロードバランサーの背後のノードも含めるためです。送信元とポートまで広げる意味ではありません。",
+      "subtitleLines": [
+        "NSGではAPIMの専用区画を指定します。内部ロードバランサーの背後のノードも",
+        "含めるためです。送信元とポートまで広げる意味ではありません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "NSGのAPIM宛先は、専用区画",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "NSGで許可する宛先",
+            "body": [
+              "APIM区画のCIDR",
+              "内部LB背後のノードも含む",
+              "送信元とポートは絞る"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "別の指定と区別する",
+            "body": [
+              "接続URL・UDR・Firewall",
+              "APIMの実内部VIPを使用",
+              "指定対象を混同しない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-045-mako",
+      "speaker": "mako",
+      "chapterId": "api",
+      "speech": "では、管理ブイエムから同じエーピーアイエムへティーシーピー80で接続すれば、内部同士なので通りますか？",
+      "caption": "では、管理VMから同じAPIMへTCP80で接続すれば、内部同士なので通りますか？",
+      "subtitleLines": [
+        "では、管理VMから同じAPIMへTCP80で接続すれば、内部同士なので通りますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/api-compare.svg",
+        "heading": "送信元とポートを変えると、判定も変わる"
+      }
+    },
+    {
+      "id": "lesson03-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api",
+      "speech": "標準例では拒否です。管理ブイエムの送信は許可へ一致せず4096。エーピーアイエム受信にも、管理ブイエムからティーシーピー80を許可する規則がありません。",
+      "caption": "標準例では拒否です。管理VMの送信は許可へ一致せず4096。APIM受信にも、管理VMからTCP80を許可する規則がありません。",
+      "subtitleLines": [
+        "標準例では拒否です。管理VMの送信は許可へ一致せず4096。",
+        "APIM受信にも、管理VMからTCP80を許可する規則がありません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/api-compare.svg",
+        "heading": "送信元とポートを変えると、判定も変わる"
+      }
+    },
+    {
+      "id": "lesson03-turn-047-manabu",
+      "speaker": "manabu",
+      "chapterId": "api",
+      "speech": "一方、ジーアールピーシーが有効なら、管理ブイエムからティーシーピー443の比較用接続は許可します。送信120と受信150。用途とポートが変わった結果ですね。",
+      "caption": "一方、gRPCが有効なら、管理VMからTCP443の比較用接続は許可します。送信120と受信150。用途とポートが変わった結果ですね。",
+      "subtitleLines": [
+        "一方、gRPCが有効なら、管理VMからTCP443の比較用接続は許可します。",
+        "送信120と受信150。用途とポートが変わった結果ですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/api-compare.svg",
+        "heading": "送信元とポートを変えると、判定も変わる"
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "APIMの受信も表で確かめましょう。管理は110のTCP3443、負荷分散は120のTCP6390、同じAPIM区画内のカウンター同期は130のUDP4290です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-inbound-focus-48.svg",
+        "heading": "APIM受信：API・基盤・比較用を用途別に残す"
+      },
+      "chapterId": "api",
+      "speech": "エーピーアイエムの受信も表で確かめましょう。管理は110のティーシーピー3443、負荷分散は120のティーシーピー6390、同じエーピーアイエム区画内のカウンター同期は130のユーディーピー4290です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-048-ikumi",
+      "subtitleLines": [
+        "APIMの受信も表で確かめましょう。管理は110のTCP3443、負荷分散は",
+        "120のTCP6390、同じAPIM区画内のカウンター同期は130のUDP4290です。"
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "通常API用の80番と、管理・正常性確認・同期を別に残す設計ですね。AppGWからのgRPCは受信140、管理VM単体からは受信150で、どちらも内部443番です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-inbound-focus-49.svg",
+        "heading": "APIM受信：API・基盤・比較用を用途別に残す"
+      },
+      "chapterId": "api",
+      "speech": "通常エーピーアイ用の80番と、管理・正常性確認・同期を別に残す設計ですね。アップゲートウェイからのジーアールピーシーは受信140、管理ブイエム単体からは受信150で、どちらも内部443番です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-049-manabu",
+      "subtitleLines": [
+        "通常API用の80番と、管理・正常性確認・同期を別に残す設計ですね。",
+        "AppGWからのgRPCは受信140、管理VM単体からは受信150で、どちらも内部443番です。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-050-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "次はエーピーアイエムからファウンドリーのピーイーです。最初の疑問、同じ443番でも接続元で違う、という話に戻ってきました。",
+      "caption": "次はAPIMからFoundryのPEです。最初の疑問、同じ443番でも接続元で違う、という話に戻ってきました。",
+      "subtitleLines": [
+        "次はAPIMからFoundryのPEです。最初の疑問、",
+        "同じ443番でも接続元で違う、という話に戻ってきました。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "AIバックエンドへ：APIM → Foundry PE",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "送信100：Allow",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "受信100：Allow",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "Foundry",
+            "detail": "サービス認証",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "TCP 443"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "別の判断"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-051-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "エーピーアイエム送信100のアロー、プライベート、バックエンズと、ピーイー受信100のアロー、エーピーアイエム、ファウンドリーで、ティーシーピー443を許可します。",
+      "caption": "APIM送信100のallow-private-backendsと、PE受信100のallow-apim-foundryで、TCP443を許可します。",
+      "subtitleLines": [
+        "APIM送信100のallow-private-backendsと、",
+        "PE受信100のallow-apim-foundryで、TCP443を許可します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "AIバックエンドへ：APIM → Foundry PE",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "送信100：Allow",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "受信100：Allow",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "Foundry",
+            "detail": "サービス認証",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "TCP 443"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "別の判断"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-052-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "このピーイーの宛先も、エーピーアイエムと同じように、ピーイー区画全体を指定するんでしょうか？",
+      "caption": "このPEの宛先も、APIMと同じように、PE区画全体を指定するんでしょうか？",
+      "subtitleLines": [
+        "このPEの宛先も、APIMと同じように、PE区画全体を指定するんでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "PE区画全体を、まとめて許可しない",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス別の実IP群",
+            "body": [
+              "作成済みPEのNICから取得",
+              "複数IPがあれば全IPを使う",
+              "DNS回答と対応を確認"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "送信元も用途別に限定",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL PE",
+              "管理VM → ACR PEなど"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-053-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "ピーイーでは対象サービスの実アイピー群です。作成したピーイーのNICから取得し、複数あればすべて使います。区画全体への全面許可にはしていません。",
+      "caption": "PEでは対象サービスの実IP群です。作成したPEのNICから取得し、複数あればすべて使います。区画全体への全面許可にはしていません。",
+      "subtitleLines": [
+        "PEでは対象サービスの実IP群です。作成したPEのNICから取得し、",
+        "複数あればすべて使います。区画全体への全面許可にはしていません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "PE区画全体を、まとめて許可しない",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス別の実IP群",
+            "body": [
+              "作成済みPEのNICから取得",
+              "複数IPがあれば全IPを使う",
+              "DNS回答と対応を確認"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "送信元も用途別に限定",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL PE",
+              "管理VM → ACR PEなど"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-054-manabu",
+      "speaker": "manabu",
+      "chapterId": "pe",
+      "speech": "同じ区画には、ファウンドリーだけでなくキーボルト、エーシーアール、エスキューエルの接続口もあります。それぞれの用途を、接続元とポートで分けるためです。",
+      "caption": "同じ区画には、FoundryだけでなくKey Vault、ACR、SQLの接続口もあります。それぞれの用途を、接続元とポートで分けるためです。",
+      "subtitleLines": [
+        "同じ区画には、FoundryだけでなくKey Vault、ACR、SQLの接続口も",
+        "あります。それぞれの用途を、接続元とポートで分けるためです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "PE区画全体を、まとめて許可しない",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス別の実IP群",
+            "body": [
+              "作成済みPEのNICから取得",
+              "複数IPがあれば全IPを使う",
+              "DNS回答と対応を確認"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "送信元も用途別に限定",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL PE",
+              "管理VM → ACR PEなど"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "ではアップゲートウェイからファウンドリーのピーイーへ、ティーシーピー443を送った場合。アップゲートウェイには送信の終端拒否がありませんよね。",
+      "caption": "ではAppGWからFoundryのPEへ、TCP443を送った場合。AppGWには送信の終端拒否がありませんよね。",
+      "subtitleLines": [
+        "ではAppGWからFoundryのPEへ、TCP443を送った場合。",
+        "AppGWには送信の終端拒否がありませんよね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "id": "lesson03-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "送信側は既定のVNet内許可を使えても、ピーイーの受信にはアップゲートウェイからファウンドリーへの許可がありません。受信4096で拒否されます。",
+      "caption": "送信側は既定のVNet内許可を使えても、PEの受信にはAppGWからFoundryへの許可がありません。受信4096で拒否されます。",
+      "subtitleLines": [
+        "送信側は既定のVNet内許可を使えても、PEの受信には",
+        "AppGWからFoundryへの許可がありません。受信4096で拒否されます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "id": "lesson03-turn-057-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "出られることと、相手に入れることは別ですね。アップゲートウェイからキーボルトのピーイーへは、証明書を取得するために許可があります。",
+      "caption": "出られることと、相手に入れることは別ですね。AppGWからKey VaultのPEへは、証明書を取得するために許可があります。",
+      "subtitleLines": [
+        "出られることと、相手に入れることは別ですね。",
+        "AppGWからKey VaultのPEへは、証明書を取得するために許可があります。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "id": "lesson03-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "はい。サービスが変われば該当する規則も変わります。ピーイー側の許可を、キーボルト、エーシーアール、エスキューエルの順に、具体的な送信元とポートで見てみましょう。",
+      "caption": "はい。サービスが変われば該当する規則も変わります。PE側の許可を、Key Vault、ACR、SQLの順に、具体的な送信元とポートで見てみましょう。",
+      "subtitleLines": [
+        "はい。サービスが変われば該当する規則も変わります。PE側の許可を、",
+        "Key Vault、ACR、SQLの順に、具体的な送信元とポートで見てみましょう。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "PE側の具体値も見ます。Key Vault受信110はAppGWとAPIM区画からTCP443。受信140は管理VMの実IPからFoundryとKey VaultのPEへTCP443です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-services-focus-59.svg",
+        "heading": "PE受信：サービス別・送信元別の実IP許可"
+      },
+      "chapterId": "pe",
+      "speech": "ピーイー側の具体値も見ます。キーボルト受信110はアップゲートウェイとエーピーアイエム区画からティーシーピー443。受信140は管理ブイエムの実アイピーからファウンドリーとキーボルトのピーイーへティーシーピー443です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-059-ikumi",
+      "subtitleLines": [
+        "PE側の具体値も見ます。Key Vault受信110はAppGWとAPIM区画からTCP443。",
+        "受信140は管理VMの実IPからFoundryとKey VaultのPEへTCP443です。"
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "ACRは受信160で、ACAと管理VMの区画からTCP443。SQLは受信175でACAからTCP1433、Key Vaultは受信177でもACAからTCP443を許可します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-services-focus-60.svg",
+        "heading": "PE受信：サービス別・送信元別の実IP許可"
+      },
+      "chapterId": "pe",
+      "speech": "エーシーアールは受信160で、エーシーエーと管理ブイエムの区画からティーシーピー443。エスキューエルは受信175でエーシーエーからティーシーピー1433、キーボルトは受信177でもエーシーエーからティーシーピー443を許可します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-060-manabu",
+      "subtitleLines": [
+        "ACRは受信160で、ACAと管理VMの区画からTCP443。SQLは受信175で",
+        "ACAからTCP1433、Key Vaultは受信177でもACAからTCP443を許可します。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-061-manabu",
+      "speaker": "manabu",
+      "chapterId": "pe",
+      "speech": "エーシーエー区画にはエヌエスジーがありません。でもエスキューエルのピーイー側には、エーシーエー区画を送信元とする受信175のアローがあります。片側だけでも制御は残っています。",
+      "caption": "ACA区画にはNSGがありません。でもSQLのPE側には、ACA区画を送信元とする受信175のAllowがあります。片側だけでも制御は残っています。",
+      "subtitleLines": [
+        "ACA区画にはNSGがありません。でもSQLのPE側には、ACA区画を送信元と",
+        "する受信175のAllowがあります。片側だけでも制御は残っています。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "id": "lesson03-turn-062-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "管理ブイエムからエスキューエルのピーイーへ同じ1433番を使っても、標準の許可はない。管理用という名前だけで、あらゆる作業先へ通れるわけではないんですね。",
+      "caption": "管理VMからSQLのPEへ同じ1433番を使っても、標準の許可はない。管理用という名前だけで、あらゆる作業先へ通れるわけではないんですね。",
+      "subtitleLines": [
+        "管理VMからSQLのPEへ同じ1433番を使っても、標準の許可はない。",
+        "管理用という名前だけで、あらゆる作業先へ通れるわけではないんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/pe-compare.svg",
+        "heading": "同じPE区画でも、許可はサービスごと"
+      }
+    },
+    {
+      "id": "lesson03-turn-063-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "そのとおりです。管理ブイエムからエーシーアールへのイメージ配布なら、ブイエム送信170とピーイー受信160を確認します。作業の目的ごとに、両端の規則を対応させます。",
+      "caption": "そのとおりです。管理VMからACRへのイメージ配布なら、VM送信170とPE受信160を確認します。作業の目的ごとに、両端の規則を対応させます。",
+      "subtitleLines": [
+        "そのとおりです。管理VMからACRへのイメージ配布なら、VM送信170と",
+        "PE受信160を確認します。作業の目的ごとに、両端の規則を対応させます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMからPE：作業目的ごとに両端を対応",
+        "cards": [
+          {
+            "title": "Foundry・Key Vaultの保守",
+            "body": [
+              "VM送信100：TCP443",
+              "送信元は管理VM区画",
+              "宛先はFoundry・KV実PE IP群",
+              "PE受信140：送信元はVM実IP"
+            ]
+          },
+          {
+            "title": "ACRへのイメージ配布",
+            "body": [
+              "VM送信170：TCP443",
+              "送信元は管理VM区画",
+              "宛先はACR実PE IP群",
+              "PE受信160：VM区画を許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-117-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "caption": "FoundryとKey Vaultの保守は、管理VM区画から対象の実PE IP群へのTCP443を送信100で許可します。PE受信140は、管理VM単体の実IPを送信元にして、同じ宛先とポートを許可します。",
+      "speech": "ファウンドリーとキーボルトの保守は、管理ブイエム区画から対象の実ピーイー アイピー群へのティーシーピー443を送信100で許可します。ピーイー受信140は、管理ブイエム単体の実アイピーを送信元にして、同じ宛先とポートを許可します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "前の説明を受け、設定条件と目的を明瞭に述べる。落ち着いた通常速度の会話。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMからPE：作業目的ごとに両端を対応",
+        "cards": [
+          {
+            "title": "Foundry・Key Vaultの保守",
+            "body": [
+              "VM送信100：TCP443",
+              "送信元は管理VM区画",
+              "宛先はFoundry・KV実PE IP群",
+              "PE受信140：送信元はVM実IP"
+            ]
+          },
+          {
+            "title": "ACRへのイメージ配布",
+            "body": [
+              "VM送信170：TCP443",
+              "送信元は管理VM区画",
+              "宛先はACR実PE IP群",
+              "PE受信160：VM区画を許可"
+            ]
+          }
+        ]
+      },
+      "subtitleLines": [
+        "FoundryとKey Vaultの保守は、",
+        "管理VM区画から対象の実PE IP群へのTCP443を送信100で許可します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "FoundryとKey Vaultの保守は、管理VM区画から対象の実PE IP群へのTCP443を送信100で許可します。",
+          "lines": [
+            "FoundryとKey Vaultの保守は、",
+            "管理VM区画から対象の実PE IP群へのTCP443を送信100で許可します。"
+          ],
+          "weight": 61
+        },
+        {
+          "caption": "PE受信140は、管理VM単体の実IPを送信元にして、同じ宛先とポートを許可します。",
+          "lines": [
+            "PE受信140は、管理VM単体の実IPを送信元にして、同じ宛先とポートを許可します。"
+          ],
+          "weight": 42
+        }
+      ]
+    },
+    {
+      "id": "lesson03-turn-064-mako",
+      "speaker": "mako",
+      "chapterId": "state",
+      "speech": "ここで、返事の向きが気になります。エーピーアイエムからピーイーへ許可しても、戻る方向にも、同じアローが必要なんでしょうか？",
+      "caption": "ここで、返事の向きが気になります。APIMからPEへ許可しても、戻る方向にも、同じAllowが必要なんでしょうか？",
+      "subtitleLines": [
+        "ここで、返事の向きが気になります。APIMからPEへ許可しても、",
+        "戻る方向にも、同じAllowが必要なんでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "許可した接続への応答を、状態として追跡",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "APIM",
+            "detail": "開始：送信規則を評価",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "Foundry PE",
+            "detail": "到達：受信規則を評価",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "新規接続 / TCP 443"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-065-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "state",
+      "speech": "許可した接続への応答なら、同じ許可を逆向きに追加する必要はありません。エヌエスジーはステートフルで、接続の状態を追跡します。",
+      "caption": "許可した接続への応答なら、同じ許可を逆向きに追加する必要はありません。NSGはステートフルで、接続の状態を追跡します。",
+      "subtitleLines": [
+        "許可した接続への応答なら、同じ許可を逆向きに追加する必要は",
+        "ありません。NSGはステートフルで、接続の状態を追跡します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "同じ接続への応答：逆向きの新規接続とは区別",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "許可した接続の応答を受ける",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "既存の接続へ応答を返す",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "pe",
+            "to": "apim",
+            "label": "状態追跡による応答",
+            "color": "#80edbd"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-066-manabu",
+      "speaker": "manabu",
+      "chapterId": "state",
+      "speech": "一度許可した会話の返事を、その会話として扱うわけですね。毎回、反対向きの新しい接続を開始するのとは違います。",
+      "caption": "一度許可した会話の返事を、その会話として扱うわけですね。毎回、反対向きの新しい接続を開始するのとは違います。",
+      "subtitleLines": [
+        "一度許可した会話の返事を、その会話として扱うわけですね。",
+        "毎回、反対向きの新しい接続を開始するのとは違います。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "同じ接続への応答：逆向きの新規接続とは区別",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "許可した接続の応答を受ける",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "既存の接続へ応答を返す",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "pe",
+            "to": "apim",
+            "label": "状態追跡による応答",
+            "color": "#80edbd"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-067-mako",
+      "speaker": "mako",
+      "chapterId": "state",
+      "speech": "それなら、ピーイーからエーピーアイエムへ新しく開始する通信も、同じ応答として扱われますか？",
+      "caption": "それなら、PEからAPIMへ新しく開始する通信も、同じ応答として扱われますか？",
+      "subtitleLines": [
+        "それなら、PEからAPIMへ新しく開始する通信も、同じ応答として扱われますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "同じ接続への応答：逆向きの新規接続とは区別",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "許可した接続の応答を受ける",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "既存の接続へ応答を返す",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "pe",
+            "to": "apim",
+            "label": "状態追跡による応答",
+            "color": "#80edbd"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "state",
+      "speech": "いいえ。新しく始める別の接続は、その方向の規則で評価します。応答の追跡は、逆向きの新規通信を無条件に許可する仕組みではありません。",
+      "caption": "いいえ。新しく始める別の接続は、その方向の規則で評価します。応答の追跡は、逆向きの新規通信を無条件に許可する仕組みではありません。",
+      "subtitleLines": [
+        "いいえ。新しく始める別の接続は、その方向の規則で評価します。",
+        "応答の追跡は、逆向きの新規通信を無条件に許可する仕組みではありません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "同じ接続への応答：逆向きの新規接続とは区別",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "許可した接続の応答を受ける",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "既存の接続へ応答を返す",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "pe",
+            "to": "apim",
+            "label": "状態追跡による応答",
+            "color": "#80edbd"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-069-mako",
+      "speaker": "mako",
+      "chapterId": "state",
+      "speech": "ルールをアローからデナイへ変えたのに、接続中の画面ではまだ動く。そんな場合も、設定ミスとは限らないんですね。",
+      "caption": "ルールをAllowからDenyへ変えたのに、接続中の画面ではまだ動く。そんな場合も、設定ミスとは限らないんですね。",
+      "subtitleLines": [
+        "ルールをAllowからDenyへ変えたのに、接続中の画面では",
+        "まだ動く。そんな場合も、設定ミスとは限らないんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "規則を変えた後は、新しい接続で確かめる",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "既存接続",
+            "body": [
+              "許可された接続の状態が残る",
+              "継続できても新規許可の証拠にならない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "新規接続",
+            "body": [
+              "変更後の規則で改めて評価",
+              "接続元・宛先・ポートをそろえて確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "state",
+      "speech": "はい。既存接続の状態が残るためです。ルール変更後は、既存接続が続くかだけでなく、新しい接続で意図した判定を確かめます。",
+      "caption": "はい。既存接続の状態が残るためです。ルール変更後は、既存接続が続くかだけでなく、新しい接続で意図した判定を確かめます。",
+      "subtitleLines": [
+        "はい。既存接続の状態が残るためです。ルール変更後は、",
+        "既存接続が続くかだけでなく、新しい接続で意図した判定を確かめます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "規則を変えた後は、新しい接続で確かめる",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "既存接続",
+            "body": [
+              "許可された接続の状態が残る",
+              "継続できても新規許可の証拠にならない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "新規接続",
+            "body": [
+              "変更後の規則で改めて評価",
+              "接続元・宛先・ポートをそろえて確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-071-manabu",
+      "speaker": "manabu",
+      "chapterId": "state",
+      "speech": "接続元と宛先、ポートをそろえ、新規か既存かも記録する。同じ条件で比較できると、変更の効果を説明しやすくなります。",
+      "caption": "接続元と宛先、ポートをそろえ、新規か既存かも記録する。同じ条件で比較できると、変更の効果を説明しやすくなります。",
+      "subtitleLines": [
+        "接続元と宛先、ポートをそろえ、新規か既存かも記録する。",
+        "同じ条件で比較できると、変更の効果を説明しやすくなります。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "規則を変えた後は、新しい接続で確かめる",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "既存接続",
+            "body": [
+              "許可された接続の状態が残る",
+              "継続できても新規許可の証拠にならない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "新規接続",
+            "body": [
+              "変更後の規則で改めて評価",
+              "接続元・宛先・ポートをそろえて確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-072-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "通信を最小限にすると聞くと、利用者のAPIとピーイー接続以外は、全部閉じたくなりそうです。基盤の通信はどう考えますか？",
+      "caption": "通信を最小限にすると聞くと、利用者のAPIとPE接続以外は、全部閉じたくなりそうです。基盤の通信はどう考えますか？",
+      "subtitleLines": [
+        "通信を最小限にすると聞くと、利用者のAPIとPE接続以外は、",
+        "全部閉じたくなりそうです。基盤の通信はどう考えますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "API中継以外にも、基盤用の通信が必要",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "管理・正常性確認",
+            "body": [
+              "APIM受信 TCP 3443",
+              "Azure管理元の通信",
+              "利用者のAPI要求とは別"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "保存・監視・認証",
+            "body": [
+              "Storage / Sql",
+              "AzureMonitor / EventHub",
+              "Entra IDなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "DNS・時刻同期",
+            "body": [
+              "DNS：TCP / UDP 53",
+              "時刻同期：UDP 123",
+              "必要な依存先を残す"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-073-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "エーピーアイエムには管理、正常性確認、保存、監視、認証などの依存があります。たとえば管理用の受信ティーシーピー3443は、利用者のAPI要求とは別です。",
+      "caption": "APIMには管理、正常性確認、保存、監視、認証などの依存があります。たとえば管理用の受信TCP3443は、利用者のAPI要求とは別です。",
+      "subtitleLines": [
+        "APIMには管理、正常性確認、保存、監視、認証などの依存があります。",
+        "たとえば管理用の受信TCP3443は、利用者のAPI要求とは別です。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "API中継以外にも、基盤用の通信が必要",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "管理・正常性確認",
+            "body": [
+              "APIM受信 TCP 3443",
+              "Azure管理元の通信",
+              "利用者のAPI要求とは別"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "保存・監視・認証",
+            "body": [
+              "Storage / Sql",
+              "AzureMonitor / EventHub",
+              "Entra IDなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "DNS・時刻同期",
+            "body": [
+              "DNS：TCP / UDP 53",
+              "時刻同期：UDP 123",
+              "必要な依存先を残す"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "保存系の送信は200のStorage向けTCP443、210のSql向けTCP1433、220のAzureKeyVault向けTCP443です。いずれも送信元はAPIM区画です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-platform-storage-focus-74.svg",
+        "heading": "APIM送信：保存・認証の基盤依存を許可する"
+      },
+      "chapterId": "platform",
+      "speech": "保存系の送信は200のストレージ向けティーシーピー443、210のエスキューエル向けティーシーピー1433、220のアジュールキーボルト向けティーシーピー443です。いずれも送信元はエーピーアイエム区画です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-074-ikumi",
+      "subtitleLines": [
+        "保存系の送信は200のStorage向けTCP443、210のSql向けTCP1433、",
+        "220のAzureKeyVault向けTCP443です。いずれも送信元はAPIM区画です。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "認証は240のAzureActiveDirectory向けTCP443、Credential Manager依存は250のAzureConnectors向けTCP443。タグごとに、必要な用途を残します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-platform-storage-focus-75.svg",
+        "heading": "APIM送信：保存・認証の基盤依存を許可する"
+      },
+      "chapterId": "platform",
+      "speech": "認証は240のアジュールアクティブディレクトリー向けティーシーピー443、クレデンシャルマネージャー依存は250のアジュールコネクターズ向けティーシーピー443。タグごとに、必要な用途を残します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-075-ikumi",
+      "subtitleLines": [
+        "認証は240のAzureActiveDirectory向けTCP443、",
+        "Credential Manager依存は250のAzureConnectors向けTCP443。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "認証は240のAzureActiveDirectory向けTCP443、Credential Manager依存は250のAzureConnectors向けTCP443。",
+          "lines": [
+            "認証は240のAzureActiveDirectory向けTCP443、",
+            "Credential Manager依存は250のAzureConnectors向けTCP443。"
+          ],
+          "weight": 85
+        },
+        {
+          "caption": "タグごとに、必要な用途を残します。",
+          "lines": [
+            "タグごとに、必要な用途を残します。"
+          ],
+          "weight": 17
+        }
+      ]
+    },
+    {
+      "speaker": "mako",
+      "caption": "監視と監査ログも、同じタグ一つにまとめてしまうと、足りないものがあるんですね。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-platform-monitor.svg",
+        "heading": "APIM送信：監視と同期を止めない"
+      },
+      "chapterId": "platform",
+      "speech": "監視と監査ログも、同じタグ一つにまとめてしまうと、足りないものがあるんですね。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-076-mako",
+      "subtitleLines": [
+        "監視と監査ログも、同じタグ一つにまとめてしまうと、足りないものがあるんですね。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "はい。230はAzureMonitorへTCP1886と443。235はEventHubへTCP443、5671、5672です。AzureMonitorタグだけでは、Event Hubs側の宛先を含みません。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-platform-monitor-focus-77.svg",
+        "heading": "APIM送信：監視と同期を止めない"
+      },
+      "chapterId": "platform",
+      "speech": "はい。230はアジュールモニターへティーシーピー1886と443。235はイベントハブへティーシーピー443、5671、5672です。アジュールモニタータグだけでは、イベントハブズ側の宛先を含みません。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-077-ikumi",
+      "subtitleLines": [
+        "はい。230はAzureMonitorへTCP1886と443。",
+        "235はEventHubへTCP443、5671、5672です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。230はAzureMonitorへTCP1886と443。235はEventHubへTCP443、5671、5672です。",
+          "lines": [
+            "はい。230はAzureMonitorへTCP1886と443。",
+            "235はEventHubへTCP443、5671、5672です。"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "AzureMonitorタグだけでは、Event Hubs側の宛先を含みません。",
+          "lines": [
+            "AzureMonitorタグだけでは、Event Hubs側の宛先を含みません。"
+          ],
+          "weight": 40
+        }
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "Web依存は260でInternetのTCP80と443、時刻同期は270でUDP123です。カウンター同期の送信280は、同じAPIM区画へのUDP4290を許可します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/apim-platform-monitor-focus-78.svg",
+        "heading": "APIM送信：監視と同期を止めない"
+      },
+      "chapterId": "platform",
+      "speech": "Web依存は260でインターネットのティーシーピー80と443、時刻同期は270でユーディーピー123です。カウンター同期の送信280は、同じエーピーアイエム区画へのユーディーピー4290を許可します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-078-manabu",
+      "subtitleLines": [
+        "Web依存は260でInternetのTCP80と443、時刻同期は270でUDP123です。",
+        "カウンター同期の送信280は、同じAPIM区画へのUDP4290を許可します。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-079-manabu",
+      "speaker": "manabu",
+      "chapterId": "platform",
+      "speech": "サービスを動かし続ける通信まで消さないために、目的を区別するんですね。エーピーアイエムのエスキューエルタグ向け通信と、Portal用エスキューエルのピーイー接続も別です。",
+      "caption": "サービスを動かし続ける通信まで消さないために、目的を区別するんですね。APIMのSqlタグ向け通信と、Portal用SQLのPE接続も別です。",
+      "subtitleLines": [
+        "サービスを動かし続ける通信まで消さないために、目的を区別するんですね。",
+        "APIMのSqlタグ向け通信と、Portal用SQLのPE接続も別です。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "API中継以外にも、基盤用の通信が必要",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "管理・正常性確認",
+            "body": [
+              "APIM受信 TCP 3443",
+              "Azure管理元の通信",
+              "利用者のAPI要求とは別"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "保存・監視・認証",
+            "body": [
+              "Storage / Sql",
+              "AzureMonitor / EventHub",
+              "Entra IDなど"
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "DNS・時刻同期",
+            "body": [
+              "DNS：TCP / UDP 53",
+              "時刻同期：UDP 123",
+              "必要な依存先を残す"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-080-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "ストレージやアジュールモニターのようなサービス・タグは、自分たちが作った一個のリソースを表す名前ではないんですね。",
+      "caption": "StorageやAzureMonitorのようなサービス・タグは、自分たちが作った一個のリソースを表す名前ではないんですね。",
+      "subtitleLines": [
+        "StorageやAzureMonitorのようなサービス・タグは、",
+        "自分たちが作った一個のリソースを表す名前ではないんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "サービス・タグと、Webサイトの名前を分ける",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス・タグ",
+            "body": [
+              "Azureが管理するIP範囲",
+              "自分のリソース1個ではない",
+              "FQDN一覧ではない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "NSGとFirewallの分担",
+            "body": [
+              "NSG：IP・ポートで判定",
+              "経路上のFirewall：別の規則",
+              "Web宛先のFQDNはFW側"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-081-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "はい。Azureが管理するアイピー範囲のまとまりです。エフキューディーエヌの一覧でもありません。Web通信の名前による許可は、経路上のファイアウォール側で扱います。",
+      "caption": "はい。Azureが管理するIP範囲のまとまりです。FQDNの一覧でもありません。Web通信の名前による許可は、経路上のFirewall側で扱います。",
+      "subtitleLines": [
+        "はい。Azureが管理するIP範囲のまとまりです。FQDNの一覧でもありません。",
+        "Web通信の名前による許可は、経路上のFirewall側で扱います。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "サービス・タグと、Webサイトの名前を分ける",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス・タグ",
+            "body": [
+              "Azureが管理するIP範囲",
+              "自分のリソース1個ではない",
+              "FQDN一覧ではない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "NSGとFirewallの分担",
+            "body": [
+              "NSG：IP・ポートで判定",
+              "経路上のFirewall：別の規則",
+              "Web宛先のFQDNはFW側"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-082-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "エーピーアイエムからインターネットのティーシーピー443がエヌエスジーでアローでも、好きなWebサイトへ必ず接続できる、という意味にはならない。",
+      "caption": "APIMからInternetのTCP443がNSGでAllowでも、好きなWebサイトへ必ず接続できる、という意味にはならない。",
+      "subtitleLines": [
+        "APIMからInternetのTCP443がNSGでAllowでも、",
+        "好きなWebサイトへ必ず接続できる、という意味にはならない。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "サービス・タグと、Webサイトの名前を分ける",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "サービス・タグ",
+            "body": [
+              "Azureが管理するIP範囲",
+              "自分のリソース1個ではない",
+              "FQDN一覧ではない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "NSGとFirewallの分担",
+            "body": [
+              "NSG：IP・ポートで判定",
+              "経路上のFirewall：別の規則",
+              "Web宛先のFQDNはFW側"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-083-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "その理解です。反対に、エーピーアイエムや管理ブイエムからインターネットのティーシーピー25は、標準の送信許可へ一致せず、4096で拒否されます。",
+      "caption": "その理解です。反対に、APIMや管理VMからInternetのTCP25は、標準の送信許可へ一致せず、4096で拒否されます。",
+      "subtitleLines": [
+        "その理解です。反対に、APIMや管理VMからInternetのTCP25は、",
+        "標準の送信許可へ一致せず、4096で拒否されます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/priority.svg",
+        "heading": "規則を全部足し合わせず、最初の一致で決める"
+      }
+    },
+    {
+      "id": "lesson03-turn-084-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "ディーエヌエスの問い合わせは、前回の話ともつながりますね。共通の送信規則は、どの区画に入っていましたか？",
+      "caption": "DNSの問い合わせは、前回の話ともつながりますね。共通の送信規則は、どの区画に入っていましたか？",
+      "subtitleLines": [
+        "DNSの問い合わせは、前回の話ともつながりますね。",
+        "共通の送信規則は、どの区画に入っていましたか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "共通DNSは、AppGW・APIM・管理VM",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "送信400・410",
+            "body": [
+              "TCP 53 / UDP 53",
+              "宛先は設定したDNSサーバー",
+              "PE用NSGには追加しない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "Azure提供DNSの注意",
+            "body": [
+              "公開例：168.63.129.16",
+              "通常のNSG処理の対象外となる",
+              "一部の基盤通信がある"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-085-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "アップゲートウェイ、エーピーアイエム、管理ブイエムです。送信400がティーシーピー53、410がユーディーピー53。宛先は設定したディーエヌエスサーバーで、ピーイー用エヌエスジーには追加していません。",
+      "caption": "AppGW、APIM、管理VMです。送信400がTCP53、410がUDP53。宛先は設定したDNSサーバーで、PE用NSGには追加していません。",
+      "subtitleLines": [
+        "AppGW、APIM、管理VMです。送信400がTCP53、410がUDP53。",
+        "宛先は設定したDNSサーバーで、PE用NSGには追加していません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "共通DNSは、AppGW・APIM・管理VM",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "送信400・410",
+            "body": [
+              "TCP 53 / UDP 53",
+              "宛先は設定したDNSサーバー",
+              "PE用NSGには追加しない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "Azure提供DNSの注意",
+            "body": [
+              "公開例：168.63.129.16",
+              "通常のNSG処理の対象外となる",
+              "一部の基盤通信がある"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-086-manabu",
+      "speaker": "manabu",
+      "chapterId": "platform",
+      "speech": "ただし、Azure提供ディーエヌエスなど、一部の基盤通信は通常のエヌエスジー処理の対象外です。すべてを終端拒否だけで説明せず、基盤の仕様も確認します。",
+      "caption": "ただし、Azure提供DNSなど、一部の基盤通信は通常のNSG処理の対象外です。すべてを終端拒否だけで説明せず、基盤の仕様も確認します。",
+      "subtitleLines": [
+        "ただし、Azure提供DNSなど、一部の基盤通信は通常のNSG処理の対象外です。",
+        "すべてを終端拒否だけで説明せず、基盤の仕様も確認します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "共通DNSは、AppGW・APIM・管理VM",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "送信400・410",
+            "body": [
+              "TCP 53 / UDP 53",
+              "宛先は設定したDNSサーバー",
+              "PE用NSGには追加しない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "Azure提供DNSの注意",
+            "body": [
+              "公開例：168.63.129.16",
+              "通常のNSG処理の対象外となる",
+              "一部の基盤通信がある"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "公開例ではdnsServersが空なので、DNS宛先は168.63.129.16です。独自DNSへ変える場合は、そのIPとTCP・UDP53への経路、許可を合わせて確認します。",
+      "visual": {
+        "layout": "cards",
+        "heading": "共通DNSは、AppGW・APIM・管理VM",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "送信400・410",
+            "body": [
+              "TCP 53 / UDP 53",
+              "宛先は設定したDNSサーバー",
+              "PE用NSGには追加しない"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "Azure提供DNSの注意",
+            "body": [
+              "公開例：168.63.129.16",
+              "通常のNSG処理の対象外となる",
+              "一部の基盤通信がある"
+            ]
+          }
+        ]
+      },
+      "chapterId": "platform",
+      "speech": "公開例では、ディーエヌエスサーバーズが空なので、ディーエヌエス宛先は、百六十八ドット六十三ドット百二十九ドット十六です。独自ディーエヌエスへ変える場合は、そのアイピーと、ティーシーピー、ユーディーピーの五十三番への経路、許可を合わせて確認します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-087-ikumi",
+      "subtitleLines": [
+        "公開例ではdnsServersが空なので、DNS宛先は168.63.129.16です。",
+        "独自DNSへ変える場合は、そのIPとTCP・UDP53への経路、許可を合わせて確認します。"
+      ]
+    },
+    {
+      "speaker": "mako",
+      "caption": "管理VMの外向き通信は、どうでしょう。認証やビルドのためにも、個別の許可があるんですよね。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/vm-platform.svg",
+        "heading": "管理VM送信：作業と監視の依存先を絞る"
+      },
+      "chapterId": "platform",
+      "speech": "管理ブイエムの外向き通信は、どうでしょう。認証やビルドのためにも、個別の許可があるんですよね。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-088-mako",
+      "subtitleLines": [
+        "管理VMの外向き通信は、どうでしょう。",
+        "認証やビルドのためにも、個別の許可があるんですよね。"
+      ]
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "認証300はAzureActiveDirectory、管理API310はAzureResourceManager、監視320はAzureMonitor、エージェント保存330はStorageで、すべてTCP443です。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/vm-platform-focus-89.svg",
+        "heading": "管理VM送信：作業と監視の依存先を絞る"
+      },
+      "chapterId": "platform",
+      "speech": "認証300はアジュールアクティブディレクトリー、管理エーピーアイ310はアジュールリソースマネージャー、監視320はアジュールモニター、エージェント保存330はストレージで、すべてティーシーピー443です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-089-ikumi",
+      "subtitleLines": [
+        "認証300はAzureActiveDirectory、管理API310は",
+        "AzureResourceManager、監視320はAzureMonitor、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "認証300はAzureActiveDirectory、管理API310はAzureResourceManager、監視320はAzureMonitor、",
+          "lines": [
+            "認証300はAzureActiveDirectory、管理API310は",
+            "AzureResourceManager、監視320はAzureMonitor、"
+          ],
+          "weight": 76
+        },
+        {
+          "caption": "エージェント保存330はStorageで、すべてTCP443です。",
+          "lines": [
+            "エージェント保存330はStorageで、すべてTCP443です。"
+          ],
+          "weight": 33
+        }
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "Web依存は350のTCP80と443、時刻同期は360のUDP123。公開例の時刻同期先はInternetです。DNSの400と410の後に、その他の送信を4096で拒否します。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/vm-platform-focus-90.svg",
+        "heading": "管理VM送信：作業と監視の依存先を絞る"
+      },
+      "chapterId": "platform",
+      "speech": "Web依存は350のティーシーピー80と443、時刻同期は360のユーディーピー123。公開例の時刻同期先はインターネットです。ディーエヌエスの400と410の後に、その他の送信を4096で拒否します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-090-manabu",
+      "subtitleLines": [
+        "Web依存は350のTCP80と443、時刻同期は360のUDP123。公開例の時刻同期先は",
+        "Internetです。DNSの400と410の後に、その他の送信を4096で拒否します。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-091-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "そしてエヌエスジーのアローは、経路や認証の成功を保証しません。ディーエヌエス、ユーディーアール、ファイアウォール、サービスの権限を、同じ通信について重ねて確認します。",
+      "caption": "そしてNSGのAllowは、経路や認証の成功を保証しません。DNS、UDR、Firewall、サービスの権限を、同じ通信について重ねて確認します。",
+      "subtitleLines": [
+        "そしてNSGのAllowは、経路や認証の成功を保証しません。DNS、UDR、",
+        "Firewall、サービスの権限を、同じ通信について重ねて確認します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "NSGのAllowから、接続成功までは複数の判断",
+        "nodes": [
+          {
+            "id": "n0",
+            "label": "DNS・経路",
+            "detail": "接続先と転送先",
+            "x": 35,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n1",
+            "label": "NSG・Firewall",
+            "detail": "各適用箇所で通信を判定",
+            "x": 455,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          },
+          {
+            "id": "n2",
+            "label": "サービス認証",
+            "detail": "キー・ID・権限など",
+            "x": 875,
+            "y": 180,
+            "width": 270,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "n0",
+            "to": "n1",
+            "label": "条件をそろえる"
+          },
+          {
+            "from": "n1",
+            "to": "n2",
+            "label": "さらに確認"
+          }
+        ],
+        "focus": [
+          "n0",
+          "n1",
+          "n2"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-092-mako",
+      "speaker": "mako",
+      "chapterId": "options",
+      "speech": "規則名がアローで始まれば、許可と読んでしまいそうです。でも、設定によってデナイになるものがあるんですね。",
+      "caption": "規則名がallowで始まれば、許可と読んでしまいそうです。でも、設定によってDenyになるものがあるんですね。",
+      "subtitleLines": [
+        "規則名がallowで始まれば、許可と読んでしまいそうです。",
+        "でも、設定によってDenyになるものがあるんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "allowという名前でも、AccessがDenyのことがある",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "gRPCの切り替え",
+            "body": [
+              "有効：該当規則をAllow",
+              "無効：同名規則をDeny",
+              "AppGW・APIM・管理VMに反映"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "管理VMへの接続元",
+            "body": [
+              "運用元を指定：Allow / 100",
+              "公開例は空：Deny / 4080",
+              "経路とSSH認証も別に必要"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-093-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "options",
+      "speech": "たとえばジーアールピーシーを無効にすると、アップゲートウェイ、エーピーアイエム、管理ブイエムの該当規則は、同じ名前のままデナイへ変わります。名前よりアクセスを確認してください。",
+      "caption": "たとえばgRPCを無効にすると、AppGW、APIM、管理VMの該当規則は、同じ名前のままDenyへ変わります。名前よりAccessを確認してください。",
+      "subtitleLines": [
+        "たとえばgRPCを無効にすると、AppGW、APIM、管理VMの該当規則は、",
+        "同じ名前のままDenyへ変わります。名前よりAccessを確認してください。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "allowという名前でも、AccessがDenyのことがある",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "gRPCの切り替え",
+            "body": [
+              "有効：該当規則をAllow",
+              "無効：同名規則をDeny",
+              "AppGW・APIM・管理VMに反映"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "管理VMへの接続元",
+            "body": [
+              "運用元を指定：Allow / 100",
+              "公開例は空：Deny / 4080",
+              "経路とSSH認証も別に必要"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "gRPCの公開設定は有効、公開ポート8443、内部443です。AppGW受信150から、内部の送信120、APIM受信140と150、管理VM送信120まで、一組で切り替えます。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/grpc-switches.svg",
+        "heading": "gRPC公開8443と、内部443の切り替え"
+      },
+      "chapterId": "options",
+      "speech": "ジーアールピーシーの公開設定は有効、公開ポート8443、内部443です。アップゲートウェイ受信150から、内部の送信120、エーピーアイエム受信140と150、管理ブイエム送信120まで、一組で切り替えます。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-094-ikumi",
+      "subtitleLines": [
+        "gRPCの公開設定は有効、公開ポート8443、内部443です。AppGW受信150から、",
+        "内部の送信120、APIM受信140と150、管理VM送信120まで、一組で切り替えます。"
+      ]
+    },
+    {
+      "speaker": "mako",
+      "caption": "公開8443と、内部443を混同しない。クライアントの配列が空なら、公開gRPC受信もDenyになるんですね。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/grpc-switches.svg",
+        "heading": "gRPC公開8443と、内部443の切り替え"
+      },
+      "chapterId": "options",
+      "speech": "公開8443と、内部443を混同しない。クライアントの配列が空なら、公開ジーアールピーシー受信もデナイになるんですね。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-095-mako",
+      "subtitleLines": [
+        "公開8443と、内部443を混同しない。クライアントの配列が",
+        "空なら、公開gRPC受信もDenyになるんですね。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-096-manabu",
+      "speaker": "manabu",
+      "chapterId": "options",
+      "speech": "管理ブイエムのオペレーター、アドレス、プレフィクシズは、公開例で空配列です。管理受信はデナイの4080。運用元を指定すると、指定元から管理ブイエムの実アイピーへのアロー、優先度100になります。",
+      "caption": "管理VMのoperatorAddressPrefixesは、公開例で空配列です。管理受信はDenyの4080。運用元を指定すると、指定元から管理VMの実IPへのAllow、優先度100になります。",
+      "subtitleLines": [
+        "管理VMのoperatorAddressPrefixesは、",
+        "公開例で空配列です。管理受信はDenyの4080。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMへの受信は、運用元・実IP・TCP22で限定",
+        "cards": [
+          {
+            "title": "運用元の指定とAccess",
+            "body": [
+              "operatorAddressPrefixes=[]",
+              "公開例：Deny / 4080",
+              "運用元を指定：Allow / 100",
+              "宛先：管理VMの実IP"
+            ]
+          },
+          {
+            "title": "経路・認証・追加規則",
+            "body": [
+              "operatorProtocol: Tcp",
+              "operatorPorts: [\"22\"]",
+              "managementAdditionalSecurityRules=[]",
+              "経路とSSH認証も別に必要"
+            ]
+          }
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "管理VMのoperatorAddressPrefixesは、公開例で空配列です。管理受信はDenyの4080。",
+          "lines": [
+            "管理VMのoperatorAddressPrefixesは、",
+            "公開例で空配列です。管理受信はDenyの4080。"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "運用元を指定すると、指定元から管理VMの実IPへのAllow、優先度100になります。",
+          "lines": [
+            "運用元を指定すると、指定元から管理VMの実IPへのAllow、優先度100になります。"
+          ],
+          "weight": 43
+        }
+      ]
+    },
+    {
+      "id": "lesson03-turn-097-mako",
+      "speaker": "mako",
+      "chapterId": "options",
+      "speech": "その設定を許可にすれば、管理ブイエムへの接続準備は完了、というわけではないんですよね。",
+      "caption": "その設定を許可にすれば、管理VMへの接続準備は完了、というわけではないんですよね。",
+      "subtitleLines": [
+        "その設定を許可にすれば、管理VMへの接続準備は完了、",
+        "というわけではないんですよね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMへの受信は、運用元・実IP・TCP22で限定",
+        "cards": [
+          {
+            "title": "運用元の指定とAccess",
+            "body": [
+              "operatorAddressPrefixes=[]",
+              "公開例：Deny / 4080",
+              "運用元を指定：Allow / 100",
+              "宛先：管理VMの実IP"
+            ]
+          },
+          {
+            "title": "経路・認証・追加規則",
+            "body": [
+              "operatorProtocol: Tcp",
+              "operatorPorts: [\"22\"]",
+              "managementAdditionalSecurityRules=[]",
+              "経路とSSH認証も別に必要"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-098-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "options",
+      "speech": "公開コンフィグのプロトコルはティーシーピー、ポートは22です。追加のマネジメント、アディショナル、セキュリティー、ルールズも公開例では空。変更時は追加規則の優先順位に加え、到達経路とエスエスエイチ認証も確かめます。",
+      "caption": "公開configのプロトコルはTCP、ポートは22です。追加のmanagementAdditionalSecurityRulesも公開例では空。変更時は追加規則の優先順位に加え、到達経路とSSH認証も確かめます。",
+      "subtitleLines": [
+        "公開configのプロトコルはTCP、ポートは22です。",
+        "追加のmanagementAdditionalSecurityRulesも公開例では空。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理VMへの受信は、運用元・実IP・TCP22で限定",
+        "cards": [
+          {
+            "title": "運用元の指定とAccess",
+            "body": [
+              "operatorAddressPrefixes=[]",
+              "公開例：Deny / 4080",
+              "運用元を指定：Allow / 100",
+              "宛先：管理VMの実IP"
+            ]
+          },
+          {
+            "title": "経路・認証・追加規則",
+            "body": [
+              "operatorProtocol: Tcp",
+              "operatorPorts: [\"22\"]",
+              "managementAdditionalSecurityRules=[]",
+              "経路とSSH認証も別に必要"
+            ]
+          }
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "公開configのプロトコルはTCP、ポートは22です。追加のmanagementAdditionalSecurityRulesも公開例では空。",
+          "lines": [
+            "公開configのプロトコルはTCP、ポートは22です。",
+            "追加のmanagementAdditionalSecurityRulesも公開例では空。"
+          ],
+          "weight": 72
+        },
+        {
+          "caption": "変更時は追加規則の優先順位に加え、到達経路とSSH認証も確かめます。",
+          "lines": [
+            "変更時は追加規則の優先順位に加え、到達経路とSSH認証も確かめます。"
+          ],
+          "weight": 34
+        }
+      ]
+    },
+    {
+      "id": "lesson03-turn-118-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "options",
+      "caption": "証明書監視のcertificatePublicProbeEnabledは、公開configでtrueです。受信194はAllowになり、falseへ変えると同名Denyです。送信元はFirewall公開IPの/32、宛先はAppGW区画のTCP443です。",
+      "speech": "証明書監視のサーティフィケート、パブリック、プローブ、イネーブルドは、公開コンフィグでトゥルーです。受信194はアローになり、フォルスへ変えると同名デナイです。送信元はファイアウォール公開アイピーの、スラッシュ三十二、宛先はアップゲートウェイ区画のティーシーピー443です。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "前の説明を受け、設定条件と目的を明瞭に述べる。落ち着いた通常速度の会話。",
+      "visual": {
+        "layout": "cards",
+        "heading": "証明書監視194：有効値と重なる規則を確認",
+        "cards": [
+          {
+            "title": "監視用の専用規則",
+            "body": [
+              "certificatePublicProbeEnabled",
+              "公開config：true → Allow",
+              "false → 同名規則をDeny",
+              "FW公開IP/32 → AppGW TCP443"
+            ]
+          },
+          {
+            "title": "194だけでは判定が決まらない",
+            "body": [
+              "優先度100のWeb許可と照合",
+              "client=[]ならWeb拒否4080",
+              "同じ通信に先に一致する規則",
+              "Accessと優先度を一緒に見る"
+            ]
+          }
+        ]
+      },
+      "subtitleLines": [
+        "証明書監視のcertificatePublicProbeEnabledは、公開configで",
+        "trueです。受信194はAllowになり、falseへ変えると同名Denyです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "証明書監視のcertificatePublicProbeEnabledは、公開configでtrueです。受信194はAllowになり、falseへ変えると同名Denyです。",
+          "lines": [
+            "証明書監視のcertificatePublicProbeEnabledは、公開configで",
+            "trueです。受信194はAllowになり、falseへ変えると同名Denyです。"
+          ],
+          "weight": 87
+        },
+        {
+          "caption": "送信元はFirewall公開IPの/32、宛先はAppGW区画のTCP443です。",
+          "lines": [
+            "送信元はFirewall公開IPの/32、宛先はAppGW区画のTCP443です。"
+          ],
+          "weight": 41
+        }
+      ]
+    },
+    {
+      "id": "lesson03-turn-099-mako",
+      "speaker": "mako",
+      "chapterId": "options",
+      "speech": "次は優先順位の応用です。証明書監視の194をデナイにすれば、ファイアウォールの公開アイピーから来るティーシーピー443は、必ず拒否できますか？",
+      "caption": "次は優先順位の応用です。証明書監視の194をDenyにすれば、Firewallの公開IPから来るTCP443は、必ず拒否できますか？",
+      "subtitleLines": [
+        "次は優先順位の応用です。証明書監視の194をDenyにすれば、",
+        "Firewallの公開IPから来るTCP443は、必ず拒否できますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/overlap.svg",
+        "heading": "証明書監視をDenyにすれば、必ず遮断できる？"
+      }
+    },
+    {
+      "id": "lesson03-turn-100-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "options",
+      "speech": "必ずとはいえません。公開例のWeb受信100は全アイピーブイフォーのティーシーピー443を許可します。その通信が100へ先に一致すれば、194まで進みません。",
+      "caption": "必ずとはいえません。公開例のWeb受信100は全IPv4のTCP443を許可します。その通信が100へ先に一致すれば、194まで進みません。",
+      "subtitleLines": [
+        "必ずとはいえません。公開例のWeb受信100は全IPv4のTCP443を",
+        "許可します。その通信が100へ先に一致すれば、194まで進みません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/overlap.svg",
+        "heading": "証明書監視をDenyにすれば、必ず遮断できる？"
+      }
+    },
+    {
+      "id": "lesson03-turn-101-manabu",
+      "speaker": "manabu",
+      "chapterId": "options",
+      "speech": "逆に、クライアント配列を空にした場合も注意です。Web拒否は4080になるので、監視194がアローなら、その通信は先に許可されます。",
+      "caption": "逆に、クライアント配列を空にした場合も注意です。Web拒否は4080になるので、監視194がAllowなら、その通信は先に許可されます。",
+      "subtitleLines": [
+        "逆に、クライアント配列を空にした場合も注意です。Web拒否は4080に",
+        "なるので、監視194がAllowなら、その通信は先に許可されます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/overlap-empty.svg",
+        "heading": "Web許可元が空でも、別の許可を先に評価する"
+      }
+    },
+    {
+      "id": "lesson03-turn-102-mako",
+      "speaker": "mako",
+      "chapterId": "options",
+      "speech": "一つのスイッチだけで結論を出さず、同じ通信に一致する、より小さい数字の規則も確認する。最初の原則がここでも効くんですね。",
+      "caption": "一つのスイッチだけで結論を出さず、同じ通信に一致する、より小さい数字の規則も確認する。最初の原則がここでも効くんですね。",
+      "subtitleLines": [
+        "一つのスイッチだけで結論を出さず、同じ通信に一致する、",
+        "より小さい数字の規則も確認する。最初の原則がここでも効くんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/overlap-empty.svg",
+        "heading": "Web許可元が空でも、別の許可を先に評価する"
+      }
+    },
+    {
+      "speaker": "ikumi",
+      "caption": "Key Vaultも区別します。公開configのapimKeyVaultAccessEnabledはtrue。実効設定をfalseにすると、APIMのPE向け送信110はDenyになり、PE受信110からAPIMを外します。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Key Vault向け許可は、一つのスイッチで全体を変えない",
+        "cards": [
+          {
+            "title": "PE経由のAPIM通信",
+            "body": [
+              "apimKeyVaultAccessEnabled",
+              "公開configの値：true",
+              "falseならAPIM送信110はDeny",
+              "PE受信110からAPIMを除外"
+            ]
+          },
+          {
+            "title": "別に確認するもの",
+            "body": [
+              "実効設定は構築入力から確認",
+              "基盤向けAzureKeyVault / 220",
+              "Key VaultのIAM権限",
+              "接続許可と操作権限を分ける"
+            ]
+          }
+        ]
+      },
+      "chapterId": "options",
+      "speech": "キーボルトも区別します。公開コンフィグのエーピーアイエム、キーボルト、アクセス、イネーブルドはトゥルー。実効設定をフォルスにすると、エーピーアイエムのピーイー向け送信110はデナイになり、ピーイー受信110からエーピーアイエムを外します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-103-ikumi",
+      "subtitleLines": [
+        "Key Vaultも区別します。",
+        "公開configのapimKeyVaultAccessEnabledはtrue。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Key Vaultも区別します。公開configのapimKeyVaultAccessEnabledはtrue。",
+          "lines": [
+            "Key Vaultも区別します。",
+            "公開configのapimKeyVaultAccessEnabledはtrue。"
+          ],
+          "weight": 56
+        },
+        {
+          "caption": "実効設定をfalseにすると、APIMのPE向け送信110はDenyになり、PE受信110からAPIMを外します。",
+          "lines": [
+            "実効設定をfalseにすると、APIMのPE向け送信110は",
+            "Denyになり、PE受信110からAPIMを外します。"
+          ],
+          "weight": 57
+        }
+      ]
+    },
+    {
+      "speaker": "manabu",
+      "caption": "ただし、基盤向けAzureKeyVaultの送信220や、Key VaultのIAMまで一括変更する設定ではありません。ネットワークで通るかと、秘密を読めるかは別に確かめます。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Key Vault向け許可は、一つのスイッチで全体を変えない",
+        "cards": [
+          {
+            "title": "PE経由のAPIM通信",
+            "body": [
+              "apimKeyVaultAccessEnabled",
+              "公開configの値：true",
+              "falseならAPIM送信110はDeny",
+              "PE受信110からAPIMを除外"
+            ]
+          },
+          {
+            "title": "別に確認するもの",
+            "body": [
+              "実効設定は構築入力から確認",
+              "基盤向けAzureKeyVault / 220",
+              "Key VaultのIAM権限",
+              "接続許可と操作権限を分ける"
+            ]
+          }
+        ]
+      },
+      "chapterId": "options",
+      "speech": "ただし、基盤向けアジュールキーボルトの送信220や、キーボルトのアイアムまで一括変更する設定ではありません。ネットワークで通るかと、秘密を読めるかは別に確かめます。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の問いへ返答する。設定値の区切りを明瞭にし、通常速度の会話として説明する。",
+      "id": "lesson03-turn-104-manabu",
+      "subtitleLines": [
+        "ただし、基盤向けAzureKeyVaultの送信220や、Key VaultのIAMまで一括変更する",
+        "設定ではありません。ネットワークで通るかと、秘密を読めるかは別に確かめます。"
+      ]
+    },
+    {
+      "id": "lesson03-turn-105-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "options",
+      "speech": "またエーピーアイエムからブローカーへの送信176は、エーピーアイエム区画からエーシーエー環境の実際の内部アイピーへのティーシーピー443です。クレデンシャル、プロファイルズが空でないときだけ作成します。",
+      "caption": "またAPIMからBrokerへの送信176は、APIM区画からACA環境の実際の内部IPへのTCP443です。credentialProfilesが空でないときだけ作成します。",
+      "subtitleLines": [
+        "またAPIMからBrokerへの送信176は、APIM区画からACA環境の実際の内部IPへ",
+        "のTCP443です。credentialProfilesが空でないときだけ作成します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Broker送信176と、共用PE受信175・177",
+        "cards": [
+          {
+            "title": "APIM → Brokerの送信176",
+            "body": [
+              "APIM区画 → ACA実内部IP",
+              "TCP443 / Allow",
+              "credentialProfilesが空でない時",
+              "同名Denyへ変える方式ではない"
+            ]
+          },
+          {
+            "title": "SQL・Key VaultのPE受信",
+            "body": [
+              "175：ACA → SQL PE / TCP1433",
+              "177：ACA → KV PE / TCP443",
+              "Broker無効時も常時作成",
+              "176の既存許可残存は実ルールで確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-119-manabu",
+      "speaker": "manabu",
+      "chapterId": "options",
+      "caption": "SQLのPE受信175とKey VaultのPE受信177は、Brokerが無効でも常時作成します。一方、送信176は無効時に同名Denyへ変える方式ではないので、既存許可の残存を実ルールで確認します。",
+      "speech": "エスキューエルのピーイー受信175とキーボルトのピーイー受信177は、ブローカーが無効でも常時作成します。一方、送信176は無効時に同名デナイへ変える方式ではないので、既存許可の残存を実ルールで確認します。",
+      "gapAfterSeconds": 0.14,
+      "delivery": "前の説明を受け、設定条件と目的を明瞭に述べる。落ち着いた通常速度の会話。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Broker送信176と、共用PE受信175・177",
+        "cards": [
+          {
+            "title": "APIM → Brokerの送信176",
+            "body": [
+              "APIM区画 → ACA実内部IP",
+              "TCP443 / Allow",
+              "credentialProfilesが空でない時",
+              "同名Denyへ変える方式ではない"
+            ]
+          },
+          {
+            "title": "SQL・Key VaultのPE受信",
+            "body": [
+              "175：ACA → SQL PE / TCP1433",
+              "177：ACA → KV PE / TCP443",
+              "Broker無効時も常時作成",
+              "176の既存許可残存は実ルールで確認"
+            ]
+          }
+        ]
+      },
+      "subtitleLines": [
+        "SQLのPE受信175とKey VaultのPE受信177は、Brokerが無効でも常時作成します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "SQLのPE受信175とKey VaultのPE受信177は、Brokerが無効でも常時作成します。",
+          "lines": [
+            "SQLのPE受信175とKey VaultのPE受信177は、Brokerが無効でも常時作成します。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "一方、送信176は無効時に同名Denyへ変える方式ではないので、既存許可の残存を実ルールで確認します。",
+          "lines": [
+            "一方、送信176は無効時に同名Denyへ変える方式では",
+            "ないので、既存許可の残存を実ルールで確認します。"
+          ],
+          "weight": 51
+        }
+      ]
+    },
+    {
+      "id": "lesson03-turn-106-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "では三問、確認しましょう。一問目。追加管理規則なし、ジーアールピーシー有効の標準例です。管理ブイエムからエーピーアイエムへ、ティーシーピー80の新規接続は通れますか？",
+      "caption": "では三問、確認しましょう。一問目。追加管理規則なし、gRPC有効の標準例です。管理VMからAPIMへ、TCP80の新規接続は通れますか？",
+      "subtitleLines": [
+        "では三問、確認しましょう。一問目。追加管理規則なし、",
+        "gRPC有効の標準例です。管理VMからAPIMへ、TCP80の新規接続は通れますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/quiz-1.svg",
+        "heading": "確認1：管理VM → APIM / TCP 80"
+      }
+    },
+    {
+      "id": "lesson03-turn-107-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "答えを出す前に、管理ブイエムの送信と、エーピーアイエムの受信をそれぞれ選びます。内部同士という理由で、既定許可へ飛ばさないのがポイントです。",
+      "caption": "答えを出す前に、管理VMの送信と、APIMの受信をそれぞれ選びます。内部同士という理由で、既定許可へ飛ばさないのがポイントです。",
+      "subtitleLines": [
+        "答えを出す前に、管理VMの送信と、APIMの受信をそれぞれ選びます。",
+        "内部同士という理由で、既定許可へ飛ばさないのがポイントです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/quiz-1.svg",
+        "heading": "確認1：管理VM → APIM / TCP 80"
+      }
+    },
+    {
+      "id": "lesson03-turn-108-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "答えは拒否です。管理ブイエム送信4096に一致し、エーピーアイエム受信側にも該当する許可はありません。ティーシーピー443の比較用許可を、80番へ流用はできません。",
+      "caption": "答えは拒否です。管理VM送信4096に一致し、APIM受信側にも該当する許可はありません。TCP443の比較用許可を、80番へ流用はできません。",
+      "subtitleLines": [
+        "答えは拒否です。管理VM送信4096に一致し、APIM受信側にも該当する許可は",
+        "ありません。TCP443の比較用許可を、80番へ流用はできません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/api-compare.svg",
+        "heading": "送信元とポートを変えると、判定も変わる"
+      }
+    },
+    {
+      "id": "lesson03-turn-109-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二問目。エーピーアイエムからファウンドリーのピーイーへ、新規のティーシーピー443を両端で許可しました。同じ接続への応答に、逆向きのアローを追加しますか？",
+      "caption": "二問目。APIMからFoundryのPEへ、新規のTCP443を両端で許可しました。同じ接続への応答に、逆向きのAllowを追加しますか？",
+      "subtitleLines": [
+        "二問目。APIMからFoundryのPEへ、新規のTCP443を両端で許可しました。",
+        "同じ接続への応答に、逆向きのAllowを追加しますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/quiz-2.svg",
+        "heading": "確認2：APIM → Foundry PE の応答"
+      }
+    },
+    {
+      "id": "lesson03-turn-110-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "追加する必要はありません。許可済み接続の応答は状態追跡で扱います。ただし、規則を変えた効果は、既存接続の継続だけで判断せず、新規接続で確認します。",
+      "caption": "追加する必要はありません。許可済み接続の応答は状態追跡で扱います。ただし、規則を変えた効果は、既存接続の継続だけで判断せず、新規接続で確認します。",
+      "subtitleLines": [
+        "追加する必要はありません。許可済み接続の応答は状態追跡で扱います。ただし、",
+        "規則を変えた効果は、既存接続の継続だけで判断せず、新規接続で確認します。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "同じ接続への応答：逆向きの新規接続とは区別",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "許可した接続の応答を受ける",
+            "x": 70,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "既存の接続へ応答を返す",
+            "x": 760,
+            "y": 180,
+            "width": 380,
+            "height": 110
+          }
+        ],
+        "edges": [
+          {
+            "from": "pe",
+            "to": "apim",
+            "label": "状態追跡による応答",
+            "color": "#80edbd"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-111-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "三問目。Web100は全アイピーブイフォーのティーシーピー443をアロー、監視194はデナイです。ファイアウォール公開アイピーから来る新規のティーシーピー443は、どちらへ先に一致しますか？",
+      "caption": "三問目。Web100は全IPv4のTCP443をAllow、監視194はDenyです。Firewall公開IPから来る新規のTCP443は、どちらへ先に一致しますか？",
+      "subtitleLines": [
+        "三問目。Web100は全IPv4のTCP443をAllow、監視194はDenyです。",
+        "Firewall公開IPから来る新規のTCP443は、どちらへ先に一致しますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "視聴者と一緒に確かめる問い。語尾は自然に上げ、通常速度で明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/quiz-3.svg",
+        "heading": "確認3：監視194をDeny、Web100はAllow"
+      }
+    },
+    {
+      "id": "lesson03-turn-112-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "小さい数字の100です。そこでアローになります。デナイという文字だけを見るのではなく、その通信がそこまで評価されるかを確かめます。",
+      "caption": "小さい数字の100です。そこでAllowになります。Denyという文字だけを見るのではなく、その通信がそこまで評価されるかを確かめます。",
+      "subtitleLines": [
+        "小さい数字の100です。そこでAllowになります。Denyという文字だけを",
+        "見るのではなく、その通信がそこまで評価されるかを確かめます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/overlap.svg",
+        "heading": "証明書監視をDenyにすれば、必ず遮断できる？"
+      }
+    },
+    {
+      "id": "lesson03-turn-113-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "最初の、同じ443番なのに相手によって違う、という疑問が解けました。送信元、接続先、方向をそろえると、判定の根拠が見えますね。",
+      "caption": "最初の、同じ443番なのに相手によって違う、という疑問が解けました。送信元、接続先、方向をそろえると、判定の根拠が見えますね。",
+      "subtitleLines": [
+        "最初の、同じ443番なのに相手によって違う、という疑問が解けました。",
+        "送信元、接続先、方向をそろえると、判定の根拠が見えますね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "summary",
+        "heading": "1つの通信を、同じ順番で判定する",
+        "bullets": [
+          "送信元・宛先・ポート・プロトコルを固定する",
+          "区画と方向を選び、小さい優先度から最初の一致へ",
+          "許可済み接続の応答と、新規接続を分ける",
+          "NSGの判定に、経路・Firewall・認証を重ねる"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-114-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "関連付ける区画を選び、両端の方向で、小さい優先度から最初の一致を探します。新しい接続と応答を分け、設定変更後は新規接続で確かめます。",
+      "caption": "関連付ける区画を選び、両端の方向で、小さい優先度から最初の一致を探します。新しい接続と応答を分け、設定変更後は新規接続で確かめます。",
+      "subtitleLines": [
+        "関連付ける区画を選び、両端の方向で、小さい優先度から最初の一致を探します。",
+        "新しい接続と応答を分け、設定変更後は新規接続で確かめます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "summary",
+        "heading": "1つの通信を、同じ順番で判定する",
+        "bullets": [
+          "送信元・宛先・ポート・プロトコルを固定する",
+          "区画と方向を選び、小さい優先度から最初の一致へ",
+          "許可済み接続の応答と、新規接続を分ける",
+          "NSGの判定に、経路・Firewall・認証を重ねる"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-115-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "根拠は教材の十一節から十九節と、対象環境の入力・実ルールです。今日の例は公開設定に基づく説明で、稼働環境の疎通実測ではありません。",
+      "caption": "根拠は教材の十一節から十九節と、対象環境の入力・実ルールです。今日の例は公開設定に基づく説明で、稼働環境の疎通実測ではありません。",
+      "subtitleLines": [
+        "根拠は教材の十一節から十九節と、対象環境の入力・実ルールです。",
+        "今日の例は公開設定に基づく説明で、稼働環境の疎通実測ではありません。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "summary",
+        "heading": "1つの通信を、同じ順番で判定する",
+        "bullets": [
+          "送信元・宛先・ポート・プロトコルを固定する",
+          "区画と方向を選び、小さい優先度から最初の一致へ",
+          "許可済み接続の応答と、新規接続を分ける",
+          "NSGの判定に、経路・Firewall・認証を重ねる"
+        ]
+      }
+    },
+    {
+      "id": "lesson03-turn-116-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次の問いは、許可した通信をどこへ送るか。全部がファイアウォールを通るのでしょうか。第4回は、ユーディーアールと往復経路を追っていきます。",
+      "caption": "次の問いは、許可した通信をどこへ送るか。全部がFirewallを通るのでしょうか。第4回は、UDRと往復経路を追っていきます。",
+      "subtitleLines": [
+        "次の問いは、許可した通信をどこへ送るか。全部がFirewallを",
+        "通るのでしょうか。第4回は、UDRと往復経路を追っていきます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "直前の話へ自然に返答する。落ち着いた通常速度で、条件と判定の切れ目を明瞭に。",
+      "visual": {
+        "layout": "cards",
+        "heading": "次回：UDRと往復経路",
+        "cards": [
+          {
+            "id": "c0",
+            "title": "今日の問い",
+            "body": [
+              "その通信を許可するか",
+              "両端のNSGと状態追跡で判断"
+            ]
+          },
+          {
+            "id": "c1",
+            "title": "次回の問い",
+            "body": [
+              "許可した通信を、どこへ送るか",
+              "FW経由とPE直接経路",
+              "往復をそろえる理由"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "seriesLabel": "NSG / 送信・受信・優先順位・状態追跡",
+  "voiceDelay": 0.06,
+  "userInstruction": "実際の設定値をしっかり解説する。多少時間が延びてもよい。"
+}

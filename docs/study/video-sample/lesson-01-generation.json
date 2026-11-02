@@ -1,0 +1,1385 @@
+{
+  "page": {
+    "mode": "opening",
+    "title": "第1回 egakumiのネットワーク全体像 / 音声生成",
+    "intro": "MAKO=Bree、MANABU=Vance、IKUMI=Tyler。全員通常速度・発音強化ON。15分前後の本編をegakumiゲートウェイで生成します。",
+    "speed": 1,
+    "includeOriginal": false,
+    "footer": "場面に応じた非言語タグを使い、字幕では省略します。音声の実際の長さから映像を合成します。"
+  },
+  "script": "エガクミのエーピーアイって、送った要求は、どこを通るんですか？\n今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。\nマナブさんには目的を、イクミさんには仕組みを聞きます。まず全体像からですね。\nうん。一つのエーピーアイ要求を、入口からサービスまで追ってみよう。\nよかった。[laughter] アイピーアドレスの暗記からではないんですね。\nゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。\n図には、公開入口、エーピーアイの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？\n利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。\nネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。\nなるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？\nそこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。\n分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。\n配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？\nエヌエスジーが区画への送受信の許可や拒否、ユーディーアールが次の転送先、ファイアウォールがそこへ届いた通信の判定を担当する。それぞれ見ているものが違うんだ。\nどこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。\nうん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。\n全体図の外側に、ブイネットという大きな枠があります。これは、エガクミのリソースを全部入れる箱、と考えていいですか？\nブイネットはアジュール上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブネットを設ける。\n一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。ブイネットとサブネットの間に、もう一段あるんでしょうか？\nそう。ブイネットが仮想ネットワーク全体、アドレス空間がそこで使うアイピーアドレスの範囲、サブネットがその範囲から切り出す配置先の区画なんだ。\n場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。\nブイネットの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。\nうん。[breathing] この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。\n配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？\nリソースグループはアジュールリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜないようにする。\n管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。\nでは、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。\nここでは、同じ大きさの四つの範囲を一つのブイネットへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つになるんだ。\n最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？\n四つ目は将来の拡張用の予備だよ。ブイネットのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。\n予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。\n資料には、スラッシュ二十四やスラッシュ二十六という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？\nその範囲の大きさを表す表記だね。この例では、スラッシュ二十四一つの中に、スラッシュ二十六が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえよう。\n同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。\n[breathing] そのとおり。設定では、サブネットがブイネットの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見るのが先だよ。\nここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。\n住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？\nアプリケーションゲートウェイの区画だよ。利用者からのウェブやエーピーアイの要求を受けて、内部の処理先へ中継する。図では、公開入口を示している場所だね。\n利用者の窓口と、エーピーアイを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。\n次に、エーピーアイを処理する区画。ここがエーピーアイエムですね。入口と名前が似ていて、前は同じようなものだと思っていました。\nエーピーアイエムは内部ブイネットモードのエーピーアイ処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口のアプリケーションゲートウェイとは担当が違う。\n外の窓口と、エーピーアイの実行を判断する場所ですね。その間にあるファイアウォールも、一つの専用区画を持っているんですか？\nうん。アジュールファイアウォールには専用のサブネットを用意する。経路でファイアウォールへ向けた通信を検査・制御する場所だよ。すべての通信が自動的に集まるわけではない。\n必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。\nここまでが、公開入口、エーピーアイ処理、ファイアウォールの三つ。次はプライベートエンドポイントの区画です。これは、サービス本体が並んでいる場所でしょうか？\nここに置くのは、サービスへの接続口だよ。ファウンドリー、キーボルト、エーシーアール、エスキューエルなどへ、ブイネット内のプライベート アイピーで接続するための入口を置いている。\nあ、ファウンドリーやエスキューエルのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。\nそう。[breathing] サービス本体とピーイーを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分かりやすい。\n残りは、管理ブイエムとコンテナーアップスの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？\n管理ブイエムは構築・配備・管理作業を行うリナックスの作業場所。コンテナーアップスは、ポータルなどのアプリが動く共用の実行環境で、この構成では内部環境として作る。\n管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理ブイエムには公開アイピーがなく、接続経路も別途必要になるよ。\n六つを並べると、入口、エーピーアイ処理、ファイアウォール、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見えてきました。\nでは、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のエーピーアイを呼ぶところからでいいですか？\nうん。ここでは通常のエイチティーティーピーエスのエーピーアイ要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。\n利用者が公開ゲートウェイの名前へ要求を送る。最初に受けるのは、エーピーアイエムではなくアプリケーションゲートウェイの公開入口ですね。\nそう。通常のエイチティーティーピーエスはアプリケーションゲートウェイで終端する。この入口での処理と、その後に内部のエーピーアイエムへ接続する処理を、分けて考えるんだ。\n公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。\n公開入口からエーピーアイエムへは、図の緑の線を進みます。この線がファイアウォール経由を表しているんでしたね。\nうん。アプリケーションゲートウェイからエーピーアイエムへは、ユーディーアールでファイアウォールを次の転送先にする。届いた通信を、ファイアウォールの規則が判定する。\nここで、エヌエスジーとユーディーアールとファイアウォールの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？\nそう。エヌエスジーは送受信の条件、ユーディーアールは次の転送先、ファイアウォールは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の読み方は後の回で深めよう。\nエーピーアイエムに届いたら、次はエーピーアイの認証やポリシーの処理ですね。ネットワークが通ったことと、エーピーアイを利用できることは、ここでも別なんですね。\n道がつながるだけでは、何でも使えることにはならないんだね。エーピーアイの利用許可や入力の確認は、その後の学習で追っていこう。\nこの資料の通常エーピーアイでは、外側のエイチティーティーピーエスを終端した後、エーピーアイエムへの内部中継はエイチティーティーピーを使う。区間を分けて読むのがポイントだよ。\n外側と内側を、同じ一つの接続だと思い込まないことですね。ではエーピーアイエムがファウンドリーを呼ぶときは、どの線を進みますか？\nここは青い破線の、ピーイーへの直接経路を使う。エーピーアイエムからファウンドリーの接続口へ進み、その先でサービスを呼ぶ。この標準経路では、ファイアウォールを通らないんだ。\n入口からエーピーアイエムまではファイアウォール経由。でも、エーピーアイエムからピーイーへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。\nうん。[breathing] それに、エーピーアイエムがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめよう。\n返ってくる結果は、ファウンドリーの接続口からエーピーアイエムへ。その後、エーピーアイエムから公開入口へ戻る道も、ちゃんと用意する必要があるんですね。\nエーピーアイエムから公開入口へ戻る区間にも、ファイアウォールを経由するユーディーアールを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できるようにしよう。\nほかにも直接つながる青い線がありますね。ファイアウォールがあるなら、全部通した方がよさそうにも見えますが。\nこの構成では、ピーイーや一部の内部通信に、具体的な直接経路がある。ファイアウォールを通るかは、宛先と実際の経路で決まるよ。\nすべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。\nたとえば、アプリからエスキューエルへ行く通信は、どこを見ればよいですか。利用者のエーピーアイ呼び出しと、同じ入口から始まるんでしょうか？\n[breathing] アプリ実行区画のエーシーエーからエスキューエルのピーイーへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。\n画面を開く通信と、内部のエスキューエルへの通信は別なんですね。では、ポータルが公開ゲートウェイを試す通信はどうなりますか？\nその場合は、エーシーエーからファイアウォールを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。\n操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。\nジーアールピーシーやアジュールの管理通信も図にありますね。ここは、今日の通常エーピーアイの道筋に、全部当てはめなくてよいんですね。\nジーアールピーシーは有効時に別の入口でティーシーピーとティーエルエスを中継し、通常エイチティーティーピーエスと同じワフ検査としては扱わない。管理系にも別経路があり、後の回で確認するよ。\nピーイーで閉域接続していれば、ファウンドリー本体の外向き通信も、このブイネットのファイアウォールで全部管理できるのでしょうか？\nピーイーへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。\nここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、どうでしょう？\n図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。\n答えは、そうではない。配置を分けただけでは自動遮断にならないよ。エヌエスジーなどの通信制御と、ユーディーアールによる経路を合わせて確認する必要がある。\n次の問いです。通常エーピーアイでは、公開入口からエーピーアイエムへはファイアウォール経由、エーピーアイエムからファウンドリーのピーイーへは直接経路を使う。これは、どうでしょう？\nそのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。\n最後は配置の問いです。ピーイーのサブネットにエスキューエルへの接続口があるので、エスキューエルのサービス本体も、そのサブネットの中に置かれている。これはどうでしょう？\nサービス本体と接続口は別だよ。ピーイーはブイネット内のプライベート アイピーでサービスへ接続する入口。図の枠の中に何を配置しているのかを、名前だけでなく役割で読もう。\n箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。[laughter]\n自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。\n資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。\nまとめです。一つのブイネットに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。\n区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。\n通常エーピーアイは、公開入口からファイアウォール経由でエーピーアイエムへ進み、ファウンドリーのピーイーへは直接接続する。戻り道も含め、区間ごとに確認しよう。\n配置だけでは通信を判断できず、すべてがファイアウォールを通るわけでもない。次は、接続先の名前からアイピーへ進むところを知りたいです。\n次回はディーエヌエスとプライベートエンドポイント。[breathing] 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の流れを追っていこう。\n今回は、全体図で通常エーピーアイの往復を指してみてください。マナブさん、イクミさん、ありがとうございました。また次回、一緒に見ていきましょう。",
+  "candidates": [
+    {
+      "id": "lesson01-turn-001-mako",
+      "number": 1,
+      "person": "mako",
+      "label": "001 MAKO / opening",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "エガクミのエーピーアイって、送った要求は、どこを通るんですか？",
+      "caption": "egakumiのAPIって、送った要求は、どこを通るんですか？"
+    },
+    {
+      "id": "lesson01-turn-002-manabu",
+      "number": 2,
+      "person": "manabu",
+      "label": "002 MANABU / opening",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。",
+      "caption": "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。"
+    },
+    {
+      "id": "lesson01-turn-003-mako",
+      "number": 3,
+      "person": "mako",
+      "label": "003 MAKO / opening",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "マナブさんには目的を、イクミさんには仕組みを聞きます。まず全体像からですね。",
+      "caption": "MANABUさんには目的を、IKUMIさんには仕組みを聞きます。まず全体像からですね。"
+    },
+    {
+      "id": "lesson01-turn-004-ikumi",
+      "number": 4,
+      "person": "ikumi",
+      "label": "004 IKUMI / opening",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。一つのエーピーアイ要求を、入口からサービスまで追ってみよう。",
+      "caption": "うん。一つのAPI要求を、入口からサービスまで追ってみよう。"
+    },
+    {
+      "id": "lesson01-turn-005-mako",
+      "number": 5,
+      "person": "mako",
+      "label": "005 MAKO / opening",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "よかった。[laughter] アイピーアドレスの暗記からではないんですね。",
+      "caption": "よかった。 IPアドレスの暗記からではないんですね。"
+    },
+    {
+      "id": "lesson01-turn-006-ikumi",
+      "number": 6,
+      "person": "ikumi",
+      "label": "006 IKUMI / opening",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。",
+      "caption": "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。"
+    },
+    {
+      "id": "lesson01-turn-007-mako",
+      "number": 7,
+      "person": "mako",
+      "label": "007 MAKO / why",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "図には、公開入口、エーピーアイの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？",
+      "caption": "図には、公開入口、APIの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？"
+    },
+    {
+      "id": "lesson01-turn-008-manabu",
+      "number": 8,
+      "person": "manabu",
+      "label": "008 MANABU / why",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。",
+      "caption": "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。"
+    },
+    {
+      "id": "lesson01-turn-009-ikumi",
+      "number": 9,
+      "person": "ikumi",
+      "label": "009 IKUMI / why",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。",
+      "caption": "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。"
+    },
+    {
+      "id": "lesson01-turn-010-mako",
+      "number": 10,
+      "person": "mako",
+      "label": "010 MAKO / why",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？",
+      "caption": "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？"
+    },
+    {
+      "id": "lesson01-turn-011-ikumi",
+      "number": 11,
+      "person": "ikumi",
+      "label": "011 IKUMI / why",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。",
+      "caption": "そこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。"
+    },
+    {
+      "id": "lesson01-turn-012-manabu",
+      "number": 12,
+      "person": "manabu",
+      "label": "012 MANABU / why",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。",
+      "caption": "分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。"
+    },
+    {
+      "id": "lesson01-turn-013-mako",
+      "number": 13,
+      "person": "mako",
+      "label": "013 MAKO / why",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？",
+      "caption": "配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？"
+    },
+    {
+      "id": "lesson01-turn-014-ikumi",
+      "number": 14,
+      "person": "ikumi",
+      "label": "014 IKUMI / why",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "エヌエスジーが区画への送受信の許可や拒否、ユーディーアールが次の転送先、ファイアウォールがそこへ届いた通信の判定を担当する。それぞれ見ているものが違うんだ。",
+      "caption": "NSGが区画への送受信の許可や拒否、UDRが次の転送先、Firewallがそこへ届いた通信の判定を担当する。それぞれ見ているものが違うんだ。"
+    },
+    {
+      "id": "lesson01-turn-015-mako",
+      "number": 15,
+      "person": "mako",
+      "label": "015 MAKO / why",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。",
+      "caption": "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。"
+    },
+    {
+      "id": "lesson01-turn-016-manabu",
+      "number": 16,
+      "person": "manabu",
+      "label": "016 MANABU / why",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。",
+      "caption": "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。"
+    },
+    {
+      "id": "lesson01-turn-017-mako",
+      "number": 17,
+      "person": "mako",
+      "label": "017 MAKO / structure",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "全体図の外側に、ブイネットという大きな枠があります。これは、エガクミのリソースを全部入れる箱、と考えていいですか？",
+      "caption": "全体図の外側に、VNetという大きな枠があります。これは、egakumiのリソースを全部入れる箱、と考えていいですか？"
+    },
+    {
+      "id": "lesson01-turn-018-ikumi",
+      "number": 18,
+      "person": "ikumi",
+      "label": "018 IKUMI / structure",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ブイネットはアジュール上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブネットを設ける。",
+      "caption": "VNetはAzure上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブネットを設ける。"
+    },
+    {
+      "id": "lesson01-turn-019-mako",
+      "number": 19,
+      "person": "mako",
+      "label": "019 MAKO / structure",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。ブイネットとサブネットの間に、もう一段あるんでしょうか？",
+      "caption": "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。VNetとサブネットの間に、もう一段あるんでしょうか？"
+    },
+    {
+      "id": "lesson01-turn-020-ikumi",
+      "number": 20,
+      "person": "ikumi",
+      "label": "020 IKUMI / structure",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そう。ブイネットが仮想ネットワーク全体、アドレス空間がそこで使うアイピーアドレスの範囲、サブネットがその範囲から切り出す配置先の区画なんだ。",
+      "caption": "そう。VNetが仮想ネットワーク全体、アドレス空間がそこで使うIPアドレスの範囲、サブネットがその範囲から切り出す配置先の区画なんだ。"
+    },
+    {
+      "id": "lesson01-turn-021-manabu",
+      "number": 21,
+      "person": "manabu",
+      "label": "021 MANABU / structure",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。",
+      "caption": "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。"
+    },
+    {
+      "id": "lesson01-turn-022-mako",
+      "number": 22,
+      "person": "mako",
+      "label": "022 MAKO / structure",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ブイネットの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。",
+      "caption": "VNetの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。"
+    },
+    {
+      "id": "lesson01-turn-023-ikumi",
+      "number": 23,
+      "person": "ikumi",
+      "label": "023 IKUMI / structure",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。[breathing] この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。",
+      "caption": "うん。 この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。"
+    },
+    {
+      "id": "lesson01-turn-024-mako",
+      "number": 24,
+      "person": "mako",
+      "label": "024 MAKO / structure",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？",
+      "caption": "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？"
+    },
+    {
+      "id": "lesson01-turn-025-ikumi",
+      "number": 25,
+      "person": "ikumi",
+      "label": "025 IKUMI / structure",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "リソースグループはアジュールリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜないようにする。",
+      "caption": "リソースグループはAzureリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜないようにする。"
+    },
+    {
+      "id": "lesson01-turn-026-manabu",
+      "number": 26,
+      "person": "manabu",
+      "label": "026 MANABU / structure",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。",
+      "caption": "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。"
+    },
+    {
+      "id": "lesson01-turn-027-mako",
+      "number": 27,
+      "person": "mako",
+      "label": "027 MAKO / addresses",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。",
+      "caption": "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。"
+    },
+    {
+      "id": "lesson01-turn-028-ikumi",
+      "number": 28,
+      "person": "ikumi",
+      "label": "028 IKUMI / addresses",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここでは、同じ大きさの四つの範囲を一つのブイネットへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つになるんだ。",
+      "caption": "ここでは、同じ大きさの四つの範囲を一つのVNetへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つになるんだ。"
+    },
+    {
+      "id": "lesson01-turn-029-mako",
+      "number": 29,
+      "person": "mako",
+      "label": "029 MAKO / addresses",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？",
+      "caption": "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？"
+    },
+    {
+      "id": "lesson01-turn-030-ikumi",
+      "number": 30,
+      "person": "ikumi",
+      "label": "030 IKUMI / addresses",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "四つ目は将来の拡張用の予備だよ。ブイネットのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。",
+      "caption": "四つ目は将来の拡張用の予備だよ。VNetのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。"
+    },
+    {
+      "id": "lesson01-turn-031-manabu",
+      "number": 31,
+      "person": "manabu",
+      "label": "031 MANABU / addresses",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。",
+      "caption": "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。"
+    },
+    {
+      "id": "lesson01-turn-032-mako",
+      "number": 32,
+      "person": "mako",
+      "label": "032 MAKO / addresses",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "資料には、スラッシュ二十四やスラッシュ二十六という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？",
+      "caption": "資料には、/24や/26という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？"
+    },
+    {
+      "id": "lesson01-turn-033-ikumi",
+      "number": 33,
+      "person": "ikumi",
+      "label": "033 IKUMI / addresses",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "その範囲の大きさを表す表記だね。この例では、スラッシュ二十四一つの中に、スラッシュ二十六が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえよう。",
+      "caption": "その範囲の大きさを表す表記だね。この例では、/24一つの中に、/26が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえよう。"
+    },
+    {
+      "id": "lesson01-turn-034-mako",
+      "number": 34,
+      "person": "mako",
+      "label": "034 MAKO / addresses",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。",
+      "caption": "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。"
+    },
+    {
+      "id": "lesson01-turn-035-ikumi",
+      "number": 35,
+      "person": "ikumi",
+      "label": "035 IKUMI / addresses",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "[breathing] そのとおり。設定では、サブネットがブイネットの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見るのが先だよ。",
+      "caption": "そのとおり。設定では、サブネットがVNetの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見るのが先だよ。"
+    },
+    {
+      "id": "lesson01-turn-036-manabu",
+      "number": 36,
+      "person": "manabu",
+      "label": "036 MANABU / addresses",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。",
+      "caption": "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。"
+    },
+    {
+      "id": "lesson01-turn-037-mako",
+      "number": 37,
+      "person": "mako",
+      "label": "037 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？",
+      "caption": "住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？"
+    },
+    {
+      "id": "lesson01-turn-038-ikumi",
+      "number": 38,
+      "person": "ikumi",
+      "label": "038 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "アプリケーションゲートウェイの区画だよ。利用者からのウェブやエーピーアイの要求を受けて、内部の処理先へ中継する。図では、公開入口を示している場所だね。",
+      "caption": "Application Gatewayの区画だよ。利用者からのWebやAPIの要求を受けて、内部の処理先へ中継する。図では、公開入口を示している場所だね。"
+    },
+    {
+      "id": "lesson01-turn-039-manabu",
+      "number": 39,
+      "person": "manabu",
+      "label": "039 MANABU / subnets",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "利用者の窓口と、エーピーアイを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。",
+      "caption": "利用者の窓口と、APIを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。"
+    },
+    {
+      "id": "lesson01-turn-040-mako",
+      "number": 40,
+      "person": "mako",
+      "label": "040 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "次に、エーピーアイを処理する区画。ここがエーピーアイエムですね。入口と名前が似ていて、前は同じようなものだと思っていました。",
+      "caption": "次に、APIを処理する区画。ここがAPIMですね。入口と名前が似ていて、前は同じようなものだと思っていました。"
+    },
+    {
+      "id": "lesson01-turn-041-ikumi",
+      "number": 41,
+      "person": "ikumi",
+      "label": "041 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "エーピーアイエムは内部ブイネットモードのエーピーアイ処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口のアプリケーションゲートウェイとは担当が違う。",
+      "caption": "APIMは内部VNetモードのAPI処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口のApplication Gatewayとは担当が違う。"
+    },
+    {
+      "id": "lesson01-turn-042-mako",
+      "number": 42,
+      "person": "mako",
+      "label": "042 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "外の窓口と、エーピーアイの実行を判断する場所ですね。その間にあるファイアウォールも、一つの専用区画を持っているんですか？",
+      "caption": "外の窓口と、APIの実行を判断する場所ですね。その間にあるFirewallも、一つの専用区画を持っているんですか？"
+    },
+    {
+      "id": "lesson01-turn-043-ikumi",
+      "number": 43,
+      "person": "ikumi",
+      "label": "043 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。アジュールファイアウォールには専用のサブネットを用意する。経路でファイアウォールへ向けた通信を検査・制御する場所だよ。すべての通信が自動的に集まるわけではない。",
+      "caption": "うん。Azure Firewallには専用のサブネットを用意する。経路でFirewallへ向けた通信を検査・制御する場所だよ。すべての通信が自動的に集まるわけではない。"
+    },
+    {
+      "id": "lesson01-turn-044-manabu",
+      "number": 44,
+      "person": "manabu",
+      "label": "044 MANABU / subnets",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。",
+      "caption": "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。"
+    },
+    {
+      "id": "lesson01-turn-045-mako",
+      "number": 45,
+      "person": "mako",
+      "label": "045 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここまでが、公開入口、エーピーアイ処理、ファイアウォールの三つ。次はプライベートエンドポイントの区画です。これは、サービス本体が並んでいる場所でしょうか？",
+      "caption": "ここまでが、公開入口、API処理、Firewallの三つ。次はPrivate Endpointの区画です。これは、サービス本体が並んでいる場所でしょうか？"
+    },
+    {
+      "id": "lesson01-turn-046-ikumi",
+      "number": 46,
+      "person": "ikumi",
+      "label": "046 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここに置くのは、サービスへの接続口だよ。ファウンドリー、キーボルト、エーシーアール、エスキューエルなどへ、ブイネット内のプライベート アイピーで接続するための入口を置いている。",
+      "caption": "ここに置くのは、サービスへの接続口だよ。Foundry、Key Vault、ACR、SQLなどへ、VNet内のprivate IPで接続するための入口を置いている。"
+    },
+    {
+      "id": "lesson01-turn-047-mako",
+      "number": 47,
+      "person": "mako",
+      "label": "047 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "あ、ファウンドリーやエスキューエルのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。",
+      "caption": "あ、FoundryやSQLのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。"
+    },
+    {
+      "id": "lesson01-turn-048-ikumi",
+      "number": 48,
+      "person": "ikumi",
+      "label": "048 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そう。[breathing] サービス本体とピーイーを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分かりやすい。",
+      "caption": "そう。 サービス本体とPEを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分かりやすい。"
+    },
+    {
+      "id": "lesson01-turn-049-mako",
+      "number": 49,
+      "person": "mako",
+      "label": "049 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "残りは、管理ブイエムとコンテナーアップスの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？",
+      "caption": "残りは、管理VMとContainer Appsの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？"
+    },
+    {
+      "id": "lesson01-turn-050-ikumi",
+      "number": 50,
+      "person": "ikumi",
+      "label": "050 IKUMI / subnets",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "管理ブイエムは構築・配備・管理作業を行うリナックスの作業場所。コンテナーアップスは、ポータルなどのアプリが動く共用の実行環境で、この構成では内部環境として作る。",
+      "caption": "管理VMは構築・配備・管理作業を行うLinuxの作業場所。Container Appsは、Portalなどのアプリが動く共用の実行環境で、この構成では内部環境として作る。"
+    },
+    {
+      "id": "lesson01-turn-051-manabu",
+      "number": 51,
+      "person": "manabu",
+      "label": "051 MANABU / subnets",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理ブイエムには公開アイピーがなく、接続経路も別途必要になるよ。",
+      "caption": "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理VMには公開IPがなく、接続経路も別途必要になるよ。"
+    },
+    {
+      "id": "lesson01-turn-052-mako",
+      "number": 52,
+      "person": "mako",
+      "label": "052 MAKO / subnets",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "六つを並べると、入口、エーピーアイ処理、ファイアウォール、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見えてきました。",
+      "caption": "六つを並べると、入口、API処理、Firewall、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見えてきました。"
+    },
+    {
+      "id": "lesson01-turn-053-mako",
+      "number": 53,
+      "person": "mako",
+      "label": "053 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のエーピーアイを呼ぶところからでいいですか？",
+      "caption": "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のAPIを呼ぶところからでいいですか？"
+    },
+    {
+      "id": "lesson01-turn-054-ikumi",
+      "number": 54,
+      "person": "ikumi",
+      "label": "054 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。ここでは通常のエイチティーティーピーエスのエーピーアイ要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。",
+      "caption": "うん。ここでは通常のHTTPSのAPI要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。"
+    },
+    {
+      "id": "lesson01-turn-055-mako",
+      "number": 55,
+      "person": "mako",
+      "label": "055 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "利用者が公開ゲートウェイの名前へ要求を送る。最初に受けるのは、エーピーアイエムではなくアプリケーションゲートウェイの公開入口ですね。",
+      "caption": "利用者が公開Gatewayの名前へ要求を送る。最初に受けるのは、APIMではなくApplication Gatewayの公開入口ですね。"
+    },
+    {
+      "id": "lesson01-turn-056-ikumi",
+      "number": 56,
+      "person": "ikumi",
+      "label": "056 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そう。通常のエイチティーティーピーエスはアプリケーションゲートウェイで終端する。この入口での処理と、その後に内部のエーピーアイエムへ接続する処理を、分けて考えるんだ。",
+      "caption": "そう。通常のHTTPSはApplication Gatewayで終端する。この入口での処理と、その後に内部のAPIMへ接続する処理を、分けて考えるんだ。"
+    },
+    {
+      "id": "lesson01-turn-057-manabu",
+      "number": 57,
+      "person": "manabu",
+      "label": "057 MANABU / api-flow",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。",
+      "caption": "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。"
+    },
+    {
+      "id": "lesson01-turn-058-mako",
+      "number": 58,
+      "person": "mako",
+      "label": "058 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "公開入口からエーピーアイエムへは、図の緑の線を進みます。この線がファイアウォール経由を表しているんでしたね。",
+      "caption": "公開入口からAPIMへは、図の緑の線を進みます。この線がFirewall経由を表しているんでしたね。"
+    },
+    {
+      "id": "lesson01-turn-059-ikumi",
+      "number": 59,
+      "person": "ikumi",
+      "label": "059 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。アプリケーションゲートウェイからエーピーアイエムへは、ユーディーアールでファイアウォールを次の転送先にする。届いた通信を、ファイアウォールの規則が判定する。",
+      "caption": "うん。Application GatewayからAPIMへは、UDRでFirewallを次の転送先にする。届いた通信を、Firewallの規則が判定する。"
+    },
+    {
+      "id": "lesson01-turn-060-mako",
+      "number": 60,
+      "person": "mako",
+      "label": "060 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここで、エヌエスジーとユーディーアールとファイアウォールの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？",
+      "caption": "ここで、NSGとUDRとFirewallの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？"
+    },
+    {
+      "id": "lesson01-turn-061-ikumi",
+      "number": 61,
+      "person": "ikumi",
+      "label": "061 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そう。エヌエスジーは送受信の条件、ユーディーアールは次の転送先、ファイアウォールは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の読み方は後の回で深めよう。",
+      "caption": "そう。NSGは送受信の条件、UDRは次の転送先、Firewallは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の読み方は後の回で深めよう。"
+    },
+    {
+      "id": "lesson01-turn-062-mako",
+      "number": 62,
+      "person": "mako",
+      "label": "062 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "エーピーアイエムに届いたら、次はエーピーアイの認証やポリシーの処理ですね。ネットワークが通ったことと、エーピーアイを利用できることは、ここでも別なんですね。",
+      "caption": "APIMに届いたら、次はAPIの認証やポリシーの処理ですね。ネットワークが通ったことと、APIを利用できることは、ここでも別なんですね。"
+    },
+    {
+      "id": "lesson01-turn-063-manabu",
+      "number": 63,
+      "person": "manabu",
+      "label": "063 MANABU / api-flow",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "道がつながるだけでは、何でも使えることにはならないんだね。エーピーアイの利用許可や入力の確認は、その後の学習で追っていこう。",
+      "caption": "道がつながるだけでは、何でも使えることにはならないんだね。APIの利用許可や入力の確認は、その後の学習で追っていこう。"
+    },
+    {
+      "id": "lesson01-turn-064-ikumi",
+      "number": 64,
+      "person": "ikumi",
+      "label": "064 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "この資料の通常エーピーアイでは、外側のエイチティーティーピーエスを終端した後、エーピーアイエムへの内部中継はエイチティーティーピーを使う。区間を分けて読むのがポイントだよ。",
+      "caption": "この資料の通常APIでは、外側のHTTPSを終端した後、APIMへの内部中継はHTTPを使う。区間を分けて読むのがポイントだよ。"
+    },
+    {
+      "id": "lesson01-turn-065-mako",
+      "number": 65,
+      "person": "mako",
+      "label": "065 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "外側と内側を、同じ一つの接続だと思い込まないことですね。ではエーピーアイエムがファウンドリーを呼ぶときは、どの線を進みますか？",
+      "caption": "外側と内側を、同じ一つの接続だと思い込まないことですね。ではAPIMがFoundryを呼ぶときは、どの線を進みますか？"
+    },
+    {
+      "id": "lesson01-turn-066-ikumi",
+      "number": 66,
+      "person": "ikumi",
+      "label": "066 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここは青い破線の、ピーイーへの直接経路を使う。エーピーアイエムからファウンドリーの接続口へ進み、その先でサービスを呼ぶ。この標準経路では、ファイアウォールを通らないんだ。",
+      "caption": "ここは青い破線の、PEへの直接経路を使う。APIMからFoundryの接続口へ進み、その先でサービスを呼ぶ。この標準経路では、Firewallを通らないんだ。"
+    },
+    {
+      "id": "lesson01-turn-067-mako",
+      "number": 67,
+      "person": "mako",
+      "label": "067 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "入口からエーピーアイエムまではファイアウォール経由。でも、エーピーアイエムからピーイーへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。",
+      "caption": "入口からAPIMまではFirewall経由。でも、APIMからPEへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。"
+    },
+    {
+      "id": "lesson01-turn-068-ikumi",
+      "number": 68,
+      "person": "ikumi",
+      "label": "068 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "うん。[breathing] それに、エーピーアイエムがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめよう。",
+      "caption": "うん。 それに、APIMがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめよう。"
+    },
+    {
+      "id": "lesson01-turn-069-mako",
+      "number": 69,
+      "person": "mako",
+      "label": "069 MAKO / api-flow",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "返ってくる結果は、ファウンドリーの接続口からエーピーアイエムへ。その後、エーピーアイエムから公開入口へ戻る道も、ちゃんと用意する必要があるんですね。",
+      "caption": "返ってくる結果は、Foundryの接続口からAPIMへ。その後、APIMから公開入口へ戻る道も、ちゃんと用意する必要があるんですね。"
+    },
+    {
+      "id": "lesson01-turn-070-ikumi",
+      "number": 70,
+      "person": "ikumi",
+      "label": "070 IKUMI / api-flow",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "エーピーアイエムから公開入口へ戻る区間にも、ファイアウォールを経由するユーディーアールを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できるようにしよう。",
+      "caption": "APIMから公開入口へ戻る区間にも、Firewallを経由するUDRを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できるようにしよう。"
+    },
+    {
+      "id": "lesson01-turn-071-mako",
+      "number": 71,
+      "person": "mako",
+      "label": "071 MAKO / direct-paths",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ほかにも直接つながる青い線がありますね。ファイアウォールがあるなら、全部通した方がよさそうにも見えますが。",
+      "caption": "ほかにも直接つながる青い線がありますね。Firewallがあるなら、全部通した方がよさそうにも見えますが。"
+    },
+    {
+      "id": "lesson01-turn-072-ikumi",
+      "number": 72,
+      "person": "ikumi",
+      "label": "072 IKUMI / direct-paths",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "この構成では、ピーイーや一部の内部通信に、具体的な直接経路がある。ファイアウォールを通るかは、宛先と実際の経路で決まるよ。",
+      "caption": "この構成では、PEや一部の内部通信に、具体的な直接経路がある。Firewallを通るかは、宛先と実際の経路で決まるよ。"
+    },
+    {
+      "id": "lesson01-turn-073-manabu",
+      "number": 73,
+      "person": "manabu",
+      "label": "073 MANABU / direct-paths",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。",
+      "caption": "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。"
+    },
+    {
+      "id": "lesson01-turn-074-mako",
+      "number": 74,
+      "person": "mako",
+      "label": "074 MAKO / direct-paths",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "たとえば、アプリからエスキューエルへ行く通信は、どこを見ればよいですか。利用者のエーピーアイ呼び出しと、同じ入口から始まるんでしょうか？",
+      "caption": "たとえば、アプリからSQLへ行く通信は、どこを見ればよいですか。利用者のAPI呼び出しと、同じ入口から始まるんでしょうか？"
+    },
+    {
+      "id": "lesson01-turn-075-ikumi",
+      "number": 75,
+      "person": "ikumi",
+      "label": "075 IKUMI / direct-paths",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "[breathing] アプリ実行区画のエーシーエーからエスキューエルのピーイーへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。",
+      "caption": "アプリ実行区画のACAからSQLのPEへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。"
+    },
+    {
+      "id": "lesson01-turn-076-mako",
+      "number": 76,
+      "person": "mako",
+      "label": "076 MAKO / direct-paths",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "画面を開く通信と、内部のエスキューエルへの通信は別なんですね。では、ポータルが公開ゲートウェイを試す通信はどうなりますか？",
+      "caption": "画面を開く通信と、内部のSQLへの通信は別なんですね。では、Portalが公開Gatewayを試す通信はどうなりますか？"
+    },
+    {
+      "id": "lesson01-turn-077-ikumi",
+      "number": 77,
+      "person": "ikumi",
+      "label": "077 IKUMI / direct-paths",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "その場合は、エーシーエーからファイアウォールを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。",
+      "caption": "その場合は、ACAからFirewallを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。"
+    },
+    {
+      "id": "lesson01-turn-078-manabu",
+      "number": 78,
+      "person": "manabu",
+      "label": "078 MANABU / direct-paths",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。",
+      "caption": "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。"
+    },
+    {
+      "id": "lesson01-turn-079-mako",
+      "number": 79,
+      "person": "mako",
+      "label": "079 MAKO / direct-paths",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ジーアールピーシーやアジュールの管理通信も図にありますね。ここは、今日の通常エーピーアイの道筋に、全部当てはめなくてよいんですね。",
+      "caption": "gRPCやAzureの管理通信も図にありますね。ここは、今日の通常APIの道筋に、全部当てはめなくてよいんですね。"
+    },
+    {
+      "id": "lesson01-turn-080-ikumi",
+      "number": 80,
+      "person": "ikumi",
+      "label": "080 IKUMI / direct-paths",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ジーアールピーシーは有効時に別の入口でティーシーピーとティーエルエスを中継し、通常エイチティーティーピーエスと同じワフ検査としては扱わない。管理系にも別経路があり、後の回で確認するよ。",
+      "caption": "gRPCは有効時に別の入口でTCPとTLSを中継し、通常HTTPSと同じWAF検査としては扱わない。管理系にも別経路があり、後の回で確認するよ。"
+    },
+    {
+      "id": "lesson01-turn-081-mako",
+      "number": 81,
+      "person": "mako",
+      "label": "081 MAKO / direct-paths",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ピーイーで閉域接続していれば、ファウンドリー本体の外向き通信も、このブイネットのファイアウォールで全部管理できるのでしょうか？",
+      "caption": "PEで閉域接続していれば、Foundry本体の外向き通信も、このVNetのFirewallで全部管理できるのでしょうか？"
+    },
+    {
+      "id": "lesson01-turn-082-ikumi",
+      "number": 82,
+      "person": "ikumi",
+      "label": "082 IKUMI / direct-paths",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ピーイーへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。",
+      "caption": "PEへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。"
+    },
+    {
+      "id": "lesson01-turn-083-mako",
+      "number": 83,
+      "person": "mako",
+      "label": "083 MAKO / check",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、どうでしょう？",
+      "caption": "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、どうでしょう？"
+    },
+    {
+      "id": "lesson01-turn-084-manabu",
+      "number": 84,
+      "person": "manabu",
+      "label": "084 MANABU / check",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。",
+      "caption": "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。"
+    },
+    {
+      "id": "lesson01-turn-085-ikumi",
+      "number": 85,
+      "person": "ikumi",
+      "label": "085 IKUMI / check",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。エヌエスジーなどの通信制御と、ユーディーアールによる経路を合わせて確認する必要がある。",
+      "caption": "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。NSGなどの通信制御と、UDRによる経路を合わせて確認する必要がある。"
+    },
+    {
+      "id": "lesson01-turn-086-mako",
+      "number": 86,
+      "person": "mako",
+      "label": "086 MAKO / check",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "次の問いです。通常エーピーアイでは、公開入口からエーピーアイエムへはファイアウォール経由、エーピーアイエムからファウンドリーのピーイーへは直接経路を使う。これは、どうでしょう？",
+      "caption": "次の問いです。通常APIでは、公開入口からAPIMへはFirewall経由、APIMからFoundryのPEへは直接経路を使う。これは、どうでしょう？"
+    },
+    {
+      "id": "lesson01-turn-087-ikumi",
+      "number": 87,
+      "person": "ikumi",
+      "label": "087 IKUMI / check",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。",
+      "caption": "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。"
+    },
+    {
+      "id": "lesson01-turn-088-mako",
+      "number": 88,
+      "person": "mako",
+      "label": "088 MAKO / check",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "最後は配置の問いです。ピーイーのサブネットにエスキューエルへの接続口があるので、エスキューエルのサービス本体も、そのサブネットの中に置かれている。これはどうでしょう？",
+      "caption": "最後は配置の問いです。PEのサブネットにSQLへの接続口があるので、SQLのサービス本体も、そのサブネットの中に置かれている。これはどうでしょう？"
+    },
+    {
+      "id": "lesson01-turn-089-ikumi",
+      "number": 89,
+      "person": "ikumi",
+      "label": "089 IKUMI / check",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "サービス本体と接続口は別だよ。ピーイーはブイネット内のプライベート アイピーでサービスへ接続する入口。図の枠の中に何を配置しているのかを、名前だけでなく役割で読もう。",
+      "caption": "サービス本体と接続口は別だよ。PEはVNet内のprivate IPでサービスへ接続する入口。図の枠の中に何を配置しているのかを、名前だけでなく役割で読もう。"
+    },
+    {
+      "id": "lesson01-turn-090-mako",
+      "number": 90,
+      "person": "mako",
+      "label": "090 MAKO / check",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。[laughter]",
+      "caption": "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。"
+    },
+    {
+      "id": "lesson01-turn-091-manabu",
+      "number": 91,
+      "person": "manabu",
+      "label": "091 MANABU / check",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。",
+      "caption": "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。"
+    },
+    {
+      "id": "lesson01-turn-092-ikumi",
+      "number": 92,
+      "person": "ikumi",
+      "label": "092 IKUMI / check",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。",
+      "caption": "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。"
+    },
+    {
+      "id": "lesson01-turn-093-mako",
+      "number": 93,
+      "person": "mako",
+      "label": "093 MAKO / summary",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "まとめです。一つのブイネットに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。",
+      "caption": "まとめです。一つのVNetに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。"
+    },
+    {
+      "id": "lesson01-turn-094-manabu",
+      "number": 94,
+      "person": "manabu",
+      "label": "094 MANABU / summary",
+      "role": "Product Manager",
+      "voice": "en-US-Vance:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。",
+      "caption": "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。"
+    },
+    {
+      "id": "lesson01-turn-095-ikumi",
+      "number": 95,
+      "person": "ikumi",
+      "label": "095 IKUMI / summary",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "通常エーピーアイは、公開入口からファイアウォール経由でエーピーアイエムへ進み、ファウンドリーのピーイーへは直接接続する。戻り道も含め、区間ごとに確認しよう。",
+      "caption": "通常APIは、公開入口からFirewall経由でAPIMへ進み、FoundryのPEへは直接接続する。戻り道も含め、区間ごとに確認しよう。"
+    },
+    {
+      "id": "lesson01-turn-096-mako",
+      "number": 96,
+      "person": "mako",
+      "label": "096 MAKO / summary",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "配置だけでは通信を判断できず、すべてがファイアウォールを通るわけでもない。次は、接続先の名前からアイピーへ進むところを知りたいです。",
+      "caption": "配置だけでは通信を判断できず、すべてがFirewallを通るわけでもない。次は、接続先の名前からIPへ進むところを知りたいです。"
+    },
+    {
+      "id": "lesson01-turn-097-ikumi",
+      "number": 97,
+      "person": "ikumi",
+      "label": "097 IKUMI / summary",
+      "role": "Solution Architect",
+      "voice": "en-US-Tyler:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "次回はディーエヌエスとプライベートエンドポイント。[breathing] 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の流れを追っていこう。",
+      "caption": "次回はDNSとPrivate Endpoint。 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の流れを追っていこう。"
+    },
+    {
+      "id": "lesson01-turn-098-mako",
+      "number": 98,
+      "person": "mako",
+      "label": "098 MAKO / summary",
+      "role": "Moderator",
+      "voice": "en-US-Bree:DragonHDLatestNeural",
+      "parameters": {
+        "enhancePronunciation": true
+      },
+      "speed": 1,
+      "speech": "今回は、全体図で通常エーピーアイの往復を指してみてください。マナブさん、イクミさん、ありがとうございました。また次回、一緒に見ていきましょう。",
+      "caption": "今回は、全体図で通常APIの往復を指してみてください。MANABUさん、IKUMIさん、ありがとうございました。また次回、一緒に見ていきましょう。"
+    }
+  ]
+}

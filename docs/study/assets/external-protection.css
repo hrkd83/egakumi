@@ -1,0 +1,81 @@
+/* Chapter 02：WAF・Firewall IDPS・APIMの適用範囲・保護設定・確認手順。 */
+.external-course .waf-lesson .slide-lead,
+.external-course .waf-lesson .body-copy { font-size: 14px; line-height: 1.95; }
+.external-course .waf-lesson .spec-table { font-size: 13px; line-height: 1.85; }
+.external-course .waf-lesson .spec-table tbody th { width: 24%; }
+.external-course .waf-lesson .spec-table td { overflow-wrap: anywhere; }
+.external-course .waf-lesson code { overflow-wrap: anywhere; }
+.external-course .waf-lesson .lesson-columns p { font-size: 13px; }
+.external-course .waf-lesson h2 { font-size: 32px; }
+.waf-figure { margin: 25px 0 4px; }
+.waf-diagram-scroll { overflow-x: auto; }
+.waf-figure img { display: block; width: 100%; min-width: 800px; height: auto; }
+.waf-figure figcaption, .waf-source { color: var(--muted); font-size: 11px; line-height: 1.9; }
+.waf-figure figcaption { margin-top: 10px; }
+.waf-source { margin: 18px 0 24px; }
+.waf-source a { text-decoration-color: #b4c8bc; }
+.waf-note { margin: 22px 0; padding: 18px 22px; background: #edf5f0; border-left: 3px solid var(--accent); }
+.waf-note > strong { font-size: 14px; }
+.waf-note p { margin-top: 8px; font-size: 13px; line-height: 1.95; color: #526a60; }
+.external-course .waf-settings tbody th { width: 22%; }
+.waf-settings td:nth-child(2) { width: 29%; }
+.waf-policy-map { display: grid; grid-template-columns: 1fr 32px 1fr; align-items: center; gap: 18px; margin: 28px 0 5px; }
+.waf-policy-map > div { height: 100%; padding: 22px; border: 1px solid #c6d8cc; border-top: 3px solid var(--accent); background: #f5f8f3; border-radius: 4px; }
+.waf-policy-map p { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.9; }
+.waf-map-arrow { color: var(--accent); text-align: center; transform: rotate(-90deg); font-size: 23px; }
+.waf-example { margin: 28px 0 22px; padding: 22px 25px; border: 1px solid #c6d8cc; background: #f6f9f4; border-radius: 4px; }
+.waf-example dl { margin: 18px 0 0; }
+.waf-example dl > div { display: grid; grid-template-columns: 120px minmax(0,1fr); gap: 15px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.waf-example dt { font-weight: 600; color: #456d5b; }
+.waf-example dd { margin: 0; }
+.waf-example small { font-size: 11px; color: var(--muted); }
+.waf-code { margin: 24px 0; padding: 18px 22px; border: 1px solid #d3dfd5; background: #f2f6f1; border-radius: 4px; }
+.waf-code pre { margin: 5px 0 0; overflow-x: auto; font: 12px/1.9 var(--mono); }
+.external-course .waf-code code { overflow-wrap: normal; }
+.waf-steps { counter-reset: waf-step; margin: 25px 0 0; }
+.waf-steps li { position: relative; padding: 16px 0 16px 38px; border-top: 1px solid var(--line); counter-increment: waf-step; }
+.waf-steps li::before { content: counter(waf-step, decimal-leading-zero); position: absolute; left: 0; top: 18px; color: var(--accent); font: 12px var(--mono); }
+.waf-steps strong { font-size: 14px; }
+.waf-steps p { margin-top: 6px; font-size: 13px; line-height: 1.95; color: var(--muted); }
+.external-course .waf-files tbody th { width: 45%; font-weight: 500; }
+.waf-next { margin: 22px 0 10px; padding: 20px 24px; background: #f3f6f0; border: 1px solid var(--line); border-radius: 4px; }
+.waf-next .lesson-columns { margin: 6px 0 0; }
+.external-course .summary-points > li { border-top: 2px solid #b2c6a4; padding-top: 14px; }
+.external-course .summary-points > li > span { color: #8da57e; font: 20px var(--mono); }
+.external-course .idps-settings tbody th { width: 38%; }
+.layer-details { margin: 16px 0; border: 1px solid #cbdacd; border-radius: 4px; background: #f8faf5; }
+.layer-details > summary { padding: 15px 19px; color: #315e4e; font-size: 14px; font-weight: 600; cursor: pointer; }
+.layer-details > summary:hover { background: #edf5ed; }
+.layer-details-body { padding: 0 20px 6px; }
+.layer-details-body > .slide-lead { margin-top: 5px; }
+.layer-details-body .waf-code { margin-top: 20px; }
+@media (max-width: 680px) {
+  .external-course .waf-lesson h2 { font-size: 26px; }
+  .external-course .waf-lesson .slide-lead, .external-course .waf-lesson .body-copy { font-size: 13px; }
+  .external-course .waf-lesson .spec-table { min-width: 650px; font-size: 12px; }
+  .waf-policy-map { grid-template-columns: 1fr; gap: 9px; }
+  .waf-map-arrow { transform: none; }
+  .waf-note, .waf-example, .waf-code, .waf-next { padding: 17px; }
+  .waf-example dl > div { grid-template-columns: 1fr; gap: 5px; }
+  .waf-code pre { font-size: 11px; }
+  .layer-details > summary { padding: 13px 15px; font-size: 13px; }
+  .layer-details-body { padding: 0 15px 4px; }
+}
+@media print {
+  .external-course .waf-lesson h2 { font-size: 24pt; }
+  .external-course .waf-lesson .slide-lead, .external-course .waf-lesson .body-copy, .external-course .waf-lesson .lesson-columns p { font-size: 9pt; }
+  .external-course .waf-lesson .spec-table { min-width: 0; font-size: 8pt; }
+  .waf-diagram-scroll { overflow: visible; }
+  .waf-figure { margin: 4mm 0; break-inside: avoid; }
+  .waf-figure img { min-width: 0; max-height: 80mm; object-fit: contain; }
+  .waf-source, .waf-figure figcaption, .waf-code pre { font-size: 8pt; }
+  .waf-note, .waf-example, .waf-code, .waf-next { padding: 4mm; margin: 4mm 0; break-inside: avoid; }
+  .waf-note > strong, .waf-steps strong { font-size: 10pt; }
+  .waf-note p, .waf-example dl > div, .waf-steps p, .waf-policy-map p { font-size: 8pt; }
+  .waf-policy-map { margin: 4mm 0; gap: 3mm; }
+  .waf-policy-map > div { padding: 4mm; }
+  .waf-steps { margin: 4mm 0 0; }
+  .waf-steps li { padding-top: 3mm; padding-bottom: 3mm; break-inside: avoid; }
+  .layer-details > summary { padding: 3mm 4mm; font-size: 10pt; }
+  .layer-details-body { padding: 0 4mm 2mm; }
+}

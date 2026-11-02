@@ -1,0 +1,47 @@
+{
+  "released": true,
+  "name": "openai-transcription-ws-v1",
+  "displayName": "OpenAI Realtime Transcription WebSocket",
+  "path": "models/openai-transcription/v1/ws",
+  "backendService": "external",
+  "backendAudience": "https://ai.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "invoke",
+      "displayName": "Connect session",
+      "method": "GET",
+      "urlTemplate": "/",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "invoke": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none"
+      }
+    }
+  },
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform",
+  "apiType": "websocket",
+  "backendUrl": "__TRANSCRIPTION_WS_BASE_URL__",
+  "websocket": {
+    "queryParameters": {
+      "intent": "transcription"
+    },
+    "session": {
+      "kind": "transcription",
+      "models": [
+        "gpt-live-transcribe"
+      ]
+    }
+  }
+}

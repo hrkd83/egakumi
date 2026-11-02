@@ -1,0 +1,55 @@
+{
+  "status": "passed",
+  "createdAt": "2026-11-02T06:59:58.357175+00:00",
+  "episodeKey": "13",
+  "episodeNumber": 13,
+  "file": "conversation-preview.mp4",
+  "sha256": "4dfaa319a24fdd625b329f16e8bed4b6969b4944329f035f21b2ffa5d63e8b35",
+  "sourceFile": "egakumi-study-13.mp4",
+  "sourceSha256": "de7813f6be5bda86c4b9d2885e7d68743d610ec03fef64ce094b1c8b2aab1474",
+  "sourceTimelineSha256": "d4b5332d2c1f47345b8bcdbb2775ef048030aa08dc80d5635351a18969b631d3",
+  "sourceExportSha256": "deef244e77b21a6c645df2d28e8676e157fa2c72eb1bef4000063ef1497242f9",
+  "sourceRangeSeconds": [
+    329.125,
+    399.4583333333333
+  ],
+  "sourceStartFrame": 7899,
+  "sourceEndFrame": 9587,
+  "frameCount": 1688,
+  "durationSeconds": 70.33333333333333,
+  "fromTurn": "lesson13-turn-032-mako",
+  "throughTurn": "lesson13-turn-037-manabu",
+  "turnIds": [
+    "lesson13-turn-032-mako",
+    "lesson13-turn-033-ikumi",
+    "lesson13-turn-034-mako",
+    "lesson13-turn-035-ikumi",
+    "lesson13-turn-036-mako",
+    "lesson13-turn-037-manabu"
+  ],
+  "chapterCardIds": [],
+  "continuousConversation": true,
+  "cutsWithinExcerpt": false,
+  "speed": 1,
+  "speechSpeedChanged": false,
+  "pitchChanged": false,
+  "originalVoiceAndBGMContinuous": true,
+  "networkRequestsMade": false,
+  "authenticationRead": false,
+  "additionalSynthesisRequests": 0,
+  "warnings": [
+    "The continuous excerpt is outside the suggested 40–70 seconds; keeping the complete question and answer takes priority."
+  ],
+  "verification": {
+    "status": "passed",
+    "fullAudioVideoDecode": "passed",
+    "videoFrameCount": 1688,
+    "fps": 24,
+    "timeBase": "1/12288",
+    "videoStartPTS": 0,
+    "audioSampleRate": 48000,
+    "audioChannels": 2,
+    "normalSpeed": 1,
+    "cutsWithinExcerpt": false
+  }
+}

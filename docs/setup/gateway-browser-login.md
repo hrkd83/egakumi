@@ -1,0 +1,7 @@
+# Microsoftサインイン画面への遷移
+
+通常は、PortalのサーバーからGraph等の業務APIを呼び出し、HTTP 409の`authentication`に含まれる`loginUrl`を利用者へ提示します。サーバーは、URLの表示前に仮セッションと取引情報を確認済みの本人へ対応付けて保存します。画面を開くと、内部credential brokerが設定したEntraテナントのMicrosoftサインインへ誘導します。
+
+認証後、brokerはAzure SQLの接続台帳から本人のCM接続を選びます。初回は空きプールへ割り当て、必要な同意を行います。APIMがCM tokenの本人を確認すると、「Microsoft認証が完了しました。この画面は閉じてかまいません」と表示します。
+
+バックエンドは状態確認APIで認証完了と本人を照合し、保存済みの仮セッションを有効な本人セッションとして使用します。状態確認APIはセッション秘密値を再発行しません。元の読み取り要求を購読キーと`X-Core-Connection-Session`で一度だけ再実行します。取引・保存・日次更新・失効までの正確な手順は[Credential Managerの本人接続](credential-manager-login.md#初回認証)を参照してください。

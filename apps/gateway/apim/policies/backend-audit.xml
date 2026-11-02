@@ -1,0 +1,17 @@
+<fragment>
+  <!-- service outboundのbaseがapim-request-idをGateway自身のIDで上書きする前に退避します。
+       本文を読まず、既知の要求ID headerだけを固定形式で保存します。SSEもbufferしません。 -->
+  <set-variable name="gatewayBackendResponseIds" value="@{
+    var ids = new JObject();
+    if (context.Response != null) {
+      foreach (var name in new string[] { &quot;apim-request-id&quot;, &quot;x-ms-request-id&quot;, &quot;x-request-id&quot; }) {
+        if (!context.Response.Headers.ContainsKey(name) || context.Response.Headers[name].Length != 1) { continue; }
+        var value = context.Response.Headers.GetValueOrDefault(name, &quot;&quot;);
+        Guid parsed;
+        if (Guid.TryParse(value, out parsed) &amp;&amp; parsed != Guid.Empty) { ids[name] = parsed.ToString(&quot;D&quot;); }
+        else if (System.Text.RegularExpressions.Regex.IsMatch(value, &quot;^req_[A-Za-z0-9]{8,96}$&quot;)) { ids[name] = value; }
+      }
+    }
+    return ids.ToString(Newtonsoft.Json.Formatting.None);
+  }" />
+</fragment>

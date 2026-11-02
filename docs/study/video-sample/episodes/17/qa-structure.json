@@ -1,0 +1,1028 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T07:21:16.768566+00:00",
+  "episodeKey": "17",
+  "scriptSha256": "f5b2cac0713fc5617f0bdf00ddf67aab830c0dd9f2a050c746d75c7cc79e0599",
+  "turnCount": 75,
+  "bodyTurnCount": 72,
+  "bodyViewCount": 21,
+  "captionCharacters": 5305,
+  "speechCharacters": 5561,
+  "subtitleChunkCount": 138,
+  "subtitleContentComplete": true,
+  "bodyCamera": "fixed",
+  "quizQuestionIds": [
+    "lesson17-turn-063-mako",
+    "lesson17-turn-066-mako",
+    "lesson17-turn-069-mako"
+  ],
+  "allQuizQuestionsHaveNeutralHighlights": true,
+  "views": [
+    {
+      "viewId": "lesson17-roles",
+      "turnIds": [
+        "lesson17-turn-004-mako",
+        "lesson17-turn-005-ikumi",
+        "lesson17-turn-006-manabu"
+      ],
+      "canonicalVisualSha256": "b93d9b87f0628e73bf954af0384e7932865668dcaeb0e9332c2ee99244b87c80",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-management-flow",
+      "turnIds": [
+        "lesson17-turn-007-mako",
+        "lesson17-turn-008-ikumi"
+      ],
+      "canonicalVisualSha256": "3262118bfb7b624919e6f1fd7bb001b55687a37fd98857d0cd1786f2ab5c4697",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-authorize",
+      "turnIds": [
+        "lesson17-turn-009-mako",
+        "lesson17-turn-010-ikumi"
+      ],
+      "canonicalVisualSha256": "45366e648b306ae868445c2aab431858b91b25ededae4342dd60d653ac5ed41b",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-reveal",
+      "turnIds": [
+        "lesson17-turn-011-mako",
+        "lesson17-turn-012-ikumi",
+        "lesson17-turn-013-manabu"
+      ],
+      "canonicalVisualSha256": "06da3a57facaa4b9eb83da285cc047f76400ead8ed889cc8966073e09ee87ccb",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-state",
+      "turnIds": [
+        "lesson17-turn-014-mako",
+        "lesson17-turn-015-ikumi",
+        "lesson17-turn-016-ikumi"
+      ],
+      "canonicalVisualSha256": "831ab49d04660a4d0c0b6036e3747369c7ca7697695c0317d20eb4d5757400f9",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-concurrency",
+      "turnIds": [
+        "lesson17-turn-017-mako",
+        "lesson17-turn-018-ikumi",
+        "lesson17-turn-019-mako",
+        "lesson17-turn-020-ikumi"
+      ],
+      "canonicalVisualSha256": "6842ed70cc7ac386ee80bb8d7883432f08fe7f5d7b7413ae33b622fd8b03cd15",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-transfer",
+      "turnIds": [
+        "lesson17-turn-021-mako",
+        "lesson17-turn-022-ikumi",
+        "lesson17-turn-023-mako",
+        "lesson17-turn-024-ikumi"
+      ],
+      "canonicalVisualSha256": "a8650589966c93f2dd6949ffba259df8c2d29c85f0e0745c6f7a43f6fba64595",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-transfer-effect",
+      "turnIds": [
+        "lesson17-turn-025-mako",
+        "lesson17-turn-026-ikumi",
+        "lesson17-turn-027-manabu"
+      ],
+      "canonicalVisualSha256": "9aac8b8009db86e347264cdeb9843f74a5e3e1a0d1e9e60bc02e7de9fbbe69ac",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-review",
+      "turnIds": [
+        "lesson17-turn-028-mako",
+        "lesson17-turn-029-ikumi"
+      ],
+      "canonicalVisualSha256": "7124bab4e16d549ddb010b81372a61d47f8a04c97523802c856e59368394fe08",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-delete",
+      "turnIds": [
+        "lesson17-turn-030-mako",
+        "lesson17-turn-031-ikumi",
+        "lesson17-turn-032-mako",
+        "lesson17-turn-033-ikumi",
+        "lesson17-turn-034-manabu"
+      ],
+      "canonicalVisualSha256": "6b2b29f6a56721ebedd92973d885dc5ebfd51473e69b21f5d5051ad4e8de9e1f",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-limit-values",
+      "turnIds": [
+        "lesson17-turn-035-mako",
+        "lesson17-turn-036-ikumi",
+        "lesson17-turn-037-mako",
+        "lesson17-turn-038-ikumi"
+      ],
+      "canonicalVisualSha256": "435721f53111630e5c8625707bbb326c181a84a1369367bf1280c0c6b8b5b3e3",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-version",
+      "turnIds": [
+        "lesson17-turn-039-mako",
+        "lesson17-turn-040-ikumi",
+        "lesson17-turn-041-ikumi"
+      ],
+      "canonicalVisualSha256": "2b999954ba8ef1a7034c8884b57dd81d04f8ed0634f361cdd7dfa417698d1dc0",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-version-conflict",
+      "turnIds": [
+        "lesson17-turn-042-mako",
+        "lesson17-turn-043-ikumi",
+        "lesson17-turn-044-manabu"
+      ],
+      "canonicalVisualSha256": "7c89ceb0e6fe1fde7c81346606f9a05d4e708b43f87b7365f895555acf8ea003",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-runtime-profile",
+      "turnIds": [
+        "lesson17-turn-045-mako",
+        "lesson17-turn-046-ikumi",
+        "lesson17-turn-049-mako",
+        "lesson17-turn-050-ikumi",
+        "lesson17-turn-051-mako",
+        "lesson17-turn-052-ikumi",
+        "lesson17-turn-053-manabu"
+      ],
+      "canonicalVisualSha256": "70b185ca2ea7703d9145dfb715fdf337a645b6e6ef073fdd7f69af3a89e219ff",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-limits-flow",
+      "turnIds": [
+        "lesson17-turn-047-mako",
+        "lesson17-turn-048-ikumi"
+      ],
+      "canonicalVisualSha256": "55f93e9c8a4437a04abc934c737d2b257569a42d4076422a10d13e04a07c5d17",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-example-limits",
+      "turnIds": [
+        "lesson17-turn-054-mako",
+        "lesson17-turn-055-ikumi"
+      ],
+      "canonicalVisualSha256": "2fa591322505175e82a5dac0b22d381fb5454e4d3e0c4a6c37e37c77e5fefba7",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-case",
+      "turnIds": [
+        "lesson17-turn-056-mako",
+        "lesson17-turn-057-manabu",
+        "lesson17-turn-058-mako",
+        "lesson17-turn-059-ikumi",
+        "lesson17-turn-060-manabu",
+        "lesson17-turn-061-mako",
+        "lesson17-turn-062-ikumi"
+      ],
+      "canonicalVisualSha256": "13d2ce54d4629150fbed5f0b2654dfa92d24112a2892ba200d477c3d45be84dc",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-check-transfer",
+      "turnIds": [
+        "lesson17-turn-063-mako",
+        "lesson17-turn-064-manabu",
+        "lesson17-turn-065-ikumi"
+      ],
+      "canonicalVisualSha256": "0c90cb5d64faf5effc348bcb3f0d7eef44284ba441ba9119ce27e4dcb48f9dfc",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-check-delete",
+      "turnIds": [
+        "lesson17-turn-066-mako",
+        "lesson17-turn-067-ikumi",
+        "lesson17-turn-068-manabu"
+      ],
+      "canonicalVisualSha256": "271206be7e0f31c429c1f2cc85b86829318e16cb823ed589d0e28d3b4ea55ee9",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-check-limits",
+      "turnIds": [
+        "lesson17-turn-069-mako",
+        "lesson17-turn-070-ikumi",
+        "lesson17-turn-071-manabu"
+      ],
+      "canonicalVisualSha256": "ae4a64b8a64467f36f4b62cbf5e08715276b9715b74c94377d5c5cc93f7d4352",
+      "contentAndGeometryHeld": true
+    },
+    {
+      "viewId": "lesson17-summary",
+      "turnIds": [
+        "lesson17-turn-072-mako",
+        "lesson17-turn-073-manabu",
+        "lesson17-turn-074-ikumi",
+        "lesson17-turn-075-mako"
+      ],
+      "canonicalVisualSha256": "bd8b9ae61e9a3dc2cf229308602738c968c97e4fdc99a89c783d59bdb7f4d4fc",
+      "contentAndGeometryHeld": true
+    }
+  ],
+  "sourceFileSha256": {
+    "../03-subscription-management.html": "c0532141b88bedcc62b709504670ad146fd03894f57fe59585b50f0fd41e467d",
+    "../../../apps/portal/lib/api-keys/service.ts": "23a19d1b8eec4f46b3f05cd25182548258f9a7ef98155a40fa9c15ca137362f7",
+    "../../../apps/portal/lib/api-keys/repository.ts": "35419cd0cbb34dd677ca0cb038cc2dd7a510feaa16937d6a6d82d9e4ea757d51",
+    "../../../apps/portal/lib/api-keys/apim.ts": "55144121c75a611164656deb4990b4faacf8018de3f5cc767e1f877c43d212ae",
+    "../../../apps/portal/lib/api-keys/limit-contracts.ts": "0318da76100ce2d2c4dc6ea28bc1837a9294cc9f62feafd09e78bbe5285a89d4",
+    "../../../apps/portal/lib/api-keys/limit-service.ts": "243cc8ac27fea41d2b939b56666ac6f31bef8ef67e10c9e7cbf8f7c3ab1bf639",
+    "../../../apps/portal/lib/api-keys/limit-repository.ts": "969fc6ffa864f17b180a7d0679d9d479afc9309201b298f92d4aa8d42acdd742",
+    "../../../apps/portal/lib/api-keys/gateway-profile.ts": "9bc55c780e02838f66359c1d5b63ddeda5a82a341c5955b6451cb7984f76a8ac",
+    "../../../apps/portal/components/api-keys/limit-profile.tsx": "011de48a1ca1af00e2becbd0a7519d5b2f05d38f4bb8852a2bb6ea37521b4170"
+  },
+  "svgSha256": {
+    "diagrams/management-flow.svg": "3fc0131c7ce674b9fa7d1163c111dd8e2b6b33b6a7e30f3aaaf2430bd497f983",
+    "diagrams/limits-flow.svg": "ea33448a6c69a1e178419a5c6d24b6fe9c9b11f040a203aef29c6da975d895ef"
+  },
+  "previewRasterAudit": {
+    "turnPreviews": [
+      {
+        "id": "lesson17-turn-001-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "dcbe15a34e5de80ef6ce9c549bcbb835ce6dbbaf6429100b547f37bc7d333715",
+        "fullFrameMatchesCurrentScript": true
+      },
+      {
+        "id": "lesson17-turn-002-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "c2c9fa900653453cf16aec50b475daacdc872191b03319521421eeee9336a4eb",
+        "fullFrameMatchesCurrentScript": true
+      },
+      {
+        "id": "lesson17-turn-003-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "a1ef7ae21bf920ca093b23693395982990e76a119b55e7abc211d980c6a7f0e4",
+        "fullFrameMatchesCurrentScript": true
+      },
+      {
+        "id": "lesson17-turn-004-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "158e984943f7132f86362fb4e0087f450b01d125408b12ad68a376830b2adb38",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1c55b05867d376f05e388f9cac4a83f5bc38c7e77cf7a7bc405e0c5f9d99733e",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-005-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "f47169713181672360c7234f4feb27ea624306ada9ce77cf7dc343659f36e6fb",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1c55b05867d376f05e388f9cac4a83f5bc38c7e77cf7a7bc405e0c5f9d99733e",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-006-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "cd97970b25216bb966250432437c7697f3bbceec47e81ceea5aeac50b2f9157c",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1c55b05867d376f05e388f9cac4a83f5bc38c7e77cf7a7bc405e0c5f9d99733e",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-007-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "4b4e1d3271f24d1e423795ff7189b41fe9c7ef0d2cbf75e6793acd94d60cd3f2",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "ae75ff5c423ca72394eff6279d61c23d065a585bb0baf88ae68e85dd9c2b57e4",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-008-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "859396bc4ea11a57372a0659caf9ff859445ec7362dc671acb4afe29f509c6b8",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "ae75ff5c423ca72394eff6279d61c23d065a585bb0baf88ae68e85dd9c2b57e4",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-009-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "e26806bd7753107e24eca8f555034a335e4478a446475129d27ba2995aa33844",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "6a6e606bb6d6a55f03bcb5d969f6b8d638cd04ba37c4557a02a10ef8ee5ebb10",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-010-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "81424ef340bc9759d02cd075de638a53f7b6079226e71287e466b7f262ac9848",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "6a6e606bb6d6a55f03bcb5d969f6b8d638cd04ba37c4557a02a10ef8ee5ebb10",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-011-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "00dc344cae1d53a3b61efad809bafa377c7fe8f6cb2e6e7407e66a69a49163f6",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c2dfe80f80e4f32c550ba74e512eb0502a8cc40b250f0a560e491c01bc32b7ef",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-012-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "e3374d13c42dab38740432f47ea2c27e4e59c282b4f6a32f17a05317fc10df53",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c2dfe80f80e4f32c550ba74e512eb0502a8cc40b250f0a560e491c01bc32b7ef",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-013-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "6cc4195039a22dd325ab7baf81cef4d6b31a9ec9f901c027cc6d40d81edefdc6",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c2dfe80f80e4f32c550ba74e512eb0502a8cc40b250f0a560e491c01bc32b7ef",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-014-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "b2ca79ac7c35d02a59e84fef7d7c22ca0084e2508cc4cbb53604299caced4219",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1bb149b5a6011e028b9e8047467a1c2d467117e6e77851f7f14c06852dd1878f",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-015-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "c09f22a21ec39e5c5387f5ba22277cc301b49e22e5f221e70ae64225d01ff224",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1bb149b5a6011e028b9e8047467a1c2d467117e6e77851f7f14c06852dd1878f",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-016-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "87bf9dafb8b0f085a05ab681754f6e9acb21880cf30d7d658de9166118874ffc",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "1bb149b5a6011e028b9e8047467a1c2d467117e6e77851f7f14c06852dd1878f",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-017-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "9935dff73cfbdc36c9afe2a802c2167fb60b050d3cad034afb8bd3029419b058",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "e3997219505d47579973e93e17b881a0d38eb43908c323c8b582b22a23ceb062",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-018-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "7f00454d83ddd3f3c11fa28691b9b8d5043a4f6d4c7d5c53c7ec9bbe9ef04dfc",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "e3997219505d47579973e93e17b881a0d38eb43908c323c8b582b22a23ceb062",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-019-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "d689c9dedba93d8c9116019423a45e1b065f80b77296d8383aa0c2924a9f0b29",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "e3997219505d47579973e93e17b881a0d38eb43908c323c8b582b22a23ceb062",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-020-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "a117271484f0a2c9d7c331b1c25f777a45ae357d01f74311a1380e4f31f78ce2",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "e3997219505d47579973e93e17b881a0d38eb43908c323c8b582b22a23ceb062",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-021-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "9ddd04f72a78c6e4073c7dc04b1b43e2f923cbc7aeff129c915e0473f0c30b45",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a12bc18fc9522a9bc5072e82e830de16fe4d9fd14d1a0f965df62b27c5643abc",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-022-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "ac7ed5aab3133971b814fb37b648821dbba9ad3972bb16261a0aa5bea5b2b6d4",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a12bc18fc9522a9bc5072e82e830de16fe4d9fd14d1a0f965df62b27c5643abc",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-023-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "603139f92ee733e99bfd9e4dcd56bc99760f45812f553ae1358fc7b2b2974847",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a12bc18fc9522a9bc5072e82e830de16fe4d9fd14d1a0f965df62b27c5643abc",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-024-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "efdb6f1638969dda0a4ed34ddbe1b9994820a05bc7a13a395c6b7f2730398189",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a12bc18fc9522a9bc5072e82e830de16fe4d9fd14d1a0f965df62b27c5643abc",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-025-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "13d3f4f6279f685d3b8474145efee5bb2c6c4c779a5b992953903dbf0cab4bc4",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c801e7cb8a48c56233034143975e6f5f31975c55433cb36e18749d3bb3ed5dea",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-026-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "fefed19d4c6331745542b414edb1493da1b23ab8ba48abb99779f4a8252d8e40",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c801e7cb8a48c56233034143975e6f5f31975c55433cb36e18749d3bb3ed5dea",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-027-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "18254eb5b73f1d0a2a49cd2589a1c4a1fb67f987bc93c76a130ac723211deb1a",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "c801e7cb8a48c56233034143975e6f5f31975c55433cb36e18749d3bb3ed5dea",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-028-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "4cd5f688ba63793cd5e3d10ab52f1c95af00dc0a2cd344e74b1a83693c50deab",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "218c1f80d473242b700ce76bfbd270ed4714ea75793541ebaaf8ff18a35bba6c",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-029-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "697482feb3d1186fcc991c6bde537496ff64dc487e78bd8df1883e003be5eb71",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "218c1f80d473242b700ce76bfbd270ed4714ea75793541ebaaf8ff18a35bba6c",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-030-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "45a6e51070d8b5fb58e7e0565aa64c7850bef9b7e0405449422e8fc755fd7de9",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "cecc16fe84a974c4caa11f50677afa282865f3f6bf950e6aa9146b2eb27b15b8",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-031-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "9e1385cb00edcc9a920c2ac773bae01cbcb9c9cbc51bda44066027031c5e5d5f",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "cecc16fe84a974c4caa11f50677afa282865f3f6bf950e6aa9146b2eb27b15b8",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-032-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "2bca1b1bf822438b66e78b698c3c6e681b16d908797e3df3311db4efd3348768",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "cecc16fe84a974c4caa11f50677afa282865f3f6bf950e6aa9146b2eb27b15b8",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-033-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "4789e2e3a43b054f2377bbdffbe18642f11de74c0ce0ee057dff7488c2736117",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "cecc16fe84a974c4caa11f50677afa282865f3f6bf950e6aa9146b2eb27b15b8",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-034-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "9e18989a7f57a60ba3bda956de6a90db276a2a29ad93fa66ec37b732b41af7b2",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "cecc16fe84a974c4caa11f50677afa282865f3f6bf950e6aa9146b2eb27b15b8",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-035-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "b1ec844478e09f56216dba2b20b28699520cbbf9dddd6ad1d257378ec2967d78",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a33e8ab0c22a6bdcecd2567de78bae3a780fb8e907ee234f22d042c2e98cc480",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-036-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "c11e01189a52680eddf48e6ec2c43c08287a4c40e91be3a90c20f4cf31f6a0d5",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a33e8ab0c22a6bdcecd2567de78bae3a780fb8e907ee234f22d042c2e98cc480",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-037-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "90530da0e4aad4222988d56a5f848d4f4133f41bd89417a9409e3f8aa66b68fe",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a33e8ab0c22a6bdcecd2567de78bae3a780fb8e907ee234f22d042c2e98cc480",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-038-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "a003ce69fcf02b3583e6fd85f8a517aaf62c45f187792e9228333fe4c8bc194c",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a33e8ab0c22a6bdcecd2567de78bae3a780fb8e907ee234f22d042c2e98cc480",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-039-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "38da83a84c8f01a3773c87a4a9e9d8e36ffc89e023b9e2e18f62040af682c0dc",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "975c5e4b3b85c38ceb9d93a851b966fa1aba4a67fe08690d74e7aaacda80529d",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-040-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "f5750eeb5fc8ea94fb488d764acd5732b88d5f75cdd8296e2755c8ab3b4adc7a",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "975c5e4b3b85c38ceb9d93a851b966fa1aba4a67fe08690d74e7aaacda80529d",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-041-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "77257a41776ae968a996aed2a815fe11321b5c937fe10c5f7769f790dd7b093c",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "975c5e4b3b85c38ceb9d93a851b966fa1aba4a67fe08690d74e7aaacda80529d",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-042-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "8a97c2256f2fc10d282204294fbbdc562781d336a5f15d43bb34dbb142632742",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "f457b524f77062a56857a88e2f098fe933a9ff5d2baf2d8045f0f9c38e91ba4a",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-043-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "7d3ee28830789973b3a7243d2027159d9e5b996572bf6e6654e69f0246ad7fb3",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "f457b524f77062a56857a88e2f098fe933a9ff5d2baf2d8045f0f9c38e91ba4a",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-044-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "3093c2e911cc139f1a0c7f140136fefcf375ce2dcf938963f7e4dfb0f6e1de6b",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "f457b524f77062a56857a88e2f098fe933a9ff5d2baf2d8045f0f9c38e91ba4a",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-045-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "6205e183da2a14dac28eb07739af72b40741f61bd3a8646affa4930dc0957875",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-046-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "7e62c1e245b7a6e222ab21059c5f34834239c2db59a1207f3e4d5a9f8015c7d3",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-047-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "7fd728f03497ed135323f2e16aeb9e4a60294a500cd7213a9a064901235bbed2",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "d257911b5c8ec4d56eb0a72036f86fb2f3da8391fd325aec310681c4c8cf8f4a",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-048-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "86ce3cc132ed538a98aee183da605da14ac73af930b763f55082154ece27995e",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "d257911b5c8ec4d56eb0a72036f86fb2f3da8391fd325aec310681c4c8cf8f4a",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-049-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "9893330606bf2d2080230d3938114a888ec397cd685ef653fd28dcde6db71cf2",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-050-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "a04893ecdb8fbdad6f1e2054ec2af8a74625017b91b0adc905fe115f5111acd7",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-051-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "fd261629fd39c9cc0cddad225efbd90f1e442421c99c3f9faa86be589a51333e",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-052-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "8dbb723fc666a444724ed705aaea5bd4fe5bf3c09bd9e0f781407aab0e24aca7",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-053-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "e24234575a4d85346e8bed82b4028cb5b73242fcd2f7e8d10e21a4558d0c258b",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "eaf6bc48ba7348a75516fd2815dd901111be58458e6ff48503d3fe7520442824",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-054-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "54829a76def44dbd81e96418d735140536c1f04b19454ad5eddbd7802f5d156f",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "15c43a2bbd026357ee1865ad35000543687102600ee50a977b983a451d104d94",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-055-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "134fbb33db1f98d398d0f118a5b1b2ec9322cf42bebd42d90f700640f24bd6aa",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "15c43a2bbd026357ee1865ad35000543687102600ee50a977b983a451d104d94",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-056-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "49716c2f3b6c300d92079b587723b67451de41560be725030822ac96a27ec652",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-057-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "d35519ba2f2bbe9a5d2ffc589f21130b4aa97013b1720cb2bcd2e9f7782a4145",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-058-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "88f499e5a2056a24e54f4af1da4df2d940902f0dd7be153f045e324a851f46f3",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-059-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "75a8c46d2d6ee5b1bfb01bc825903c4a217bc1e3f71b1e1fe91ae3be1b32999c",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-060-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "04fee53c6ba618af7a0d4d67eb1388c9ae0747f1eb2fed1c93288a39fc1ffea9",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-061-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "13c1ac357b010e678ec32c827fce9d026d2e2905ff3b5eb6246cba19c2cca2c6",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-062-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "4061da4345f82ebf89c31e40de9ad7e7e9d75baca4ba74ef921f286f355e10bf",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "a510c8ed2439f30ddf11c0174ea9947649e1dbc373b088ba4bc6fc22ffc53e65",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-063-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "2d8456e892a59b05db2f189b08ecedb9b64cec61bee0ca65c42f4fcd6dad0757",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3f753e5882c7ed3392a33aab75e2707f00646ff1eefe6edaf48a622d3025f176",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-064-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "34b07022f1a5fe1a5ec441281cfc3ed44f02fa660d9829e62c5a2e9cfd2ce440",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3f753e5882c7ed3392a33aab75e2707f00646ff1eefe6edaf48a622d3025f176",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-065-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "46cad2b8c4b07ed68c92eec25e7ae01fc1047df4b49d5b06ccef552bf8793beb",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3f753e5882c7ed3392a33aab75e2707f00646ff1eefe6edaf48a622d3025f176",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-066-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "1b4a3043ff27f389c7ea3cc973e10fdccc2352bfd1830615c5f0f20925c55607",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "5c0654a0261ba1d11f28a24d80d35e5b2de5c3faa79e2e74e965605372030e44",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-067-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "e28737ed79acc59d956438f5c227a5c3e2ee6d9c2b97ff40387fe2a8adcc6330",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "5c0654a0261ba1d11f28a24d80d35e5b2de5c3faa79e2e74e965605372030e44",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-068-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "c776c8182da34fea9a03cb89f955e2b8317df8cc01b2c0bf28c21e7f5dcb9d70",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "5c0654a0261ba1d11f28a24d80d35e5b2de5c3faa79e2e74e965605372030e44",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-069-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "e2e5d1f62a5f8f24851d3a7a0a6e5455fe8526d9e2f48951ae1fdc4d0607194e",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "68b162351cbabbec47eba4f50cc4d69f0dae5ff4489defe4789aab21a136d6bb",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-070-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "62066f883326eee5a1682879188faf4c77b90b96ed1c3e14324f082169f102e0",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "68b162351cbabbec47eba4f50cc4d69f0dae5ff4489defe4789aab21a136d6bb",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-071-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "57f89c541f8e2565d1e56758c628e8bbf9e71c7868481750858d607af0cc58ad",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "68b162351cbabbec47eba4f50cc4d69f0dae5ff4489defe4789aab21a136d6bb",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-072-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "cade9cc40cc2ec158bf73808755a1edb3265c00eb4ec4092c65c5c8f76ce67ae",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3268367fcc8fbca882bf81e4ac5b99a976d606bfa30f33c411837a65813a8fba",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-073-manabu",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "549e6187e49eb388b27e09e3123d50a886c0fefc92d239204426cdfcfc0c3089",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3268367fcc8fbca882bf81e4ac5b99a976d606bfa30f33c411837a65813a8fba",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-074-ikumi",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "c26bf42be6086b1fd584b03ad283109fc45fd3fbdcdc89418fe54b36c2f24d80",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3268367fcc8fbca882bf81e4ac5b99a976d606bfa30f33c411837a65813a8fba",
+        "neutralGeometryMatchesView": true
+      },
+      {
+        "id": "lesson17-turn-075-mako",
+        "width": 1600,
+        "height": 900,
+        "pngSha256": "0f2fc1faf99a96b60f4082225720ecf1b22d66afc920c12c56f59ab4d40ae593",
+        "fullFrameMatchesCurrentScript": true,
+        "bodyCropMatchesCurrentScript": true,
+        "neutralBodyCropSha256": "3268367fcc8fbca882bf81e4ac5b99a976d606bfa30f33c411837a65813a8fba",
+        "neutralGeometryMatchesView": true
+      }
+    ],
+    "castEstablish": {
+      "width": 1600,
+      "height": 900
+    },
+    "neutralBodyViewport": {
+      "x": 65,
+      "y": 204,
+      "width": 1207,
+      "height": 511
+    },
+    "networkRequestsMade": false
+  },
+  "continuousPreviewCandidates": [
+    {
+      "fromTurn": "lesson17-turn-030-mako",
+      "throughTurn": "lesson17-turn-034-manabu",
+      "viewId": "lesson17-delete"
+    },
+    {
+      "fromTurn": "lesson17-turn-021-mako",
+      "throughTurn": "lesson17-turn-024-ikumi",
+      "viewId": "lesson17-transfer"
+    }
+  ],
+  "errors": [],
+  "warnings": [],
+  "networkRequestsMade": false,
+  "scope": "Source/schema/subtitle and saved-preview raster checks. Audio generation, final video, and listening are separate checks."
+}

@@ -1,0 +1,27 @@
+# SQL Serverの利用規約へ同意したうえで、prepare_portal_local_auth.pyで設定を作成します。
+# AzureのSQL・CMデータは使わず、このPCのローカル開発専用データを保存します。
+name: egakumi-portal-local
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    env_file:
+      - ../../secrets/portal-local-sql-admin.env
+    ports:
+      - "127.0.0.1:14330:1433"
+    volumes:
+      - portal_sql_data:/var/opt/mssql
+    mem_limit: 2g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          SQLCMDPASSWORD="$$MSSQL_SA_PASSWORD"
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -Q 'SELECT 1' -b -o /dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  portal_sql_data:

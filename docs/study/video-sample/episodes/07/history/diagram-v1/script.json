@@ -1,0 +1,5497 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "07",
+  "episodeNumber": 7,
+  "episodeId": "07",
+  "title": "第7回 つながらないときの調べ方",
+  "topic": "つながらないときの調べ方",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "現行リポジトリ定義・公開設定例に基づく教材。稼働環境の取得値・実測結果ではない。",
+  "learningObjectives": [
+    "DNS・実効経路・NSG・Firewallログを同じ通信について照合し、ログ記録と通知を区別できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "observability-logs"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "observability-triage"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "observability-alerts"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "network-control-map"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "今回の問い",
+      "goal": "同じ通信の証拠をそろえる目的を持つ。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        }
+      ]
+    },
+    {
+      "id": "identify",
+      "title": "調査する通信を一つに絞る",
+      "goal": "送信元と時刻、名前・IP・ポートを特定する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "title": "DNS・往復経路・NSGを照合する",
+      "goal": "U1を例に各層の役割と確認条件をそろえる。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        }
+      ]
+    },
+    {
+      "id": "logs",
+      "title": "Firewallログの読み方と観測範囲",
+      "goal": "Network/Application、Deny/Allow/不在の意味を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-logs"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "walkthrough",
+      "title": "接続失敗を調べて引き継ぐ",
+      "goal": "一つの通信の観測から限定的な判断と再確認へ進む。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "alerts",
+      "title": "記録と通知を分けて確認する",
+      "goal": "保存先・メトリック・Activity・KQLアラートの範囲を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-logs"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-alerts"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの判断を確かめる",
+      "goal": "ログ不在・Allow・通知不在からの早合点を避ける。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-alerts"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "まとめと次回の問い",
+      "goal": "調査の順序を振り返り第8回へつなぐ。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-triage"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "observability-alerts"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [
+      "lesson07-turn-079-manabu",
+      "lesson07-turn-082-manabu"
+    ],
+    "sourceRecordingsKept": true,
+    "reason": "確認①②の回答後に重複する振り返りを省く。続く質問は文脈変更のため新IDで再収録する。"
+  },
+  "turns": [
+    {
+      "id": "lesson07-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "エーピーアイがつながりません。まずファイアウォールの拒否ログを探せばよいのでしょうか。",
+      "caption": "APIがつながりません。まずFirewallの拒否ログを探せばよいのでしょうか。",
+      "subtitleLines": [
+        "APIがつながりません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIがつながりません。",
+          "lines": [
+            "APIがつながりません。"
+          ],
+          "weight": 12
+        },
+        {
+          "caption": "まずFirewallの拒否ログを探せばよいのでしょうか。",
+          "lines": [
+            "まずFirewallの拒否ログを探せばよいのでしょうか。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "焦りますよね。でも、別の通信のログを見ていたら、判断もずれてしまいます。",
+      "caption": "焦りますよね。でも、別の通信のログを見ていたら、判断もずれてしまいます。",
+      "subtitleLines": [
+        "焦りますよね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "焦りますよね。",
+          "lines": [
+            "焦りますよね。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "でも、別の通信のログを見ていたら、判断もずれてしまいます。",
+          "lines": [
+            "でも、別の通信のログを見ていたら、判断もずれてしまいます。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "まず、いつ、どこから、どこへ接続したかをそろえましょう。ファイアウォールを通らない経路もあります。",
+      "caption": "まず、いつ、どこから、どこへ接続したかをそろえましょう。Firewallを通らない経路もあります。",
+      "subtitleLines": [
+        "まず、いつ、どこから、どこへ接続したかをそろえましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず、いつ、どこから、どこへ接続したかをそろえましょう。",
+          "lines": [
+            "まず、いつ、どこから、どこへ接続したかをそろえましょう。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "Firewallを通らない経路もあります。",
+          "lines": [
+            "Firewallを通らない経路もあります。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "なるほど。同じ通信を追うために、名前解決から順に証拠を集めるんですね。",
+      "caption": "なるほど。同じ通信を追うために、名前解決から順に証拠を集めるんですね。",
+      "subtitleLines": [
+        "なるほど。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "なるほど。",
+          "lines": [
+            "なるほど。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "同じ通信を追うために、名前解決から順に証拠を集めるんですね。",
+          "lines": [
+            "同じ通信を追うために、名前解決から順に証拠を集めるんですね。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-005-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "調べた事実と、まだ分からないことを分けて、次の確認につなげましょう。",
+      "caption": "調べた事実と、まだ分からないことを分けて、次の確認につなげましょう。",
+      "subtitleLines": [
+        "調べた事実と、まだ分からないことを分けて、次の確認につなげましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "調べた事実と、まだ分からないことを分けて、次の確認につなげましょう。",
+          "lines": [
+            "調べた事実と、まだ分からないことを分けて、次の確認につなげましょう。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-006-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "ログを保存する設定と、メールを通知する設定の違いも、最後に確かめます。",
+      "caption": "ログを保存する設定と、メールを通知する設定の違いも、最後に確かめます。",
+      "subtitleLines": [
+        "ログを保存する設定と、メールを通知する設定の違いも、最後に確かめます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログを保存する設定と、メールを通知する設定の違いも、最後に確かめます。",
+          "lines": [
+            "ログを保存する設定と、メールを通知する設定の違いも、最後に確かめます。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "つながらないときの調べ方"
+      }
+    },
+    {
+      "id": "lesson07-turn-007-mako",
+      "speaker": "mako",
+      "chapterId": "identify",
+      "speech": "今回のゴールは、ディーエヌエス、実効経路、エヌエスジー、ファイアウォールログを、一つの通信について照合することです。調査の出発点は何でしょう。",
+      "caption": "今回のゴールは、DNS、実効経路、NSG、Firewallログを、一つの通信について照合することです。調査の出発点は何でしょう。",
+      "subtitleLines": [
+        "今回のゴールは、DNS、実効経路、NSG、",
+        "Firewallログを、一つの通信について照合することです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今回のゴールは、DNS、実効経路、NSG、Firewallログを、一つの通信について照合することです。",
+          "lines": [
+            "今回のゴールは、DNS、実効経路、NSG、",
+            "Firewallログを、一つの通信について照合することです。"
+          ],
+          "weight": 51
+        },
+        {
+          "caption": "調査の出発点は何でしょう。",
+          "lines": [
+            "調査の出発点は何でしょう。"
+          ],
+          "weight": 13
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "一つの通信で証拠をそろえる",
+        "cards": [
+          {
+            "title": "特定",
+            "body": [
+              "時刻・通信元・名前",
+              "宛先IP・ポート"
+            ]
+          },
+          {
+            "title": "照合",
+            "body": [
+              "DNS → 経路 → NSG",
+              "経由したFWのログ"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "記録と通知を区別",
+              "確認範囲を残す"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-008-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "identify",
+      "speech": "アップゲートウェイからエーピーアイエムへ作られる、バックエンド接続を主な例にします。標準のエイチティーティーピーではティーシーピーの80番で、間にファイアウォールを通ります。",
+      "caption": "AppGWからAPIMへ作られる、バックエンド接続を主な例にします。標準のHTTPではTCPの80番で、間にFirewallを通ります。",
+      "subtitleLines": [
+        "AppGWからAPIMへ作られる、バックエンド接続を主な例にします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGWからAPIMへ作られる、バックエンド接続を主な例にします。",
+          "lines": [
+            "AppGWからAPIMへ作られる、バックエンド接続を主な例にします。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "標準のHTTPではTCPの80番で、間にFirewallを通ります。",
+          "lines": [
+            "標準のHTTPではTCPの80番で、間にFirewallを通ります。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "主例 U1：AppGW → Firewall → APIM",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "TCP 80"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "TCP 80"
+          }
+        ],
+        "focus": [
+          "agw",
+          "fw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-009-manabu",
+      "speaker": "manabu",
+      "chapterId": "identify",
+      "speech": "利用者から公開入口への接続と、アップゲートウェイから先への接続を分けるのが大切です。失敗している区間が違えば、見る条件も変わります。",
+      "caption": "利用者から公開入口への接続と、AppGWから先への接続を分けるのが大切です。失敗している区間が違えば、見る条件も変わります。",
+      "subtitleLines": [
+        "利用者から公開入口への接続と、AppGWから先への接続を分けるのが大切です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者から公開入口への接続と、AppGWから先への接続を分けるのが大切です。",
+          "lines": [
+            "利用者から公開入口への接続と、AppGWから先への接続を分けるのが大切です。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "失敗している区間が違えば、見る条件も変わります。",
+          "lines": [
+            "失敗している区間が違えば、見る条件も変わります。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "主例 U1：AppGW → Firewall → APIM",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "TCP 80"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "TCP 80"
+          }
+        ],
+        "focus": [
+          "agw",
+          "fw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-010-mako",
+      "speaker": "mako",
+      "chapterId": "identify",
+      "speech": "利用者は同じエーピーアイを呼んでいても、ネットワークでは別の接続になるんですね。手元には、どの情報を残しておきますか。",
+      "caption": "利用者は同じAPIを呼んでいても、ネットワークでは別の接続になるんですね。手元には、どの情報を残しておきますか。",
+      "subtitleLines": [
+        "利用者は同じAPIを呼んでいても、ネットワークでは別の接続になるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者は同じAPIを呼んでいても、ネットワークでは別の接続になるんですね。",
+          "lines": [
+            "利用者は同じAPIを呼んでいても、ネットワークでは別の接続になるんですね。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "手元には、どの情報を残しておきますか。",
+          "lines": [
+            "手元には、どの情報を残しておきますか。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-011-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "identify",
+      "speech": "失敗した時刻と時間帯、通信元の区画とアイピー、宛先の名前と解決後のアイピー、それにプロトコルとポートです。再現時の症状も添えます。",
+      "caption": "失敗した時刻と時間帯、通信元の区画とIP、宛先の名前と解決後のIP、それにプロトコルとポートです。再現時の症状も添えます。",
+      "subtitleLines": [
+        "失敗した時刻と時間帯、通信元の区画とIP、",
+        "宛先の名前と解決後のIP、それにプロトコルとポートです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "失敗した時刻と時間帯、通信元の区画とIP、宛先の名前と解決後のIP、それにプロトコルとポートです。",
+          "lines": [
+            "失敗した時刻と時間帯、通信元の区画とIP、",
+            "宛先の名前と解決後のIP、それにプロトコルとポートです。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "再現時の症状も添えます。",
+          "lines": [
+            "再現時の症状も添えます。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-012-manabu",
+      "speaker": "manabu",
+      "chapterId": "identify",
+      "speech": "担当者に渡すときも、この条件を一緒に伝えます。つながらない、という一言だけでは、相手が同じ現象を探せないからです。",
+      "caption": "担当者に渡すときも、この条件を一緒に伝えます。つながらない、という一言だけでは、相手が同じ現象を探せないからです。",
+      "subtitleLines": [
+        "担当者に渡すときも、この条件を一緒に伝えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "担当者に渡すときも、この条件を一緒に伝えます。",
+          "lines": [
+            "担当者に渡すときも、この条件を一緒に伝えます。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "つながらない、という一言だけでは、相手が同じ現象を探せないからです。",
+          "lines": [
+            "つながらない、という一言だけでは、相手が同じ現象を探せないからです。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "identify",
+      "speech": "ログの時刻と、問い合わせた人が言う時刻が少し違う場合もありそうです。時刻の表記も、そろえる必要がありますね。",
+      "caption": "ログの時刻と、問い合わせた人が言う時刻が少し違う場合もありそうです。時刻の表記も、そろえる必要がありますね。",
+      "subtitleLines": [
+        "ログの時刻と、問い合わせた人が言う時刻が少し違う場合もありそうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログの時刻と、問い合わせた人が言う時刻が少し違う場合もありそうです。",
+          "lines": [
+            "ログの時刻と、問い合わせた人が言う時刻が少し違う場合もありそうです。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "時刻の表記も、そろえる必要がありますね。",
+          "lines": [
+            "時刻の表記も、そろえる必要がありますね。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "identify",
+      "speech": "はい。タイムゾーンと検索する時間幅を確認します。対象のファイアウォールやログ アナリティクス ワークスペースが違っていないかも、時刻と一緒に確かめましょう。",
+      "caption": "はい。タイムゾーンと検索する時間幅を確認します。対象のFirewallやLAWが違っていないかも、時刻と一緒に確かめましょう。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "タイムゾーンと検索する時間幅を確認します。",
+          "lines": [
+            "タイムゾーンと検索する時間幅を確認します。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "対象のFirewallやLAWが違っていないかも、時刻と一緒に確かめましょう。",
+          "lines": [
+            "対象のFirewallやLAWが違っていないかも、",
+            "時刻と一緒に確かめましょう。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-015-mako",
+      "speaker": "mako",
+      "chapterId": "identify",
+      "speech": "アップゲートウェイの先を調べるのに、元の利用者のアイピーだけでログを探してしまうと、見落とすことがあるのでしょうか。",
+      "caption": "AppGWの先を調べるのに、元の利用者のIPだけでログを探してしまうと、見落とすことがあるのでしょうか。",
+      "subtitleLines": [
+        "AppGWの先を調べるのに、元の利用者のIPだけでロ",
+        "グを探してしまうと、見落とすことがあるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGWの先を調べるのに、元の利用者のIPだけでログを探してしまうと、見落とすことがあるのでしょうか。",
+          "lines": [
+            "AppGWの先を調べるのに、元の利用者のIPだけでロ",
+            "グを探してしまうと、見落とすことがあるのでしょうか。"
+          ],
+          "weight": 52
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "主例 U1：AppGW → Firewall → APIM",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "TCP 80"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "TCP 80"
+          }
+        ],
+        "focus": [
+          "agw",
+          "fw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-016-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "identify",
+      "speech": "あります。アップゲートウェイから新しい接続を作るためです。ヘッダーに残る利用者情報と、エヌエスジーやファイアウォールが見る送信元アイピーは区別します。",
+      "caption": "あります。AppGWから新しい接続を作るためです。ヘッダーに残る利用者情報と、NSGやFirewallが見る送信元IPは区別します。",
+      "subtitleLines": [
+        "あります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "あります。",
+          "lines": [
+            "あります。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "AppGWから新しい接続を作るためです。",
+          "lines": [
+            "AppGWから新しい接続を作るためです。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "ヘッダーに残る利用者情報と、NSGやFirewallが見る送信元IPは区別します。",
+          "lines": [
+            "ヘッダーに残る利用者情報と、",
+            "NSGやFirewallが見る送信元IPは区別します。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "主例 U1：AppGW → Firewall → APIM",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "TCP 80"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "TCP 80"
+          }
+        ],
+        "focus": [
+          "agw",
+          "fw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-017-manabu",
+      "speaker": "manabu",
+      "chapterId": "identify",
+      "speech": "まず通信を一つに絞る。その条件を、名前解決、経路、通信制御、ログへ持ち回る。この順序が、調査の軸になります。",
+      "caption": "まず通信を一つに絞る。その条件を、名前解決、経路、通信制御、ログへ持ち回る。この順序が、調査の軸になります。",
+      "subtitleLines": [
+        "まず通信を一つに絞る。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず通信を一つに絞る。",
+          "lines": [
+            "まず通信を一つに絞る。"
+          ],
+          "weight": 11
+        },
+        {
+          "caption": "その条件を、名前解決、経路、通信制御、ログへ持ち回る。",
+          "lines": [
+            "その条件を、名前解決、経路、通信制御、ログへ持ち回る。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "この順序が、調査の軸になります。",
+          "lines": [
+            "この順序が、調査の軸になります。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "一つの通信で証拠をそろえる",
+        "cards": [
+          {
+            "title": "特定",
+            "body": [
+              "時刻・通信元・名前",
+              "宛先IP・ポート"
+            ]
+          },
+          {
+            "title": "照合",
+            "body": [
+              "DNS → 経路 → NSG",
+              "経由したFWのログ"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "記録と通知を区別",
+              "確認範囲を残す"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-018-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "では名前解決です。手元のパソコンからエーピーアイエムの名前を引いて、アイピーが返ってくれば、ディーエヌエスは正常と言えますか。",
+      "caption": "では名前解決です。手元のパソコンからAPIMの名前を引いて、IPが返ってくれば、DNSは正常と言えますか。",
+      "subtitleLines": [
+        "では名前解決です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では名前解決です。",
+          "lines": [
+            "では名前解決です。"
+          ],
+          "weight": 9
+        },
+        {
+          "caption": "手元のパソコンからAPIMの名前を引いて、IPが返ってくれば、DNSは正常と言えますか。",
+          "lines": [
+            "手元のパソコンからAPIMの名前を引いて、",
+            "IPが返ってくれば、DNSは正常と言えますか。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "DNS：失敗した通信の送信元で確かめる",
+        "nodes": [
+          {
+            "id": "src",
+            "label": "AppGWの名前解決",
+            "detail": "元の端末とは条件が違う",
+            "x": 40,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "dns",
+            "label": "参照するDNS",
+            "detail": "設定・転送・ゾーン",
+            "x": 450,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "answer",
+            "label": "APIM内部IP",
+            "detail": "回答を経路照合へ渡す",
+            "x": 850,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "src",
+            "to": "dns",
+            "label": "問い合わせ"
+          },
+          {
+            "from": "dns",
+            "to": "answer",
+            "label": "回答"
+          }
+        ],
+        "focus": [
+          "answer"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-019-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "それだけでは言えません。接続に失敗した送信元が、どのディーエヌエスを使い、どの回答を得るかを確認します。端末とアップゲートウェイでは条件が違います。",
+      "caption": "それだけでは言えません。接続に失敗した送信元が、どのDNSを使い、どの回答を得るかを確認します。端末とAppGWでは条件が違います。",
+      "subtitleLines": [
+        "それだけでは言えません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "それだけでは言えません。",
+          "lines": [
+            "それだけでは言えません。"
+          ],
+          "weight": 12
+        },
+        {
+          "caption": "接続に失敗した送信元が、どのDNSを使い、どの回答を得るかを確認します。",
+          "lines": [
+            "接続に失敗した送信元が、どのDNSを使い、どの回答を得るかを確認します。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "端末とAppGWでは条件が違います。",
+          "lines": [
+            "端末とAppGWでは条件が違います。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "DNS：失敗した通信の送信元で確かめる",
+        "nodes": [
+          {
+            "id": "src",
+            "label": "AppGWの名前解決",
+            "detail": "元の端末とは条件が違う",
+            "x": 40,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "dns",
+            "label": "参照するDNS",
+            "detail": "設定・転送・ゾーン",
+            "x": 450,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "answer",
+            "label": "APIM内部IP",
+            "detail": "回答を経路照合へ渡す",
+            "x": 850,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "src",
+            "to": "dns",
+            "label": "問い合わせ"
+          },
+          {
+            "from": "dns",
+            "to": "answer",
+            "label": "回答"
+          }
+        ],
+        "focus": [
+          "answer"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-020-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "別の場所で成功した結果は参考になりますが、今回失敗した接続の証拠を置き換えません。確認した場所も、結果と一緒に残すんですね。",
+      "caption": "別の場所で成功した結果は参考になりますが、今回失敗した接続の証拠を置き換えません。確認した場所も、結果と一緒に残すんですね。",
+      "subtitleLines": [
+        "別の場所で成功した結果は参考になりますが、",
+        "今回失敗した接続の証拠を置き換えません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "別の場所で成功した結果は参考になりますが、今回失敗した接続の証拠を置き換えません。",
+          "lines": [
+            "別の場所で成功した結果は参考になりますが、",
+            "今回失敗した接続の証拠を置き換えません。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "確認した場所も、結果と一緒に残すんですね。",
+          "lines": [
+            "確認した場所も、結果と一緒に残すんですね。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "DNS：失敗した通信の送信元で確かめる",
+        "nodes": [
+          {
+            "id": "src",
+            "label": "AppGWの名前解決",
+            "detail": "元の端末とは条件が違う",
+            "x": 40,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "dns",
+            "label": "参照するDNS",
+            "detail": "設定・転送・ゾーン",
+            "x": 450,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "answer",
+            "label": "APIM内部IP",
+            "detail": "回答を経路照合へ渡す",
+            "x": 850,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "src",
+            "to": "dns",
+            "label": "問い合わせ"
+          },
+          {
+            "from": "dns",
+            "to": "answer",
+            "label": "回答"
+          }
+        ],
+        "focus": [
+          "answer"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "この例では、エーピーアイエムの内部アイピーへ解決する設計です。参照先のディーエヌエス、ゾーンのリンクや転送の関係と、得られた回答を照合します。",
+      "caption": "この例では、APIMの内部IPへ解決する設計です。参照先のDNS、ゾーンのリンクや転送の関係と、得られた回答を照合します。",
+      "subtitleLines": [
+        "この例では、APIMの内部IPへ解決する設計です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この例では、APIMの内部IPへ解決する設計です。",
+          "lines": [
+            "この例では、APIMの内部IPへ解決する設計です。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "参照先のDNS、ゾーンのリンクや転送の関係と、得られた回答を照合します。",
+          "lines": [
+            "参照先のDNS、ゾーンのリンクや転送の関係と、得られた回答を照合します。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "DNS：失敗した通信の送信元で確かめる",
+        "nodes": [
+          {
+            "id": "src",
+            "label": "AppGWの名前解決",
+            "detail": "元の端末とは条件が違う",
+            "x": 40,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "dns",
+            "label": "参照するDNS",
+            "detail": "設定・転送・ゾーン",
+            "x": 450,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "answer",
+            "label": "APIM内部IP",
+            "detail": "回答を経路照合へ渡す",
+            "x": 850,
+            "y": 170,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "src",
+            "to": "dns",
+            "label": "問い合わせ"
+          },
+          {
+            "from": "dns",
+            "to": "answer",
+            "label": "回答"
+          }
+        ],
+        "focus": [
+          "answer"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "内部アイピーが返ったら、次は経路ですね。ルートテーブルにファイアウォールという名前があれば、そこを通ると考えてよいですか。",
+      "caption": "内部IPが返ったら、次は経路ですね。ルートテーブルにFirewallという名前があれば、そこを通ると考えてよいですか。",
+      "subtitleLines": [
+        "内部IPが返ったら、次は経路ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "内部IPが返ったら、次は経路ですね。",
+          "lines": [
+            "内部IPが返ったら、次は経路ですね。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "ルートテーブルにFirewallという名前があれば、そこを通ると考えてよいですか。",
+          "lines": [
+            "ルートテーブルにFirewallという名前があれば、",
+            "そこを通ると考えてよいですか。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-023-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "名前や既定経路だけでは決まりません。解決後の宛先アイピーについて、関連付けたユーディーアールや、より具体的な経路を照合し、次ホップを確認します。",
+      "caption": "名前や既定経路だけでは決まりません。解決後の宛先IPについて、関連付けたUDRや、より具体的な経路を照合し、次ホップを確認します。",
+      "subtitleLines": [
+        "名前や既定経路だけでは決まりません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前や既定経路だけでは決まりません。",
+          "lines": [
+            "名前や既定経路だけでは決まりません。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "解決後の宛先IPについて、関連付けたUDRや、より具体的な経路を照合し、次ホップを確認します。",
+          "lines": [
+            "解決後の宛先IPについて、関連付けたUDRや、",
+            "より具体的な経路を照合し、次ホップを確認します。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "アップゲートウェイ側のエーピーアイエム宛ての経路は、ファイアウォールを次ホップにします。さらにエーピーアイエムからアップゲートウェイへ戻る経路も、同じファイアウォールへ向く設計です。",
+      "caption": "AppGW側のAPIM宛ての経路は、Firewallを次ホップにします。さらにAPIMからAppGWへ戻る経路も、同じFirewallへ向く設計です。",
+      "subtitleLines": [
+        "AppGW側のAPIM宛ての経路は、Firewallを次ホップにします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGW側のAPIM宛ての経路は、Firewallを次ホップにします。",
+          "lines": [
+            "AppGW側のAPIM宛ての経路は、Firewallを次ホップにします。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "さらにAPIMからAppGWへ戻る経路も、同じFirewallへ向く設計です。",
+          "lines": [
+            "さらにAPIMからAppGWへ戻る経路も、",
+            "同じFirewallへ向く設計です。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-025-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "行きが届くかだけではなく、応答の戻り道まで見るんですね。戻りだけ別の経路なら、接続が成立しない原因になります。",
+      "caption": "行きが届くかだけではなく、応答の戻り道まで見るんですね。戻りだけ別の経路なら、接続が成立しない原因になります。",
+      "subtitleLines": [
+        "行きが届くかだけではなく、応答の戻り道まで見るんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "行きが届くかだけではなく、応答の戻り道まで見るんですね。",
+          "lines": [
+            "行きが届くかだけではなく、応答の戻り道まで見るんですね。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "戻りだけ別の経路なら、接続が成立しない原因になります。",
+          "lines": [
+            "戻りだけ別の経路なら、接続が成立しない原因になります。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "はい。実環境では、資源の種類に応じて取得できる実効経路情報と、設定の関連付けを確かめます。設定例だけを実測結果にはしません。",
+      "caption": "はい。実環境では、資源の種類に応じて取得できる実効経路情報と、設定の関連付けを確かめます。設定例だけを実測結果にはしません。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "実環境では、資源の種類に応じて取得できる実効経路情報と、設定の関連付けを確かめます。",
+          "lines": [
+            "実環境では、資源の種類に応じて取得できる実",
+            "効経路情報と、設定の関連付けを確かめます。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "設定例だけを実測結果にはしません。",
+          "lines": [
+            "設定例だけを実測結果にはしません。"
+          ],
+          "weight": 17
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-027-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "ユーディーアールが決めるのは次の行き先です。経路がファイアウォールへ向くことと、通信が許可されることは、別の確認になります。",
+      "caption": "UDRが決めるのは次の行き先です。経路がFirewallへ向くことと、通信が許可されることは、別の確認になります。",
+      "subtitleLines": [
+        "UDRが決めるのは次の行き先です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "UDRが決めるのは次の行き先です。",
+          "lines": [
+            "UDRが決めるのは次の行き先です。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "経路がFirewallへ向くことと、通信が許可されることは、別の確認になります。",
+          "lines": [
+            "経路がFirewallへ向くことと、",
+            "通信が許可されることは、別の確認になります。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "経路：名前ではなく解決後の宛先で照合",
+        "cards": [
+          {
+            "title": "往路",
+            "body": [
+              "AppGW側のUDR",
+              "APIM宛て → FW"
+            ]
+          },
+          {
+            "title": "復路",
+            "body": [
+              "APIM側のUDR",
+              "AppGW宛て → FW"
+            ]
+          },
+          {
+            "title": "確認方法",
+            "body": [
+              "IaC・関連付けを確認",
+              "取得可能な実効情報"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-028-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "その許可を見るのがエヌエスジーですね。この通信なら、アップゲートウェイからの送信だけ確認すれば足りますか。",
+      "caption": "その許可を見るのがNSGですね。この通信なら、AppGWからの送信だけ確認すれば足りますか。",
+      "subtitleLines": [
+        "その許可を見るのがNSGですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その許可を見るのがNSGですね。",
+          "lines": [
+            "その許可を見るのがNSGですね。"
+          ],
+          "weight": 16
+        },
+        {
+          "caption": "この通信なら、AppGWからの送信だけ確認すれば足りますか。",
+          "lines": [
+            "この通信なら、AppGWからの送信だけ確認すれば足りますか。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "NSG：通信元の送信と宛先の受信を照合",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "送信NSG"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "受信NSG"
+          }
+        ],
+        "focus": [
+          "agw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-029-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "エーピーアイエム側の受信も確認します。アップゲートウェイ送信のアラウ エーピーアイエム エイチティーティーピーと、エーピーアイエム受信のアラウ エージーダブリュー エーピーアイを、同じティーシーピーの80番で照合します。",
+      "caption": "APIM側の受信も確認します。AppGW送信のallow-apim-httpと、APIM受信のallow-agw-apiを、同じTCPの80番で照合します。",
+      "subtitleLines": [
+        "APIM側の受信も確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIM側の受信も確認します。",
+          "lines": [
+            "APIM側の受信も確認します。"
+          ],
+          "weight": 15
+        },
+        {
+          "caption": "AppGW送信のallow-apim-httpと、APIM受信のallow-agw-apiを、同じTCPの80番で照合します。",
+          "lines": [
+            "AppGW送信のallow-apim-httpと、",
+            "APIM受信のallow-agw-apiを、同じTCPの80番で照合します。"
+          ],
+          "weight": 63
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "U1の許可：同じTCP 80を照合する",
+        "cards": [
+          {
+            "title": "AppGWの送信",
+            "body": [
+              "allow-apim-http",
+              "APIM区画へ送信"
+            ]
+          },
+          {
+            "title": "APIMの受信",
+            "body": [
+              "allow-agw-api",
+              "AppGW区画から受信"
+            ]
+          },
+          {
+            "title": "Firewall",
+            "body": [
+              "agw-to-apim-http",
+              "内部中継の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-030-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "送受信の向き、送信元と宛先、ポート、優先順位を確認します。この内部中継の標準設定では、アップゲートウェイのプライベート アイピーが保持されます。",
+      "caption": "送受信の向き、送信元と宛先、ポート、優先順位を確認します。この内部中継の標準設定では、AppGWのprivate IPが保持されます。",
+      "subtitleLines": [
+        "送受信の向き、送信元と宛先、ポート、優先順位を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送受信の向き、送信元と宛先、ポート、優先順位を確認します。",
+          "lines": [
+            "送受信の向き、送信元と宛先、ポート、優先順位を確認します。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "この内部中継の標準設定では、AppGWのprivate IPが保持されます。",
+          "lines": [
+            "この内部中継の標準設定では、AppGWのprivate IPが保持されます。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "NSG：通信元の送信と宛先の受信を照合",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "送信NSG"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "受信NSG"
+          }
+        ],
+        "focus": [
+          "agw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-031-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "片方の許可だけを見て、全区間が通ると決めないことです。エヌエスジーは区画の通信制御、ユーディーアールは経路、ファイアウォールは到達した通信の判定を担当します。",
+      "caption": "片方の許可だけを見て、全区間が通ると決めないことです。NSGは区画の通信制御、UDRは経路、Firewallは到達した通信の判定を担当します。",
+      "subtitleLines": [
+        "片方の許可だけを見て、全区間が通ると決めないことです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "片方の許可だけを見て、全区間が通ると決めないことです。",
+          "lines": [
+            "片方の許可だけを見て、全区間が通ると決めないことです。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "NSGは区画の通信制御、UDRは経路、Firewallは到達した通信の判定を担当します。",
+          "lines": [
+            "NSGは区画の通信制御、UDRは経路、",
+            "Firewallは到達した通信の判定を担当します。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "NSG：通信元の送信と宛先の受信を照合",
+        "nodes": [
+          {
+            "id": "agw",
+            "label": "AppGW",
+            "detail": "新しいバックエンド接続",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "Networkルール",
+            "x": 455,
+            "y": 170,
+            "width": 260,
+            "height": 100
+          },
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "受信・応答",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "agw",
+            "to": "fw",
+            "label": "送信NSG"
+          },
+          {
+            "from": "fw",
+            "to": "apim",
+            "label": "受信NSG"
+          }
+        ],
+        "focus": [
+          "agw",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-032-mako",
+      "speaker": "mako",
+      "chapterId": "logs",
+      "speech": "経路とエヌエスジーの条件を確かめたら、ファイアウォールのログへ進みます。ネットワークとアプリケーション、どちらから探しましょう。",
+      "caption": "経路とNSGの条件を確かめたら、Firewallのログへ進みます。NetworkとApplication、どちらから探しましょう。",
+      "subtitleLines": [
+        "経路とNSGの条件を確かめたら、Firewallのログへ進みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "経路とNSGの条件を確かめたら、Firewallのログへ進みます。",
+          "lines": [
+            "経路とNSGの条件を確かめたら、Firewallのログへ進みます。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "NetworkとApplication、どちらから探しましょう。",
+          "lines": [
+            "NetworkとApplication、どちらから探しましょう。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Firewallを通ったら、判定された種類へ",
+        "cards": [
+          {
+            "title": "Network",
+            "body": [
+              "AZFWNetworkRule",
+              "IP・ポート・Protocol"
+            ]
+          },
+          {
+            "title": "Application",
+            "body": [
+              "AZFWApplicationRule",
+              "Web宛先・FQDN"
+            ]
+          },
+          {
+            "title": "評価順に注意",
+            "body": [
+              "Network一致なら",
+              "Applicationへ進まない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "主例の内部中継はネットワークルールなので、エーゼット エフダブリュー ネットワーク ルールを見ます。アイピー、ポート、プロトコルと判定を、先ほどの条件に合わせます。",
+      "caption": "主例の内部中継はNetworkルールなので、AZFWNetworkRuleを見ます。IP、ポート、プロトコルと判定を、先ほどの条件に合わせます。",
+      "subtitleLines": [
+        "主例の内部中継はNetworkルールなので、",
+        "AZFWNetworkRuleを見ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "主例の内部中継はNetworkルールなので、AZFWNetworkRuleを見ます。",
+          "lines": [
+            "主例の内部中継はNetworkルールなので、",
+            "AZFWNetworkRuleを見ます。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "IP、ポート、プロトコルと判定を、先ほどの条件に合わせます。",
+          "lines": [
+            "IP、ポート、プロトコルと判定を、先ほどの条件に合わせます。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Firewallを通ったら、判定された種類へ",
+        "cards": [
+          {
+            "title": "Network",
+            "body": [
+              "AZFWNetworkRule",
+              "IP・ポート・Protocol"
+            ]
+          },
+          {
+            "title": "Application",
+            "body": [
+              "AZFWApplicationRule",
+              "Web宛先・FQDN"
+            ]
+          },
+          {
+            "title": "評価順に注意",
+            "body": [
+              "Network一致なら",
+              "Applicationへ進まない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "logs",
+      "speech": "エーピーアイエムから公開Webサービスへの接続を調べる場合は、アプリケーション側のログも候補になるんですね。",
+      "caption": "APIMから公開Webサービスへの接続を調べる場合は、Application側のログも候補になるんですね。",
+      "subtitleLines": [
+        "APIMから公開Webサービスへの接続を調べる場合は、",
+        "Application側のログも候補になるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMから公開Webサービスへの接続を調べる場合は、Application側のログも候補になるんですね。",
+          "lines": [
+            "APIMから公開Webサービスへの接続を調べる場合は、",
+            "Application側のログも候補になるんですね。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Firewallを通ったら、判定された種類へ",
+        "cards": [
+          {
+            "title": "Network",
+            "body": [
+              "AZFWNetworkRule",
+              "IP・ポート・Protocol"
+            ]
+          },
+          {
+            "title": "Application",
+            "body": [
+              "AZFWApplicationRule",
+              "Web宛先・FQDN"
+            ]
+          },
+          {
+            "title": "評価順に注意",
+            "body": [
+              "Network一致なら",
+              "Applicationへ進まない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "そうです。Web宛先の判定はエーゼット エフダブリュー アプリケーション ルールで、エフキューディーエヌなどを照合します。ただしネットワークルールで一致した通信は、アプリケーションへ進みません。",
+      "caption": "そうです。Web宛先の判定はAZFWApplicationRuleで、FQDNなどを照合します。ただしNetworkルールで一致した通信は、Applicationへ進みません。",
+      "subtitleLines": [
+        "そうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そうです。",
+          "lines": [
+            "そうです。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "Web宛先の判定はAZFWApplicationRuleで、FQDNなどを照合します。",
+          "lines": [
+            "Web宛先の判定はAZFWApplicationRuleで、",
+            "FQDNなどを照合します。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "ただしNetworkルールで一致した通信は、Applicationへ進みません。",
+          "lines": [
+            "ただしNetworkルールで一致した通信は、",
+            "Applicationへ進みません。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Firewallを通ったら、判定された種類へ",
+        "cards": [
+          {
+            "title": "Network",
+            "body": [
+              "AZFWNetworkRule",
+              "IP・ポート・Protocol"
+            ]
+          },
+          {
+            "title": "Application",
+            "body": [
+              "AZFWApplicationRule",
+              "Web宛先・FQDN"
+            ]
+          },
+          {
+            "title": "評価順に注意",
+            "body": [
+              "Network一致なら",
+              "Applicationへ進まない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-036-manabu",
+      "speaker": "manabu",
+      "chapterId": "logs",
+      "speech": "ログの種類も、調べている通信と評価順に合わせて選びます。アプリケーション側に記録がないだけで、通信全体がなかったとは言えないんですね。",
+      "caption": "ログの種類も、調べている通信と評価順に合わせて選びます。Application側に記録がないだけで、通信全体がなかったとは言えないんですね。",
+      "subtitleLines": [
+        "ログの種類も、調べている通信と評価順に合わせて選びます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログの種類も、調べている通信と評価順に合わせて選びます。",
+          "lines": [
+            "ログの種類も、調べている通信と評価順に合わせて選びます。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "Application側に記録がないだけで、通信全体がなかったとは言えないんですね。",
+          "lines": [
+            "Application側に記録がないだけで、",
+            "通信全体がなかったとは言えないんですね。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Firewallを通ったら、判定された種類へ",
+        "cards": [
+          {
+            "title": "Network",
+            "body": [
+              "AZFWNetworkRule",
+              "IP・ポート・Protocol"
+            ]
+          },
+          {
+            "title": "Application",
+            "body": [
+              "AZFWApplicationRule",
+              "Web宛先・FQDN"
+            ]
+          },
+          {
+            "title": "評価順に注意",
+            "body": [
+              "Network一致なら",
+              "Applicationへ進まない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-037-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "まず対象ファイアウォールのリソース アイディーと時刻を絞り、送信元、宛先、ポートを照合します。その上でアクションを見て、アラウかディナイかを確認します。",
+      "caption": "まず対象FirewallのResource IDと時刻を絞り、送信元、宛先、ポートを照合します。その上でActionを見て、AllowかDenyかを確認します。",
+      "subtitleLines": [
+        "まず対象FirewallのResource ID",
+        "と時刻を絞り、送信元、宛先、ポートを照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず対象FirewallのResource IDと時刻を絞り、送信元、宛先、ポートを照合します。",
+          "lines": [
+            "まず対象FirewallのResource ID",
+            "と時刻を絞り、送信元、宛先、ポートを照合します。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "その上でActionを見て、AllowかDenyかを確認します。",
+          "lines": [
+            "その上でActionを見て、AllowかDenyかを確認します。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "ログ：対象FWと通信条件をそろえる",
+        "cards": [
+          {
+            "title": "対象を絞る",
+            "body": [
+              "Resource ID・時刻",
+              "送信元・宛先・ポート"
+            ]
+          },
+          {
+            "title": "判定を見る",
+            "body": [
+              "Action",
+              "ActionReason"
+            ]
+          },
+          {
+            "title": "設定へ戻る",
+            "body": [
+              "Policy・RCG",
+              "Collection・Rule"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-038-mako",
+      "speaker": "mako",
+      "chapterId": "logs",
+      "speech": "ディナイが見つかったら、その名前の拒否ルールを探す、という進め方でよいでしょうか。",
+      "caption": "Denyが見つかったら、その名前の拒否ルールを探す、という進め方でよいでしょうか。",
+      "subtitleLines": [
+        "Denyが見つかったら、その名前の拒否ルールを探す、",
+        "という進め方でよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Denyが見つかったら、その名前の拒否ルールを探す、という進め方でよいでしょうか。",
+          "lines": [
+            "Denyが見つかったら、その名前の拒否ルールを探す、",
+            "という進め方でよいでしょうか。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "ログ：対象FWと通信条件をそろえる",
+        "cards": [
+          {
+            "title": "対象を絞る",
+            "body": [
+              "Resource ID・時刻",
+              "送信元・宛先・ポート"
+            ]
+          },
+          {
+            "title": "判定を見る",
+            "body": [
+              "Action",
+              "ActionReason"
+            ]
+          },
+          {
+            "title": "設定へ戻る",
+            "body": [
+              "Policy・RCG",
+              "Collection・Rule"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "名前付きの拒否ルールだけとは限りません。許可に一致せず、既定動作で拒否される場合もあります。ネットワークログのアクション リーズンも確認します。",
+      "caption": "名前付きの拒否ルールだけとは限りません。許可に一致せず、既定動作で拒否される場合もあります。NetworkログのActionReasonも確認します。",
+      "subtitleLines": [
+        "名前付きの拒否ルールだけとは限りません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前付きの拒否ルールだけとは限りません。",
+          "lines": [
+            "名前付きの拒否ルールだけとは限りません。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "許可に一致せず、既定動作で拒否される場合もあります。",
+          "lines": [
+            "許可に一致せず、既定動作で拒否される場合もあります。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "NetworkログのActionReasonも確認します。",
+          "lines": [
+            "NetworkログのActionReasonも確認します。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Deny：名前付きルールだけを探さない",
+        "cards": [
+          {
+            "title": "明示の判定",
+            "body": [
+              "一致したルール",
+              "条件・優先順位へ戻る"
+            ]
+          },
+          {
+            "title": "既定拒否",
+            "body": [
+              "ルールに一致しない",
+              "Default Actionも確認"
+            ]
+          },
+          {
+            "title": "証拠の範囲",
+            "body": [
+              "拒否を観測した地点",
+              "他層の成功は別途確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-040-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "そこにデフォルト アクションと記録される場合があります。ルール コレクション グループ、コレクション、ルールの情報も、ポリシー定義と対応させて見ます。",
+      "caption": "そこにDefault Actionと記録される場合があります。Rule Collection Group、Collection、Ruleの情報も、ポリシー定義と対応させて見ます。",
+      "subtitleLines": [
+        "そこにDefault Actionと記録される場合があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこにDefault Actionと記録される場合があります。",
+          "lines": [
+            "そこにDefault Actionと記録される場合があります。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "Rule Collection Group、Collection、Ruleの情報も、ポリシー定義と対応させて見ます。",
+          "lines": [
+            "Rule Collection Group、Collection、",
+            "Ruleの情報も、ポリシー定義と対応させて見ます。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Deny：名前付きルールだけを探さない",
+        "cards": [
+          {
+            "title": "明示の判定",
+            "body": [
+              "一致したルール",
+              "条件・優先順位へ戻る"
+            ]
+          },
+          {
+            "title": "既定拒否",
+            "body": [
+              "ルールに一致しない",
+              "Default Actionも確認"
+            ]
+          },
+          {
+            "title": "証拠の範囲",
+            "body": [
+              "拒否を観測した地点",
+              "他層の成功は別途確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-041-manabu",
+      "speaker": "manabu",
+      "chapterId": "logs",
+      "speech": "拒否の証拠が見つかった地点から、適用条件に戻るわけですね。調べる前に許可範囲を広げるより、変更すべき条件を絞れます。",
+      "caption": "拒否の証拠が見つかった地点から、適用条件に戻るわけですね。調べる前に許可範囲を広げるより、変更すべき条件を絞れます。",
+      "subtitleLines": [
+        "拒否の証拠が見つかった地点から、適用条件に戻るわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "拒否の証拠が見つかった地点から、適用条件に戻るわけですね。",
+          "lines": [
+            "拒否の証拠が見つかった地点から、適用条件に戻るわけですね。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "調べる前に許可範囲を広げるより、変更すべき条件を絞れます。",
+          "lines": [
+            "調べる前に許可範囲を広げるより、変更すべき条件を絞れます。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Deny：名前付きルールだけを探さない",
+        "cards": [
+          {
+            "title": "明示の判定",
+            "body": [
+              "一致したルール",
+              "条件・優先順位へ戻る"
+            ]
+          },
+          {
+            "title": "既定拒否",
+            "body": [
+              "ルールに一致しない",
+              "Default Actionも確認"
+            ]
+          },
+          {
+            "title": "証拠の範囲",
+            "body": [
+              "拒否を観測した地点",
+              "他層の成功は別途確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-042-mako",
+      "speaker": "mako",
+      "chapterId": "logs",
+      "speech": "では反対に、同じ通信のアラウログがありました。これでエーピーアイが正常に動くことまで確認できた、と言えますか。",
+      "caption": "では反対に、同じ通信のAllowログがありました。これでAPIが正常に動くことまで確認できた、と言えますか。",
+      "subtitleLines": [
+        "では反対に、同じ通信のAllowログがありました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では反対に、同じ通信のAllowログがありました。",
+          "lines": [
+            "では反対に、同じ通信のAllowログがありました。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "これでAPIが正常に動くことまで確認できた、と言えますか。",
+          "lines": [
+            "これでAPIが正常に動くことまで確認できた、と言えますか。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allowが証明するのはFWでの許可",
+        "cards": [
+          {
+            "title": "通信の次へ",
+            "body": [
+              "受信側NSG・復路",
+              "接続先の応答"
+            ]
+          },
+          {
+            "title": "アプリの次へ",
+            "body": [
+              "認証・認可・処理結果",
+              "サービス側のログ"
+            ]
+          },
+          {
+            "title": "結論の書き方",
+            "body": [
+              "FWでは許可を確認",
+              "API全体の成功は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-043-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "言えません。アラウが示すのは、そのファイアウォールでの許可です。先の受信制御や応答経路、接続先の認証、アプリの処理結果は、別に確かめます。",
+      "caption": "言えません。Allowが示すのは、そのFirewallでの許可です。先の受信制御や応答経路、接続先の認証、アプリの処理結果は、別に確かめます。",
+      "subtitleLines": [
+        "言えません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "言えません。",
+          "lines": [
+            "言えません。"
+          ],
+          "weight": 6
+        },
+        {
+          "caption": "Allowが示すのは、そのFirewallでの許可です。",
+          "lines": [
+            "Allowが示すのは、そのFirewallでの許可です。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "先の受信制御や応答経路、接続先の認証、アプリの処理結果は、別に確かめます。",
+          "lines": [
+            "先の受信制御や応答経路、接続先の認証、アプリの処理結果は、別に確かめます。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allowが証明するのはFWでの許可",
+        "cards": [
+          {
+            "title": "通信の次へ",
+            "body": [
+              "受信側NSG・復路",
+              "接続先の応答"
+            ]
+          },
+          {
+            "title": "アプリの次へ",
+            "body": [
+              "認証・認可・処理結果",
+              "サービス側のログ"
+            ]
+          },
+          {
+            "title": "結論の書き方",
+            "body": [
+              "FWでは許可を確認",
+              "API全体の成功は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-044-mako",
+      "speaker": "mako",
+      "chapterId": "logs",
+      "speech": "アラウもディナイも見つからなかったら、通信がファイアウォールより前で止まった、と判断できるのでしょうか。",
+      "caption": "AllowもDenyも見つからなかったら、通信がFirewallより前で止まった、と判断できるのでしょうか。",
+      "subtitleLines": [
+        "AllowもDenyも見つからなかったら、",
+        "通信がFirewallより前で止まった、と判断できるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AllowもDenyも見つからなかったら、通信がFirewallより前で止まった、と判断できるのでしょうか。",
+          "lines": [
+            "AllowもDenyも見つからなかったら、",
+            "通信がFirewallより前で止まった、と判断できるのでしょうか。"
+          ],
+          "weight": 54
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "ログが見つからないときの確認",
+        "cards": [
+          {
+            "title": "検索条件",
+            "body": [
+              "時間帯・対象FW・LAW",
+              "通信条件・ログ種類"
+            ]
+          },
+          {
+            "title": "収集状態",
+            "body": [
+              "診断設定・保存先",
+              "取り込みの状態"
+            ]
+          },
+          {
+            "title": "経路の前提",
+            "body": [
+              "FWへ届いたか",
+              "FWを通る通信か"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-045-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "それも断定できません。時刻や対象資源、検索先、ログの種類、診断設定や取り込みの状態を見直し、その通信がファイアウォールへ届く経路かを確認します。",
+      "caption": "それも断定できません。時刻や対象資源、検索先、ログの種類、診断設定や取り込みの状態を見直し、その通信がFirewallへ届く経路かを確認します。",
+      "subtitleLines": [
+        "それも断定できません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "それも断定できません。",
+          "lines": [
+            "それも断定できません。"
+          ],
+          "weight": 11
+        },
+        {
+          "caption": "時刻や対象資源、検索先、ログの種類、診断設定や取り込みの状態を見直し、その通信がFirewallへ届く経路かを確認します。",
+          "lines": [
+            "時刻や対象資源、検索先、ログの種類、診断設定や取り込みの状態を見直し、",
+            "その通信がFirewallへ届く経路かを確認します。"
+          ],
+          "weight": 61
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "ログが見つからないときの確認",
+        "cards": [
+          {
+            "title": "検索条件",
+            "body": [
+              "時間帯・対象FW・LAW",
+              "通信条件・ログ種類"
+            ]
+          },
+          {
+            "title": "収集状態",
+            "body": [
+              "診断設定・保存先",
+              "取り込みの状態"
+            ]
+          },
+          {
+            "title": "経路の前提",
+            "body": [
+              "FWへ届いたか",
+              "FWを通る通信か"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "logs",
+      "speech": "たとえば、エーピーアイエムからファウンドリーのピーイーへ向かうティーシーピーの443番は、標準では具体的な直接経路を使います。この通信をファイアウォールは判定しません。",
+      "caption": "たとえば、APIMからFoundryのPEへ向かうTCPの443番は、標準では具体的な直接経路を使います。この通信をFirewallは判定しません。",
+      "subtitleLines": [
+        "たとえば、APIMからFoundryのPEへ向かう",
+        "TCPの443番は、標準では具体的な直接経路を使います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえば、APIMからFoundryのPEへ向かうTCPの443番は、標準では具体的な直接経路を使います。",
+          "lines": [
+            "たとえば、APIMからFoundryのPEへ向かう",
+            "TCPの443番は、標準では具体的な直接経路を使います。"
+          ],
+          "weight": 53
+        },
+        {
+          "caption": "この通信をFirewallは判定しません。",
+          "lines": [
+            "この通信をFirewallは判定しません。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "比較 D2：APIM → FoundryのPEは直接経路",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "送信NSG・DNS",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "private IP・受信NSG",
+            "x": 455,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "この直接経路では通らない",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "apim",
+            "to": "pe",
+            "label": "TCP 443"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-047-manabu",
+      "speaker": "manabu",
+      "chapterId": "logs",
+      "speech": "この場合は、ディーエヌエスの回答、実効経路、エーピーアイエム送信とピーイー受信のエヌエスジー、接続先のログを調べます。ファイアウォールにアラウを追加すれば直る、とは決めません。",
+      "caption": "この場合は、DNSの回答、実効経路、APIM送信とPE受信のNSG、接続先のログを調べます。FirewallにAllowを追加すれば直る、とは決めません。",
+      "subtitleLines": [
+        "この場合は、DNSの回答、実効経路、",
+        "APIM送信とPE受信のNSG、接続先のログを調べます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この場合は、DNSの回答、実効経路、APIM送信とPE受信のNSG、接続先のログを調べます。",
+          "lines": [
+            "この場合は、DNSの回答、実効経路、",
+            "APIM送信とPE受信のNSG、接続先のログを調べます。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "FirewallにAllowを追加すれば直る、とは決めません。",
+          "lines": [
+            "FirewallにAllowを追加すれば直る、とは決めません。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "比較 D2：APIM → FoundryのPEは直接経路",
+        "nodes": [
+          {
+            "id": "apim",
+            "label": "APIM",
+            "detail": "送信NSG・DNS",
+            "x": 40,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "pe",
+            "label": "Foundry PE",
+            "detail": "private IP・受信NSG",
+            "x": 455,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          },
+          {
+            "id": "fw",
+            "label": "Firewall",
+            "detail": "この直接経路では通らない",
+            "x": 870,
+            "y": 170,
+            "width": 280,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "apim",
+            "to": "pe",
+            "label": "TCP 443"
+          }
+        ],
+        "focus": [
+          "apim",
+          "pe"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-048-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "ここから短い演習です。アップゲートウェイからエーピーアイエムへのバックエンド接続が失敗した、と仮定します。実環境で起きた障害の報告ではありません。",
+      "caption": "ここから短い演習です。AppGWからAPIMへのバックエンド接続が失敗した、と仮定します。実環境で起きた障害の報告ではありません。",
+      "subtitleLines": [
+        "ここから短い演習です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここから短い演習です。",
+          "lines": [
+            "ここから短い演習です。"
+          ],
+          "weight": 11
+        },
+        {
+          "caption": "AppGWからAPIMへのバックエンド接続が失敗した、と仮定します。",
+          "lines": [
+            "AppGWからAPIMへのバックエンド接続が失敗した、と仮定します。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "実環境で起きた障害の報告ではありません。",
+          "lines": [
+            "実環境で起きた障害の報告ではありません。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "演習：同じU1の接続失敗を追う",
+        "cards": [
+          {
+            "title": "分かったこと",
+            "body": [
+              "DNS回答は内部IP",
+              "往復経路はFW経由"
+            ]
+          },
+          {
+            "title": "次に確かめる",
+            "body": [
+              "両側NSGの条件",
+              "FWの判定と一致規則"
+            ]
+          },
+          {
+            "title": "演習上の仮定",
+            "body": [
+              "稼働環境の実測ではない",
+              "一つの接続で照合"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-049-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "まず失敗時刻、アップゲートウェイからの送信元、エーピーアイエムの内部アイピー、ティーシーピーの80番を調査票にそろえます。同じ時間帯の別の宛先を混ぜないようにします。",
+      "caption": "まず失敗時刻、AppGWからの送信元、APIMの内部IP、TCPの80番を調査票にそろえます。同じ時間帯の別の宛先を混ぜないようにします。",
+      "subtitleLines": [
+        "まず失敗時刻、AppGWからの送信元、",
+        "APIMの内部IP、TCPの80番を調査票にそろえます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず失敗時刻、AppGWからの送信元、APIMの内部IP、TCPの80番を調査票にそろえます。",
+          "lines": [
+            "まず失敗時刻、AppGWからの送信元、",
+            "APIMの内部IP、TCPの80番を調査票にそろえます。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "同じ時間帯の別の宛先を混ぜないようにします。",
+          "lines": [
+            "同じ時間帯の別の宛先を混ぜないようにします。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "調査票：同じ通信を探すための条件",
+        "cards": [
+          {
+            "title": "いつ・どこから",
+            "body": [
+              "失敗時刻と時間帯",
+              "通信元の区画・IP"
+            ]
+          },
+          {
+            "title": "どこへ",
+            "body": [
+              "問い合わせた名前",
+              "DNS回答の宛先IP"
+            ]
+          },
+          {
+            "title": "何の通信か",
+            "body": [
+              "プロトコルとポート",
+              "新規接続か・症状"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-050-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "この演習では、送信元のディーエヌエス回答と往復経路が設計どおりで、両側エヌエスジーも条件上は許可だと分かりました。次にファイアウォールのログを探します。",
+      "caption": "この演習では、送信元のDNS回答と往復経路が設計どおりで、両側NSGも条件上は許可だと分かりました。次にFWのログを探します。",
+      "subtitleLines": [
+        "この演習では、送信元のDNS回答と往復経路が設計どおりで、",
+        "両側NSGも条件上は許可だと分かりました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この演習では、送信元のDNS回答と往復経路が設計どおりで、両側NSGも条件上は許可だと分かりました。",
+          "lines": [
+            "この演習では、送信元のDNS回答と往復経路が設計どおりで、",
+            "両側NSGも条件上は許可だと分かりました。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "次にFWのログを探します。",
+          "lines": [
+            "次にFWのログを探します。"
+          ],
+          "weight": 13
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "演習：同じU1の接続失敗を追う",
+        "cards": [
+          {
+            "title": "分かったこと",
+            "body": [
+              "DNS回答は内部IP",
+              "往復経路はFW経由"
+            ]
+          },
+          {
+            "title": "次に確かめる",
+            "body": [
+              "両側NSGの条件",
+              "FWの判定と一致規則"
+            ]
+          },
+          {
+            "title": "演習上の仮定",
+            "body": [
+              "稼働環境の実測ではない",
+              "一つの接続で照合"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-051-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "同じ通信についてディナイとデフォルト アクションが見つかった、とします。次は、適用されたポリシーと内部中継の許可条件が、想定と一致するかを調べます。",
+      "caption": "同じ通信についてDenyとDefault Actionが見つかった、とします。次は、適用されたポリシーと内部中継の許可条件が、想定と一致するかを調べます。",
+      "subtitleLines": [
+        "同じ通信についてDenyとDefault",
+        " Actionが見つかった、とします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "同じ通信についてDenyとDefault Actionが見つかった、とします。",
+          "lines": [
+            "同じ通信についてDenyとDefault",
+            " Actionが見つかった、とします。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "次は、適用されたポリシーと内部中継の許可条件が、想定と一致するかを調べます。",
+          "lines": [
+            "次は、適用されたポリシーと内部中継の許可条件が、想定と一致するかを調べます。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Deny：名前付きルールだけを探さない",
+        "cards": [
+          {
+            "title": "明示の判定",
+            "body": [
+              "一致したルール",
+              "条件・優先順位へ戻る"
+            ]
+          },
+          {
+            "title": "既定拒否",
+            "body": [
+              "ルールに一致しない",
+              "Default Actionも確認"
+            ]
+          },
+          {
+            "title": "証拠の範囲",
+            "body": [
+              "拒否を観測した地点",
+              "他層の成功は別途確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-052-manabu",
+      "speaker": "manabu",
+      "chapterId": "walkthrough",
+      "speech": "ここまでで言えるのは、この試行をファイアウォールが拒否したことです。どの設定変更が必要かは、送信元や宛先、ポートの照合を続けて判断します。",
+      "caption": "ここまでで言えるのは、この試行をFirewallが拒否したことです。どの設定変更が必要かは、送信元や宛先、ポートの照合を続けて判断します。",
+      "subtitleLines": [
+        "ここまでで言えるのは、この試行をFirewallが拒否したことです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまでで言えるのは、この試行をFirewallが拒否したことです。",
+          "lines": [
+            "ここまでで言えるのは、この試行をFirewallが拒否したことです。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "どの設定変更が必要かは、送信元や宛先、ポートの照合を続けて判断します。",
+          "lines": [
+            "どの設定変更が必要かは、送信元や宛先、ポートの照合を続けて判断します。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "引き継ぎ：観測・未確認・次の確認先",
+        "cards": [
+          {
+            "title": "観測した事実",
+            "body": [
+              "時刻・条件・対象資源",
+              "ログと適用設定"
+            ]
+          },
+          {
+            "title": "判断の範囲",
+            "body": [
+              "拒否した地点",
+              "まだ確認していない層"
+            ]
+          },
+          {
+            "title": "変更後の確認",
+            "body": [
+              "限定した変更を管理",
+              "同じ条件の新規接続"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "設計上のエージーダブリュー トゥー エーピーアイエム エイチティーティーピーがあるはずなのに一致しないなら、名前の存在だけでなく、適用先や実際の条件を見るわけですね。",
+      "caption": "設計上のagw-to-apim-httpがあるはずなのに一致しないなら、名前の存在だけでなく、適用先や実際の条件を見るわけですね。",
+      "subtitleLines": [
+        "設計上のagw-to-apim-httpがあるはずなのに一致しないなら、",
+        "名前の存在だけでなく、適用先や実際の条件を見るわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "設計上のagw-to-apim-httpがあるはずなのに一致しないなら、名前の存在だけでなく、適用先や実際の条件を見るわけですね。",
+          "lines": [
+            "設計上のagw-to-apim-httpがあるはずなのに一致しないなら、",
+            "名前の存在だけでなく、適用先や実際の条件を見るわけですね。"
+          ],
+          "weight": 65
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "U1の許可：同じTCP 80を照合する",
+        "cards": [
+          {
+            "title": "AppGWの送信",
+            "body": [
+              "allow-apim-http",
+              "APIM区画へ送信"
+            ]
+          },
+          {
+            "title": "APIMの受信",
+            "body": [
+              "allow-agw-api",
+              "AppGW区画から受信"
+            ]
+          },
+          {
+            "title": "Firewall",
+            "body": [
+              "agw-to-apim-http",
+              "内部中継の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-054-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "はい。アイエーシーの定義、配備先の設定、観測した通信を照合します。間違った送信元で検索していないか、別のポリシーを見ていないかも確認します。",
+      "caption": "はい。IaCの定義、配備先の設定、観測した通信を照合します。間違った送信元で検索していないか、別のポリシーを見ていないかも確認します。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "IaCの定義、配備先の設定、観測した通信を照合します。",
+          "lines": [
+            "IaCの定義、配備先の設定、観測した通信を照合します。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "間違った送信元で検索していないか、別のポリシーを見ていないかも確認します。",
+          "lines": [
+            "間違った送信元で検索していないか、別のポリシーを見ていないかも確認します。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "引き継ぎ：観測・未確認・次の確認先",
+        "cards": [
+          {
+            "title": "観測した事実",
+            "body": [
+              "時刻・条件・対象資源",
+              "ログと適用設定"
+            ]
+          },
+          {
+            "title": "判断の範囲",
+            "body": [
+              "拒否した地点",
+              "まだ確認していない層"
+            ]
+          },
+          {
+            "title": "変更後の確認",
+            "body": [
+              "限定した変更を管理",
+              "同じ条件の新規接続"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-055-manabu",
+      "speaker": "manabu",
+      "chapterId": "walkthrough",
+      "speech": "変更するなら、理由と元の設定を残し、必要な範囲を限定します。変更後には同じ条件の新規接続で、症状と記録を確かめ直します。",
+      "caption": "変更するなら、理由と元の設定を残し、必要な範囲を限定します。変更後には同じ条件の新規接続で、症状と記録を確かめ直します。",
+      "subtitleLines": [
+        "変更するなら、理由と元の設定を残し、必要な範囲を限定します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "変更するなら、理由と元の設定を残し、必要な範囲を限定します。",
+          "lines": [
+            "変更するなら、理由と元の設定を残し、必要な範囲を限定します。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "変更後には同じ条件の新規接続で、症状と記録を確かめ直します。",
+          "lines": [
+            "変更後には同じ条件の新規接続で、症状と記録を確かめ直します。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "引き継ぎ：観測・未確認・次の確認先",
+        "cards": [
+          {
+            "title": "観測した事実",
+            "body": [
+              "時刻・条件・対象資源",
+              "ログと適用設定"
+            ]
+          },
+          {
+            "title": "判断の範囲",
+            "body": [
+              "拒否した地点",
+              "まだ確認していない層"
+            ]
+          },
+          {
+            "title": "変更後の確認",
+            "body": [
+              "限定した変更を管理",
+              "同じ条件の新規接続"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-056-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "別の分岐も考えたいです。同じ条件のアラウがあるのに失敗している場合、次にどこへ調査を進めましょう。",
+      "caption": "別の分岐も考えたいです。同じ条件のAllowがあるのに失敗している場合、次にどこへ調査を進めましょう。",
+      "subtitleLines": [
+        "別の分岐も考えたいです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "別の分岐も考えたいです。",
+          "lines": [
+            "別の分岐も考えたいです。"
+          ],
+          "weight": 12
+        },
+        {
+          "caption": "同じ条件のAllowがあるのに失敗している場合、次にどこへ調査を進めましょう。",
+          "lines": [
+            "同じ条件のAllowがあるのに失敗している場合、",
+            "次にどこへ調査を進めましょう。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allowが証明するのはFWでの許可",
+        "cards": [
+          {
+            "title": "通信の次へ",
+            "body": [
+              "受信側NSG・復路",
+              "接続先の応答"
+            ]
+          },
+          {
+            "title": "アプリの次へ",
+            "body": [
+              "認証・認可・処理結果",
+              "サービス側のログ"
+            ]
+          },
+          {
+            "title": "結論の書き方",
+            "body": [
+              "FWでは許可を確認",
+              "API全体の成功は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-057-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "受信側の状態や復路、エーピーアイエム側の記録を確認します。公開入口からの要求なら、アップゲートウェイアクセスログの時刻、ステータス、バックエンドなども対応させます。",
+      "caption": "受信側の状態や復路、APIM側の記録を確認します。公開入口からの要求なら、AppGWアクセスログの時刻、status、バックエンドなども対応させます。",
+      "subtitleLines": [
+        "受信側の状態や復路、APIM側の記録を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "受信側の状態や復路、APIM側の記録を確認します。",
+          "lines": [
+            "受信側の状態や復路、APIM側の記録を確認します。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "公開入口からの要求なら、AppGWアクセスログの時刻、status、バックエンドなども対応させます。",
+          "lines": [
+            "公開入口からの要求なら、AppGWアクセスログの時刻、",
+            "status、バックエンドなども対応させます。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allowが証明するのはFWでの許可",
+        "cards": [
+          {
+            "title": "通信の次へ",
+            "body": [
+              "受信側NSG・復路",
+              "接続先の応答"
+            ]
+          },
+          {
+            "title": "アプリの次へ",
+            "body": [
+              "認証・認可・処理結果",
+              "サービス側のログ"
+            ]
+          },
+          {
+            "title": "結論の書き方",
+            "body": [
+              "FWでは許可を確認",
+              "API全体の成功は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "アップゲートウェイのトランザクション アイディー等も手掛かりです。ただしWAFの判定ログとアクセスログは別です。認証や要求処理の詳細は、第13回で扱います。",
+      "caption": "AppGWのTransactionId等も手掛かりです。ただしWAFの判定ログとアクセスログは別です。認証や要求処理の詳細は、第13回で扱います。",
+      "subtitleLines": [
+        "AppGWのTransactionId等も手掛かりです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "AppGWのTransactionId等も手掛かりです。",
+          "lines": [
+            "AppGWのTransactionId等も手掛かりです。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "ただしWAFの判定ログとアクセスログは別です。",
+          "lines": [
+            "ただしWAFの判定ログとアクセスログは別です。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "認証や要求処理の詳細は、第13回で扱います。",
+          "lines": [
+            "認証や要求処理の詳細は、第13回で扱います。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "保存しているログの範囲を確認する",
+        "cards": [
+          {
+            "title": "入口",
+            "body": [
+              "AppGWアクセスログ",
+              "WAF判定とは区別"
+            ]
+          },
+          {
+            "title": "基盤",
+            "body": [
+              "メトリック＝数値",
+              "Activity＝管理操作"
+            ]
+          },
+          {
+            "title": "収集範囲",
+            "body": [
+              "全VNet通信ではない",
+              "Flow Logs等の定義なし"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-059-manabu",
+      "speaker": "manabu",
+      "chapterId": "walkthrough",
+      "speech": "引き継ぎには、観測した事実、判断できる範囲、未確認の層、次の確認先を残します。設定したことと、疎通を観測したことも分けて書きます。",
+      "caption": "引き継ぎには、観測した事実、判断できる範囲、未確認の層、次の確認先を残します。設定したことと、疎通を観測したことも分けて書きます。",
+      "subtitleLines": [
+        "引き継ぎには、観測した事実、判断できる範囲、",
+        "未確認の層、次の確認先を残します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "引き継ぎには、観測した事実、判断できる範囲、未確認の層、次の確認先を残します。",
+          "lines": [
+            "引き継ぎには、観測した事実、判断できる範囲、",
+            "未確認の層、次の確認先を残します。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "設定したことと、疎通を観測したことも分けて書きます。",
+          "lines": [
+            "設定したことと、疎通を観測したことも分けて書きます。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "引き継ぎ：観測・未確認・次の確認先",
+        "cards": [
+          {
+            "title": "観測した事実",
+            "body": [
+              "時刻・条件・対象資源",
+              "ログと適用設定"
+            ]
+          },
+          {
+            "title": "判断の範囲",
+            "body": [
+              "拒否した地点",
+              "まだ確認していない層"
+            ]
+          },
+          {
+            "title": "変更後の確認",
+            "body": [
+              "限定した変更を管理",
+              "同じ条件の新規接続"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-060-mako",
+      "speaker": "mako",
+      "chapterId": "alerts",
+      "speech": "ここまではログを探す側の話でした。そもそもファイアウォールの通信ログは、どこへ送る定義になっていますか。",
+      "caption": "ここまではログを探す側の話でした。そもそもFirewallの通信ログは、どこへ送る定義になっていますか。",
+      "subtitleLines": [
+        "ここまではログを探す側の話でした。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまではログを探す側の話でした。",
+          "lines": [
+            "ここまではログを探す側の話でした。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "そもそもFirewallの通信ログは、どこへ送る定義になっていますか。",
+          "lines": [
+            "そもそもFirewallの通信ログは、どこへ送る定義になっていますか。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通信ログ：検索用と監査用の保存先",
+        "nodes": [
+          {
+            "id": "fw",
+            "label": "Firewall診断",
+            "detail": "Network / Application",
+            "x": 40,
+            "y": 170,
+            "width": 310,
+            "height": 100
+          },
+          {
+            "id": "law",
+            "label": "LAW",
+            "detail": "Dedicated形式・検索",
+            "x": 490,
+            "y": 55,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "storage",
+            "label": "日本側監査Storage",
+            "detail": "監査のための保護",
+            "x": 490,
+            "y": 310,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "fw",
+            "to": "law"
+          },
+          {
+            "from": "fw",
+            "to": "storage"
+          }
+        ],
+        "focus": [
+          "law"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-061-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "ネットワークとアプリケーションの判定は、ログ アナリティクス ワークスペースへデディケイテッド形式で保存します。監査収集を有効にした構成では、日本側の監査ストレージにも送ります。",
+      "caption": "NetworkとApplicationの判定は、LAWへDedicated形式で保存します。監査収集を有効にした構成では、日本側の監査Storageにも送ります。",
+      "subtitleLines": [
+        "NetworkとApplicationの判定は、",
+        "LAWへDedicated形式で保存します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NetworkとApplicationの判定は、LAWへDedicated形式で保存します。",
+          "lines": [
+            "NetworkとApplicationの判定は、",
+            "LAWへDedicated形式で保存します。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "監査収集を有効にした構成では、日本側の監査Storageにも送ります。",
+          "lines": [
+            "監査収集を有効にした構成では、日本側の監査Storageにも送ります。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通信ログ：検索用と監査用の保存先",
+        "nodes": [
+          {
+            "id": "fw",
+            "label": "Firewall診断",
+            "detail": "Network / Application",
+            "x": 40,
+            "y": 170,
+            "width": 310,
+            "height": 100
+          },
+          {
+            "id": "law",
+            "label": "LAW",
+            "detail": "Dedicated形式・検索",
+            "x": 490,
+            "y": 55,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "storage",
+            "label": "日本側監査Storage",
+            "detail": "監査のための保護",
+            "x": 490,
+            "y": 310,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "fw",
+            "to": "law"
+          },
+          {
+            "from": "fw",
+            "to": "storage"
+          }
+        ],
+        "focus": [
+          "law"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-062-manabu",
+      "speaker": "manabu",
+      "chapterId": "alerts",
+      "speech": "ただ、保存先が二つあることと、二つとも実際に届いたことは別ですね。調査時には、診断設定と到着状況まで確かめる必要があります。",
+      "caption": "ただ、保存先が二つあることと、二つとも実際に届いたことは別ですね。調査時には、診断設定と到着状況まで確かめる必要があります。",
+      "subtitleLines": [
+        "ただ、保存先が二つあることと、二つとも実際に届いたことは別ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ただ、保存先が二つあることと、二つとも実際に届いたことは別ですね。",
+          "lines": [
+            "ただ、保存先が二つあることと、二つとも実際に届いたことは別ですね。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "調査時には、診断設定と到着状況まで確かめる必要があります。",
+          "lines": [
+            "調査時には、診断設定と到着状況まで確かめる必要があります。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "通信ログ：検索用と監査用の保存先",
+        "nodes": [
+          {
+            "id": "fw",
+            "label": "Firewall診断",
+            "detail": "Network / Application",
+            "x": 40,
+            "y": 170,
+            "width": 310,
+            "height": 100
+          },
+          {
+            "id": "law",
+            "label": "LAW",
+            "detail": "Dedicated形式・検索",
+            "x": 490,
+            "y": 55,
+            "width": 300,
+            "height": 100
+          },
+          {
+            "id": "storage",
+            "label": "日本側監査Storage",
+            "detail": "監査のための保護",
+            "x": 490,
+            "y": 310,
+            "width": 300,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "fw",
+            "to": "law"
+          },
+          {
+            "from": "fw",
+            "to": "storage"
+          }
+        ],
+        "focus": [
+          "law"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-063-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "そのとおりです。また、現行インフラにはブイネットやエヌエスジーのフロー ログ、パケット キャプチャーを作る定義はありません。全ブイネット通信が記録される構成ではありません。",
+      "caption": "そのとおりです。また、現行infraにはVNetやNSGのFlow Logs、Packet Captureを作る定義はありません。全VNet通信が記録される構成ではありません。",
+      "subtitleLines": [
+        "そのとおりです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのとおりです。",
+          "lines": [
+            "そのとおりです。"
+          ],
+          "weight": 8
+        },
+        {
+          "caption": "また、現行infraにはVNetやNSGのFlow Logs、Packet Captureを作る定義はありません。",
+          "lines": [
+            "また、現行infraにはVNetやNSGのFlow Logs、",
+            "Packet Captureを作る定義はありません。"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "全VNet通信が記録される構成ではありません。",
+          "lines": [
+            "全VNet通信が記録される構成ではありません。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "保存しているログの範囲を確認する",
+        "cards": [
+          {
+            "title": "入口",
+            "body": [
+              "AppGWアクセスログ",
+              "WAF判定とは区別"
+            ]
+          },
+          {
+            "title": "基盤",
+            "body": [
+              "メトリック＝数値",
+              "Activity＝管理操作"
+            ]
+          },
+          {
+            "title": "収集範囲",
+            "body": [
+              "全VNet通信ではない",
+              "Flow Logs等の定義なし"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-064-mako",
+      "speaker": "mako",
+      "chapterId": "alerts",
+      "speech": "ピーイーへの直接通信も含めて、何でもファイアウォールログで追えるわけではないんですね。メトリックとアクティビティ ログは、何を見る記録ですか。",
+      "caption": "PEへの直接通信も含めて、何でもFirewallログで追えるわけではないんですね。メトリックとActivity Logは、何を見る記録ですか。",
+      "subtitleLines": [
+        "PEへの直接通信も含めて、",
+        "何でもFirewallログで追えるわけではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "PEへの直接通信も含めて、何でもFirewallログで追えるわけではないんですね。",
+          "lines": [
+            "PEへの直接通信も含めて、",
+            "何でもFirewallログで追えるわけではないんですね。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "メトリックとActivity Logは、何を見る記録ですか。",
+          "lines": [
+            "メトリックとActivity Logは、何を見る記録ですか。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "保存しているログの範囲を確認する",
+        "cards": [
+          {
+            "title": "入口",
+            "body": [
+              "AppGWアクセスログ",
+              "WAF判定とは区別"
+            ]
+          },
+          {
+            "title": "基盤",
+            "body": [
+              "メトリック＝数値",
+              "Activity＝管理操作"
+            ]
+          },
+          {
+            "title": "収集範囲",
+            "body": [
+              "全VNet通信ではない",
+              "Flow Logs等の定義なし"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-065-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "メトリックは状態を表す数値、アクティビティ ログは管理操作や基盤状態の記録です。どの通信を許可したかという通信ログとは、調べる問いが違います。",
+      "caption": "メトリックは状態を表す数値、Activity Logは管理操作や基盤状態の記録です。どの通信を許可したかという通信ログとは、調べる問いが違います。",
+      "subtitleLines": [
+        "メトリックは状態を表す数値、",
+        "Activity Logは管理操作や基盤状態の記録です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "メトリックは状態を表す数値、Activity Logは管理操作や基盤状態の記録です。",
+          "lines": [
+            "メトリックは状態を表す数値、",
+            "Activity Logは管理操作や基盤状態の記録です。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "どの通信を許可したかという通信ログとは、調べる問いが違います。",
+          "lines": [
+            "どの通信を許可したかという通信ログとは、調べる問いが違います。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "保存しているログの範囲を確認する",
+        "cards": [
+          {
+            "title": "入口",
+            "body": [
+              "AppGWアクセスログ",
+              "WAF判定とは区別"
+            ]
+          },
+          {
+            "title": "基盤",
+            "body": [
+              "メトリック＝数値",
+              "Activity＝管理操作"
+            ]
+          },
+          {
+            "title": "収集範囲",
+            "body": [
+              "全VNet通信ではない",
+              "Flow Logs等の定義なし"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-066-mako",
+      "speaker": "mako",
+      "chapterId": "alerts",
+      "speech": "では、ファイアウォールのディナイが一件出たら、運用担当者へすぐメールが届くのでしょうか。ログ保存と通知はつながっていますか。",
+      "caption": "では、FirewallのDenyが一件出たら、運用担当者へすぐメールが届くのでしょうか。ログ保存と通知はつながっていますか。",
+      "subtitleLines": [
+        "では、FirewallのDenyが一件出たら、",
+        "運用担当者へすぐメールが届くのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、FirewallのDenyが一件出たら、運用担当者へすぐメールが届くのでしょうか。",
+          "lines": [
+            "では、FirewallのDenyが一件出たら、",
+            "運用担当者へすぐメールが届くのでしょうか。"
+          ],
+          "weight": 44
+        },
+        {
+          "caption": "ログ保存と通知はつながっていますか。",
+          "lines": [
+            "ログ保存と通知はつながっていますか。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "ログ記録と通知は別の設定",
+        "nodes": [
+          {
+            "id": "signal",
+            "label": "状態・管理操作",
+            "detail": "メトリック / Activity",
+            "x": 40,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "rule",
+            "label": "アラート条件",
+            "detail": "閾値・対象・評価窓",
+            "x": 440,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "mail",
+            "label": "Action Group",
+            "detail": "登録された運用者へメール",
+            "x": 840,
+            "y": 170,
+            "width": 320,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "signal",
+            "to": "rule"
+          },
+          {
+            "from": "rule",
+            "to": "mail",
+            "label": "条件に一致"
+          }
+        ],
+        "focus": [
+          "rule"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-067-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "現在、ディナイ全件を自動通知する定義ではありません。通知には、アラートの対象と評価条件、アクション グループへの配線を、別に確認します。",
+      "caption": "現在、Deny全件を自動通知する定義ではありません。通知には、アラートの対象と評価条件、Action Groupへの配線を、別に確認します。",
+      "subtitleLines": [
+        "現在、Deny全件を自動通知する定義ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "現在、Deny全件を自動通知する定義ではありません。",
+          "lines": [
+            "現在、Deny全件を自動通知する定義ではありません。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "通知には、アラートの対象と評価条件、Action Groupへの配線を、別に確認します。",
+          "lines": [
+            "通知には、アラートの対象と評価条件、",
+            "Action Groupへの配線を、別に確認します。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "ログ記録と通知は別の設定",
+        "nodes": [
+          {
+            "id": "signal",
+            "label": "状態・管理操作",
+            "detail": "メトリック / Activity",
+            "x": 40,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "rule",
+            "label": "アラート条件",
+            "detail": "閾値・対象・評価窓",
+            "x": 440,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "mail",
+            "label": "Action Group",
+            "detail": "登録された運用者へメール",
+            "x": 840,
+            "y": 170,
+            "width": 320,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "signal",
+            "to": "rule"
+          },
+          {
+            "from": "rule",
+            "to": "mail",
+            "label": "条件に一致"
+          }
+        ],
+        "focus": [
+          "rule"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "たとえばアップゲートウェイのアンヘルシー ホスト カウントは平均がゼロを超えた場合、ファイアウォール ヘルスは平均が100を下回った場合です。どちらも5分窓で、毎分評価します。",
+      "caption": "たとえばAppGWのUnhealthyHostCountは平均がゼロを超えた場合、FirewallHealthは平均が100を下回った場合です。どちらも5分窓で、毎分評価します。",
+      "subtitleLines": [
+        "たとえばAppGWのUnhealthyHostCountは平均がゼロを超",
+        "えた場合、FirewallHealthは平均が100を下回った場合です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえばAppGWのUnhealthyHostCountは平均がゼロを超えた場合、FirewallHealthは平均が100を下回った場合です。",
+          "lines": [
+            "たとえばAppGWのUnhealthyHostCountは平均がゼロを超",
+            "えた場合、FirewallHealthは平均が100を下回った場合です。"
+          ],
+          "weight": 72
+        },
+        {
+          "caption": "どちらも5分窓で、毎分評価します。",
+          "lines": [
+            "どちらも5分窓で、毎分評価します。"
+          ],
+          "weight": 17
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "状態の異常：メトリックアラート",
+        "cards": [
+          {
+            "title": "AppGW",
+            "body": [
+              "UnhealthyHostCount > 0",
+              "平均・5分窓 / 毎分"
+            ]
+          },
+          {
+            "title": "Firewall",
+            "body": [
+              "FirewallHealth < 100",
+              "平均・5分窓 / 毎分"
+            ]
+          },
+          {
+            "title": "意味",
+            "body": [
+              "状態異常の通知",
+              "Deny全件通知とは別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-069-manabu",
+      "speaker": "manabu",
+      "chapterId": "alerts",
+      "speech": "接続失敗が起きたその瞬間の通知とは限らず、決めた窓と条件で状態を評価するんですね。拒否ログの件数をそのまま通知する例でもありません。",
+      "caption": "接続失敗が起きたその瞬間の通知とは限らず、決めた窓と条件で状態を評価するんですね。拒否ログの件数をそのまま通知する例でもありません。",
+      "subtitleLines": [
+        "接続失敗が起きたその瞬間の通知とは限らず、",
+        "決めた窓と条件で状態を評価するんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続失敗が起きたその瞬間の通知とは限らず、決めた窓と条件で状態を評価するんですね。",
+          "lines": [
+            "接続失敗が起きたその瞬間の通知とは限らず、",
+            "決めた窓と条件で状態を評価するんですね。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "拒否ログの件数をそのまま通知する例でもありません。",
+          "lines": [
+            "拒否ログの件数をそのまま通知する例でもありません。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "状態の異常：メトリックアラート",
+        "cards": [
+          {
+            "title": "AppGW",
+            "body": [
+              "UnhealthyHostCount > 0",
+              "平均・5分窓 / 毎分"
+            ]
+          },
+          {
+            "title": "Firewall",
+            "body": [
+              "FirewallHealth < 100",
+              "平均・5分窓 / 毎分"
+            ]
+          },
+          {
+            "title": "意味",
+            "body": [
+              "状態異常の通知",
+              "Deny全件通知とは別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "通知先は運用者のメールアドレスを登録したアクション グループです。このアクション グループにはウェブフックや、自動復旧や撤去をする処理は登録していません。",
+      "caption": "通知先は運用者のメールアドレスを登録したAction Groupです。このAction GroupにはWebhookや、自動復旧や撤去をする処理は登録していません。",
+      "subtitleLines": [
+        "通知先は運用者のメールアドレスを登録したAction Groupです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通知先は運用者のメールアドレスを登録したAction Groupです。",
+          "lines": [
+            "通知先は運用者のメールアドレスを登録したAction Groupです。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "このAction GroupにはWebhookや、自動復旧や撤去をする処理は登録していません。",
+          "lines": [
+            "このAction GroupにはWebhookや、",
+            "自動復旧や撤去をする処理は登録していません。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "ログ記録と通知は別の設定",
+        "nodes": [
+          {
+            "id": "signal",
+            "label": "状態・管理操作",
+            "detail": "メトリック / Activity",
+            "x": 40,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "rule",
+            "label": "アラート条件",
+            "detail": "閾値・対象・評価窓",
+            "x": 440,
+            "y": 170,
+            "width": 290,
+            "height": 100
+          },
+          {
+            "id": "mail",
+            "label": "Action Group",
+            "detail": "登録された運用者へメール",
+            "x": 840,
+            "y": 170,
+            "width": 320,
+            "height": 100
+          }
+        ],
+        "edges": [
+          {
+            "from": "signal",
+            "to": "rule"
+          },
+          {
+            "from": "rule",
+            "to": "mail",
+            "label": "条件に一致"
+          }
+        ],
+        "focus": [
+          "rule"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "alerts",
+      "speech": "ネットワーク設定が変わったときにも通知がありますね。それなら、ディーエヌエスやピーイーの変更まで、全部を知らせてくれるのでしょうか。",
+      "caption": "ネットワーク設定が変わったときにも通知がありますね。それなら、DNSやPEの変更まで、全部を知らせてくれるのでしょうか。",
+      "subtitleLines": [
+        "ネットワーク設定が変わったときにも通知がありますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ネットワーク設定が変わったときにも通知がありますね。",
+          "lines": [
+            "ネットワーク設定が変わったときにも通知がありますね。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "それなら、DNSやPEの変更まで、全部を知らせてくれるのでしょうか。",
+          "lines": [
+            "それなら、DNSやPEの変更まで、全部を知らせてくれるのでしょうか。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更の通知：操作名・結果・対象IDで評価",
+        "cards": [
+          {
+            "title": "含める例",
+            "body": [
+              "VNet・NSG・FW",
+              "指定のルートテーブル"
+            ]
+          },
+          {
+            "title": "範囲外の例",
+            "body": [
+              "別宣言のACA用RT",
+              "PE・Private DNS"
+            ]
+          },
+          {
+            "title": "結果も確認",
+            "body": [
+              "Succeeded / Failed",
+              "失敗＝反映済みではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "全部ではありません。操作名、結果、対象IDを照合します。別宣言のエーシーエー用ルートテーブル、ピーイー、プライベート ディーエヌエスゾーンは、この変更通知の対象一覧に入りません。",
+      "caption": "全部ではありません。操作名、結果、対象IDを照合します。別宣言のACA用ルートテーブル、PE、Private DNSゾーンは、この変更通知の対象一覧に入りません。",
+      "subtitleLines": [
+        "全部ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "全部ではありません。",
+          "lines": [
+            "全部ではありません。"
+          ],
+          "weight": 10
+        },
+        {
+          "caption": "操作名、結果、対象IDを照合します。",
+          "lines": [
+            "操作名、結果、対象IDを照合します。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "別宣言のACA用ルートテーブル、PE、Private DNSゾーンは、この変更通知の対象一覧に入りません。",
+          "lines": [
+            "別宣言のACA用ルートテーブル、PE、Private",
+            " DNSゾーンは、この変更通知の対象一覧に入りません。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更の通知：操作名・結果・対象IDで評価",
+        "cards": [
+          {
+            "title": "含める例",
+            "body": [
+              "VNet・NSG・FW",
+              "指定のルートテーブル"
+            ]
+          },
+          {
+            "title": "範囲外の例",
+            "body": [
+              "別宣言のACA用RT",
+              "PE・Private DNS"
+            ]
+          },
+          {
+            "title": "結果も確認",
+            "body": [
+              "Succeeded / Failed",
+              "失敗＝反映済みではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-073-manabu",
+      "speaker": "manabu",
+      "chapterId": "alerts",
+      "speech": "アクティビティ ログの収集範囲と、個別の通知対象は違うわけですね。操作が記録されてもメールが出るとは限らず、フェイルドを設定反映済みとも考えません。",
+      "caption": "Activity Logの収集範囲と、個別の通知対象は違うわけですね。操作が記録されてもメールが出るとは限らず、Failedを設定反映済みとも考えません。",
+      "subtitleLines": [
+        "Activity Logの収集範囲と、個別の通知対象は違うわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Activity Logの収集範囲と、個別の通知対象は違うわけですね。",
+          "lines": [
+            "Activity Logの収集範囲と、個別の通知対象は違うわけですね。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "操作が記録されてもメールが出るとは限らず、Failedを設定反映済みとも考えません。",
+          "lines": [
+            "操作が記録されてもメールが出るとは限らず、",
+            "Failedを設定反映済みとも考えません。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更の通知：操作名・結果・対象IDで評価",
+        "cards": [
+          {
+            "title": "含める例",
+            "body": [
+              "VNet・NSG・FW",
+              "指定のルートテーブル"
+            ]
+          },
+          {
+            "title": "範囲外の例",
+            "body": [
+              "別宣言のACA用RT",
+              "PE・Private DNS"
+            ]
+          },
+          {
+            "title": "結果も確認",
+            "body": [
+              "Succeeded / Failed",
+              "失敗＝反映済みではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "alerts",
+      "speech": "本番の公開設定でイネーブル ログ アラーツがfalseなら、ログ収集や、今のメトリック通知も止まってしまいますか。",
+      "caption": "本番の公開設定でenableLogAlertsがfalseなら、ログ収集や、今のメトリック通知も止まってしまいますか。",
+      "subtitleLines": [
+        "本番の公開設定でenableLogAlertsがfalseなら、",
+        "ログ収集や、今のメトリック通知も止まってしまいますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番の公開設定でenableLogAlertsがfalseなら、ログ収集や、今のメトリック通知も止まってしまいますか。",
+          "lines": [
+            "本番の公開設定でenableLogAlertsがfalseなら、",
+            "ログ収集や、今のメトリック通知も止まってしまいますか。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "enableLogAlerts の切替範囲",
+        "cards": [
+          {
+            "title": "公開設定",
+            "body": [
+              "本番 false / テスト true",
+              "3本のKQL通知を切替"
+            ]
+          },
+          {
+            "title": "別設定",
+            "body": [
+              "診断ログ・メトリック",
+              "Activity通知は継続"
+            ]
+          },
+          {
+            "title": "誤解を確認",
+            "body": [
+              "FW Deny全件通知を",
+              "有効にするフラグではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "alerts",
+      "speech": "止まりません。このフラグは、監査ブロブ書込失敗、取り込み量、エーピーアイ失敗率の三つのケーキューエルアラートを切り替えます。診断ログやメトリック、アクティビティ通知とは別です。",
+      "caption": "止まりません。このフラグは、監査Blob書込失敗、取り込み量、API失敗率の三つのKQLアラートを切り替えます。診断ログやメトリック、Activity通知とは別です。",
+      "subtitleLines": [
+        "止まりません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "止まりません。",
+          "lines": [
+            "止まりません。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "このフラグは、監査Blob書込失敗、取り込み量、API失敗率の三つのKQLアラートを切り替えます。",
+          "lines": [
+            "このフラグは、監査Blob書込失敗、取り込み量、",
+            "API失敗率の三つのKQLアラートを切り替えます。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "診断ログやメトリック、Activity通知とは別です。",
+          "lines": [
+            "診断ログやメトリック、Activity通知とは別です。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "enableLogAlerts の切替範囲",
+        "cards": [
+          {
+            "title": "公開設定",
+            "body": [
+              "本番 false / テスト true",
+              "3本のKQL通知を切替"
+            ]
+          },
+          {
+            "title": "別設定",
+            "body": [
+              "診断ログ・メトリック",
+              "Activity通知は継続"
+            ]
+          },
+          {
+            "title": "誤解を確認",
+            "body": [
+              "FW Deny全件通知を",
+              "有効にするフラグではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-076-manabu",
+      "speaker": "manabu",
+      "chapterId": "alerts",
+      "speech": "本番の例はfalse、テストの例はtrueですが、ファイアウォールのディナイ全件通知を有効にするスイッチではありません。記録、評価、通知先を分けて確認しましょう。",
+      "caption": "本番の例はfalse、テストの例はtrueですが、FWのDeny全件通知を有効にするスイッチではありません。記録、評価、通知先を分けて確認しましょう。",
+      "subtitleLines": [
+        "本番の例はfalse、テストの例はtrueですが、",
+        "FWのDeny全件通知を有効にするスイッチではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番の例はfalse、テストの例はtrueですが、FWのDeny全件通知を有効にするスイッチではありません。",
+          "lines": [
+            "本番の例はfalse、テストの例はtrueですが、",
+            "FWのDeny全件通知を有効にするスイッチではありません。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "記録、評価、通知先を分けて確認しましょう。",
+          "lines": [
+            "記録、評価、通知先を分けて確認しましょう。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "enableLogAlerts の切替範囲",
+        "cards": [
+          {
+            "title": "公開設定",
+            "body": [
+              "本番 false / テスト true",
+              "3本のKQL通知を切替"
+            ]
+          },
+          {
+            "title": "別設定",
+            "body": [
+              "診断ログ・メトリック",
+              "Activity通知は継続"
+            ]
+          },
+          {
+            "title": "誤解を確認",
+            "body": [
+              "FW Deny全件通知を",
+              "有効にするフラグではない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ここで三つ確認です。エーピーアイエムからファウンドリーのピーイーへ接続できず、ファイアウォールログもありません。まずファイアウォールの許可を追加する、でよいでしょうか。",
+      "caption": "ここで三つ確認です。APIMからFoundryのPEへ接続できず、Firewallログもありません。まずFirewallの許可を追加する、でよいでしょうか。",
+      "subtitleLines": [
+        "ここで三つ確認です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで三つ確認です。",
+          "lines": [
+            "ここで三つ確認です。"
+          ],
+          "weight": 10
+        },
+        {
+          "caption": "APIMからFoundryのPEへ接続できず、Firewallログもありません。",
+          "lines": [
+            "APIMからFoundryのPEへ接続できず、",
+            "Firewallログもありません。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "まずFirewallの許可を追加する、でよいでしょうか。",
+          "lines": [
+            "まずFirewallの許可を追加する、でよいでしょうか。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認①：PE通信のFWログがない",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "APIM → Foundry PE",
+              "TCP 443 / FWログなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "FW Allowを足せば",
+              "解決すると言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "まず直接経路か確認",
+              "DNS・経路・両側NSG"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-078-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "まず直接経路かを確認します。この標準経路ならファイアウォールを通りません。ディーエヌエス、実効経路、送受信のエヌエスジーとサービス側の記録を、同じ通信で照合します。",
+      "caption": "まず直接経路かを確認します。この標準経路ならFWを通りません。DNS、実効経路、送受信のNSGとサービス側の記録を、同じ通信で照合します。",
+      "subtitleLines": [
+        "まず直接経路かを確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず直接経路かを確認します。",
+          "lines": [
+            "まず直接経路かを確認します。"
+          ],
+          "weight": 14
+        },
+        {
+          "caption": "この標準経路ならFWを通りません。",
+          "lines": [
+            "この標準経路ならFWを通りません。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "DNS、実効経路、送受信のNSGとサービス側の記録を、同じ通信で照合します。",
+          "lines": [
+            "DNS、実効経路、送受信のNSGとサービス側の記録を、同じ通信で照合します。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認①：PE通信のFWログがない",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "APIM → Foundry PE",
+              "TCP 443 / FWログなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "FW Allowを足せば",
+              "解決すると言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "まず直接経路か確認",
+              "DNS・経路・両側NSG"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-079-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "ログがない、という観測だけで原因を決めないことですね。何を通る通信なのかが分かると、調べる場所を選べます。",
+      "caption": "ログがない、という観測だけで原因を決めないことですね。何を通る通信なのかが分かると、調べる場所を選べます。",
+      "subtitleLines": [
+        "ログがない、という観測だけで原因を決めないことですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログがない、という観測だけで原因を決めないことですね。",
+          "lines": [
+            "ログがない、という観測だけで原因を決めないことですね。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "何を通る通信なのかが分かると、調べる場所を選べます。",
+          "lines": [
+            "何を通る通信なのかが分かると、調べる場所を選べます。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認①：PE通信のFWログがない",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "APIM → Foundry PE",
+              "TCP 443 / FWログなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "FW Allowを足せば",
+              "解決すると言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "まず直接経路か確認",
+              "DNS・経路・両側NSG"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-080r2-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二つ目です。ファイアウォールのアラウを確認できました。これで利用者のエーピーアイ要求も認証され、正常に処理されたと判断できますか。",
+      "caption": "二つ目です。FWのAllowを確認できました。これで利用者のAPI要求も認証され、正常に処理されたと判断できますか。",
+      "subtitleLines": [
+        "二つ目です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "二つ目です。",
+          "lines": [
+            "二つ目です。"
+          ],
+          "weight": 6
+        },
+        {
+          "caption": "FWのAllowを確認できました。",
+          "lines": [
+            "FWのAllowを確認できました。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "これで利用者のAPI要求も認証され、正常に処理されたと判断できますか。",
+          "lines": [
+            "これで利用者のAPI要求も認証され、正常に処理されたと判断できますか。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認②：Firewall Allowの記録がある",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "同じ通信について",
+              "FW Allowを確認"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "APIの認証・処理も",
+              "成功したと言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "FWでの許可と",
+              "API処理結果は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-081-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "判断できません。ファイアウォールでの許可と、エーピーアイの処理結果を分けます。先の接続先や復路、認証や認可まで、必要な記録を追加して確かめます。",
+      "caption": "判断できません。FWでの許可と、APIの処理結果を分けます。先の接続先や復路、認証や認可まで、必要な記録を追加して確かめます。",
+      "subtitleLines": [
+        "判断できません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "判断できません。",
+          "lines": [
+            "判断できません。"
+          ],
+          "weight": 8
+        },
+        {
+          "caption": "FWでの許可と、APIの処理結果を分けます。",
+          "lines": [
+            "FWでの許可と、APIの処理結果を分けます。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "先の接続先や復路、認証や認可まで、必要な記録を追加して確かめます。",
+          "lines": [
+            "先の接続先や復路、認証や認可まで、必要な記録を追加して確かめます。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認②：Firewall Allowの記録がある",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "同じ通信について",
+              "FW Allowを確認"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "APIの認証・処理も",
+              "成功したと言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "FWでの許可と",
+              "API処理結果は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-082-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "確認できた層を言葉にするのが大切ですね。全体が正常、とまとめる前に、何の成功を観測したのかを確かめます。",
+      "caption": "確認できた層を言葉にするのが大切ですね。全体が正常、とまとめる前に、何の成功を観測したのかを確かめます。",
+      "subtitleLines": [
+        "確認できた層を言葉にするのが大切ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "確認できた層を言葉にするのが大切ですね。",
+          "lines": [
+            "確認できた層を言葉にするのが大切ですね。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "全体が正常、とまとめる前に、何の成功を観測したのかを確かめます。",
+          "lines": [
+            "全体が正常、とまとめる前に、何の成功を観測したのかを確かめます。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認②：Firewall Allowの記録がある",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "同じ通信について",
+              "FW Allowを確認"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "APIの認証・処理も",
+              "成功したと言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "FWでの許可と",
+              "API処理結果は別"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-083r2-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後です。ファイアウォールのディナイが保存されていますが、メールは来ていません。本番のイネーブル ログ アラーツがfalseなのが原因だ、と決めてよいですか。",
+      "caption": "最後です。FWのDenyが保存されていますが、メールは来ていません。本番のenableLogAlertsがfalseなのが原因だ、と決めてよいですか。",
+      "subtitleLines": [
+        "最後です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後です。",
+          "lines": [
+            "最後です。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "FWのDenyが保存されていますが、メールは来ていません。",
+          "lines": [
+            "FWのDenyが保存されていますが、メールは来ていません。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "本番のenableLogAlertsがfalseなのが原因だ、と決めてよいですか。",
+          "lines": [
+            "本番のenableLogAlertsが",
+            "falseなのが原因だ、と決めてよいですか。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認③：Denyが記録されたがメールなし",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "FW Denyの保存あり",
+              "通知メールはなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "enableLogAlerts=false",
+              "だけが原因と言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "Deny全件通知はない",
+              "通知条件・配線を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-084-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "決められません。現在の定義はディナイ全件の通知ではありません。診断ログの保存とは別に、対象のアラート条件、評価結果、通知先を確認します。",
+      "caption": "決められません。現在の定義はDeny全件の通知ではありません。診断ログの保存とは別に、対象のアラート条件、評価結果、通知先を確認します。",
+      "subtitleLines": [
+        "決められません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "決められません。",
+          "lines": [
+            "決められません。"
+          ],
+          "weight": 8
+        },
+        {
+          "caption": "現在の定義はDeny全件の通知ではありません。",
+          "lines": [
+            "現在の定義はDeny全件の通知ではありません。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "診断ログの保存とは別に、対象のアラート条件、評価結果、通知先を確認します。",
+          "lines": [
+            "診断ログの保存とは別に、対象のアラート条件、評価結果、通知先を確認します。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認③：Denyが記録されたがメールなし",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "FW Denyの保存あり",
+              "通知メールはなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "enableLogAlerts=false",
+              "だけが原因と言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "Deny全件通知はない",
+              "通知条件・配線を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-085-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "通知されなかった理由も、設定と条件から調べるんですね。保存済みのログ、通知する条件、通知先までを分ければ、説明の飛躍を防げます。",
+      "caption": "通知されなかった理由も、設定と条件から調べるんですね。保存済みのログ、通知する条件、通知先までを分ければ、説明の飛躍を防げます。",
+      "subtitleLines": [
+        "通知されなかった理由も、設定と条件から調べるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通知されなかった理由も、設定と条件から調べるんですね。",
+          "lines": [
+            "通知されなかった理由も、設定と条件から調べるんですね。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "保存済みのログ、通知する条件、通知先までを分ければ、説明の飛躍を防げます。",
+          "lines": [
+            "保存済みのログ、通知する条件、通知先までを分ければ、説明の飛躍を防げます。"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認③：Denyが記録されたがメールなし",
+        "cards": [
+          {
+            "title": "条件",
+            "body": [
+              "FW Denyの保存あり",
+              "通知メールはなし"
+            ]
+          },
+          {
+            "title": "問い",
+            "body": [
+              "enableLogAlerts=false",
+              "だけが原因と言える？"
+            ]
+          },
+          {
+            "title": "判断",
+            "body": [
+              "Deny全件通知はない",
+              "通知条件・配線を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-086-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今日は、つながらないときに、同じ通信を追う調べ方を学びました。最初にそろえるのは、時刻、通信元、宛先、プロトコルとポートです。",
+      "caption": "今日は、つながらないときに、同じ通信を追う調べ方を学びました。最初にそろえるのは、時刻、通信元、宛先、プロトコルとポートです。",
+      "subtitleLines": [
+        "今日は、つながらないときに、同じ通信を追う調べ方を学びました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日は、つながらないときに、同じ通信を追う調べ方を学びました。",
+          "lines": [
+            "今日は、つながらないときに、同じ通信を追う調べ方を学びました。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "最初にそろえるのは、時刻、通信元、宛先、プロトコルとポートです。",
+          "lines": [
+            "最初にそろえるのは、時刻、通信元、宛先、プロトコルとポートです。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-087-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "ディーエヌエスの回答を得たら、宛先アイピーの実効経路と往復を確認し、エヌエスジーを照合します。ファイアウォール経由なら、評価された種類のログと適用ルールへ進みます。",
+      "caption": "DNSの回答を得たら、宛先IPの実効経路と往復を確認し、NSGを照合します。FW経由なら、評価された種類のログと適用ルールへ進みます。",
+      "subtitleLines": [
+        "DNSの回答を得たら、宛先IPの実効経路と往復を確認し、NSGを照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "DNSの回答を得たら、宛先IPの実効経路と往復を確認し、NSGを照合します。",
+          "lines": [
+            "DNSの回答を得たら、宛先IPの実効経路と往復を確認し、NSGを照合します。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "FW経由なら、評価された種類のログと適用ルールへ進みます。",
+          "lines": [
+            "FW経由なら、評価された種類のログと適用ルールへ進みます。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-088-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "ログ不在だけで遮断と決めず、アラウだけで全体の成功と決めないこと。調べた事実と残った確認を記録すれば、次の担当者にもつながります。",
+      "caption": "ログ不在だけで遮断と決めず、Allowだけで全体の成功と決めないこと。調べた事実と残った確認を記録すれば、次の担当者にもつながります。",
+      "subtitleLines": [
+        "ログ不在だけで遮断と決めず、Allowだけで全体の成功と決めないこと。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログ不在だけで遮断と決めず、Allowだけで全体の成功と決めないこと。",
+          "lines": [
+            "ログ不在だけで遮断と決めず、Allowだけで全体の成功と決めないこと。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "調べた事実と残った確認を記録すれば、次の担当者にもつながります。",
+          "lines": [
+            "調べた事実と残った確認を記録すれば、次の担当者にもつながります。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "実務での判断の意味を、相手と整理するように落ち着いて返す。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-089-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "そして、ログを残す設定と通知の条件は別でした。設定例の説明と、実際に通信やメールを確認した結果も、区別して扱います。",
+      "caption": "そして、ログを残す設定と通知の条件は別でした。設定例の説明と、実際に通信やメールを確認した結果も、区別して扱います。",
+      "subtitleLines": [
+        "そして、ログを残す設定と通知の条件は別でした。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そして、ログを残す設定と通知の条件は別でした。",
+          "lines": [
+            "そして、ログを残す設定と通知の条件は別でした。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "設定例の説明と、実際に通信やメールを確認した結果も、区別して扱います。",
+          "lines": [
+            "設定例の説明と、実際に通信やメールを確認した結果も、区別して扱います。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-090-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "次回は、基盤管理者の接続と作業実行です。管理ブイエムへどうプライベート接続し、エヌエスジー、エスエスエイチ認証、マネージド ラン コマンドが何を分担するかを見ていきます。",
+      "caption": "次回は、基盤管理者の接続と作業実行です。管理VMへどうprivate接続し、NSG、SSH認証、Managed Run Commandが何を分担するかを見ていきます。",
+      "subtitleLines": [
+        "次回は、基盤管理者の接続と作業実行です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次回は、基盤管理者の接続と作業実行です。",
+          "lines": [
+            "次回は、基盤管理者の接続と作業実行です。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "管理VMへどうprivate接続し、NSG、SSH認証、Managed Run Commandが何を分担するかを見ていきます。",
+          "lines": [
+            "管理VMへどうprivate接続し、NSG、SSH認証、",
+            "Managed Run Commandが何を分担するかを見ていきます。"
+          ],
+          "weight": 63
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "通信の条件と、そこから言える範囲を明瞭に区切って説明する。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    },
+    {
+      "id": "lesson07-turn-091-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "調べるために必要な接続も、経路と認証から整理していくんですね。それでは、第8回でお会いしましょう。",
+      "caption": "調べるために必要な接続も、経路と認証から整理していくんですね。それでは、第8回でお会いしましょう。",
+      "subtitleLines": [
+        "調べるために必要な接続も、経路と認証から整理していくんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "調べるために必要な接続も、経路と認証から整理していくんですね。",
+          "lines": [
+            "調べるために必要な接続も、経路と認証から整理していくんですね。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "それでは、第8回でお会いしましょう。",
+          "lines": [
+            "それでは、第8回でお会いしましょう。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "疑問を相手に確かめる。説明を受けた反応は短く自然に返す。",
+      "visual": {
+        "layout": "summary",
+        "heading": "調べ方を一つの通信で説明できる",
+        "bullets": [
+          "時刻・通信元・宛先・ポートを固定する",
+          "DNS → 実効経路 → NSG → 経由FWのログ",
+          "ログ不在・Allow・通知を読み違えない",
+          "次回：基盤管理者の接続と作業実行"
+        ]
+      }
+    }
+  ],
+  "description": "同じ通信のDNS・往復経路・NSG・Firewallログを照合し、ログ保存と通知条件を区別する。",
+  "seriesLabel": "NETWORK TROUBLESHOOTING"
+}

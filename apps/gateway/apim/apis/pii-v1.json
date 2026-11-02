@@ -1,0 +1,44 @@
+{
+  "released": true,
+  "name": "pii-v1",
+  "displayName": "Pii V1",
+  "path": "tools/pii/v1",
+  "backendService": "foundryCognitive",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "pii-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "pii_redact_text",
+      "displayName": "Redact text",
+      "method": "POST",
+      "urlTemplate": "/redact",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "pii_redact_text": {
+        "kind": "pii",
+        "maxRequestBytes": 32768,
+        "modelVersion": "2026-05-01",
+        "allowedLanguages": [
+          "ja",
+          "en"
+        ],
+        "allowedWarningCodes": []
+      }
+    }
+  },
+  "mcp": {
+    "name": "pii-v1-mcp",
+    "displayName": "PII redaction MCP",
+    "path": "tools/pii-v1-mcp",
+    "operationNames": [
+      "pii_redact_text"
+    ]
+  },
+  "serviceClass": "platform"
+}

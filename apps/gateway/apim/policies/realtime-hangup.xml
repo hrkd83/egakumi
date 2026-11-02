@@ -1,0 +1,61 @@
+<policies>
+  <!--
+    Realtime セッションを終了する制御 API です。call ID を知っているだけでは終了できません。
+    署名・呼出元・契約・call ID・期限を照合したチケットを要求し、所有者と一致した場合だけ終了先へ送ります。
+    チケットをバックエンドへ流さず、Gateway 内の所有者確認だけに使用します。
+  -->
+  <inbound>
+    <base />
+    <!-- 受け取ったチケットの署名を照合してから、対象 call ID と現在の検証済み購読・期限を比較します。 -->
+    <set-variable name="realtimeCallOwnerValid" value="@{
+        try {
+            var ticket = context.Request.Headers.GetValueOrDefault(&quot;X-Core-Call-Ticket&quot;, &quot;&quot;);
+            var callId = context.Request.MatchedParameters.GetValueOrDefault(&quot;callId&quot;, &quot;&quot;);
+            if (ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(callId, @&quot;^[A-Za-z0-9_-]{1,160}$&quot;)) { return false; }
+            var parts = ticket.Split('.');
+            if (parts.Length != 2) { return false; }
+            var key = System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;);
+            string expected;
+            using (var hmac = new System.Security.Cryptography.HMACSHA256(key)) {
+                expected = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(parts[0]))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            }
+            if (expected.Length != parts[1].Length) { return false; }
+            var difference = 0;
+            for (var i = 0; i &lt; expected.Length; i++) { difference |= expected[i] ^ parts[1][i]; }
+            if (difference != 0) { return false; }
+            var encoded = parts[0].Replace('-', '+').Replace('_', '/');
+            encoded += new string('=', (4 - encoded.Length % 4) % 4);
+            var payload = Newtonsoft.Json.Linq.JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+            var decision = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+            var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
+            /* APIMが検証した購読を所有者に使い、追加の本人tokenでは所有権を変更しません。 */
+            if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+                || (bool?)decision[&quot;allowed&quot;] != true || (string)decision[&quot;method&quot;] != &quot;subscriptionKey&quot;
+                || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return false; }
+            var subscriptionId = context.Subscription.Id;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            return (int?)payload[&quot;v&quot;] == 3 &amp;&amp; (string)payload[&quot;callId&quot;] == callId
+                &amp;&amp; (string)payload[&quot;subscriptionId&quot;] == subscriptionId
+                &amp;&amp; (string)payload[&quot;callerId&quot;] == (string)decision[&quot;callerId&quot;]
+
+                &amp;&amp; (long?)payload[&quot;exp&quot;] &gt; now &amp;&amp; (long?)payload[&quot;exp&quot;] &lt;= now + (int)settings[&quot;sessionTtlSeconds&quot;];
+        } catch { return false; }
+    }" />
+    <choose>
+      <when condition="@(!(bool)context.Variables[&quot;realtimeCallOwnerValid&quot;])">
+        <return-response><set-status code="403" reason="Session control is not permitted" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-body>{"error":{"code":"SessionControlDenied"}}</set-body></return-response>
+      </when>
+    </choose>
+    <set-method>POST</set-method>
+    <rewrite-uri template="@(&quot;/realtime/calls/&quot; + context.Request.MatchedParameters[&quot;callId&quot;] + &quot;/hangup&quot;)" copy-unmatched-params="false" />
+    <set-header name="X-Core-Call-Ticket" exists-action="delete" />
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <set-body>{}</set-body>
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><base /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><base /></outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error><base /></on-error>
+</policies>

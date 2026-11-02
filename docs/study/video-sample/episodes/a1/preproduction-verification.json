@@ -1,0 +1,66 @@
+{
+  "status": "passed",
+  "profile": "study-series-v1",
+  "tools": {
+    "python3": true,
+    "node": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "gcloud": true
+  },
+  "visualStyle": {
+    "id": "teaching-settings-v2",
+    "guide": "SETTINGS-VIEW.md",
+    "renderer": "settings-visual.mjs",
+    "examples": "settings-view-examples.json",
+    "primaryBodyLayout": "settings",
+    "azurePortalReplica": false,
+    "bodyCamera": "fixed",
+    "automaticBodyZoom": false,
+    "automaticBodyPan": false,
+    "perTurnCameraReset": false,
+    "redOutlinePulse": false,
+    "mockPointer": false,
+    "holdViewIdAcrossQuestionAndAnswer": true,
+    "continuousPreviewRecommendedSeconds": [
+      40,
+      70
+    ],
+    "continuousPreviewHasInternalCuts": false,
+    "episode01OutputRequired": false,
+    "continuousPreviewTool": "make-conversation-preview.py"
+  },
+  "sharp": true,
+  "hostPlatform": "darwin",
+  "availableDiskGiB": 4.38,
+  "fontEnvironment": "Same macOS font environment as the reference",
+  "authenticationRead": false,
+  "networkRequestsMade": false,
+  "episode": {
+    "key": "a1",
+    "number": "A1",
+    "title": "ハブ＆スポーク接続と往復経路",
+    "objective": "private接続・出口集約・Gateway共有の採用範囲を選び、双方向ピアリング、区画別UDR、復路、Gateway経路伝搬を説明できる。",
+    "sourceTableCell": "[47節：接続範囲](01-network-control.html#hub-spoke)、[48節：ピアリング](01-network-control.html#hub-peering)、[49節：往復経路](01-network-control.html#hub-udr)、[53節：経路伝搬](01-network-control.html#hub-propagation)",
+    "sourceReferences": [
+      {
+        "file": "../01-network-control.html",
+        "anchor": "hub-spoke"
+      },
+      {
+        "file": "../01-network-control.html",
+        "anchor": "hub-peering"
+      },
+      {
+        "file": "../01-network-control.html",
+        "anchor": "hub-udr"
+      },
+      {
+        "file": "../01-network-control.html",
+        "anchor": "hub-propagation"
+      }
+    ]
+  },
+  "script": "episodes/a1/script.json",
+  "output": "output/lesson-a1-gemini"
+}

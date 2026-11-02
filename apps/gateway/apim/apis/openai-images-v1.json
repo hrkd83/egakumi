@@ -1,0 +1,82 @@
+{
+  "released": true,
+  "name": "openai-images-v1",
+  "displayName": "Openai Images V1",
+  "path": "models/openai-images/v1",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "image-generate",
+      "displayName": "Image Generate",
+      "method": "POST",
+      "urlTemplate": "/generations",
+      "templateParameters": [],
+      "backendUrlTemplate": "/openai/v1/images/generations?api-version=preview"
+    },
+    {
+      "name": "image-edit",
+      "displayName": "Image Edit",
+      "method": "POST",
+      "urlTemplate": "/deployments/{deployment}/edits",
+      "templateParameters": [
+        {
+          "name": "deployment",
+          "description": "Explicit approved identifier",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "backendUrlTemplate": "/openai/deployments/{deployment}/images/edits?api-version=2025-04-01-preview"
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "image-generate": {
+        "kind": "bodyModel",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "json",
+        "allowedModels": [
+          "gpt-image-2.5-flare",
+          "gpt-image-2.5-sunburst",
+          "gpt-image-2"
+        ],
+        "integerLimits": {
+          "n": {
+            "minimum": 1,
+            "maximum": 1,
+            "required": true
+          }
+        },
+        "stringChoices": {
+          "size": [
+            "1024x1024"
+          ],
+          "quality": [
+            "low"
+          ]
+        }
+      },
+      "image-edit": {
+        "kind": "pathModel",
+        "maxRequestBytes": 4194304,
+        "bodyFormat": "multipart",
+        "parameter": "deployment",
+        "allowedModels": [
+          "gpt-image-2.5-flare",
+          "gpt-image-2.5-sunburst",
+          "gpt-image-2"
+        ],
+        "contentTypes": [
+          "multipart/form-data"
+        ]
+      }
+    }
+  },
+  "backendUrl": "__OPENAI_RESOURCE_BASE_URL__",
+  "serviceClass": "platform"
+}

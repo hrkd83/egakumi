@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "syntax": "passed",
+  "allowlistCases": [
+    "previews/example.png",
+    "previews/example.jpg",
+    "previews/example.webp",
+    "lesson-narration.wav",
+    "lesson-mix.wav"
+  ],
+  "protectedCases": [
+    "lesson-poster.png",
+    "lesson18-turn-001-mako-raw.wav",
+    "lesson18-turn-001-mako-raw.json",
+    "audio-cache.json",
+    "history/full-94/lesson-mix.wav",
+    "history/full-94/previews/example.png",
+    "requests-sent/example.json",
+    "previews/example.svg",
+    "previews/manifest.json",
+    "other-episode/lesson-mix.wav"
+  ],
+  "planExecuted": false,
+  "deletionExecuted": false,
+  "conversationPreviewLockChecked": true
+}

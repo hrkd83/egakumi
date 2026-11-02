@@ -1,0 +1,63 @@
+[
+  {
+    "file": "final-contact-01.png",
+    "frames": [
+      "06-three-axes.png",
+      "07-roles-sql.png",
+      "08-roles-apim.png",
+      "09-roles-diagram.png"
+    ]
+  },
+  {
+    "file": "final-contact-02.png",
+    "frames": [
+      "10-runtime.png",
+      "11-login.png",
+      "12-sql-session.png",
+      "13-authentication-data.png"
+    ]
+  },
+  {
+    "file": "final-contact-03.png",
+    "frames": [
+      "14-group-ownership.png",
+      "15-identity-diagram.png",
+      "16-company-attribution.png",
+      "17-subscription-term-no-outline.png"
+    ]
+  },
+  {
+    "file": "final-contact-04.png",
+    "frames": [
+      "18-company-data.png",
+      "19-company-create.png",
+      "20-company-update.png",
+      "21-company-disabled.png"
+    ]
+  },
+  {
+    "file": "final-contact-05.png",
+    "frames": [
+      "22-company-rename.png",
+      "23-example.png",
+      "24-quiz1-question.png",
+      "25-quiz1-answer.png"
+    ]
+  },
+  {
+    "file": "final-contact-06.png",
+    "frames": [
+      "26-quiz2-question.png",
+      "27-quiz2-answer.png",
+      "28-quiz3-question.png",
+      "29-quiz3-answer.png"
+    ]
+  },
+  {
+    "file": "final-contact-07.png",
+    "frames": [
+      "30-summary.png",
+      "33-account-data-microsoft-wrap.png"
+    ]
+  }
+]

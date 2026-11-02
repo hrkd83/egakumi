@@ -1,0 +1,22 @@
+# Build context is apps/portal. Local credentials and build output never enter it.
+.git
+.next
+node_modules
+.env
+.env.*
+**/.env
+**/.env.*
+secrets
+**/secrets
+*.pem
+*.key
+*.pfx
+*.p12
+*.log
+coverage
+*.tsbuildinfo
+tests
+deploy
+README.md
+AGENTS.md
+scripts/bootstrap-local-sql.ts

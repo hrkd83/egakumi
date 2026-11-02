@@ -1,0 +1,214 @@
+<policies>
+  <!--
+    WebRTC の開始時に使う制御 REST API です。固定のモデル設定で短期 token を取得し、SDP offer を Foundry へ送ります。
+    音声等の WebRTC メディア自体はこの HTTP ポリシーを流れません。APIM が受け持つのは開始・所有者管理等の制御です。
+    正常応答から call ID を検査し、呼出元と契約に結び付く有効期限付き署名チケットを返します。署名鍵自体は返しません。
+  -->
+  <inbound>
+    <base />
+    <!-- 本文が許容される SDP offer かを確認します。URL や任意のモデル設定を入力から追加しません。 -->
+    <set-variable name="realtimeSdp" value="@{
+        try {
+            var body = context.Request.Body.As&lt;Newtonsoft.Json.Linq.JObject&gt;(preserveContent: true);
+            if (body == null || body.Properties().Count() != 1 || body[&quot;sdp&quot;] == null || body[&quot;sdp&quot;].Type != Newtonsoft.Json.Linq.JTokenType.String) { return &quot;&quot;; }
+            var sdp = (string)body[&quot;sdp&quot;];
+            if (String.IsNullOrEmpty(sdp) || sdp.Length &gt; 65536 || !sdp.StartsWith(&quot;v=0&quot;) || sdp.Contains(&quot;\0&quot;)) { return &quot;&quot;; }
+            return sdp;
+        } catch { return &quot;&quot;; }
+    }" />
+    <choose>
+      <when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;realtimeSdp&quot;]))">
+        <return-response><set-status code="400" reason="Invalid session offer" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-body>{"error":{"code":"InvalidSessionOffer"}}</set-body></return-response>
+      </when>
+    </choose>
+    <!--
+      Azure WebRTC の公式手順に合わせ、Entra token は短期 token の取得にだけ使います。
+      送信先は Bicep が登録済み backend URL から確定する固定値です。利用者の URL・header はコピーしません。
+      https://learn.microsoft.com/azure/foundry/openai/how-to/realtime-audio-webrtc
+    -->
+    <send-request mode="new" response-variable-name="realtimeSecretResponse" timeout="20" ignore-error="true">
+      <set-url>__REALTIME_CLIENT_SECRETS_URL__</set-url>
+      <set-method>POST</set-method>
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="Accept" exists-action="override"><value>application/json</value></set-header>
+      <set-body>@{
+        var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["gatewayOperationConstraint"]);
+        var session = new Newtonsoft.Json.Linq.JObject(
+            new Newtonsoft.Json.Linq.JProperty("type", "realtime"),
+            new Newtonsoft.Json.Linq.JProperty("model", (string)settings["model"]),
+            new Newtonsoft.Json.Linq.JProperty("max_output_tokens", (int)(settings["initialOutputTokens"] ?? settings["maxOutputTokens"])),
+            new Newtonsoft.Json.Linq.JProperty("output_modalities", new Newtonsoft.Json.Linq.JArray("audio")),
+            new Newtonsoft.Json.Linq.JProperty("tools", new Newtonsoft.Json.Linq.JArray()),
+            new Newtonsoft.Json.Linq.JProperty("tracing", Newtonsoft.Json.Linq.JValue.CreateNull()));
+        return new Newtonsoft.Json.Linq.JObject(
+            new Newtonsoft.Json.Linq.JProperty("session", session),
+            new Newtonsoft.Json.Linq.JProperty("expires_after", new Newtonsoft.Json.Linq.JObject(
+                new Newtonsoft.Json.Linq.JProperty("anchor", "created_at"),
+                new Newtonsoft.Json.Linq.JProperty("seconds", 60)))).ToString(Newtonsoft.Json.Formatting.None);
+      }</set-body>
+      <authentication-managed-identity resource="https://ai.azure.com" ignore-error="true" />
+    </send-request>
+    <!-- 短期 token はこの要求のメモリー内だけで扱います。本文・任意の下流エラーを応答や監査へ出しません。 -->
+    <set-variable name="realtimeEphemeralToken" value="@{
+        try {
+            var response = context.Variables.ContainsKey(&quot;realtimeSecretResponse&quot;) ? context.Variables[&quot;realtimeSecretResponse&quot;] as IResponse : null;
+            if (response == null || response.StatusCode != 200 || response.Body == null) { return &quot;&quot;; }
+            var text = response.Body.As&lt;string&gt;();
+            if (String.IsNullOrEmpty(text) || text.Length &gt; 16384) { return &quot;&quot;; }
+            var body = Newtonsoft.Json.Linq.JObject.Parse(text);
+            if (body[&quot;value&quot;]?.Type != Newtonsoft.Json.Linq.JTokenType.String || body[&quot;expires_at&quot;]?.Type != Newtonsoft.Json.Linq.JTokenType.Integer) { return &quot;&quot;; }
+            var token = (string)body[&quot;value&quot;];
+            if (String.IsNullOrEmpty(token) || token.Length &gt; 8192 || !System.Text.RegularExpressions.Regex.IsMatch(token, @&quot;\A[\x21-\x7E]+\z&quot;) || (long)body[&quot;expires_at&quot;] &lt;= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) { return &quot;&quot;; }
+            return token;
+        } catch { return &quot;&quot;; }
+    }" />
+    <choose>
+      <when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;realtimeEphemeralToken&quot;]))">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="REALTIME_TOKEN_ACQUISITION_FAILED" />
+        <set-variable name="gatewayAuditStatus" value="@(502)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="502" reason="Realtime session preparation failed" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-body>{"error":{"code":"RealtimeTokenAcquisitionFailed"}}</set-body></return-response>
+      </when>
+    </choose>
+    <!-- 短期 token で raw SDP を送信します。token をブラウザー・永続ストアへ渡しません。 -->
+    <set-method>POST</set-method>
+    <rewrite-uri template="/realtime/calls" copy-unmatched-params="false" />
+    <set-header name="Authorization" exists-action="override"><value>@("Bearer " + (string)context.Variables["realtimeEphemeralToken"])</value></set-header>
+    <set-header name="Content-Type" exists-action="override"><value>application/sdp</value></set-header>
+    <set-header name="Accept" exists-action="override"><value>application/sdp</value></set-header>
+    <set-header name="X-Core-Call-Ticket" exists-action="delete" />
+    <set-body>@((string)context.Variables["realtimeSdp"])</set-body>
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><base /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <choose>
+      <when condition="@(context.Response.StatusCode == 201)">
+        <!-- 成功応答の Location を許可した形式で解析し、別ホストや任意パスを利用者へ案内しないようにします。 -->
+        <set-variable name="realtimeCallId" value="@{
+            var location = context.Response.Headers.GetValueOrDefault(&quot;Location&quot;, &quot;&quot;);
+            var match = System.Text.RegularExpressions.Regex.Match(location, @&quot;/realtime/calls/([A-Za-z0-9_-]{1,160})(?:\?|$)&quot;);
+            return match.Success ? match.Groups[1].Value : &quot;&quot;;
+        }" />
+        <choose>
+          <!-- 201でも契約に合う応答かは別に検査します。原因の固定コードだけを記録し、LocationやSDPを監査へ出しません。 -->
+          <when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;realtimeCallId&quot;]))">
+            <set-variable name="gatewayAuditPhase" value="rejected" />
+            <set-variable name="gatewayAuditCode" value="REALTIME_CALL_LOCATION_INVALID" />
+            <set-variable name="gatewayAuditStatus" value="@(502)" />
+            <include-fragment fragment-id="core-gateway-telemetry" />
+            <return-response><set-status code="502" reason="Invalid session response" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-body>{"error":{"code":"RealtimeCallLocationInvalid"}}</set-body></return-response>
+          </when>
+        </choose>
+        <!-- HMAC 署名付きの所有者チケットを作成。チケットには call ID・検証済み購読ID・呼出元・期限を入れ、鍵は含めません。 -->
+        <!-- APIMで許可される例外型はExceptionです。通常の.NETで使える派生例外を持ち込まず、不正な所有者情報はここで停止します。 -->
+        <set-variable name="realtimeCallTicket" value="@{
+            var decision = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+            var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
+            /* APIMが検証した購読を所有者に使い、追加の本人tokenでは所有権を変更しません。 */
+            if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+                || (bool?)decision[&quot;allowed&quot;] != true || (string)decision[&quot;method&quot;] != &quot;subscriptionKey&quot;
+                || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { throw new Exception(&quot;Verified subscription owner is required&quot;); }
+            var subscriptionId = context.Subscription.Id;
+            var payload = new Newtonsoft.Json.Linq.JObject(
+                new Newtonsoft.Json.Linq.JProperty(&quot;v&quot;, 3),
+                new Newtonsoft.Json.Linq.JProperty(&quot;subscriptionId&quot;, subscriptionId),
+                new Newtonsoft.Json.Linq.JProperty(&quot;callId&quot;, (string)context.Variables[&quot;realtimeCallId&quot;]),
+                new Newtonsoft.Json.Linq.JProperty(&quot;callerId&quot;, (string)decision[&quot;callerId&quot;]),
+                new Newtonsoft.Json.Linq.JProperty(&quot;exp&quot;, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + (int)settings[&quot;sessionTtlSeconds&quot;]));
+            var encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload.ToString(Newtonsoft.Json.Formatting.None))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var key = System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;);
+            using (var hmac = new System.Security.Cryptography.HMACSHA256(key)) {
+                var signature = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(encoded))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                return encoded + &quot;.&quot; + signature;
+            }
+        }" />
+        <!--
+          Azure の公式例は response.text() から SDP を取り出します。実機201の MIME 不一致を受け、
+          text/plain も候補にしますが、まだ実機未確認の仮説です。MIME だけで成功にはしません。
+          https://learn.microsoft.com/azure/foundry/openai/how-to/realtime-audio-webrtc
+          先にMIMEを固定分類し、許可した2種類だけをメモリー内でサイズ・必須行まで検査します。
+          SDP は接続情報を含むため、本文や不正な値を監査へ転記せず、固定の判定コードだけ返します。
+          これは完全なSDP規格検証ではありません。ブラウザーでのSDP適用・ICE・音声往復も別途必要です。
+        -->
+        <set-variable name="realtimeAnswerStatus" value="@{
+            try {
+                var header = context.Response.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;);
+                var mediaType = header.Split(';')[0].Trim().ToLowerInvariant();
+                if (String.IsNullOrEmpty(mediaType)) { return &quot;REALTIME_CALL_MIME_MISSING&quot;; }
+                if (mediaType == &quot;application/json&quot; || mediaType.EndsWith(&quot;+json&quot;)) { return &quot;REALTIME_CALL_MIME_JSON&quot;; }
+                if (mediaType == &quot;text/html&quot; || mediaType == &quot;application/xhtml+xml&quot;) { return &quot;REALTIME_CALL_MIME_HTML&quot;; }
+                if (mediaType != &quot;application/sdp&quot; &amp;&amp; mediaType != &quot;text/plain&quot;) { return &quot;REALTIME_CALL_MIME_OTHER&quot;; }
+                var answer = context.Response.Body.As&lt;string&gt;(preserveContent: true);
+                if (String.IsNullOrEmpty(answer) || answer.Contains(&quot;\0&quot;)) { return &quot;REALTIME_CALL_SDP_INVALID&quot;; }
+                if (System.Text.Encoding.UTF8.GetByteCount(answer) &gt; 65536) { return &quot;REALTIME_CALL_SDP_TOO_LARGE&quot;; }
+                var lines = answer.Split(new string[] { &quot;\r\n&quot;, &quot;\n&quot; }, StringSplitOptions.None);
+                if (lines.Length &lt; 5 || lines[0] != &quot;v=0&quot;
+                    || !lines.Any(line =&gt; System.Text.RegularExpressions.Regex.IsMatch(line, @&quot;\Ao=\S+ [0-9]+ [0-9]+ IN IP[46] \S+\z&quot;))
+                    || !lines.Any(line =&gt; line.StartsWith(&quot;s=&quot;) &amp;&amp; line.Length &gt; 2)
+                    || !lines.Any(line =&gt; System.Text.RegularExpressions.Regex.IsMatch(line, @&quot;\At=[0-9]+ [0-9]+\z&quot;))
+                    || !lines.Any(line =&gt; System.Text.RegularExpressions.Regex.IsMatch(line, @&quot;\Am=audio [0-9]+ \S+ \S+(?: \S+)*\z&quot;))) { return &quot;REALTIME_CALL_SDP_INVALID&quot;; }
+                return &quot;VALID&quot;;
+            } catch { return &quot;REALTIME_CALL_SDP_INVALID&quot;; }
+        }" />
+        <choose>
+          <when condition="@((string)context.Variables[&quot;realtimeAnswerStatus&quot;] != &quot;VALID&quot;)">
+            <!-- 201の後は通話が存在します。SDPを返せない場合も、固定backendへ終了を要求します。
+                 Locationのhostや利用者URL、短期tokenを流用せず、通常hangupと同じAPIM MIを使います。 -->
+            <send-request mode="new" response-variable-name="realtimeCleanupResponse" timeout="10" ignore-error="true">
+              <set-url>@{
+                var endpoint = "__REALTIME_CLIENT_SECRETS_URL__";
+                return endpoint.Substring(0, endpoint.Length - "/client_secrets".Length)
+                    + "/calls/" + (string)context.Variables["realtimeCallId"] + "/hangup";
+              }</set-url>
+              <set-method>POST</set-method>
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-body>{}</set-body>
+              <authentication-managed-identity resource="https://cognitiveservices.azure.com" ignore-error="true" />
+            </send-request>
+            <!-- timeoutも未確認として扱い、本文・call ID・ticketを通常監査へ記録しません。 -->
+            <set-variable name="realtimeCleanupAccepted" value="@{
+              var response = context.Variables.ContainsKey(&quot;realtimeCleanupResponse&quot;)
+                  ? context.Variables[&quot;realtimeCleanupResponse&quot;] as IResponse : null;
+              return response != null &amp;&amp; response.StatusCode &gt;= 200 &amp;&amp; response.StatusCode &lt; 300;
+            }" />
+            <set-variable name="gatewayAuditPhase" value="backend-response" />
+            <set-variable name="gatewayAuditCode" value="@((bool)context.Variables[&quot;realtimeCleanupAccepted&quot;] ? &quot;REALTIME_CALL_CLEANUP_ACCEPTED&quot; : &quot;REALTIME_CALL_CLEANUP_UNCONFIRMED&quot;)" />
+            <set-variable name="gatewayAuditStatus" value="@((bool)context.Variables[&quot;realtimeCleanupAccepted&quot;] ? 200 : 502)" />
+            <include-fragment fragment-id="core-gateway-telemetry" />
+            <set-variable name="gatewayAuditPhase" value="rejected" />
+            <set-variable name="gatewayAuditCode" value="@((string)context.Variables[&quot;realtimeAnswerStatus&quot;])" />
+            <set-variable name="gatewayAuditStatus" value="@(502)" />
+            <include-fragment fragment-id="core-gateway-telemetry" />
+            <return-response><set-status code="502" reason="Invalid session response" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+              <!-- 終了未確認の場合だけ、BFF内に保持する復旧情報を同じ所有者へ返します。
+                   Consoleは実ID/ticketを画面・exportへ渡さず、一時参照で再終了します。 -->
+              <set-header name="X-Core-Cleanup-Status" exists-action="override"><value>@((bool)context.Variables["realtimeCleanupAccepted"] ? "accepted" : "unconfirmed")</value></set-header>
+              <set-header name="X-Core-Call-Id" exists-action="override"><value>@((bool)context.Variables["realtimeCleanupAccepted"] ? "" : (string)context.Variables["realtimeCallId"])</value></set-header>
+              <set-header name="X-Core-Call-Ticket" exists-action="override"><value>@((bool)context.Variables["realtimeCleanupAccepted"] ? "" : (string)context.Variables["realtimeCallTicket"])</value></set-header>
+              <set-body>@{
+                var code = (string)context.Variables["realtimeAnswerStatus"];
+                var cleanup = (bool)context.Variables["realtimeCleanupAccepted"] ? "accepted" : "unconfirmed";
+                return new Newtonsoft.Json.Linq.JObject(new Newtonsoft.Json.Linq.JProperty("error", new Newtonsoft.Json.Linq.JObject(
+                    new Newtonsoft.Json.Linq.JProperty("code", code), new Newtonsoft.Json.Linq.JProperty("cleanupStatus", cleanup)))).ToString(Newtonsoft.Json.Formatting.None);
+            }</set-body></return-response>
+          </when>
+        </choose>
+        <!-- 検査済みの本文だけを、公開側の一貫した SDP media type で返します。 -->
+        <set-header name="Content-Type" exists-action="override"><value>application/sdp</value></set-header>
+        <set-header name="X-Core-Call-Id" exists-action="override"><value>@((string)context.Variables["realtimeCallId"])</value></set-header>
+        <set-header name="X-Core-Call-Ticket" exists-action="override"><value>@((string)context.Variables["realtimeCallTicket"])</value></set-header>
+        <set-header name="Location" exists-action="override"><value>@{
+            var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables["gatewayOperationConstraint"]);
+            return (string)settings["publicCallPath"] + "/" + (string)context.Variables["realtimeCallId"];
+        }</value></set-header>
+      </when>
+    </choose>
+    <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    <base />
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error><base /></on-error>
+</policies>

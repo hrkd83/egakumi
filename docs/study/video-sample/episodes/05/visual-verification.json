@@ -1,0 +1,259 @@
+{
+  "status": "passed",
+  "visualStyle": "teaching-settings-v2",
+  "bodyTurns": 76,
+  "stableViewIds": 25,
+  "questionTurnsWithNoHighlights": 31,
+  "groups": [
+    {
+      "viewId": "fw-association-path",
+      "fromTurn": 5,
+      "throughTurn": 10,
+      "questionTurns": [
+        5,
+        8
+      ]
+    },
+    {
+      "viewId": "rule-inputs",
+      "fromTurn": 11,
+      "throughTurn": 14,
+      "questionTurns": [
+        11,
+        13
+      ]
+    },
+    {
+      "viewId": "application-tls",
+      "fromTurn": 15,
+      "throughTurn": 17,
+      "questionTurns": [
+        15
+      ]
+    },
+    {
+      "viewId": "ntp-fqdn",
+      "fromTurn": 18,
+      "throughTurn": 19,
+      "questionTurns": [
+        18
+      ]
+    },
+    {
+      "viewId": "rule-processing",
+      "fromTurn": 20,
+      "throughTurn": 23,
+      "questionTurns": [
+        20,
+        22
+      ]
+    },
+    {
+      "viewId": "hierarchy",
+      "fromTurn": 24,
+      "throughTurn": 26,
+      "questionTurns": [
+        25
+      ]
+    },
+    {
+      "viewId": "priority-comparison",
+      "fromTurn": 27,
+      "throughTurn": 29,
+      "questionTurns": [
+        27
+      ]
+    },
+    {
+      "viewId": "allow-default",
+      "fromTurn": 30,
+      "throughTurn": 31,
+      "questionTurns": [
+        30
+      ]
+    },
+    {
+      "viewId": "agw-apim",
+      "fromTurn": 32,
+      "throughTurn": 35,
+      "questionTurns": [
+        32,
+        34
+      ]
+    },
+    {
+      "viewId": "agw-aca",
+      "fromTurn": 36,
+      "throughTurn": 37,
+      "questionTurns": [
+        36
+      ]
+    },
+    {
+      "viewId": "stateful-return",
+      "fromTurn": 38,
+      "throughTurn": 40,
+      "questionTurns": [
+        38
+      ]
+    },
+    {
+      "viewId": "direct-internal",
+      "fromTurn": 41,
+      "throughTurn": 41,
+      "questionTurns": []
+    },
+    {
+      "viewId": "apim-storage",
+      "fromTurn": 42,
+      "throughTurn": 49,
+      "questionTurns": [
+        42,
+        45,
+        47
+      ]
+    },
+    {
+      "viewId": "apim-platform",
+      "fromTurn": 50,
+      "throughTurn": 52,
+      "questionTurns": [
+        51
+      ]
+    },
+    {
+      "viewId": "ntp-sources",
+      "fromTurn": 53,
+      "throughTurn": 56,
+      "questionTurns": [
+        53,
+        55
+      ]
+    },
+    {
+      "viewId": "vm-aca",
+      "fromTurn": 57,
+      "throughTurn": 59,
+      "questionTurns": [
+        59
+      ]
+    },
+    {
+      "viewId": "custom-dns",
+      "fromTurn": 60,
+      "throughTurn": 63,
+      "questionTurns": [
+        61
+      ]
+    },
+    {
+      "viewId": "dns-proxy",
+      "fromTurn": 64,
+      "throughTurn": 65,
+      "questionTurns": [
+        64
+      ]
+    },
+    {
+      "viewId": "quiz-storage",
+      "fromTurn": 66,
+      "throughTurn": 67,
+      "questionTurns": [
+        66
+      ]
+    },
+    {
+      "viewId": "quiz-ntp",
+      "fromTurn": 68,
+      "throughTurn": 69,
+      "questionTurns": [
+        68
+      ]
+    },
+    {
+      "viewId": "quiz-pe",
+      "fromTurn": 70,
+      "throughTurn": 71,
+      "questionTurns": [
+        70
+      ]
+    },
+    {
+      "viewId": "linux-web",
+      "fromTurn": 72,
+      "throughTurn": 73,
+      "questionTurns": [
+        72
+      ]
+    },
+    {
+      "viewId": "change-review",
+      "fromTurn": 74,
+      "throughTurn": 76,
+      "questionTurns": [
+        74
+      ]
+    },
+    {
+      "viewId": "alert-settings",
+      "fromTurn": 77,
+      "throughTurn": 78,
+      "questionTurns": [
+        77
+      ]
+    },
+    {
+      "viewId": "final-review",
+      "fromTurn": 79,
+      "throughTurn": 80,
+      "questionTurns": [
+        80
+      ]
+    }
+  ],
+  "sameViewGeometryPreserved": true,
+  "svgBaseSha256ByView": {
+    "fw-association-path": "c42e201fab030dbb51816cde4258a20e61cf204d5b592c1d2829e6516eeb4b26",
+    "ntp-fqdn": "4681122b881db22b139cd653965280de14da44d03ef499a6679cdc2731c9d982",
+    "agw-apim": "2a4e097661307c079cee956e1cb864082b877fb4003bfae0f2cfdeedde12e869",
+    "agw-aca": "9e4f6694ff4c11493bdbcff686d39a1f550fa000883396e114883ccdbe24161b",
+    "stateful-return": "776608ffccde6fa9440b07a6002c955d8df54b716ab3d59e98236de190f26ba4",
+    "apim-storage": "544c190e54c9b4fca963a100a309c0620d3b33768a0b1e176b2e90eb1b148941",
+    "ntp-sources": "a7e2ca2d4a37b6b2ec0dea3173369e7b92f05fd2d882312e6328ebe7d6ec1002",
+    "vm-aca": "564784e7ea0bb6be23eb58eded0e80f707595e49feb600bf186886f51bf0f03c",
+    "custom-dns": "f35a0704d9033018359a15b9b56aba522b93439c10ec2c23e9d495c8374dfcd9",
+    "quiz-storage": "d8f78e2035eb9844d2e20190da07cbe200335f3e494cd0d77e4fd0fc9b72bc6c",
+    "quiz-ntp": "08a648fa716dde301dafc0d54a80edfa9e9887a23f822597a11556c7f5191c60",
+    "quiz-pe": "903db410a35f71c3916eeb6ad462f3257294722630331e78551eb3b3518375df",
+    "linux-web": "10cc6b29e602ad8e76b4d5f71403ea70b5af14da5b7339b13f4bbf36bd23784a"
+  },
+  "forbiddenMotionPresent": false,
+  "quizAnswerHighlightsDelayed": true,
+  "all80SpeechAndDeliveryUnchanged": true,
+  "continuousVideoReview": {
+    "status": "passed",
+    "viewId": "agw-apim",
+    "fromTurn": "lesson05-turn-032-mako",
+    "throughTurn": "lesson05-turn-035-ikumi",
+    "sourceRangeSeconds": [
+      342.9166666666667,
+      390.7083333333333
+    ],
+    "durationSeconds": 47.791666666666664,
+    "frameCount": 1147,
+    "cutsWithinExcerpt": false,
+    "playbackRate": 1,
+    "observedBrowserTimesSeconds": [
+      0.579851,
+      25.780476,
+      47.791667
+    ],
+    "ended": true,
+    "hasVideoError": false,
+    "fixedMenuCompositionAndScaleObserved": true,
+    "highlightChangesFollowExplanation": true,
+    "audioListeningPerformed": false,
+    "url": "http://127.0.0.1:53790/conversation-preview.html"
+  },
+  "sourceScriptSha256": "c431a0a20dc668bb929b721f56621d31ec499469f5665a0ddff493aa93196899"
+}

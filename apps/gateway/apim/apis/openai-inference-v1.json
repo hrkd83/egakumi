@@ -1,0 +1,198 @@
+{
+  "released": true,
+  "name": "openai-inference-v1",
+  "displayName": "Openai Inference V1",
+  "path": "models/openai/v1",
+  "backendService": "foundryOpenAi",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "chat-completions",
+      "displayName": "Chat Completions",
+      "method": "POST",
+      "urlTemplate": "/chat/completions",
+      "templateParameters": []
+    },
+    {
+      "name": "responses-create",
+      "displayName": "Create stateless response",
+      "method": "POST",
+      "urlTemplate": "/responses",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "chat-completions": {
+        "kind": "bodyModel",
+        "allowedModels": [
+          "gpt-6.1-sol",
+          "gpt-6-luna",
+          "gpt-6-sol",
+          "gpt-6-astra",
+          "gpt-5.6-luna",
+          "gpt-5.6-sol",
+          "gpt-5.6-terra",
+          "gpt-5.5",
+          "gpt-5.4-mini",
+          "gpt-5.4-nano",
+          "DeepSeek-V4-Flash",
+          "DeepSeek-V4-Pro",
+          "Mistral-Large-3",
+          "grok-4.7",
+          "model-router"
+        ],
+        "maxRequestBytes": 32768,
+        "outputTokenParameter": "max_completion_tokens",
+        "defaultProfile": "chat",
+        "profiles": [
+          {
+            "kind": "bodyModel",
+            "allowedModels": [
+              "gpt-6.1-sol",
+              "gpt-6-luna",
+              "gpt-6-sol",
+              "gpt-6-astra",
+              "gpt-5.6-luna",
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.5",
+              "gpt-5.4-mini",
+              "gpt-5.4-nano"
+            ],
+            "maxRequestBytes": 32768,
+            "outputTokenParameter": "max_completion_tokens",
+            "profileId": "chat",
+            "modalities": [
+              "text"
+            ]
+          },
+          {
+            "kind": "bodyModel",
+            "maxRequestBytes": 2000000,
+            "bodyFormat": "json",
+            "allowedModels": [
+              "gpt-6.1-sol"
+            ],
+            "outputTokenParameter": "max_completion_tokens",
+            "profileId": "vision",
+            "modalities": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "kind": "bodyModel",
+            "allowedModels": [
+              "DeepSeek-V4-Flash",
+              "DeepSeek-V4-Pro",
+              "Mistral-Large-3",
+              "grok-4.7"
+            ],
+            "maxRequestBytes": 32768,
+            "outputTokenParameter": "max_tokens",
+            "profileId": "compatible",
+            "modalities": [
+              "text"
+            ]
+          },
+          {
+            "kind": "bodyModel",
+            "allowedModels": [
+              "model-router"
+            ],
+            "maxRequestBytes": 32768,
+            "outputTokenParameter": "max_completion_tokens",
+            "profileId": "router",
+            "modalities": [
+              "text"
+            ]
+          }
+        ]
+      },
+      "responses-create": {
+        "kind": "statelessResponses",
+        "allowedModels": [
+          "gpt-6.1-sol",
+          "gpt-6-luna",
+          "gpt-6-sol",
+          "gpt-6-astra",
+          "gpt-5.6-luna",
+          "gpt-5.6-sol",
+          "gpt-5.6-terra",
+          "gpt-5.5",
+          "gpt-5.4-mini",
+          "gpt-5.4-nano",
+          "gpt-5.4-pro"
+        ],
+        "maxRequestBytes": 32768,
+        "outputTokenParameter": "max_output_tokens",
+        "defaultProfile": "response",
+        "profiles": [
+          {
+            "kind": "statelessResponses",
+            "allowedModels": [
+              "gpt-6.1-sol",
+              "gpt-6-luna",
+              "gpt-6-sol",
+              "gpt-6-astra",
+              "gpt-5.6-luna",
+              "gpt-5.6-sol",
+              "gpt-5.6-terra",
+              "gpt-5.5",
+              "gpt-5.4-mini",
+              "gpt-5.4-nano",
+              "gpt-5.4-pro"
+            ],
+            "maxRequestBytes": 32768,
+            "outputTokenParameter": "max_output_tokens",
+            "profileId": "response",
+            "modalities": [
+              "text"
+            ],
+            "integerLimits": {
+              "max_output_tokens": {
+                "minimum": 16,
+                "maximum": 1000000,
+                "required": true
+              }
+            }
+          },
+          {
+            "kind": "statelessResponses",
+            "maxRequestBytes": 2000000,
+            "bodyFormat": "json",
+            "allowedModels": [
+              "gpt-6.1-sol"
+            ],
+            "outputTokenParameter": "max_output_tokens",
+            "profileId": "pdf",
+            "modalities": [
+              "text",
+              "file"
+            ],
+            "integerLimits": {
+              "max_output_tokens": {
+                "minimum": 16,
+                "maximum": 1000000,
+                "required": true
+              }
+            }
+          }
+        ],
+        "integerLimits": {
+          "max_output_tokens": {
+            "minimum": 16,
+            "maximum": 1000000,
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "serviceClass": "platform"
+}

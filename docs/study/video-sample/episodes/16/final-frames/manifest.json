@@ -1,0 +1,112 @@
+[
+  {
+    "name": "logo",
+    "seconds": 2,
+    "file": "logo.png"
+  },
+  {
+    "name": "cast",
+    "seconds": 4.5,
+    "file": "cast.png"
+  },
+  {
+    "name": "turn-001",
+    "seconds": 8.125,
+    "file": "turn-001.png"
+  },
+  {
+    "name": "turn-002",
+    "seconds": 16.166666666666664,
+    "file": "turn-002.png"
+  },
+  {
+    "name": "turn-003",
+    "seconds": 25.958333333333332,
+    "file": "turn-003.png"
+  },
+  {
+    "name": "turn-022",
+    "seconds": 235.70833333333334,
+    "file": "turn-022.png"
+  },
+  {
+    "name": "turn-023",
+    "seconds": 246.20833333333334,
+    "file": "turn-023.png"
+  },
+  {
+    "name": "turn-026",
+    "seconds": 286.1666666666667,
+    "file": "turn-026.png"
+  },
+  {
+    "name": "turn-033",
+    "seconds": 370.2916666666667,
+    "file": "turn-033.png"
+  },
+  {
+    "name": "turn-036",
+    "seconds": 409.4166666666667,
+    "file": "turn-036.png"
+  },
+  {
+    "name": "turn-043",
+    "seconds": 488.5416666666667,
+    "file": "turn-043.png"
+  },
+  {
+    "name": "turn-044",
+    "seconds": 497,
+    "file": "turn-044.png"
+  },
+  {
+    "name": "turn-045",
+    "seconds": 510.875,
+    "file": "turn-045.png"
+  },
+  {
+    "name": "turn-070",
+    "seconds": 822.4166666666666,
+    "file": "turn-070.png"
+  },
+  {
+    "name": "turn-071",
+    "seconds": 837.25,
+    "file": "turn-071.png"
+  },
+  {
+    "name": "turn-074",
+    "seconds": 871.9583333333334,
+    "file": "turn-074.png"
+  },
+  {
+    "name": "turn-075",
+    "seconds": 886,
+    "file": "turn-075.png"
+  },
+  {
+    "name": "turn-078",
+    "seconds": 923.4583333333334,
+    "file": "turn-078.png"
+  },
+  {
+    "name": "turn-079",
+    "seconds": 936.8333333333334,
+    "file": "turn-079.png"
+  },
+  {
+    "name": "turn-083",
+    "seconds": 985.8333333333334,
+    "file": "turn-083.png"
+  },
+  {
+    "name": "closing",
+    "seconds": 1026.0416666666665,
+    "file": "closing.png"
+  },
+  {
+    "name": "closing-end",
+    "seconds": 1030.8416666666667,
+    "file": "closing-end.png"
+  }
+]

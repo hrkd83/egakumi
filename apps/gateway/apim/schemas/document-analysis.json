@@ -1,0 +1,39 @@
+{
+  "schemas": {
+    "DocumentAnalysisResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzeResult", "requestId"],
+      "properties": {
+        "analyzeResult": {
+          "type": "object",
+          "description": "Native Document Intelligence 2024-11-30 AnalyzeResult. Optional fields vary by model and document; no missing field is invented.",
+          "required": ["apiVersion", "modelId", "content", "pages"],
+          "properties": {
+            "apiVersion": {"type": "string", "enum": ["2024-11-30"]},
+            "modelId": {"type": "string", "enum": ["prebuilt-read", "prebuilt-layout"]},
+            "stringIndexType": {"type": "string"},
+            "content": {"type": "string"},
+            "pages": {"type": "array", "items": {"type": "object"}},
+            "paragraphs": {"type": "array", "items": {"type": "object"}},
+            "tables": {"type": "array", "items": {"type": "object"}},
+            "styles": {"type": "array", "items": {"type": "object"}},
+            "sections": {"type": "array", "items": {"type": "object"}},
+            "figures": {"type": "array", "items": {"type": "object"}}
+          },
+          "additionalProperties": true
+        },
+        "requestId": {"type": "string", "format": "uuid"}
+      }
+    },
+    "DocumentAnalysisError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "requestId"],
+      "properties": {
+        "error": {"type": "object", "additionalProperties": false, "required": ["code"], "properties": {"code": {"type": "string"}}},
+        "requestId": {"type": "string", "format": "uuid"}
+      }
+    }
+  }
+}

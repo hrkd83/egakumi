@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "scope": "pre-generation authored script and static visual previews only",
+  "turns": 80,
+  "speechCharacters": 5643,
+  "chapters": 9,
+  "uniqueVisuals": 32,
+  "scriptSha256": "6bc1ababf2b3e9602b96d1d0bc3045f489af5a1236627a13f87db35833b1dbda",
+  "allSubtitleChunksReconstructCaption": true,
+  "maxSubtitleLines": 2,
+  "maxSubtitleLineCharacters": 35,
+  "technicalReview": "Study sections 6–10 and repository definitions; no unresolved discrepancies",
+  "visualReview": "32 unique visuals, long FQDNs, cards, diagrams, quizzes, summary, cast; no unresolved overflow or overlap",
+  "audioGenerated": false,
+  "completionVideoVerified": false,
+  "speechListeningReview": "not performed"
+}

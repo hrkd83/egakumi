@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "url": "http://127.0.0.1:55856/conversation-preview.html",
+  "duration": 69.333333,
+  "playbackRate": 1,
+  "samplesSeconds": [
+    0.059052,
+    18.013048,
+    48.008622,
+    69.333333
+  ],
+  "ended": true,
+  "error": null,
+  "seekOrPauseDuringReplay": false,
+  "speechListeningPerformed": false,
+  "sourceSha256": "93e95ecb40512338633194d7ef884f8d0f2cbbf9adb8b1a1f70f4c16794a5522"
+}

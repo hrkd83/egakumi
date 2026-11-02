@@ -1,0 +1,1474 @@
+{
+  "status": "passed",
+  "visualStyle": "teaching-settings-v2",
+  "bodyCamera": "fixed",
+  "checkedAt": "2026-11-02T04:08:55.187Z",
+  "script": "episodes/02/script.json",
+  "scriptSha256": "25477f6ca91d9e08c1af71fb3cbc2530039daee39dbc2716ee5b47cbe73f5dff",
+  "originalScript": "episodes/02/versions/portal-v2/script.json",
+  "originalScriptSha256": "7d2e2e4a1688bb6aa62c07fc75bd4c0e47f12e50d3e6aab23ba6b603807064cd",
+  "nonVisualTurnsUnchanged": 80,
+  "bodyTurns": 76,
+  "bodyViews": 27,
+  "bodyTimeSamples": [
+    0,
+    2,
+    10
+  ],
+  "continuousPreviewReviewed": false,
+  "scope": "Source and raster preservation audit; core media validation and human conversation/audio review are separate.",
+  "fileChecks": [
+    {
+      "file": "lesson-narration.wav",
+      "sha256": "0f0c95fafb1916c36ec967be2342408a9e4b5fc50c0d17914d0f9702bf6f7a40"
+    },
+    {
+      "file": "lesson-mix.wav",
+      "sha256": "b539b99f7ce609da5aac89a32c9ddeb27db395a325a4415e7adf2ab281e969e7"
+    },
+    {
+      "file": "gemini-attempts.json",
+      "sha256": "8d501c4657bc72718e73ecb469364bae354fbec1ce8715e1193eaa5e3d7becad"
+    },
+    {
+      "file": "lesson-captions.vtt",
+      "sha256": "35b06ff23d4b1d44d81f0f24b0b4d768146475f1baff5b5b0421fa9f53383b60"
+    },
+    {
+      "file": "egakumi-study-02.mp4",
+      "sha256": "7830d7b9ae938cccd646e25f23c7b93525a96ee61edf964fc608af92114f5e43"
+    },
+    {
+      "file": "lesson02-turn-027-mako-raw.wav",
+      "sha256": "d67985fc76edc41ec2d2218792dc272207cd70244bd3bcc0bd13045e19eec1be"
+    },
+    {
+      "file": "lesson02-turn-018-ikumi-raw.wav",
+      "sha256": "22647e92cb5a67d3746ad83bcd6129815985fe5d67e4c31ed13ec6bd65f750d1"
+    },
+    {
+      "file": "lesson02-turn-055-ikumi-raw.wav",
+      "sha256": "77b74f92de02748fe66d67a6379aedcf64cf0cbe763393e4af7466a1feb52915"
+    },
+    {
+      "file": "lesson02-turn-004-mako-raw.wav",
+      "sha256": "82d0b520c32d9c7a8603d3ea78864ac3615068e550c068ccd7c6f4188c055eb9"
+    },
+    {
+      "file": "lesson02-turn-051-mako-raw.wav",
+      "sha256": "d6aa8eda402946dc9c1505185cae6cfa6d549b669a0b26b322d441a00179d260"
+    },
+    {
+      "file": "lesson02-turn-025-manabu-raw.wav",
+      "sha256": "0f5e27857a703f1ba0a9213ac630f8a994a236c33f6e6d9468d65bf64db1a5bc"
+    },
+    {
+      "file": "lesson02-turn-046-ikumi-raw.wav",
+      "sha256": "aac83f7c0a8f91f2542bc74b7e14fb1a2e82481cf1a649c44d9eb3737476238f"
+    },
+    {
+      "file": "lesson02-turn-016-mako-raw.wav",
+      "sha256": "dd1ed5dcd2aa122cf7fe0b82c474e16685db38f79e83ca869b320e830ce2a34f"
+    },
+    {
+      "file": "lesson02-turn-068-ikumi-raw.wav",
+      "sha256": "91c7e8747864697bb8f35b326f8d2177ee7a36bc9d33057c4bf6d98ffc2452f2"
+    },
+    {
+      "file": "lesson02-turn-041-ikumi-raw.wav",
+      "sha256": "2df5784a15fedfccc40a2892379160d94eb01acfaf5f80450ae0168569b20c88"
+    },
+    {
+      "file": "lesson02-turn-078-ikumi-raw.wav",
+      "sha256": "bcd5d2263724248469d193b8117614c7972af04573f81a1965a7d58fc57eda35"
+    },
+    {
+      "file": "lesson02-turn-066-mako-raw.wav",
+      "sha256": "a381aa1065ecae2e629cb3ef056c9943941e8c2fe209bbe6105c879ff790a945"
+    },
+    {
+      "file": "lesson02-turn-061-mako-raw.wav",
+      "sha256": "758d982527bd6f4d53096db26f6d20320c84350080295b157643cb25811418b8"
+    },
+    {
+      "file": "lesson02-turn-034-mako-raw.wav",
+      "sha256": "182a17e7c765fe1c06ae2b74fa51df512c19bbe990fed4cf6b136a0ea9d58c6e"
+    },
+    {
+      "file": "lesson02-turn-052-ikumi-raw.wav",
+      "sha256": "2ed8f2009415d36e2886c47c7d42106331394bd1c46ea55587e4ba09924274cd"
+    },
+    {
+      "file": "lesson02-turn-074-mako-raw.wav",
+      "sha256": "1c835cf78b645292bcb64c8ff9f7482e39fb17c6d5edf9fbb15eab76c7f5276b"
+    },
+    {
+      "file": "lesson02-turn-021-mako-raw.wav",
+      "sha256": "f586bc18daef44332507a29940dee30c35b3384972f32c95d35502311d4202b1"
+    },
+    {
+      "file": "lesson02-turn-026-ikumi-raw.wav",
+      "sha256": "67531ff9fd3cd7ceaf042f75bc77016471b382f560e649ff20c0e89c50c67153"
+    },
+    {
+      "file": "lesson02-turn-031-ikumi-raw.wav",
+      "sha256": "7b37257925f84d9ddcf3dc558cd4bc9538706a102f64df973a0100b2402e1e0a"
+    },
+    {
+      "file": "lesson02-turn-045-mako-raw.wav",
+      "sha256": "75719d4ca5c3544f07fe62ac4f5a30f0dcd8f58a678b748261302c69e8931270"
+    },
+    {
+      "file": "lesson02-turn-047-manabu-raw.wav",
+      "sha256": "5fc9e619432e628f5fd34d079a93b2d91dc1c59c28a3ab1d9bdb5a5993e21d48"
+    },
+    {
+      "file": "lesson02-turn-035-ikumi-raw.wav",
+      "sha256": "db639d8e22f99fb0b64b84417a3424fc48e0e16f077bf7dff2628079f2e1e7f5"
+    },
+    {
+      "file": "lesson02-turn-022-ikumi-raw.wav",
+      "sha256": "3031f596995ceddf47581414c3d8e8ff08dc0aacc471c52203193d464f080b43"
+    },
+    {
+      "file": "lesson02-turn-036-manabu-raw.wav",
+      "sha256": "dbdf3ac8b2ed28765bc1804225d119f9f3b700dc42fc068a367aab17fa292174"
+    },
+    {
+      "file": "lesson02-turn-028-ikumi-raw.wav",
+      "sha256": "7c6b5ec41ebb737f03cba237b44cf17c5a0332f391c4f71cc719da62b83436af"
+    },
+    {
+      "file": "lesson02-turn-015-ikumi-raw.wav",
+      "sha256": "1e02e7f4561ef7176d1031e5610189633eb1d6193da22030f2dbd14557b6d011"
+    },
+    {
+      "file": "lesson02-turn-079-mako-raw.wav",
+      "sha256": "28acea873d318de80e223b54c307f7cdbb756f9387ef77d50f1a8435b049ab37"
+    },
+    {
+      "file": "lesson02-turn-065-ikumi-raw.wav",
+      "sha256": "12de3b62a3951cfc3d55bf6303a0b9567115d70fbaf83cc39f6a7d7f3ac9a555"
+    },
+    {
+      "file": "lesson02-turn-032-manabu-raw.wav",
+      "sha256": "f4fbe20d9fbd80d1d9e8aaecec941def9abd5b809b0576902ce06752136de525"
+    },
+    {
+      "file": "lesson02-turn-062-ikumi-raw.wav",
+      "sha256": "40eb175b1f6a81c4c51c59c3bdc9eef63c2e9139b64ad7ee906b539ffca95aef"
+    },
+    {
+      "file": "lesson02-turn-056-manabu-raw.wav",
+      "sha256": "8dcf6561cd584bbe2c9fd14629c30cd5b8bcea361e622361a120ba1b313e147d"
+    },
+    {
+      "file": "lesson02-turn-049-mako-raw.wav",
+      "sha256": "7bd9b18a868b69a1a298f2ca5432a9f8d3a82f96e7b4d1e168468419bb64204d"
+    },
+    {
+      "file": "lesson02-turn-075-ikumi-raw.wav",
+      "sha256": "42e76328e9a14ab776801b76ad1ee3c4c2272a618b337357cb4c8412b2d5ecf5"
+    },
+    {
+      "file": "lesson02-turn-048-ikumi-raw.wav",
+      "sha256": "3f7d9c9a21643464c92e91583e5b97b98d876b4b6150ca23190b93d041cef532"
+    },
+    {
+      "file": "lesson02-turn-009-mako-raw.wav",
+      "sha256": "190ee210031b4d8caef0f004a4330600f35e6b8ed762c4c6bb7cfc0fbdbb684c"
+    },
+    {
+      "file": "lesson02-turn-081-ikumi-raw.wav",
+      "sha256": "db2cb5bfa7e00002f449ead57004f1740613c113c13bb663f77f35bef85151db"
+    },
+    {
+      "file": "lesson02-turn-020-manabu-raw.wav",
+      "sha256": "f633634f99eb9f7b4e9b7ebd7ec565c31a34a0bd8f23dccb65cb311d5dd877ad"
+    },
+    {
+      "file": "lesson02-turn-059-manabu-raw.wav",
+      "sha256": "4dd7bbb0c3b0aded4297164c1e49e4ed6f29f95cb7d667ad865140229a65cb45"
+    },
+    {
+      "file": "lesson02-turn-038-ikumi-raw.wav",
+      "sha256": "1c012b729441f1b397af90c87f12e00f8ff29b4312dd7cfb235bd6cb6b3c67e5"
+    },
+    {
+      "file": "lesson02-turn-067-ikumi-raw.wav",
+      "sha256": "98c159d2cbec4183529d1eb2eb2440db0d0acf18d41a5ea411932ecba5f07f25"
+    },
+    {
+      "file": "lesson02-turn-019-mako-raw.wav",
+      "sha256": "432127a5b335a325a44d0de623be5dfd2818a2024cac90db46488ba2559603df"
+    },
+    {
+      "file": "lesson02-turn-070-ikumi-raw.wav",
+      "sha256": "7696fe8cef9ebd694718f62620e181e252d9c2a1089210eed5e1a18ccf3020fd"
+    },
+    {
+      "file": "lesson02-turn-063-ikumi-raw.wav",
+      "sha256": "ea974793b5d5a670a645319ca0ee707a67ada6f226d2e97c8931c741684f2239"
+    },
+    {
+      "file": "lesson02-turn-017-ikumi-raw.wav",
+      "sha256": "59f80214063076e56c4f7512030a289ea0971d934a559c0147771e28581529cd"
+    },
+    {
+      "file": "lesson02-turn-084-ikumi-raw.wav",
+      "sha256": "6f5a199922d0396c7a2152e86eb13b0c982e1112ac27f2f194f316063332388c"
+    },
+    {
+      "file": "lesson02-turn-039-ikumi-raw.wav",
+      "sha256": "9a05c38d8c354e11485dfefb07539b9a7d27039713bd1421a3b1249143e27525"
+    },
+    {
+      "file": "lesson02-turn-013-ikumi-raw.wav",
+      "sha256": "3a69af88ed5d6fce50bd9d4a52642514457a1f64ae34e2349713db29ec85dff6"
+    },
+    {
+      "file": "lesson02-turn-085-mako-raw.wav",
+      "sha256": "763b7c00efdff807456c430183a5f2c09fce608733235305dff7b00d1e08d160"
+    },
+    {
+      "file": "lesson02-turn-082-mako-raw.wav",
+      "sha256": "654cd0b3bbd40bdaa221b263c668f8e076286a7b92625b6ccb45c7f33b12761a"
+    },
+    {
+      "file": "lesson02-turn-080-manabu-raw.wav",
+      "sha256": "b0168aa29e3735fef863d2b9433d60b2ce39ca83a764c6d63e7a1462c2551aa8"
+    },
+    {
+      "file": "lesson02-turn-058-mako-raw.wav",
+      "sha256": "f6fe900a68c0ef57512cb379f0debc1495afc535c7a67c5cbdf301b9ac311d7e"
+    },
+    {
+      "file": "lesson02-turn-003-ikumi-raw.wav",
+      "sha256": "2721db069aba8dcf38eee1aca59f5e760d074cc8b59fc17dce04e9b550712454"
+    },
+    {
+      "file": "lesson02-turn-007-ikumi-raw.wav",
+      "sha256": "7ba72cbc8abc40cfde950d29a30f113b1fb0b4f5d9efae75db78d652af87ae88"
+    },
+    {
+      "file": "lesson02-turn-010-ikumi-raw.wav",
+      "sha256": "ddab14f4105ec509a38eaf2e071fe145720bf5e243e346a431b3ac15a3004d3f"
+    },
+    {
+      "file": "lesson02-turn-029-ikumi-raw.wav",
+      "sha256": "0fb59ec8d966f571145ee0dccde7bb50124eec11e726137cf5510e1e2a5f5a85"
+    },
+    {
+      "file": "lesson02-turn-073-ikumi-raw.wav",
+      "sha256": "01560d2aade85ec28f04a1e6fe7c33f3271f4da0aa27491a3e2d2fe3f119d9b3"
+    },
+    {
+      "file": "lesson02-turn-008-manabu-raw.wav",
+      "sha256": "bcbf9cdd2d89379edd5ac29bbf03a5f0994357521817762034666aa2d5fd3a28"
+    },
+    {
+      "file": "lesson02-turn-060-ikumi-raw.wav",
+      "sha256": "7f9b4974971c11669fa9b739d1b7e3dcf6a1671879174adba101c25dfdee3477"
+    },
+    {
+      "file": "lesson02-turn-064-manabu-raw.wav",
+      "sha256": "74c93f79ffbfa39eaa2dff0801428035d3d71c44a7a6e25fa0ceae083ffdc6a1"
+    },
+    {
+      "file": "lesson02-turn-044-ikumi-raw.wav",
+      "sha256": "4c86b222c5ff25b4b456576be134262bc990049550681574a5ef174fbe9525ff"
+    },
+    {
+      "file": "lesson02-turn-071-mako-raw.wav",
+      "sha256": "8dad67d6913f5bec662de01b2536e98b9282b9cf92e3cf94a5e9afdb28d4039f"
+    },
+    {
+      "file": "lesson02-turn-023-mako-raw.wav",
+      "sha256": "b628bd8a0e648f76bbb356c577df8be8c95ca58b747d31932d7ead9b3b6392f0"
+    },
+    {
+      "file": "lesson02-turn-057-ikumi-raw.wav",
+      "sha256": "6af4585515b9a05ed89e86886bede3406965bd4623a3b22925a567e6627a31e7"
+    },
+    {
+      "file": "lesson02-turn-002-manabu-raw.wav",
+      "sha256": "c013fd388dcc2e390575f05b0f2496f5961ef26d72fc478733f04771d878d93f"
+    },
+    {
+      "file": "lesson02-turn-040-mako-raw.wav",
+      "sha256": "7c8cf5999771f56512521460de9c25ed39607c87512103b19bfcbc72ae309546"
+    },
+    {
+      "file": "lesson02-turn-012-mako-raw.wav",
+      "sha256": "3fab22abbb112856aa18e4a05734d04c936b83e9fac535bd80163c5021c731f5"
+    },
+    {
+      "file": "lesson02-turn-069-manabu-raw.wav",
+      "sha256": "67dd903f9728ae6e3a6ffe6ecc256fee9ef92abe4feb92215fc707897ccf6699"
+    },
+    {
+      "file": "lesson02-turn-005-manabu-raw.wav",
+      "sha256": "b79e24277a1e56b651036d5e146a55daa0d5faafd319c2c7e38e6567cbe6a45a"
+    },
+    {
+      "file": "lesson02-turn-077-mako-raw.wav",
+      "sha256": "f78c7267cf0f396fae640c217c81c080e43dc427e4c2f4b1bb650b8db400c3b7"
+    },
+    {
+      "file": "lesson02-turn-030-mako-raw.wav",
+      "sha256": "2496756b127669462ed6636ff0c67fbbc2b8d1acbc45ffe4367760cf29efbcd1"
+    },
+    {
+      "file": "lesson02-turn-037-mako-raw.wav",
+      "sha256": "838e23c3aef01d8dfe50e899091535c04e95cfdc46d07cb3643c10cad58eca90"
+    },
+    {
+      "file": "lesson02-turn-024-ikumi-raw.wav",
+      "sha256": "dff68993eddd6264883626c56029c38b4abcfcc7b9a568853f30b97589b78c32"
+    },
+    {
+      "file": "lesson02-turn-033-ikumi-raw.wav",
+      "sha256": "ef31e798ff2f21a856d08c16b4df5c8d14fa23d964ea8507d0783a7f7eede517"
+    },
+    {
+      "file": "lesson02-turn-072-manabu-raw.wav",
+      "sha256": "5cca598761a29591fbb8cd2cde7983a4badae000a02a65f0f9728cfeb4c86ba7"
+    },
+    {
+      "file": "lesson02-turn-001-mako-raw.wav",
+      "sha256": "d2e18485f649394f7dbe57bb873e9b6dd2c4532fcd7f8793dafcbeb8d607d7fa"
+    },
+    {
+      "file": "lesson02-turn-053-mako-raw.wav",
+      "sha256": "d9c6811c14416f7985e1acfab93d69e645a8c506d7b934732485acfe5a9ec4a0"
+    },
+    {
+      "file": "lesson02-turn-006-mako-raw.wav",
+      "sha256": "d130d2e02a5d8cc68e18f7ccc4521146da606695ef6e8078742b3b16fd36c399"
+    },
+    {
+      "file": "lesson02-turn-050-ikumi-raw.wav",
+      "sha256": "da1f29960bc08f3fe2edb49172b332fbc98df0c116df2d31ce054996133b5319"
+    },
+    {
+      "file": "lesson02-turn-043-ikumi-raw.wav",
+      "sha256": "1f0f8bbc5a5281b71f710dd447228ebbb4a3e5e4263d51b669d4e9b3128d5c4f"
+    },
+    {
+      "file": "lesson02-turn-054-ikumi-raw.wav",
+      "sha256": "b0e4bd7161ade950ed50a7b15150c3254cf27c798331ff7b8195c3892f695de7"
+    }
+  ],
+  "groups": [
+    {
+      "viewId": "name-to-ip",
+      "layout": "settings",
+      "baselineSha256": "128432a8a532fdedb509b957edb6206eb533c799f99a0be662e805ad15aeb641",
+      "turnIds": [
+        "lesson02-turn-005-manabu",
+        "lesson02-turn-006-mako",
+        "lesson02-turn-007-ikumi",
+        "lesson02-turn-008-manabu"
+      ]
+    },
+    {
+      "viewId": "lesson-goals",
+      "layout": "settings",
+      "baselineSha256": "09700b3d049c54fa13371f053f53b22e9a7699587ccedcb660bb2de062be7c11",
+      "turnIds": [
+        "lesson02-turn-009-mako",
+        "lesson02-turn-010-ikumi"
+      ]
+    },
+    {
+      "viewId": "pe-location",
+      "layout": "svg",
+      "baselineSha256": "423a8b1c46344c7247c94d678124603d87f60a48925b9eea515cdef9697cdcf3",
+      "turnIds": [
+        "lesson02-turn-012-mako",
+        "lesson02-turn-013-ikumi"
+      ]
+    },
+    {
+      "viewId": "pe-services",
+      "layout": "settings",
+      "baselineSha256": "81fe9249f6f96ae40c88bb53b816395d33f4659390a2df3f9df028232a1f910a",
+      "turnIds": [
+        "lesson02-turn-015-ikumi"
+      ]
+    },
+    {
+      "viewId": "pe-ip-configs",
+      "layout": "settings",
+      "baselineSha256": "d5096e2097811b254d3b1e194f4e2905c8914b21fd0732b93fb110acee17cc7a",
+      "turnIds": [
+        "lesson02-turn-016-mako",
+        "lesson02-turn-017-ikumi",
+        "lesson02-turn-018-ikumi"
+      ]
+    },
+    {
+      "viewId": "pe-responsibilities",
+      "layout": "settings",
+      "baselineSha256": "b426cf6fc26ceaf15378160851ceb630d566fcdc9d2c53aa1c1410acacdc8c02",
+      "turnIds": [
+        "lesson02-turn-019-mako",
+        "lesson02-turn-020-manabu"
+      ]
+    },
+    {
+      "viewId": "kv-name-and-data",
+      "layout": "svg",
+      "baselineSha256": "15d73dabe75ca7bfe8ac38f52b6a91b5b80be3b3fe818c460ffc7fb7e58b0947",
+      "turnIds": [
+        "lesson02-turn-021-mako",
+        "lesson02-turn-022-ikumi",
+        "lesson02-turn-023-mako",
+        "lesson02-turn-024-ikumi",
+        "lesson02-turn-025-manabu",
+        "lesson02-turn-026-ikumi"
+      ]
+    },
+    {
+      "viewId": "private-link-zones",
+      "layout": "svg",
+      "baselineSha256": "3ab2dd07896e19da3d8680225c92a061b2877692cc3cdc867e932ce9fbbb4900",
+      "turnIds": [
+        "lesson02-turn-027-mako",
+        "lesson02-turn-028-ikumi",
+        "lesson02-turn-029-ikumi"
+      ]
+    },
+    {
+      "viewId": "zone-associations",
+      "layout": "svg",
+      "baselineSha256": "765d9884450d5f6a6cb4302dbc84339659aa941458789c8520ef58f9a2e21837",
+      "turnIds": [
+        "lesson02-turn-030-mako",
+        "lesson02-turn-031-ikumi",
+        "lesson02-turn-032-manabu",
+        "lesson02-turn-033-ikumi"
+      ]
+    },
+    {
+      "viewId": "vnet-dns",
+      "layout": "settings",
+      "baselineSha256": "55dad5d2f36e224fdce7394d4ce92b434f3aa2e15c2325d7fb3061e4dac67436",
+      "turnIds": [
+        "lesson02-turn-034-mako",
+        "lesson02-turn-035-ikumi",
+        "lesson02-turn-036-manabu"
+      ]
+    },
+    {
+      "viewId": "firewall-dns-input",
+      "layout": "settings",
+      "baselineSha256": "2f632a8000287d48ce3189f13cca837ea12c1f7c71b2eb04c799a4363131164f",
+      "turnIds": [
+        "lesson02-turn-037-mako",
+        "lesson02-turn-038-ikumi",
+        "lesson02-turn-039-ikumi",
+        "lesson02-turn-040-mako"
+      ]
+    },
+    {
+      "viewId": "dns-proxy-and-path",
+      "layout": "settings",
+      "baselineSha256": "c80e4444fec2e42e4b7487ad6daf8a3c9a6e8c03cea2b4e700c9ed08c7838997",
+      "turnIds": [
+        "lesson02-turn-041-ikumi",
+        "lesson02-turn-043-ikumi"
+      ]
+    },
+    {
+      "viewId": "dns-fallback",
+      "layout": "settings",
+      "baselineSha256": "6f1d4b1570a1ececa0d5566dd36935c83dda2b11295f76f4d35cc0e178f2372b",
+      "turnIds": [
+        "lesson02-turn-044-ikumi"
+      ]
+    },
+    {
+      "viewId": "eight-zones",
+      "layout": "settings",
+      "baselineSha256": "714c5fe71c7e95983e26ae4a9c27d0693a50efc00f33f7ba5963c18776fd7771",
+      "turnIds": [
+        "lesson02-turn-045-mako",
+        "lesson02-turn-046-ikumi",
+        "lesson02-turn-047-manabu"
+      ]
+    },
+    {
+      "viewId": "apim-internal-record",
+      "layout": "settings",
+      "baselineSha256": "ae7c52156ca3d6b105e2d561965d90a58b526c3db6e8e890de7d5a305311ce1c",
+      "turnIds": [
+        "lesson02-turn-048-ikumi",
+        "lesson02-turn-049-mako",
+        "lesson02-turn-050-ikumi"
+      ]
+    },
+    {
+      "viewId": "aca-internal-record",
+      "layout": "settings",
+      "baselineSha256": "665d2021a389a5372a9ab05bc6c1854893cafb49fecbbbdbb163ef16c6302d27",
+      "turnIds": [
+        "lesson02-turn-051-mako",
+        "lesson02-turn-052-ikumi",
+        "lesson02-turn-053-mako",
+        "lesson02-turn-054-ikumi",
+        "lesson02-turn-055-ikumi"
+      ]
+    },
+    {
+      "viewId": "public-hostnames",
+      "layout": "settings",
+      "baselineSha256": "7c51f78c2b7e4638c27cc2a4832d86928067b54b3af894d1fa71ea8ae7c44e10",
+      "turnIds": [
+        "lesson02-turn-056-manabu"
+      ]
+    },
+    {
+      "viewId": "apim-network-mode",
+      "layout": "settings",
+      "baselineSha256": "5c735d0714c57433d6e410909c31a8e1f927b73b6d338c87418de9235f762b54",
+      "turnIds": [
+        "lesson02-turn-057-ikumi"
+      ]
+    },
+    {
+      "viewId": "check-source",
+      "layout": "settings",
+      "baselineSha256": "43e1ba7d94e2c0550dae90159e9f0e4dbf278ebb1353d8f1b0986b6889a06f7a",
+      "turnIds": [
+        "lesson02-turn-058-mako",
+        "lesson02-turn-059-manabu",
+        "lesson02-turn-060-ikumi"
+      ]
+    },
+    {
+      "viewId": "check-answer-and-pe",
+      "layout": "settings",
+      "baselineSha256": "3650f862da87cfe60d3f68ca26658732ea220ae35ee5f121a99c3e0c63eed420",
+      "turnIds": [
+        "lesson02-turn-061-mako",
+        "lesson02-turn-062-ikumi",
+        "lesson02-turn-063-ikumi",
+        "lesson02-turn-064-manabu",
+        "lesson02-turn-065-ikumi"
+      ]
+    },
+    {
+      "viewId": "check-internal-reflection",
+      "layout": "settings",
+      "baselineSha256": "1ab244e4e8d251e582c4dce206bc8b389c76bbe57d24b16b377fa9ef5df49742",
+      "turnIds": [
+        "lesson02-turn-066-mako",
+        "lesson02-turn-067-ikumi",
+        "lesson02-turn-068-ikumi"
+      ]
+    },
+    {
+      "viewId": "dns-to-connection",
+      "layout": "settings",
+      "baselineSha256": "1c0d8aa110b63654f5453c8dc970ab5dac2bdd1b7d4997bbe65b07dcad0c75b4",
+      "turnIds": [
+        "lesson02-turn-069-manabu",
+        "lesson02-turn-070-ikumi"
+      ]
+    },
+    {
+      "viewId": "quiz-sql",
+      "layout": "settings",
+      "baselineSha256": "e63da6c96c366c2e028bb2b3fbb528919b4ec69d8823de9a5bcf740639e9882a",
+      "turnIds": [
+        "lesson02-turn-071-mako",
+        "lesson02-turn-072-manabu",
+        "lesson02-turn-073-ikumi"
+      ]
+    },
+    {
+      "viewId": "quiz-source",
+      "layout": "settings",
+      "baselineSha256": "00386d0fe755e0efcda1fba39b7a113dede59e77933878e996ad2e21771ee290",
+      "turnIds": [
+        "lesson02-turn-074-mako",
+        "lesson02-turn-075-ikumi"
+      ]
+    },
+    {
+      "viewId": "quiz-aca-apex",
+      "layout": "settings",
+      "baselineSha256": "7e4feb09bd9661d12c5e23b3d1b77d2544faa4653fde663ed3490e8511712247",
+      "turnIds": [
+        "lesson02-turn-077-mako",
+        "lesson02-turn-078-ikumi",
+        "lesson02-turn-079-mako"
+      ]
+    },
+    {
+      "viewId": "summary-correspondence",
+      "layout": "settings",
+      "baselineSha256": "d3bbd394a3fe0d7530ed839f8a393d48a599d9fcb5bc117b234b0227b1bad232",
+      "turnIds": [
+        "lesson02-turn-080-manabu",
+        "lesson02-turn-081-ikumi",
+        "lesson02-turn-082-mako"
+      ]
+    },
+    {
+      "viewId": "next-nsg",
+      "layout": "settings",
+      "baselineSha256": "c852ea29a70dd7aedac17cfa5a7f62b80842cf8617d8dd22aa15bec1d49cf86c",
+      "turnIds": [
+        "lesson02-turn-084-ikumi",
+        "lesson02-turn-085-mako"
+      ]
+    }
+  ],
+  "rasterChecks": [
+    {
+      "id": "lesson02-turn-005-manabu",
+      "viewId": "name-to-ip",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "bc46313d704e4fee7367f82a907b4d25c585f75dd877e8fa6240bcb8884b06a7",
+      "baselineBodySha256": "bc46313d704e4fee7367f82a907b4d25c585f75dd877e8fa6240bcb8884b06a7"
+    },
+    {
+      "id": "lesson02-turn-006-mako",
+      "viewId": "name-to-ip",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "882c8443293260b96cf2be7627a859ddbcdd69ff14872ca5d336005955e1e686",
+      "baselineBodySha256": "bc46313d704e4fee7367f82a907b4d25c585f75dd877e8fa6240bcb8884b06a7"
+    },
+    {
+      "id": "lesson02-turn-007-ikumi",
+      "viewId": "name-to-ip",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "ae0b9cfc02d6476cf92a899535a9d7d726b9a9639ccf2dd1562c26fdd20aaf17",
+      "baselineBodySha256": "bc46313d704e4fee7367f82a907b4d25c585f75dd877e8fa6240bcb8884b06a7"
+    },
+    {
+      "id": "lesson02-turn-008-manabu",
+      "viewId": "name-to-ip",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "96361b579cb9c24bf7064b2bb2192fdf86326034726ef3aa3a4b7b14a166ae66",
+      "baselineBodySha256": "bc46313d704e4fee7367f82a907b4d25c585f75dd877e8fa6240bcb8884b06a7"
+    },
+    {
+      "id": "lesson02-turn-009-mako",
+      "viewId": "lesson-goals",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "3a620afc509e62dc7e8b8bce8e35f31df094cf28c6fbdc5ad813f7b0b6ddd324",
+      "baselineBodySha256": "3a620afc509e62dc7e8b8bce8e35f31df094cf28c6fbdc5ad813f7b0b6ddd324"
+    },
+    {
+      "id": "lesson02-turn-010-ikumi",
+      "viewId": "lesson-goals",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "86a88eef5d1d1425db2853c2b7a6b9b55c64679ccf460a1d1eedacfd895ae943",
+      "baselineBodySha256": "3a620afc509e62dc7e8b8bce8e35f31df094cf28c6fbdc5ad813f7b0b6ddd324"
+    },
+    {
+      "id": "lesson02-turn-012-mako",
+      "viewId": "pe-location",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f5df8cfb872178dbc1582926847628a25a3ebb7d1c6501fd1ef69e333bf006b5",
+      "baselineBodySha256": "f5df8cfb872178dbc1582926847628a25a3ebb7d1c6501fd1ef69e333bf006b5"
+    },
+    {
+      "id": "lesson02-turn-013-ikumi",
+      "viewId": "pe-location",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f420c78ed225dbd2b52ec9df8b667401293770db7f35d0f6106c5d5ee0a6f30f",
+      "baselineBodySha256": "f5df8cfb872178dbc1582926847628a25a3ebb7d1c6501fd1ef69e333bf006b5"
+    },
+    {
+      "id": "lesson02-turn-015-ikumi",
+      "viewId": "pe-services",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "65287a14d79eb2aab6ee74da9962dd9c54fbe1e36e4612f6d7b3a300ae19232c",
+      "baselineBodySha256": "02e68efab1fe73caca7f04c3d495fd7ddca528e1d17e8c2f9084a61e0c9d3752"
+    },
+    {
+      "id": "lesson02-turn-016-mako",
+      "viewId": "pe-ip-configs",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "502ebf9205ea02a215dd5776f92ea4893617964fe36c47e6c32f5172628be939",
+      "baselineBodySha256": "502ebf9205ea02a215dd5776f92ea4893617964fe36c47e6c32f5172628be939"
+    },
+    {
+      "id": "lesson02-turn-017-ikumi",
+      "viewId": "pe-ip-configs",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f403262c9d9c997969bddada503318f7a7610f704b447e19d43b888df3b47358",
+      "baselineBodySha256": "502ebf9205ea02a215dd5776f92ea4893617964fe36c47e6c32f5172628be939"
+    },
+    {
+      "id": "lesson02-turn-018-ikumi",
+      "viewId": "pe-ip-configs",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "3cebc569aac7df6ba0a3cc58e2602ee881b44cb01420c3166c2573ecff233b9c",
+      "baselineBodySha256": "502ebf9205ea02a215dd5776f92ea4893617964fe36c47e6c32f5172628be939"
+    },
+    {
+      "id": "lesson02-turn-019-mako",
+      "viewId": "pe-responsibilities",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "d66114c809684da179a84eae180ac4ae04e785d2aef9a66e0c3ed808efbcf0f7",
+      "baselineBodySha256": "d66114c809684da179a84eae180ac4ae04e785d2aef9a66e0c3ed808efbcf0f7"
+    },
+    {
+      "id": "lesson02-turn-020-manabu",
+      "viewId": "pe-responsibilities",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "a3fb7309541c1d4ae767d3200bfd50732ed8bf8c87c83c3fae724a3e1b63d3bc",
+      "baselineBodySha256": "d66114c809684da179a84eae180ac4ae04e785d2aef9a66e0c3ed808efbcf0f7"
+    },
+    {
+      "id": "lesson02-turn-021-mako",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-022-ikumi",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "1537cb7a1a2df858af3cf29ae568bca0814e9866995401da701ade1c233a4cfb",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-023-mako",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "1190141115e05b34d03c8af1b27d7d1a84656a49a34242f369d3261f00745db9",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-024-ikumi",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "ebeb157441067e68ce5f2df2c39a6b050df87b3d11da86ceb575f18d7ec79bf3",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-025-manabu",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "b6d3fa07ffbe255246be735b0a0cdf7b61f59dbeaade045bed2c73c82b1c5ed4",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-026-ikumi",
+      "viewId": "kv-name-and-data",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "552de89b9ca2ecf359dd31d87cf2d3cab04073cbd8e98b7716b3f6e714d4a58c",
+      "baselineBodySha256": "dad282bd689924fbc0e47d3dac3d289c18251d6661dbaa7165f014e9f0c9630a"
+    },
+    {
+      "id": "lesson02-turn-027-mako",
+      "viewId": "private-link-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "4cb8f9f8aab97208f0d58a164e5c0b0517f48448116618ff447e2f9e7b3c8500",
+      "baselineBodySha256": "4cb8f9f8aab97208f0d58a164e5c0b0517f48448116618ff447e2f9e7b3c8500"
+    },
+    {
+      "id": "lesson02-turn-028-ikumi",
+      "viewId": "private-link-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "b9aa2fb4aace200d0fd5026ee6ef70218482d3a81665f8004e1b8e30b39a3d53",
+      "baselineBodySha256": "4cb8f9f8aab97208f0d58a164e5c0b0517f48448116618ff447e2f9e7b3c8500"
+    },
+    {
+      "id": "lesson02-turn-029-ikumi",
+      "viewId": "private-link-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "bbeeeaf8c84cab6fda0489da4ff64565bfc960d5c41c284a688ac84ab5e06443",
+      "baselineBodySha256": "4cb8f9f8aab97208f0d58a164e5c0b0517f48448116618ff447e2f9e7b3c8500"
+    },
+    {
+      "id": "lesson02-turn-030-mako",
+      "viewId": "zone-associations",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "31e25835d203af2fb4484fffe15af48f56ffd239fd97f6e2cc9ebb21fdedbcae",
+      "baselineBodySha256": "31e25835d203af2fb4484fffe15af48f56ffd239fd97f6e2cc9ebb21fdedbcae"
+    },
+    {
+      "id": "lesson02-turn-031-ikumi",
+      "viewId": "zone-associations",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "363332a1c4cda9e776522bcbd584d5d0283af8e55f29e42c0d2ebe9f56c61719",
+      "baselineBodySha256": "31e25835d203af2fb4484fffe15af48f56ffd239fd97f6e2cc9ebb21fdedbcae"
+    },
+    {
+      "id": "lesson02-turn-032-manabu",
+      "viewId": "zone-associations",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "363332a1c4cda9e776522bcbd584d5d0283af8e55f29e42c0d2ebe9f56c61719",
+      "baselineBodySha256": "31e25835d203af2fb4484fffe15af48f56ffd239fd97f6e2cc9ebb21fdedbcae"
+    },
+    {
+      "id": "lesson02-turn-033-ikumi",
+      "viewId": "zone-associations",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "c353d6bab4e7bf0bf1e9bb04beeebd0a23c458b4d04a611c71f98b09aabe1040",
+      "baselineBodySha256": "31e25835d203af2fb4484fffe15af48f56ffd239fd97f6e2cc9ebb21fdedbcae"
+    },
+    {
+      "id": "lesson02-turn-034-mako",
+      "viewId": "vnet-dns",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "1bda4f93f84bafa28bc419c4684c4c84869ebd153de99022ca632e4c1eca7be7",
+      "baselineBodySha256": "1bda4f93f84bafa28bc419c4684c4c84869ebd153de99022ca632e4c1eca7be7"
+    },
+    {
+      "id": "lesson02-turn-035-ikumi",
+      "viewId": "vnet-dns",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "5f3fe47bbbe2fd823b2e60eb58852b493bb122ddcaeb331781d205027445a19a",
+      "baselineBodySha256": "1bda4f93f84bafa28bc419c4684c4c84869ebd153de99022ca632e4c1eca7be7"
+    },
+    {
+      "id": "lesson02-turn-036-manabu",
+      "viewId": "vnet-dns",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "17895daeb4b7386413932bafcd81dd539ee13819c1d1c8dd65469ebf9ef4afb0",
+      "baselineBodySha256": "1bda4f93f84bafa28bc419c4684c4c84869ebd153de99022ca632e4c1eca7be7"
+    },
+    {
+      "id": "lesson02-turn-037-mako",
+      "viewId": "firewall-dns-input",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "c284d711ed1d8a2a503d2ede64ef5f6492098e61371beeb888b796c0a92e8d96",
+      "baselineBodySha256": "c284d711ed1d8a2a503d2ede64ef5f6492098e61371beeb888b796c0a92e8d96"
+    },
+    {
+      "id": "lesson02-turn-038-ikumi",
+      "viewId": "firewall-dns-input",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "e714b1c6231c3df59d194ab7ebc71f12e242b08fc41c78bac94b94487af13425",
+      "baselineBodySha256": "c284d711ed1d8a2a503d2ede64ef5f6492098e61371beeb888b796c0a92e8d96"
+    },
+    {
+      "id": "lesson02-turn-039-ikumi",
+      "viewId": "firewall-dns-input",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "6cd090d01a9c4ce0bf69dc9b8450d2fa4fd88fca6f8d96bf1c546c8eb89af215",
+      "baselineBodySha256": "c284d711ed1d8a2a503d2ede64ef5f6492098e61371beeb888b796c0a92e8d96"
+    },
+    {
+      "id": "lesson02-turn-040-mako",
+      "viewId": "firewall-dns-input",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f36dd0bd89508039cab9c674e5165f14b4ee2c16e08589960c911b3a4941b2f0",
+      "baselineBodySha256": "c284d711ed1d8a2a503d2ede64ef5f6492098e61371beeb888b796c0a92e8d96"
+    },
+    {
+      "id": "lesson02-turn-041-ikumi",
+      "viewId": "dns-proxy-and-path",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "674a715980e89c837ffe64f92c219103a12a19095c338c530eb4b1384b3d81bb",
+      "baselineBodySha256": "5e87f0dc35780a519a9488fdfd9132ba2a31935ba7053985d17ef8d03cf6535c"
+    },
+    {
+      "id": "lesson02-turn-043-ikumi",
+      "viewId": "dns-proxy-and-path",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "bd59a65a8ef0be9c142eebd1d3760a7fe22f84b259f21336e3512921c6f2f49a",
+      "baselineBodySha256": "5e87f0dc35780a519a9488fdfd9132ba2a31935ba7053985d17ef8d03cf6535c"
+    },
+    {
+      "id": "lesson02-turn-044-ikumi",
+      "viewId": "dns-fallback",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "d0365b75c07e935edad76cf3366bc38ada1c19d22ee83a4290f935ff9ae42a50",
+      "baselineBodySha256": "6335cb4f84ebdb9df6943e4fef2a2233ef51cd8ec96bf9f66e251e3c7defcb4e"
+    },
+    {
+      "id": "lesson02-turn-045-mako",
+      "viewId": "eight-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "51bec6273c4759966b813e15025166ec9ecbd262346f948c15b7f43ee809c67b",
+      "baselineBodySha256": "51bec6273c4759966b813e15025166ec9ecbd262346f948c15b7f43ee809c67b"
+    },
+    {
+      "id": "lesson02-turn-046-ikumi",
+      "viewId": "eight-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "7eb73a64804eb19dd927169f6de210210c8007e800f9d93a1692bcce8feaeb73",
+      "baselineBodySha256": "51bec6273c4759966b813e15025166ec9ecbd262346f948c15b7f43ee809c67b"
+    },
+    {
+      "id": "lesson02-turn-047-manabu",
+      "viewId": "eight-zones",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f0b1eb9f588c582c552e76fd6f3a410abf19c5ef33394ab252c7803fde52692e",
+      "baselineBodySha256": "51bec6273c4759966b813e15025166ec9ecbd262346f948c15b7f43ee809c67b"
+    },
+    {
+      "id": "lesson02-turn-048-ikumi",
+      "viewId": "apim-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "f8382d98344e06f1b2a3e0c3a9da7f1063c05adcc18e5e6e59dae2063c2faad3",
+      "baselineBodySha256": "94f07dc4d34d19f9b177476638998fe0bdd1cd0e913ad1a8839f947f6ab5ac39"
+    },
+    {
+      "id": "lesson02-turn-049-mako",
+      "viewId": "apim-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "101a25de0f29d79d3c3026be9edc46731e7213ba4e61801d8b608c8b9014e664",
+      "baselineBodySha256": "94f07dc4d34d19f9b177476638998fe0bdd1cd0e913ad1a8839f947f6ab5ac39"
+    },
+    {
+      "id": "lesson02-turn-050-ikumi",
+      "viewId": "apim-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "fb1ebbd39a747a1af5bbc68db7b020653aebdf55c541c4498afdeb5c570e89f1",
+      "baselineBodySha256": "94f07dc4d34d19f9b177476638998fe0bdd1cd0e913ad1a8839f947f6ab5ac39"
+    },
+    {
+      "id": "lesson02-turn-051-mako",
+      "viewId": "aca-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed",
+      "baselineBodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed"
+    },
+    {
+      "id": "lesson02-turn-052-ikumi",
+      "viewId": "aca-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "8b94f9f3f56d719eea21463290f32bd189e9dd45548f6fe5a73bd45369637736",
+      "baselineBodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed"
+    },
+    {
+      "id": "lesson02-turn-053-mako",
+      "viewId": "aca-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed",
+      "baselineBodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed"
+    },
+    {
+      "id": "lesson02-turn-054-ikumi",
+      "viewId": "aca-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "cc9b1ff62fefedef86aacb275140b7a4427f63bc8d2de9da300feebde42fa36b",
+      "baselineBodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed"
+    },
+    {
+      "id": "lesson02-turn-055-ikumi",
+      "viewId": "aca-internal-record",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "4a6bc9e3fad9647084d72e140b28332d4659f74c12d5ca5376d52b8b18afd7ce",
+      "baselineBodySha256": "22d2f7781884b5bad8d67f1aae090dc968363c414433210e662d0a1054e731ed"
+    },
+    {
+      "id": "lesson02-turn-056-manabu",
+      "viewId": "public-hostnames",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "eb6d84e290613f8547e4a1cf8df87bfb4a173d2c3b60ba9c1e6f2ada7428038b",
+      "baselineBodySha256": "f2e24a666c03932c523ee425c1f34eeb2f4c888e936569a259b05bfa516f6a66"
+    },
+    {
+      "id": "lesson02-turn-057-ikumi",
+      "viewId": "apim-network-mode",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "b364fb7c7d5eec3b3b29f0818a696b5e3f770b26235aa5ce1e34bd052a2c3cce",
+      "baselineBodySha256": "433551f8ed812b7c2aa37da3b0241e9ac98e33d0abf7b55a9a96bdf43ebba37c"
+    },
+    {
+      "id": "lesson02-turn-058-mako",
+      "viewId": "check-source",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "ed7e303db314824d6f247c381feae9ef626777e952f3fd123ab6a8058a759982",
+      "baselineBodySha256": "ed7e303db314824d6f247c381feae9ef626777e952f3fd123ab6a8058a759982"
+    },
+    {
+      "id": "lesson02-turn-059-manabu",
+      "viewId": "check-source",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "119810e9f40f3db598f16d4e875078742514abba0a524fb4400c74447e67c5e0",
+      "baselineBodySha256": "ed7e303db314824d6f247c381feae9ef626777e952f3fd123ab6a8058a759982"
+    },
+    {
+      "id": "lesson02-turn-060-ikumi",
+      "viewId": "check-source",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "eb9ad1d74fcdff1e8c501e242e90d27f0719abf2fcba1cc6f28716ce4bff2828",
+      "baselineBodySha256": "ed7e303db314824d6f247c381feae9ef626777e952f3fd123ab6a8058a759982"
+    },
+    {
+      "id": "lesson02-turn-061-mako",
+      "viewId": "check-answer-and-pe",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be",
+      "baselineBodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be"
+    },
+    {
+      "id": "lesson02-turn-062-ikumi",
+      "viewId": "check-answer-and-pe",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "609cd769a1c0063e9d3e92c42a033c86f6f3ce9e9d673f27cf449259ff62f941",
+      "baselineBodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be"
+    },
+    {
+      "id": "lesson02-turn-063-ikumi",
+      "viewId": "check-answer-and-pe",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "c195f8934023c7847759e74c8696732399cc11d6abb999381c492220f8ac2f86",
+      "baselineBodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be"
+    },
+    {
+      "id": "lesson02-turn-064-manabu",
+      "viewId": "check-answer-and-pe",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "d7833178effcd9f96505a6c3e82c71f12ec5498d6f9e47525ed2bf6cf3c3e6b5",
+      "baselineBodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be"
+    },
+    {
+      "id": "lesson02-turn-065-ikumi",
+      "viewId": "check-answer-and-pe",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "4bc37d973dbdc88d9b7b245bbfa71f7f9183bdf22691bdd1eb3b1b647f7b9aed",
+      "baselineBodySha256": "7099332d8ce1cfda1d4ac9cf8548b5cccba793ac4cb6ed62a00ffe620a00e1be"
+    },
+    {
+      "id": "lesson02-turn-066-mako",
+      "viewId": "check-internal-reflection",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "dc4e055ee9bd7c4e38c8b53e0f0c29761e1070555abbc9ceafb6e63f8e8aaba9",
+      "baselineBodySha256": "dc4e055ee9bd7c4e38c8b53e0f0c29761e1070555abbc9ceafb6e63f8e8aaba9"
+    },
+    {
+      "id": "lesson02-turn-067-ikumi",
+      "viewId": "check-internal-reflection",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "8e7de8c5a16bf6421562687c8a976cf99b46c849d85ff445aaf2a52438ff10ea",
+      "baselineBodySha256": "dc4e055ee9bd7c4e38c8b53e0f0c29761e1070555abbc9ceafb6e63f8e8aaba9"
+    },
+    {
+      "id": "lesson02-turn-068-ikumi",
+      "viewId": "check-internal-reflection",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "c29d52f3741566b3952e819b38319e6b1d5a99efd781e8878098b5ac937ad85a",
+      "baselineBodySha256": "dc4e055ee9bd7c4e38c8b53e0f0c29761e1070555abbc9ceafb6e63f8e8aaba9"
+    },
+    {
+      "id": "lesson02-turn-069-manabu",
+      "viewId": "dns-to-connection",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "8f6c0e6ce76442a9e36d2525d3e400bf385f1660f5c0de2866b04ef0cd6bb8fc",
+      "baselineBodySha256": "9a0c813a1ae27556592fba26b9b0cc054d03ccaf5d51eef5d65621fa872465b5"
+    },
+    {
+      "id": "lesson02-turn-070-ikumi",
+      "viewId": "dns-to-connection",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "11542b1841b2047275885b7b79977a00d0e0422eda6f13b18168716871b0bd70",
+      "baselineBodySha256": "9a0c813a1ae27556592fba26b9b0cc054d03ccaf5d51eef5d65621fa872465b5"
+    },
+    {
+      "id": "lesson02-turn-071-mako",
+      "viewId": "quiz-sql",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "57627d5343b49b3be5d6c4e1bea32a38c4448a384ac197ac7bc782244c5f22b8",
+      "baselineBodySha256": "57627d5343b49b3be5d6c4e1bea32a38c4448a384ac197ac7bc782244c5f22b8"
+    },
+    {
+      "id": "lesson02-turn-072-manabu",
+      "viewId": "quiz-sql",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "04c0da59db4d4b4cf6a4b3724dc1c6ac8bfa999bf12c3c391d7d9452eba5486b",
+      "baselineBodySha256": "57627d5343b49b3be5d6c4e1bea32a38c4448a384ac197ac7bc782244c5f22b8"
+    },
+    {
+      "id": "lesson02-turn-073-ikumi",
+      "viewId": "quiz-sql",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "a5f6a04fc6f5591c0d68d2c61f98adb14432f5d7f0663977894aaa088f51407e",
+      "baselineBodySha256": "57627d5343b49b3be5d6c4e1bea32a38c4448a384ac197ac7bc782244c5f22b8"
+    },
+    {
+      "id": "lesson02-turn-074-mako",
+      "viewId": "quiz-source",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "1587153ec2f5b50ca05d55abfb7ae049679816c0f5730ec08538f17741302c0b",
+      "baselineBodySha256": "1587153ec2f5b50ca05d55abfb7ae049679816c0f5730ec08538f17741302c0b"
+    },
+    {
+      "id": "lesson02-turn-075-ikumi",
+      "viewId": "quiz-source",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "3939ea05ddb7b68fa89dd04971c907c6aa9a1d2f2a184221d34c3db1e552382b",
+      "baselineBodySha256": "1587153ec2f5b50ca05d55abfb7ae049679816c0f5730ec08538f17741302c0b"
+    },
+    {
+      "id": "lesson02-turn-077-mako",
+      "viewId": "quiz-aca-apex",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "d552e45e009d36ce2c47ac032e475f889000137ce6f06a56401d788001f37f7b",
+      "baselineBodySha256": "d552e45e009d36ce2c47ac032e475f889000137ce6f06a56401d788001f37f7b"
+    },
+    {
+      "id": "lesson02-turn-078-ikumi",
+      "viewId": "quiz-aca-apex",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "396d7d0660a1058f6798f36271021fc8ed9e53d6c2599390fc7e1703a8cb4e3f",
+      "baselineBodySha256": "d552e45e009d36ce2c47ac032e475f889000137ce6f06a56401d788001f37f7b"
+    },
+    {
+      "id": "lesson02-turn-079-mako",
+      "viewId": "quiz-aca-apex",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "5dab9fd55f3f1cf50cc8f73a84f2441fc43b61a89fb8335d0f307d125ddbad65",
+      "baselineBodySha256": "d552e45e009d36ce2c47ac032e475f889000137ce6f06a56401d788001f37f7b"
+    },
+    {
+      "id": "lesson02-turn-080-manabu",
+      "viewId": "summary-correspondence",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "7af67287eb59860c541464d8ad1d36c7b482c282a07f0b0178f4aa1a8db40bbf",
+      "baselineBodySha256": "1de3ae24a095e923b8fe8b45abff5ce9229dea95a778605eef9460dc54b93268"
+    },
+    {
+      "id": "lesson02-turn-081-ikumi",
+      "viewId": "summary-correspondence",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "1164ca70569413aafa75a70d2b7fb5b624104ff1a5e8e2cd0bc85e31ceca2886",
+      "baselineBodySha256": "1de3ae24a095e923b8fe8b45abff5ce9229dea95a778605eef9460dc54b93268"
+    },
+    {
+      "id": "lesson02-turn-082-mako",
+      "viewId": "summary-correspondence",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "e6ee02bf0fedfe936a7fb549556e32699d1fd8fbb66d364e36dd68f8a613ba69",
+      "baselineBodySha256": "1de3ae24a095e923b8fe8b45abff5ce9229dea95a778605eef9460dc54b93268"
+    },
+    {
+      "id": "lesson02-turn-084-ikumi",
+      "viewId": "next-nsg",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "91980e9218d3438d4bb2cc15a0a42e883861e03ea08275ae8766ae4a7be8f9bd",
+      "baselineBodySha256": "e3ff06645a90388bf90cbdb4cc7edd1335eca2497d0be3794639b2350b42a0a1"
+    },
+    {
+      "id": "lesson02-turn-085-mako",
+      "viewId": "next-nsg",
+      "sampleSeconds": [
+        0,
+        2,
+        10
+      ],
+      "bodySha256": "e73a824f25b9e7fae7f1da05af4649a27a020c3d059b26a5c1abfc643e5f8ed0",
+      "baselineBodySha256": "e3ff06645a90388bf90cbdb4cc7edd1335eca2497d0be3794639b2350b42a0a1"
+    }
+  ],
+  "timeline": {
+    "scenes": 91,
+    "durationSeconds": 925.2083333333334,
+    "frameCount": 22205,
+    "subtitleCues": 123,
+    "matchedOriginalSceneTiming": true
+  }
+}

@@ -1,0 +1,6541 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "visualStyle": "teaching-settings-v2",
+  "episodeKey": "09",
+  "episodeNumber": 9,
+  "episodeId": "09",
+  "title": "第9回 WAFの検査と誤検知への対応",
+  "topic": "WAFの検査と誤検知への対応",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "教材02の1〜8節、現行リポジトリ定義・公開設定例に基づく教材。稼働Azureの取得値・実測結果ではない。",
+  "learningObjectives": [
+    "攻撃パターンの一致と、異常スコア・上限・カスタムBlockによる拒否を区別する。",
+    "本文の受入上限、検査範囲、multipartファイル上限とAPI契約を区別する。",
+    "適用ポリシーを特定し、正規データの除外を完全パス・項目値・原因ルールへ絞る理由を説明する。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "purpose"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "ingress"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "request-order"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "policy"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "settings"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "scope"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "exclusions"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "payloads"
+    },
+    {
+      "file": "../../../infra/modules/application-gateway.bicep"
+    },
+    {
+      "file": "../../../config/test.json"
+    },
+    {
+      "file": "../../../config/production.json"
+    },
+    {
+      "file": "../../../apps/gateway/waf-data-exclusions.json"
+    },
+    {
+      "file": "../../../apps/gateway/waf-raw-body-controls.json"
+    },
+    {
+      "file": "../../../scripts/waf_policy.py"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "正規データがWAFで止まったら",
+      "goal": "今回の問いを共有する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "purpose"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "policy"
+        }
+      ]
+    },
+    {
+      "id": "route",
+      "title": "要求の入口と、止まった層",
+      "goal": "通常APIの経路とWAFの範囲を区別する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "purpose"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "ingress"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "request-order"
+        }
+      ]
+    },
+    {
+      "id": "rules",
+      "title": "攻撃パターンと遮断の判断",
+      "goal": "一致・異常スコア・上限による拒否を分ける",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "policy"
+        }
+      ]
+    },
+    {
+      "id": "limits",
+      "title": "本文の受入と検査範囲",
+      "goal": "本文・ファイル・API上限を区別する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "settings"
+        }
+      ]
+    },
+    {
+      "id": "scope",
+      "title": "どのポリシーが適用されるか",
+      "goal": "優先順位と明示的な合成を説明する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "scope"
+        }
+      ]
+    },
+    {
+      "id": "exclusions",
+      "title": "正規データの除外を絞る",
+      "goal": "完全パス・項目値・原因規則を対応付ける",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "exclusions"
+        }
+      ]
+    },
+    {
+      "id": "raw",
+      "title": "音声と文書の専用調整",
+      "goal": "raw本文と非本文の保護、専用上限を区別する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "payloads"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの問いで確かめる",
+      "goal": "検知・適用・除外の混同を訂正する",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "policy"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "scope"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "exclusions"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "まとめと第10回の問い",
+      "goal": "WAFの判断を説明し、FWとIDPSへつなぐ",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "policy"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "settings"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "scope"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "exclusions"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "payloads"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson09-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "正しいデータを送ったはずなのに、ワフで止まりました。該当のエーピーアイを丸ごと通せば、解決でしょうか。",
+      "caption": "正しいデータを送ったはずなのに、WAFで止まりました。該当のAPIを丸ごと通せば、解決でしょうか。",
+      "subtitleLines": [
+        "正しいデータを送ったはずなのに、WAFで止まりました。",
+        "該当のAPIを丸ごと通せば、解決でしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正しいデータを送ったはずなのに、WAFで止まりました。該当のAPIを丸ごと通せば、解決でしょうか。",
+          "lines": [
+            "正しいデータを送ったはずなのに、WAFで止まりました。",
+            "該当のAPIを丸ごと通せば、解決でしょうか。"
+          ],
+          "weight": 49
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "WAFの検査と誤検知への対応"
+      }
+    },
+    {
+      "id": "lesson09-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "使えるように直すことと、入口の保護を保つことを、一緒に考えたいですね。正規データまで止める理由を調べましょう。",
+      "caption": "使えるように直すことと、入口の保護を保つことを、一緒に考えたいですね。正規データまで止める理由を調べましょう。",
+      "subtitleLines": [
+        "使えるように直すことと、入口の保護を保つことを、",
+        "一緒に考えたいですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "使えるように直すことと、入口の保護を保つことを、一緒に考えたいですね。",
+          "lines": [
+            "使えるように直すことと、入口の保護を保つことを、",
+            "一緒に考えたいですね。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "正規データまで止める理由を調べましょう。",
+          "lines": [
+            "正規データまで止める理由を調べましょう。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "WAFの検査と誤検知への対応"
+      }
+    },
+    {
+      "id": "lesson09-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今日は、攻撃パターンの検査、本文の上限、適用ポリシーを分けて読みます。そのうえで、除外する範囲を絞ります。",
+      "caption": "今日は、攻撃パターンの検査、本文の上限、適用ポリシーを分けて読みます。そのうえで、除外する範囲を絞ります。",
+      "subtitleLines": [
+        "今日は、攻撃パターンの検査、本文の上限、適用ポリシーを",
+        "分けて読みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日は、攻撃パターンの検査、本文の上限、適用ポリシーを分けて読みます。",
+          "lines": [
+            "今日は、攻撃パターンの検査、本文の上限、適用ポリシーを",
+            "分けて読みます。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "そのうえで、除外する範囲を絞ります。",
+          "lines": [
+            "そのうえで、除外する範囲を絞ります。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "WAFの検査と誤検知への対応"
+      }
+    },
+    {
+      "id": "lesson09-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "止めた機能と、外してよい検査を確かめるんですね。ひとつの要求を入口から追ってみましょう。",
+      "caption": "止めた機能と、外してよい検査を確かめるんですね。ひとつの要求を入口から追ってみましょう。",
+      "subtitleLines": [
+        "止めた機能と、外してよい検査を確かめるんですね。",
+        "ひとつの要求を入口から追ってみましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "止めた機能と、外してよい検査を確かめるんですね。ひとつの要求を入口から追ってみましょう。",
+          "lines": [
+            "止めた機能と、外してよい検査を確かめるんですね。",
+            "ひとつの要求を入口から追ってみましょう。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "WAFの検査と誤検知への対応"
+      }
+    },
+    {
+      "id": "lesson09-turn-005-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "まず、403という応答だけで、ワフが拒否したと判断してよいですか。",
+      "caption": "まず、403という応答だけで、WAFが拒否したと判断してよいですか。",
+      "subtitleLines": [
+        "まず、403という応答だけで、WAFが拒否したと判断してよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず、403という応答だけで、WAFが拒否したと判断してよいですか。",
+          "lines": [
+            "まず、403という応答だけで、WAFが拒否したと判断してよいですか。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-route",
+        "svg": "diagrams/route-none.svg",
+        "heading": "どこで止まった要求か"
+      }
+    },
+    {
+      "id": "lesson09-turn-006-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "応答の番号だけでは決まりません。通常エーピーアイは、アプリケーション・ゲートウェイのワフ、ファイアウォール、内部エーピーアイ・マネジメントを通ります。エーピーアイ・マネジメントも別の理由で403を返せます。",
+      "caption": "応答の番号だけでは決まりません。通常APIは、AppGWのWAF、Firewall、内部APIMを通ります。APIMも別の理由で403を返せます。",
+      "subtitleLines": [
+        "応答の番号だけでは決まりません。",
+        "通常APIは、AppGWのWAF、Firewall、内部APIMを通ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "応答の番号だけでは決まりません。通常APIは、AppGWのWAF、Firewall、内部APIMを通ります。",
+          "lines": [
+            "応答の番号だけでは決まりません。",
+            "通常APIは、AppGWのWAF、Firewall、内部APIMを通ります。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "APIMも別の理由で403を返せます。",
+          "lines": [
+            "APIMも別の理由で403を返せます。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-route",
+        "svg": "diagrams/route-waf.svg",
+        "heading": "どこで止まった要求か"
+      }
+    },
+    {
+      "id": "lesson09-turn-007-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "ワフで拒否した要求は、後段へ業務転送されません。その要求について、どこまで届いたかをそろえると、調べる場所を絞れます。",
+      "caption": "WAFで拒否した要求は、後段へ業務転送されません。その要求について、どこまで届いたかをそろえると、調べる場所を絞れます。",
+      "subtitleLines": [
+        "WAFで拒否した要求は、後段へ業務転送されません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "WAFで拒否した要求は、後段へ業務転送されません。",
+          "lines": [
+            "WAFで拒否した要求は、後段へ業務転送されません。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "その要求について、どこまで届いたかをそろえると、調べる場所を絞れます。",
+          "lines": [
+            "その要求について、どこまで届いたかをそろえると、",
+            "調べる場所を絞れます。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-route",
+        "svg": "diagrams/route-waf.svg",
+        "heading": "どこで止まった要求か"
+      }
+    },
+    {
+      "id": "lesson09-turn-008-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "エーピーアイ・マネジメントのログがないことだけでも断定せず、時刻と要求先を合わせ、アプリケーション・ゲートウェイ側のActionや原因規則を確認します。今回はワフの判断に絞って見ます。",
+      "caption": "APIMのログがないことだけでも断定せず、時刻と要求先を合わせ、AppGW側のActionや原因規則を確認します。今回はWAFの判断に絞って見ます。",
+      "subtitleLines": [
+        "APIMのログがないことだけでも断定せず、時刻と要求先を合わせ、",
+        "AppGW側のActionや原因規則を確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMのログがないことだけでも断定せず、時刻と要求先を合わせ、AppGW側のActionや原因規則を確認します。",
+          "lines": [
+            "APIMのログがないことだけでも断定せず、時刻と要求先を合わせ、",
+            "AppGW側のActionや原因規則を確認します。"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "今回はWAFの判断に絞って見ます。",
+          "lines": [
+            "今回はWAFの判断に絞って見ます。"
+          ],
+          "weight": 17
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-route",
+        "svg": "diagrams/route-apim.svg",
+        "heading": "どこで止まった要求か"
+      }
+    },
+    {
+      "id": "lesson09-turn-009-mako",
+      "speaker": "mako",
+      "chapterId": "route",
+      "speech": "すべての入口で、この順番の検査を受けるわけではないんですね。",
+      "caption": "すべての入口で、この順番の検査を受けるわけではないんですね。",
+      "subtitleLines": [
+        "すべての入口で、この順番の検査を受けるわけではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "すべての入口で、この順番の検査を受けるわけではないんですね。",
+          "lines": [
+            "すべての入口で、この順番の検査を受けるわけではないんですね。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-routes",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "入口ごとに、WAFの適用範囲を確かめる",
+        "kind": "Application Gateway WAF",
+        "section": "入口と役割",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "api",
+              "cells": [
+                "通常HTTP API",
+                "AppGW WAF → FW → 内部APIM"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portalの入口",
+                "AppGWからPortalへ。APIMを経由しない"
+              ]
+            },
+            {
+              "id": "grpc",
+              "cells": [
+                "gRPCのTCP入口",
+                "HTTP WAFの対象外"
+              ]
+            },
+            {
+              "id": "separate",
+              "cells": [
+                "PortalからのAPI呼出し",
+                "別の要求として、Core API側の検査を受ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "ポータルの入口はエーピーアイ・マネジメントへ転送しません。ポータルからコア エーピーアイを呼ぶ場合は、そのエーピーアイ呼出しが別の要求としてエーピーアイ・マネジメント側の検査を受けます。",
+      "caption": "Portalの入口はAPIMへ転送しません。PortalからCore APIを呼ぶ場合は、そのAPI呼出しが別の要求としてAPIM側の検査を受けます。",
+      "subtitleLines": [
+        "Portalの入口はAPIMへ転送しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Portalの入口はAPIMへ転送しません。",
+          "lines": [
+            "Portalの入口はAPIMへ転送しません。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "PortalからCore APIを呼ぶ場合は、そのAPI呼出しが別の要求としてAPIM側の検査を受けます。",
+          "lines": [
+            "PortalからCore APIを呼ぶ場合は、そのAPI呼出しが別の要求として",
+            "APIM側の検査を受けます。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-routes",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "入口ごとに、WAFの適用範囲を確かめる",
+        "kind": "Application Gateway WAF",
+        "section": "入口と役割",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "api",
+              "cells": [
+                "通常HTTP API",
+                "AppGW WAF → FW → 内部APIM"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portalの入口",
+                "AppGWからPortalへ。APIMを経由しない"
+              ]
+            },
+            {
+              "id": "grpc",
+              "cells": [
+                "gRPCのTCP入口",
+                "HTTP WAFの対象外"
+              ]
+            },
+            {
+              "id": "separate",
+              "cells": [
+                "PortalからのAPI呼出し",
+                "別の要求として、Core API側の検査を受ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "portal"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-011-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "route",
+      "speech": "ジーアールピーシーのティーシーピー入口は、エイチティーティーピー ワフの対象外です。エイチティーティーピーの要求を検査する機能なので、入口とプロトコルを最初に確かめます。",
+      "caption": "gRPCのTCP入口は、HTTP WAFの対象外です。HTTPの要求を検査する機能なので、入口とプロトコルを最初に確かめます。",
+      "subtitleLines": [
+        "gRPCのTCP入口は、HTTP WAFの対象外です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "gRPCのTCP入口は、HTTP WAFの対象外です。",
+          "lines": [
+            "gRPCのTCP入口は、HTTP WAFの対象外です。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "HTTPの要求を検査する機能なので、入口とプロトコルを最初に確かめます。",
+          "lines": [
+            "HTTPの要求を検査する機能なので、入口とプロトコルを最初に",
+            "確かめます。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-routes",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "入口ごとに、WAFの適用範囲を確かめる",
+        "kind": "Application Gateway WAF",
+        "section": "入口と役割",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "api",
+              "cells": [
+                "通常HTTP API",
+                "AppGW WAF → FW → 内部APIM"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portalの入口",
+                "AppGWからPortalへ。APIMを経由しない"
+              ]
+            },
+            {
+              "id": "grpc",
+              "cells": [
+                "gRPCのTCP入口",
+                "HTTP WAFの対象外"
+              ]
+            },
+            {
+              "id": "separate",
+              "cells": [
+                "PortalからのAPI呼出し",
+                "別の要求として、Core API側の検査を受ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "grpc"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-012-manabu",
+      "speaker": "manabu",
+      "chapterId": "route",
+      "speech": "ここでの値や動作は、資料とリポジトリ定義に基づく教材です。稼働アジュールから設定を取得した結果とは分けて、指定された保護を読み解きます。",
+      "caption": "ここでの値や動作は、資料とリポジトリ定義に基づく教材です。稼働Azureから設定を取得した結果とは分けて、指定された保護を読み解きます。",
+      "subtitleLines": [
+        "ここでの値や動作は、資料とリポジトリ定義に基づく教材です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここでの値や動作は、資料とリポジトリ定義に基づく教材です。",
+          "lines": [
+            "ここでの値や動作は、資料とリポジトリ定義に基づく教材です。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "稼働Azureから設定を取得した結果とは分けて、指定された保護を読み解きます。",
+          "lines": [
+            "稼働Azureから設定を取得した結果とは分けて、指定された保護を",
+            "読み解きます。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-routes",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "入口ごとに、WAFの適用範囲を確かめる",
+        "kind": "Application Gateway WAF",
+        "section": "入口と役割",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "api",
+              "cells": [
+                "通常HTTP API",
+                "AppGW WAF → FW → 内部APIM"
+              ]
+            },
+            {
+              "id": "portal",
+              "cells": [
+                "Portalの入口",
+                "AppGWからPortalへ。APIMを経由しない"
+              ]
+            },
+            {
+              "id": "grpc",
+              "cells": [
+                "gRPCのTCP入口",
+                "HTTP WAFの対象外"
+              ]
+            },
+            {
+              "id": "separate",
+              "cells": [
+                "PortalからのAPI呼出し",
+                "別の要求として、Core API側の検査を受ける"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "api"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "ワフは、エーピーアイを呼ぶ権限まで判断してくれるのでしょうか。",
+      "caption": "WAFは、APIを呼ぶ権限まで判断してくれるのでしょうか。",
+      "subtitleLines": [
+        "WAFは、APIを呼ぶ権限まで判断してくれるのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "WAFは、APIを呼ぶ権限まで判断してくれるのでしょうか。",
+          "lines": [
+            "WAFは、APIを呼ぶ権限まで判断してくれるのでしょうか。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-mode",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "HTTPの攻撃パターンと、APIの利用許可を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "waf",
+              "cells": [
+                "WAFが確認",
+                "SQLi・XSS・パストラバーサル等"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMが確認",
+                "APIMサブスクリプションキー・入力契約等"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "test / production",
+                "Enabled / Prevention"
+              ]
+            },
+            {
+              "id": "detect",
+              "cells": [
+                "Detectionの意味",
+                "検知・記録する。モード自体は遮断しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "主にエイチティーティーピーに含まれる攻撃パターンを調べます。エスキューエル・インジェクション、クロスサイトスクリプティング、パストラバーサルなどです。利用者の権限確認とは役割が違います。",
+      "caption": "主にHTTPに含まれる攻撃パターンを調べます。SQLインジェクション、クロスサイトスクリプティング、パストラバーサルなどです。利用者の権限確認とは役割が違います。",
+      "subtitleLines": [
+        "主にHTTPに含まれる攻撃パターンを調べます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "主にHTTPに含まれる攻撃パターンを調べます。",
+          "lines": [
+            "主にHTTPに含まれる攻撃パターンを調べます。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "SQLインジェクション、クロスサイトスクリプティング、パストラバーサルなどです。",
+          "lines": [
+            "SQLインジェクション、クロスサイトスクリプティング、",
+            "パストラバーサルなどです。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "利用者の権限確認とは役割が違います。",
+          "lines": [
+            "利用者の権限確認とは役割が違います。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-mode",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "HTTPの攻撃パターンと、APIの利用許可を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "waf",
+              "cells": [
+                "WAFが確認",
+                "SQLi・XSS・パストラバーサル等"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMが確認",
+                "APIMサブスクリプションキー・入力契約等"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "test / production",
+                "Enabled / Prevention"
+              ]
+            },
+            {
+              "id": "detect",
+              "cells": [
+                "Detectionの意味",
+                "検知・記録する。モード自体は遮断しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "waf"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-015-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "正しいエーピーアイキーを持つ人の入力にも、不審な文字列は含まれ得ます。入口の攻撃検査と、エーピーアイ・マネジメントサブスクリプションの利用許可は、両方必要なんですね。",
+      "caption": "正しいAPIキーを持つ人の入力にも、不審な文字列は含まれ得ます。入口の攻撃検査と、APIMサブスクリプションの利用許可は、両方必要なんですね。",
+      "subtitleLines": [
+        "正しいAPIキーを持つ人の入力にも、不審な文字列は含まれ得ます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正しいAPIキーを持つ人の入力にも、不審な文字列は含まれ得ます。",
+          "lines": [
+            "正しいAPIキーを持つ人の入力にも、不審な文字列は含まれ得ます。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "入口の攻撃検査と、APIMサブスクリプションの利用許可は、両方必要なんですね。",
+          "lines": [
+            "入口の攻撃検査と、APIMサブスクリプションの利用許可は、",
+            "両方必要なんですね。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-mode",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "HTTPの攻撃パターンと、APIの利用許可を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "waf",
+              "cells": [
+                "WAFが確認",
+                "SQLi・XSS・パストラバーサル等"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMが確認",
+                "APIMサブスクリプションキー・入力契約等"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "test / production",
+                "Enabled / Prevention"
+              ]
+            },
+            {
+              "id": "detect",
+              "cells": [
+                "Detectionの意味",
+                "検知・記録する。モード自体は遮断しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-016-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "テストとプロダクションは、ともにプリベンションを指定しています。条件に応じて要求を拒否するモードです。ディテクションは検知と記録をするモードで、同じ意味ではありません。",
+      "caption": "testとproductionは、ともにPreventionを指定しています。条件に応じて要求を拒否するモードです。Detectionは検知と記録をするモードで、同じ意味ではありません。",
+      "subtitleLines": [
+        "testとproductionは、ともにPreventionを指定しています。",
+        "条件に応じて要求を拒否するモードです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "testとproductionは、ともにPreventionを指定しています。条件に応じて要求を拒否するモードです。",
+          "lines": [
+            "testとproductionは、ともにPreventionを指定しています。",
+            "条件に応じて要求を拒否するモードです。"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "Detectionは検知と記録をするモードで、同じ意味ではありません。",
+          "lines": [
+            "Detectionは検知と記録をするモードで、同じ意味ではありません。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-mode",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "HTTPの攻撃パターンと、APIの利用許可を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "waf",
+              "cells": [
+                "WAFが確認",
+                "SQLi・XSS・パストラバーサル等"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMが確認",
+                "APIMサブスクリプションキー・入力契約等"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "test / production",
+                "Enabled / Prevention"
+              ]
+            },
+            {
+              "id": "detect",
+              "cells": [
+                "Detectionの意味",
+                "検知・記録する。モード自体は遮断しない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "mode"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-017-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "検査条件は、ひとつのポリシーにまとまっているのですか。",
+      "caption": "検査条件は、ひとつのポリシーにまとまっているのですか。",
+      "subtitleLines": [
+        "検査条件は、ひとつのポリシーにまとまっているのですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "検査条件は、ひとつのポリシーにまとまっているのですか。",
+          "lines": [
+            "検査条件は、ひとつのポリシーにまとまっているのですか。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-parts",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "WAFポリシーを構成する設定",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "managed",
+              "cells": [
+                "管理ルール",
+                "OWASP CRS 3.2の攻撃パターン"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "カスタムルール",
+                "管理ルールより先に追加条件を判定"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "除外",
+                "対象項目と原因ルールを限定して調整"
+              ]
+            },
+            {
+              "id": "scrub",
+              "cells": [
+                "ログ保護",
+                "機微な値をログ上でマスク。除外とは別"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "はい。この実装はオワスプ シーアールエス 3.2の管理ルールを基礎にし、動作モード、カスタムルール、除外、ログ保護もポリシーへまとめます。",
+      "caption": "はい。この実装はOWASP CRS 3.2の管理ルールを基礎にし、動作モード、カスタムルール、除外、ログ保護もポリシーへまとめます。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "この実装はOWASP CRS 3.2の管理ルールを基礎にし、動作モード、カスタムルール、除外、ログ保護もポリシーへまとめます。",
+          "lines": [
+            "この実装はOWASP CRS 3.2の管理ルールを基礎にし、動作モード、",
+            "カスタムルール、除外、ログ保護もポリシーへまとめます。"
+          ],
+          "weight": 63
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-parts",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "WAFポリシーを構成する設定",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "managed",
+              "cells": [
+                "管理ルール",
+                "OWASP CRS 3.2の攻撃パターン"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "カスタムルール",
+                "管理ルールより先に追加条件を判定"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "除外",
+                "対象項目と原因ルールを限定して調整"
+              ]
+            },
+            {
+              "id": "scrub",
+              "cells": [
+                "ログ保護",
+                "機微な値をログ上でマスク。除外とは別"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "managed"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-019-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "値をログに残さないことと、その値を検査しないことも別ですね。ログマスクを設定しただけで、誤検知がなくなるわけではありません。",
+      "caption": "値をログに残さないことと、その値を検査しないことも別ですね。ログマスクを設定しただけで、誤検知がなくなるわけではありません。",
+      "subtitleLines": [
+        "値をログに残さないことと、その値を検査しないことも別ですね。",
+        "ログマスクを設定しただけで、誤検知がなくなるわけではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "値をログに残さないことと、その値を検査しないことも別ですね。ログマスクを設定しただけで、誤検知がなくなるわけではありません。",
+          "lines": [
+            "値をログに残さないことと、その値を検査しないことも別ですね。",
+            "ログマスクを設定しただけで、誤検知がなくなるわけではありません。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-parts",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "WAFポリシーを構成する設定",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "managed",
+              "cells": [
+                "管理ルール",
+                "OWASP CRS 3.2の攻撃パターン"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "カスタムルール",
+                "管理ルールより先に追加条件を判定"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "除外",
+                "対象項目と原因ルールを限定して調整"
+              ]
+            },
+            {
+              "id": "scrub",
+              "cells": [
+                "ログ保護",
+                "機微な値をログ上でマスク。除外とは別"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "scrub"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-020-mako",
+      "speaker": "mako",
+      "chapterId": "rules",
+      "speech": "管理ルールで一度検知されたら、その時点で必ず拒否されるのでしょうか。",
+      "caption": "管理ルールで一度検知されたら、その時点で必ず拒否されるのでしょうか。",
+      "subtitleLines": [
+        "管理ルールで一度検知されたら、その時点で必ず拒否されるので",
+        "しょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理ルールで一度検知されたら、その時点で必ず拒否されるのでしょうか。",
+          "lines": [
+            "管理ルールで一度検知されたら、その時点で必ず拒否されるので",
+            "しょうか。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "MatchedとBlockedを、同じ要求で区別する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "warning",
+              "cells": [
+                "例：Warningの一致",
+                "3点。これだけなら合計5点未満"
+              ]
+            },
+            {
+              "id": "critical",
+              "cells": [
+                "例：Criticalの一致",
+                "5点。1件でも閾値に達し得る"
+              ]
+            },
+            {
+              "id": "sum",
+              "cells": [
+                "CRSのスコア集計",
+                "合計5以上 → Preventionで遮断"
+              ]
+            },
+            {
+              "id": "other",
+              "cells": [
+                "別の拒否条件",
+                "本文上限・カスタムBlockは各条件で判断"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "シーアールエスの標準動作では、重大度に応じた異常スコアを足します。たとえばワーニングは3点です。これだけなら、合計5点の遮断しきい値には達しません。",
+      "caption": "CRSの標準動作では、重大度に応じた異常スコアを足します。たとえばWarningは3点です。これだけなら、合計5点の遮断しきい値には達しません。",
+      "subtitleLines": [
+        "CRSの標準動作では、重大度に応じた異常スコアを足します。",
+        "たとえばWarningは3点です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "CRSの標準動作では、重大度に応じた異常スコアを足します。たとえばWarningは3点です。",
+          "lines": [
+            "CRSの標準動作では、重大度に応じた異常スコアを足します。",
+            "たとえばWarningは3点です。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "これだけなら、合計5点の遮断しきい値には達しません。",
+          "lines": [
+            "これだけなら、合計5点の遮断しきい値には達しません。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "MatchedとBlockedを、同じ要求で区別する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "warning",
+              "cells": [
+                "例：Warningの一致",
+                "3点。これだけなら合計5点未満"
+              ]
+            },
+            {
+              "id": "critical",
+              "cells": [
+                "例：Criticalの一致",
+                "5点。1件でも閾値に達し得る"
+              ]
+            },
+            {
+              "id": "sum",
+              "cells": [
+                "CRSのスコア集計",
+                "合計5以上 → Preventionで遮断"
+              ]
+            },
+            {
+              "id": "other",
+              "cells": [
+                "別の拒否条件",
+                "本文上限・カスタムBlockは各条件で判断"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "warning"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-022-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "クリティカルは5点で、一件でもしきい値に達し得ます。合計5以上ならプリベンションで遮断します。一方、サイズ上限やカスタムブロックは、それぞれの条件で判断します。",
+      "caption": "Criticalは5点で、一件でもしきい値に達し得ます。合計5以上ならPreventionで遮断します。一方、サイズ上限やカスタムBlockは、それぞれの条件で判断します。",
+      "subtitleLines": [
+        "Criticalは5点で、一件でもしきい値に達し得ます。",
+        "合計5以上ならPreventionで遮断します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Criticalは5点で、一件でもしきい値に達し得ます。合計5以上ならPreventionで遮断します。",
+          "lines": [
+            "Criticalは5点で、一件でもしきい値に達し得ます。",
+            "合計5以上ならPreventionで遮断します。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "一方、サイズ上限やカスタムBlockは、それぞれの条件で判断します。",
+          "lines": [
+            "一方、サイズ上限やカスタムBlockは、それぞれの条件で判断します。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "MatchedとBlockedを、同じ要求で区別する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "warning",
+              "cells": [
+                "例：Warningの一致",
+                "3点。これだけなら合計5点未満"
+              ]
+            },
+            {
+              "id": "critical",
+              "cells": [
+                "例：Criticalの一致",
+                "5点。1件でも閾値に達し得る"
+              ]
+            },
+            {
+              "id": "sum",
+              "cells": [
+                "CRSのスコア集計",
+                "合計5以上 → Preventionで遮断"
+              ]
+            },
+            {
+              "id": "other",
+              "cells": [
+                "別の拒否条件",
+                "本文上限・カスタムBlockは各条件で判断"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "critical",
+          "sum"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-023-manabu",
+      "speaker": "manabu",
+      "chapterId": "rules",
+      "speech": "個別ルールのマッチドと、集計結果のブロックドを区別するんですね。同じ要求のトランザクション・アイディーをそろえ、遮断の結果から原因の検知へ戻ります。",
+      "caption": "個別ルールのMatchedと、集計結果のBlockedを区別するんですね。同じ要求のTransactionIdをそろえ、遮断の結果から原因の検知へ戻ります。",
+      "subtitleLines": [
+        "個別ルールのMatchedと、集計結果のBlockedを区別するんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "個別ルールのMatchedと、集計結果のBlockedを区別するんですね。",
+          "lines": [
+            "個別ルールのMatchedと、集計結果のBlockedを区別するんですね。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "同じ要求のTransactionIdをそろえ、遮断の結果から原因の検知へ戻ります。",
+          "lines": [
+            "同じ要求のTransactionIdをそろえ、遮断の結果から原因の検知へ",
+            "戻ります。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-logs",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "遮断の結果から、原因の検知へ戻る",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "request",
+              "cells": [
+                "同じ要求をそろえる",
+                "時刻・URI・TransactionIdを照合"
+              ]
+            },
+            {
+              "id": "matched",
+              "cells": [
+                "Matched",
+                "攻撃パターンに一致した個別ルール"
+              ]
+            },
+            {
+              "id": "blocked",
+              "cells": [
+                "Blocked / 949110",
+                "異常スコアを集計した遮断結果"
+              ]
+            },
+            {
+              "id": "cause",
+              "cells": [
+                "調整する対象",
+                "原因となった個別ルールと入力項目"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "matched",
+          "blocked"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "rules",
+      "speech": "949110は異常スコアの集計規則で、攻撃文字列そのものを見つけた規則ではありません。誤検知の調整では、同じ要求の原因ルールと対象項目を確かめます。",
+      "caption": "949110は異常スコアの集計規則で、攻撃文字列そのものを見つけた規則ではありません。誤検知の調整では、同じ要求の原因ルールと対象項目を確かめます。",
+      "subtitleLines": [
+        "949110は異常スコアの集計規則で、攻撃文字列そのものを",
+        "見つけた規則ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "949110は異常スコアの集計規則で、攻撃文字列そのものを見つけた規則ではありません。",
+          "lines": [
+            "949110は異常スコアの集計規則で、攻撃文字列そのものを",
+            "見つけた規則ではありません。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "誤検知の調整では、同じ要求の原因ルールと対象項目を確かめます。",
+          "lines": [
+            "誤検知の調整では、同じ要求の原因ルールと対象項目を確かめます。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-logs",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "遮断の結果から、原因の検知へ戻る",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "request",
+              "cells": [
+                "同じ要求をそろえる",
+                "時刻・URI・TransactionIdを照合"
+              ]
+            },
+            {
+              "id": "matched",
+              "cells": [
+                "Matched",
+                "攻撃パターンに一致した個別ルール"
+              ]
+            },
+            {
+              "id": "blocked",
+              "cells": [
+                "Blocked / 949110",
+                "異常スコアを集計した遮断結果"
+              ]
+            },
+            {
+              "id": "cause",
+              "cells": [
+                "調整する対象",
+                "原因となった個別ルールと入力項目"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "cause"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-025-mako",
+      "speaker": "mako",
+      "chapterId": "limits",
+      "speech": "次は本文です。受け入れる長さと、検査する長さは、同じ設定ですか。",
+      "caption": "次は本文です。受け入れる長さと、検査する長さは、同じ設定ですか。",
+      "subtitleLines": [
+        "次は本文です。",
+        "受け入れる長さと、検査する長さは、同じ設定ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は本文です。受け入れる長さと、検査する長さは、同じ設定ですか。",
+          "lines": [
+            "次は本文です。",
+            "受け入れる長さと、検査する長さは、同じ設定ですか。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-limits",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "本文の受入上限と、検査範囲は別の設定",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "check",
+              "cells": [
+                "本文検査",
+                "requestBodyCheck：true"
+              ]
+            },
+            {
+              "id": "accept",
+              "cells": [
+                "本文の受入上限",
+                "2000 KiB：ファイル部分を除く本文"
+              ]
+            },
+            {
+              "id": "inspect",
+              "cells": [
+                "本文の検査範囲",
+                "2000 KiB：本文を検査する長さ"
+              ]
+            },
+            {
+              "id": "enforce",
+              "cells": [
+                "上限の強制",
+                "本文・ファイルともtrue"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "notice": "test / productionの共通指定値。稼働環境の取得値ではない"
+      }
+    },
+    {
+      "id": "lesson09-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "limits",
+      "speech": "独立した設定です。今回のテストとプロダクションは、受入上限も検査範囲も2000 キビバイトです。本文検査は有効で、本文とファイルの上限も強制します。",
+      "caption": "独立した設定です。今回のtestとproductionは、受入上限も検査範囲も2000 KiBです。本文検査は有効で、本文とファイルの上限も強制します。",
+      "subtitleLines": [
+        "独立した設定です。",
+        "今回のtestとproductionは、受入上限も検査範囲も2000 KiBです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "独立した設定です。今回のtestとproductionは、受入上限も検査範囲も2000 KiBです。",
+          "lines": [
+            "独立した設定です。",
+            "今回のtestとproductionは、受入上限も検査範囲も2000 KiBです。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "本文検査は有効で、本文とファイルの上限も強制します。",
+          "lines": [
+            "本文検査は有効で、本文とファイルの上限も強制します。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-limits",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "本文の受入上限と、検査範囲は別の設定",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "check",
+              "cells": [
+                "本文検査",
+                "requestBodyCheck：true"
+              ]
+            },
+            {
+              "id": "accept",
+              "cells": [
+                "本文の受入上限",
+                "2000 KiB：ファイル部分を除く本文"
+              ]
+            },
+            {
+              "id": "inspect",
+              "cells": [
+                "本文の検査範囲",
+                "2000 KiB：本文を検査する長さ"
+              ]
+            },
+            {
+              "id": "enforce",
+              "cells": [
+                "上限の強制",
+                "本文・ファイルともtrue"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "accept",
+          "inspect"
+        ],
+        "notice": "test / productionの共通指定値。稼働環境の取得値ではない"
+      }
+    },
+    {
+      "id": "lesson09-turn-027-manabu",
+      "speaker": "manabu",
+      "chapterId": "limits",
+      "speech": "受入だけ増やせば、検査する長さとの差ができますね。大きなデータを通したいときも、どこまで検査するかを一緒に決めます。",
+      "caption": "受入だけ増やせば、検査する長さとの差ができますね。大きなデータを通したいときも、どこまで検査するかを一緒に決めます。",
+      "subtitleLines": [
+        "受入だけ増やせば、検査する長さとの差ができますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "受入だけ増やせば、検査する長さとの差ができますね。",
+          "lines": [
+            "受入だけ増やせば、検査する長さとの差ができますね。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "大きなデータを通したいときも、どこまで検査するかを一緒に決めます。",
+          "lines": [
+            "大きなデータを通したいときも、どこまで検査するかを一緒に",
+            "決めます。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-limits",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "本文の受入上限と、検査範囲は別の設定",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "check",
+              "cells": [
+                "本文検査",
+                "requestBodyCheck：true"
+              ]
+            },
+            {
+              "id": "accept",
+              "cells": [
+                "本文の受入上限",
+                "2000 KiB：ファイル部分を除く本文"
+              ]
+            },
+            {
+              "id": "inspect",
+              "cells": [
+                "本文の検査範囲",
+                "2000 KiB：本文を検査する長さ"
+              ]
+            },
+            {
+              "id": "enforce",
+              "cells": [
+                "上限の強制",
+                "本文・ファイルともtrue"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "inspect"
+        ],
+        "notice": "test / productionの共通指定値。稼働環境の取得値ではない"
+      }
+    },
+    {
+      "id": "lesson09-turn-028-mako",
+      "speaker": "mako",
+      "chapterId": "limits",
+      "speech": "バイセップに128 キビバイトと書かれていたら、こちらが実際の上限なのでしょうか。",
+      "caption": "Bicepに128 KiBと書かれていたら、こちらが実際の上限なのでしょうか。",
+      "subtitleLines": [
+        "Bicepに128 KiBと書かれていたら、こちらが実際の上限なので",
+        "しょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Bicepに128 KiBと書かれていたら、こちらが実際の上限なのでしょうか。",
+          "lines": [
+            "Bicepに128 KiBと書かれていたら、こちらが実際の上限なので",
+            "しょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-defaults",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "設定ファイルの指定と、省略時既定値を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "config",
+              "cells": [
+                "configの共通指定",
+                "本文2000 KiB / 検査2000 KiB / ファイル4 MiB"
+              ]
+            },
+            {
+              "id": "bicep",
+              "cells": [
+                "Bicepの省略時既定",
+                "本文128 KiB / 検査128 KiB / ファイル100 MiB"
+              ]
+            },
+            {
+              "id": "effective",
+              "cells": [
+                "確認する値",
+                "配備に渡した値と、要求に適用したポリシー"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-029-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "limits",
+      "speech": "それは省略時の既定値です。設定ファイルでは別の値を指定しています。既定値、配備に渡した値、実際に適用されるポリシーを、同じものとして扱いません。",
+      "caption": "それは省略時の既定値です。設定ファイルでは別の値を指定しています。既定値、配備に渡した値、実際に適用されるポリシーを、同じものとして扱いません。",
+      "subtitleLines": [
+        "それは省略時の既定値です。",
+        "設定ファイルでは別の値を指定しています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "それは省略時の既定値です。設定ファイルでは別の値を指定しています。",
+          "lines": [
+            "それは省略時の既定値です。",
+            "設定ファイルでは別の値を指定しています。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "既定値、配備に渡した値、実際に適用されるポリシーを、同じものとして扱いません。",
+          "lines": [
+            "既定値、配備に渡した値、実際に適用されるポリシーを、",
+            "同じものとして扱いません。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-defaults",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "設定ファイルの指定と、省略時既定値を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "config",
+              "cells": [
+                "configの共通指定",
+                "本文2000 KiB / 検査2000 KiB / ファイル4 MiB"
+              ]
+            },
+            {
+              "id": "bicep",
+              "cells": [
+                "Bicepの省略時既定",
+                "本文128 KiB / 検査128 KiB / ファイル100 MiB"
+              ]
+            },
+            {
+              "id": "effective",
+              "cells": [
+                "確認する値",
+                "配備に渡した値と、要求に適用したポリシー"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "bicep",
+          "config"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-030-manabu",
+      "speaker": "manabu",
+      "chapterId": "limits",
+      "speech": "資料を読むときも、ひとつの数字だけ拾わず、どこから渡した設定かを確認するわけですね。",
+      "caption": "資料を読むときも、ひとつの数字だけ拾わず、どこから渡した設定かを確認するわけですね。",
+      "subtitleLines": [
+        "資料を読むときも、ひとつの数字だけ拾わず、どこから渡した設定かを",
+        "確認するわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "資料を読むときも、ひとつの数字だけ拾わず、どこから渡した設定かを確認するわけですね。",
+          "lines": [
+            "資料を読むときも、ひとつの数字だけ拾わず、どこから渡した設定かを",
+            "確認するわけですね。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-defaults",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "設定ファイルの指定と、省略時既定値を分ける",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "config",
+              "cells": [
+                "configの共通指定",
+                "本文2000 KiB / 検査2000 KiB / ファイル4 MiB"
+              ]
+            },
+            {
+              "id": "bicep",
+              "cells": [
+                "Bicepの省略時既定",
+                "本文128 KiB / 検査128 KiB / ファイル100 MiB"
+              ]
+            },
+            {
+              "id": "effective",
+              "cells": [
+                "確認する値",
+                "配備に渡した値と、要求に適用したポリシー"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "effective"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-031-mako",
+      "speaker": "mako",
+      "chapterId": "limits",
+      "speech": "ファイル上限は4 メビバイトです。では、3 メビバイトのロー音声も、その範囲として送れますか。",
+      "caption": "ファイル上限は4 MiBです。では、3 MiBのraw音声も、その範囲として送れますか。",
+      "subtitleLines": [
+        "ファイル上限は4 MiBです。",
+        "では、3 MiBのraw音声も、その範囲として送れますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ファイル上限は4 MiBです。では、3 MiBのraw音声も、その範囲として送れますか。",
+          "lines": [
+            "ファイル上限は4 MiBです。",
+            "では、3 MiBのraw音声も、その範囲として送れますか。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-file",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "4 MiBのファイル上限は、raw本文の上限ではない",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "multi",
+              "cells": [
+                "multipartのファイル部分",
+                "filenameを持つ部分：ファイル上限4 MiB"
+              ]
+            },
+            {
+              "id": "raw",
+              "cells": [
+                "raw音声・raw PDF",
+                "通常の本文上限が適用される"
+              ]
+            },
+            {
+              "id": "boundary",
+              "cells": [
+                "APIMの操作上限",
+                "WAFと別の契約。測る対象・単位も確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-032-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "limits",
+      "speech": "4 メビバイトは、multipartの中でファイルネームを持つファイル部分の上限です。ロー音声やロー ピーディーエフには通常の本文上限が適用されるため、同じ枠ではありません。",
+      "caption": "4 MiBは、multipartの中でfilenameを持つファイル部分の上限です。raw音声やraw PDFには通常の本文上限が適用されるため、同じ枠ではありません。",
+      "subtitleLines": [
+        "4 MiBは、multipartの中でfilenameを持つファイル部分の上限で",
+        "す。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "4 MiBは、multipartの中でfilenameを持つファイル部分の上限です。",
+          "lines": [
+            "4 MiBは、multipartの中でfilenameを持つファイル部分の上限で",
+            "す。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "raw音声やraw PDFには通常の本文上限が適用されるため、同じ枠ではありません。",
+          "lines": [
+            "raw音声やraw PDFには通常の本文上限が適用されるため、",
+            "同じ枠ではありません。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-file",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "4 MiBのファイル上限は、raw本文の上限ではない",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "multi",
+              "cells": [
+                "multipartのファイル部分",
+                "filenameを持つ部分：ファイル上限4 MiB"
+              ]
+            },
+            {
+              "id": "raw",
+              "cells": [
+                "raw音声・raw PDF",
+                "通常の本文上限が適用される"
+              ]
+            },
+            {
+              "id": "boundary",
+              "cells": [
+                "APIMの操作上限",
+                "WAFと別の契約。測る対象・単位も確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "multi",
+          "raw"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-033-manabu",
+      "speaker": "manabu",
+      "chapterId": "limits",
+      "speech": "データがファイルらしく見えても、エイチティーティーピーの送り方で測る対象が変わるんですね。さらにエーピーアイ・マネジメントの操作上限もあるので、入口を通ることだけを成功条件にはしません。",
+      "caption": "データがファイルらしく見えても、HTTPの送り方で測る対象が変わるんですね。さらにAPIMの操作上限もあるので、入口を通ることだけを成功条件にはしません。",
+      "subtitleLines": [
+        "データがファイルらしく見えても、HTTPの送り方で測る対象が",
+        "変わるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "データがファイルらしく見えても、HTTPの送り方で測る対象が変わるんですね。",
+          "lines": [
+            "データがファイルらしく見えても、HTTPの送り方で測る対象が",
+            "変わるんですね。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "さらにAPIMの操作上限もあるので、入口を通ることだけを成功条件にはしません。",
+          "lines": [
+            "さらにAPIMの操作上限もあるので、入口を通ることだけを成功条件に",
+            "はしません。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-file",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "4 MiBのファイル上限は、raw本文の上限ではない",
+        "kind": "Application Gateway WAF",
+        "section": "本文と上限",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "multi",
+              "cells": [
+                "multipartのファイル部分",
+                "filenameを持つ部分：ファイル上限4 MiB"
+              ]
+            },
+            {
+              "id": "raw",
+              "cells": [
+                "raw音声・raw PDF",
+                "通常の本文上限が適用される"
+              ]
+            },
+            {
+              "id": "boundary",
+              "cells": [
+                "APIMの操作上限",
+                "WAFと別の契約。測る対象・単位も確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "boundary"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "scope",
+      "speech": "専用ポリシーがあるパスでは、共通ポリシーの検査に、専用の検査を追加するのですか。",
+      "caption": "専用ポリシーがあるパスでは、共通ポリシーの検査に、専用の検査を追加するのですか。",
+      "subtitleLines": [
+        "専用ポリシーがあるパスでは、共通ポリシーの検査に、",
+        "専用の検査を追加するのですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "専用ポリシーがあるパスでは、共通ポリシーの検査に、専用の検査を追加するのですか。",
+          "lines": [
+            "専用ポリシーがあるパスでは、共通ポリシーの検査に、",
+            "専用の検査を追加するのですか。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-scope",
+        "svg": "diagrams/scope-none.svg",
+        "heading": "実際に適用される1つのポリシー"
+      }
+    },
+    {
+      "id": "lesson09-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "scope",
+      "speech": "続けて二重に検査する仕組みではありません。ユーアールアイ別、リスナー別、Gateway全体の順で、より具体的なポリシーが優先して適用されます。",
+      "caption": "続けて二重に検査する仕組みではありません。URI別、リスナー別、Gateway全体の順で、より具体的なポリシーが優先して適用されます。",
+      "subtitleLines": [
+        "続けて二重に検査する仕組みではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "続けて二重に検査する仕組みではありません。",
+          "lines": [
+            "続けて二重に検査する仕組みではありません。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "URI別、リスナー別、Gateway全体の順で、より具体的なポリシーが優先して適用されます。",
+          "lines": [
+            "URI別、リスナー別、Gateway全体の順で、より具体的なポリシーが",
+            "優先して適用されます。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-scope",
+        "svg": "diagrams/scope-uri.svg",
+        "heading": "実際に適用される1つのポリシー"
+      }
+    },
+    {
+      "id": "lesson09-turn-036-manabu",
+      "speaker": "manabu",
+      "chapterId": "scope",
+      "speech": "専用ポリシーを置くと、そこで必要な保護を持っていないといけませんね。共通側にあるから大丈夫、とは考えられないわけです。",
+      "caption": "専用ポリシーを置くと、そこで必要な保護を持っていないといけませんね。共通側にあるから大丈夫、とは考えられないわけです。",
+      "subtitleLines": [
+        "専用ポリシーを置くと、そこで必要な保護を持っていないと",
+        "いけませんね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "専用ポリシーを置くと、そこで必要な保護を持っていないといけませんね。",
+          "lines": [
+            "専用ポリシーを置くと、そこで必要な保護を持っていないと",
+            "いけませんね。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "共通側にあるから大丈夫、とは考えられないわけです。",
+          "lines": [
+            "共通側にあるから大丈夫、とは考えられないわけです。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-scope",
+        "svg": "diagrams/scope-uri.svg",
+        "heading": "実際に適用される1つのポリシー"
+      }
+    },
+    {
+      "id": "lesson09-turn-037-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "scope",
+      "speech": "この実装は共通のワフ設定から、本文検査、上限、ログマスク、共通の追加規則を明示的に合成し、完成した専用ポリシーを作ります。アジュールによる親の自動継承ではありません。",
+      "caption": "この実装はsharedWafPropertiesから、本文検査、上限、ログマスク、共通の追加規則を明示的に合成し、完成した専用ポリシーを作ります。Azureによる親の自動継承ではありません。",
+      "subtitleLines": [
+        "この実装はsharedWafPropertiesから、本文検査、上限、",
+        "ログマスク、共通の追加規則を明示的に合成し、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この実装はsharedWafPropertiesから、本文検査、上限、ログマスク、共通の追加規則を明示的に合成し、",
+          "lines": [
+            "この実装はsharedWafPropertiesから、本文検査、上限、",
+            "ログマスク、共通の追加規則を明示的に合成し、"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "完成した専用ポリシーを作ります。Azureによる親の自動継承ではありません。",
+          "lines": [
+            "完成した専用ポリシーを作ります。",
+            "Azureによる親の自動継承ではありません。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-compose",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "専用ポリシーには、保護設定を明示的に合成する",
+        "kind": "Application Gateway WAF",
+        "section": "適用ポリシー",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inherit",
+              "cells": [
+                "Azureの適用",
+                "URI別 → リスナー別 → Gateway全体の順で優先"
+              ]
+            },
+            {
+              "id": "shared",
+              "cells": [
+                "この実装",
+                "sharedWafPropertiesから専用ポリシーを作る"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "合成して維持",
+                "本文検査・上限・ログマスク・共通の追加規則"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "wafExclusions：[]",
+                "共通追加指定が空。用途別の除外は別途合成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "shared",
+          "keep"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-038-mako",
+      "speaker": "mako",
+      "chapterId": "scope",
+      "speech": "設定ファイルの共通除外の設定が空配列なら、除外は一件もないと考えてよいですか。",
+      "caption": "設定ファイルのwafExclusionsが空配列なら、除外は一件もないと考えてよいですか。",
+      "subtitleLines": [
+        "設定ファイルのwafExclusionsが空配列なら、除外は一件もないと",
+        "考えてよいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "設定ファイルのwafExclusionsが空配列なら、除外は一件もないと考えてよいですか。",
+          "lines": [
+            "設定ファイルのwafExclusionsが空配列なら、除外は一件もないと",
+            "考えてよいですか。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-compose",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "専用ポリシーには、保護設定を明示的に合成する",
+        "kind": "Application Gateway WAF",
+        "section": "適用ポリシー",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inherit",
+              "cells": [
+                "Azureの適用",
+                "URI別 → リスナー別 → Gateway全体の順で優先"
+              ]
+            },
+            {
+              "id": "shared",
+              "cells": [
+                "この実装",
+                "sharedWafPropertiesから専用ポリシーを作る"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "合成して維持",
+                "本文検査・上限・ログマスク・共通の追加規則"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "wafExclusions：[]",
+                "共通追加指定が空。用途別の除外は別途合成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "scope",
+      "speech": "空なのは、設定ファイルから共通で追加する指定です。用途別の除外や、マニフェストの設定は別に合成されます。要求先に適用される完成形を確認します。",
+      "caption": "空なのは、設定ファイルから共通で追加する指定です。用途別の除外や、manifestの設定は別に合成されます。要求先に適用される完成形を確認します。",
+      "subtitleLines": [
+        "空なのは、設定ファイルから共通で追加する指定です。",
+        "用途別の除外や、manifestの設定は別に合成されます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "空なのは、設定ファイルから共通で追加する指定です。用途別の除外や、manifestの設定は別に合成されます。",
+          "lines": [
+            "空なのは、設定ファイルから共通で追加する指定です。",
+            "用途別の除外や、manifestの設定は別に合成されます。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "要求先に適用される完成形を確認します。",
+          "lines": [
+            "要求先に適用される完成形を確認します。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-compose",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "専用ポリシーには、保護設定を明示的に合成する",
+        "kind": "Application Gateway WAF",
+        "section": "適用ポリシー",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inherit",
+              "cells": [
+                "Azureの適用",
+                "URI別 → リスナー別 → Gateway全体の順で優先"
+              ]
+            },
+            {
+              "id": "shared",
+              "cells": [
+                "この実装",
+                "sharedWafPropertiesから専用ポリシーを作る"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "合成して維持",
+                "本文検査・上限・ログマスク・共通の追加規則"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "wafExclusions：[]",
+                "共通追加指定が空。用途別の除外は別途合成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "empty"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "scope",
+      "speech": "企業の既存ワフポリシーを指定する場合も、同じ専用設定が自動で作られますか。",
+      "caption": "企業の既存WAFポリシーを指定する場合も、同じ専用設定が自動で作られますか。",
+      "subtitleLines": [
+        "企業の既存WAFポリシーを指定する場合も、同じ専用設定が自動で",
+        "作られますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "企業の既存WAFポリシーを指定する場合も、同じ専用設定が自動で作られますか。",
+          "lines": [
+            "企業の既存WAFポリシーを指定する場合も、同じ専用設定が自動で",
+            "作られますか。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-existing",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "企業管理の既存ポリシーを使う構成",
+        "kind": "Application Gateway WAF",
+        "section": "適用ポリシー",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "id",
+              "cells": [
+                "existingWafPolicyId",
+                "企業管理の既存ポリシーを再利用"
+              ]
+            },
+            {
+              "id": "replace",
+              "cells": [
+                "自動生成との関係",
+                "Coreの専用ポリシーへ自動置換しない"
+              ]
+            },
+            {
+              "id": "owner",
+              "cells": [
+                "調整の担当",
+                "適用設定を確認し、企業側管理者と対応"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "scope",
+      "speech": "既存ワフポリシーのアイディーを指定する構成では、企業管理の既存ポリシーを再利用します。自動生成する専用ポリシーで置き換えないため、必要な調整は企業側管理者と確認します。",
+      "caption": "existingWafPolicyIdを指定する構成では、企業管理の既存ポリシーを再利用します。自動生成する専用ポリシーで置き換えないため、必要な調整は企業側管理者と確認します。",
+      "subtitleLines": [
+        "existingWafPolicyIdを指定する構成では、企業管理の既存ポリ",
+        "シーを再利用します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "existingWafPolicyIdを指定する構成では、企業管理の既存ポリシーを再利用します。",
+          "lines": [
+            "existingWafPolicyIdを指定する構成では、企業管理の既存ポリ",
+            "シーを再利用します。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "自動生成する専用ポリシーで置き換えないため、必要な調整は企業側管理者と確認します。",
+          "lines": [
+            "自動生成する専用ポリシーで置き換えないため、",
+            "必要な調整は企業側管理者と確認します。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-existing",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "企業管理の既存ポリシーを使う構成",
+        "kind": "Application Gateway WAF",
+        "section": "適用ポリシー",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "id",
+              "cells": [
+                "existingWafPolicyId",
+                "企業管理の既存ポリシーを再利用"
+              ]
+            },
+            {
+              "id": "replace",
+              "cells": [
+                "自動生成との関係",
+                "Coreの専用ポリシーへ自動置換しない"
+              ]
+            },
+            {
+              "id": "owner",
+              "cells": [
+                "調整の担当",
+                "適用設定を確認し、企業側管理者と対応"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "id",
+          "replace"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-042-mako",
+      "speaker": "mako",
+      "chapterId": "exclusions",
+      "speech": "正規の入力なのに、攻撃パターンへ一致するのは、どんな場合でしょう。",
+      "caption": "正規の入力なのに、攻撃パターンへ一致するのは、どんな場合でしょう。",
+      "subtitleLines": [
+        "正規の入力なのに、攻撃パターンへ一致するのは、",
+        "どんな場合でしょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正規の入力なのに、攻撃パターンへ一致するのは、どんな場合でしょう。",
+          "lines": [
+            "正規の入力なのに、攻撃パターンへ一致するのは、",
+            "どんな場合でしょう。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-false",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "正規データも、攻撃に似た文字列を含む",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "prompt",
+              "cells": [
+                "モデルへの入力",
+                "説明用のSQLやHTMLなど"
+              ]
+            },
+            {
+              "id": "code",
+              "cells": [
+                "認可コード",
+                "Microsoftが発行する不透明な値"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "判断の材料",
+                "正規の入力か、どのルール・項目が一致したか"
+              ]
+            },
+            {
+              "id": "minimum",
+              "cells": [
+                "除外の単位",
+                "要求先の完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-043-manabu",
+      "speaker": "manabu",
+      "chapterId": "exclusions",
+      "speech": "モデルにエスキューエルやエイチティーエムエルを説明させたい場合があります。Microsoftの認可コードのような不透明な文字列もあります。利用目的が正当でも、文字列だけでは攻撃に似ることがあるんです。",
+      "caption": "モデルにSQLやHTMLを説明させたい場合があります。Microsoftの認可コードのような不透明な文字列もあります。利用目的が正当でも、文字列だけでは攻撃に似ることがあるんです。",
+      "subtitleLines": [
+        "モデルにSQLやHTMLを説明させたい場合があります。",
+        "Microsoftの認可コードのような不透明な文字列もあります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "モデルにSQLやHTMLを説明させたい場合があります。Microsoftの認可コードのような不透明な文字列もあります。",
+          "lines": [
+            "モデルにSQLやHTMLを説明させたい場合があります。",
+            "Microsoftの認可コードのような不透明な文字列もあります。"
+          ],
+          "weight": 59
+        },
+        {
+          "caption": "利用目的が正当でも、文字列だけでは攻撃に似ることがあるんです。",
+          "lines": [
+            "利用目的が正当でも、文字列だけでは攻撃に似ることがあるんです。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-false",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "正規データも、攻撃に似た文字列を含む",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "prompt",
+              "cells": [
+                "モデルへの入力",
+                "説明用のSQLやHTMLなど"
+              ]
+            },
+            {
+              "id": "code",
+              "cells": [
+                "認可コード",
+                "Microsoftが発行する不透明な値"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "判断の材料",
+                "正規の入力か、どのルール・項目が一致したか"
+              ]
+            },
+            {
+              "id": "minimum",
+              "cells": [
+                "除外の単位",
+                "要求先の完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "prompt",
+          "code"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "そこで、正規データと確認したうえで、要求先の完全パス、対象項目の値、原因ルールを特定します。この三つで除外を絞ると、残す検査を説明できます。",
+      "caption": "そこで、正規データと確認したうえで、要求先の完全パス、対象項目の値、原因ルールを特定します。この三つで除外を絞ると、残す検査を説明できます。",
+      "subtitleLines": [
+        "そこで、正規データと確認したうえで、要求先の完全パス、",
+        "対象項目の値、原因ルールを特定します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこで、正規データと確認したうえで、要求先の完全パス、対象項目の値、原因ルールを特定します。",
+          "lines": [
+            "そこで、正規データと確認したうえで、要求先の完全パス、",
+            "対象項目の値、原因ルールを特定します。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "この三つで除外を絞ると、残す検査を説明できます。",
+          "lines": [
+            "この三つで除外を絞ると、残す検査を説明できます。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-false",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "正規データも、攻撃に似た文字列を含む",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "prompt",
+              "cells": [
+                "モデルへの入力",
+                "説明用のSQLやHTMLなど"
+              ]
+            },
+            {
+              "id": "code",
+              "cells": [
+                "認可コード",
+                "Microsoftが発行する不透明な値"
+              ]
+            },
+            {
+              "id": "evidence",
+              "cells": [
+                "判断の材料",
+                "正規の入力か、どのルール・項目が一致したか"
+              ]
+            },
+            {
+              "id": "minimum",
+              "cells": [
+                "除外の単位",
+                "要求先の完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "evidence",
+          "minimum"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-045-mako",
+      "speaker": "mako",
+      "chapterId": "exclusions",
+      "speech": "ポータルのログインで、認可コードがエスキューエル・インジェクションの規則へ一致した例を見ましょう。画面では、何を除外していますか。",
+      "caption": "Portalのログインで、認可コードがSQLインジェクションの規則へ一致した例を見ましょう。画面では、何を除外していますか。",
+      "subtitleLines": [
+        "Portalのログインで、認可コードがSQLインジェクションの規則へ",
+        "一致した例を見ましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Portalのログインで、認可コードがSQLインジェクションの規則へ一致した例を見ましょう。",
+          "lines": [
+            "Portalのログインで、認可コードがSQLインジェクションの規則へ",
+            "一致した例を見ましょう。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "画面では、何を除外していますか。",
+          "lines": [
+            "画面では、何を除外していますか。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-callback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "Portalの認証callback：code値だけを限定除外",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "公開パス",
+                "/api/auth/callback/microsoft"
+              ]
+            },
+            {
+              "id": "match",
+              "cells": [
+                "対象項目",
+                "RequestArgValues / Equals / code"
+              ]
+            },
+            {
+              "id": "rules",
+              "cells": [
+                "原因ルール",
+                "SQLi：942430・942440だけ"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する検査",
+                "state・他の引数・他の管理ルール・本文と上限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "対象は、このコールバックの完全パスです。リクエスト・アーグ・バリューズで、引数名コードをイコールズで選び、その値を対象にします。コードという名前自体を丸ごと無視する意味ではありません。",
+      "caption": "対象は、このcallbackの完全パスです。RequestArgValuesで、引数名codeをEqualsで選び、その値を対象にします。codeという名前自体を丸ごと無視する意味ではありません。",
+      "subtitleLines": [
+        "対象は、このcallbackの完全パスです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "対象は、このcallbackの完全パスです。",
+          "lines": [
+            "対象は、このcallbackの完全パスです。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "RequestArgValuesで、引数名codeをEqualsで選び、その値を対象にします。",
+          "lines": [
+            "RequestArgValuesで、引数名codeをEqualsで選び、",
+            "その値を対象にします。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "codeという名前自体を丸ごと無視する意味ではありません。",
+          "lines": [
+            "codeという名前自体を丸ごと無視する意味ではありません。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-callback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "Portalの認証callback：code値だけを限定除外",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "公開パス",
+                "/api/auth/callback/microsoft"
+              ]
+            },
+            {
+              "id": "match",
+              "cells": [
+                "対象項目",
+                "RequestArgValues / Equals / code"
+              ]
+            },
+            {
+              "id": "rules",
+              "cells": [
+                "原因ルール",
+                "SQLi：942430・942440だけ"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する検査",
+                "state・他の引数・他の管理ルール・本文と上限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "path",
+          "match"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-047-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "除外するのは、原因となった942430と942440の二つだけです。同じコード値でも、他の管理ルールまで全部外す設定にはしていません。",
+      "caption": "除外するのは、原因となった942430と942440の二つだけです。同じcode値でも、他の管理ルールまで全部外す設定にはしていません。",
+      "subtitleLines": [
+        "除外するのは、原因となった942430と942440の二つだけです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "除外するのは、原因となった942430と942440の二つだけです。",
+          "lines": [
+            "除外するのは、原因となった942430と942440の二つだけです。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "同じcode値でも、他の管理ルールまで全部外す設定にはしていません。",
+          "lines": [
+            "同じcode値でも、他の管理ルールまで全部外す設定には",
+            "していません。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-callback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "Portalの認証callback：code値だけを限定除外",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "公開パス",
+                "/api/auth/callback/microsoft"
+              ]
+            },
+            {
+              "id": "match",
+              "cells": [
+                "対象項目",
+                "RequestArgValues / Equals / code"
+              ]
+            },
+            {
+              "id": "rules",
+              "cells": [
+                "原因ルール",
+                "SQLi：942430・942440だけ"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する検査",
+                "state・他の引数・他の管理ルール・本文と上限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "rules"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-048-manabu",
+      "speaker": "manabu",
+      "chapterId": "exclusions",
+      "speech": "ステートや他の引数、本文検査とサイズ上限も維持します。ログインを通すための調整が、コールバック全体を素通しにする変更へ広がらないようにします。",
+      "caption": "stateや他の引数、本文検査とサイズ上限も維持します。ログインを通すための調整が、callback全体を素通しにする変更へ広がらないようにします。",
+      "subtitleLines": [
+        "stateや他の引数、本文検査とサイズ上限も維持します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "stateや他の引数、本文検査とサイズ上限も維持します。",
+          "lines": [
+            "stateや他の引数、本文検査とサイズ上限も維持します。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "ログインを通すための調整が、callback全体を素通しにする変更へ広がらないようにします。",
+          "lines": [
+            "ログインを通すための調整が、callback全体を素通しにする変更へ",
+            "広がらないようにします。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-callback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "Portalの認証callback：code値だけを限定除外",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "公開パス",
+                "/api/auth/callback/microsoft"
+              ]
+            },
+            {
+              "id": "match",
+              "cells": [
+                "対象項目",
+                "RequestArgValues / Equals / code"
+              ]
+            },
+            {
+              "id": "rules",
+              "cells": [
+                "原因ルール",
+                "SQLi：942430・942440だけ"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する検査",
+                "state・他の引数・他の管理ルール・本文と上限"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "keep"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-049-mako",
+      "speaker": "mako",
+      "chapterId": "exclusions",
+      "speech": "完全パスと項目を選べば、本文の、そのエイチティーティーピー方式だけの例外にできますか。",
+      "caption": "完全パスと項目を選べば、本文の、そのHTTP方式だけの例外にできますか。",
+      "subtitleLines": [
+        "完全パスと項目を選べば、本文の、そのHTTP方式だけの例外にで",
+        "きますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "完全パスと項目を選べば、本文の、そのHTTP方式だけの例外にできますか。",
+          "lines": [
+            "完全パスと項目を選べば、本文の、そのHTTP方式だけの例外にで",
+            "きますか。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-boundary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "限定した除外にも、広がる境界がある",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "case",
+              "cells": [
+                "URLパス照合",
+                "大文字小文字を区別しない"
+              ]
+            },
+            {
+              "id": "method",
+              "cells": [
+                "HTTP方式",
+                "パスの関連付けでは方式を絞れない"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "同名のquery引数",
+                "同じURIの同名queryにも除外が適用"
+              ]
+            },
+            {
+              "id": "guard",
+              "cells": [
+                "残す確認",
+                "callbackはPortal側、API入力はAPIM側で制約を維持"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "そこにも境界があります。パスの関連付けではエイチティーティーピー方式を絞れず、同じユーアールアイの同名クエリーにも引数の除外が適用されます。本文だけの例外とは扱えません。",
+      "caption": "そこにも境界があります。パスの関連付けではHTTP方式を絞れず、同じURIの同名queryにも引数の除外が適用されます。本文だけの例外とは扱えません。",
+      "subtitleLines": [
+        "そこにも境界があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこにも境界があります。",
+          "lines": [
+            "そこにも境界があります。"
+          ],
+          "weight": 12
+        },
+        {
+          "caption": "パスの関連付けではHTTP方式を絞れず、同じURIの同名queryにも引数の除外が適用されます。",
+          "lines": [
+            "パスの関連付けではHTTP方式を絞れず、同じURIの同名queryにも",
+            "引数の除外が適用されます。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "本文だけの例外とは扱えません。",
+          "lines": [
+            "本文だけの例外とは扱えません。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-boundary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "限定した除外にも、広がる境界がある",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "case",
+              "cells": [
+                "URLパス照合",
+                "大文字小文字を区別しない"
+              ]
+            },
+            {
+              "id": "method",
+              "cells": [
+                "HTTP方式",
+                "パスの関連付けでは方式を絞れない"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "同名のquery引数",
+                "同じURIの同名queryにも除外が適用"
+              ]
+            },
+            {
+              "id": "guard",
+              "cells": [
+                "残す確認",
+                "callbackはPortal側、API入力はAPIM側で制約を維持"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "method",
+          "query"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-051-manabu",
+      "speaker": "manabu",
+      "chapterId": "exclusions",
+      "speech": "パス照合は大文字小文字も区別しません。認証や入力の制約は、このコールバックではポータル側、エーピーアイ入力ではエーピーアイ・マネジメント側で維持し、クエリーやメソッド違いも試験します。",
+      "caption": "パス照合は大文字小文字も区別しません。認証や入力の制約は、このcallbackではPortal側、API入力ではAPIM側で維持し、queryやmethod違いも試験します。",
+      "subtitleLines": [
+        "パス照合は大文字小文字も区別しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "パス照合は大文字小文字も区別しません。",
+          "lines": [
+            "パス照合は大文字小文字も区別しません。"
+          ],
+          "weight": 19
+        },
+        {
+          "caption": "認証や入力の制約は、このcallbackではPortal側、API入力ではAPIM側で維持し、queryやmethod違いも試験します。",
+          "lines": [
+            "認証や入力の制約は、このcallbackではPortal側、",
+            "API入力ではAPIM側で維持し、queryやmethod違いも試験します。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-boundary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "限定した除外にも、広がる境界がある",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "case",
+              "cells": [
+                "URLパス照合",
+                "大文字小文字を区別しない"
+              ]
+            },
+            {
+              "id": "method",
+              "cells": [
+                "HTTP方式",
+                "パスの関連付けでは方式を絞れない"
+              ]
+            },
+            {
+              "id": "query",
+              "cells": [
+                "同名のquery引数",
+                "同じURIの同名queryにも除外が適用"
+              ]
+            },
+            {
+              "id": "guard",
+              "cells": [
+                "残す確認",
+                "callbackはPortal側、API入力はAPIM側で制約を維持"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "case",
+          "guard"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "Gatewayの本人確認コールバックは別の完全パスで、コード値に対する除外も三つの規則です。似た名前でも、ポータル側の設定をそのまま流用しません。",
+      "caption": "Gatewayの本人確認callbackは別の完全パスで、code値に対する除外も三つの規則です。似た名前でも、Portal側の設定をそのまま流用しません。",
+      "subtitleLines": [
+        "Gatewayの本人確認callbackは別の完全パスで、",
+        "code値に対する除外も三つの規則です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Gatewayの本人確認callbackは別の完全パスで、code値に対する除外も三つの規則です。",
+          "lines": [
+            "Gatewayの本人確認callbackは別の完全パスで、",
+            "code値に対する除外も三つの規則です。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "似た名前でも、Portal側の設定をそのまま流用しません。",
+          "lines": [
+            "似た名前でも、Portal側の設定をそのまま流用しません。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-othercallback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "同じcodeでも、別パスの設定をそのまま流用しない",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "portal",
+              "cells": [
+                "Portalのcallback",
+                "code値：942430・942440を除外"
+              ]
+            },
+            {
+              "id": "gateway",
+              "cells": [
+                "Gatewayの本人確認callback",
+                "code値：942430・942440・942450を除外"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "Gateway側の完全パス",
+                "/auth/connections/browser/identity-callback"
+              ]
+            },
+            {
+              "id": "manifest",
+              "cells": [
+                "通常データ欄の正本",
+                "waf-data-exclusions.jsonをBicepとPythonで共用"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "gateway",
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-053-manabu",
+      "speaker": "manabu",
+      "chapterId": "exclusions",
+      "speech": "通常のデータ欄の除外には、バイセップとPythonで共用するマニフェストがあります。変更する正本をそろえ、手元の一時調整と恒久設定を食い違わせないようにします。",
+      "caption": "通常のデータ欄の除外には、BicepとPythonで共用するmanifestがあります。変更する正本をそろえ、手元の一時調整と恒久設定を食い違わせないようにします。",
+      "subtitleLines": [
+        "通常のデータ欄の除外には、BicepとPythonで共用するmanifestが",
+        "あります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通常のデータ欄の除外には、BicepとPythonで共用するmanifestがあります。",
+          "lines": [
+            "通常のデータ欄の除外には、BicepとPythonで共用するmanifestが",
+            "あります。"
+          ],
+          "weight": 44
+        },
+        {
+          "caption": "変更する正本をそろえ、手元の一時調整と恒久設定を食い違わせないようにします。",
+          "lines": [
+            "変更する正本をそろえ、手元の一時調整と恒久設定を",
+            "食い違わせないようにします。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-othercallback",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "同じcodeでも、別パスの設定をそのまま流用しない",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "portal",
+              "cells": [
+                "Portalのcallback",
+                "code値：942430・942440を除外"
+              ]
+            },
+            {
+              "id": "gateway",
+              "cells": [
+                "Gatewayの本人確認callback",
+                "code値：942430・942440・942450を除外"
+              ]
+            },
+            {
+              "id": "path",
+              "cells": [
+                "Gateway側の完全パス",
+                "/auth/connections/browser/identity-callback"
+              ]
+            },
+            {
+              "id": "manifest",
+              "cells": [
+                "通常データ欄の正本",
+                "waf-data-exclusions.jsonをBicepとPythonで共用"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "manifest"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-054-mako",
+      "speaker": "mako",
+      "chapterId": "exclusions",
+      "speech": "それなら、該当パスをカスタムアローにすれば、原因規則を調べる手間は減りませんか。",
+      "caption": "それなら、該当パスをカスタムAllowにすれば、原因規則を調べる手間は減りませんか。",
+      "subtitleLines": [
+        "それなら、該当パスをカスタムAllowにすれば、原因規則を",
+        "調べる手間は減りませんか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "それなら、該当パスをカスタムAllowにすれば、原因規則を調べる手間は減りませんか。",
+          "lines": [
+            "それなら、該当パスをカスタムAllowにすれば、原因規則を",
+            "調べる手間は減りませんか。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-allow",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "誤検知を解消するときも、残す検査を決める",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "allow",
+              "cells": [
+                "広いカスタムAllow",
+                "一致すると、後続の管理ルール検査を止める"
+              ]
+            },
+            {
+              "id": "aggregate",
+              "cells": [
+                "集計規則949110",
+                "原因の攻撃パターンではない。調整対象にしない"
+              ]
+            },
+            {
+              "id": "mask",
+              "cells": [
+                "ログマスク",
+                "値の表示を保護する。検査の除外にはならない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "限定した除外",
+                "他項目・他ルールの検査を保つ"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-055-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "exclusions",
+      "speech": "カスタムアローは、一致すると後続の管理ルール検査を止めます。ひとつの値の誤検知を直すために、他の攻撃パターンまで検査しなくなるので、範囲が広すぎます。",
+      "caption": "カスタムAllowは、一致すると後続の管理ルール検査を止めます。ひとつの値の誤検知を直すために、他の攻撃パターンまで検査しなくなるので、範囲が広すぎます。",
+      "subtitleLines": [
+        "カスタムAllowは、一致すると後続の管理ルール検査を止めます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "カスタムAllowは、一致すると後続の管理ルール検査を止めます。",
+          "lines": [
+            "カスタムAllowは、一致すると後続の管理ルール検査を止めます。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "ひとつの値の誤検知を直すために、他の攻撃パターンまで検査しなくなるので、範囲が広すぎます。",
+          "lines": [
+            "ひとつの値の誤検知を直すために、他の攻撃パターンまで",
+            "検査しなくなるので、範囲が広すぎます。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-allow",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "誤検知を解消するときも、残す検査を決める",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "allow",
+              "cells": [
+                "広いカスタムAllow",
+                "一致すると、後続の管理ルール検査を止める"
+              ]
+            },
+            {
+              "id": "aggregate",
+              "cells": [
+                "集計規則949110",
+                "原因の攻撃パターンではない。調整対象にしない"
+              ]
+            },
+            {
+              "id": "mask",
+              "cells": [
+                "ログマスク",
+                "値の表示を保護する。検査の除外にはならない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "限定した除外",
+                "他項目・他ルールの検査を保つ"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "allow"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-056-manabu",
+      "speaker": "manabu",
+      "chapterId": "exclusions",
+      "speech": "集計規則949110は無効化できません。原因の値と規則に絞って調整し、どの保護を維持できたかを確かめましょう。",
+      "caption": "集計規則949110は無効化できません。原因の値と規則に絞って調整し、どの保護を維持できたかを確かめましょう。",
+      "subtitleLines": [
+        "集計規則949110は無効化できません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "集計規則949110は無効化できません。",
+          "lines": [
+            "集計規則949110は無効化できません。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "原因の値と規則に絞って調整し、どの保護を維持できたかを確かめましょう。",
+          "lines": [
+            "原因の値と規則に絞って調整し、どの保護を維持できたかを",
+            "確かめましょう。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-allow",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "誤検知を解消するときも、残す検査を決める",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "allow",
+              "cells": [
+                "広いカスタムAllow",
+                "一致すると、後続の管理ルール検査を止める"
+              ]
+            },
+            {
+              "id": "aggregate",
+              "cells": [
+                "集計規則949110",
+                "原因の攻撃パターンではない。調整対象にしない"
+              ]
+            },
+            {
+              "id": "mask",
+              "cells": [
+                "ログマスク",
+                "値の表示を保護する。検査の除外にはならない"
+              ]
+            },
+            {
+              "id": "retain",
+              "cells": [
+                "限定した除外",
+                "他項目・他ルールの検査を保つ"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "aggregate",
+          "retain"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-057-mako",
+      "speaker": "mako",
+      "chapterId": "raw",
+      "speech": "ジェイソンの項目を選べないロー音声や、エスエスエムエルでは、どう調整するのでしょうか。",
+      "caption": "JSONの項目を選べないraw音声や、SSMLでは、どう調整するのでしょうか。",
+      "subtitleLines": [
+        "JSONの項目を選べないraw音声や、SSMLでは、どう調整するので",
+        "しょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "JSONの項目を選べないraw音声や、SSMLでは、どう調整するのでしょうか。",
+          "lines": [
+            "JSONの項目を選べないraw音声や、SSMLでは、どう調整するので",
+            "しょうか。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-raw",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "SSML・WAVは、対応する完全パスで調整する",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "mime",
+              "cells": [
+                "正規のSSML・WAV",
+                "Content-Type制約の920420を無効化"
+              ]
+            },
+            {
+              "id": "traversal",
+              "cells": [
+                "正本Speechのraw本文",
+                "正常な ../ の誤一致へ930110を調整"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する保護",
+                "他の管理ルール・本文検査・上限"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの操作制約",
+                "HTTP方式・許可するMIMEを確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "raw",
+      "speech": "対応する完全パスで、正規のコンテントタイプが許可外と判定される920420を無効化します。他の管理ルールと本文検査は残し、エイチティーティーピー方式と許可マイムをエーピーアイ・マネジメントで確認します。",
+      "caption": "対応する完全パスで、正規のContent-Typeが許可外と判定される920420を無効化します。他の管理ルールと本文検査は残し、HTTP方式と許可MIMEをAPIMで確認します。",
+      "subtitleLines": [
+        "対応する完全パスで、正規のContent-Typeが許可外と",
+        "判定される920420を無効化します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "対応する完全パスで、正規のContent-Typeが許可外と判定される920420を無効化します。",
+          "lines": [
+            "対応する完全パスで、正規のContent-Typeが許可外と",
+            "判定される920420を無効化します。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "他の管理ルールと本文検査は残し、HTTP方式と許可MIMEをAPIMで確認します。",
+          "lines": [
+            "他の管理ルールと本文検査は残し、HTTP方式と許可MIMEをAPIMで",
+            "確認します。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-raw",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "SSML・WAVは、対応する完全パスで調整する",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "mime",
+              "cells": [
+                "正規のSSML・WAV",
+                "Content-Type制約の920420を無効化"
+              ]
+            },
+            {
+              "id": "traversal",
+              "cells": [
+                "正本Speechのraw本文",
+                "正常な ../ の誤一致へ930110を調整"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する保護",
+                "他の管理ルール・本文検査・上限"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの操作制約",
+                "HTTP方式・許可するMIMEを確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "mime"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "raw",
+      "speech": "正本Speechのエスエスエムエルとウェーブでは、正常なロー本文中の相対パスが930110へ誤一致するため、この規則も調整します。この調整を無関係なエーピーアイへ広げません。",
+      "caption": "正本SpeechのSSMLとWAVでは、正常なraw本文中の相対パスが930110へ誤一致するため、この規則も調整します。この調整を無関係なAPIへ広げません。",
+      "subtitleLines": [
+        "正本SpeechのSSMLとWAVでは、正常なraw本文中の相対パスが",
+        "930110へ誤一致するため、この規則も調整します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正本SpeechのSSMLとWAVでは、正常なraw本文中の相対パスが930110へ誤一致するため、この規則も調整します。",
+          "lines": [
+            "正本SpeechのSSMLとWAVでは、正常なraw本文中の相対パスが",
+            "930110へ誤一致するため、この規則も調整します。"
+          ],
+          "weight": 61
+        },
+        {
+          "caption": "この調整を無関係なAPIへ広げません。",
+          "lines": [
+            "この調整を無関係なAPIへ広げません。"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-raw",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "SSML・WAVは、対応する完全パスで調整する",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "mime",
+              "cells": [
+                "正規のSSML・WAV",
+                "Content-Type制約の920420を無効化"
+              ]
+            },
+            {
+              "id": "traversal",
+              "cells": [
+                "正本Speechのraw本文",
+                "正常な ../ の誤一致へ930110を調整"
+              ]
+            },
+            {
+              "id": "keep",
+              "cells": [
+                "維持する保護",
+                "他の管理ルール・本文検査・上限"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの操作制約",
+                "HTTP方式・許可するMIMEを確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "traversal"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-060-mako",
+      "speaker": "mako",
+      "chapterId": "raw",
+      "speech": "本文の相対パスを許すと、ユーアールアイやヘッダーにある不審なパスも通ってしまうのですか。",
+      "caption": "本文の相対パスを許すと、URIやヘッダーにある不審なパスも通ってしまうのですか。",
+      "subtitleLines": [
+        "本文の相対パスを許すと、URIやヘッダーにある不審なパスも",
+        "通ってしまうのですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本文の相対パスを許すと、URIやヘッダーにある不審なパスも通ってしまうのですか。",
+          "lines": [
+            "本文の相対パスを許すと、URIやヘッダーにある不審なパスも",
+            "通ってしまうのですか。"
+          ],
+          "weight": 40
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-raw-complement",
+        "svg": "diagrams/complement-none.svg",
+        "heading": "raw本文の許容と、非本文の保護を分ける"
+      }
+    },
+    {
+      "id": "lesson09-turn-061-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "raw",
+      "speech": "非本文の四か所、ユーアールアイ、クエリー、ヘッダー、Cookieには、パストラバーサルを拒否するカスタムブロックを追加します。930100など、他の管理ルールも維持します。",
+      "caption": "非本文の四か所、URI、query、ヘッダー、Cookieには、パストラバーサルを拒否するカスタムBlockを追加します。930100など、他の管理ルールも維持します。",
+      "subtitleLines": [
+        "非本文の四か所、URI、query、ヘッダー、Cookieには、",
+        "パストラバーサルを拒否するカスタムBlockを追加します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "非本文の四か所、URI、query、ヘッダー、Cookieには、パストラバーサルを拒否するカスタムBlockを追加します。",
+          "lines": [
+            "非本文の四か所、URI、query、ヘッダー、Cookieには、",
+            "パストラバーサルを拒否するカスタムBlockを追加します。"
+          ],
+          "weight": 61
+        },
+        {
+          "caption": "930100など、他の管理ルールも維持します。",
+          "lines": [
+            "930100など、他の管理ルールも維持します。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。6桁の規則番号は桁ごとに区切って読む。例：949110はキュウ・ヨン・キュウ・イチ・イチ・ゼロ。数量として万単位にしない。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-raw-complement",
+        "svg": "diagrams/complement-block.svg",
+        "heading": "raw本文の許容と、非本文の保護を分ける"
+      }
+    },
+    {
+      "id": "lesson09-turn-062-manabu",
+      "speaker": "manabu",
+      "chapterId": "raw",
+      "speech": "ただし、この四本がシーアールエスのすべての検査と正規化を再現するわけではありません。ロー本文を許容する限定した判断として、残る検査範囲を把握します。",
+      "caption": "ただし、この四本がCRSのすべての検査と正規化を再現するわけではありません。raw本文を許容する限定した判断として、残る検査範囲を把握します。",
+      "subtitleLines": [
+        "ただし、この四本がCRSのすべての検査と正規化を再現するわけでは",
+        "ありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ただし、この四本がCRSのすべての検査と正規化を再現するわけではありません。",
+          "lines": [
+            "ただし、この四本がCRSのすべての検査と正規化を再現するわけでは",
+            "ありません。"
+          ],
+          "weight": 38
+        },
+        {
+          "caption": "raw本文を許容する限定した判断として、残る検査範囲を把握します。",
+          "lines": [
+            "raw本文を許容する限定した判断として、残る検査範囲を把握します。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "waf09-raw-complement",
+        "svg": "diagrams/complement-limit.svg",
+        "heading": "raw本文の許容と、非本文の保護を分ける"
+      }
+    },
+    {
+      "id": "lesson09-turn-063-mako",
+      "speaker": "mako",
+      "chapterId": "raw",
+      "speech": "文書エーピーアイの1025 キビバイトというワフ設定と、契約上限の1 メビバイトは、同じ意味でしょうか。",
+      "caption": "文書APIの1025 KiBというWAF設定と、契約上限の1 MiBは、同じ意味でしょうか。",
+      "subtitleLines": [
+        "文書APIの1025 KiBというWAF設定と、契約上限の1 MiBは、",
+        "同じ意味でしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "文書APIの1025 KiBというWAF設定と、契約上限の1 MiBは、同じ意味でしょうか。",
+          "lines": [
+            "文書APIの1025 KiBというWAF設定と、契約上限の1 MiBは、",
+            "同じ意味でしょうか。"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-document",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "文書API：WAFの上限とAPI契約をそろえて確認",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "対象の公開パス",
+                "/tools/documents/v1/analyze"
+              ]
+            },
+            {
+              "id": "waf",
+              "cells": [
+                "WAF側の指定",
+                "受入上限1025 KiB / 検査範囲1025 KiB"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM側の公開契約",
+                "文書の上限1 MiBを強制"
+              ]
+            },
+            {
+              "id": "meaning",
+              "cells": [
+                "WAFの検査範囲",
+                "PDF・音声をデコードした意味内容の検査ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-064-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "raw",
+      "speech": "ワフでは受入上限と検査範囲を、ともに1025 キビバイトへ設定します。公開エーピーアイの文書上限1 メビバイトはエーピーアイ・マネジメント側で強制します。測る場所と対象を分けて、両方を確認します。",
+      "caption": "WAFでは受入上限と検査範囲を、ともに1025 KiBへ設定します。公開APIの文書上限1 MiBはAPIM側で強制します。測る場所と対象を分けて、両方を確認します。",
+      "subtitleLines": [
+        "WAFでは受入上限と検査範囲を、ともに1025 KiBへ設定します。",
+        "公開APIの文書上限1 MiBはAPIM側で強制します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "WAFでは受入上限と検査範囲を、ともに1025 KiBへ設定します。公開APIの文書上限1 MiBはAPIM側で強制します。",
+          "lines": [
+            "WAFでは受入上限と検査範囲を、ともに1025 KiBへ設定します。",
+            "公開APIの文書上限1 MiBはAPIM側で強制します。"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "測る場所と対象を分けて、両方を確認します。",
+          "lines": [
+            "測る場所と対象を分けて、両方を確認します。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-document",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "文書API：WAFの上限とAPI契約をそろえて確認",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "対象の公開パス",
+                "/tools/documents/v1/analyze"
+              ]
+            },
+            {
+              "id": "waf",
+              "cells": [
+                "WAF側の指定",
+                "受入上限1025 KiB / 検査範囲1025 KiB"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM側の公開契約",
+                "文書の上限1 MiBを強制"
+              ]
+            },
+            {
+              "id": "meaning",
+              "cells": [
+                "WAFの検査範囲",
+                "PDF・音声をデコードした意味内容の検査ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "waf",
+          "apim"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-065-manabu",
+      "speaker": "manabu",
+      "chapterId": "raw",
+      "speech": "ワフを通ったから、ピーディーエフや音声をデコードした意味内容まで安全性を検査済み、とは言えません。専用入力ガードと操作の上限を維持する理由も、そこにあります。",
+      "caption": "WAFを通ったから、PDFや音声をデコードした意味内容まで安全性を検査済み、とは言えません。専用入力ガードと操作の上限を維持する理由も、そこにあります。",
+      "subtitleLines": [
+        "WAFを通ったから、PDFや音声をデコードした意味内容まで安全性を",
+        "検査済み、とは言えません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "WAFを通ったから、PDFや音声をデコードした意味内容まで安全性を検査済み、とは言えません。",
+          "lines": [
+            "WAFを通ったから、PDFや音声をデコードした意味内容まで安全性を",
+            "検査済み、とは言えません。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "専用入力ガードと操作の上限を維持する理由も、そこにあります。",
+          "lines": [
+            "専用入力ガードと操作の上限を維持する理由も、そこにあります。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-document",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "文書API：WAFの上限とAPI契約をそろえて確認",
+        "kind": "Application Gateway WAF",
+        "section": "特殊形式",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "path",
+              "cells": [
+                "対象の公開パス",
+                "/tools/documents/v1/analyze"
+              ]
+            },
+            {
+              "id": "waf",
+              "cells": [
+                "WAF側の指定",
+                "受入上限1025 KiB / 検査範囲1025 KiB"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM側の公開契約",
+                "文書の上限1 MiBを強制"
+              ]
+            },
+            {
+              "id": "meaning",
+              "cells": [
+                "WAFの検査範囲",
+                "PDF・音声をデコードした意味内容の検査ではない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "meaning"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-066-mako",
+      "speaker": "mako",
+      "chapterId": "raw",
+      "speech": "除外の変更後は、正規データが一度通れば完了ですか。",
+      "caption": "除外の変更後は、正規データが一度通れば完了ですか。",
+      "subtitleLines": [
+        "除外の変更後は、正規データが一度通れば完了ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "除外の変更後は、正規データが一度通れば完了ですか。",
+          "lines": [
+            "除外の変更後は、正規データが一度通れば完了ですか。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-verify",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "正規データと、攻撃の対照を組み合わせて確認する",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "normal",
+              "cells": [
+                "正規データ",
+                "対象パスの対象項目が通る"
+              ]
+            },
+            {
+              "id": "other",
+              "cells": [
+                "残した検査",
+                "他項目・他ルールの対照が拒否される"
+              ]
+            },
+            {
+              "id": "edge",
+              "cells": [
+                "境界の確認",
+                "query・method違い、別パスも確認"
+              ]
+            },
+            {
+              "id": "result",
+              "cells": [
+                "到達先を照合",
+                "WAFの結果と、後段で処理された範囲を確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-067-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "raw",
+      "speech": "正規データに加え、残した項目や規則で拒否すべき対照も試します。別パス、クエリーやメソッド違いも確認し、通す範囲と拒否する範囲が意図どおりかを確かめます。",
+      "caption": "正規データに加え、残した項目や規則で拒否すべき対照も試します。別パス、queryやmethod違いも確認し、通す範囲と拒否する範囲が意図どおりかを確かめます。",
+      "subtitleLines": [
+        "正規データに加え、残した項目や規則で拒否すべき対照も試します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正規データに加え、残した項目や規則で拒否すべき対照も試します。",
+          "lines": [
+            "正規データに加え、残した項目や規則で拒否すべき対照も試します。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "別パス、queryやmethod違いも確認し、通す範囲と拒否する範囲が意図どおりかを確かめます。",
+          "lines": [
+            "別パス、queryやmethod違いも確認し、通す範囲と拒否する範囲が",
+            "意図どおりかを確かめます。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-verify",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "正規データと、攻撃の対照を組み合わせて確認する",
+        "kind": "Application Gateway WAF",
+        "section": "限定した除外",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "normal",
+              "cells": [
+                "正規データ",
+                "対象パスの対象項目が通る"
+              ]
+            },
+            {
+              "id": "other",
+              "cells": [
+                "残した検査",
+                "他項目・他ルールの対照が拒否される"
+              ]
+            },
+            {
+              "id": "edge",
+              "cells": [
+                "境界の確認",
+                "query・method違い、別パスも確認"
+              ]
+            },
+            {
+              "id": "result",
+              "cells": [
+                "到達先を照合",
+                "WAFの結果と、後段で処理された範囲を確認"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "normal",
+          "other",
+          "edge"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-068-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "三つ、確認します。ワーニングが一件、3点で、他の一致や上限違反はありません。マッチドのログがあるので、必ず遮断されるでしょうか。",
+      "caption": "三つ、確認します。Warningが一件、3点で、他の一致や上限違反はありません。Matchedのログがあるので、必ず遮断されるでしょうか。",
+      "subtitleLines": [
+        "三つ、確認します。",
+        "Warningが一件、3点で、他の一致や上限違反はありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "三つ、確認します。Warningが一件、3点で、他の一致や上限違反はありません。",
+          "lines": [
+            "三つ、確認します。",
+            "Warningが一件、3点で、他の一致や上限違反はありません。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "Matchedのログがあるので、必ず遮断されるでしょうか。",
+          "lines": [
+            "Matchedのログがあるので、必ず遮断されるでしょうか。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認①：Matchedが1件あれば、必ず遮断？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Warningが1件、3点。他の一致や上限違反なし"
+              ]
+            },
+            {
+              "id": "yes",
+              "cells": [
+                "選択肢A",
+                "Matchedなので、必ず遮断される"
+              ]
+            },
+            {
+              "id": "no",
+              "cells": [
+                "選択肢B",
+                "合計とモード、他の拒否条件を確認する"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-069-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "合計とモード、他の拒否条件を確認します。この例の3点だけでは、シーアールエスの合計5点に届きません。個別の一致と遮断結果を、同じ要求で分けて追います。",
+      "caption": "合計とモード、他の拒否条件を確認します。この例の3点だけでは、CRSの合計5点に届きません。個別の一致と遮断結果を、同じ要求で分けて追います。",
+      "subtitleLines": [
+        "合計とモード、他の拒否条件を確認します。",
+        "この例の3点だけでは、CRSの合計5点に届きません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "合計とモード、他の拒否条件を確認します。この例の3点だけでは、CRSの合計5点に届きません。",
+          "lines": [
+            "合計とモード、他の拒否条件を確認します。",
+            "この例の3点だけでは、CRSの合計5点に届きません。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "個別の一致と遮断結果を、同じ要求で分けて追います。",
+          "lines": [
+            "個別の一致と遮断結果を、同じ要求で分けて追います。"
+          ],
+          "weight": 25
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認①：Matchedが1件あれば、必ず遮断？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Warningが1件、3点。他の一致や上限違反なし"
+              ]
+            },
+            {
+              "id": "yes",
+              "cells": [
+                "選択肢A",
+                "Matchedなので、必ず遮断される"
+              ]
+            },
+            {
+              "id": "no",
+              "cells": [
+                "選択肢B",
+                "合計とモード、他の拒否条件を確認する"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "no"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-070-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "検知されたことは大事な手掛かりです。ただ、それを拒否と読み替えると、後段へ届いた要求まで見落とすわけですね。",
+      "caption": "検知されたことは大事な手掛かりです。ただ、それを拒否と読み替えると、後段へ届いた要求まで見落とすわけですね。",
+      "subtitleLines": [
+        "検知されたことは大事な手掛かりです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "検知されたことは大事な手掛かりです。",
+          "lines": [
+            "検知されたことは大事な手掛かりです。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "ただ、それを拒否と読み替えると、後段へ届いた要求まで見落とすわけですね。",
+          "lines": [
+            "ただ、それを拒否と読み替えると、後段へ届いた要求まで見落と",
+            "すわけですね。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-score",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認①：Matchedが1件あれば、必ず遮断？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Warningが1件、3点。他の一致や上限違反なし"
+              ]
+            },
+            {
+              "id": "yes",
+              "cells": [
+                "選択肢A",
+                "Matchedなので、必ず遮断される"
+              ]
+            },
+            {
+              "id": "no",
+              "cells": [
+                "選択肢B",
+                "合計とモード、他の拒否条件を確認する"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "no"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二つ目です。要求のパスに専用ポリシーがあります。共通ポリシーを通過してから、追加の専用検査を受けるのでしょうか。",
+      "caption": "二つ目です。要求のパスに専用ポリシーがあります。共通ポリシーを通過してから、追加の専用検査を受けるのでしょうか。",
+      "subtitleLines": [
+        "二つ目です。",
+        "要求のパスに専用ポリシーがあります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "二つ目です。要求のパスに専用ポリシーがあります。",
+          "lines": [
+            "二つ目です。",
+            "要求のパスに専用ポリシーがあります。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "共通ポリシーを通過してから、追加の専用検査を受けるのでしょうか。",
+          "lines": [
+            "共通ポリシーを通過してから、追加の専用検査を受けるのでしょうか。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-policy",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認②：URI別と全体を、続けて検査する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "要求のパスに専用ポリシーが関連付いている"
+              ]
+            },
+            {
+              "id": "two",
+              "cells": [
+                "選択肢A",
+                "全体で検査してから、専用を追加する"
+              ]
+            },
+            {
+              "id": "one",
+              "cells": [
+                "選択肢B",
+                "具体的な専用ポリシーが優先して適用される"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "具体的な専用ポリシーが優先して適用されます。共通設定は自動継承されないため、この実装では必要な保護を明示的に合成して専用ポリシーを作っています。",
+      "caption": "具体的な専用ポリシーが優先して適用されます。共通設定は自動継承されないため、この実装では必要な保護を明示的に合成して専用ポリシーを作っています。",
+      "subtitleLines": [
+        "具体的な専用ポリシーが優先して適用されます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "具体的な専用ポリシーが優先して適用されます。",
+          "lines": [
+            "具体的な専用ポリシーが優先して適用されます。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "共通設定は自動継承されないため、この実装では必要な保護を明示的に合成して専用ポリシーを作っています。",
+          "lines": [
+            "共通設定は自動継承されないため、この実装では必要な保護を明示的に",
+            "合成して専用ポリシーを作っています。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-policy",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認②：URI別と全体を、続けて検査する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "要求のパスに専用ポリシーが関連付いている"
+              ]
+            },
+            {
+              "id": "two",
+              "cells": [
+                "選択肢A",
+                "全体で検査してから、専用を追加する"
+              ]
+            },
+            {
+              "id": "one",
+              "cells": [
+                "選択肢B",
+                "具体的な専用ポリシーが優先して適用される"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "one"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-073-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "ポリシーの名前だけでなく、その要求へ適用された設定の完成形まで確認する、と整理できますね。",
+      "caption": "ポリシーの名前だけでなく、その要求へ適用された設定の完成形まで確認する、と整理できますね。",
+      "subtitleLines": [
+        "ポリシーの名前だけでなく、その要求へ適用された設定の完成形まで",
+        "確認する、と整理できますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ポリシーの名前だけでなく、その要求へ適用された設定の完成形まで確認する、と整理できますね。",
+          "lines": [
+            "ポリシーの名前だけでなく、その要求へ適用された設定の完成形まで",
+            "確認する、と整理できますね。"
+          ],
+          "weight": 45
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-policy",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認②：URI別と全体を、続けて検査する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "要求のパスに専用ポリシーが関連付いている"
+              ]
+            },
+            {
+              "id": "two",
+              "cells": [
+                "選択肢A",
+                "全体で検査してから、専用を追加する"
+              ]
+            },
+            {
+              "id": "one",
+              "cells": [
+                "選択肢B",
+                "具体的な専用ポリシーが優先して適用される"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "one"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後です。ポータルのコールバックのコード値が、二つのエスキューエル・アイ規則へ誤一致しました。コールバック全体をカスタムアローで通すのが適切ですか。",
+      "caption": "最後です。Portalのcallbackのcode値が、二つのSQLi規則へ誤一致しました。callback全体をカスタムAllowで通すのが適切ですか。",
+      "subtitleLines": [
+        "最後です。",
+        "Portalのcallbackのcode値が、二つのSQLi規則へ誤一致しました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後です。Portalのcallbackのcode値が、二つのSQLi規則へ誤一致しました。",
+          "lines": [
+            "最後です。",
+            "Portalのcallbackのcode値が、二つのSQLi規則へ誤一致しました。"
+          ],
+          "weight": 46
+        },
+        {
+          "caption": "callback全体をカスタムAllowで通すのが適切ですか。",
+          "lines": [
+            "callback全体をカスタムAllowで通すのが適切ですか。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-exclude",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認③：codeの誤検知を、どこまで除外する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Portal callbackのcode値が2つのSQLi規則へ一致"
+              ]
+            },
+            {
+              "id": "all",
+              "cells": [
+                "選択肢A",
+                "callbackをカスタムAllowで丸ごと通す"
+              ]
+            },
+            {
+              "id": "narrow",
+              "cells": [
+                "選択肢B",
+                "完全パス・code値・原因の2規則へ絞る"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "完全パス、コードの値、原因の二規則へ絞ります。カスタムアローで後続検査を止めず、ステートや他の規則、本文検査と上限を維持します。",
+      "caption": "完全パス、codeの値、原因の二規則へ絞ります。カスタムAllowで後続検査を止めず、stateや他の規則、本文検査と上限を維持します。",
+      "subtitleLines": [
+        "完全パス、codeの値、原因の二規則へ絞ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "完全パス、codeの値、原因の二規則へ絞ります。",
+          "lines": [
+            "完全パス、codeの値、原因の二規則へ絞ります。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "カスタムAllowで後続検査を止めず、stateや他の規則、本文検査と上限を維持します。",
+          "lines": [
+            "カスタムAllowで後続検査を止めず、stateや他の規則、",
+            "本文検査と上限を維持します。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-exclude",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認③：codeの誤検知を、どこまで除外する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Portal callbackのcode値が2つのSQLi規則へ一致"
+              ]
+            },
+            {
+              "id": "all",
+              "cells": [
+                "選択肢A",
+                "callbackをカスタムAllowで丸ごと通す"
+              ]
+            },
+            {
+              "id": "narrow",
+              "cells": [
+                "選択肢B",
+                "完全パス・code値・原因の2規則へ絞る"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "narrow"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-076-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "使えるようになった結果と、残した防御の両方を説明します。クエリーやメソッドの境界も確認して、調整の範囲を確定するんですね。",
+      "caption": "使えるようになった結果と、残した防御の両方を説明します。queryやmethodの境界も確認して、調整の範囲を確定するんですね。",
+      "subtitleLines": [
+        "使えるようになった結果と、残した防御の両方を説明します。",
+        "queryやmethodの境界も確認して、調整の範囲を確定するんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "使えるようになった結果と、残した防御の両方を説明します。queryやmethodの境界も確認して、調整の範囲を確定するんですね。",
+          "lines": [
+            "使えるようになった結果と、残した防御の両方を説明します。",
+            "queryやmethodの境界も確認して、調整の範囲を確定するんですね。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-quiz-exclude",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "確認③：codeの誤検知を、どこまで除外する？",
+        "kind": "Application Gateway WAF",
+        "section": "確認問題",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "condition",
+              "cells": [
+                "条件",
+                "Portal callbackのcode値が2つのSQLi規則へ一致"
+              ]
+            },
+            {
+              "id": "all",
+              "cells": [
+                "選択肢A",
+                "callbackをカスタムAllowで丸ごと通す"
+              ]
+            },
+            {
+              "id": "narrow",
+              "cells": [
+                "選択肢B",
+                "完全パス・code値・原因の2規則へ絞る"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "narrow"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今日の整理です。まず検知した攻撃パターンと、拒否の判断を分ける。次に本文の受入上限、検査範囲、ファイルやエーピーアイの上限を区別する、ですね。",
+      "caption": "今日の整理です。まず検知した攻撃パターンと、拒否の判断を分ける。次に本文の受入上限、検査範囲、ファイルやAPIの上限を区別する、ですね。",
+      "subtitleLines": [
+        "今日の整理です。",
+        "まず検知した攻撃パターンと、拒否の判断を分ける。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の整理です。まず検知した攻撃パターンと、拒否の判断を分ける。",
+          "lines": [
+            "今日の整理です。",
+            "まず検知した攻撃パターンと、拒否の判断を分ける。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "次に本文の受入上限、検査範囲、ファイルやAPIの上限を区別する、ですね。",
+          "lines": [
+            "次に本文の受入上限、検査範囲、ファイルやAPIの上限を区別する、",
+            "ですね。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-summary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "要求1つについて、検査・上限・適用・除外を説明する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inspect",
+              "cells": [
+                "検査と結果",
+                "攻撃パターンの一致と、拒否の判断を分ける"
+              ]
+            },
+            {
+              "id": "size",
+              "cells": [
+                "本文とサイズ",
+                "受入・検査・ファイル・API契約を区別"
+              ]
+            },
+            {
+              "id": "policy",
+              "cells": [
+                "適用ポリシー",
+                "最も具体的な1つ。必要な保護を明示合成"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "誤検知の調整",
+                "完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson09-turn-078-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "そして要求先から、実際に適用されるポリシーを確認します。専用ポリシーで維持する保護を読み、原因の入力項目と規則を特定します。",
+      "caption": "そして要求先から、実際に適用されるポリシーを確認します。専用ポリシーで維持する保護を読み、原因の入力項目と規則を特定します。",
+      "subtitleLines": [
+        "そして要求先から、実際に適用されるポリシーを確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そして要求先から、実際に適用されるポリシーを確認します。",
+          "lines": [
+            "そして要求先から、実際に適用されるポリシーを確認します。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "専用ポリシーで維持する保護を読み、原因の入力項目と規則を特定します。",
+          "lines": [
+            "専用ポリシーで維持する保護を読み、原因の入力項目と規則を",
+            "特定します。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "仕組みを知る同僚として、明瞭で穏やかに答える。用語と規則番号を落ち着いて区切り、通常速度で話す。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-summary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "要求1つについて、検査・上限・適用・除外を説明する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inspect",
+              "cells": [
+                "検査と結果",
+                "攻撃パターンの一致と、拒否の判断を分ける"
+              ]
+            },
+            {
+              "id": "size",
+              "cells": [
+                "本文とサイズ",
+                "受入・検査・ファイル・API契約を区別"
+              ]
+            },
+            {
+              "id": "policy",
+              "cells": [
+                "適用ポリシー",
+                "最も具体的な1つ。必要な保護を明示合成"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "誤検知の調整",
+                "完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "policy"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-079-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "正規データの誤検知は、完全パス、項目の値、原因ルールへ絞って調整します。要求を通すことと、検査を残すことを一緒に判断できれば、今回の到達点です。",
+      "caption": "正規データの誤検知は、完全パス、項目の値、原因ルールへ絞って調整します。要求を通すことと、検査を残すことを一緒に判断できれば、今回の到達点です。",
+      "subtitleLines": [
+        "正規データの誤検知は、完全パス、項目の値、原因ルールへ",
+        "絞って調整します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正規データの誤検知は、完全パス、項目の値、原因ルールへ絞って調整します。",
+          "lines": [
+            "正規データの誤検知は、完全パス、項目の値、原因ルールへ",
+            "絞って調整します。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "要求を通すことと、検査を残すことを一緒に判断できれば、今回の到達点です。",
+          "lines": [
+            "要求を通すことと、検査を残すことを一緒に判断できれば、",
+            "今回の到達点です。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "利用する人の目的と、運用する人の判断を同僚へ落ち着いて話す。通常速度で、相手の説明を受けた自然な返答。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-summary",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "要求1つについて、検査・上限・適用・除外を説明する",
+        "kind": "Application Gateway WAF",
+        "section": "管理ルール",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "inspect",
+              "cells": [
+                "検査と結果",
+                "攻撃パターンの一致と、拒否の判断を分ける"
+              ]
+            },
+            {
+              "id": "size",
+              "cells": [
+                "本文とサイズ",
+                "受入・検査・ファイル・API契約を区別"
+              ]
+            },
+            {
+              "id": "policy",
+              "cells": [
+                "適用ポリシー",
+                "最も具体的な1つ。必要な保護を明示合成"
+              ]
+            },
+            {
+              "id": "exclude",
+              "cells": [
+                "誤検知の調整",
+                "完全パス × 項目の値 × 原因ルール"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "exclude"
+        ]
+      }
+    },
+    {
+      "id": "lesson09-turn-080-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次回は、ファイアウォールの許可とアイディーピーエスの検知です。通信規則がアローなら、攻撃の検知結果も同じ意味なのでしょうか。二つの判断を分けて追います。",
+      "caption": "次回は、Firewallの許可とIDPSの検知です。通信規則がAllowなら、攻撃の検知結果も同じ意味なのでしょうか。二つの判断を分けて追います。",
+      "subtitleLines": [
+        "次回は、Firewallの許可とIDPSの検知です。",
+        "通信規則がAllowなら、攻撃の検知結果も同じ意味なのでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次回は、Firewallの許可とIDPSの検知です。通信規則がAllowなら、攻撃の検知結果も同じ意味なのでしょうか。",
+          "lines": [
+            "次回は、Firewallの許可とIDPSの検知です。",
+            "通信規則がAllowなら、攻撃の検知結果も同じ意味なのでしょうか。"
+          ],
+          "weight": 59
+        },
+        {
+          "caption": "二つの判断を分けて追います。",
+          "lines": [
+            "二つの判断を分けて追います。"
+          ],
+          "weight": 14
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を一緒に考える自然な質問と短い納得。通常速度で、問いの末尾にわずかな間を置く。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "waf09-next",
+        "areaLabel": "WAF / 教材用設定メニュー",
+        "title": "次回：Firewallの許可とIDPSの検知",
+        "kind": "Application Gateway WAF",
+        "section": "入口と役割",
+        "menu": [
+          "入口と役割",
+          "管理ルール",
+          "本文と上限",
+          "適用ポリシー",
+          "限定した除外",
+          "特殊形式",
+          "確認問題"
+        ],
+        "subtitle": "リポジトリ定義と公開設定例を読み解く",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 300
+            },
+            {
+              "label": "指定・意味",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "today",
+              "cells": [
+                "今回の到達点",
+                "公開入口で、WAFが止めた理由を説明する"
+              ]
+            },
+            {
+              "id": "next",
+              "cells": [
+                "第10回の問い",
+                "FWで通信がAllowなら、IDPSの結果も同じ？"
+              ]
+            },
+            {
+              "id": "boundary",
+              "cells": [
+                "次に区別すること",
+                "通信規則のAllow / Denyと、IDPS Alert / Deny"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "next"
+        ]
+      }
+    }
+  ]
+}

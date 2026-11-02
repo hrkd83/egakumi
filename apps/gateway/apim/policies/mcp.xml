@@ -1,0 +1,108 @@
+<policies>
+  <!--
+    APIM が REST 操作を native MCP として公開する表口の認可です。共通認証を継承し、MCP proxy の転送規則とは分けます。
+    この表口も共通の購読キーで利用範囲を確認し、公開した REST 操作を実行します。
+    REST側の入力検査と下流認証は、対応する操作のポリシーへ引き継ぎます。
+  -->
+  <inbound>
+    <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
+    <!-- 予約済みの認証メタデータ用パスを、公開toolの操作へ転送しません。 -->
+    <choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <base />
+    <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
+    <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <!-- 共通入口が検証した購読を、このAPIの操作制約と監査へ引き渡します。
+         呼出主体は購読IDで固定し、下流の本人認証はAPI固有の処理で確認します。 -->
+    <set-variable name="gatewayDecision" value="@{
+      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
+      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
+      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot; || context.Subscription == null
+          || String.IsNullOrWhiteSpace(context.Subscription.Id) || !context.Request.Headers.ContainsKey(keyHeader)
+          || context.Request.Headers[keyHeader].Length != 1
+          || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return deny.ToString(); }
+      var decision = new JObject(new JProperty(&quot;allowed&quot;, true),
+        new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
+        var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
+        if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
+      }
+      return decision.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="403" reason="API operation is not authorized" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- native MCPはRESTの400応答もisError:falseで包むため、引数不正は実行前にJSON-RPCエラーへ確定します。 -->
+    <set-variable name="gatewayMcpArgumentError" value="@{
+      try {
+        var message = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        if ((string)message?[&quot;method&quot;] != &quot;tools/call&quot; || message[&quot;id&quot;]?.Type != JTokenType.Integer) { return &quot;&quot;; }
+        var name = (string)message[&quot;params&quot;]?[&quot;name&quot;];
+        var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+        var constraint = String.IsNullOrEmpty(name) ? null : config[&quot;operationConstraints&quot;]?[name] as JObject;
+        if ((string)constraint?[&quot;kind&quot;] != &quot;pii&quot;) { return &quot;&quot;; }
+        var arguments = message[&quot;params&quot;]?[&quot;arguments&quot;] as JObject;
+        var valid = arguments != null &amp;&amp; arguments.Properties().Count() == 2
+          &amp;&amp; arguments.Properties().All(p =&gt; p.Name == &quot;text&quot; || p.Name == &quot;language&quot;)
+          &amp;&amp; arguments[&quot;text&quot;]?.Type == JTokenType.String &amp;&amp; !String.IsNullOrWhiteSpace((string)arguments[&quot;text&quot;])
+          &amp;&amp; arguments[&quot;language&quot;]?.Type == JTokenType.String
+          &amp;&amp; ((JArray)constraint[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)arguments[&quot;language&quot;])
+          &amp;&amp; System.Text.Encoding.UTF8.GetByteCount(arguments.ToString(Newtonsoft.Json.Formatting.None)) &lt;= (int)constraint[&quot;maxRequestBytes&quot;];
+        if (valid) { return &quot;&quot;; }
+        return new JObject(new JProperty(&quot;jsonrpc&quot;, &quot;2.0&quot;), new JProperty(&quot;id&quot;, message[&quot;id&quot;]),
+          new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, -32602), new JProperty(&quot;message&quot;, &quot;Invalid tool arguments&quot;)))).ToString(Newtonsoft.Json.Formatting.None);
+      } catch { return &quot;&quot;; }
+    }" />
+    <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayMcpArgumentError&quot;]))">
+      <return-response><set-status code="400" reason="Invalid tool arguments" />
+        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-body>@((string)context.Variables["gatewayMcpArgumentError"])</set-body>
+      </return-response>
+    </when></choose>
+    <include-fragment fragment-id="core-audit-context" />
+    <!-- REST-backed MCPのtool実処理は参照先RESTで1回数えます。ここで同じcounterを二重加算しません。 -->
+    <set-variable name="gatewayAuditPhase" value="accepted" />
+    <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
+    <set-variable name="gatewayAuditStatus" value="@(0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <!-- REST操作へ送る前に、入口のAuthorizationヘッダーを取り除きます。 -->
+    <set-header name="Authorization" exists-action="delete" />
+    <!-- 登録済みのREST操作へ購読キー等の要求ヘッダーを引き継ぎます。
+         MCP/SSEの応答本文は読み取らず、そのまま転送します。 -->
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><forward-request timeout="240" buffer-response="false" /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <include-fragment fragment-id="core-backend-audit" />
+    <base />
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error>
+    <base />
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。
+         Responseの既定値200を成功と誤記せず、実際の400以上のエラー値だけを残します。 -->
+    <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </on-error>
+</policies>

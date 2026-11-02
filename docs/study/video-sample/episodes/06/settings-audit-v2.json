@@ -1,0 +1,140 @@
+{
+  "status": "passed",
+  "visualStyle": "teaching-settings-v2",
+  "bodyCamera": "fixed",
+  "bodyViews": 21,
+  "sourceTurns": 87,
+  "speechCaptionDeliveryAndTimingUnchanged": true,
+  "all87SynthesisCandidatesIdentical": true,
+  "additionalSynthesisRequests": 0,
+  "all87RawRecordingsReused": true,
+  "viewGeometryStableAcrossQuestionAndAnswer": true,
+  "viewGroups": {
+    "egress-reading": [
+      "lesson06-turn-005-manabu",
+      "lesson06-turn-006-mako",
+      "lesson06-turn-007-ikumi",
+      "lesson06-turn-008-manabu",
+      "lesson06-turn-009-mako"
+    ],
+    "application-conditions": [
+      "lesson06-turn-010-ikumi",
+      "lesson06-turn-011-mako",
+      "lesson06-turn-012-ikumi"
+    ],
+    "apim-vm-web": [
+      "lesson06-turn-013-manabu",
+      "lesson06-turn-014-mako",
+      "lesson06-turn-015-ikumi",
+      "lesson06-turn-016-manabu",
+      "lesson06-turn-017-ikumi"
+    ],
+    "portal-build-web": [
+      "lesson06-turn-018-mako",
+      "lesson06-turn-019-ikumi",
+      "lesson06-turn-020-manabu",
+      "lesson06-turn-021-ikumi",
+      "lesson06-turn-022-mako"
+    ],
+    "generated-fqdns": [
+      "lesson06-turn-023-mako",
+      "lesson06-turn-024-ikumi",
+      "lesson06-turn-025-manabu"
+    ],
+    "certificate-generation": [
+      "lesson06-turn-026-ikumi",
+      "lesson06-turn-027-mako",
+      "lesson06-turn-028-ikumi",
+      "lesson06-turn-029-manabu"
+    ],
+    "api-publication-fqdns": [
+      "lesson06-turn-030-mako",
+      "lesson06-turn-031-ikumi",
+      "lesson06-turn-032-ikumi",
+      "lesson06-turn-033-mako",
+      "lesson06-turn-034-ikumi",
+      "lesson06-turn-035-manabu"
+    ],
+    "additional-rules": [
+      "lesson06-turn-036-ikumi"
+    ],
+    "vm-explicit-egress": [
+      "lesson06-turn-037-mako",
+      "lesson06-turn-038-ikumi",
+      "lesson06-turn-039-manabu",
+      "lesson06-turn-040-mako",
+      "lesson06-turn-041-ikumi",
+      "lesson06-turn-042-ikumi"
+    ],
+    "public-ip-resources": [
+      "lesson06-turn-043-mako",
+      "lesson06-turn-044-ikumi",
+      "lesson06-turn-045-manabu",
+      "lesson06-turn-046-ikumi",
+      "lesson06-turn-047-ikumi"
+    ],
+    "public-snat": [
+      "lesson06-turn-048-mako",
+      "lesson06-turn-049-ikumi",
+      "lesson06-turn-050-manabu"
+    ],
+    "private-network-snat": [
+      "lesson06-turn-051-mako",
+      "lesson06-turn-052-ikumi",
+      "lesson06-turn-053-ikumi",
+      "lesson06-turn-054-mako",
+      "lesson06-turn-055-ikumi",
+      "lesson06-turn-056-manabu"
+    ],
+    "snat-by-path": [
+      "lesson06-turn-057-mako",
+      "lesson06-turn-058-ikumi",
+      "lesson06-turn-059-ikumi",
+      "lesson06-turn-060-mako",
+      "lesson06-turn-061-ikumi",
+      "lesson06-turn-062-manabu"
+    ],
+    "expected-vs-measured": [
+      "lesson06-turn-063-mako",
+      "lesson06-turn-064-ikumi",
+      "lesson06-turn-065-ikumi",
+      "lesson06-turn-066-manabu"
+    ],
+    "measurement-origin": [
+      "lesson06-turn-067-mako",
+      "lesson06-turn-068-ikumi",
+      "lesson06-turn-069-manabu"
+    ],
+    "unexpected-egress": [
+      "lesson06-turn-070-mako",
+      "lesson06-turn-071-ikumi",
+      "lesson06-turn-072-ikumi",
+      "lesson06-turn-073-manabu"
+    ],
+    "quiz-generated": [
+      "lesson06-turn-074-mako",
+      "lesson06-turn-075-manabu",
+      "lesson06-turn-076-ikumi"
+    ],
+    "quiz-private-ranges": [
+      "lesson06-turn-077-mako",
+      "lesson06-turn-078-ikumi",
+      "lesson06-turn-079-manabu"
+    ],
+    "quiz-measured": [
+      "lesson06-turn-080-mako",
+      "lesson06-turn-081-ikumi",
+      "lesson06-turn-082-manabu"
+    ],
+    "egress-summary": [
+      "lesson06-turn-083-mako",
+      "lesson06-turn-084-manabu",
+      "lesson06-turn-085-ikumi"
+    ],
+    "next-troubleshooting": [
+      "lesson06-turn-086-mako",
+      "lesson06-turn-087-manabu"
+    ]
+  },
+  "scriptSha256": "7714dca21499d67b04e624f574b14b85a238ca131639cc53b96ca51976328e3a"
+}

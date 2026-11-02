@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://aka.ms/azure-dev-cli-schema.json
+# azdが最初に読む構築の入口。設定本体はWORKFORCE_CONFIGで指定するparamsにある。
+# このファイルにSubscription、client secret、DNS tokenなどの実値は書かない。
+name: ai-workforce-core
+metadata:
+  template: ai-workforce-core@1.0.0
+infra:
+  # ネイティブのazd provisionが、main.bicepをSubscription scopeで実行する。
+  provider: bicep
+  path: infra
+  module: main
+# provisionで共通基盤と証明書・入口を準備し、upの最後にGateway→Portalを配備します。
+# 各アプリの専用コマンドは、個別更新・再試行でも独立して使えます。
+workflows:
+  up:
+    - azd: provision
+hooks:
+  # upの最初: 端末のツールと入力を確認し、保護した一時ARM入力を用意する。
+  preup:
+    # 秘密入力の案内・準備確認・非表示入力を実行端末へ接続します。
+    interactive: true
+    shell: sh
+    run: python3 scripts/deployment/lifecycle.py preup
+  # 課金設備の作成前: 対象Subscription・利用枠・固定名・RPを確認する。
+  # 監視先を準備してから、同じazdの本体配備へ進む。Entraアプリは自動作成しない。
+  preprovision:
+    # 秘密入力の案内・準備確認・非表示入力を実行端末へ接続します。
+    interactive: true
+    shell: sh
+    run: python3 scripts/deployment/lifecycle.py preprovision
+  # 本体配備後: 実配置を記録し、証明書参照・入口設定・Azure公開DNSのAエイリアスを確認する。
+  postprovision:
+    shell: sh
+    run: python3 scripts/deployment/lifecycle.py postprovision
+  # 基盤の実配置を記録し入口が整ってから、同じparams・stateで両アプリを順に配備する。
+  postup:
+    # Portalの初回グループ設定を既存の配備コマンドから対話入力できます。
+    interactive: true
+    shell: sh
+    run: python3 scripts/deploy_applications.py --execute
+  # 本体削除前: 保護/保持と対象IDを照合し、モデル・APIM・Gateway/PortalのCA・ジョブ・CAE・管理VMを回収する。
+  # 自動管理RGのIDを変更前に保存し、全CA/ジョブ→CAE→ACAサブネットの解放後にRG削除へ進む。
+  predown:
+    shell: sh
+    run: python3 scripts/deployment/lifecycle.py predown
+  # 本体削除後: 所有5RGと記録したACA管理RGの不存在、論理削除状態を確認し、一時入力を回収する。
+  postdown:
+    shell: sh
+    run: python3 scripts/deployment/lifecycle.py postdown

@@ -1,0 +1,133 @@
+<policies>
+  <!--
+    WebSocket / gRPC / MCP proxy の接続開始時に全体の認証を継承し、API 固有の認可を実施します。
+    通常RESTと同じ購読キーを確認し、API定義にあるモデル名と接続先queryを入口で検査します。
+    gRPC は HTTP/2 と逐次転送を使用し、WebSocket は接続開始時にモデルと固定 query を検査します。
+  -->
+  <inbound>
+    __GRPC_INGRESS_XML__
+    <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
+    <!-- MCP型だけに、個別PRMの転送を止める固定guardを差し込みます。 -->
+    __MCP_PRM_GUARD_XML__
+    <base />
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
+    <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <!-- WebSocket の model query を、API 定義の allowedModels と照合して選びます。 -->
+    <set-variable name="gatewayProtocolModel" value="@{
+      var encoded = &quot;__WEBSOCKET_SETTINGS_BASE64__&quot;;
+      if (String.IsNullOrEmpty(encoded)) { return &quot;&quot;; }
+      try {
+        var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+        var allowed = settings[&quot;allowedModels&quot;] as JArray;
+        if (allowed == null) { return &quot;&quot;; }
+        var model = (string)settings[&quot;defaultModel&quot;];
+        if (context.Request.Url.Query.ContainsKey(&quot;model&quot;)) {
+          if (context.Request.Url.Query[&quot;model&quot;].Length != 1) { return &quot;!invalid-model!&quot;; }
+          model = context.Request.Url.Query[&quot;model&quot;][0];
+        }
+        return allowed.Any(m =&gt; (string)m == model) ? model : &quot;!invalid-model!&quot;;
+      } catch { return &quot;!invalid-model!&quot;; }
+    }" />
+    <!-- 共通入口が検証した購読を、このAPIの操作制約と監査へ引き渡します。
+         呼出主体は購読IDで固定し、下流の本人認証はAPI固有の処理で確認します。 -->
+    <set-variable name="gatewayDecision" value="@{
+      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
+      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
+      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot; || context.Subscription == null
+          || String.IsNullOrWhiteSpace(context.Subscription.Id) || !context.Request.Headers.ContainsKey(keyHeader)
+          || context.Request.Headers[keyHeader].Length != 1
+          || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return deny.ToString(); }
+      var decision = new JObject(new JProperty(&quot;allowed&quot;, true),
+        new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
+        var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
+        if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
+      }
+      return decision.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="403" reason="API operation is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+      </when>
+    </choose>
+    <choose><when condition="@(context.Variables.ContainsKey(&quot;gatewayProtocolModel&quot;) &amp;&amp; !String.IsNullOrEmpty((string)context.Variables[&quot;gatewayProtocolModel&quot;]))">
+      <set-variable name="gatewayAuditSettings" value="@{
+        var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+        settings[&quot;websocketModel&quot;] = (string)context.Variables[&quot;gatewayProtocolModel&quot;];
+        return settings.ToString(Newtonsoft.Json.Formatting.None);
+      }" />
+    </when></choose>
+    <include-fragment fragment-id="core-audit-context" />
+    <!-- 共通認可を終えた入口の資格情報を取り除き、下流用の認証を設定します。 -->
+    <set-header name="Authorization" exists-action="delete" />
+    <set-header name="__KEY_HEADER__" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-header name="api-key" exists-action="delete" />
+    <set-query-parameter name="subscription-key" exists-action="delete" />
+    <set-query-parameter name="api-key" exists-action="delete" />
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <!-- WebSocket 等の query が、契約で固定した接続先やモデルと一致するか確認します。 -->
+    <set-variable name="gatewayProtocolQueryAllowed" value="@{
+      var encoded = &quot;__WEBSOCKET_QUERY_BASE64__&quot;;
+      if (String.IsNullOrEmpty(encoded)) { return true; }
+      try {
+        var expected = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+        var model = context.Variables.ContainsKey(&quot;gatewayProtocolModel&quot;) ? (string)context.Variables[&quot;gatewayProtocolModel&quot;] : &quot;&quot;;
+        return context.Request.Url.Query.All(q =&gt; q.Value.Length == 1 &amp;&amp; ((!String.IsNullOrEmpty(model) &amp;&amp; q.Key == &quot;model&quot; &amp;&amp; q.Value[0] == model) || (q.Key != &quot;model&quot; || String.IsNullOrEmpty(model)) &amp;&amp; expected[q.Key] != null &amp;&amp; q.Value[0] == (string)expected[q.Key]));
+      } catch { return false; }
+    }" />
+    <choose><when condition="@(!(bool)context.Variables[&quot;gatewayProtocolQueryAllowed&quot;])"><return-response><set-status code="403" reason="Protocol target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    __PROTOCOL_QUERY_XML__
+    __PROTOCOL_SESSION_XML__
+    <!-- WSは所有者検査を通した補助観測だけ、MCPは検査した取消/終了だけを免除します。 -->
+    __RATE_LIMIT_CLEANUP_XML__
+    __SUBSCRIPTION_PROFILE_XML__
+    <include-fragment fragment-id="core-rate-limit" />
+    <set-header name="X-Core-L7-Ingress" exists-action="delete" />
+    <set-backend-service backend-id="__BACKEND_ID__" />
+    <!-- MCPの外部接続先は登録済み固定URIだけを使います。従来SSEのPOSTは、
+         サーバーの案内にAPIMが付けるprefixと同じ公開パスだけを認めます。 -->
+    __MCP_PROXY_ROUTE_XML__
+    <!-- CMを使うMCPだけ、接続の利用者確認とtoken設定を差し込みます。
+         WebSocketとgRPCには、各通信で対応した専用の下流認証を生成します。 -->
+    __CREDENTIAL_CONNECTION_INBOUND_XML__
+    <!-- CMの本人セッション証明はGateway内で使い、接続先へ渡しません。 -->
+    <set-header name="X-Core-Connection-Session" exists-action="delete" />
+    <set-header name="X-Core-Connection-Poll" exists-action="delete" />
+    <set-header name="X-Core-Connection-Transaction" exists-action="delete" />
+    __BACKEND_HEADERS_XML__
+    <set-variable name="gatewayAuditPhase" value="accepted" />
+    <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
+    <set-variable name="gatewayAuditStatus" value="@(0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><forward-request timeout="240" http-version="__HTTP_VERSION__" buffer-request-body="false" buffer-response="false" /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <include-fragment fragment-id="core-backend-audit" />
+    <base />
+    __CREDENTIAL_CONNECTION_OUTBOUND_XML__
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error>
+    <base />
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。
+         Responseの既定値200を成功と誤記せず、実際の400以上のエラー値だけを残します。 -->
+    <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </on-error>
+</policies>

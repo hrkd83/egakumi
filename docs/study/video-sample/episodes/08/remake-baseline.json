@@ -1,0 +1,31 @@
+{
+  "reason": "Preserve completed diagram-based version before teaching-settings-v2 remake. Original raw audio remains in canonical output for verified reuse.",
+  "archivedEpisodeFiles": [
+    "delivery-check.json",
+    "source-review.md",
+    "script.json",
+    "script-before-metadata.json",
+    "production.md",
+    "final-visual-review.md",
+    "serve.py",
+    "visual-review.md",
+    "browser-check.json",
+    "delivery-notes.md",
+    "generation.json",
+    "verification.json",
+    "preproduction-verification.json",
+    "generation-before-metadata.json",
+    "brief.md",
+    "audio-review.md",
+    "metadata-rebind.json"
+  ],
+  "oldMp4Sha256": "6cbfb3874a7e4028a4df73c83dc848ef83c3ea18beeda5b670bdab5dba9c3c3e",
+  "currentSharedFileSha256": {
+    "PRODUCTION-GUIDE.md": "a32ca0209a2c17fc3ce2d07016b9d9bbdf4d64ac9407fe0f384ac3a92240bbc5",
+    "production-profile.json": "a1e1f70eeaf9a9896f53afe8356c2ffafaf7e7310e658f8cfb7efe51f360fe80",
+    "SETTINGS-VIEW.md": "c3db22777611133ff0b30d41e673bf1c8a91e4bfb5c093ee0b6f9edbec878b47",
+    "settings-visual.mjs": "a9a2704fffaf0b816589f3a70c8d68ed76a10d68d3070052f07026bc43e7d103",
+    "build-lesson.mjs": "f80f5dfd1d6a27b3e2228e4b0000f4a1fb8c5063e886549a4c53d1c97468ffa5",
+    "lesson-visual.mjs": "a3a75cbff6f82665c02e52e16fd8626f408cf4cb14e9caaf4560e0a2b60cffd8"
+  }
+}

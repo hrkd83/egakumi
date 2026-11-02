@@ -1,0 +1,245 @@
+<!doctype html>
+<!--
+  音声の実機試験に使う画面。realtime_browser.pyが端末内だけで配信する。
+  このHTMLを公開Webサイトへ置く前提ではない。画面 → loopback relay → Gatewayの
+  接続制御と、端末 → 音声サービスのWebRTCメディア通信を分けて観測する。
+  Gatewayのtoken・所有ticketはrelay側に置き、この画面や保存する証跡には渡さない。
+-->
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Realtime 音声・通信試験</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:860px;margin:36px auto;padding:0 20px;color:#183143;background:#f6f9fb}
+fieldset{border:1px solid #b9cbd6;border-radius:10px;background:white;margin:18px 0;padding:20px}button,select,input{font:inherit;margin:6px;padding:8px}button{cursor:pointer}pre{white-space:pre-wrap;background:#e8eff3;padding:16px;border-radius:8px}small{display:block;color:#486171}audio{width:100%}
+</style>
+<h1>Realtime 音声・通信試験</h1>
+<p>接続を押すと、設定済みの Gateway と音声サービスへ接続します。音声メディアは端末からサービスへ直接届く場合があります。</p>
+<small>アクセストークンと所有者確認用チケットはローカル relay 内だけで保持します。証跡には本文・SDP・音声・候補 IP アドレスを含めません。ブラウザーの利用量は課金確定値ではありません。</small>
+<fieldset><legend>試験条件</legend>
+<label>接続方式 <select id="kind"><option value="realtime">OpenAI Realtime / WebRTC</option><option value="voiceLive">Voice Live / WSS 制御 + WebRTC</option></select></label><br>
+<label>入力 <select id="source"><option value="mic">マイク</option><option value="wav">合成音声 WAV ファイル</option></select></label>
+<input type="file" id="wav" accept="audio/wav,audio/x-wav">
+<small>WAV は別途 TTS で作成し、末尾に2秒以上の無音を付けた短い音声を選択してください。音声ファイルは端末内で再生され、relay へアップロードされません。</small>
+<button id="connect" disabled>接続</button><button id="cancel" disabled>応答を取り消す</button><button id="disconnect" disabled>終了・停止確認</button><button id="export">本文なし証跡を保存</button>
+</fieldset>
+<audio id="audio" autoplay controls></audio>
+<p id="status" role="status">ローカル relay を確認しています。</p><pre id="facts">未接続</pre>
+<script>
+'use strict';
+// DOMは表示専用。クラウドの認証情報を入力欄やURLへ埋め込まず、同じ端末のrelayを使う。
+const $=id=>document.getElementById(id);
+let csrf='',cfg=null,pc=null,stream=null,signal=null,callId=null,context=null,sourceNode=null,timer=null,deadline=null;
+let busy=false,stats={},usage={},responseDone=0,remoteAudioTracks=0,audioPlayed=0,dataChannel=null,cancelRequests=0,cancelledResponses=0,sourcePlaybackStarted=false;
+// Voice Live は VAD・応答のライフサイクルを主に data channel へ送ります。
+// https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-webrtc#event-routing
+// 固定したイベント名の件数だけを数え、本文・ID・発話・エラー内容は保持しません。
+const DATA_CHANNEL_EVENT_NAMES=Object.freeze(['input_audio_buffer.speech_started','input_audio_buffer.speech_stopped',
+ 'input_audio_buffer.committed','input_audio_buffer.cleared','response.created','response.done','error','rtc.call.error',
+ 'conversation.item.created','conversation.item.input_audio_transcription.completed','conversation.item.input_audio_transcription.failed']);
+let dataChannelEvents={};
+// response.done だけでは completed と打切りを区別できないため、固定状態の件数も残します。
+const RESPONSE_DONE_STATUS_NAMES=Object.freeze(['completed','cancelled','failed','incomplete']);
+let responseStatuses={};
+const status=text=>{$('status').textContent=text;};
+/**
+ * 端末内relayの固定APIへJSONを送る。CSRF値はこの画面を開いた接続にだけ対応する。
+ * @param {string} path 呼出元が固定した相対パス。外部サービスのURLは受け取らない。
+ * @param {object} data 接続制御の入力。SDPなどの本文を証跡へ転記してはいけない。
+ * @returns {Promise<object>} relayが検査して返したJSON。失敗時は呼出元で終了処理へ進む。
+ */
+async function post(path,data={}){
+ const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Core-CSRF':csrf},body:JSON.stringify(data),cache:'no-store'});
+ if(!response.ok)throw new Error('Relay '+response.status);
+ return response.json();
+}
+/**
+ * マイク、または端末内で再生する短いWAVを、WebRTCへ渡す音声trackにする。
+ * server VAD の試験WAVは末尾2秒以上の無音を含めます。発話直後にtrackの入力が
+ * 終わるfixtureではspeech_stoppedが届かないことがあるためです。音声をここで改変はしません。
+ */
+async function input(){
+ if($('source').value==='mic')return navigator.mediaDevices.getUserMedia({audio:true});
+ const file=$('wav').files[0];if(!file||file.size>4*1024*1024)throw new Error('短い WAV を選択してください。');
+ context=new AudioContext();await context.resume();
+ const buffer=await context.decodeAudioData(await file.arrayBuffer());
+ if(buffer.duration>60)throw new Error('60 秒以内の音声を選択してください。');
+ const output=context.createMediaStreamDestination();sourceNode=context.createBufferSource();sourceNode.buffer=buffer;sourceNode.connect(output);
+ return output.stream;
+}
+/**
+ * 接続提案とICE候補を揃える。候補収集完了前のSDPを送って疎通成功と判定しない。
+ * SDPには接続先情報が含まれるので、ログや本文なしの証跡には保存しない。
+ */
+async function offer(){
+ const proposal=await pc.createOffer();await pc.setLocalDescription(proposal);
+ if(pc.iceGatheringState!=='complete')await new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>reject(new Error('ICE gathering timeout')),15000);
+  pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete'){clearTimeout(timeout);resolve();}});
+ });
+ return pc.localDescription.sdp;
+}
+/**
+ * SDP交換後もICE/DTLSの接続完了を待つ。短いWAVを接続前に流すと冒頭が失われるため、
+ * connectedを確認した後だけ再生する。失敗・終了・15秒の待機切れは既存の終了処理へ渡す。
+ * @param {RTCPeerConnection} peer 今回の音声通信だけを待ち、別の接続の状態を使わない。
+ * @returns {Promise<void>} 接続完了で成功し、終了・失敗・待機切れでは拒否する。
+ */
+function waitConnected(peer){
+ return new Promise((resolve,reject)=>{
+  let timeout;
+  const finish=error=>{clearTimeout(timeout);peer.removeEventListener('connectionstatechange',check);error?reject(error):resolve();};
+  const check=()=>{if(peer.connectionState==='connected')finish();else if(['failed','closed'].includes(peer.connectionState))finish(new Error('Media connection failed'));};
+  peer.addEventListener('connectionstatechange',check);
+  timeout=setTimeout(()=>finish(new Error('Media connection timeout')),15000);
+  check();
+ });
+}
+/**
+ * 音声の制御用 data channel も open になるまで待つ。ICE/DTLS 接続だけでは
+ * 制御チャネルの準備が完了したとは限らず、短い WAV を先に消費しない。
+ * @param {RTCPeerConnection} peer 今回の音声接続。失敗・終了時は待機も止める。
+ * @param {RTCDataChannel} channel 今回作った制御チャネルだけを確認する。
+ * @returns {Promise<void>} open で成功。切断・error・15秒経過時は既存 cleanup へ進む。
+ */
+function waitDataChannel(peer,channel){
+ return new Promise((resolve,reject)=>{
+  let timeout;
+  const finish=error=>{clearTimeout(timeout);peer.removeEventListener('connectionstatechange',check);
+   for(const event of ['open','close'])channel.removeEventListener(event,check);channel.removeEventListener('error',failed);error?reject(error):resolve();};
+  const failed=()=>finish(new Error('Data channel failed'));
+  const check=()=>{if(['failed','closed'].includes(peer.connectionState)||['closing','closed'].includes(channel.readyState))failed();
+   else if(channel.readyState==='open')finish();};
+  peer.addEventListener('connectionstatechange',check);
+  for(const event of ['open','close'])channel.addEventListener(event,check);channel.addEventListener('error',failed);
+  timeout=setTimeout(()=>finish(new Error('Data channel timeout')),15000);check();
+ });
+}
+/** サービスイベントから、終了回数と数値のusageだけを選ぶ。応答本文は保持しない。 */
+function observeEvent(raw,fromDataChannel=false){
+ try{
+  const event=typeof raw==='string'?JSON.parse(raw):raw;
+  if(fromDataChannel&&DATA_CHANNEL_EVENT_NAMES.includes(event.type)){
+   dataChannelEvents[event.type]=Math.min((dataChannelEvents[event.type]||0)+1,1000000);
+  }
+  if(event.type==='response.done')responseDone++;
+  const terminalStatus=event.response?.status||event.responseStatus;
+  if(event.type==='response.done'&&RESPONSE_DONE_STATUS_NAMES.includes(terminalStatus)){
+   responseStatuses[terminalStatus]=Math.min((responseStatuses[terminalStatus]||0)+1,1000000);
+  }
+  if(event.type==='response.done'&&(event.response?.status||event.responseStatus)==='cancelled')cancelledResponses++;
+  const measured=event.usage||event.response?.usage||{};
+  for(const key of ['input_tokens','output_tokens','total_tokens','input_audio_tokens','output_audio_tokens']){
+   if(Number.isFinite(measured[key])&&measured[key]>=0)usage[key]=measured[key];
+  }
+ }catch{}
+}
+/**
+ * ブラウザーが観測した通信量・音声track・ICE状態を収集する。
+ * IPやSDPは除外する。ここで得る数値は観測値であり、Azureの確定請求量ではない。
+ */
+async function sampleStats(){
+ if(!pc)return;
+ const peer=pc;const report=await peer.getStats();let pair=null;
+ stats={iceState:peer.iceConnectionState,responseDone,remoteAudioTracks,audioPlayed,cancelRequests,cancelledResponses,usage,
+  sourcePlaybackStarted,audioContextState:context?.state,dataChannelState:dataChannel?.readyState,dataChannelEvents:{...dataChannelEvents},responseStatuses:{...responseStatuses}};
+ report.forEach(row=>{if(row.type==='transport'&&row.selectedCandidatePairId)pair=report.get(row.selectedCandidatePairId);});
+ if(!pair)report.forEach(row=>{if(row.type==='candidate-pair'&&row.state==='succeeded'&&row.nominated)pair=row;});
+ if(pair){
+  for(const [from,to]of [['bytesSent','bytesSent'],['bytesReceived','bytesReceived'],['currentRoundTripTime','roundTripTime']])if(Number.isFinite(pair[from]))stats[to]=pair[from];
+  const local=report.get(pair.localCandidateId),remote=report.get(pair.remoteCandidateId);
+  if(local){stats.protocol=local.protocol;stats.localCandidateType=local.candidateType;stats.localPort=local.port;}
+  if(remote){stats.remoteCandidateType=remote.candidateType;stats.remotePort=remote.port;}
+ }
+ let sent=0,received=0;report.forEach(row=>{if(row.type==='outbound-rtp')sent+=row.packetsSent||0;if(row.type==='inbound-rtp')received+=row.packetsReceived||0;});
+ stats.packetsSent=sent;stats.packetsReceived=received;
+ // media-source が提供された場合だけ、入力側の非負な測定値を残す。音声本文・
+ // track ID は送らず、値が欠けたブラウザーで無音や請求量を推測しない。
+ report.forEach(row=>{if(row.type==='media-source'&&row.kind==='audio'){
+  for(const key of ['totalAudioEnergy','totalSamplesDuration'])if(Number.isFinite(row[key])&&row[key]>=0)stats[key]=(stats[key]||0)+row[key];
+ }});
+ $('facts').textContent=JSON.stringify(stats,null,2);await post('/api/observe',stats);
+}
+/**
+ * 利用者が「接続」を押したときだけ音声を開始する。ここから実サービスの利用が発生する。
+ * Realtimeはrelay経由のSDP交換、Voice LiveはWSS制御で、共通の音声trackを接続する。
+ * 途中の失敗もdisconnectへ渡し、端末のマイクと残った接続を閉じる。
+ */
+async function connect(){
+ if(busy)return;busy=true;$('connect').disabled=true;$('disconnect').disabled=false;
+ try{
+  responseDone=0;remoteAudioTracks=0;audioPlayed=0;cancelRequests=0;cancelledResponses=0;sourcePlaybackStarted=false;usage={};stats={};dataChannelEvents={};responseStatuses={};
+  stream=await input();pc=new RTCPeerConnection();stream.getTracks().forEach(track=>pc.addTrack(track,stream));
+  pc.ontrack=event=>{remoteAudioTracks++;$('audio').srcObject=event.streams[0]||new MediaStream([event.track]);$('audio').play().then(()=>{audioPlayed=1;}).catch(()=>status('音声の再生ボタンを押してください。'));};
+  const peer=pc;pc.onconnectionstatechange=()=>{if(pc===peer)status('WebRTC '+peer.connectionState+'。停止は「終了・停止確認」を押してください。');};
+  dataChannel=pc.createDataChannel($('kind').value==='voiceLive'?'voice-live-events':'oai-events');dataChannel.onmessage=event=>observeEvent(event.data,true);
+  const sdp=await offer();
+  if($('kind').value==='realtime'){
+   const result=await post('/api/realtime',{sdp});callId=result.id;await pc.setRemoteDescription({type:'answer',sdp:result.sdp});
+  }else{
+   signal=new WebSocket(location.origin.replace('http:','ws:')+'/api/voice-live',['core-realtime',csrf]);
+   await new Promise((resolve,reject)=>{signal.onopen=resolve;signal.onerror=()=>reject(new Error('Control channel failed'));});
+   await new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error('SDP answer timeout')),30000);
+    signal.onmessage=async event=>{
+     try{const message=JSON.parse(event.data);observeEvent(message);
+      if(message.type==='rtc.call.sdp.created'){await pc.setRemoteDescription({type:'answer',sdp:message.sdp_answer});clearTimeout(timeout);resolve();}
+      else if(message.failed){clearTimeout(timeout);reject(new Error('Voice Live control failed'));}
+     }catch{clearTimeout(timeout);reject(new Error('Invalid control response'));}
+    };signal.onclose=()=>{clearTimeout(timeout);reject(new Error('Control channel closed'));};
+    signal.send(JSON.stringify({sdp}));
+   });
+   signal.onclose=()=>{if(pc)disconnect().catch(()=>{});};
+  }
+  await waitConnected(peer);
+  await waitDataChannel(peer,dataChannel);
+  if(peer.connectionState!=='connected'||dataChannel.readyState!=='open')throw new Error('Connection ended before playback');
+  if(sourceNode){sourceNode.start();sourcePlaybackStarted=true;}
+  $('cancel').disabled=false;
+  // 1秒ごとに本文を含まない統計を送り、1接続の試験時間が終わったら音声を終了する。
+  // Azure基盤全体を撤去する仕組みではない。基盤とAgentの撤去は別手順で行う。
+  timer=setInterval(()=>sampleStats().catch(()=>status('統計保存を確認してください。')),1000);
+  deadline=setTimeout(()=>disconnect().catch(()=>{}),cfg.maxSeconds*1000);
+  status('接続中。音声の到着・再生と数値を確認してください。');
+ }catch{status('接続に失敗しました。本文なし証跡と API の設定を確認してください。');await disconnect();}
+ finally{busy=false;}
+}
+/** 実行中の応答だけを一回取り消す。送信とcancelled終端の確認は別々に記録する。 */
+async function cancelResponse(){
+ try{
+  if(signal?.readyState===WebSocket.OPEN)signal.send(JSON.stringify({action:'cancel'}));
+  else if(dataChannel?.readyState==='open')dataChannel.send(JSON.stringify({type:'response.cancel'}));
+  else throw new Error('Control channel is not open');
+  cancelRequests++;await sampleStats();status('取消を要求しました。cancelled 終端と音声停止を確認してください。');
+ }catch{status('取消を送信できませんでした。終了・停止確認を行ってください。');}
+}
+/**
+ * サービス側の停止確認と、端末の音声停止を別々に扱う。
+ * 上流停止が未確認ならcallIdを残し、利用者が再度停止できるようにする。
+ */
+async function disconnect(){
+ clearInterval(timer);clearTimeout(deadline);timer=null;deadline=null;try{await sampleStats();}catch{}
+ let stopped=true;if(callId){try{const result=await post('/api/realtime/'+encodeURIComponent(callId)+'/hangup');stopped=result.hangupConfirmed;if(stopped)callId=null;}catch{stopped=false;}}
+ if(signal){signal.close();signal=null;}
+ if(pc){pc.close();pc=null;}dataChannel=null;$('cancel').disabled=true;if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
+ if(context){await context.close();context=null;sourceNode=null;}
+ $('audio').srcObject=null;$('connect').disabled=Boolean(callId);$('disconnect').disabled=!callId;
+ status(stopped?'端末の音声接続を終了しました。サービス側の停止確認と最終課金は、停止応答・上流ログを別途照合してください。':'サービス側の停止は未確認です。再度「終了・停止確認」を押し、上流セッションを確認してください。');
+}
+$('connect').onclick=connect;$('cancel').onclick=cancelResponse;$('disconnect').onclick=disconnect;
+// 保存するのはrelayが選別した証跡だけ。音声ファイル、SDP、tokenはダウンロードしない。
+$('export').onclick=async()=>{
+ try{await sampleStats();const evidence=await post('/api/evidence');const url=URL.createObjectURL(new Blob([JSON.stringify(evidence,null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='realtime-body-free-evidence.json';link.click();URL.revokeObjectURL(url);
+ }catch{status('証跡の保存に失敗しました。');}
+};
+// 画面を閉じる際にも停止を試みる。ただし終了通信の完了は保証されないため、
+// 正常系では「終了・停止確認」ボタンを使い、上流側の終了記録も確認する。
+window.addEventListener('pagehide',()=>{
+ if(callId)fetch('/api/realtime/'+encodeURIComponent(callId)+'/hangup',{method:'POST',headers:{'Content-Type':'application/json','X-Core-CSRF':csrf},body:'{}',keepalive:true}).catch(()=>{});
+ if(signal)signal.close();if(pc)pc.close();stream?.getTracks().forEach(track=>track.stop());
+});
+// 接続先の種類とCSRF値をrelayから読み終えるまで、接続ボタンを有効にしない。
+(async()=>{try{const response=await fetch('/bootstrap',{cache:'no-store'});if(!response.ok)throw new Error();cfg=await response.json();csrf=cfg.csrf;
+ for(const option of $('kind').options)option.disabled=!cfg[option.value];$('kind').value=cfg.realtime?'realtime':'voiceLive';$('connect').disabled=false;
+ status('準備完了。1 接続の上限 '+cfg.maxSeconds+' 秒。実機の成功判定と利用量照合は別途行います。');
+}catch{status('ローカル relay の初期化に失敗しました。');}})();
+</script></html>

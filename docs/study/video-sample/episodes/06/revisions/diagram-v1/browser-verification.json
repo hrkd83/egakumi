@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "url": "http://127.0.0.1:51321/",
+  "method": "Cua browser DOM metadata, chapter button click, decoded display screenshot",
+  "duration": 994.916667,
+  "readyState": 4,
+  "playbackRate": 1,
+  "seekable": [
+    [
+      0,
+      994.916667
+    ]
+  ],
+  "chapterTargetSeconds": 818.625,
+  "observedTimeAfterChapterPlayback": 833.466908,
+  "videoError": null,
+  "videoWidth": 1600,
+  "videoHeight": 900,
+  "returnedToStart": true,
+  "tabKeptAsDeliverable": true,
+  "listeningVerified": false
+}

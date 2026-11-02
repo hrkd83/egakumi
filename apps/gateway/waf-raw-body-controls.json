@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "pattern": "(?:(?:\\.|%(?:25)*2e){2}(?:[\\\\/]|%(?:25)*2f|%(?:25)*5c)|(?:^|[\\\\/])\\.\\.(?:$|[?&#]))",
+  "transforms": ["UrlDecode", "RemoveNulls", "Lowercase"],
+  "rules": [
+    {"name": "coreRawTraversalUri", "variableName": "RequestUri"},
+    {"name": "coreRawTraversalQuery", "variableName": "QueryString"},
+    {"name": "coreRawTraversalHeaders", "variableName": "RequestHeaders"},
+    {"name": "coreRawTraversalCookies", "variableName": "RequestCookies"}
+  ]
+}

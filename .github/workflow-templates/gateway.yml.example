@@ -1,0 +1,50 @@
+# Disabled example: copy to .github/workflows only after configuring your own runner, environment and OIDC trust.
+name: Gateway deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: gateway-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, example-vnet]
+    environment: gateway
+    env:
+      CORE_PARAMS_PATH: ${{ vars.CORE_PARAMS_PATH }}
+      CORE_DEPLOYMENT_NAME: ${{ vars.CORE_DEPLOYMENT_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployment inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CORE_PARAMS_PATH"
+          test -f "$CORE_PARAMS_PATH"
+          test -n "$CORE_DEPLOYMENT_NAME"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Test authentication broker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv-broker
+          .venv-broker/bin/pip install -r apps/gateway/credential-broker/requirements.txt
+          PYTHONPATH=apps/gateway/credential-broker .venv-broker/bin/python -m unittest discover -s apps/gateway/credential-broker/tests -v
+      - name: Review Gateway deployment plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
+            --deployment-name "$CORE_DEPLOYMENT_NAME"
+      - name: Deploy Gateway database, CM, broker, and APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy_gateway.py --config "$CORE_PARAMS_PATH" \
+            --deployment-name "$CORE_DEPLOYMENT_NAME" --execute

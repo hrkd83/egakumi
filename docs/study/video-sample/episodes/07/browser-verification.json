@@ -1,0 +1,98 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T14:07:02.683599+09:00",
+  "visualStyle": "teaching-settings-v2",
+  "sourceVideoSha256": "2c1f13666db51047c6c4cea9a388106a3e25936c1b67b8ddc3cd577e61a9bce8",
+  "playerUrl": "http://127.0.0.1:54933/",
+  "fullVideoPlayback": {
+    "currentTime": 42.819708,
+    "duration": 1008,
+    "width": 1600,
+    "height": 900,
+    "playbackRate": 1,
+    "paused": false,
+    "readyState": 4,
+    "error": null
+  },
+  "continuousPreview": {
+    "url": "http://127.0.0.1:54933/conversation-preview.html",
+    "duration": 63.833333,
+    "viewId": "u1-roundtrip",
+    "sourceRangeSeconds": [
+      205.75,
+      269.5833333333333
+    ],
+    "samples": [
+      {
+        "currentTime": 0.016153,
+        "duration": 63.833333,
+        "playbackRate": 1,
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "error": null
+      },
+      {
+        "currentTime": 11.755591,
+        "duration": 63.833333,
+        "playbackRate": 1,
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "error": null
+      },
+      {
+        "currentTime": 34.505394,
+        "duration": 63.833333,
+        "playbackRate": 1,
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "error": null
+      },
+      {
+        "currentTime": 61.426958,
+        "duration": 63.833333,
+        "playbackRate": 1,
+        "paused": false,
+        "ended": false,
+        "readyState": 4,
+        "error": null
+      },
+      {
+        "currentTime": 63.833333,
+        "duration": 63.833333,
+        "playbackRate": 1,
+        "paused": true,
+        "ended": true,
+        "readyState": 4,
+        "error": null
+      }
+    ],
+    "seekedDuringPreview": false,
+    "internallyCut": false,
+    "visualObservationTimes": [
+      0.016153,
+      11.755591,
+      34.505394,
+      61.426958
+    ],
+    "observations": [
+      "質問時は答えの赤枠なし。同じ往復図と4行の設定表を保持。",
+      "回答時に実効情報の行へ静的な赤枠。図・表・メニューの配置を保持。",
+      "復路の確認時にAPIM側の復路UDRの行へ赤枠。MAKOへ話者が変わっても構図保持。",
+      "最後の役割確認で次ホップと許可の行へ赤枠。MANABUへ話者が変わっても構図保持。"
+    ],
+    "completedNormally": true
+  },
+  "deliveryPosition": {
+    "currentTime": 42.847129,
+    "duration": 1008,
+    "playbackRate": 1,
+    "paused": true,
+    "readyState": 4,
+    "error": null
+  },
+  "auditoryReviewPerformed": false,
+  "limitations": "全編連続目視や音声聴感の確認ではない。連続プレビューの通常再生と4時点の画面観測、全編AVデコード、抽出25場面目視を分けて記録。"
+}

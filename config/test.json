@@ -1,0 +1,457 @@
+{
+  "$schema": "../schemas/options.schema.json",
+  "$comment": "標準動作設定の正本です。コピー不要です。企業固有の入力はparamsへ記載し、任意の動作変更だけこのファイルで管理します。",
+  "network": {
+    "bgpRoutePropagation": {
+      "agw": true,
+      "apim": true,
+      "management": true
+    },
+    "appGatewayZones": [],
+    "firewall": {
+      "sku": "Standard",
+      "threatIntelMode": "Alert",
+      "zones": [],
+      "idpsMode": "Off",
+      "signatureOverrides": []
+    },
+    "operatorProtocol": "Tcp",
+    "operatorPorts": [
+      "22"
+    ],
+    "apimKeyVaultAccessEnabled": true,
+    "certificatePublicProbeEnabled": true,
+    "dnsTtl": 300
+  },
+  "services": {
+    "apimSkuName": "Developer",
+    "apiCenterSkuName": "Free",
+    "apimCapacity": 1,
+    "vaultSkuName": "standard",
+    "vaultRetentionDays": 7,
+    "vaultPurgeProtection": false,
+    "enableApiCenterIntegration": true,
+    "grantApimSecretAccess": true,
+    "modelDeployments": [
+      {
+        "name": "gpt-6.1-sol",
+        "modelName": "gpt-6.1-sol",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-29",
+        "skuName": "GlobalStandard",
+        "capacity": 50,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-6.1-sol",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-6-luna",
+        "modelName": "gpt-6-luna",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-22",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-luna",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-6-sol",
+        "modelName": "gpt-6-sol",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-22",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-sol",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-6-astra",
+        "modelName": "gpt-6-astra",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-03",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-6-astra",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.6-luna",
+        "modelName": "gpt-5.6-luna",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-09",
+        "skuName": "GlobalStandard",
+        "capacity": 5,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-luna",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.6-sol",
+        "modelName": "gpt-5.6-sol",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-09",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-sol",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.6-terra",
+        "modelName": "gpt-5.6-terra",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-09",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.6-terra",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.5",
+        "modelName": "gpt-5.5",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-04-24",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.5",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.4-mini",
+        "modelName": "gpt-5.4-mini",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-03-17",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-mini",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.4-nano",
+        "modelName": "gpt-5.4-nano",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-03-17",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-nano",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-5.4-pro",
+        "modelName": "gpt-5.4-pro",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-03-05",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-pro",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "DeepSeek-V4-Flash",
+        "modelName": "DeepSeek-V4-Flash",
+        "modelFormat": "DeepSeek",
+        "modelVersion": "2026-04-23",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.DeepSeek-V4-Flash",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "DeepSeek-V4-Pro",
+        "modelName": "DeepSeek-V4-Pro",
+        "modelFormat": "DeepSeek",
+        "modelVersion": "2026-04-23",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.DeepSeek-V4-Pro",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "Mistral-Large-3",
+        "modelName": "Mistral-Large-3",
+        "modelFormat": "Mistral AI",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.Mistral-Large-3",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "grok-4.7",
+        "modelName": "grok-4.7",
+        "modelFormat": "xAI",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.grok-4.7",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-live-1",
+        "modelName": "gpt-live-1",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-10",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-live-1",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-realtime-2.1",
+        "modelName": "gpt-realtime-2.1",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-07",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-realtime-2.1",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-realtime-2.1-mini",
+        "modelName": "gpt-realtime-2.1-mini",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-07",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-realtime-2.1-mini",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-live-transcribe",
+        "modelName": "gpt-live-transcribe",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-28",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-live-transcribe",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-transcribe",
+        "modelName": "gpt-transcribe",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-07-28",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-transcribe",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-image-2.5-flare",
+        "modelName": "gpt-image-2.5-flare",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-08",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2.5-flare",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-image-2.5-sunburst",
+        "modelName": "gpt-image-2.5-sunburst",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-09-08",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2.5-sunburst",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "gpt-image-2",
+        "modelName": "gpt-image-2",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2026-04-21",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.gpt-image-2",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "FLUX.2-flex",
+        "modelName": "FLUX.2-flex",
+        "modelFormat": "Black Forest Labs",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.FLUX.2-flex",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "FLUX.2-pro",
+        "modelName": "FLUX.2-pro",
+        "modelFormat": "Black Forest Labs",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.FLUX.2-pro",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "text-embedding-3-large",
+        "modelName": "text-embedding-3-large",
+        "modelFormat": "OpenAI",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.text-embedding-3-large",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "text-embedding-3-small",
+        "modelName": "text-embedding-3-small",
+        "modelFormat": "OpenAI",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.text-embedding-3-small",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "embed-v-4-0",
+        "modelName": "embed-v-4-0",
+        "modelFormat": "Cohere",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.Embed-V-4-0",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "Cohere-rerank-v4.0-fast",
+        "modelName": "Cohere-rerank-v4.0-fast",
+        "modelFormat": "Cohere",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.Cohere-Rerank-V4-Fast",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "Cohere-rerank-v4.0-pro",
+        "modelName": "Cohere-rerank-v4.0-pro",
+        "modelFormat": "Cohere",
+        "modelVersion": "1",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.GlobalStandard.Cohere-Rerank-V4-Pro",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "model-router",
+        "modelName": "model-router",
+        "modelFormat": "OpenAI",
+        "modelVersion": "2025-11-18",
+        "skuName": "GlobalStandard",
+        "capacity": 1,
+        "quotaUsageName": "OpenAI.GlobalStandard.ModelRouter",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      },
+      {
+        "name": "decision-1",
+        "modelName": "Microsoft-Decision-1",
+        "modelFormat": "Microsoft",
+        "modelVersion": "1",
+        "skuName": "DataZoneStandard",
+        "capacity": 1,
+        "quotaUsageName": "AIServices.DataZoneStandard.Microsoft-Decision-1",
+        "versionUpgradeOption": "NoAutoUpgrade"
+      }
+    ],
+    "catalogEnvironmentKind": "testing",
+    "catalogLifecycleStage": "testing",
+    "projectDisplayName": "core-platform",
+    "projectDescription": "Core platform project for shared model, agent, and tool capabilities.",
+    "speechEnabled": true,
+    "grantApimFoundryModelsAccess": true
+  },
+  "gateway": {
+    "skuName": "WAF_v2",
+    "autoscaleMinCapacity": 0,
+    "autoscaleMaxCapacity": 2,
+    "zones": [],
+    "wafMode": "Prevention",
+    "backendRequestTimeoutSeconds": 600,
+    "wafCustomRules": [],
+    "wafExclusions": [],
+    "wafMaxRequestBodySizeInKb": 2000,
+    "wafRequestBodyInspectLimitInKb": 2000,
+    "wafFileUploadLimitInMb": 4,
+    "realtimeControlEnabled": true,
+    "grpc": {
+      "enabled": true,
+      "publicPort": 8443,
+      "backendPort": 443
+    },
+    "rateLimits": {
+      "user": {
+        "enabled": false,
+        "calls": 60,
+        "renewalPeriodSeconds": 60
+      },
+      "subscriptionKey": {
+        "enabled": false,
+        "calls": 60,
+        "renewalPeriodSeconds": 60
+      },
+      "application": {
+        "enabled": false,
+        "calls": 60,
+        "renewalPeriodSeconds": 60
+      }
+    }
+  },
+  "management": {
+    "vmSize": "Standard_D2as_v6",
+    "diskControllerType": "NVMe",
+    "imageReference": {
+      "publisher": "Canonical",
+      "offer": "ubuntu-24_04-lts",
+      "sku": "server",
+      "version": "24.04.202610160"
+    },
+    "osDiskSizeGB": 128,
+    "osDiskSku": "StandardSSD_LRS",
+    "enableAcceleratedNetworking": true,
+    "encryptionAtHost": true,
+    "patchAssessmentMode": "ImageDefault",
+    "patchMode": "ImageDefault"
+  },
+  "monitoring": {
+    "retentionInDays": 90,
+    "workspaceDailyQuotaGb": -1,
+    "auditStorageSku": "Standard_LRS",
+    "auditImmutabilityMode": "Disabled",
+    "auditRetentionDays": 2557,
+    "appInsightsIngestionWarningGb": 80,
+    "enableLogAlerts": true
+  },
+  "certificate": {
+    "mode": "dnsPlugin",
+    "certificateName": "tls-public",
+    "renewBeforeDays": 30,
+    "checkEveryHours": 12,
+    "moduleVersion": "4.34.0",
+    "directory": "production",
+    "dnsSleepSeconds": 60,
+    "validationTimeoutSeconds": 120,
+    "minimumValidDays": 7
+  },
+  "credentialBroker": {
+    "sqlSkuName": "GP_Gen5_2",
+    "sqlTier": "GeneralPurpose",
+    "sqlCapacity": 2,
+    "sqlMaxSizeGB": 32,
+    "backupRetentionDays": 14,
+    "zoneRedundant": false,
+    "backupRedundancy": "Geo",
+    "minReplicas": 2,
+    "maxReplicas": 4
+  },
+  "portalAuthentication": {
+    "credentialProviderName": "graph-delegated",
+    "sqlSkuName": "Basic",
+    "sqlTier": "Basic",
+    "sqlCapacity": 5,
+    "sqlMaxSizeGB": 2,
+    "backupRetentionDays": 7,
+    "zoneRedundant": false,
+    "backupRedundancy": "Local"
+  }
+}

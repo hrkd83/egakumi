@@ -1,0 +1,66 @@
+// 同一APIM資源の許可済み実行を1行ずつ表示。拒否/全障害の監査はGatewayLogsで別照合。
+// acceptedのみの行は最終結果不明。本文/自由header/ツール応答は射影しない。
+// 数値対象は宣言済みChat Completionsのみ。他protocolと欠落usageはnone。
+// 標準列: https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewayllmlog
+// CorrelationId=Gateway要求、RequestId=言語モデル側要求。2つを推測で置換しない。
+// 親IDは登録Agentと照合する候補だけ。認可/本人/契約/課金配賦には使わない。
+let apimResourceId = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.ApiManagement/service/REPLACE';
+let canonicalId = (v:string) { iff(v matches regex @'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' and v != '00000000-0000-0000-0000-000000000000', tostring(toguid(v)), '') };
+let boundedNumber = (v:dynamic) { iff(gettype(v) in ('long', 'int', 'real', 'double') and todouble(v) >= 0 and todouble(v) <= 9007199254740991.0 and todouble(v) == tolong(v), tolong(v), long(null)) };
+let events = ApiManagementGatewayLogs
+| where _ResourceId =~ apimResourceId
+| mv-expand trace = TraceRecords
+// TraceRecordsの内部sourceは必須仕様にしない。自前schema/eventと上位CorrelationIdで識別。
+| extend record = parse_json(coalesce(tostring(trace.message), tostring(trace.Message)))
+| where gettype(record.schemaVersion) in ('long', 'int') and tolong(record.schemaVersion) == 1 and tostring(record.event) == 'gateway-request'
+| extend requestId = canonicalId(tostring(record.requestId))
+| where isnotempty(requestId) and requestId == canonicalId(tostring(CorrelationId))
+| where tostring(record.authorization) == 'allowed' and tostring(record.phase) in ('accepted', 'backend-response') and tostring(record.measurementRole) == 'execution';
+let requests = events
+// make_set(array)は配列を平坦化するため、帰属とusageはbagを単位にする。
+| summarize variants=make_set(bag_pack('subscription',record.subscriptionId,'method',record.method,'contract',record.contractId,'caller',record.callerId,'allocation',record.allocationId,
+    'tenant',record.verifiedTenantId,'principal',record.verifiedPrincipalId,'client',record.verifiedClientId,'api',record.apiId,
+    'model',record.targetModel,'agent',record.targetAgent,'usageSource',record.usageSource,'binding',record.targetAgentBindingStatus,
+    'targetTenant',record.targetAgentTenantId,'targetPrincipal',record.targetAgentPrincipalId,'targetClient',record.targetAgentClientId,
+    'parentStatus',record.parentLinkStatus,'parent',record.claimedParentId,'claimedAgent',record.claimedAgentName)),
+    arg_max(iff(tostring(record.phase)=='backend-response', 1, 0), record) by requestId
+| extend requestAmbiguous = array_length(variants) != 1;
+let identities = requests
+| where not(requestAmbiguous)
+| project parentId=requestId, parentAgent=tostring(record.targetAgent), parentBinding=tostring(record.targetAgentBindingStatus),
+    parentTenant=tostring(record.targetAgentTenantId), parentPrincipal=tostring(record.targetAgentPrincipalId), parentClient=tostring(record.targetAgentClientId);
+// 数値列をdynamic引数へ直接渡すとKQLが文字列用castを試みるため、配列で型を保ったまま取り出します。
+// 文字列の数字へ変換せず、負数・小数・文字列を除外する検査を維持します。
+let nativeUsage = ApiManagementGatewayLlmLog
+| where _ResourceId =~ apimResourceId
+| project requestId=canonicalId(tostring(CorrelationId)), targetModel=tostring(DeploymentName), providerRequestId=tostring(RequestId),
+    promptTokens=boundedNumber(pack_array(PromptTokens)[0]), completionTokens=boundedNumber(pack_array(CompletionTokens)[0]), totalTokens=boundedNumber(pack_array(TotalTokens)[0])
+| where isnotempty(requestId) and targetModel matches regex @'^[A-Za-z0-9_.-]{1,160}$' and providerRequestId matches regex @'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$'
+| where isnotnull(promptTokens) and isnotnull(completionTokens) and isnotnull(totalTokens) and totalTokens > 0 and totalTokens == promptTokens + completionTokens
+| distinct requestId, targetModel, providerRequestId, promptTokens, completionTokens, totalTokens;
+let exactUsage = requests
+| where not(requestAmbiguous) and tostring(record.usageSource) == 'ApiManagementGatewayLlmLog'
+| project requestId, targetModel=tostring(record.targetModel)
+| join kind=inner nativeUsage on requestId, targetModel
+| summarize matches=make_set(bag_pack('providerRequestId',providerRequestId,'promptTokens',promptTokens,'completionTokens',completionTokens,'totalTokens',totalTokens)) by requestId
+| extend usageStatus=iff(array_length(matches)==1,'available','ambiguous-usage')
+| project requestId, usageStatus, providerRequestId=iff(usageStatus=='available',tostring(matches[0].providerRequestId),''),
+    promptTokens=iff(usageStatus=='available',tolong(matches[0].promptTokens),long(null)),
+    completionTokens=iff(usageStatus=='available',tolong(matches[0].completionTokens),long(null)), totalTokens=iff(usageStatus=='available',tolong(matches[0].totalTokens),long(null));
+requests
+| extend parentId=iff(requestAmbiguous,'',canonicalId(tostring(record.claimedParentId)))
+| join kind=leftouter identities on parentId
+| extend parentTraceStatus=case(requestAmbiguous or tostring(record.parentLinkStatus)!='candidate','none',
+    isnotempty(tostring(record.verifiedPrincipalId)) and isnotempty(tostring(record.verifiedClientId)) and parentBinding=='configured' and parentAgent==tostring(record.claimedAgentName) and parentTenant==tostring(record.verifiedTenantId)
+    and parentPrincipal==tostring(record.verifiedPrincipalId) and parentClient==tostring(record.verifiedClientId),'matched-candidate', tostring(record.method)=='subscriptionKey','unverified-candidate','unmatched')
+| join kind=leftouter exactUsage on requestId
+// 帰属が矛盾した要求も消さない。その本人/契約/usageは採用せず異常1行として残す。
+| project requestId, subscriptionId=iff(requestAmbiguous,'',tostring(record.subscriptionId)), method=iff(requestAmbiguous,'',tostring(record.method)), apiId=iff(requestAmbiguous,'',tostring(record.apiId)), contractId=iff(requestAmbiguous,'',tostring(record.contractId)),
+    callerId=iff(requestAmbiguous,'',tostring(record.callerId)), allocationId=iff(requestAmbiguous,'',tostring(record.allocationId)),
+    verifiedTenantId=iff(requestAmbiguous,'',tostring(record.verifiedTenantId)), verifiedPrincipalId=iff(requestAmbiguous,'',tostring(record.verifiedPrincipalId)),
+    verifiedClientId=iff(requestAmbiguous,'',tostring(record.verifiedClientId)), targetModel=iff(requestAmbiguous,'',tostring(record.targetModel)),
+    phase=iff(requestAmbiguous,'ambiguous',tostring(record.phase)), code=iff(requestAmbiguous,'',tostring(record.code)),
+    status=iff(not(requestAmbiguous) and tostring(record.phase)=='backend-response',toint(record.status),int(null)),
+    backendResponseIds=iff(requestAmbiguous,dynamic({}),record.backendResponseIds),
+    usageStatus=case(requestAmbiguous,'ambiguous-request',isempty(usageStatus),'none',usageStatus), providerRequestId,
+    promptTokens, completionTokens, totalTokens, parentTraceStatus, traceParentRequestId=iff(parentTraceStatus=='matched-candidate',parentId,'')

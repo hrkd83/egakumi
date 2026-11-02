@@ -1,0 +1,45 @@
+<fragment>
+  <!-- APIMが検証した購読IDを使い、同じ購読の全API要求を同じ枠で数えます。
+       API固有の本人確認やCM接続・OBOで使うトークンは、購読の計数枠を変更しません。
+       購読別の上限と、取消・切断などの計数免除は基盤の設定から選択します。 -->
+  <!-- core-subscription-profile-v1: 接続有効化後の保存はSQL更新だけで適用されます。 -->
+  <set-variable name="gatewayRateDecision" value="@{
+    var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__RATE_LIMITS_BASE64__&quot;)));
+    var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+    var caller = (string)decision[&quot;callerId&quot;];
+    if (!(bool)decision[&quot;allowed&quot;] || String.IsNullOrWhiteSpace(caller)) { throw new Exception(&quot;Authorized caller is required&quot;); }
+    var method = (string)decision[&quot;method&quot;];
+    var scope = &quot;subscriptionKey&quot;;
+    var identity = context.Subscription == null ? &quot;&quot; : context.Subscription.Id;
+    if (method != scope || String.IsNullOrWhiteSpace(identity) || caller != &quot;subscription:&quot; + identity) {
+      throw new Exception(&quot;Verified subscription is required&quot;);
+    }
+    var selected = (JObject)settings[scope];
+    JToken values = selected;
+    values = ((JArray)selected[&quot;overrides&quot;]).FirstOrDefault(item =&gt; (string)item[&quot;callerId&quot;] == caller) ?? selected;
+    var profileEnabled = &quot;{{core-subscription-profile-enabled}}&quot; == &quot;true&quot;;
+    var hasProfile = context.Variables.ContainsKey(&quot;gatewaySubscriptionProfile&quot;);
+    if (profileEnabled &amp;&amp; !hasProfile) { throw new Exception(&quot;Subscription profile policy is not installed&quot;); }
+    var profile = hasProfile ? JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;]) : new JObject();
+    var profileRate = profile[&quot;requestRate&quot;];
+    var hasProfileRate = profileRate != null &amp;&amp; profileRate.Type == JTokenType.Object;
+    if (profileEnabled &amp;&amp; hasProfileRate) { values = profileRate; }
+    return new JObject(
+      new JProperty(&quot;scope&quot;, scope),
+      new JProperty(&quot;enabled&quot;, (profileEnabled ? hasProfileRate : (bool)selected[&quot;enabled&quot;]) &amp;&amp; !(bool)context.Variables[&quot;gatewayRateLimitExempt&quot;]),
+      new JProperty(&quot;calls&quot;, (int)values[&quot;calls&quot;]),
+      new JProperty(&quot;renewalPeriodSeconds&quot;, (int)values[&quot;renewalPeriodSeconds&quot;]),
+      new JProperty(&quot;counterKey&quot;, &quot;ai-gateway-rate-v3:&quot; + scope + &quot;:&quot; + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(identity)))
+    ).ToString(Newtonsoft.Json.Formatting.None);
+  }" />
+  <choose>
+    <when condition="@((bool)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;enabled&quot;])">
+      <!-- 入口で即時に1要求を数えます。長いSSEや音声接続の終了まで加算を待ちません。 -->
+      <rate-limit-by-key id="core-rate-limit"
+        calls="@((int)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;calls&quot;])"
+        renewal-period="@((int)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;renewalPeriodSeconds&quot;])"
+        counter-key="@((string)JObject.Parse((string)context.Variables[&quot;gatewayRateDecision&quot;])[&quot;counterKey&quot;])"
+        retry-after-variable-name="gatewayRateRetryAfter" />
+    </when>
+  </choose>
+</fragment>

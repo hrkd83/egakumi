@@ -1,0 +1,1306 @@
+{
+  "screenDimensions": [
+    1207,
+    511
+  ],
+  "redFocusColor": "#de343b",
+  "sourceAudioUnchanged": true,
+  "screens": [
+    {
+      "turnId": "lesson01-turn-007-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-007.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-008-manabu",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-008.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-009-ikumi",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-009.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-010-mako",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-010.svg",
+      "motion": {
+        "focus": [
+          786,
+          198,
+          400,
+          274
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-011-ikumi",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-011.svg",
+      "motion": {
+        "focus": [
+          786,
+          198,
+          400,
+          274
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-012-manabu",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-012.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-013-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-013.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-014-ikumi",
+      "view": "control-roles",
+      "kind": "portal",
+      "svg": "diagrams/turn-014.svg",
+      "motion": {
+        "focus": [
+          220,
+          207,
+          960,
+          245
+        ],
+        "zoom": 1.045,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-015-mako",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-015.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-016-manabu",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-016.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-017-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-017.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-018-ikumi",
+      "view": "vnet-overview",
+      "kind": "portal",
+      "svg": "diagrams/turn-018.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-019-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-019.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-020-ikumi",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-020.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-021-manabu",
+      "view": "vnet-overview",
+      "kind": "portal",
+      "svg": "diagrams/turn-021.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-022-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-022.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-023-ikumi",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-023.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-027-mako",
+      "view": "address-space",
+      "kind": "portal",
+      "svg": "diagrams/turn-027.svg",
+      "motion": {
+        "focus": [
+          218,
+          224,
+          965,
+          230
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-028-ikumi",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-028.svg",
+      "motion": {
+        "focus": [
+          215,
+          309,
+          968,
+          167
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-029-mako",
+      "view": "address-space",
+      "kind": "portal",
+      "svg": "diagrams/turn-029.svg",
+      "motion": {
+        "focus": [
+          218,
+          397,
+          965,
+          59
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-030-ikumi",
+      "view": "address-space",
+      "kind": "portal",
+      "svg": "diagrams/turn-030.svg",
+      "motion": {
+        "focus": [
+          218,
+          397,
+          965,
+          59
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-031-manabu",
+      "view": "address-space",
+      "kind": "portal",
+      "svg": "diagrams/turn-031.svg",
+      "motion": {
+        "focus": [
+          218,
+          397,
+          965,
+          59
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-036-manabu",
+      "view": "vnet-overview",
+      "kind": "portal",
+      "svg": "diagrams/turn-036.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-037-mako",
+      "view": "agw-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-037.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-038-ikumi",
+      "view": "agw-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-038.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-039-manabu",
+      "view": "agw-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-039.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-040-mako",
+      "view": "apim-internal",
+      "kind": "portal",
+      "svg": "diagrams/turn-040.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-041-ikumi",
+      "view": "apim-internal",
+      "kind": "portal",
+      "svg": "diagrams/turn-041.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-042-mako",
+      "view": "firewall-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-042.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-043-ikumi",
+      "view": "firewall-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-043.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-044-manabu",
+      "view": "firewall-subnet",
+      "kind": "portal",
+      "svg": "diagrams/turn-044.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-045-mako",
+      "view": "private-endpoints",
+      "kind": "portal",
+      "svg": "diagrams/turn-045.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-046-ikumi",
+      "view": "private-endpoints",
+      "kind": "portal",
+      "svg": "diagrams/turn-046.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-049-mako",
+      "view": "management-vm",
+      "kind": "portal",
+      "svg": "diagrams/turn-049.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-050-ikumi",
+      "view": "aca-internal",
+      "kind": "portal",
+      "svg": "diagrams/turn-050.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-051-manabu",
+      "view": "vm-no-public-ip",
+      "kind": "portal",
+      "svg": "diagrams/turn-051.svg",
+      "motion": {
+        "focus": [
+          549,
+          305,
+          626,
+          51
+        ],
+        "zoom": 1.18,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-052-mako",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-052.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-053-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-053.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-054-ikumi",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-054.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-055-mako",
+      "view": "agw-listener",
+      "kind": "portal",
+      "svg": "diagrams/turn-055.svg",
+      "motion": {
+        "focus": [
+          548,
+          250,
+          629,
+          150
+        ],
+        "zoom": 1.15,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-056-ikumi",
+      "view": "agw-listener",
+      "kind": "portal",
+      "svg": "diagrams/turn-056.svg",
+      "motion": {
+        "focus": [
+          548,
+          250,
+          629,
+          150
+        ],
+        "zoom": 1.15,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-057-manabu",
+      "view": "agw-listener",
+      "kind": "portal",
+      "svg": "diagrams/turn-057.svg",
+      "motion": {
+        "focus": [
+          548,
+          250,
+          629,
+          150
+        ],
+        "zoom": 1.15,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-058-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-058.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-059-ikumi",
+      "view": "agw-routes",
+      "kind": "portal",
+      "svg": "diagrams/turn-059.svg",
+      "motion": {
+        "focus": [
+          215,
+          231,
+          968,
+          54
+        ],
+        "zoom": 1.13,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-060-mako",
+      "view": "control-roles",
+      "kind": "portal",
+      "svg": "diagrams/turn-060.svg",
+      "motion": {
+        "focus": [
+          220,
+          207,
+          960,
+          245
+        ],
+        "zoom": 1.045,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-061-ikumi",
+      "view": "control-roles",
+      "kind": "portal",
+      "svg": "diagrams/turn-061.svg",
+      "motion": {
+        "focus": [
+          220,
+          207,
+          960,
+          245
+        ],
+        "zoom": 1.045,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-062-mako",
+      "view": "apim-api",
+      "kind": "portal",
+      "svg": "diagrams/turn-062.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-063-manabu",
+      "view": "apim-api",
+      "kind": "portal",
+      "svg": "diagrams/turn-063.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-064-ikumi",
+      "view": "agw-backend-http",
+      "kind": "portal",
+      "svg": "diagrams/turn-064.svg",
+      "motion": {
+        "focus": [
+          548,
+          252,
+          630,
+          102
+        ],
+        "zoom": 1.18,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-065-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-065.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-066-ikumi",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-066.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-067-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-067.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-068-ikumi",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-068.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-069-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-069.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-070-ikumi",
+      "view": "apim-return-route",
+      "kind": "portal",
+      "svg": "diagrams/turn-070.svg",
+      "motion": {
+        "focus": [
+          215,
+          231,
+          968,
+          54
+        ],
+        "zoom": 1.13,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-071-mako",
+      "view": "direct-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-071.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-072-ikumi",
+      "view": "apim-default-route",
+      "kind": "portal",
+      "svg": "diagrams/turn-072.svg",
+      "motion": {
+        "focus": [
+          215,
+          429,
+          967,
+          43
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-073-manabu",
+      "view": "apim-default-route",
+      "kind": "portal",
+      "svg": "diagrams/turn-073.svg",
+      "motion": {
+        "focus": [
+          215,
+          429,
+          967,
+          43
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-074-mako",
+      "view": "sql-private-endpoint",
+      "kind": "portal",
+      "svg": "diagrams/turn-074.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-075-ikumi",
+      "view": "sql-private-endpoint",
+      "kind": "portal",
+      "svg": "diagrams/turn-075.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-076-mako",
+      "view": "aca-egress",
+      "kind": "portal",
+      "svg": "diagrams/turn-076.svg",
+      "motion": {
+        "focus": [
+          215,
+          231,
+          968,
+          54
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-077-ikumi",
+      "view": "aca-public-gateway",
+      "kind": "diagram",
+      "svg": "diagrams/turn-077.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-078-manabu",
+      "view": "direct-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-078.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-081-mako",
+      "view": "direct-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-081.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-082-ikumi",
+      "view": "direct-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-082.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-083-mako",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-083.svg",
+      "motion": {
+        "focus": [
+          786,
+          198,
+          400,
+          274
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-084-manabu",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-084.svg",
+      "motion": {
+        "focus": [
+          240,
+          232,
+          918,
+          207
+        ],
+        "zoom": 1.07,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-085-ikumi",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-085.svg",
+      "motion": {
+        "focus": [
+          786,
+          198,
+          400,
+          274
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-086-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-086.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-087-ikumi",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-087.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-088-mako",
+      "view": "sql-private-endpoint",
+      "kind": "portal",
+      "svg": "diagrams/turn-088.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-089-ikumi",
+      "view": "direct-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-089.svg",
+      "motion": {
+        "focus": [
+          240,
+          203,
+          910,
+          260
+        ],
+        "zoom": 1.06,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-090-mako",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-090.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-091-manabu",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-091.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-092-ikumi",
+      "view": "source-vs-environment",
+      "kind": "portal",
+      "svg": "diagrams/turn-092.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-093-mako",
+      "view": "address-space",
+      "kind": "portal",
+      "svg": "diagrams/turn-093.svg",
+      "motion": {
+        "focus": [
+          218,
+          224,
+          965,
+          230
+        ],
+        "zoom": 1.08,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-094-manabu",
+      "view": "subnets",
+      "kind": "portal",
+      "svg": "diagrams/turn-094.svg",
+      "motion": {
+        "focus": [
+          216,
+          230,
+          966,
+          247
+        ],
+        "zoom": 1.065,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-095-ikumi",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-095.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-096-mako",
+      "view": "vnet-overview",
+      "kind": "portal",
+      "svg": "diagrams/turn-096.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-097-ikumi",
+      "view": "dns-preview",
+      "kind": "portal",
+      "svg": "diagrams/turn-097.svg",
+      "motion": {
+        "focus": [
+          500,
+          195,
+          670,
+          245
+        ],
+        "zoom": 1.12,
+        "seconds": 0.85
+      }
+    },
+    {
+      "turnId": "lesson01-turn-098-mako",
+      "view": "api-flow",
+      "kind": "diagram",
+      "svg": "diagrams/turn-098.svg",
+      "motion": {
+        "focus": [
+          380,
+          226,
+          642,
+          164
+        ],
+        "zoom": 1.09,
+        "seconds": 0.85
+      }
+    }
+  ]
+}

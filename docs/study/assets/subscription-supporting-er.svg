@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1080" viewBox="0 0 1300 1080" role="img" aria-labelledby="title desc">
+<title id="title">APIMサブスクリプション管理の補助8テーブルと残り9本の物理外部キー</title>
+<desc id="desc">主要5表の図と合わせて全13表を網羅する補足ER図。参照ノードは同じKey、Group、Companyをパネルごとに再掲。利用制限と変更監査、所有移管監査、配備登録監査、APIMサブスクリプション同期監査、会社監査、管理設定と製品カタログを示す。管理設定と製品カタログに物理外部キーはない。</desc>
+<defs>
+<marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+<path d="M0 0 L7 3.5 L0 7" fill="none" stroke="#607f73" stroke-width="1.2"/>
+</marker>
+</defs>
+<style>text{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;fill:#1e302d}.bg{fill:#fffefa}.panel{fill:#f6f8f1;stroke:#dbe4d7}.card{fill:#fffefa;stroke:#cad9cc}.head{fill:#eaf2e9}.refhead{fill:#edf0eb}.title{font-size:20px;font-weight:700}.small{font-size:12px;fill:#63716c}.paneltitle{font-size:14px;font-weight:700;fill:#006b5e}.table{font-family:Consolas,monospace;font-size:14px;font-weight:700}.purpose{font-size:10.5px;fill:#52675c}.field{font-family:Consolas,monospace;font-size:12px}.fk{fill:none;stroke:#607f73;stroke-width:1.5;marker-end:url(#arrow)}.edge{font-size:11px;fill:#006b5e}.ref{font-size:10px;fill:#758278}.note{font-size:11px;fill:#63716c}</style>
+<rect class="bg" width="1300" height="1080"/>
+<text class="title" x="25" y="32">設定・制限・操作履歴の8テーブル</text>
+<text class="small" x="25" y="55">参照ノードは主図の同じテーブルを再掲。実線＝物理FK。主図4本＋この図9本＋認証図2本＝全15本。</text>
+<rect class="panel" x="20" y="75" width="615" height="300" rx="7"/>
+<text class="paneltitle" x="35" y="100">A / 利用制限・設定変更監査</text>
+<g aria-label="portalApiKey：APIMサブスクリプション台帳（再掲）">
+<rect class="card" x="35" y="120" width="190" height="93" rx="5"/>
+<path class="refhead" d="M40 120h180a5 5 0 0 1 5 5v50H35v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="47" y="143">portalApiKey</text>
+<text class="purpose" x="47" y="157"><tspan x="47">目的：APIMサブスクリプション</tspan><tspan x="47" dy="13">台帳（再掲）</tspan></text>
+<text class="field" x="47" y="195">id / tenantId</text>
+</g>
+<g aria-label="portalApiKeyLimit：APIMサブスクリプション別の利用制限を設定">
+<rect class="card" x="290" y="120" width="325" height="114" rx="5"/>
+<path class="head" d="M295 120h315a5 5 0 0 1 5 5v50H290v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="302" y="143">portalApiKeyLimit</text>
+<text class="purpose" x="302" y="163">目的：APIMサブスクリプション別の利用制限を設定</text>
+<text class="field" x="302" y="195">PK/FK tenantId, apiKeyId</text>
+<text class="field" x="302" y="216">version / 制限プロファイル</text>
+</g>
+<g aria-label="portalApiKeyLimitAudit：利用制限の変更前後を記録">
+<rect class="card" x="290" y="250" width="325" height="114" rx="5"/>
+<path class="head" d="M295 250h315a5 5 0 0 1 5 5v50H290v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="302" y="273">portalApiKeyLimitAudit</text>
+<text class="purpose" x="302" y="293">目的：利用制限の変更前後を記録</text>
+<text class="field" x="302" y="325">PK id; FK tenantId, apiKeyId</text>
+<text class="field" x="302" y="346">version / previousProfile / profile</text>
+</g>
+<path class="fk" d="M225 175H290"/>
+<text class="edge" x="238" y="162" text-anchor="start">1 → 0..1</text>
+<path class="fk" d="M200 213V315H290"/>
+<text class="edge" x="205" y="302" text-anchor="start">1 → 0..N</text>
+<rect class="panel" x="655" y="75" width="625" height="300" rx="7"/>
+<text class="paneltitle" x="670" y="100">B / 所有グループの移管監査</text>
+<g aria-label="portalApiKeyGroup：所有グループ（再掲）">
+<rect class="card" x="675" y="120" width="225" height="93" rx="5"/>
+<path class="refhead" d="M680 120h215a5 5 0 0 1 5 5v50H675v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="687" y="143">portalApiKeyGroup</text>
+<text class="purpose" x="687" y="163">目的：所有グループ（再掲）</text>
+<text class="field" x="687" y="195">PK tenantId, groupId</text>
+</g>
+<g aria-label="portalApiKey：APIMサブスクリプション台帳（再掲）">
+<rect class="card" x="1020" y="120" width="240" height="93" rx="5"/>
+<path class="refhead" d="M1025 120h230a5 5 0 0 1 5 5v50H1020v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="1032" y="143">portalApiKey</text>
+<text class="purpose" x="1032" y="157"><tspan x="1032">目的：APIMサブスクリプション</tspan><tspan x="1032" dy="13">台帳（再掲）</tspan></text>
+<text class="field" x="1032" y="195">id / tenantId</text>
+</g>
+<g aria-label="portalApiKeyTransferAudit：所有グループの移管を記録">
+<rect class="card" x="720" y="255" width="500" height="114" rx="5"/>
+<path class="head" d="M725 255h490a5 5 0 0 1 5 5v50H720v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="732" y="278">portalApiKeyTransferAudit</text>
+<text class="purpose" x="732" y="298">目的：所有グループの移管を記録</text>
+<text class="field" x="732" y="330">PK id; FK tenantId, apiKeyId</text>
+<text class="field" x="732" y="351">FK tenantId, sourceGroupId / targetGroupId</text>
+</g>
+<path class="fk" d="M735 213V255"/>
+<text class="edge" x="742" y="235" text-anchor="start">source 1 → 0..N</text>
+<path class="fk" d="M865 213V255"/>
+<text class="edge" x="872" y="244" text-anchor="start">target 1 → 0..N</text>
+<path class="fk" d="M1135 213V255"/>
+<text class="edge" x="1142" y="235" text-anchor="start">1 → 0..N</text>
+<rect class="panel" x="20" y="395" width="615" height="300" rx="7"/>
+<text class="paneltitle" x="35" y="420">C / 配備時のAPIMサブスクリプション登録・採用の監査</text>
+<g aria-label="portalApiKeyGroup：所有グループ（再掲）">
+<rect class="card" x="35" y="440" width="245" height="93" rx="5"/>
+<path class="refhead" d="M40 440h235a5 5 0 0 1 5 5v50H35v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="47" y="463">portalApiKeyGroup</text>
+<text class="purpose" x="47" y="483">目的：所有グループ（再掲）</text>
+<text class="field" x="47" y="515">PK tenantId, groupId</text>
+</g>
+<g aria-label="portalApiKey：APIMサブスクリプション台帳（再掲）">
+<rect class="card" x="360" y="440" width="255" height="93" rx="5"/>
+<path class="refhead" d="M365 440h245a5 5 0 0 1 5 5v50H360v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="372" y="463">portalApiKey</text>
+<text class="purpose" x="372" y="477"><tspan x="372">目的：APIMサブスクリプション</tspan><tspan x="372" dy="13">台帳（再掲）</tspan></text>
+<text class="field" x="372" y="515">id / tenantId</text>
+</g>
+<g aria-label="portalApiKeyImportAudit：配備時のAPIMサブスクリプション登録を記録">
+<rect class="card" x="80" y="570" width="500" height="114" rx="5"/>
+<path class="head" d="M85 570h490a5 5 0 0 1 5 5v50H80v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="92" y="593">portalApiKeyImportAudit</text>
+<text class="purpose" x="92" y="613">目的：配備時のAPIMサブスクリプション登録を記録</text>
+<text class="field" x="92" y="645">PK id; FK tenantId, apiKeyId (UQ)</text>
+<text class="field" x="92" y="666">FK tenantId, groupId; runId / manifestHash</text>
+</g>
+<path class="fk" d="M160 533V570"/>
+<text class="edge" x="167" y="551" text-anchor="start">1 → 0..N</text>
+<path class="fk" d="M485 533V570"/>
+<text class="edge" x="492" y="551" text-anchor="start">1 → 0..1</text>
+<rect class="panel" x="655" y="395" width="625" height="300" rx="7"/>
+<text class="paneltitle" x="670" y="420">D / APIMサブスクリプション同期の開始・結果を追記</text>
+<g aria-label="portalApiKey：APIMサブスクリプション台帳（再掲）">
+<rect class="card" x="675" y="440" width="225" height="93" rx="5"/>
+<path class="refhead" d="M680 440h215a5 5 0 0 1 5 5v50H675v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="687" y="463">portalApiKey</text>
+<text class="purpose" x="687" y="477"><tspan x="687">目的：APIMサブスクリプション</tspan><tspan x="687" dy="13">台帳（再掲）</tspan></text>
+<text class="field" x="687" y="515">id / tenantId</text>
+</g>
+<g aria-label="portalSubscriptionSyncAudit：APIMサブスクリプション同期の開始・結果を記録">
+<rect class="card" x="945" y="440" width="315" height="135" rx="5"/>
+<path class="head" d="M950 440h305a5 5 0 0 1 5 5v50H945v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="957" y="463">portalSubscriptionSyncAudit</text>
+<text class="purpose" x="957" y="479"><tspan x="957">目的：APIMサブスクリプション同期の</tspan><tspan x="957" dy="13">開始・結果を記録</tspan></text>
+<text class="field" x="957" y="515">PK id; FK tenantId, apiKeyId?</text>
+<text class="field" x="957" y="536">subscriptionId / planId</text>
+<text class="field" x="957" y="557">action / phase / snapshotHash</text>
+</g>
+<path class="fk" d="M785 533V605H1100V575"/>
+<text class="edge" x="792" y="557">0..1</text>
+<text class="edge" x="1108" y="598">0..N</text>
+<text class="note" x="675" y="625">apiKeyId が NULL の監査は、台帳未登録のAPIMサブスクリプションも記録できる。</text>
+<text class="note" x="675" y="650">phase：attempted / succeeded / pending / failed</text>
+<rect class="panel" x="20" y="715" width="615" height="300" rx="7"/>
+<text class="paneltitle" x="35" y="740">E / 会社マスタの変更監査</text>
+<g aria-label="portalCompany：会社分類（再掲）">
+<rect class="card" x="35" y="760" width="215" height="93" rx="5"/>
+<path class="refhead" d="M40 760h205a5 5 0 0 1 5 5v50H35v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="47" y="783">portalCompany</text>
+<text class="purpose" x="47" y="803">目的：会社分類（再掲）</text>
+<text class="field" x="47" y="835">PK tenantId, id</text>
+</g>
+<g aria-label="portalCompanyAudit：会社名・有効状態の変更を記録">
+<rect class="card" x="320" y="760" width="295" height="135" rx="5"/>
+<path class="head" d="M325 760h285a5 5 0 0 1 5 5v50H320v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="332" y="783">portalCompanyAudit</text>
+<text class="purpose" x="332" y="803">目的：会社名・有効状態の変更を記録</text>
+<text class="field" x="332" y="835">PK id; FK tenantId, companyId</text>
+<text class="field" x="332" y="856">previousName / previousIsActive</text>
+<text class="field" x="332" y="877">name / isActive / actorObjectId</text>
+</g>
+<path class="fk" d="M250 820H320"/>
+<text class="edge" x="285" y="808" text-anchor="middle">1 → 0..N</text>
+<text class="note" x="35" y="954">会社とEntraグループを直接つなぐFKはない。</text>
+<rect class="panel" x="655" y="715" width="625" height="300" rx="7"/>
+<text class="paneltitle" x="670" y="740">F / 配備が管理する設定・カタログ（物理FKなし）</text>
+<g aria-label="portalApiKeyAdministration：管理グループ・組織名規則を設定">
+<rect class="card" x="675" y="760" width="278" height="135" rx="5"/>
+<path class="head" d="M680 760h268a5 5 0 0 1 5 5v50H675v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="687" y="783">portalApiKeyAdministration</text>
+<text class="purpose" x="687" y="803">目的：管理グループ・組織名規則を設定</text>
+<text class="field" x="687" y="835">PK tenantId</text>
+<text class="field" x="687" y="856">platformGroupId</text>
+<text class="field" x="687" y="877">groupNamePattern</text>
+</g>
+<g aria-label="portalApiKeyCatalogProduct：通常発行の製品・発行枠を設定">
+<rect class="card" x="972" y="760" width="288" height="135" rx="5"/>
+<path class="head" d="M977 760h278a5 5 0 0 1 5 5v50H972v-50a5 5 0 0 1 5-5Z"/>
+<text class="table" x="984" y="783">portalApiKeyCatalogProduct</text>
+<text class="purpose" x="984" y="803">目的：通常発行の製品・発行枠を設定</text>
+<text class="field" x="984" y="835">PK tenantId, productId</text>
+<text class="field" x="984" y="856">displayName / maxSubscriptions</text>
+<text class="field" x="984" y="877">enabled</text>
+</g>
+<text class="note" x="675" y="954">カタログ → 組織別製品承認は、portalEnsureApiKeyGroup が展開する。</text>
+<text class="note" x="675" y="976">platformGroupId はEntra IDを参照する設定値。SQLのGroup表へのFKではない。</text>
+<text class="small" x="25" y="1044">出典：apps/portal/sql/003・004・005・006・007・008・009。全列・制約はDDLと列辞書で確認する。</text>
+</svg>

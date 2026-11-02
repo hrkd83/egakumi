@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "url": "http://127.0.0.1:63763/conversation-preview.html",
+  "sourceSha256": "7fe51205c1797bbbfbf65c8ae9263a5bec63d92bca2bcb177a2e486c91f4818d",
+  "continuousPreviewSeconds": 57.541666666666664,
+  "sourceRangeSeconds": [
+    361.75,
+    419.2916666666667
+  ],
+  "turnIds": [
+    "lesson17-turn-030-mako",
+    "lesson17-turn-031-ikumi",
+    "lesson17-turn-032-mako",
+    "lesson17-turn-033-ikumi",
+    "lesson17-turn-034-manabu"
+  ],
+  "viewId": "lesson17-delete",
+  "playbackRate": 1,
+  "observedPlaybackTimesSeconds": [
+    7.520831,
+    47.836342,
+    57.541667
+  ],
+  "ended": true,
+  "visualObservations": [
+    "質問から回答まで同じ設定表・並び・縮尺を維持",
+    "説明に合わせ、削除開始・受付中・完了・保持する履歴へ赤枠が移る",
+    "字幕と話者の切替で本文構図がリセットされない"
+  ],
+  "audioListeningAssessment": "未実施。発音・歪み・自然さを聴取して確認したとは扱わない。"
+}

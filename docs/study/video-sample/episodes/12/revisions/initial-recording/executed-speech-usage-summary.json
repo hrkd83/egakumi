@@ -1,0 +1,15 @@
+{
+  "state": "complete",
+  "requests": 85,
+  "http200": 85,
+  "rawSpeechSeconds": 958.76,
+  "projectedVideoSeconds": 999.667,
+  "returnedUsage": {
+    "promptTokenCount": 28053,
+    "candidatesTokenCount": 23969,
+    "totalTokenCount": 52022
+  },
+  "automaticRetries": 0,
+  "sourceAudioSpeedChanged": false,
+  "credentialsPersisted": false
+}

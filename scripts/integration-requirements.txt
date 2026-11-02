@@ -1,0 +1,11 @@
+# API試験用clientの依存一覧。構築するAzureリソースの一覧ではない。
+# 同じ仮想環境に認証補助を読み込み、公式MCP SDKとREST/SSE試験を動かす。
+# バージョンは実機試験の再現性のため固定し、更新時はローカル試験も行う。
+-r auth-requirements.txt
+mcp==2.3.0
+httpx2==2.13.1
+# 音声のWSS試験と、端末内だけで待ち受けるWebRTC画面用relayに使う。
+websockets==17.2
+aiohttp==3.14.5
+# ローカルTLS試験の合成鍵・証明書に使う。実証明書を発行する依存ではない。
+cryptography==50.0.2

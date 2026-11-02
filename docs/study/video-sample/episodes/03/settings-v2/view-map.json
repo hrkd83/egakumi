@@ -1,0 +1,1364 @@
+{
+  "schemaVersion": 1,
+  "visualStyle": "teaching-settings-v2",
+  "bodyCamera": "fixed",
+  "groups": [
+    {
+      "viewId": "nsg-associations",
+      "turnIds": [
+        "lesson03-turn-005-manabu",
+        "lesson03-turn-006-mako",
+        "lesson03-turn-007-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "NSGを関連付ける四つの区画"
+    },
+    {
+      "viewId": "six-subnets",
+      "turnIds": [
+        "lesson03-turn-008-mako",
+        "lesson03-turn-009-ikumi",
+        "lesson03-turn-010-ikumi",
+        "lesson03-turn-011-manabu",
+        "lesson03-turn-012-mako",
+        "lesson03-turn-013-ikumi",
+        "lesson03-turn-014-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "六つの区画とNSGの関連付け"
+    },
+    {
+      "viewId": "two-directions",
+      "turnIds": [
+        "lesson03-turn-015-mako",
+        "lesson03-turn-016-ikumi",
+        "lesson03-turn-017-mako",
+        "lesson03-turn-018-ikumi"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "一つの接続を、出る側と入る側で見る"
+    },
+    {
+      "viewId": "rule-conditions",
+      "turnIds": [
+        "lesson03-turn-019-mako",
+        "lesson03-turn-020-ikumi",
+        "lesson03-turn-021-mako",
+        "lesson03-turn-022-ikumi",
+        "lesson03-turn-023-ikumi",
+        "lesson03-turn-024-manabu",
+        "lesson03-turn-025-mako",
+        "lesson03-turn-026-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "AppGW受信：一行の条件をそろえる"
+    },
+    {
+      "viewId": "priority-order",
+      "turnIds": [
+        "lesson03-turn-027-mako",
+        "lesson03-turn-028-ikumi",
+        "lesson03-turn-029-manabu",
+        "lesson03-turn-030-mako",
+        "lesson03-turn-031-ikumi",
+        "lesson03-turn-032-mako",
+        "lesson03-turn-033-ikumi",
+        "lesson03-turn-034-manabu"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "小さい優先度から、最初の一致で決める"
+    },
+    {
+      "viewId": "agw-apim-http",
+      "turnIds": [
+        "lesson03-turn-035-mako",
+        "lesson03-turn-036-ikumi",
+        "lesson03-turn-037-mako",
+        "lesson03-turn-038-ikumi",
+        "lesson03-turn-039-manabu"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "AppGW → APIM：TCP 80を両端で照合"
+    },
+    {
+      "viewId": "agw-outbound",
+      "turnIds": [
+        "lesson03-turn-040-ikumi",
+        "lesson03-turn-041-mako",
+        "lesson03-turn-042-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "AppGWの送信規則と既定許可"
+    },
+    {
+      "viewId": "apim-subnet-target",
+      "turnIds": [
+        "lesson03-turn-043-mako",
+        "lesson03-turn-044-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "APIM宛先はVIP一個ではなく専用区画"
+    },
+    {
+      "viewId": "vm-apim-comparison",
+      "turnIds": [
+        "lesson03-turn-045-mako",
+        "lesson03-turn-046-ikumi",
+        "lesson03-turn-047-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "管理VM → APIM：80と443を比較"
+    },
+    {
+      "viewId": "apim-inbound",
+      "turnIds": [
+        "lesson03-turn-048-ikumi",
+        "lesson03-turn-049-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "APIM受信：API・管理・基盤通信を分ける"
+    },
+    {
+      "viewId": "apim-foundry",
+      "turnIds": [
+        "lesson03-turn-050-mako",
+        "lesson03-turn-051-ikumi",
+        "lesson03-turn-052-mako",
+        "lesson03-turn-053-ikumi",
+        "lesson03-turn-054-manabu"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "APIM → Foundry PE：実IP群を両端で指定"
+    },
+    {
+      "viewId": "agw-pe-comparison",
+      "turnIds": [
+        "lesson03-turn-055-mako",
+        "lesson03-turn-056-ikumi",
+        "lesson03-turn-057-mako",
+        "lesson03-turn-058-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "AppGW → PE：同じ443でも宛先で異なる"
+    },
+    {
+      "viewId": "pe-service-rules",
+      "turnIds": [
+        "lesson03-turn-059-ikumi",
+        "lesson03-turn-060-manabu",
+        "lesson03-turn-061-manabu",
+        "lesson03-turn-062-mako",
+        "lesson03-turn-063-ikumi",
+        "lesson03-turn-117-ikumi"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "PE受信：接続元・サービス・ポートを分ける"
+    },
+    {
+      "viewId": "stateful-connection",
+      "turnIds": [
+        "lesson03-turn-064-mako",
+        "lesson03-turn-065-ikumi",
+        "lesson03-turn-066-manabu",
+        "lesson03-turn-067-mako",
+        "lesson03-turn-068-ikumi",
+        "lesson03-turn-069-mako",
+        "lesson03-turn-070-ikumi",
+        "lesson03-turn-071-manabu"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "状態追跡：同じ接続への応答と新規接続"
+    },
+    {
+      "viewId": "apim-platform-storage",
+      "turnIds": [
+        "lesson03-turn-072-mako",
+        "lesson03-turn-073-ikumi",
+        "lesson03-turn-074-ikumi",
+        "lesson03-turn-075-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "APIM：API以外の保存・認証・管理通信"
+    },
+    {
+      "viewId": "apim-platform-monitor",
+      "turnIds": [
+        "lesson03-turn-076-mako",
+        "lesson03-turn-077-ikumi",
+        "lesson03-turn-078-manabu",
+        "lesson03-turn-079-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "APIM：監視・ログ・Web・時刻・同期"
+    },
+    {
+      "viewId": "service-tags",
+      "turnIds": [
+        "lesson03-turn-080-mako",
+        "lesson03-turn-081-ikumi",
+        "lesson03-turn-082-mako",
+        "lesson03-turn-083-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "サービス・タグとFirewallの分担"
+    },
+    {
+      "viewId": "common-dns",
+      "turnIds": [
+        "lesson03-turn-084-mako",
+        "lesson03-turn-085-ikumi",
+        "lesson03-turn-086-manabu",
+        "lesson03-turn-087-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "共通DNSの設定と基盤通信の例外"
+    },
+    {
+      "viewId": "vm-platform",
+      "turnIds": [
+        "lesson03-turn-088-mako",
+        "lesson03-turn-089-ikumi",
+        "lesson03-turn-090-manabu",
+        "lesson03-turn-091-ikumi"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "管理VM：作業・監視の依存先と接続条件"
+    },
+    {
+      "viewId": "grpc-switch",
+      "turnIds": [
+        "lesson03-turn-092-mako",
+        "lesson03-turn-093-ikumi",
+        "lesson03-turn-094-ikumi",
+        "lesson03-turn-095-mako"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "gRPC：公開8443と内部443を一組で切り替える"
+    },
+    {
+      "viewId": "vm-operator",
+      "turnIds": [
+        "lesson03-turn-096-manabu",
+        "lesson03-turn-097-mako",
+        "lesson03-turn-098-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "管理VMへの受信：運用元とSSHを絞る"
+    },
+    {
+      "viewId": "certificate-probe",
+      "turnIds": [
+        "lesson03-turn-118-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "証明書監視194：設定値と通信条件"
+    },
+    {
+      "viewId": "probe-priority",
+      "turnIds": [
+        "lesson03-turn-099-mako",
+        "lesson03-turn-100-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [
+        "lesson03-turn-099-mako"
+      ],
+      "answerTurnIds": [
+        "lesson03-turn-100-ikumi"
+      ],
+      "description": "監視194がDenyなら、必ず拒否できる？"
+    },
+    {
+      "viewId": "probe-empty-client",
+      "turnIds": [
+        "lesson03-turn-101-manabu",
+        "lesson03-turn-102-mako"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "Web許可元が空でも、監視194を先に評価"
+    },
+    {
+      "viewId": "key-vault-switch",
+      "turnIds": [
+        "lesson03-turn-103-ikumi",
+        "lesson03-turn-104-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "Key Vault：PE通信と基盤・IAMを分ける"
+    },
+    {
+      "viewId": "broker-conditional",
+      "turnIds": [
+        "lesson03-turn-105-ikumi",
+        "lesson03-turn-119-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "Broker：条件付き176と、常時作成175・177"
+    },
+    {
+      "viewId": "quiz-vm-apim",
+      "turnIds": [
+        "lesson03-turn-106-mako",
+        "lesson03-turn-107-manabu",
+        "lesson03-turn-108-ikumi"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [
+        "lesson03-turn-106-mako",
+        "lesson03-turn-107-manabu"
+      ],
+      "answerTurnIds": [
+        "lesson03-turn-108-ikumi"
+      ],
+      "description": "確認1：管理VM → APIM / 新規 TCP 80"
+    },
+    {
+      "viewId": "quiz-stateful",
+      "turnIds": [
+        "lesson03-turn-109-mako",
+        "lesson03-turn-110-ikumi"
+      ],
+      "layout": "svg",
+      "questionTurnIds": [
+        "lesson03-turn-109-mako"
+      ],
+      "answerTurnIds": [
+        "lesson03-turn-110-ikumi"
+      ],
+      "description": "確認2：許可済みTCP 443への応答"
+    },
+    {
+      "viewId": "quiz-overlap",
+      "turnIds": [
+        "lesson03-turn-111-mako",
+        "lesson03-turn-112-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [
+        "lesson03-turn-111-mako"
+      ],
+      "answerTurnIds": [
+        "lesson03-turn-112-manabu"
+      ],
+      "description": "確認3：Web100と監視194、最初の一致は？"
+    },
+    {
+      "viewId": "summary",
+      "turnIds": [
+        "lesson03-turn-113-mako",
+        "lesson03-turn-114-ikumi",
+        "lesson03-turn-115-manabu"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "一つの通信を、同じ順番で判定する"
+    },
+    {
+      "viewId": "next-udr",
+      "turnIds": [
+        "lesson03-turn-116-mako"
+      ],
+      "layout": "settings",
+      "questionTurnIds": [],
+      "answerTurnIds": [],
+      "description": "次回：許可した通信を、どこへ送るか"
+    }
+  ],
+  "turns": [
+    {
+      "id": "lesson03-turn-005-manabu",
+      "viewId": "nsg-associations",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-006-mako",
+      "viewId": "nsg-associations",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-007-ikumi",
+      "viewId": "nsg-associations",
+      "layout": "settings",
+      "highlightTargets": [
+        "agw",
+        "apim",
+        "pe",
+        "vm"
+      ]
+    },
+    {
+      "id": "lesson03-turn-008-mako",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-009-ikumi",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": [
+        "agw",
+        "pe",
+        "apim"
+      ]
+    },
+    {
+      "id": "lesson03-turn-010-ikumi",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": [
+        "vm",
+        "aca",
+        "fw"
+      ]
+    },
+    {
+      "id": "lesson03-turn-011-manabu",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": [
+        "pe",
+        "vm"
+      ]
+    },
+    {
+      "id": "lesson03-turn-012-mako",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-013-ikumi",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": [
+        "aca",
+        "fw"
+      ]
+    },
+    {
+      "id": "lesson03-turn-014-manabu",
+      "viewId": "six-subnets",
+      "layout": "settings",
+      "highlightTargets": [
+        "aca",
+        "fw"
+      ]
+    },
+    {
+      "id": "lesson03-turn-015-mako",
+      "viewId": "two-directions",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-016-ikumi",
+      "viewId": "two-directions",
+      "layout": "svg",
+      "highlightTargets": [
+        "out:direction",
+        "in:direction"
+      ]
+    },
+    {
+      "id": "lesson03-turn-017-mako",
+      "viewId": "two-directions",
+      "layout": "svg",
+      "highlightTargets": [
+        "out:direction",
+        "in:direction"
+      ]
+    },
+    {
+      "id": "lesson03-turn-018-ikumi",
+      "viewId": "two-directions",
+      "layout": "svg",
+      "highlightTargets": [
+        "in:policy"
+      ]
+    },
+    {
+      "id": "lesson03-turn-019-mako",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-020-ikumi",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-021-mako",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-022-ikumi",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "manager",
+        "lb"
+      ]
+    },
+    {
+      "id": "lesson03-turn-023-ikumi",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "web",
+        "manager",
+        "lb"
+      ]
+    },
+    {
+      "id": "lesson03-turn-024-manabu",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-025-mako",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-026-ikumi",
+      "viewId": "rule-conditions",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-027-mako",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-028-ikumi",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": [
+        "priority:allow"
+      ]
+    },
+    {
+      "id": "lesson03-turn-029-manabu",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": [
+        "priority:allow"
+      ]
+    },
+    {
+      "id": "lesson03-turn-030-mako",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-031-ikumi",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": [
+        "priority:deny"
+      ]
+    },
+    {
+      "id": "lesson03-turn-032-mako",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-033-ikumi",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": [
+        "priority:deny",
+        "priority:default"
+      ]
+    },
+    {
+      "id": "lesson03-turn-034-manabu",
+      "viewId": "priority-order",
+      "layout": "svg",
+      "highlightTargets": [
+        "directions:agw",
+        "directions:apim",
+        "directions:pe",
+        "directions:vm"
+      ]
+    },
+    {
+      "id": "lesson03-turn-035-mako",
+      "viewId": "agw-apim-http",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-036-ikumi",
+      "viewId": "agw-apim-http",
+      "layout": "svg",
+      "highlightTargets": [
+        "left:name",
+        "left:priority",
+        "left:source",
+        "left:dest"
+      ]
+    },
+    {
+      "id": "lesson03-turn-037-mako",
+      "viewId": "agw-apim-http",
+      "layout": "svg",
+      "highlightTargets": [
+        "right:priority"
+      ]
+    },
+    {
+      "id": "lesson03-turn-038-ikumi",
+      "viewId": "agw-apim-http",
+      "layout": "svg",
+      "highlightTargets": [
+        "right:name",
+        "right:priority",
+        "right:source",
+        "right:dest"
+      ]
+    },
+    {
+      "id": "lesson03-turn-039-manabu",
+      "viewId": "agw-apim-http",
+      "layout": "svg",
+      "highlightTargets": [
+        "left:priority",
+        "right:priority"
+      ]
+    },
+    {
+      "id": "lesson03-turn-040-ikumi",
+      "viewId": "agw-outbound",
+      "layout": "settings",
+      "highlightTargets": [
+        "kv",
+        "grpc",
+        "internet"
+      ]
+    },
+    {
+      "id": "lesson03-turn-041-mako",
+      "viewId": "agw-outbound",
+      "layout": "settings",
+      "highlightTargets": [
+        "internet"
+      ]
+    },
+    {
+      "id": "lesson03-turn-042-ikumi",
+      "viewId": "agw-outbound",
+      "layout": "settings",
+      "highlightTargets": [
+        "vnet"
+      ]
+    },
+    {
+      "id": "lesson03-turn-043-mako",
+      "viewId": "apim-subnet-target",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-044-ikumi",
+      "viewId": "apim-subnet-target",
+      "layout": "settings",
+      "highlightTargets": [
+        "destination",
+        "purpose"
+      ]
+    },
+    {
+      "id": "lesson03-turn-045-mako",
+      "viewId": "vm-apim-comparison",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-046-ikumi",
+      "viewId": "vm-apim-comparison",
+      "layout": "settings",
+      "highlightTargets": [
+        "http"
+      ]
+    },
+    {
+      "id": "lesson03-turn-047-manabu",
+      "viewId": "vm-apim-comparison",
+      "layout": "settings",
+      "highlightTargets": [
+        "grpc"
+      ]
+    },
+    {
+      "id": "lesson03-turn-048-ikumi",
+      "viewId": "apim-inbound",
+      "layout": "settings",
+      "highlightTargets": [
+        "management",
+        "lb",
+        "sync"
+      ]
+    },
+    {
+      "id": "lesson03-turn-049-manabu",
+      "viewId": "apim-inbound",
+      "layout": "settings",
+      "highlightTargets": [
+        "api",
+        "agwgrpc",
+        "vmgrpc"
+      ]
+    },
+    {
+      "id": "lesson03-turn-050-mako",
+      "viewId": "apim-foundry",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-051-ikumi",
+      "viewId": "apim-foundry",
+      "layout": "svg",
+      "highlightTargets": [
+        "left:priority",
+        "right:priority"
+      ]
+    },
+    {
+      "id": "lesson03-turn-052-mako",
+      "viewId": "apim-foundry",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-053-ikumi",
+      "viewId": "apim-foundry",
+      "layout": "svg",
+      "highlightTargets": [
+        "left:dest",
+        "right:dest"
+      ]
+    },
+    {
+      "id": "lesson03-turn-054-manabu",
+      "viewId": "apim-foundry",
+      "layout": "svg",
+      "highlightTargets": [
+        "dst"
+      ]
+    },
+    {
+      "id": "lesson03-turn-055-mako",
+      "viewId": "agw-pe-comparison",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-056-ikumi",
+      "viewId": "agw-pe-comparison",
+      "layout": "settings",
+      "highlightTargets": [
+        "foundry"
+      ]
+    },
+    {
+      "id": "lesson03-turn-057-mako",
+      "viewId": "agw-pe-comparison",
+      "layout": "settings",
+      "highlightTargets": [
+        "kv"
+      ]
+    },
+    {
+      "id": "lesson03-turn-058-ikumi",
+      "viewId": "agw-pe-comparison",
+      "layout": "settings",
+      "highlightTargets": [
+        "kv"
+      ]
+    },
+    {
+      "id": "lesson03-turn-059-ikumi",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:kv",
+        "pe:maintenance"
+      ]
+    },
+    {
+      "id": "lesson03-turn-060-manabu",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:acr",
+        "pe:sql",
+        "pe:brokerkv"
+      ]
+    },
+    {
+      "id": "lesson03-turn-061-manabu",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:sql"
+      ]
+    },
+    {
+      "id": "lesson03-turn-062-mako",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:sql"
+      ]
+    },
+    {
+      "id": "lesson03-turn-063-ikumi",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:acr",
+        "vm-out"
+      ]
+    },
+    {
+      "id": "lesson03-turn-117-ikumi",
+      "viewId": "pe-service-rules",
+      "layout": "svg",
+      "highlightTargets": [
+        "pe:maintenance",
+        "vm-out"
+      ]
+    },
+    {
+      "id": "lesson03-turn-064-mako",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-065-ikumi",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": [
+        "state:response"
+      ]
+    },
+    {
+      "id": "lesson03-turn-066-manabu",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": [
+        "state:response"
+      ]
+    },
+    {
+      "id": "lesson03-turn-067-mako",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-068-ikumi",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": [
+        "state:new"
+      ]
+    },
+    {
+      "id": "lesson03-turn-069-mako",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-070-ikumi",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": [
+        "state:change"
+      ]
+    },
+    {
+      "id": "lesson03-turn-071-manabu",
+      "viewId": "stateful-connection",
+      "layout": "svg",
+      "highlightTargets": [
+        "state:change"
+      ]
+    },
+    {
+      "id": "lesson03-turn-072-mako",
+      "viewId": "apim-platform-storage",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-073-ikumi",
+      "viewId": "apim-platform-storage",
+      "layout": "settings",
+      "highlightTargets": [
+        "management"
+      ]
+    },
+    {
+      "id": "lesson03-turn-074-ikumi",
+      "viewId": "apim-platform-storage",
+      "layout": "settings",
+      "highlightTargets": [
+        "storage",
+        "sql",
+        "kv"
+      ]
+    },
+    {
+      "id": "lesson03-turn-075-ikumi",
+      "viewId": "apim-platform-storage",
+      "layout": "settings",
+      "highlightTargets": [
+        "entra",
+        "cm"
+      ]
+    },
+    {
+      "id": "lesson03-turn-076-mako",
+      "viewId": "apim-platform-monitor",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-077-ikumi",
+      "viewId": "apim-platform-monitor",
+      "layout": "settings",
+      "highlightTargets": [
+        "monitor",
+        "event"
+      ]
+    },
+    {
+      "id": "lesson03-turn-078-manabu",
+      "viewId": "apim-platform-monitor",
+      "layout": "settings",
+      "highlightTargets": [
+        "web",
+        "ntp",
+        "sync"
+      ]
+    },
+    {
+      "id": "lesson03-turn-079-manabu",
+      "viewId": "apim-platform-monitor",
+      "layout": "settings",
+      "highlightTargets": [
+        "monitor",
+        "event"
+      ]
+    },
+    {
+      "id": "lesson03-turn-080-mako",
+      "viewId": "service-tags",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-081-ikumi",
+      "viewId": "service-tags",
+      "layout": "settings",
+      "highlightTargets": [
+        "tag",
+        "scope"
+      ]
+    },
+    {
+      "id": "lesson03-turn-082-mako",
+      "viewId": "service-tags",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-083-ikumi",
+      "viewId": "service-tags",
+      "layout": "settings",
+      "highlightTargets": [
+        "smtp"
+      ]
+    },
+    {
+      "id": "lesson03-turn-084-mako",
+      "viewId": "common-dns",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-085-ikumi",
+      "viewId": "common-dns",
+      "layout": "settings",
+      "highlightTargets": [
+        "tcp",
+        "udp",
+        "where"
+      ]
+    },
+    {
+      "id": "lesson03-turn-086-manabu",
+      "viewId": "common-dns",
+      "layout": "settings",
+      "highlightTargets": [
+        "exception"
+      ]
+    },
+    {
+      "id": "lesson03-turn-087-ikumi",
+      "viewId": "common-dns",
+      "layout": "settings",
+      "highlightTargets": [
+        "input",
+        "tcp",
+        "udp"
+      ]
+    },
+    {
+      "id": "lesson03-turn-088-mako",
+      "viewId": "vm-platform",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-089-ikumi",
+      "viewId": "vm-platform",
+      "layout": "svg",
+      "highlightTargets": [
+        "vm:entra",
+        "vm:arm",
+        "vm:monitor",
+        "vm:storage"
+      ]
+    },
+    {
+      "id": "lesson03-turn-090-manabu",
+      "viewId": "vm-platform",
+      "layout": "svg",
+      "highlightTargets": [
+        "vm:web",
+        "vm:ntp",
+        "deny"
+      ]
+    },
+    {
+      "id": "lesson03-turn-091-ikumi",
+      "viewId": "vm-platform",
+      "layout": "svg",
+      "highlightTargets": [
+        "conditions"
+      ]
+    },
+    {
+      "id": "lesson03-turn-092-mako",
+      "viewId": "grpc-switch",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-093-ikumi",
+      "viewId": "grpc-switch",
+      "layout": "svg",
+      "highlightTargets": [
+        "input:enabled"
+      ]
+    },
+    {
+      "id": "lesson03-turn-094-ikumi",
+      "viewId": "grpc-switch",
+      "layout": "svg",
+      "highlightTargets": [
+        "input:ports",
+        "rules:public",
+        "rules:relay",
+        "rules:receive"
+      ]
+    },
+    {
+      "id": "lesson03-turn-095-mako",
+      "viewId": "grpc-switch",
+      "layout": "svg",
+      "highlightTargets": [
+        "input:ports",
+        "rules:public"
+      ]
+    },
+    {
+      "id": "lesson03-turn-096-manabu",
+      "viewId": "vm-operator",
+      "layout": "settings",
+      "highlightTargets": [
+        "prefix",
+        "enabled"
+      ]
+    },
+    {
+      "id": "lesson03-turn-097-mako",
+      "viewId": "vm-operator",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-098-ikumi",
+      "viewId": "vm-operator",
+      "layout": "settings",
+      "highlightTargets": [
+        "protocol",
+        "additional",
+        "conditions"
+      ]
+    },
+    {
+      "id": "lesson03-turn-118-ikumi",
+      "viewId": "certificate-probe",
+      "layout": "settings",
+      "highlightTargets": [
+        "input",
+        "priority",
+        "source",
+        "dest",
+        "port"
+      ]
+    },
+    {
+      "id": "lesson03-turn-099-mako",
+      "viewId": "probe-priority",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-100-ikumi",
+      "viewId": "probe-priority",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-101-manabu",
+      "viewId": "probe-empty-client",
+      "layout": "settings",
+      "highlightTargets": [
+        "probe",
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-102-mako",
+      "viewId": "probe-empty-client",
+      "layout": "settings",
+      "highlightTargets": [
+        "probe"
+      ]
+    },
+    {
+      "id": "lesson03-turn-103-ikumi",
+      "viewId": "key-vault-switch",
+      "layout": "settings",
+      "highlightTargets": [
+        "input",
+        "out",
+        "in"
+      ]
+    },
+    {
+      "id": "lesson03-turn-104-manabu",
+      "viewId": "key-vault-switch",
+      "layout": "settings",
+      "highlightTargets": [
+        "platform",
+        "iam"
+      ]
+    },
+    {
+      "id": "lesson03-turn-105-ikumi",
+      "viewId": "broker-conditional",
+      "layout": "settings",
+      "highlightTargets": [
+        "input",
+        "broker"
+      ]
+    },
+    {
+      "id": "lesson03-turn-119-manabu",
+      "viewId": "broker-conditional",
+      "layout": "settings",
+      "highlightTargets": [
+        "sql",
+        "kv",
+        "residual"
+      ]
+    },
+    {
+      "id": "lesson03-turn-106-mako",
+      "viewId": "quiz-vm-apim",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-107-manabu",
+      "viewId": "quiz-vm-apim",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-108-ikumi",
+      "viewId": "quiz-vm-apim",
+      "layout": "settings",
+      "highlightTargets": [
+        "vmdeny",
+        "apimdeny"
+      ]
+    },
+    {
+      "id": "lesson03-turn-109-mako",
+      "viewId": "quiz-stateful",
+      "layout": "svg",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-110-ikumi",
+      "viewId": "quiz-stateful",
+      "layout": "svg",
+      "highlightTargets": [
+        "question:same",
+        "question:change"
+      ]
+    },
+    {
+      "id": "lesson03-turn-111-mako",
+      "viewId": "quiz-overlap",
+      "layout": "settings",
+      "highlightTargets": []
+    },
+    {
+      "id": "lesson03-turn-112-manabu",
+      "viewId": "quiz-overlap",
+      "layout": "settings",
+      "highlightTargets": [
+        "web"
+      ]
+    },
+    {
+      "id": "lesson03-turn-113-mako",
+      "viewId": "summary",
+      "layout": "settings",
+      "highlightTargets": [
+        "condition",
+        "direction"
+      ]
+    },
+    {
+      "id": "lesson03-turn-114-ikumi",
+      "viewId": "summary",
+      "layout": "settings",
+      "highlightTargets": [
+        "direction",
+        "priority",
+        "state"
+      ]
+    },
+    {
+      "id": "lesson03-turn-115-manabu",
+      "viewId": "summary",
+      "layout": "settings",
+      "highlightTargets": [
+        "source"
+      ]
+    },
+    {
+      "id": "lesson03-turn-116-mako",
+      "viewId": "next-udr",
+      "layout": "settings",
+      "highlightTargets": [
+        "next",
+        "routes",
+        "return"
+      ]
+    }
+  ],
+  "bodyTurnCount": 115,
+  "noSpeechOrStyleEdits": true,
+  "sourceBasis": "docs/study/01-network-control.html sections 11–19 and current repository/public configuration examples",
+  "createdAt": "2026-11-02T04:46:53.815Z"
+}

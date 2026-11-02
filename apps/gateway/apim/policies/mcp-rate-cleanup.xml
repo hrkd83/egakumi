@@ -1,0 +1,19 @@
+<fragment>
+  <!-- 登録済みMCPだけの終了操作を識別します。新しいtool実行を免除するheaderは受け付けません。
+       DELETEはsession終了、notifications/cancelledは要求済み処理の取消です。
+       この判定の後も、backend側のJWT・session所有者検査を省略しません。 -->
+  <set-variable name="gatewayRateLimitExempt" value="@{
+    if (context.Request.Method == &quot;DELETE&quot;) { return true; }
+    if (context.Request.Method != &quot;POST&quot;) { return false; }
+    try {
+      var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+      if (body == null || (string)body[&quot;jsonrpc&quot;] != &quot;2.0&quot; || (string)body[&quot;method&quot;] != &quot;notifications/cancelled&quot;
+          || body.Properties().Any(item =&gt; !(new string[] { &quot;jsonrpc&quot;, &quot;method&quot;, &quot;params&quot; }).Contains(item.Name))) { return false; }
+      var args = body[&quot;params&quot;] as JObject;
+      if (args == null || args.Properties().Any(item =&gt; !(new string[] { &quot;requestId&quot;, &quot;reason&quot; }).Contains(item.Name))) { return false; }
+      var id = args[&quot;requestId&quot;];
+      if (id == null || (id.Type != JTokenType.Integer &amp;&amp; (id.Type != JTokenType.String || String.IsNullOrWhiteSpace((string)id) || ((string)id).Length &gt; 512))) { return false; }
+      return args[&quot;reason&quot;] == null || (args[&quot;reason&quot;].Type == JTokenType.String &amp;&amp; ((string)args[&quot;reason&quot;]).Length &lt;= 1024);
+    } catch { return false; }
+  }" />
+</fragment>

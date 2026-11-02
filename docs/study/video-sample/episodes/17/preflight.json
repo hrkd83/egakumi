@@ -1,0 +1,58 @@
+{
+  "status": "passed",
+  "profile": "study-series-v1",
+  "tools": {
+    "python3": true,
+    "node": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "gcloud": true
+  },
+  "visualStyle": {
+    "id": "teaching-settings-v2",
+    "guide": "SETTINGS-VIEW.md",
+    "renderer": "settings-visual.mjs",
+    "examples": "settings-view-examples.json",
+    "primaryBodyLayout": "settings",
+    "azurePortalReplica": false,
+    "bodyCamera": "fixed",
+    "automaticBodyZoom": false,
+    "automaticBodyPan": false,
+    "perTurnCameraReset": false,
+    "redOutlinePulse": false,
+    "mockPointer": false,
+    "holdViewIdAcrossQuestionAndAnswer": true,
+    "continuousPreviewRecommendedSeconds": [
+      40,
+      70
+    ],
+    "continuousPreviewHasInternalCuts": false,
+    "episode01OutputRequired": false,
+    "continuousPreviewTool": "make-conversation-preview.py"
+  },
+  "sharp": true,
+  "hostPlatform": "darwin",
+  "availableDiskGiB": 1.66,
+  "fontEnvironment": "Same macOS font environment as the reference",
+  "authenticationRead": false,
+  "networkRequestsMade": false,
+  "episode": {
+    "key": "17",
+    "number": 17,
+    "title": "発行後のキー管理",
+    "objective": "表示・停止・再開・移管・棚卸し・削除と、利用制限の設定が利用へ与える効果を説明できる。",
+    "sourceTableCell": "[キー管理](03-subscription-management.html#key-operations)、[利用制限](03-subscription-management.html#limits)",
+    "sourceReferences": [
+      {
+        "file": "../03-subscription-management.html",
+        "anchor": "key-operations"
+      },
+      {
+        "file": "../03-subscription-management.html",
+        "anchor": "limits"
+      }
+    ]
+  },
+  "script": "episodes/17/script.json",
+  "output": "output/lesson-17-gemini"
+}

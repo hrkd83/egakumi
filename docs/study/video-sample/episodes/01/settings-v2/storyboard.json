@@ -1,0 +1,827 @@
+{
+  "bodyZoomCount": 0,
+  "perTurnCameraReset": false,
+  "redOutlinePulse": false,
+  "azurePortalReplica": false,
+  "sourceSpeechAndSubtitlesUnchanged": true,
+  "screens": [
+    {
+      "turnId": "lesson01-turn-007-mako",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-007.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-008-manabu",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-008.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-009-ikumi",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-009.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-010-mako",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-010.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-011-ikumi",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-011.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-012-manabu",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-012.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-013-mako",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-013.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-014-ikumi",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-014.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-015-mako",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-015.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-016-manabu",
+      "view": "placement-and-controls",
+      "kind": "diagram",
+      "svg": "diagrams/turn-016.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-017-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-017.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-018-ikumi",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-018.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-019-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-019.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-020-ikumi",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-020.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-021-manabu",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-021.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-022-mako",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-022.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-023-ikumi",
+      "view": "containment",
+      "kind": "diagram",
+      "svg": "diagrams/turn-023.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-027-mako",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-027.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-028-ikumi",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-028.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-029-mako",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-029.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-030-ikumi",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-030.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-031-manabu",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-031.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-036-manabu",
+      "view": "address-space",
+      "kind": "settings",
+      "svg": "diagrams/turn-036.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-037-mako",
+      "view": "agw-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-037.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-038-ikumi",
+      "view": "agw-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-038.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-039-manabu",
+      "view": "agw-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-039.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-040-mako",
+      "view": "apim-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-040.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-041-ikumi",
+      "view": "apim-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-041.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-042-mako",
+      "view": "firewall-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-042.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-043-ikumi",
+      "view": "firewall-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-043.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-044-manabu",
+      "view": "firewall-settings",
+      "kind": "settings",
+      "svg": "diagrams/turn-044.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-045-mako",
+      "view": "private-endpoints",
+      "kind": "settings",
+      "svg": "diagrams/turn-045.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-046-ikumi",
+      "view": "private-endpoints",
+      "kind": "settings",
+      "svg": "diagrams/turn-046.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-049-mako",
+      "view": "vm-aca-comparison",
+      "kind": "settings",
+      "svg": "diagrams/turn-049.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-050-ikumi",
+      "view": "vm-aca-comparison",
+      "kind": "settings",
+      "svg": "diagrams/turn-050.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-051-manabu",
+      "view": "vm-aca-comparison",
+      "kind": "settings",
+      "svg": "diagrams/turn-051.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-052-mako",
+      "view": "subnet-list",
+      "kind": "settings",
+      "svg": "diagrams/turn-052.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-053-mako",
+      "view": "api-introduction",
+      "kind": "diagram",
+      "svg": "diagrams/turn-053.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-054-ikumi",
+      "view": "api-introduction",
+      "kind": "diagram",
+      "svg": "diagrams/turn-054.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-055-mako",
+      "view": "https-entry",
+      "kind": "settings",
+      "svg": "diagrams/turn-055.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-056-ikumi",
+      "view": "https-entry",
+      "kind": "settings",
+      "svg": "diagrams/turn-056.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-057-manabu",
+      "view": "https-entry",
+      "kind": "settings",
+      "svg": "diagrams/turn-057.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-058-mako",
+      "view": "forward-route-with-context",
+      "kind": "settings",
+      "svg": "diagrams/turn-058.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-059-ikumi",
+      "view": "forward-route-with-context",
+      "kind": "settings",
+      "svg": "diagrams/turn-059.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-060-mako",
+      "view": "forward-route-with-context",
+      "kind": "settings",
+      "svg": "diagrams/turn-060.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-061-ikumi",
+      "view": "forward-route-with-context",
+      "kind": "settings",
+      "svg": "diagrams/turn-061.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-062-mako",
+      "view": "apim-api",
+      "kind": "settings",
+      "svg": "diagrams/turn-062.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-063-manabu",
+      "view": "apim-api",
+      "kind": "settings",
+      "svg": "diagrams/turn-063.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-064-ikumi",
+      "view": "http-backend",
+      "kind": "settings",
+      "svg": "diagrams/turn-064.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-065-mako",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-065.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-066-ikumi",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-066.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-067-mako",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-067.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-068-ikumi",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-068.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-069-mako",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-069.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-070-ikumi",
+      "view": "api-round-trip",
+      "kind": "diagram",
+      "svg": "diagrams/turn-070.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-071-mako",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-071.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-072-ikumi",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-072.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-073-manabu",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-073.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-074-mako",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-074.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-075-ikumi",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-075.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-076-mako",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-076.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-077-ikumi",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-077.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-078-manabu",
+      "view": "three-destination-paths",
+      "kind": "diagram",
+      "svg": "diagrams/turn-078.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-081-mako",
+      "view": "service-boundary",
+      "kind": "diagram",
+      "svg": "diagrams/turn-081.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-082-ikumi",
+      "view": "service-boundary",
+      "kind": "diagram",
+      "svg": "diagrams/turn-082.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-083-mako",
+      "view": "subnet-question",
+      "kind": "settings",
+      "svg": "diagrams/turn-083.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-084-manabu",
+      "view": "subnet-question",
+      "kind": "settings",
+      "svg": "diagrams/turn-084.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-085-ikumi",
+      "view": "subnet-question",
+      "kind": "settings",
+      "svg": "diagrams/turn-085.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-086-mako",
+      "view": "path-question",
+      "kind": "diagram",
+      "svg": "diagrams/turn-086.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-087-ikumi",
+      "view": "path-question",
+      "kind": "diagram",
+      "svg": "diagrams/turn-087.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-088-mako",
+      "view": "endpoint-question",
+      "kind": "settings",
+      "svg": "diagrams/turn-088.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-089-ikumi",
+      "view": "endpoint-question",
+      "kind": "settings",
+      "svg": "diagrams/turn-089.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-090-mako",
+      "view": "reading-order",
+      "kind": "diagram",
+      "svg": "diagrams/turn-090.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-091-manabu",
+      "view": "reading-order",
+      "kind": "diagram",
+      "svg": "diagrams/turn-091.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-092-ikumi",
+      "view": "reading-order",
+      "kind": "diagram",
+      "svg": "diagrams/turn-092.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-093-mako",
+      "view": "address-summary",
+      "kind": "settings",
+      "svg": "diagrams/turn-093.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-094-manabu",
+      "view": "subnet-summary",
+      "kind": "settings",
+      "svg": "diagrams/turn-094.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-095-ikumi",
+      "view": "closing-map",
+      "kind": "diagram",
+      "svg": "diagrams/turn-095.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-096-mako",
+      "view": "closing-map",
+      "kind": "diagram",
+      "svg": "diagrams/turn-096.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-097-ikumi",
+      "view": "closing-map",
+      "kind": "diagram",
+      "svg": "diagrams/turn-097.svg",
+      "camera": "fixed"
+    },
+    {
+      "turnId": "lesson01-turn-098-mako",
+      "view": "closing-map",
+      "kind": "diagram",
+      "svg": "diagrams/turn-098.svg",
+      "camera": "fixed"
+    }
+  ],
+  "topicGroups": [
+    {
+      "view": "placement-and-controls",
+      "start": 42.083333333333336,
+      "end": 141.33333333333334,
+      "turnIds": [
+        "lesson01-turn-007-mako",
+        "lesson01-turn-008-manabu",
+        "lesson01-turn-009-ikumi",
+        "lesson01-turn-010-mako",
+        "lesson01-turn-011-ikumi",
+        "lesson01-turn-012-manabu",
+        "lesson01-turn-013-mako",
+        "lesson01-turn-014-ikumi",
+        "lesson01-turn-015-mako",
+        "lesson01-turn-016-manabu"
+      ]
+    },
+    {
+      "view": "containment",
+      "start": 142.58333333333334,
+      "end": 220.91666666666666,
+      "turnIds": [
+        "lesson01-turn-017-mako",
+        "lesson01-turn-018-ikumi",
+        "lesson01-turn-019-mako",
+        "lesson01-turn-020-ikumi",
+        "lesson01-turn-021-manabu",
+        "lesson01-turn-022-mako",
+        "lesson01-turn-023-ikumi"
+      ]
+    },
+    {
+      "view": "address-space",
+      "start": 222.16666666666666,
+      "end": 284.0833333333333,
+      "turnIds": [
+        "lesson01-turn-027-mako",
+        "lesson01-turn-028-ikumi",
+        "lesson01-turn-029-mako",
+        "lesson01-turn-030-ikumi",
+        "lesson01-turn-031-manabu",
+        "lesson01-turn-036-manabu"
+      ]
+    },
+    {
+      "view": "agw-settings",
+      "start": 285.3333333333333,
+      "end": 316.4166666666667,
+      "turnIds": [
+        "lesson01-turn-037-mako",
+        "lesson01-turn-038-ikumi",
+        "lesson01-turn-039-manabu"
+      ]
+    },
+    {
+      "view": "apim-settings",
+      "start": 316.4166666666667,
+      "end": 338.5833333333333,
+      "turnIds": [
+        "lesson01-turn-040-mako",
+        "lesson01-turn-041-ikumi"
+      ]
+    },
+    {
+      "view": "firewall-settings",
+      "start": 338.5833333333333,
+      "end": 370.2916666666667,
+      "turnIds": [
+        "lesson01-turn-042-mako",
+        "lesson01-turn-043-ikumi",
+        "lesson01-turn-044-manabu"
+      ]
+    },
+    {
+      "view": "private-endpoints",
+      "start": 370.2916666666667,
+      "end": 396.0833333333333,
+      "turnIds": [
+        "lesson01-turn-045-mako",
+        "lesson01-turn-046-ikumi"
+      ]
+    },
+    {
+      "view": "vm-aca-comparison",
+      "start": 396.0833333333333,
+      "end": 429.8333333333333,
+      "turnIds": [
+        "lesson01-turn-049-mako",
+        "lesson01-turn-050-ikumi",
+        "lesson01-turn-051-manabu"
+      ]
+    },
+    {
+      "view": "subnet-list",
+      "start": 429.8333333333333,
+      "end": 444.7916666666667,
+      "turnIds": [
+        "lesson01-turn-052-mako"
+      ]
+    },
+    {
+      "view": "api-introduction",
+      "start": 446.0416666666667,
+      "end": 467.5833333333333,
+      "turnIds": [
+        "lesson01-turn-053-mako",
+        "lesson01-turn-054-ikumi"
+      ]
+    },
+    {
+      "view": "https-entry",
+      "start": 467.5833333333333,
+      "end": 500,
+      "turnIds": [
+        "lesson01-turn-055-mako",
+        "lesson01-turn-056-ikumi",
+        "lesson01-turn-057-manabu"
+      ]
+    },
+    {
+      "view": "forward-route-with-context",
+      "start": 500,
+      "end": 544.0416666666666,
+      "turnIds": [
+        "lesson01-turn-058-mako",
+        "lesson01-turn-059-ikumi",
+        "lesson01-turn-060-mako",
+        "lesson01-turn-061-ikumi"
+      ]
+    },
+    {
+      "view": "apim-api",
+      "start": 544.0416666666666,
+      "end": 565.2916666666666,
+      "turnIds": [
+        "lesson01-turn-062-mako",
+        "lesson01-turn-063-manabu"
+      ]
+    },
+    {
+      "view": "http-backend",
+      "start": 565.2916666666666,
+      "end": 577.8333333333334,
+      "turnIds": [
+        "lesson01-turn-064-ikumi"
+      ]
+    },
+    {
+      "view": "api-round-trip",
+      "start": 577.8333333333334,
+      "end": 648.5416666666666,
+      "turnIds": [
+        "lesson01-turn-065-mako",
+        "lesson01-turn-066-ikumi",
+        "lesson01-turn-067-mako",
+        "lesson01-turn-068-ikumi",
+        "lesson01-turn-069-mako",
+        "lesson01-turn-070-ikumi"
+      ]
+    },
+    {
+      "view": "three-destination-paths",
+      "start": 649.7916666666666,
+      "end": 732.4166666666666,
+      "turnIds": [
+        "lesson01-turn-071-mako",
+        "lesson01-turn-072-ikumi",
+        "lesson01-turn-073-manabu",
+        "lesson01-turn-074-mako",
+        "lesson01-turn-075-ikumi",
+        "lesson01-turn-076-mako",
+        "lesson01-turn-077-ikumi",
+        "lesson01-turn-078-manabu"
+      ]
+    },
+    {
+      "view": "service-boundary",
+      "start": 732.4166666666666,
+      "end": 752.0416666666666,
+      "turnIds": [
+        "lesson01-turn-081-mako",
+        "lesson01-turn-082-ikumi"
+      ]
+    },
+    {
+      "view": "subnet-question",
+      "start": 753.2916666666666,
+      "end": 789.125,
+      "turnIds": [
+        "lesson01-turn-083-mako",
+        "lesson01-turn-084-manabu",
+        "lesson01-turn-085-ikumi"
+      ]
+    },
+    {
+      "view": "path-question",
+      "start": 789.125,
+      "end": 817.6666666666666,
+      "turnIds": [
+        "lesson01-turn-086-mako",
+        "lesson01-turn-087-ikumi"
+      ]
+    },
+    {
+      "view": "endpoint-question",
+      "start": 817.6666666666666,
+      "end": 848.5416666666666,
+      "turnIds": [
+        "lesson01-turn-088-mako",
+        "lesson01-turn-089-ikumi"
+      ]
+    },
+    {
+      "view": "reading-order",
+      "start": 848.5416666666666,
+      "end": 880.875,
+      "turnIds": [
+        "lesson01-turn-090-mako",
+        "lesson01-turn-091-manabu",
+        "lesson01-turn-092-ikumi"
+      ]
+    },
+    {
+      "view": "address-summary",
+      "start": 882.125,
+      "end": 893.7083333333334,
+      "turnIds": [
+        "lesson01-turn-093-mako"
+      ]
+    },
+    {
+      "view": "subnet-summary",
+      "start": 893.7083333333334,
+      "end": 904.2083333333334,
+      "turnIds": [
+        "lesson01-turn-094-manabu"
+      ]
+    },
+    {
+      "view": "closing-map",
+      "start": 904.2083333333334,
+      "end": 949.5416666666666,
+      "turnIds": [
+        "lesson01-turn-095-ikumi",
+        "lesson01-turn-096-mako",
+        "lesson01-turn-097-ikumi",
+        "lesson01-turn-098-mako"
+      ]
+    }
+  ]
+}

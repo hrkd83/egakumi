@@ -1,0 +1,41 @@
+{
+  "released": true,
+  "name": "openai-realtime-ws-v1",
+  "displayName": "Openai Realtime Ws V1",
+  "path": "models/openai-realtime/v1/ws",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "invoke",
+      "displayName": "Invoke",
+      "method": "GET",
+      "urlTemplate": "/",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "invoke": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none"
+      }
+    }
+  },
+  "backendUrl": "__REALTIME_WS_BASE_URL__",
+  "apiType": "websocket",
+  "websocket": {
+    "queryParameters": {},
+    "allowedModels": [
+      "gpt-realtime-2.1",
+      "gpt-realtime-2.1-mini"
+    ],
+    "defaultModel": "gpt-realtime-2.1"
+  },
+  "serviceClass": "platform"
+}

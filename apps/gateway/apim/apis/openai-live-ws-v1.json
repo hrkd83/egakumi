@@ -1,0 +1,45 @@
+{
+  "released": true,
+  "name": "openai-live-ws-v1",
+  "displayName": "OpenAI Live WebSocket",
+  "path": "models/openai-live/v1/ws",
+  "backendService": "external",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "model-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "invoke",
+      "displayName": "Connect session",
+      "method": "GET",
+      "urlTemplate": "/",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "invoke": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 65536,
+        "bodyFormat": "none"
+      }
+    }
+  },
+  "backendAuthentication": {
+    "mode": "managedIdentity"
+  },
+  "serviceClass": "platform",
+  "apiType": "websocket",
+  "backendUrl": "__LIVE_WS_BASE_URL__",
+  "websocket": {
+    "queryParameters": {},
+    "session": {
+      "kind": "live",
+      "models": [
+        "gpt-live-1"
+      ]
+    }
+  }
+}

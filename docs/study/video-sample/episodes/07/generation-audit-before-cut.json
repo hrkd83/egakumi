@@ -1,0 +1,33 @@
+{
+  "state": "complete",
+  "successfulRequests": 91,
+  "requestCount": 91,
+  "httpStatusCounts": {
+    "200": 91
+  },
+  "retries": 0,
+  "unknownResults": 0,
+  "speechSeconds": 984.8,
+  "chapterSpeechSeconds": {
+    "opening": 35.88,
+    "identify": 114.92000000000002,
+    "route": 151.32000000000002,
+    "logs": 173.43999999999997,
+    "walkthrough": 143.28000000000003,
+    "alerts": 191.24000000000004,
+    "check": 103.47999999999999,
+    "summary": 71.24000000000001
+  },
+  "usageMetadataTotals": {
+    "promptTokenCount": 30451,
+    "candidatesTokenCount": 24620,
+    "totalTokenCount": 55071
+  },
+  "sourceScriptSha256": "4487c92ea68755faf8e567a41f85ebad44e492fa2d7fb9a76b9717b88b16ea15",
+  "configurationSha256": "7066f2812ab51c4ed4b0352286507a71e61c73297893055027829a8acced967a",
+  "rawSampleRateHz": 24000,
+  "speed": 1,
+  "sourceAudioSpeedChanged": false,
+  "credentialsPersisted": false,
+  "actualChargeVerified": false
+}

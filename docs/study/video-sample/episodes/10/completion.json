@@ -1,0 +1,14 @@
+{
+  "status": "complete",
+  "video": "/path/to/egakumi-core/docs/study/video-sample/output/lesson-10-gemini/egakumi-study-10.mp4",
+  "durationSeconds": 975.25,
+  "sha256": "4dfd500fd583b8f67fffbcd1c88453df444fb2ad5e2dd518180c9c930d9fd139",
+  "playbackURL": "http://127.0.0.1:58948/",
+  "verification": "passed",
+  "continuousPreview": "passed",
+  "normalSpeed": true,
+  "script": "/path/to/egakumi-core/docs/study/video-sample/episodes/10/script.json",
+  "productionRecord": "/path/to/egakumi-core/docs/study/video-sample/episodes/10/production.md",
+  "listeningReview": "not performed",
+  "rawSignalPeakAttention": true
+}

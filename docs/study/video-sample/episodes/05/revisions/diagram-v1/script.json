@@ -1,0 +1,5421 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "05",
+  "episodeNumber": 5,
+  "episodeId": "05",
+  "title": "第5回 Firewallは何を判断するか",
+  "topic": "Firewallは何を判断するか",
+  "description": "NetworkとApplicationの違い、評価順、内部中継・基盤依存通信の許可を3人の対話と図で追う。",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "2026-11-01時点の教材・リポジトリ定義・公開設定例に基づく。稼働中Azureの取得値・実測結果ではない。",
+  "learningObjectives": [
+    "Network／Applicationルールの違いと評価順、内部中継・基盤通信の許可を説明できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-roles"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-evaluation"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-internal"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-apim-network"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-vm-aca-network"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-decisions"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "fw-maintenance"
+    }
+  ],
+  "officialReferences": [
+    {
+      "url": "https://learn.microsoft.com/en-us/azure/firewall/rule-processing",
+      "purpose": "種別順、一致時の終了、組み込み許可と既定拒否"
+    },
+    {
+      "url": "https://learn.microsoft.com/en-us/azure/firewall/domain-filtering-overview",
+      "purpose": "HTTP Host / HTTPS SNIの照合"
+    },
+    {
+      "url": "https://learn.microsoft.com/en-us/azure/firewall/fqdn-filtering-network-rules",
+      "purpose": "Network FQDNのDNS解決による照合"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "今回の問い",
+      "goal": "Firewallの許可と通信全体の成立を分けて問いを立てる。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-roles"
+        }
+      ]
+    },
+    {
+      "id": "path",
+      "title": "まず、Firewallを通るか",
+      "goal": "経路とポリシーの関連付けを説明する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-roles"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-decisions"
+        }
+      ]
+    },
+    {
+      "id": "kinds",
+      "title": "NetworkとApplicationの違い",
+      "goal": "IP・ポートとWebホストの照合、Network FQDNを区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-roles"
+        }
+      ]
+    },
+    {
+      "id": "order",
+      "title": "種類の順序と優先度",
+      "goal": "Networkの一致で終了することと既定拒否を説明する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-evaluation"
+        }
+      ]
+    },
+    {
+      "id": "internal",
+      "title": "内部中継の許可を読む",
+      "goal": "AppGWからAPIM・ACAの代表経路と往復を追う。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-internal"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-decisions"
+        }
+      ]
+    },
+    {
+      "id": "platform",
+      "title": "APIMの基盤通信",
+      "goal": "Storageタグの例から基盤依存通信の条件を説明する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-apim-network"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-decisions"
+        }
+      ]
+    },
+    {
+      "id": "operations",
+      "title": "管理VM・ACA・DNSの通信",
+      "goal": "NTP、管理、独自DNSとDNS proxyの役割を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-vm-aca-network"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-maintenance"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "3つの確認問題",
+      "goal": "具体的な通信の判定理由を言葉にする。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-decisions"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "保守の視点とまとめ",
+      "goal": "経路・規則・設定を照合し、外向き通信の次回へつなぐ。",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "fw-maintenance"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson05-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "ファイアウォールで許可したのに、エーピーアイがつながらない。そんなとき、許可の書き方だけを見直せばいいんでしょうか。",
+      "caption": "Firewallで許可したのに、APIがつながらない。そんなとき、許可の書き方だけを見直せばいいんでしょうか。",
+      "subtitleLines": [
+        "Firewallで許可したのに、APIがつながらない。",
+        "そんなとき、許可の書き方だけを見直せばいいんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Firewallで許可したのに、APIがつながらない。そんなとき、許可の書き方だけを見直せばいいんでしょうか。",
+          "lines": [
+            "Firewallで許可したのに、APIがつながらない。",
+            "そんなとき、許可の書き方だけを見直せばいいんでしょうか。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallは何を判断するか"
+      }
+    },
+    {
+      "id": "lesson05-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "まず、どこを通り、何の条件で許可されるかを分けましょう。必要な通信を通す理由も説明したいですね。",
+      "caption": "まず、どこを通り、何の条件で許可されるかを分けましょう。必要な通信を通す理由も説明したいですね。",
+      "subtitleLines": [
+        "まず、どこを通り、何の条件で許可されるかを分けましょう。",
+        "必要な通信を通す理由も説明したいですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず、どこを通り、何の条件で許可されるかを分けましょう。必要な通信を通す理由も説明したいですね。",
+          "lines": [
+            "まず、どこを通り、何の条件で許可されるかを分けましょう。",
+            "必要な通信を通す理由も説明したいですね。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallは何を判断するか"
+      }
+    },
+    {
+      "id": "lesson05-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今日はネットワークとアプリケーションを追います。ネットワークで許可されたら、エフキューディーエヌ照合へは進まない点が鍵です。",
+      "caption": "今日はNetworkとApplicationを追います。Networkで許可されたら、FQDN照合へは進まない点が鍵です。",
+      "subtitleLines": [
+        "今日はNetworkとApplicationを追います。",
+        "Networkで許可されたら、FQDN照合へは進まない点が鍵です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日はNetworkとApplicationを追います。Networkで許可されたら、FQDN照合へは進まない点が鍵です。",
+          "lines": [
+            "今日はNetworkとApplicationを追います。",
+            "Networkで許可されたら、FQDN照合へは進まない点が鍵です。"
+          ],
+          "weight": 61
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallは何を判断するか"
+      }
+    },
+    {
+      "id": "lesson05-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "えっ、両方で検査するわけではないんですね。内部のエーピーアイ中継と、基盤を支える通信から確かめていきます。",
+      "caption": "えっ、両方で検査するわけではないんですね。内部のAPI中継と、基盤を支える通信から確かめていきます。",
+      "subtitleLines": [
+        "えっ、両方で検査するわけではないんですね。",
+        "内部のAPI中継と、基盤を支える通信から確かめていきます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "えっ、両方で検査するわけではないんですね。内部のAPI中継と、基盤を支える通信から確かめていきます。",
+          "lines": [
+            "えっ、両方で検査するわけではないんですね。",
+            "内部のAPI中継と、基盤を支える通信から確かめていきます。"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallは何を判断するか"
+      }
+    },
+    {
+      "id": "lesson05-turn-005-mako",
+      "speaker": "mako",
+      "chapterId": "path",
+      "speech": "第4回ではユーディーアールと往復の経路を見ました。今回は、その経路の途中にいるファイアウォールが、何を判断するのかがテーマですね。",
+      "caption": "第4回ではUDRと往復の経路を見ました。今回は、その経路の途中にいるFirewallが、何を判断するのかがテーマですね。",
+      "subtitleLines": [
+        "第4回ではUDRと往復の経路を見ました。今回は、",
+        "その経路の途中にいるFirewallが、何を判断するのかがテーマですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "第4回ではUDRと往復の経路を見ました。今回は、その経路の途中にいるFirewallが、何を判断するのかがテーマですね。",
+          "lines": [
+            "第4回ではUDRと往復の経路を見ました。今回は、",
+            "その経路の途中にいるFirewallが、何を判断するのかがテーマですね。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "経路が先、Firewallの判定はその後",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "送信元",
+            "detail": "IP・宛先・プロトコルを確認",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "経路上へ届いた通信を判定",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "接続先",
+            "detail": "NSG・サービス認証も関係",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "UDR等で到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可後に中継",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-006-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "path",
+      "speech": "はい。アジュール ファイアウォールにはファイアウォールポリシーを関連付けます。サブネットへ直接ポリシーを付けるのではなく、ファイアウォールへ届いた通信を判定します。",
+      "caption": "はい。Azure FirewallにはFirewallポリシーを関連付けます。サブネットへ直接ポリシーを付けるのではなく、Firewallへ届いた通信を判定します。",
+      "subtitleLines": [
+        "はい。Azure FirewallにはFirewallポリシーを関連付けます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。Azure FirewallにはFirewallポリシーを関連付けます。",
+          "lines": [
+            "はい。Azure FirewallにはFirewallポリシーを関連付けます。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "サブネットへ直接ポリシーを付けるのではなく、Firewallへ届いた通信を判定します。",
+          "lines": [
+            "サブネットへ直接ポリシーを付けるのではなく、",
+            "Firewallへ届いた通信を判定します。"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "経路が先、Firewallの判定はその後",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "送信元",
+            "detail": "IP・宛先・プロトコルを確認",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "経路上へ届いた通信を判定",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "接続先",
+            "detail": "NSG・サービス認証も関係",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "UDR等で到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可後に中継",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-007-manabu",
+      "speaker": "manabu",
+      "chapterId": "path",
+      "speech": "ここを分けると、設定に許可が書いてあることと、実際にその許可を使ったことを、混同せずに済みます。障害のときにも大事な出発点です。",
+      "caption": "ここを分けると、設定に許可が書いてあることと、実際にその許可を使ったことを、混同せずに済みます。障害のときにも大事な出発点です。",
+      "subtitleLines": [
+        "ここを分けると、設定に許可が書いてあることと、実際にその許可を使",
+        "ったことを、混同せずに済みます。障害のときにも大事な出発点です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここを分けると、設定に許可が書いてあることと、実際にその許可を使ったことを、混同せずに済みます。障害のときにも大事な出発点です。",
+          "lines": [
+            "ここを分けると、設定に許可が書いてあることと、実際にその許可を使",
+            "ったことを、混同せずに済みます。障害のときにも大事な出発点です。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "経路が先、Firewallの判定はその後",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "送信元",
+            "detail": "IP・宛先・プロトコルを確認",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "経路上へ届いた通信を判定",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "接続先",
+            "detail": "NSG・サービス認証も関係",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "UDR等で到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可後に中継",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-008-mako",
+      "speaker": "mako",
+      "chapterId": "path",
+      "speech": "たとえばプライベート・エンドポイントへ直接向かう通信なら、ファイアウォールの許可一覧を見ても、その通信の検査内容は分からないんですね。",
+      "caption": "たとえばPrivate Endpointへ直接向かう通信なら、Firewallの許可一覧を見ても、その通信の検査内容は分からないんですね。",
+      "subtitleLines": [
+        "たとえばPrivate Endpointへ直接向かう通信なら、",
+        "Firewallの許可一覧を見ても、その通信の検査内容は分からないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえばPrivate Endpointへ直接向かう通信なら、Firewallの許可一覧を見ても、その通信の検査内容は分からないんですね。",
+          "lines": [
+            "たとえばPrivate Endpointへ直接向かう通信なら、",
+            "Firewallの許可一覧を見ても、その通信の検査内容は分からないんですね。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "定義されている許可と、実際に通る経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall経由",
+            "body": [
+              "AppGW → APIM",
+              "AppGW → ACA入口",
+              "往路・復路をそろえる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "標準の直接経路",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL・Key Vault PE",
+              "FWルールの有無と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-009-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "path",
+      "speech": "そうです。標準構成のエーピーアイエムからファウンドリーのピーイーや、エーシーエーからエスキューエルのピーイーへは、具体的な直接経路を選びます。ファイアウォールを経由する通信とは分けます。",
+      "caption": "そうです。標準構成のAPIMからFoundryのPEや、ACAからSQLのPEへは、具体的な直接経路を選びます。Firewallを経由する通信とは分けます。",
+      "subtitleLines": [
+        "そうです。標準構成のAPIMからFoundryのPEや、ACAからSQLのPEへは、",
+        "具体的な直接経路を選びます。Firewallを経由する通信とは分けます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そうです。標準構成のAPIMからFoundryのPEや、ACAからSQLのPEへは、具体的な直接経路を選びます。Firewallを経由する通信とは分けます。",
+          "lines": [
+            "そうです。標準構成のAPIMからFoundryのPEや、ACAからSQLのPEへは、",
+            "具体的な直接経路を選びます。Firewallを経由する通信とは分けます。"
+          ],
+          "weight": 78
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "定義されている許可と、実際に通る経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall経由",
+            "body": [
+              "AppGW → APIM",
+              "AppGW → ACA入口",
+              "往路・復路をそろえる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "標準の直接経路",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL・Key Vault PE",
+              "FWルールの有無と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "path",
+      "speech": "今日の例は、教材とリポジトリの公開設定例に基づきます。稼働中アジュールの取得値や、実際の疎通試験結果とは区別します。",
+      "caption": "今日の例は、教材とリポジトリの公開設定例に基づきます。稼働中Azureの取得値や、実際の疎通試験結果とは区別します。",
+      "subtitleLines": [
+        "今日の例は、教材とリポジトリの公開設定例に基づきます。",
+        "稼働中Azureの取得値や、実際の疎通試験結果とは区別します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の例は、教材とリポジトリの公開設定例に基づきます。稼働中Azureの取得値や、実際の疎通試験結果とは区別します。",
+          "lines": [
+            "今日の例は、教材とリポジトリの公開設定例に基づきます。",
+            "稼働中Azureの取得値や、実際の疎通試験結果とは区別します。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "経路が先、Firewallの判定はその後",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "送信元",
+            "detail": "IP・宛先・プロトコルを確認",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "経路上へ届いた通信を判定",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "接続先",
+            "detail": "NSG・サービス認証も関係",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "UDR等で到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可後に中継",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-011-mako",
+      "speaker": "mako",
+      "chapterId": "path",
+      "speech": "分かりました。経路を前提にしてから、判定する材料を見ましょう。まずネットワークルールには、どんな情報が渡るんですか。",
+      "caption": "分かりました。経路を前提にしてから、判定する材料を見ましょう。まずNetworkルールには、どんな情報が渡るんですか。",
+      "subtitleLines": [
+        "分かりました。経路を前提にしてから、判定する材料を見ましょう。",
+        "まずNetworkルールには、どんな情報が渡るんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "分かりました。経路を前提にしてから、判定する材料を見ましょう。まずNetworkルールには、どんな情報が渡るんですか。",
+          "lines": [
+            "分かりました。経路を前提にしてから、判定する材料を見ましょう。",
+            "まずNetworkルールには、どんな情報が渡るんですか。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "経路が先、Firewallの判定はその後",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "送信元",
+            "detail": "IP・宛先・プロトコルを確認",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "経路上へ届いた通信を判定",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "接続先",
+            "detail": "NSG・サービス認証も関係",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "UDR等で到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可後に中継",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-012-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "kinds",
+      "speech": "基本は、送信元のアイピー範囲、宛先のアイピーやサービス・タグ、ティーシーピーやユーディーピーなどのプロトコル、宛先ポートです。通信の条件を組み合わせて照合します。",
+      "caption": "基本は、送信元のIP範囲、宛先のIPやサービス・タグ、TCPやUDPなどのプロトコル、宛先ポートです。通信の条件を組み合わせて照合します。",
+      "subtitleLines": [
+        "基本は、送信元のIP範囲、宛先のIPやサービス・タグ、TCPやUDPなどの",
+        "プロトコル、宛先ポートです。通信の条件を組み合わせて照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "基本は、送信元のIP範囲、宛先のIPやサービス・タグ、TCPやUDPなどのプロトコル、宛先ポートです。通信の条件を組み合わせて照合します。",
+          "lines": [
+            "基本は、送信元のIP範囲、宛先のIPやサービス・タグ、TCPやUDPなどの",
+            "プロトコル、宛先ポートです。通信の条件を組み合わせて照合します。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "2種類のルールは、照合する情報が違う",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP・サービス タグ等",
+              "TCP・UDPと宛先ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application",
+            "body": [
+              "送信元IP範囲",
+              "HTTP・HTTPSとポート",
+              "FQDN：HTTP Host / HTTPS SNI"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "kinds",
+      "speech": "一方のアプリケーションルールは、アプリの名前を見ているんでしょうか。それとも、通信先のWebサイトを見ているんですか。",
+      "caption": "一方のApplicationルールは、アプリの名前を見ているんでしょうか。それとも、通信先のWebサイトを見ているんですか。",
+      "subtitleLines": [
+        "一方のApplicationルールは、アプリの名前を見ているんでしょうか。",
+        "それとも、通信先のWebサイトを見ているんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "一方のApplicationルールは、アプリの名前を見ているんでしょうか。それとも、通信先のWebサイトを見ているんですか。",
+          "lines": [
+            "一方のApplicationルールは、アプリの名前を見ているんでしょうか。",
+            "それとも、通信先のWebサイトを見ているんですか。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "2種類のルールは、照合する情報が違う",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP・サービス タグ等",
+              "TCP・UDPと宛先ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application",
+            "body": [
+              "送信元IP範囲",
+              "HTTP・HTTPSとポート",
+              "FQDN：HTTP Host / HTTPS SNI"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "kinds",
+      "speech": "送信元とWebの接続先を照合します。条件はエイチティーティーピーやエイチティーティーピーエス、ポート、エフキューディーエヌ。エイチティーティーピーはホスト、エイチティーティーピーエスはエスエヌアイを使います。",
+      "caption": "送信元とWebの接続先を照合します。条件はHTTPやHTTPS、ポート、FQDN。HTTPはHost、HTTPSはSNIを使います。",
+      "subtitleLines": [
+        "送信元とWebの接続先を照合します。条件はHTTPやHTTPS、ポート、FQDN。",
+        "HTTPはHost、HTTPSはSNIを使います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送信元とWebの接続先を照合します。条件はHTTPやHTTPS、ポート、FQDN。HTTPはHost、HTTPSはSNIを使います。",
+          "lines": [
+            "送信元とWebの接続先を照合します。条件はHTTPやHTTPS、ポート、FQDN。",
+            "HTTPはHost、HTTPSはSNIを使います。"
+          ],
+          "weight": 66
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "2種類のルールは、照合する情報が違う",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP・サービス タグ等",
+              "TCP・UDPと宛先ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application",
+            "body": [
+              "送信元IP範囲",
+              "HTTP・HTTPSとポート",
+              "FQDN：HTTP Host / HTTPS SNI"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-015-mako",
+      "speaker": "mako",
+      "chapterId": "kinds",
+      "speech": "エイチティーティーピーエスのホスト名が分かるなら、その先のユーアールエルパスや、送る本文も、ファイアウォールで細かく検査しているんですか。",
+      "caption": "HTTPSのホスト名が分かるなら、その先のURLパスや、送る本文も、Firewallで細かく検査しているんですか。",
+      "subtitleLines": [
+        "HTTPSのホスト名が分かるなら、その先のURLパスや、",
+        "送る本文も、Firewallで細かく検査しているんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "HTTPSのホスト名が分かるなら、その先のURLパスや、送る本文も、Firewallで細かく検査しているんですか。",
+          "lines": [
+            "HTTPSのホスト名が分かるなら、その先のURLパスや、",
+            "送る本文も、Firewallで細かく検査しているんですか。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "この基盤の標準Applicationルール",
+        "cards": [
+          {
+            "id": "0",
+            "title": "HTTPSの宛先",
+            "body": [
+              "SNIのホスト名で照合",
+              "terminateTLS: false",
+              "URLパス・本文を復号しない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "検査の分担",
+            "body": [
+              "HTTP：Hostを照合",
+              "Web攻撃検査：入口WAF",
+              "API認証・認可：APIM等"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-016-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "kinds",
+      "speech": "標準アプリケーションルールはターミネート・ティーエルエスがフォールスです。ティーエルエスを復号しないため、エイチティーティーピーエスのユーアールエルパスや本文を復号して調べる設定ではありません。",
+      "caption": "標準ApplicationルールはterminateTLSがfalseです。TLSを復号しないため、HTTPSのURLパスや本文を復号して調べる設定ではありません。",
+      "subtitleLines": [
+        "標準ApplicationルールはterminateTLSがfalseです。TLSを復号しな",
+        "いため、HTTPSのURLパスや本文を復号して調べる設定ではありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "標準ApplicationルールはterminateTLSがfalseです。TLSを復号しないため、HTTPSのURLパスや本文を復号して調べる設定ではありません。",
+          "lines": [
+            "標準ApplicationルールはterminateTLSがfalseです。TLSを復号しな",
+            "いため、HTTPSのURLパスや本文を復号して調べる設定ではありません。"
+          ],
+          "weight": 82
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "この基盤の標準Applicationルール",
+        "cards": [
+          {
+            "id": "0",
+            "title": "HTTPSの宛先",
+            "body": [
+              "SNIのホスト名で照合",
+              "terminateTLS: false",
+              "URLパス・本文を復号しない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "検査の分担",
+            "body": [
+              "HTTP：Hostを照合",
+              "Web攻撃検査：入口WAF",
+              "API認証・認可：APIM等"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-017-manabu",
+      "speaker": "manabu",
+      "chapterId": "kinds",
+      "speech": "公開入口のWeb攻撃検査はワフ、エーピーアイの認証や利用許可はエーピーアイエムなどにも役割があります。宛先を通せることと、その要求を実行してよいことは別なんですね。",
+      "caption": "公開入口のWeb攻撃検査はWAF、APIの認証や利用許可はAPIMなどにも役割があります。宛先を通せることと、その要求を実行してよいことは別なんですね。",
+      "subtitleLines": [
+        "公開入口のWeb攻撃検査はWAF、",
+        "APIの認証や利用許可はAPIMなどにも役割があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開入口のWeb攻撃検査はWAF、APIの認証や利用許可はAPIMなどにも役割があります。",
+          "lines": [
+            "公開入口のWeb攻撃検査はWAF、",
+            "APIの認証や利用許可はAPIMなどにも役割があります。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "宛先を通せることと、その要求を実行してよいことは別なんですね。",
+          "lines": [
+            "宛先を通せることと、その要求を実行してよいことは別なんですね。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "この基盤の標準Applicationルール",
+        "cards": [
+          {
+            "id": "0",
+            "title": "HTTPSの宛先",
+            "body": [
+              "SNIのホスト名で照合",
+              "terminateTLS: false",
+              "URLパス・本文を復号しない"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "検査の分担",
+            "body": [
+              "HTTP：Hostを照合",
+              "Web攻撃検査：入口WAF",
+              "API認証・認可：APIM等"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-018-mako",
+      "speaker": "mako",
+      "chapterId": "kinds",
+      "speech": "もう一つ。管理ブイエムの時刻同期には、エヌティーピー・ドット・ウブントゥ・ドット・コムという名前が出てきます。エフキューディーエヌが書いてあるなら、こちらもアプリケーションですか。",
+      "caption": "もう一つ。管理VMの時刻同期には、ntp.ubuntu.comという名前が出てきます。FQDNが書いてあるなら、こちらもApplicationですか。",
+      "subtitleLines": [
+        "もう一つ。管理VMの時刻同期には、ntp.ubuntu.comという名前が出てきます。",
+        "FQDNが書いてあるなら、こちらもApplicationですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "もう一つ。管理VMの時刻同期には、ntp.ubuntu.comという名前が出てきます。FQDNが書いてあるなら、こちらもApplicationですか。",
+          "lines": [
+            "もう一つ。管理VMの時刻同期には、ntp.ubuntu.comという名前が出てきます。",
+            "FQDNが書いてあるなら、こちらもApplicationですか。"
+          ],
+          "weight": 75
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "FQDNを指定するNTPもNetworkルール",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "管理VM",
+            "detail": "management-time",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "DNS解決したIP",
+            "detail": "ntp.ubuntu.com",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "Network照合",
+            "detail": "UDP 123を許可",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "名前を解決",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "IPとポートで判定",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-019-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "kinds",
+      "speech": "いいえ、ネットワークです。ディーエヌエスで名前をアイピーへ解決し、その宛先アイピーとユーディーピー 123を照合します。Webのホストやエスエヌアイを見る方式とは違います。",
+      "caption": "いいえ、Networkです。DNSで名前をIPへ解決し、その宛先IPとUDP 123を照合します。WebのHostやSNIを見る方式とは違います。",
+      "subtitleLines": [
+        "いいえ、Networkです。DNSで名前をIPへ解決し、その宛先IPと",
+        "UDP 123を照合します。WebのHostやSNIを見る方式とは違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ、Networkです。DNSで名前をIPへ解決し、その宛先IPとUDP 123を照合します。WebのHostやSNIを見る方式とは違います。",
+          "lines": [
+            "いいえ、Networkです。DNSで名前をIPへ解決し、その宛先IPと",
+            "UDP 123を照合します。WebのHostやSNIを見る方式とは違います。"
+          ],
+          "weight": 73
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "FQDNを指定するNTPもNetworkルール",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "管理VM",
+            "detail": "management-time",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "DNS解決したIP",
+            "detail": "ntp.ubuntu.com",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "Network照合",
+            "detail": "UDP 123を許可",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "名前を解決",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "IPとポートで判定",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-020-mako",
+      "speaker": "mako",
+      "chapterId": "kinds",
+      "speech": "なるほど。アイピーとポートを軸にするネットワーク、Webのホストを軸にするアプリケーション。次は、両方のルールがあるときの順番ですね。",
+      "caption": "なるほど。IPとポートを軸にするNetwork、Webのホストを軸にするApplication。次は、両方のルールがあるときの順番ですね。",
+      "subtitleLines": [
+        "なるほど。IPとポートを軸にするNetwork、Webのホストを軸にす",
+        "るApplication。次は、両方のルールがあるときの順番ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "なるほど。IPとポートを軸にするNetwork、Webのホストを軸にするApplication。次は、両方のルールがあるときの順番ですね。",
+          "lines": [
+            "なるほど。IPとポートを軸にするNetwork、Webのホストを軸にす",
+            "るApplication。次は、両方のルールがあるときの順番ですね。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "2種類のルールは、照合する情報が違う",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network",
+            "body": [
+              "送信元IP範囲",
+              "宛先IP・サービス タグ等",
+              "TCP・UDPと宛先ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application",
+            "body": [
+              "送信元IP範囲",
+              "HTTP・HTTPSとポート",
+              "FQDN：HTTP Host / HTTPS SNI"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "order",
+      "speech": "今回の独自ルールはネットワークから評価します。アローに一致すれば終了し、アプリケーションのエフキューディーエヌ許可を重ねて要求しません。",
+      "caption": "今回の独自ルールはNetworkから評価します。Allowに一致すれば終了し、ApplicationのFQDN許可を重ねて要求しません。",
+      "subtitleLines": [
+        "今回の独自ルールはNetworkから評価します。",
+        "Allowに一致すれば終了し、ApplicationのFQDN許可を重ねて要求しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今回の独自ルールはNetworkから評価します。Allowに一致すれば終了し、ApplicationのFQDN許可を重ねて要求しません。",
+          "lines": [
+            "今回の独自ルールはNetworkから評価します。",
+            "Allowに一致すれば終了し、ApplicationのFQDN許可を重ねて要求しません。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Networkで一致すれば、そこで判定終了",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "01 Network",
+            "detail": "一致 → Allowで終了",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "02 Application",
+            "detail": "Network不一致のWeb通信",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "03 最終判定",
+            "detail": "組み込み許可も評価 → 既定拒否",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "不一致",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可なし",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "order",
+      "speech": "アイピーの条件に合っても、ホスト名の条件に合わなければ止まる、という二段階の関門を想像していました。それとは違うんですね。",
+      "caption": "IPの条件に合っても、ホスト名の条件に合わなければ止まる、という二段階の関門を想像していました。それとは違うんですね。",
+      "subtitleLines": [
+        "IPの条件に合っても、ホスト名の条件に合わなければ止まる、",
+        "という二段階の関門を想像していました。それとは違うんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "IPの条件に合っても、ホスト名の条件に合わなければ止まる、という二段階の関門を想像していました。それとは違うんですね。",
+          "lines": [
+            "IPの条件に合っても、ホスト名の条件に合わなければ止まる、",
+            "という二段階の関門を想像していました。それとは違うんですね。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Networkで一致すれば、そこで判定終了",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "01 Network",
+            "detail": "一致 → Allowで終了",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "02 Application",
+            "detail": "Network不一致のWeb通信",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "03 最終判定",
+            "detail": "組み込み許可も評価 → 既定拒否",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "不一致",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可なし",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-023-manabu",
+      "speaker": "manabu",
+      "chapterId": "order",
+      "speech": "はい。ネットワークの許可範囲を広げると、その範囲はアプリケーションで宛先名を絞る段階へ進まなくなります。別々の一覧として眺めるだけでは見落とします。",
+      "caption": "はい。Networkの許可範囲を広げると、その範囲はApplicationで宛先名を絞る段階へ進まなくなります。別々の一覧として眺めるだけでは見落とします。",
+      "subtitleLines": [
+        "はい。Networkの許可範囲を広げると、",
+        "その範囲はApplicationで宛先名を絞る段階へ進まなくなります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。Networkの許可範囲を広げると、その範囲はApplicationで宛先名を絞る段階へ進まなくなります。",
+          "lines": [
+            "はい。Networkの許可範囲を広げると、",
+            "その範囲はApplicationで宛先名を絞る段階へ進まなくなります。"
+          ],
+          "weight": 56
+        },
+        {
+          "caption": "別々の一覧として眺めるだけでは見落とします。",
+          "lines": [
+            "別々の一覧として眺めるだけでは見落とします。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Networkで一致すれば、そこで判定終了",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "01 Network",
+            "detail": "一致 → Allowで終了",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "02 Application",
+            "detail": "Network不一致のWeb通信",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "03 最終判定",
+            "detail": "組み込み許可も評価 → 既定拒否",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "不一致",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可なし",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "order",
+      "speech": "階層は、ルールコレクショングループ、その中にコレクション、さらにルールです。アローやデナイのアクションはコレクションへ設定します。",
+      "caption": "階層は、ルールコレクショングループ、その中にコレクション、さらにルールです。AllowやDenyのActionはコレクションへ設定します。",
+      "subtitleLines": [
+        "階層は、ルールコレクショングループ、その中にコレクション、",
+        "さらにルールです。AllowやDenyのActionはコレクションへ設定します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "階層は、ルールコレクショングループ、その中にコレクション、さらにルールです。AllowやDenyのActionはコレクションへ設定します。",
+          "lines": [
+            "階層は、ルールコレクショングループ、その中にコレクション、",
+            "さらにルールです。AllowやDenyのActionはコレクションへ設定します。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度は、種別の内側で読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "階層",
+            "body": [
+              "ルールコレクショングループ",
+              "　→ コレクション",
+              "　　→ 個々のルール"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "評価とAction",
+            "body": [
+              "種別 → グループ → コレクション",
+              "小さい優先度から照合",
+              "Allow / Denyはコレクション"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-025-mako",
+      "speaker": "mako",
+      "chapterId": "order",
+      "speech": "エヌエスジーでは、個々の規則の優先順位を見ました。ファイアウォールでも、個々のルールに同じような番号を付ける、と考えていいですか。",
+      "caption": "NSGでは、個々の規則の優先順位を見ました。Firewallでも、個々のルールに同じような番号を付ける、と考えていいですか。",
+      "subtitleLines": [
+        "NSGでは、個々の規則の優先順位を見ました。Firewallでも、",
+        "個々のルールに同じような番号を付ける、と考えていいですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NSGでは、個々の規則の優先順位を見ました。Firewallでも、個々のルールに同じような番号を付ける、と考えていいですか。",
+          "lines": [
+            "NSGでは、個々の規則の優先順位を見ました。Firewallでも、",
+            "個々のルールに同じような番号を付ける、と考えていいですか。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度は、種別の内側で読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "階層",
+            "body": [
+              "ルールコレクショングループ",
+              "　→ コレクション",
+              "　　→ 個々のルール"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "評価とAction",
+            "body": [
+              "種別 → グループ → コレクション",
+              "小さい優先度から照合",
+              "Allow / Denyはコレクション"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "order",
+      "speech": "構造が違います。同じ種類の中でグループ、次にコレクションの小さい優先度から照合します。個々のルールにはエヌエスジーのような優先度を付けません。",
+      "caption": "構造が違います。同じ種類の中でグループ、次にコレクションの小さい優先度から照合します。個々のルールにはNSGのような優先度を付けません。",
+      "subtitleLines": [
+        "構造が違います。同じ種類の中でグループ、次にコレクションの小さい優",
+        "先度から照合します。個々のルールにはNSGのような優先度を付けません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "構造が違います。同じ種類の中でグループ、次にコレクションの小さい優先度から照合します。個々のルールにはNSGのような優先度を付けません。",
+          "lines": [
+            "構造が違います。同じ種類の中でグループ、次にコレクションの小さい優",
+            "先度から照合します。個々のルールにはNSGのような優先度を付けません。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度は、種別の内側で読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "階層",
+            "body": [
+              "ルールコレクショングループ",
+              "　→ コレクション",
+              "　　→ 個々のルール"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "評価とAction",
+            "body": [
+              "種別 → グループ → コレクション",
+              "小さい優先度から照合",
+              "Allow / Denyはコレクション"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "order",
+      "speech": "では、アプリケーションのグループが350、ネットワークのグループが400なら、350のアプリケーションが先に評価されるんでしょうか。",
+      "caption": "では、Applicationのグループが350、Networkのグループが400なら、350のApplicationが先に評価されるんでしょうか。",
+      "subtitleLines": [
+        "では、Applicationのグループが350、Networkのグループが400なら、",
+        "350のApplicationが先に評価されるんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、Applicationのグループが350、Networkのグループが400なら、350のApplicationが先に評価されるんでしょうか。",
+          "lines": [
+            "では、Applicationのグループが350、Networkのグループが400なら、",
+            "350のApplicationが先に評価されるんでしょうか。"
+          ],
+          "weight": 73
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度の仮の比較：種類が先",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network：仮の例",
+            "body": [
+              "グループ優先度 400",
+              "数値が大きくてもNetworkが先",
+              "すべてのApplicationより先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application：仮の例",
+            "body": [
+              "グループ優先度 350",
+              "数値が小さくてもNetworkの後",
+              "Network不一致のWeb通信を評価"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "order",
+      "speech": "種類が先なので、その例でもネットワークが先です。数値は全種類を混ぜて並べず、同じ種類の評価順を読むために使います。",
+      "caption": "種類が先なので、その例でもNetworkが先です。数値は全種類を混ぜて並べず、同じ種類の評価順を読むために使います。",
+      "subtitleLines": [
+        "種類が先なので、その例でもNetworkが先です。",
+        "数値は全種類を混ぜて並べず、同じ種類の評価順を読むために使います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "種類が先なので、その例でもNetworkが先です。数値は全種類を混ぜて並べず、同じ種類の評価順を読むために使います。",
+          "lines": [
+            "種類が先なので、その例でもNetworkが先です。",
+            "数値は全種類を混ぜて並べず、同じ種類の評価順を読むために使います。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度の仮の比較：種類が先",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network：仮の例",
+            "body": [
+              "グループ優先度 400",
+              "数値が大きくてもNetworkが先",
+              "すべてのApplicationより先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application：仮の例",
+            "body": [
+              "グループ優先度 350",
+              "数値が小さくてもNetworkの後",
+              "Network不一致のWeb通信を評価"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-029-manabu",
+      "speaker": "manabu",
+      "chapterId": "order",
+      "speech": "まず種別、その内側でグループとコレクション。なお、同じ360という優先度のグループ同士は、その数字だけで互いの前後を断定しないようにします。",
+      "caption": "まず種別、その内側でグループとコレクション。なお、同じ360という優先度のグループ同士は、その数字だけで互いの前後を断定しないようにします。",
+      "subtitleLines": [
+        "まず種別、その内側でグループとコレクション。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず種別、その内側でグループとコレクション。",
+          "lines": [
+            "まず種別、その内側でグループとコレクション。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "なお、同じ360という優先度のグループ同士は、その数字だけで互いの前後を断定しないようにします。",
+          "lines": [
+            "なお、同じ360という優先度のグループ同士は、",
+            "その数字だけで互いの前後を断定しないようにします。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "優先度の仮の比較：種類が先",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Network：仮の例",
+            "body": [
+              "グループ優先度 400",
+              "数値が大きくてもNetworkが先",
+              "すべてのApplicationより先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "Application：仮の例",
+            "body": [
+              "グループ優先度 350",
+              "数値が小さくてもNetworkの後",
+              "Network不一致のWeb通信を評価"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "order",
+      "speech": "許可に一致しない場合はどうなりますか。この基盤には、最後に置くデナイ・オールという名前のルールがあるんでしょうか。",
+      "caption": "許可に一致しない場合はどうなりますか。この基盤には、最後に置くdeny-allという名前のルールがあるんでしょうか。",
+      "subtitleLines": [
+        "許可に一致しない場合はどうなりますか。",
+        "この基盤には、最後に置くdeny-allという名前のルールがあるんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "許可に一致しない場合はどうなりますか。この基盤には、最後に置くdeny-allという名前のルールがあるんでしょうか。",
+          "lines": [
+            "許可に一致しない場合はどうなりますか。",
+            "この基盤には、最後に置くdeny-allという名前のルールがあるんでしょうか。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自Denyがなくても、最終的に拒否される",
+        "cards": [
+          {
+            "id": "0",
+            "title": "この基盤の独自定義",
+            "body": [
+              "独自コレクションはAllow",
+              "独自Deny・DNATなし",
+              "Internet全ポート許可なし"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "最終の判定",
+            "body": [
+              "Network → Application",
+              "Azure組み込み基盤用許可も評価",
+              "許可に一致しなければ既定拒否"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "order",
+      "speech": "独自定義はすべてアローで、デナイやディーナットはありません。ネットワーク、アプリケーション、アジュール組み込み基盤用許可も評価し、最後まで許可がなければ既定拒否です。",
+      "caption": "独自定義はすべてAllowで、DenyやDNATはありません。Network、Application、Azure組み込み基盤用許可も評価し、最後まで許可がなければ既定拒否です。",
+      "subtitleLines": [
+        "独自定義はすべてAllowで、DenyやDNATはありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "独自定義はすべてAllowで、DenyやDNATはありません。",
+          "lines": [
+            "独自定義はすべてAllowで、DenyやDNATはありません。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "Network、Application、Azure組み込み基盤用許可も評価し、最後まで許可がなければ既定拒否です。",
+          "lines": [
+            "Network、Application、Azure組み込み基盤用許可も評価し、",
+            "最後まで許可がなければ既定拒否です。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自Denyがなくても、最終的に拒否される",
+        "cards": [
+          {
+            "id": "0",
+            "title": "この基盤の独自定義",
+            "body": [
+              "独自コレクションはAllow",
+              "独自Deny・DNATなし",
+              "Internet全ポート許可なし"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "最終の判定",
+            "body": [
+              "Network → Application",
+              "Azure組み込み基盤用許可も評価",
+              "許可に一致しなければ既定拒否"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-032-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "ここから具体例です。公開入口のアップ・ゲートウェイから、内部のエーピーアイエムへ要求を中継します。この通信は、どの条件で許可するんですか。",
+      "caption": "ここから具体例です。公開入口のAppGWから、内部のAPIMへ要求を中継します。この通信は、どの条件で許可するんですか。",
+      "subtitleLines": [
+        "ここから具体例です。公開入口のAppGWから、",
+        "内部のAPIMへ要求を中継します。この通信は、どの条件で許可するんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここから具体例です。公開入口のAppGWから、内部のAPIMへ要求を中継します。この通信は、どの条件で許可するんですか。",
+          "lines": [
+            "ここから具体例です。公開入口のAppGWから、",
+            "内部のAPIMへ要求を中継します。この通信は、どの条件で許可するんですか。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "代表例：AppGWからAPIMへの内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "実際の送信元を限定",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-to-apim-http",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "APIM実内部VIP",
+            "detail": "TCP 80 / gRPC有効時443も",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "往路UDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Network / Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "送信元はアップ・ゲートウェイ区画、宛先はエーピーアイエムの実内部Vアイピー、通常はティーシーピー 80です。図のネットワークルールで許可し、エフキューディーエヌ照合へは進みません。",
+      "caption": "送信元はAppGW区画、宛先はAPIMの実内部VIP、通常はTCP 80です。図のNetworkルールで許可し、FQDN照合へは進みません。",
+      "subtitleLines": [
+        "送信元はAppGW区画、宛先はAPIMの実内部VIP、通常はTCP 80です。",
+        "図のNetworkルールで許可し、FQDN照合へは進みません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "送信元はAppGW区画、宛先はAPIMの実内部VIP、通常はTCP 80です。図のNetworkルールで許可し、FQDN照合へは進みません。",
+          "lines": [
+            "送信元はAppGW区画、宛先はAPIMの実内部VIP、通常はTCP 80です。",
+            "図のNetworkルールで許可し、FQDN照合へは進みません。"
+          ],
+          "weight": 70
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "代表例：AppGWからAPIMへの内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "実際の送信元を限定",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-to-apim-http",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "APIM実内部VIP",
+            "detail": "TCP 80 / gRPC有効時443も",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "往路UDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Network / Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "名前の末尾がhttpなので、443番は絶対に含まれない、という読み方でよさそうですか。",
+      "caption": "名前の末尾がhttpなので、443番は絶対に含まれない、という読み方でよさそうですか。",
+      "subtitleLines": [
+        "名前の末尾がhttpなので、443番は絶対に含まれない、",
+        "という読み方でよさそうですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前の末尾がhttpなので、443番は絶対に含まれない、という読み方でよさそうですか。",
+          "lines": [
+            "名前の末尾がhttpなので、443番は絶対に含まれない、",
+            "という読み方でよさそうですか。"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "代表例：AppGWからAPIMへの内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "実際の送信元を限定",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-to-apim-http",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "APIM実内部VIP",
+            "detail": "TCP 80 / gRPC有効時443も",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "往路UDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Network / Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "名前だけでは決めません。ジーアールピーシー有効時は同じルールへ内部ティーシーピー 443も追加します。無効時は含めず、他の許可にも一致しなければ拒否です。",
+      "caption": "名前だけでは決めません。gRPC有効時は同じルールへ内部TCP 443も追加します。無効時は含めず、他の許可にも一致しなければ拒否です。",
+      "subtitleLines": [
+        "名前だけでは決めません。gRPC有効時は同じルールへ内部TCP 443も",
+        "追加します。無効時は含めず、他の許可にも一致しなければ拒否です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "名前だけでは決めません。gRPC有効時は同じルールへ内部TCP 443も追加します。無効時は含めず、他の許可にも一致しなければ拒否です。",
+          "lines": [
+            "名前だけでは決めません。gRPC有効時は同じルールへ内部TCP 443も",
+            "追加します。無効時は含めず、他の許可にも一致しなければ拒否です。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "代表例：AppGWからAPIMへの内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "実際の送信元を限定",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-to-apim-http",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "APIM実内部VIP",
+            "detail": "TCP 80 / gRPC有効時443も",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "往路UDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Network / Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-036-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "ポータルへの中継も見せてください。アップ・ゲートウェイからエーシーエーへ進む場合、ルールの宛先とユーディーアールの宛先は、同じ書き方ですか。",
+      "caption": "Portalへの中継も見せてください。AppGWからACAへ進む場合、ルールの宛先とUDRの宛先は、同じ書き方ですか。",
+      "subtitleLines": [
+        "Portalへの中継も見せてください。",
+        "AppGWからACAへ進む場合、ルールの宛先とUDRの宛先は、同じ書き方ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Portalへの中継も見せてください。AppGWからACAへ進む場合、ルールの宛先とUDRの宛先は、同じ書き方ですか。",
+          "lines": [
+            "Portalへの中継も見せてください。",
+            "AppGWからACAへ進む場合、ルールの宛先とUDRの宛先は、同じ書き方ですか。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Portal入口も、IPとポートで内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "Portalへの要求",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-aca-https",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "ACA区画",
+            "detail": "TCP 443を許可",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "入口IP /32へのUDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可宛先はACA CIDR",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-037-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "区別します。図の許可先はエーシーエー区画のサイダーで、ティーシーピー 443。一方、アップ・ゲートウェイのユーディーアールはエーシーエー入口の実アイピーへ、スラッシュ32の経路を作ります。",
+      "caption": "区別します。図の許可先はACA区画のCIDRで、TCP 443。一方、AppGWのUDRはACA入口の実IPへ、スラッシュ32の経路を作ります。",
+      "subtitleLines": [
+        "区別します。図の許可先はACA区画のCIDRで、TCP 443。",
+        "一方、AppGWのUDRはACA入口の実IPへ、スラッシュ32の経路を作ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "区別します。図の許可先はACA区画のCIDRで、TCP 443。一方、AppGWのUDRはACA入口の実IPへ、スラッシュ32の経路を作ります。",
+          "lines": [
+            "区別します。図の許可先はACA区画のCIDRで、TCP 443。",
+            "一方、AppGWのUDRはACA入口の実IPへ、スラッシュ32の経路を作ります。"
+          ],
+          "weight": 72
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Portal入口も、IPとポートで内部中継",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "AppGW区画",
+            "detail": "Portalへの要求",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Azure Firewall",
+            "detail": "agw-aca-https",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "ACA区画",
+            "detail": "TCP 443を許可",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "入口IP /32へのUDR",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "許可宛先はACA CIDR",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-038-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "要求が許可されたら、応答のために、エーピーアイエムからアップ・ゲートウェイへ逆向きのアローも一つ追加する必要があるんでしょうか。",
+      "caption": "要求が許可されたら、応答のために、APIMからAppGWへ逆向きのAllowも一つ追加する必要があるんでしょうか。",
+      "subtitleLines": [
+        "要求が許可されたら、応答のために、",
+        "APIMからAppGWへ逆向きのAllowも一つ追加する必要があるんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "要求が許可されたら、応答のために、APIMからAppGWへ逆向きのAllowも一つ追加する必要があるんでしょうか。",
+          "lines": [
+            "要求が許可されたら、応答のために、",
+            "APIMからAppGWへ逆向きのAllowも一つ追加する必要があるんでしょうか。"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "応答の状態追跡と、復路UDRを分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "許可済み接続への応答",
+            "body": [
+              "Firewallはステートフル",
+              "応答だけの逆向きAllowは不要",
+              "別の新規接続は別判定"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "戻る経路",
+            "body": [
+              "復路も同じFirewallへ",
+              "状態追跡は経路を作らない",
+              "UDRとルールの両方を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "許可済み接続の応答は、ファイアウォールが状態を追跡して扱います。その応答だけの逆向きの新規接続アローは不要です。ただし、復路も同じファイアウォールへ戻すユーディーアールは必要です。",
+      "caption": "許可済み接続の応答は、Firewallが状態を追跡して扱います。その応答だけの逆向きの新規接続Allowは不要です。ただし、復路も同じFirewallへ戻すUDRは必要です。",
+      "subtitleLines": [
+        "許可済み接続の応答は、Firewallが状態を追跡して扱います。",
+        "その応答だけの逆向きの新規接続Allowは不要です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "許可済み接続の応答は、Firewallが状態を追跡して扱います。その応答だけの逆向きの新規接続Allowは不要です。",
+          "lines": [
+            "許可済み接続の応答は、Firewallが状態を追跡して扱います。",
+            "その応答だけの逆向きの新規接続Allowは不要です。"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "ただし、復路も同じFirewallへ戻すUDRは必要です。",
+          "lines": [
+            "ただし、復路も同じFirewallへ戻すUDRは必要です。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "応答の状態追跡と、復路UDRを分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "許可済み接続への応答",
+            "body": [
+              "Firewallはステートフル",
+              "応答だけの逆向きAllowは不要",
+              "別の新規接続は別判定"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "戻る経路",
+            "body": [
+              "復路も同じFirewallへ",
+              "状態追跡は経路を作らない",
+              "UDRとルールの両方を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-040-manabu",
+      "speaker": "manabu",
+      "chapterId": "internal",
+      "speech": "状態を覚えることと、戻る経路を用意することは別ですね。逆向きの別の新規接続まで、自動的に許可されたと考えないことも大切です。",
+      "caption": "状態を覚えることと、戻る経路を用意することは別ですね。逆向きの別の新規接続まで、自動的に許可されたと考えないことも大切です。",
+      "subtitleLines": [
+        "状態を覚えることと、戻る経路を用意することは別ですね。",
+        "逆向きの別の新規接続まで、自動的に許可されたと考えないことも大切です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "状態を覚えることと、戻る経路を用意することは別ですね。逆向きの別の新規接続まで、自動的に許可されたと考えないことも大切です。",
+          "lines": [
+            "状態を覚えることと、戻る経路を用意することは別ですね。",
+            "逆向きの別の新規接続まで、自動的に許可されたと考えないことも大切です。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "応答の状態追跡と、復路UDRを分ける",
+        "cards": [
+          {
+            "id": "0",
+            "title": "許可済み接続への応答",
+            "body": [
+              "Firewallはステートフル",
+              "応答だけの逆向きAllowは不要",
+              "別の新規接続は別判定"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "戻る経路",
+            "body": [
+              "復路も同じFirewallへ",
+              "状態追跡は経路を作らない",
+              "UDRとルールの両方を確認"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "エーピーアイエムからエーシーエー内部アイピー、エーシーエーからエスキューエルやキー・ボールトのピーイーへの許可も定義されています。ただし標準ユーディーアールは直接経路なので、そのファイアウォールルールで検査するとは説明しません。",
+      "caption": "APIMからACA内部IP、ACAからSQLやKey VaultのPEへの許可も定義されています。ただし標準UDRは直接経路なので、そのFirewallルールで検査するとは説明しません。",
+      "subtitleLines": [
+        "APIMからACA内部IP、",
+        "ACAからSQLやKey VaultのPEへの許可も定義されています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMからACA内部IP、ACAからSQLやKey VaultのPEへの許可も定義されています。",
+          "lines": [
+            "APIMからACA内部IP、",
+            "ACAからSQLやKey VaultのPEへの許可も定義されています。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "ただし標準UDRは直接経路なので、そのFirewallルールで検査するとは説明しません。",
+          "lines": [
+            "ただし標準UDRは直接経路なので、",
+            "そのFirewallルールで検査するとは説明しません。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "定義されている許可と、実際に通る経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall経由",
+            "body": [
+              "AppGW → APIM",
+              "AppGW → ACA入口",
+              "往路・復路をそろえる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "標準の直接経路",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL・Key Vault PE",
+              "FWルールの有無と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-042-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "次はエーピーアイエム自身が出す通信です。利用者のエーピーアイ要求以外にも、基盤として外へ接続する必要があるんですね。",
+      "caption": "次はAPIM自身が出す通信です。利用者のAPI要求以外にも、基盤として外へ接続する必要があるんですね。",
+      "subtitleLines": [
+        "次はAPIM自身が出す通信です。",
+        "利用者のAPI要求以外にも、基盤として外へ接続する必要があるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次はAPIM自身が出す通信です。利用者のAPI要求以外にも、基盤として外へ接続する必要があるんですね。",
+          "lines": [
+            "次はAPIM自身が出す通信です。",
+            "利用者のAPI要求以外にも、基盤として外へ接続する必要があるんですね。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "業務API以外にも、基盤の依存通信がある",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIMの代表例",
+            "body": [
+              "Storage：TCP 443",
+              "Sql：TCP 1433",
+              "AzureMonitor等：監視・監査"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "読むときの区別",
+            "body": [
+              "送信元はAPIM区画",
+              "サービス タグはIPの集合",
+              "業務SQL接続とは別の目的"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-043-manabu",
+      "speaker": "manabu",
+      "chapterId": "platform",
+      "speech": "はい。保存先、認証、監視や監査などの依存先が必要です。業務エーピーアイだけでなく、基盤を動かし続ける通信も考えます。",
+      "caption": "はい。保存先、認証、監視や監査などの依存先が必要です。業務APIだけでなく、基盤を動かし続ける通信も考えます。",
+      "subtitleLines": [
+        "はい。保存先、認証、監視や監査などの依存先が必要です。",
+        "業務APIだけでなく、基盤を動かし続ける通信も考えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。保存先、認証、監視や監査などの依存先が必要です。業務APIだけでなく、基盤を動かし続ける通信も考えます。",
+          "lines": [
+            "はい。保存先、認証、監視や監査などの依存先が必要です。",
+            "業務APIだけでなく、基盤を動かし続ける通信も考えます。"
+          ],
+          "weight": 55
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "業務API以外にも、基盤の依存通信がある",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIMの代表例",
+            "body": [
+              "Storage：TCP 443",
+              "Sql：TCP 1433",
+              "AzureMonitor等：監視・監査"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "読むときの区別",
+            "body": [
+              "送信元はAPIM区画",
+              "サービス タグはIPの集合",
+              "業務SQL接続とは別の目的"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "代表例は図のエーピーアイエム・ストレージです。エーピーアイエム区画からストレージタグのアイピーへ、ティーシーピー 443の通信をネットワークで許可します。",
+      "caption": "代表例は図のapim-storageです。APIM区画からStorageタグのIPへ、TCP 443の通信をNetworkで許可します。",
+      "subtitleLines": [
+        "代表例は図のapim-storageです。",
+        "APIM区画からStorageタグのIPへ、TCP 443の通信をNetworkで許可します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "代表例は図のapim-storageです。APIM区画からStorageタグのIPへ、TCP 443の通信をNetworkで許可します。",
+          "lines": [
+            "代表例は図のapim-storageです。",
+            "APIM区画からStorageタグのIPへ、TCP 443の通信をNetworkで許可します。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-045-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "このストレージという指定は、自分たちが作ったストレージアカウント一つを指しているんでしょうか。",
+      "caption": "このStorageという指定は、自分たちが作ったStorageアカウント一つを指しているんでしょうか。",
+      "subtitleLines": [
+        "このStorageという指定は、",
+        "自分たちが作ったStorageアカウント一つを指しているんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "このStorageという指定は、自分たちが作ったStorageアカウント一つを指しているんでしょうか。",
+          "lines": [
+            "このStorageという指定は、",
+            "自分たちが作ったStorageアカウント一つを指しているんでしょうか。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "いいえ。サービス・タグは、そのサービスに関係するアイピーの集合です。自社のリソース一つだけを選ぶ指定とは区別します。",
+      "caption": "いいえ。サービス・タグは、そのサービスに関係するIPの集合です。自社のリソース一つだけを選ぶ指定とは区別します。",
+      "subtitleLines": [
+        "いいえ。サービス・タグは、そのサービスに関係するIPの集合です。",
+        "自社のリソース一つだけを選ぶ指定とは区別します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。サービス・タグは、そのサービスに関係するIPの集合です。自社のリソース一つだけを選ぶ指定とは区別します。",
+          "lines": [
+            "いいえ。サービス・タグは、そのサービスに関係するIPの集合です。",
+            "自社のリソース一つだけを選ぶ指定とは区別します。"
+          ],
+          "weight": 56
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-047-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "そこでネットワークのアローに一致した場合、アプリケーションのエーピーアイエム・アプルーブド・サービシズにも、そのホスト名があるかを確認するんですか。",
+      "caption": "そこでNetworkのAllowに一致した場合、Applicationのapim-approved-servicesにも、そのホスト名があるかを確認するんですか。",
+      "subtitleLines": [
+        "そこでNetworkのAllowに一致した場合、Applicationの",
+        "apim-approved-servicesにも、そのホスト名があるかを確認するんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこでNetworkのAllowに一致した場合、Applicationのapim-approved-servicesにも、そのホスト名があるかを確認するんですか。",
+          "lines": [
+            "そこでNetworkのAllowに一致した場合、Applicationの",
+            "apim-approved-servicesにも、そのホスト名があるかを確認するんですか。"
+          ],
+          "weight": 81
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "重ねて要求しません。ネットワークの一致で終了です。エイチティーティーピーエスの443番だから必ずアプリケーションへ進む、という読み方も当てはまりません。",
+      "caption": "重ねて要求しません。Networkの一致で終了です。HTTPSの443番だから必ずApplicationへ進む、という読み方も当てはまりません。",
+      "subtitleLines": [
+        "重ねて要求しません。Networkの一致で終了です。HTTPSの443番だ",
+        "から必ずApplicationへ進む、という読み方も当てはまりません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "重ねて要求しません。Networkの一致で終了です。HTTPSの443番だから必ずApplicationへ進む、という読み方も当てはまりません。",
+          "lines": [
+            "重ねて要求しません。Networkの一致で終了です。HTTPSの443番だ",
+            "から必ずApplicationへ進む、という読み方も当てはまりません。"
+          ],
+          "weight": 72
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-049-manabu",
+      "speaker": "manabu",
+      "chapterId": "platform",
+      "speech": "Web用エフキューディーエヌ一覧だけで許可先を判断すると、ネットワークのタグ許可を見落とします。両方を合わせて、実際の許可範囲を読みます。",
+      "caption": "Web用FQDN一覧だけで許可先を判断すると、Networkのタグ許可を見落とします。両方を合わせて、実際の許可範囲を読みます。",
+      "subtitleLines": [
+        "Web用FQDN一覧だけで許可先を判断すると、Networkのタグ許可",
+        "を見落とします。両方を合わせて、実際の許可範囲を読みます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Web用FQDN一覧だけで許可先を判断すると、Networkのタグ許可を見落とします。両方を合わせて、実際の許可範囲を読みます。",
+          "lines": [
+            "Web用FQDN一覧だけで許可先を判断すると、Networkのタグ許可",
+            "を見落とします。両方を合わせて、実際の許可範囲を読みます。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "ほかにエスキューエルタグのティーシーピー 1433、キー・ボールト、エントラ、監視・監査への許可などがあります。全ポートの暗記より、依存先の役割を結びましょう。",
+      "caption": "ほかにSqlタグのTCP 1433、Key Vault、Entra、監視・監査への許可などがあります。全ポートの暗記より、依存先の役割を結びましょう。",
+      "subtitleLines": [
+        "ほかにSqlタグのTCP 1433、Key Vault、Entra、監視・監査への許可",
+        "などがあります。全ポートの暗記より、依存先の役割を結びましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ほかにSqlタグのTCP 1433、Key Vault、Entra、監視・監査への許可などがあります。全ポートの暗記より、依存先の役割を結びましょう。",
+          "lines": [
+            "ほかにSqlタグのTCP 1433、Key Vault、Entra、監視・監査への許可",
+            "などがあります。全ポートの暗記より、依存先の役割を結びましょう。"
+          ],
+          "weight": 75
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "業務API以外にも、基盤の依存通信がある",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIMの代表例",
+            "body": [
+              "Storage：TCP 443",
+              "Sql：TCP 1433",
+              "AzureMonitor等：監視・監査"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "読むときの区別",
+            "body": [
+              "送信元はAPIM区画",
+              "サービス タグはIPの集合",
+              "業務SQL接続とは別の目的"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-051-mako",
+      "speaker": "mako",
+      "chapterId": "platform",
+      "speech": "エーピーアイエム・エスキューエルという名前を見ると、ポータルやブローカーが業務データを保存するエスキューエル接続と、同じものだと思いそうです。",
+      "caption": "apim-sqlという名前を見ると、PortalやBrokerが業務データを保存するSQL接続と、同じものだと思いそうです。",
+      "subtitleLines": [
+        "apim-sqlという名前を見ると、PortalやBrokerが業務",
+        "データを保存するSQL接続と、同じものだと思いそうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "apim-sqlという名前を見ると、PortalやBrokerが業務データを保存するSQL接続と、同じものだと思いそうです。",
+          "lines": [
+            "apim-sqlという名前を見ると、PortalやBrokerが業務",
+            "データを保存するSQL接続と、同じものだと思いそうです。"
+          ],
+          "weight": 62
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "業務API以外にも、基盤の依存通信がある",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIMの代表例",
+            "body": [
+              "Storage：TCP 443",
+              "Sql：TCP 1433",
+              "AzureMonitor等：監視・監査"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "読むときの区別",
+            "body": [
+              "送信元はAPIM区画",
+              "サービス タグはIPの集合",
+              "業務SQL接続とは別の目的"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "platform",
+      "speech": "これはエーピーアイエム内部プラットフォームの依存通信です。エーシーエーから業務エスキューエルのピーイーへ向かう接続とは、送信元も目的も違います。",
+      "caption": "これはAPIM内部プラットフォームの依存通信です。ACAから業務SQLのPEへ向かう接続とは、送信元も目的も違います。",
+      "subtitleLines": [
+        "これはAPIM内部プラットフォームの依存通信です。",
+        "ACAから業務SQLのPEへ向かう接続とは、送信元も目的も違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "これはAPIM内部プラットフォームの依存通信です。ACAから業務SQLのPEへ向かう接続とは、送信元も目的も違います。",
+          "lines": [
+            "これはAPIM内部プラットフォームの依存通信です。",
+            "ACAから業務SQLのPEへ向かう接続とは、送信元も目的も違います。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "業務API以外にも、基盤の依存通信がある",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIMの代表例",
+            "body": [
+              "Storage：TCP 443",
+              "Sql：TCP 1433",
+              "AzureMonitor等：監視・監査"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "読むときの区別",
+            "body": [
+              "送信元はAPIM区画",
+              "サービス タグはIPの集合",
+              "業務SQL接続とは別の目的"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "operations",
+      "speech": "さっきの時刻同期へ戻りましょう。エーピーアイエムにも、管理ブイエムと同じエヌティーピーの許可を、そのまま共用しているんですか。",
+      "caption": "さっきの時刻同期へ戻りましょう。APIMにも、管理VMと同じNTPの許可を、そのまま共用しているんですか。",
+      "subtitleLines": [
+        "さっきの時刻同期へ戻りましょう。",
+        "APIMにも、管理VMと同じNTPの許可を、そのまま共用しているんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "さっきの時刻同期へ戻りましょう。APIMにも、管理VMと同じNTPの許可を、そのまま共用しているんですか。",
+          "lines": [
+            "さっきの時刻同期へ戻りましょう。",
+            "APIMにも、管理VMと同じNTPの許可を、そのまま共用しているんですか。"
+          ],
+          "weight": 53
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "時刻同期は、送信元ごとに読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIM",
+            "body": [
+              "apim-platform-time",
+              "time.windows.com / UDP 123",
+              "allow-vm-platform内に所属"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "管理VM",
+            "body": [
+              "management-time",
+              "ntp.ubuntu.com / UDP 123",
+              "独立した時刻同期の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-054-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "エーピーアイエム側は図のエーピーアイエム・プラットフォーム・タイムで、宛先はタイム・ドット・ウィンドウズ・ドット・コム、ユーディーピー 123です。管理ブイエムの許可とは独立しています。",
+      "caption": "APIM側は図のapim-platform-timeで、宛先はtime.windows.com、UDP 123です。管理VMの許可とは独立しています。",
+      "subtitleLines": [
+        "APIM側は図のapim-platform-timeで、宛先はtime.windows.com、",
+        "UDP 123です。管理VMの許可とは独立しています。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIM側は図のapim-platform-timeで、宛先はtime.windows.com、UDP 123です。管理VMの許可とは独立しています。",
+          "lines": [
+            "APIM側は図のapim-platform-timeで、宛先はtime.windows.com、",
+            "UDP 123です。管理VMの許可とは独立しています。"
+          ],
+          "weight": 75
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "時刻同期は、送信元ごとに読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIM",
+            "body": [
+              "apim-platform-time",
+              "time.windows.com / UDP 123",
+              "allow-vm-platform内に所属"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "管理VM",
+            "body": [
+              "management-time",
+              "ntp.ubuntu.com / UDP 123",
+              "独立した時刻同期の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "operations",
+      "speech": "でも、エーピーアイエムの時刻同期が入るコレクション名は、アロー・ブイエム・プラットフォームなんですね。名前だけ見ると管理ブイエム専用に見えます。",
+      "caption": "でも、APIMの時刻同期が入るコレクション名は、allow-vm-platformなんですね。名前だけ見ると管理VM専用に見えます。",
+      "subtitleLines": [
+        "でも、APIMの時刻同期が入るコレクション名は、",
+        "allow-vm-platformなんですね。名前だけ見ると管理VM専用に見えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "でも、APIMの時刻同期が入るコレクション名は、allow-vm-platformなんですね。名前だけ見ると管理VM専用に見えます。",
+          "lines": [
+            "でも、APIMの時刻同期が入るコレクション名は、",
+            "allow-vm-platformなんですね。名前だけ見ると管理VM専用に見えます。"
+          ],
+          "weight": 66
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "時刻同期は、送信元ごとに読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIM",
+            "body": [
+              "apim-platform-time",
+              "time.windows.com / UDP 123",
+              "allow-vm-platform内に所属"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "管理VM",
+            "body": [
+              "management-time",
+              "ntp.ubuntu.com / UDP 123",
+              "独立した時刻同期の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "ええ、実際の送信元条件を確かめます。管理ブイエム側はエヌティーピー・ドット・ウブントゥ・ドット・コム。どちらも、ディーエヌエスで解決したアイピーに対するネットワークの判定です。",
+      "caption": "ええ、実際の送信元条件を確かめます。管理VM側はntp.ubuntu.com。どちらも、DNSで解決したIPに対するNetworkの判定です。",
+      "subtitleLines": [
+        "ええ、実際の送信元条件を確かめます。管理VM側はntp.ubuntu.com。",
+        "どちらも、DNSで解決したIPに対するNetworkの判定です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ええ、実際の送信元条件を確かめます。管理VM側はntp.ubuntu.com。どちらも、DNSで解決したIPに対するNetworkの判定です。",
+          "lines": [
+            "ええ、実際の送信元条件を確かめます。管理VM側はntp.ubuntu.com。",
+            "どちらも、DNSで解決したIPに対するNetworkの判定です。"
+          ],
+          "weight": 71
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "時刻同期は、送信元ごとに読む",
+        "cards": [
+          {
+            "id": "0",
+            "title": "APIM",
+            "body": [
+              "apim-platform-time",
+              "time.windows.com / UDP 123",
+              "allow-vm-platform内に所属"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "管理VM",
+            "body": [
+              "management-time",
+              "ntp.ubuntu.com / UDP 123",
+              "独立した時刻同期の許可"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-057-manabu",
+      "speaker": "manabu",
+      "chapterId": "operations",
+      "speech": "管理ブイエムには、配備や保守の作業をする役割もあります。そのため、エントラの認証やアジュール・リソース・マネージャー、監視、エージェントの保存先への通信を用途別に残しています。",
+      "caption": "管理VMには、配備や保守の作業をする役割もあります。そのため、Entraの認証やAzure Resource Manager、監視、エージェントの保存先への通信を用途別に残しています。",
+      "subtitleLines": [
+        "管理VMには、配備や保守の作業をする役割もあります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理VMには、配備や保守の作業をする役割もあります。",
+          "lines": [
+            "管理VMには、配備や保守の作業をする役割もあります。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "そのため、Entraの認証やAzure Resource Manager、監視、エージェントの保存先への通信を用途別に残しています。",
+          "lines": [
+            "そのため、Entraの認証やAzure Resource Manager、監視、",
+            "エージェントの保存先への通信を用途別に残しています。"
+          ],
+          "weight": 66
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理・監視・認証を区画と宛先で絞る",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理VM区画",
+            "body": [
+              "Entra認証",
+              "Azure Resource Manager",
+              "監視・エージェント保存先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "ACA区画",
+            "body": [
+              "aca-monitor-https",
+              "AzureMonitor・Entraのタグ",
+              "TCP 443：Networkで判定"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-058-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "エーシーエー側も、図のネットワークルールで監視と認証を許可します。送信元はエーシーエー区画、宛先は監視とエントラのタグ、ティーシーピー 443です。",
+      "caption": "ACA側も、図のNetworkルールで監視と認証を許可します。送信元はACA区画、宛先は監視とEntraのタグ、TCP 443です。",
+      "subtitleLines": [
+        "ACA側も、図のNetworkルールで監視と認証を許可します。",
+        "送信元はACA区画、宛先は監視とEntraのタグ、TCP 443です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ACA側も、図のNetworkルールで監視と認証を許可します。送信元はACA区画、宛先は監視とEntraのタグ、TCP 443です。",
+          "lines": [
+            "ACA側も、図のNetworkルールで監視と認証を許可します。",
+            "送信元はACA区画、宛先は監視とEntraのタグ、TCP 443です。"
+          ],
+          "weight": 66
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理・監視・認証を区画と宛先で絞る",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理VM区画",
+            "body": [
+              "Entra認証",
+              "Azure Resource Manager",
+              "監視・エージェント保存先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "ACA区画",
+            "body": [
+              "aca-monitor-https",
+              "AzureMonitor・Entraのタグ",
+              "TCP 443：Networkで判定"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-059-mako",
+      "speaker": "mako",
+      "chapterId": "operations",
+      "speech": "その通信もネットワークで一致したら、アプリケーションのWeb許可へ進まない。名前にhttpsがあっても、ルール種別の確認が必要なんですね。",
+      "caption": "その通信もNetworkで一致したら、ApplicationのWeb許可へ進まない。名前にhttpsがあっても、ルール種別の確認が必要なんですね。",
+      "subtitleLines": [
+        "その通信もNetworkで一致したら、ApplicationのWeb許可へ進まない。",
+        "名前にhttpsがあっても、ルール種別の確認が必要なんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その通信もNetworkで一致したら、ApplicationのWeb許可へ進まない。名前にhttpsがあっても、ルール種別の確認が必要なんですね。",
+          "lines": [
+            "その通信もNetworkで一致したら、ApplicationのWeb許可へ進まない。",
+            "名前にhttpsがあっても、ルール種別の確認が必要なんですね。"
+          ],
+          "weight": 73
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "管理・監視・認証を区画と宛先で絞る",
+        "cards": [
+          {
+            "id": "0",
+            "title": "管理VM区画",
+            "body": [
+              "Entra認証",
+              "Azure Resource Manager",
+              "監視・エージェント保存先"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "ACA区画",
+            "body": [
+              "aca-monitor-https",
+              "AzureMonitor・Entraのタグ",
+              "TCP 443：Networkで判定"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-060-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "そのとおりです。独自ディーエヌエスを指定した場合にはカスタム・ディーエヌエスを作り、エーピーアイエムと管理ブイエム区画からディーエヌエスのアイピー群へ、ティーシーピーとユーディーピーの53番を許可します。",
+      "caption": "そのとおりです。独自DNSを指定した場合にはcustom-dnsを作り、APIMと管理VM区画からDNSのIP群へ、TCPとUDPの53番を許可します。",
+      "subtitleLines": [
+        "そのとおりです。独自DNSを指定した場合にはcustom-dnsを作り、",
+        "APIMと管理VM区画からDNSのIP群へ、TCPとUDPの53番を許可します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのとおりです。独自DNSを指定した場合にはcustom-dnsを作り、APIMと管理VM区画からDNSのIP群へ、TCPとUDPの53番を許可します。",
+          "lines": [
+            "そのとおりです。独自DNSを指定した場合にはcustom-dnsを作り、",
+            "APIMと管理VM区画からDNSのIP群へ、TCPとUDPの53番を許可します。"
+          ],
+          "weight": 76
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自DNSは、設定・経路・送信元を確認する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "custom-dnsの定義",
+            "body": [
+              "独自DNSを指定した場合だけ",
+              "APIM・管理VM → DNSのIP群",
+              "TCP / UDP 53"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "通過するかは別確認",
+            "body": [
+              "公開例は空配列：作成しない",
+              "この送信元にACAは含まない",
+              "VNet内の直接経路もあり得る"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-061-mako",
+      "speaker": "mako",
+      "chapterId": "operations",
+      "speech": "独自ディーエヌエスを使うなら、エーシーエーからの問い合わせも、この同じルールで自動的に許可されるんでしょうか。",
+      "caption": "独自DNSを使うなら、ACAからの問い合わせも、この同じルールで自動的に許可されるんでしょうか。",
+      "subtitleLines": [
+        "独自DNSを使うなら、ACAからの問い合わせも、",
+        "この同じルールで自動的に許可されるんでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "独自DNSを使うなら、ACAからの問い合わせも、この同じルールで自動的に許可されるんでしょうか。",
+          "lines": [
+            "独自DNSを使うなら、ACAからの問い合わせも、",
+            "この同じルールで自動的に許可されるんでしょうか。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自DNSは、設定・経路・送信元を確認する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "custom-dnsの定義",
+            "body": [
+              "独自DNSを指定した場合だけ",
+              "APIM・管理VM → DNSのIP群",
+              "TCP / UDP 53"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "通過するかは別確認",
+            "body": [
+              "公開例は空配列：作成しない",
+              "この送信元にACAは含まない",
+              "VNet内の直接経路もあり得る"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-062-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "エーシーエー区画は含みません。また、公開例のディーエヌエス配列は空で、その場合はコレクションを作りません。定義される条件も確認します。",
+      "caption": "ACA区画は含みません。また、公開例のDNS配列は空で、その場合はコレクションを作りません。定義される条件も確認します。",
+      "subtitleLines": [
+        "ACA区画は含みません。また、公開例のDNS配列は空で、",
+        "その場合はコレクションを作りません。定義される条件も確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ACA区画は含みません。また、公開例のDNS配列は空で、その場合はコレクションを作りません。定義される条件も確認します。",
+          "lines": [
+            "ACA区画は含みません。また、公開例のDNS配列は空で、",
+            "その場合はコレクションを作りません。定義される条件も確認します。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自DNSは、設定・経路・送信元を確認する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "custom-dnsの定義",
+            "body": [
+              "独自DNSを指定した場合だけ",
+              "APIM・管理VM → DNSのIP群",
+              "TCP / UDP 53"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "通過するかは別確認",
+            "body": [
+              "公開例は空配列：作成しない",
+              "この送信元にACAは含まない",
+              "VNet内の直接経路もあり得る"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-063-manabu",
+      "speaker": "manabu",
+      "chapterId": "operations",
+      "speech": "さらに、同じブイネット内のディーエヌエスへ直接向かう経路なら、その問い合わせはファイアウォールを通りません。ディーエヌエスへの許可と、実際の名前解決経路も一緒に読むわけですね。",
+      "caption": "さらに、同じVNet内のDNSへ直接向かう経路なら、その問い合わせはFirewallを通りません。DNSへの許可と、実際の名前解決経路も一緒に読むわけですね。",
+      "subtitleLines": [
+        "さらに、同じVNet内のDNSへ直接向かう経路なら、",
+        "その問い合わせはFirewallを通りません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "さらに、同じVNet内のDNSへ直接向かう経路なら、その問い合わせはFirewallを通りません。",
+          "lines": [
+            "さらに、同じVNet内のDNSへ直接向かう経路なら、",
+            "その問い合わせはFirewallを通りません。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "DNSへの許可と、実際の名前解決経路も一緒に読むわけですね。",
+          "lines": [
+            "DNSへの許可と、実際の名前解決経路も一緒に読むわけですね。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "独自DNSは、設定・経路・送信元を確認する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "custom-dnsの定義",
+            "body": [
+              "独自DNSを指定した場合だけ",
+              "APIM・管理VM → DNSのIP群",
+              "TCP / UDP 53"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "通過するかは別確認",
+            "body": [
+              "公開例は空配列：作成しない",
+              "この送信元にACAは含まない",
+              "VNet内の直接経路もあり得る"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-064-mako",
+      "speaker": "mako",
+      "chapterId": "operations",
+      "speech": "教材にはディーエヌエス プロキシーが有効ともあります。これを有効にすれば、ブイネット内の問い合わせ先が、自動的にファイアウォールへ切り替わるんですか。",
+      "caption": "教材にはDNS proxyが有効ともあります。これを有効にすれば、VNet内の問い合わせ先が、自動的にFirewallへ切り替わるんですか。",
+      "subtitleLines": [
+        "教材にはDNS proxyが有効ともあります。これを有効にすれば、",
+        "VNet内の問い合わせ先が、自動的にFirewallへ切り替わるんですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "教材にはDNS proxyが有効ともあります。これを有効にすれば、VNet内の問い合わせ先が、自動的にFirewallへ切り替わるんですか。",
+          "lines": [
+            "教材にはDNS proxyが有効ともあります。これを有効にすれば、",
+            "VNet内の問い合わせ先が、自動的にFirewallへ切り替わるんですか。"
+          ],
+          "weight": 70
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "DNS proxyの有効化だけで、VNet DNSは変わらない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall側の設定",
+            "body": [
+              "enableProxy: true",
+              "Network FQDNの名前解決を支える",
+              "上流DNSも設定に沿って決まる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "クライアント側の設定",
+            "body": [
+              "VNetのDNS設定は別に確認",
+              "自動でFirewall IPへ切り替わらない",
+              "名前解決の経路を追う"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-065-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "operations",
+      "speech": "自動では切り替わりません。プロキシーはネットワークルールのエフキューディーエヌ解決などを支えますが、ブイネットのディーエヌエス設定は別です。上流ディーエヌエスと問い合わせ経路も確認します。",
+      "caption": "自動では切り替わりません。proxyはNetworkルールのFQDN解決などを支えますが、VNetのDNS設定は別です。上流DNSと問い合わせ経路も確認します。",
+      "subtitleLines": [
+        "自動では切り替わりません。proxyはNetworkルールの",
+        "FQDN解決などを支えますが、VNetのDNS設定は別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自動では切り替わりません。proxyはNetworkルールのFQDN解決などを支えますが、VNetのDNS設定は別です。",
+          "lines": [
+            "自動では切り替わりません。proxyはNetworkルールの",
+            "FQDN解決などを支えますが、VNetのDNS設定は別です。"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "上流DNSと問い合わせ経路も確認します。",
+          "lines": [
+            "上流DNSと問い合わせ経路も確認します。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "DNS proxyの有効化だけで、VNet DNSは変わらない",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall側の設定",
+            "body": [
+              "enableProxy: true",
+              "Network FQDNの名前解決を支える",
+              "上流DNSも設定に沿って決まる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "クライアント側の設定",
+            "body": [
+              "VNetのDNS設定は別に確認",
+              "自動でFirewall IPへ切り替わらない",
+              "名前解決の経路を追う"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-066-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ここで確認問題です。エーピーアイエムからストレージタグのアイピーへティーシーピー 443で向かい、ネットワークのアローに一致しました。アプリケーションのエフキューディーエヌ一覧にも登録が必要でしょうか。",
+      "caption": "ここで確認問題です。APIMからStorageタグのIPへTCP 443で向かい、NetworkのAllowに一致しました。ApplicationのFQDN一覧にも登録が必要でしょうか。",
+      "subtitleLines": [
+        "ここで確認問題です。APIMからStorageタグのIPへTCP 443で向かい、",
+        "NetworkのAllowに一致しました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで確認問題です。APIMからStorageタグのIPへTCP 443で向かい、NetworkのAllowに一致しました。",
+          "lines": [
+            "ここで確認問題です。APIMからStorageタグのIPへTCP 443で向かい、",
+            "NetworkのAllowに一致しました。"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "ApplicationのFQDN一覧にも登録が必要でしょうか。",
+          "lines": [
+            "ApplicationのFQDN一覧にも登録が必要でしょうか。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "確認問題を出す進行役として、問いを明瞭に読み、語尾に短い考える間を置く。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認1：Storage通信は、二重の許可が必要？",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信条件",
+            "body": [
+              "APIM → StorageタグのIP",
+              "TCP 443",
+              "Network Allowに一致"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "問い",
+            "body": [
+              "ApplicationのFQDN一覧にも",
+              "登録が必要でしょうか？"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-067-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "追加で重ねて要求しない、が答えです。ネットワーク アローで終了します。その許可範囲を広げる変更が、エフキューディーエヌ制御にも影響するわけです。",
+      "caption": "追加で重ねて要求しない、が答えです。Network Allowで終了します。その許可範囲を広げる変更が、FQDN制御にも影響するわけです。",
+      "subtitleLines": [
+        "追加で重ねて要求しない、が答えです。Network Allowで終了します。",
+        "その許可範囲を広げる変更が、FQDN制御にも影響するわけです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "追加で重ねて要求しない、が答えです。Network Allowで終了します。その許可範囲を広げる変更が、FQDN制御にも影響するわけです。",
+          "lines": [
+            "追加で重ねて要求しない、が答えです。Network Allowで終了します。",
+            "その許可範囲を広げる変更が、FQDN制御にも影響するわけです。"
+          ],
+          "weight": 69
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "APIMからStorageへのTCP 443",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "APIM区画",
+            "detail": "送信元条件を満たす",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Network / Allow",
+            "detail": "apim-storage",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "StorageタグのIP",
+            "detail": "TCP 443に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "FWへ到達",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "ここで許可判定終了",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-068-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "二問目です。管理ブイエムからエヌティーピー・ドット・ウブントゥ・ドット・コムへ、ユーディーピー 123で時刻同期します。エフキューディーエヌが書かれていても、これはアプリケーションの許可でしょうか。",
+      "caption": "二問目です。管理VMからntp.ubuntu.comへ、UDP 123で時刻同期します。FQDNが書かれていても、これはApplicationの許可でしょうか。",
+      "subtitleLines": [
+        "二問目です。管理VMからntp.ubuntu.comへ、UDP 123で時刻同期します。",
+        "FQDNが書かれていても、これはApplicationの許可でしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "二問目です。管理VMからntp.ubuntu.comへ、UDP 123で時刻同期します。FQDNが書かれていても、これはApplicationの許可でしょうか。",
+          "lines": [
+            "二問目です。管理VMからntp.ubuntu.comへ、UDP 123で時刻同期します。",
+            "FQDNが書かれていても、これはApplicationの許可でしょうか。"
+          ],
+          "weight": 80
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "確認問題を出す進行役として、問いを明瞭に読み、語尾に短い考える間を置く。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認2：名前が書かれたらApplication？",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信条件",
+            "body": [
+              "管理VM → ntp.ubuntu.com",
+              "UDP 123"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "問い",
+            "body": [
+              "NetworkとApplication、",
+              "どちらで許可を判断しますか？"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-069-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "ネットワークです。ディーエヌエスで解決したアイピーとユーディーピー 123などを照合します。許可先以外のエヌティーピー通信を、アプリケーションのWebルールで通すことはありません。",
+      "caption": "Networkです。DNSで解決したIPとUDP 123などを照合します。許可先以外のNTP通信を、ApplicationのWebルールで通すことはありません。",
+      "subtitleLines": [
+        "Networkです。DNSで解決したIPとUDP 123などを照合します。",
+        "許可先以外のNTP通信を、ApplicationのWebルールで通すことはありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Networkです。DNSで解決したIPとUDP 123などを照合します。許可先以外のNTP通信を、ApplicationのWebルールで通すことはありません。",
+          "lines": [
+            "Networkです。DNSで解決したIPとUDP 123などを照合します。",
+            "許可先以外のNTP通信を、ApplicationのWebルールで通すことはありません。"
+          ],
+          "weight": 80
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "FQDNを指定するNTPもNetworkルール",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "管理VM",
+            "detail": "management-time",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "DNS解決したIP",
+            "detail": "ntp.ubuntu.com",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "Network照合",
+            "detail": "UDP 123を許可",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "名前を解決",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "IPとポートで判定",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-070-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "三問目です。標準ユーディーアールのエーシーエーからエスキューエルのピーイーへ接続できません。ファイアウォールにアローを追加すれば直る、と判断してよいでしょうか。",
+      "caption": "三問目です。標準UDRのACAからSQLのPEへ接続できません。FirewallにAllowを追加すれば直る、と判断してよいでしょうか。",
+      "subtitleLines": [
+        "三問目です。標準UDRのACAからSQLのPEへ接続できません。",
+        "FirewallにAllowを追加すれば直る、と判断してよいでしょうか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "三問目です。標準UDRのACAからSQLのPEへ接続できません。FirewallにAllowを追加すれば直る、と判断してよいでしょうか。",
+          "lines": [
+            "三問目です。標準UDRのACAからSQLのPEへ接続できません。",
+            "FirewallにAllowを追加すれば直る、と判断してよいでしょうか。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "確認問題を出す進行役として、問いを明瞭に読み、語尾に短い考える間を置く。",
+      "visual": {
+        "layout": "cards",
+        "heading": "確認3：SQL PEへ届かないとき",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信条件",
+            "body": [
+              "標準UDRのACA → SQL PE",
+              "Firewallを経由しない直接経路"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "問い",
+            "body": [
+              "FirewallへAllowを追加すれば",
+              "直ると判断できますか？"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-071-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "標準例は直接経路です。宛先アイピー、プライベート・ディーエヌエス、エヌエスジーや認証などを確認します。経由しないファイアウォールへ許可を足すだけで直るとは判断できません。",
+      "caption": "標準例は直接経路です。宛先IP、Private DNS、NSGや認証などを確認します。経由しないFirewallへ許可を足すだけで直るとは判断できません。",
+      "subtitleLines": [
+        "標準例は直接経路です。宛先IP、Private DNS、NSGや認証などを確認します。",
+        "経由しないFirewallへ許可を足すだけで直るとは判断できません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "標準例は直接経路です。宛先IP、Private DNS、NSGや認証などを確認します。経由しないFirewallへ許可を足すだけで直るとは判断できません。",
+          "lines": [
+            "標準例は直接経路です。宛先IP、Private DNS、NSGや認証などを確認します。",
+            "経由しないFirewallへ許可を足すだけで直るとは判断できません。"
+          ],
+          "weight": 77
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "定義されている許可と、実際に通る経路",
+        "cards": [
+          {
+            "id": "0",
+            "title": "Firewall経由",
+            "body": [
+              "AppGW → APIM",
+              "AppGW → ACA入口",
+              "往路・復路をそろえる"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "標準の直接経路",
+            "body": [
+              "APIM → Foundry PE",
+              "ACA → SQL・Key Vault PE",
+              "FWルールの有無と分ける"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-072-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ではネットワークの一致がないWeb通信なら、アプリケーションへ進む。たとえば管理ブイエムからアーカイブ・ドット・ウブントゥ・ドット・コムのエイチティーティーピー 80ですね。",
+      "caption": "ではNetworkの一致がないWeb通信なら、Applicationへ進む。たとえば管理VMからarchive.ubuntu.comのHTTP 80ですね。",
+      "subtitleLines": [
+        "ではNetworkの一致がないWeb通信なら、Applicationへ進む。",
+        "たとえば管理VMからarchive.ubuntu.comのHTTP 80ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ではNetworkの一致がないWeb通信なら、Applicationへ進む。たとえば管理VMからarchive.ubuntu.comのHTTP 80ですね。",
+          "lines": [
+            "ではNetworkの一致がないWeb通信なら、Applicationへ進む。",
+            "たとえば管理VMからarchive.ubuntu.comのHTTP 80ですね。"
+          ],
+          "weight": 78
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "確認問題を出す進行役として、問いを明瞭に読み、語尾に短い考える間を置く。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Network不一致なら、WebのFQDNを照合",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "管理VM",
+            "detail": "archive.ubuntu.com",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Application",
+            "detail": "vm-certificate-and-linux-packages",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "HTTP 80",
+            "detail": "宛先と送信元の条件に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "Networkは不一致の例",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-073-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "はい、図のアプリケーションルールで許可する例です。未許可の外部ホストは、他の許可や組み込み許可にも一致しないことを確かめ、既定拒否と説明します。",
+      "caption": "はい、図のApplicationルールで許可する例です。未許可の外部ホストは、他の許可や組み込み許可にも一致しないことを確かめ、既定拒否と説明します。",
+      "subtitleLines": [
+        "はい、図のApplicationルールで許可する例です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい、図のApplicationルールで許可する例です。",
+          "lines": [
+            "はい、図のApplicationルールで許可する例です。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "未許可の外部ホストは、他の許可や組み込み許可にも一致しないことを確かめ、既定拒否と説明します。",
+          "lines": [
+            "未許可の外部ホストは、他の許可や組み込み許可にも一致しないことを確かめ、",
+            "既定拒否と説明します。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "diagram",
+        "heading": "Network不一致なら、WebのFQDNを照合",
+        "nodes": [
+          {
+            "id": "0",
+            "label": "管理VM",
+            "detail": "archive.ubuntu.com",
+            "x": 30,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "1",
+            "label": "Application",
+            "detail": "vm-certificate-and-linux-packages",
+            "x": 435,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          },
+          {
+            "id": "2",
+            "label": "HTTP 80",
+            "detail": "宛先と送信元の条件に一致",
+            "x": 840,
+            "y": 185,
+            "width": 330,
+            "height": 115
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "label": "Networkは不一致の例",
+            "points": [
+              [
+                195,
+                300
+              ],
+              [
+                195,
+                355
+              ],
+              [
+                600,
+                355
+              ],
+              [
+                600,
+                300
+              ]
+            ]
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Allow",
+            "points": [
+              [
+                600,
+                300
+              ],
+              [
+                600,
+                420
+              ],
+              [
+                1005,
+                420
+              ],
+              [
+                1005,
+                300
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "最後に、基盤管理者が設定を見直す場面を整理しましょう。新しい接続先を許可してほしい、と依頼されたら、何をそろえますか。",
+      "caption": "最後に、基盤管理者が設定を見直す場面を整理しましょう。新しい接続先を許可してほしい、と依頼されたら、何をそろえますか。",
+      "subtitleLines": [
+        "最後に、基盤管理者が設定を見直す場面を整理しましょう。",
+        "新しい接続先を許可してほしい、と依頼されたら、何をそろえますか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後に、基盤管理者が設定を見直す場面を整理しましょう。新しい接続先を許可してほしい、と依頼されたら、何をそろえますか。",
+          "lines": [
+            "最後に、基盤管理者が設定を見直す場面を整理しましょう。",
+            "新しい接続先を許可してほしい、と依頼されたら、何をそろえますか。"
+          ],
+          "weight": 59
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更前に、同じ通信について照合する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信を具体化",
+            "body": [
+              "実際の送信元IP",
+              "宛先IP・ホスト名",
+              "プロトコル・ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "設定と実態を結ぶ",
+            "body": [
+              "経路 → 種別 → 優先度 → 条件",
+              "設定の正本と生成結果を確認",
+              "変更後は新しい接続とログ"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "実際の送信元アイピー、宛先アイピーやホスト名、プロトコルとポートです。同じ通信の経路、種別、グループ、コレクション、条件とアクションを照合します。",
+      "caption": "実際の送信元IP、宛先IPやホスト名、プロトコルとポートです。同じ通信の経路、種別、グループ、コレクション、条件とActionを照合します。",
+      "subtitleLines": [
+        "実際の送信元IP、宛先IPやホスト名、プロトコルとポートです。同じ通信",
+        "の経路、種別、グループ、コレクション、条件とActionを照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "実際の送信元IP、宛先IPやホスト名、プロトコルとポートです。同じ通信の経路、種別、グループ、コレクション、条件とActionを照合します。",
+          "lines": [
+            "実際の送信元IP、宛先IPやホスト名、プロトコルとポートです。同じ通信",
+            "の経路、種別、グループ、コレクション、条件とActionを照合します。"
+          ],
+          "weight": 70
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更前に、同じ通信について照合する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信を具体化",
+            "body": [
+              "実際の送信元IP",
+              "宛先IP・ホスト名",
+              "プロトコル・ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "設定と実態を結ぶ",
+            "body": [
+              "経路 → 種別 → 優先度 → 条件",
+              "設定の正本と生成結果を確認",
+              "変更後は新しい接続とログ"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-076-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "依頼の目的も合わせます。誰が何のために使う通信かを明確にし、必要な範囲を選ぶ。変更後は、新しい接続とログで意図した判定になったかを確認します。",
+      "caption": "依頼の目的も合わせます。誰が何のために使う通信かを明確にし、必要な範囲を選ぶ。変更後は、新しい接続とログで意図した判定になったかを確認します。",
+      "subtitleLines": [
+        "依頼の目的も合わせます。",
+        "誰が何のために使う通信かを明確にし、必要な範囲を選ぶ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "依頼の目的も合わせます。誰が何のために使う通信かを明確にし、必要な範囲を選ぶ。",
+          "lines": [
+            "依頼の目的も合わせます。",
+            "誰が何のために使う通信かを明確にし、必要な範囲を選ぶ。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "変更後は、新しい接続とログで意図した判定になったかを確認します。",
+          "lines": [
+            "変更後は、新しい接続とログで意図した判定になったかを確認します。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "変更前に、同じ通信について照合する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信を具体化",
+            "body": [
+              "実際の送信元IP",
+              "宛先IP・ホスト名",
+              "プロトコル・ポート"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "設定と実態を結ぶ",
+            "body": [
+              "経路 → 種別 → 優先度 → 条件",
+              "設定の正本と生成結果を確認",
+              "変更後は新しい接続とログ"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "本番の公開設定には、プレミアムやアイディーピーエス アラートという言葉もあります。このアラートは、ルールでデナイするのと同じ意味ですか。",
+      "caption": "本番の公開設定には、PremiumやIDPS Alertという言葉もあります。このAlertは、ルールでDenyするのと同じ意味ですか。",
+      "subtitleLines": [
+        "本番の公開設定には、PremiumやIDPS Alertという言葉もあります。",
+        "このAlertは、ルールでDenyするのと同じ意味ですか。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番の公開設定には、PremiumやIDPS Alertという言葉もあります。このAlertは、ルールでDenyするのと同じ意味ですか。",
+          "lines": [
+            "本番の公開設定には、PremiumやIDPS Alertという言葉もあります。",
+            "このAlertは、ルールでDenyするのと同じ意味ですか。"
+          ],
+          "weight": 68
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allow / Denyと、検知のAlertを区別する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信規則",
+            "body": [
+              "条件に一致するか",
+              "コレクションのAction",
+              "最終的な既定拒否"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開configの例",
+            "body": [
+              "本番：Premium / IDPS Alert",
+              "Threat IntelligenceもAlert",
+              "検出しただけで自動遮断とはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-078-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "別の設定です。本番公開例のアイディーピーエスとスレット・インテリジェンスはアラート。検出だけで自動遮断するモードとは説明しません。詳しくは第10回で扱います。",
+      "caption": "別の設定です。本番公開例のIDPSとThreat IntelligenceはAlert。検出だけで自動遮断するモードとは説明しません。詳しくは第10回で扱います。",
+      "subtitleLines": [
+        "別の設定です。本番公開例のIDPSとThreat IntelligenceはAlert。検出",
+        "だけで自動遮断するモードとは説明しません。詳しくは第10回で扱います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "別の設定です。本番公開例のIDPSとThreat IntelligenceはAlert。検出だけで自動遮断するモードとは説明しません。詳しくは第10回で扱います。",
+          "lines": [
+            "別の設定です。本番公開例のIDPSとThreat IntelligenceはAlert。検出",
+            "だけで自動遮断するモードとは説明しません。詳しくは第10回で扱います。"
+          ],
+          "weight": 81
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の問いに答え、技術用語の前後を少し区切る。数字・条件・例外を明瞭に、通常速度で説明する。",
+      "visual": {
+        "layout": "cards",
+        "heading": "Allow / Denyと、検知のAlertを区別する",
+        "cards": [
+          {
+            "id": "0",
+            "title": "通信規則",
+            "body": [
+              "条件に一致するか",
+              "コレクションのAction",
+              "最終的な既定拒否"
+            ]
+          },
+          {
+            "id": "1",
+            "title": "公開configの例",
+            "body": [
+              "本番：Premium / IDPS Alert",
+              "Threat IntelligenceもAlert",
+              "検出しただけで自動遮断とはしない"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-079-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "今日の要点は三つです。まずファイアウォールを通るか。次にネットワークを先に照合し、一致すれば終了。そして送信元と宛先、ポートを、許可する目的に結び付けることです。",
+      "caption": "今日の要点は三つです。まずFirewallを通るか。次にNetworkを先に照合し、一致すれば終了。そして送信元と宛先、ポートを、許可する目的に結び付けることです。",
+      "subtitleLines": [
+        "今日の要点は三つです。まずFirewallを通るか。",
+        "次にNetworkを先に照合し、一致すれば終了。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の要点は三つです。まずFirewallを通るか。次にNetworkを先に照合し、一致すれば終了。",
+          "lines": [
+            "今日の要点は三つです。まずFirewallを通るか。",
+            "次にNetworkを先に照合し、一致すれば終了。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "そして送信元と宛先、ポートを、許可する目的に結び付けることです。",
+          "lines": [
+            "そして送信元と宛先、ポートを、許可する目的に結び付けることです。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "直前の発言を受け、必要な理由と管理者の判断を落ち着いて整理する。",
+      "visual": {
+        "layout": "summary",
+        "heading": "今日の到達点：通信ごとに判定理由を説明する",
+        "bullets": [
+          "まず、経路上でFirewallへ届くかを確かめる",
+          "Networkが先。不一致のWeb通信はApplicationへ",
+          "送信元・宛先・ポートと、許可の目的を結び付ける"
+        ]
+      }
+    },
+    {
+      "id": "lesson05-turn-080-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "これで、何を材料に、どの順番で判断するかがつながりました。次回は外向き通信と出口アイピーです。Webの依存先と、接続先から見える送信元アイピーを追っていきます。",
+      "caption": "これで、何を材料に、どの順番で判断するかがつながりました。次回は外向き通信と出口IPです。Webの依存先と、接続先から見える送信元IPを追っていきます。",
+      "subtitleLines": [
+        "これで、何を材料に、どの順番で判断するかがつながりました。",
+        "次回は外向き通信と出口IPです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "これで、何を材料に、どの順番で判断するかがつながりました。次回は外向き通信と出口IPです。",
+          "lines": [
+            "これで、何を材料に、どの順番で判断するかがつながりました。",
+            "次回は外向き通信と出口IPです。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "Webの依存先と、接続先から見える送信元IPを追っていきます。",
+          "lines": [
+            "Webの依存先と、接続先から見える送信元IPを追っていきます。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問や理解を確かめ、相手の返答へ自然につなぐ。問いの語尾だけを穏やかに上げる。",
+      "visual": {
+        "layout": "summary",
+        "heading": "今日の到達点：通信ごとに判定理由を説明する",
+        "bullets": [
+          "まず、経路上でFirewallへ届くかを確かめる",
+          "Networkが先。不一致のWeb通信はApplicationへ",
+          "送信元・宛先・ポートと、許可の目的を結び付ける"
+        ]
+      }
+    }
+  ]
+}

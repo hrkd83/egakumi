@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "format": "egakumi-study-podcast",
+  "provider": "google-cloud",
+  "modelId": "gemini-3.8-flash-tts",
+  "previousProductionCast": "podcast-cast.json",
+  "speedDecision": {
+    "date": "2026-11-02",
+    "timezone": "Asia/Tokyo",
+    "speed": 1.0,
+    "basis": "ユーザーがGemini 3.8 Flashと比較ページの3人の声を採用し、全員通常速度で第1回を再制作するよう指定。"
+  },
+  "members": {
+    "mako": {
+      "name": "MAKO",
+      "spokenName": "マコ",
+      "role": "Moderator",
+      "characterRole": "Editor-in-Chief",
+      "studyRole": "進行・質問",
+      "voiceId": "Aoede",
+      "voiceName": "Aoede",
+      "provider": "google-cloud",
+      "modelId": "gemini-3.8-flash-tts",
+      "speed": 1.0,
+      "status": "selected",
+      "color": "#a46c51",
+      "portrait": "assets/portraits/mako.webp",
+      "style": "視聴者の疑問を一緒に考える進行役。明るさは控えめに、質問の語尾は自然に上げる。理解がつながった反応は、短い納得として返す。",
+      "basis": "ユーザーがGemini 3.8 Flashの比較サンプルでこの声を採用し、第1回の再制作を指定。",
+      "sources": [
+        {
+          "repository": "source-podcast",
+          "path": "foundry/podcast/settings.py",
+          "purpose": "現行PodcastのMakoがBreeであることを確認。source-podcast側の話速1.1は今回の話速設定へ引き継がない。"
+        },
+        {
+          "repository": "source-podcast",
+          "path": "foundry/editorial_team/roles/editor-in-chief.md",
+          "purpose": "本人の基本役割"
+        }
+      ],
+      "roleDisplayBasis": "今回の勉強会で、質問・進行を担当する役割を表示する。"
+    },
+    "manabu": {
+      "name": "MANABU",
+      "spokenName": "マナブ",
+      "role": "Product Manager",
+      "characterRole": "Product Manager",
+      "studyRole": "プロダクトの目的・提供価値",
+      "voiceId": "Charon",
+      "voiceName": "Charon",
+      "provider": "google-cloud",
+      "modelId": "gemini-3.8-flash-tts",
+      "speed": 1.0,
+      "status": "selected",
+      "color": "#8f9373",
+      "portrait": "assets/portraits/manabu.webp",
+      "style": "親しみのある落ち着いた声で、目的や理由を短い返答として話す。相手に言い聞かせるのではなく、一緒に整理する会話にする。",
+      "basis": "ユーザーがGemini 3.8 Flashの比較サンプルでこの声を採用し、第1回の再制作を指定。",
+      "sources": [
+        {
+          "repository": "source-podcast",
+          "path": "scratch/dragon-hd-casting/current-assignments.json",
+          "purpose": "Manabuの過去配役はJuno"
+        },
+        {
+          "repository": "source-podcast",
+          "path": "foundry/editorial_team/roles/product-manager.md",
+          "purpose": "利用者の課題、事業目的、提供価値、優先順位、成果検証を扱う本人設定"
+        }
+      ],
+      "roleDisplayBasis": "本人設定の役職名を表示する。勉強会での分担はstudyRoleに分ける。"
+    },
+    "ikumi": {
+      "name": "IKUMI",
+      "spokenName": "イクミ",
+      "role": "Solution Architect",
+      "characterRole": "Solution Architect",
+      "studyRole": "技術設計・実装",
+      "voiceId": "Orus",
+      "voiceName": "Orus",
+      "provider": "google-cloud",
+      "modelId": "gemini-3.8-flash-tts",
+      "speed": 1.0,
+      "status": "selected",
+      "color": "#7e999f",
+      "portrait": "assets/portraits/ikumi.webp",
+      "style": "仕組みを知る同僚として、明瞭で穏やかに説明する。技術用語の前後は少し区切り、質問への返答として自然に話す。",
+      "basis": "ユーザーがGemini 3.8 Flashの比較サンプルでこの声を採用し、第1回の再制作を指定。",
+      "sources": [
+        {
+          "repository": "source-podcast",
+          "path": "scratch/dragon-hd-casting/current-assignments.json",
+          "purpose": "確認サンプル後の交換を反映したIkumiの過去配役はMacerio"
+        },
+        {
+          "repository": "source-podcast",
+          "path": "foundry/editorial_team/roles/solution-architect.md",
+          "purpose": "インフラからアプリ、データ、AI・MLまでの設計、実装、検証、運用を扱う本人設定"
+        }
+      ],
+      "roleDisplayBasis": "本人設定の役職名を表示する。勉強会での分担はstudyRoleに分ける。"
+    }
+  },
+  "portraitSource": {
+    "repository": "source-portraits",
+    "directory": "public/images/talents/portraits/",
+    "profileSource": "lib/talents/profiles.ts",
+    "sourcePodcastReference": "media/podcast/assets/manifest.json",
+    "policy": "既存の背景透過肖像を使用し、本人の顔や身体を再制作しない。"
+  },
+  "speech": {
+    "provider": "google-cloud",
+    "model": "gemini-3.8-flash-tts",
+    "modelId": "gemini-3.8-flash-tts",
+    "apiFamily": "agent-platform-generate-content",
+    "projectId": "egakumi-example",
+    "location": "global",
+    "language": "ja-JP",
+    "speed": 1.0,
+    "enhancePronunciation": null,
+    "pronunciationPolicy": "表示名はMAKO / MANABU / IKUMI、読み上げはマコ／マナブ／イクミ。APIやネットワーク用語の読みを台詞またはspeechMetadata.styleで指定する。Azure固有のenhancePronunciationは適用しない。",
+    "globalStyle": "日本語の技術勉強会を3人で進める、落ち着いたポッドキャストの会話。目の前の相手へ自然に話しかけ、通常の速さで話す。短い相づち、問いかけ、納得した反応に抑揚を付ける。本文の言葉は追加・省略せず、句読点で短く間を取る。人名はマコ、マナブ、イクミ。APIはエーピーアイ、APIMはエーピーアイエム、PEはピーイー、NSGはエヌエスジーと読む。",
+    "styleField": "contents[].parts[].speechMetadata.style",
+    "paralinguistics": "相づち・フィラーは本文に保ち、場面ごとの感情・反応・息継ぎ・笑いの演技は自然言語のstyleへ記録する。Azureの角括弧タグを読み上げ本文へ送らない。",
+    "decisionDate": "2026-11-02"
+  },
+  "selectionSource": {
+    "type": "user-selection-after-listening",
+    "url": "http://127.0.0.1:8779/",
+    "configuration": "gemini-audition.json",
+    "decisionDate": "2026-11-02",
+    "timezone": "Asia/Tokyo",
+    "basis": "「Gemini 3.8 Flashのほうでいきましょう。この3人の声で、全員通常速度のまま、第1回の動画を作り直してください。」というユーザー指定。",
+    "selected": {
+      "mako": {
+        "voice": "Aoede",
+        "speed": 1.0
+      },
+      "manabu": {
+        "voice": "Charon",
+        "speed": 1.0
+      },
+      "ikumi": {
+        "voice": "Orus",
+        "speed": 1.0
+      }
+    }
+  },
+  "roleDisplayDecision": {
+    "date": "2026-11-01",
+    "basis": "MANABU・IKUMIは指定された専門職種、MAKOは勉強会内の進行・質問の役割を表示する。",
+    "roles": {
+      "mako": "Moderator",
+      "manabu": "Product Manager",
+      "ikumi": "Solution Architect"
+    }
+  }
+}

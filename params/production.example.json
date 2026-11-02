@@ -1,0 +1,148 @@
+{
+  "$schema": "../schemas/params.schema.json",
+  "$comment": "企業・環境固有の入力です。このファイルをparams/production.local.jsonへコピーし、公開ID・DNS・IP計画・連絡先等を設定します。秘密値は書かずazd upの対話入力を使います。azureTenantIdはAzure構築先、entraTenantIdはCMのOAuth認証先です。同一テナントなら両方に同じID、別テナントならそれぞれのIDを設定します。credentialProvidersのclientIdに準備したEntraアプリのIDを記入します。CM providerはentraTenantIdを使い、client secretは参照先ファイルへ非表示で入力します。azd upは基盤の構築後、GatewayとPortalを順に配備し、API登録まで完了します。 Portal配備時にはportalApiKeysのグループ名正規表現・所有グループObject ID・許可製品・購読数上限を対話入力し、platformGroupIdも同じparamsへ保存します。表示名はGraphから取得します。",
+  "schemaVersion": 1,
+  "configFile": "../config/production.json",
+  "productName": "egakumi",
+  "environmentName": "prod",
+  "subscriptionId": "00000000-0000-0000-0000-000000000000",
+  "azureTenantId": "00000000-0000-0000-0000-000000000000",
+  "entraTenantId": "00000000-0000-0000-0000-000000000000",
+  "network": {
+    "addressSpaces": [
+      "10.40.0.0/24",
+      "10.40.1.0/24",
+      "10.40.2.0/24",
+      "10.40.3.0/24"
+    ],
+    "subnetPrefixes": {
+      "agw": "10.40.0.0/24",
+      "pep": "10.40.1.0/24",
+      "firewall": "10.40.2.0/26",
+      "apim": "10.40.2.64/26",
+      "management": "10.40.2.128/26",
+      "aca": "10.40.2.192/26"
+    },
+    "clientAddressPrefixes": [
+      "0.0.0.0/0"
+    ],
+    "operatorAddressPrefixes": [],
+    "dnsServers": [],
+    "ntpAddressPrefixes": [
+      "Internet"
+    ],
+    "managementAdditionalSecurityRules": [],
+    "firewall": {
+      "dnsServers": [],
+      "snatPrivateRanges": [
+        "IANAPrivateRanges"
+      ],
+      "idpsPrivateRanges": [],
+      "bypassTrafficSettings": [],
+      "apimAdditionalNetworkRules": [],
+      "managementAdditionalNetworkRules": [],
+      "apimAdditionalApplicationRules": [],
+      "managementAdditionalApplicationRules": [],
+      "apimAllowedFqdns": [],
+      "managementAllowedFqdns": []
+    },
+    "ntpFqdns": [
+      "ntp.ubuntu.com"
+    ]
+  },
+  "services": {
+    "publisherName": "Egakumi AI platform",
+    "publisherEmail": "replace-with-your-email@example.com"
+  },
+  "gateway": {
+    "publicHostName": "gateway.example.com",
+    "authentication": {
+      "subscriptionKeyHeader": "api-key",
+      "credentialLogin": {
+        "providerNames": [
+          "graph-delegated"
+        ],
+        "transactionLifetimeSeconds": 600,
+        "loginCallsPerMinute": 10,
+        "idleTimeoutSeconds": 604800,
+        "absoluteLifetimeSeconds": 2592000,
+        "rotationIntervalSeconds": 86400,
+        "rotationGraceSeconds": 300,
+        "rotationHandoffSeconds": 600,
+        "rotationCandidateTtlSeconds": 600
+      }
+    },
+    "existingWafPolicyId": "",
+    "grpc": {
+      "publicHostName": "gateway.example.com"
+    },
+    "rateLimits": {
+      "subscriptionKey": {
+        "overrides": []
+      },
+      "application": {
+        "overrides": []
+      }
+    }
+  },
+  "management": {
+    "adminUsername": "egakumiadmin",
+    "sshPublicKeyFile": "../secrets/management-ssh.pub",
+    "loginAssignments": []
+  },
+  "monitoring": {
+    "operatorEmailAddresses": [
+      "replace-with-your-email@example.com"
+    ],
+    "auditAllowedIpAddresses": [],
+    "auditReaders": []
+  },
+  "certificate": {
+    "contactEmail": "replace-with-your-email@example.com",
+    "pluginArgumentsFile": "../secrets/dns-plugin-arguments.json",
+    "domainNames": [
+      "*.example.com"
+    ],
+    "plugin": "Cloudflare"
+  },
+  "authorization": {
+    "projectAdministrators": [],
+    "projectDevelopers": [],
+    "foundryReaders": [],
+    "catalogReaders": []
+  },
+  "credentialProviders": [
+    {
+      "name": "graph-delegated",
+      "displayName": "Delegated Graph connection",
+      "identityProvider": "aad",
+      "clientId": "00000000-0000-0000-0000-000000000000",
+      "clientSecretFile": "../secrets/entra-client-secret.txt",
+      "resourceUri": "https://graph.microsoft.com",
+      "scopes": "openid profile email offline_access https://graph.microsoft.com/User.Read",
+      "identityEndpoint": "https://graph.microsoft.com/v1.0/me",
+      "identityIdProperty": "id",
+      "connectionNames": [],
+      "pool": {
+        "count": 12,
+        "capacity": 8000
+      }
+    }
+  ],
+  "apiDefinitions": [],
+  "location": "japaneast",
+  "foundryLocation": "eastus2",
+  "apiCenterLocation": "eastus",
+  "tags": {
+    "purpose": "egakumi-platform"
+  },
+  "publishApis": true,
+  "portal": {
+    "publicHostName": "portal.example.com"
+  },
+  "portalApiKeys": {
+    "groups": [],
+    "groupNamePattern": "",
+    "verificationSubscriptions": []
+  }
+}

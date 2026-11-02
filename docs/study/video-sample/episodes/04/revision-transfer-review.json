@@ -1,0 +1,23 @@
+{
+  "status": "passed",
+  "revision": "teaching-settings-v2",
+  "sourceScriptSha256": "deb3acd37d1c0dc54a356300edc6d79a5d846a1cd6e05a53666a347416b0be74",
+  "configurationSha256": "6ae6b5efb836e1f7c3b68558b721c837adaaa7ab8b1e9dd2ba54841e9dfc3390",
+  "cachedRequestsWithIdenticalHash": 85,
+  "newRequestIds": [
+    "lesson04-turn-071r2-mako",
+    "lesson04-turn-072r2-ikumi"
+  ],
+  "newRequests": 2,
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/egakumi-example/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent",
+  "source": "authored educational dialogue about route propagation; no live Azure query",
+  "credentialLikeMatches": {
+    "privateKey": 0,
+    "apiKey": 0,
+    "bearer": 0,
+    "jwt": 0,
+    "email": 0
+  },
+  "networkRequestsMade": false,
+  "authenticationRead": false
+}

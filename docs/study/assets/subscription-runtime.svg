@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="880" viewBox="0 0 1300 880" role="img" aria-labelledby="title desc">
+<title id="title">APIMサブスクリプション管理を実行するPortal Container Appと関連Azureリソース</title><desc id="desc">利用者はApp GatewayとFirewallを経由して内部ACAの常駐Portalへ接続する。PortalがSQL、Graph、Azure管理APIを操作する。別の手動SQL初期化JobがDDLと検証APIMサブスクリプションを登録し、15分ごとのJobがグループ観測だけを更新する。3つの実行単位は同一ACRイメージを使う。APIMのデータプレーンは管理APIと分離し、内部プロファイルAPIをPortalへ照会する。</desc>
+<defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8" fill="none" stroke="#6b8972" stroke-width="1.2"/></marker><style>
+text{font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;fill:#1e302d}.title{font-size:20px;font-weight:700;letter-spacing:-.5px}.subtitle{font-size:12px;fill:#687a6c}.head{font-size:16px;font-weight:650}.small{font-size:12px;fill:#617568}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;fill:#5a7663}.node{fill:#fffefa;stroke:#d4dfcf;stroke-width:1.3}.group{fill:#edf5eb;stroke:#b3c9a8;stroke-dasharray:7 4;stroke-width:1.5}.primary{fill:#164c43;stroke:#164c43}.white{fill:#fffefa}.light{fill:#bfd2bd}.job{fill:#fbfaf2;stroke:#cfdbc5;stroke-width:1.3}.route{fill:none;stroke:#6b8972;stroke-width:1.5;marker-end:url(#arrow)}.logical{fill:none;stroke:#8b9f81;stroke-width:1.3;stroke-dasharray:5 4;marker-end:url(#arrow)}.profile{fill:none;stroke:#006b5e;stroke-width:1.6;stroke-dasharray:5 4;marker-end:url(#arrow)}.label{font-size:11px;fill:#60785c;paint-order:stroke;stroke:#fffefa;stroke-width:5px;stroke-linejoin:round}.tag{font-size:9px;letter-spacing:1px;fill:#006b5e;font-weight:650}
+</style></defs><rect width="1300" height="880" rx="8" fill="#fffefa"/>
+<text class="title" x="30" y="34" >PortalとJobの実行構成</text>
+<text class="subtitle" x="1265" y="34" text-anchor="end">実行場所・認証ID・通信方向を読む</text>
+<rect class="group" x="690" y="66" width="575" height="420" rx="9"/>
+<text class="tag" x="714" y="91" >INTERNAL CONTAINER APPS ENVIRONMENT / cae-${stem}</text>
+<rect class="node primary" x="720" y="119" width="515" height="128" rx="6"/>
+<text class="head white" x="738" y="148" >Portal Container App / Next.jsサーバー</text>
+<text class="small light" x="738" y="171" >ca-${stem}-portal · port 3000 · replicas 1–2</text>
+<text class="small light" x="738" y="193" >通常の発行・停止・削除 ＋ 管理者のAPIMサブスクリプション同期</text>
+<text class="small light" x="738" y="215" >要求ごとにSQLとAPIM管理APIを操作 / Portal実行ID</text>
+<text class="label" x="721" y="271" >同じイメージでも、Jobは別のコマンドを実行</text>
+<rect class="job" x="720" y="289" width="245" height="158" rx="6"/>
+<text class="tag" x="738" y="313" >MANUAL / DEPLOYMENT</text>
+<text class="head" x="738" y="339" >SQL初期化Job</text>
+<text class="small" x="738" y="363" >caj-${stem}-portal-schema</text>
+<text class="small" x="738" y="385" >表の定義・権限・承認設定</text>
+<text class="small" x="738" y="402" ><tspan x="738">明示した検証用</tspan><tspan x="738" dy="16">APIMサブスクリプションを登録</tspan></text>
+<text class="small" x="738" y="437" >SQL: 初期化ID / ARM: Portal実行ID</text>
+<rect class="job" x="985" y="289" width="250" height="158" rx="6"/>
+<text class="tag" x="1003" y="313" >SCHEDULE / EVERY 15 MIN</text>
+<text class="head" x="1003" y="339" >所有グループ観測Job</text>
+<text class="small" x="1003" y="363" >caj-${stem}-portal-groups</text>
+<text class="small" x="1003" y="385" >Graph → グループ観測をSQL更新</text>
+<text class="small" x="1003" y="402" ><tspan x="1003">APIMサブスクリプション・キーの</tspan><tspan x="1003" dy="16">自動変更はしない</tspan></text>
+<text class="small" x="1003" y="437" >SQL: Portal実行ID / Graph: Entraアプリ</text>
+<rect class="node" x="30" y="80" width="165" height="76" rx="6"/>
+<text class="head" x="48" y="109" >ブラウザー</text>
+<text class="small" x="48" y="132" >Portal利用者・管理者</text>
+<rect class="node" x="235" y="80" width="210" height="76" rx="6"/>
+<text class="head" x="253" y="109" >Application Gateway</text>
+<text class="small" x="253" y="132" >公開HTTPS / WAF</text>
+<rect class="node" x="485" y="80" width="165" height="76" rx="6"/>
+<text class="head" x="503" y="109" >Firewall</text>
+<text class="small" x="503" y="132" >内部環境の仮想IPへ転送</text>
+<path class="route" d="M195 118H235"/>
+<path class="route" d="M445 118H485"/>
+<path class="route" d="M650 118H675V174H720"/>
+<rect class="node" x="30" y="226" width="280" height="112" rx="6"/>
+<text class="tag" x="48" y="250" >IDENTITY / DIRECTORY</text>
+<text class="head" x="48" y="276" >Entra ID ＋ Microsoft Graph</text>
+<text class="small" x="48" y="300" >ログイン / グループ所属・利用可否</text>
+<text class="small" x="48" y="322" >所属照会はEntraアプリで認証</text>
+<path class="route" d="M720 225H652V282H310"/>
+<text class="label" x="455" y="273" >Portalが照会</text>
+<rect class="node" x="30" y="385" width="280" height="112" rx="6"/>
+<text class="tag" x="48" y="409" >CONTROL PLANE / AZURE REST</text>
+<text class="head" x="48" y="435" >APIMの管理API / ARM</text>
+<text class="small" x="48" y="459" >management.azure.com</text>
+<text class="small" x="48" y="481" >PUT・PATCH・DELETE・listSecrets</text>
+<path class="route" d="M720 235H674V441H310"/>
+<text class="label" x="432" y="431" >Portal実行ID ＋ APIMの操作権限</text>
+<rect class="node" x="30" y="558" width="280" height="112" rx="6"/>
+<text class="tag" x="48" y="582" >IMAGE / PRIVATE ENDPOINT</text>
+<text class="head" x="48" y="608" >非公開ACR</text>
+<text class="small" x="48" y="632" >portal@${imageDigest}</text>
+<text class="small" x="48" y="654" >配布経路は次のイメージ配布図へ</text>
+<rect class="node" x="375" y="558" width="340" height="112" rx="6"/>
+<text class="tag" x="393" y="582" >DATA / SQL PRIVATE ENDPOINT</text>
+<text class="head" x="393" y="608" >Azure SQL / Portal専用DB</text>
+<text class="small" x="393" y="632" >sqldb-${stem}-portal</text>
+<text class="small" x="393" y="654" >台帳・監査・制限・認証 / 1433 TLS</text>
+<path class="route" d="M794 247V263H703V510H550V558"/>
+<text class="label" x="577" y="500" >実行IDのトークンで接続</text>
+<rect class="node" x="760" y="558" width="270" height="112" rx="6"/>
+<text class="tag" x="778" y="582" >SECRET / KEY VAULT</text>
+<text class="head" x="778" y="608" >用途別の秘密参照</text>
+<text class="small" x="778" y="632" >署名鍵・Entraアプリsecret</text>
+<text class="small" x="778" y="654" >APIMから制限情報を取得する鍵</text>
+<path class="logical" d="M917 558V525H1255V229H1235"/>
+<text class="label" x="928" y="524" >実行IDで秘密情報を参照</text>
+<rect class="node" x="1060" y="558" width="205" height="112" rx="6"/>
+<text class="tag" x="1078" y="582" >OBSERVABILITY</text>
+<text class="head" x="1078" y="608" >Log Analytics</text>
+<text class="small" x="1078" y="632" >ACA console/systemログ</text>
+<text class="small" x="1078" y="654" >SQL監査は各監査表へ</text>
+<path class="logical" d="M1235 468H1282V614H1265"/>
+<rect class="node" x="30" y="726" width="280" height="108" rx="6"/>
+<text class="tag" x="48" y="750" >DEPLOYMENT / BUILD</text>
+<text class="head" x="48" y="776" >既存のLinux管理VM</text>
+<text class="small" x="48" y="800" >Docker build → 一時AcrPush → 登録</text>
+<text class="small" x="48" y="822" >deploy_portal.py がJobを起動・待機</text>
+<path class="route" d="M170 726V670"/>
+<rect class="node" x="375" y="726" width="470" height="108" rx="6"/>
+<text class="tag" x="393" y="750" >DATA PLANE / API REQUEST</text>
+<text class="head" x="393" y="776" >API利用者 → 公開Gateway → Internal APIM</text>
+<text class="small" x="393" y="800" >APIMサブスクリプションキー・製品・状態を検証して下流APIへ</text>
+<text class="small" x="393" y="822" >制限設定はPortalの内部APIから取得</text>
+<path class="profile" d="M845 779H1290V202H1235"/>
+<text class="label" x="897" y="751" >APIM → Portal内部の制限情報API</text>
+<text class="label" x="897" y="776" >共有鍵 / 30秒キャッシュ / 取得障害は503</text>
+<text class="subtitle" x="30" y="861" >線は通信・依存関係。SQL初期化・検証APIMサブスクリプション登録Jobと、常駐Portalの要求処理を区別する。</text>
+</svg>

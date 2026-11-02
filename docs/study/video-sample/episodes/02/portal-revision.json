@@ -1,0 +1,15 @@
+{
+  "version": "diagram-v1",
+  "durationSeconds": 925.2083333333334,
+  "sha256": "7830d7b9ae938cccd646e25f23c7b93525a96ee61edf964fc608af92114f5e43",
+  "audioCache": {
+    "signature": "4b82b078fc0381b6b7cf50a0d111779311c5ed41597f0af6b2f3df37a75e7317",
+    "files": {
+      "lesson-narration.wav": "0f0c95fafb1916c36ec967be2342408a9e4b5fc50c0d17914d0f9702bf6f7a40",
+      "lesson-mix.wav": "b539b99f7ce609da5aac89a32c9ddeb27db395a325a4415e7adf2ab281e969e7"
+    }
+  },
+  "revisionIntent": "Azure Portal settings replicas as the main visuals, red focus rectangles, cursor movement and smooth zooms; explanatory diagrams where needed.",
+  "sourceArchive": "episodes/02/versions/diagram-v1",
+  "outputArchive": "output/lesson-02-gemini/versions/diagram-v1"
+}

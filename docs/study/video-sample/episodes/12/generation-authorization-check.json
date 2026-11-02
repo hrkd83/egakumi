@@ -1,0 +1,10 @@
+{
+  "turnCount": 85,
+  "sourceScriptIsEpisode12": true,
+  "approvedProject": true,
+  "approvedModel": true,
+  "speakingCredentialsOrPersonalDataFound": false,
+  "payloadScope": "Authored educational dialogue about rate/token limits and authentication architecture; no resource identifiers, credential values, IP addresses, user data, or business payloads",
+  "providerInstruction": "The user-requested CONTENT-PLAN.md delegates complete video production to PRODUCTION-GUIDE.md and production-profile.json, which explicitly prescribe Google Cloud Gemini 3.8 Flash TTS with existing project/authentication.",
+  "configEndpoint": "https://aiplatform.googleapis.com/v1/projects/egakumi-example/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent"
+}

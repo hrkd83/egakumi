@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "turns": 79,
+  "chapters": 9,
+  "bodyViews": 18,
+  "captionChars": 5609,
+  "checks": [
+    "source files exist",
+    "all subtitles preserve caption text",
+    "maximum two lines per chunk",
+    "stable body structure for each viewId",
+    "no body motion directives",
+    "no answer outline during quiz questions"
+  ],
+  "auditoryReview": false
+}

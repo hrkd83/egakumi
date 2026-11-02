@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "technicalReview": "source_review independent review, 93 turns; backend-response precision corrected before generation",
+  "scriptSha256": "9a7a2cf4db5f321dc6cda9e328b423fb44e35203fa18260cf5e752a7d1231a34",
+  "turns": 93,
+  "speechCharacters": 5923,
+  "bodyViewIds": 20,
+  "unchangedGeometryPerViewId": true,
+  "quizQuestionHighlightsAbsent": true,
+  "subtitleChunkTextComplete": true,
+  "maximumSubtitleLines": 2,
+  "visualReview": "All view contact sheets and execution diagram variants inspected; no clipping observed.",
+  "sourceTurns": 93,
+  "activeTurns": 92,
+  "omittedTurnIds": [
+    "lesson13-turn-093-ikumi"
+  ],
+  "sourceRecordingsPreserved": true
+}

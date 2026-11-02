@@ -1,0 +1,95 @@
+<fragment>
+  <!--
+    各ポリシーが共通利用する監査メタデータ出力です。要求 ID・許可判定・所要時間・状態コード等だけを記録します。
+    本文、URL の自由な query、Authorization、subscription key、OAuth 接続 token をログへ出しません。
+    監査項目は明示的な allowlist で組み立てます。新しい値を追加するときも個人情報や秘密情報を含まないか確認します。
+  -->
+  <!-- 診断の詳細レベルをinformation、samplingを100%にすると、Azure MonitorのTraceRecordsへ記録します。
+       https://learn.microsoft.com/azure/api-management/trace-policy
+       値はサーバーの実行情報と検証済みの認可結果から選択します。 -->
+  <trace source="core-gateway" severity="information">
+    <message>@{
+      var phase = context.Variables.ContainsKey(&quot;gatewayAuditPhase&quot;) ? (string)context.Variables[&quot;gatewayAuditPhase&quot;] : &quot;unknown&quot;;
+      if (!(new string[] { &quot;accepted&quot;, &quot;rejected&quot;, &quot;backend-response&quot;, &quot;policy-error&quot; }).Contains(phase)) { phase = &quot;unknown&quot;; }
+      var code = context.Variables.ContainsKey(&quot;gatewayAuditCode&quot;) ? (string)context.Variables[&quot;gatewayAuditCode&quot;] : &quot;UNSPECIFIED&quot;;
+      if (!System.Text.RegularExpressions.Regex.IsMatch(code ?? &quot;&quot;, &quot;^[A-Z][A-Z0-9_]{0,63}$&quot;)) { code = &quot;UNSPECIFIED&quot;; }
+      var status = context.Variables.ContainsKey(&quot;gatewayAuditStatus&quot;) ? (int)context.Variables[&quot;gatewayAuditStatus&quot;] : (context.Response == null ? 0 : context.Response.StatusCode);
+      var record = new JObject(
+        new JProperty(&quot;schemaVersion&quot;, 1),
+        new JProperty(&quot;event&quot;, &quot;gateway-request&quot;),
+        new JProperty(&quot;requestId&quot;, context.RequestId.ToString()),
+        new JProperty(&quot;apiId&quot;, context.Api == null ? null : context.Api.Id),
+        new JProperty(&quot;operationId&quot;, context.Operation == null ? null : context.Operation.Id),
+        new JProperty(&quot;phase&quot;, phase),
+        new JProperty(&quot;code&quot;, code),
+        new JProperty(&quot;status&quot;, status),
+        new JProperty(&quot;authorization&quot;, &quot;unconfirmed&quot;));
+      if (context.Variables.ContainsKey(&quot;gatewayDecision&quot;)) {
+        try {
+          var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+          var allowed = decision[&quot;allowed&quot;]?.Type == JTokenType.Boolean &amp;&amp; (bool)decision[&quot;allowed&quot;];
+          record[&quot;authorization&quot;] = allowed ? &quot;allowed&quot; : &quot;denied&quot;;
+          /* 呼出主体はAPIMが検証した購読IDから組み立てます。API固有の本人トークンも購読へ合算します。 */
+          var subscription = context.Subscription == null ? &quot;&quot; : context.Subscription.Id;
+          if (allowed &amp;&amp; (string)decision[&quot;method&quot;] == &quot;subscriptionKey&quot;
+              &amp;&amp; !String.IsNullOrWhiteSpace(subscription) &amp;&amp; subscription.Length &lt;= 240
+              &amp;&amp; (string)decision[&quot;callerId&quot;] == &quot;subscription:&quot; + subscription) {
+            record[&quot;subscriptionId&quot;] = subscription;
+            record[&quot;callerId&quot;] = &quot;subscription:&quot; + subscription;
+            record[&quot;method&quot;] = &quot;subscriptionKey&quot;;
+            if (decision[&quot;profileId&quot;]?.Type == JTokenType.String &amp;&amp; ((string)decision[&quot;profileId&quot;]).Length &lt;= 256) {
+              record[&quot;profileId&quot;] = (string)decision[&quot;profileId&quot;];
+            }
+          } else if (allowed) { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
+        } catch { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
+      }
+      /* 認可済み設定/別fragmentの検査結果だけを使います。traceでは本文やheaderを読みません。 */
+      record["backendRequestId"] = context.RequestId.ToString();
+      record["usageStatus"] = "none";
+      record["usageSource"] = "none";
+      if (context.Variables.ContainsKey("gatewayAuditSettings")) {
+        try {
+          var settings = JObject.Parse((string)context.Variables["gatewayAuditSettings"]);
+          var serviceClass = (string)settings["serviceClass"];
+          if (serviceClass == "platform" || serviceClass == "sample") { record["serviceClass"] = serviceClass; }
+          record["backendService"] = (string)settings["backendService"];
+          record["backendAuthentication"] = (string)settings["backendAuthentication"];
+          record["measurementRole"] = (string)settings["measurementRole"];
+          var target = (string)settings["targetAgent"];
+          if (!String.IsNullOrEmpty(target) &amp;&amp; System.Text.RegularExpressions.Regex.IsMatch(target, "^[A-Za-z0-9_-]{1,100}$")) {
+            record["targetAgent"] = target;
+          }
+          var model = context.Variables.ContainsKey("gatewayAuditModel") ? (string)context.Variables["gatewayAuditModel"] : "";
+          if (!String.IsNullOrEmpty(model)) {
+            record["targetModel"] = model;
+            var operation = String.IsNullOrEmpty((string)settings["operationId"]) ? context.Operation.Id : (string)settings["operationId"];
+            if (((JArray)settings["llmOperationIds"]).Any(o =&gt; (string)o == operation)) {
+              record["usageStatus"] = "native-log-join-required";
+              record["usageSource"] = "ApiManagementGatewayLlmLog";
+            }
+          }
+        } catch { }
+      }
+      if (context.Variables.ContainsKey("gatewayBackendResponseIds")) {
+        try { record["backendResponseIds"] = JObject.Parse((string)context.Variables["gatewayBackendResponseIds"]); } catch { }
+      }
+      if (context.Variables.ContainsKey("gatewayAgentTrace")) {
+        try {
+          var link = JObject.Parse((string)context.Variables["gatewayAgentTrace"]);
+          record["parentLinkStatus"] = (string)link["status"];
+          if ((string)link["status"] == "candidate") {
+            record["claimedParentId"] = (string)link["claimedParentId"];
+            record["parentClaimActorId"] = (string)link["actorId"];
+          }
+        } catch { }
+      }
+      // 接続先が明示した絶対期限だけを記録します。未提供なら項目を省略し、更新成功と推測しません。
+      object connectionExpiry;
+      if (context.Variables.TryGetValue(&quot;gatewayConnectionExpiresOn&quot;, out connectionExpiry) &amp;&amp; connectionExpiry is long) {
+        var expiry = (long)connectionExpiry;
+        if (expiry &gt;= 946684800L &amp;&amp; expiry &lt;= 4102444800L) { record[&quot;connectionExpiresOn&quot;] = expiry; }
+      }
+      return record.ToString(Newtonsoft.Json.Formatting.None);
+    }</message>
+  </trace>
+</fragment>

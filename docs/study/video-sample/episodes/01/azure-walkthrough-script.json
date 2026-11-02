@@ -1,0 +1,4254 @@
+{
+  "schemaVersion": 1,
+  "title": "第1回 egakumiのネットワーク全体像",
+  "topic": "egakumiのネットワーク全体像",
+  "episodeId": "01-network-overview",
+  "reusable": false,
+  "reusableTemplate": true,
+  "cast": "podcast-cast.json",
+  "nameDictionary": "speaker-names.json",
+  "speed": 1,
+  "status": "first-cut-produced",
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の生成音声の実長で確定する。尺合わせの加速や長い無音の水増しは行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "voiceDelay": 0.06,
+  "speechSettings": {
+    "enhancePronunciation": true,
+    "language": "ja-JP",
+    "speed": 1,
+    "tagPolicy": "場面に必要な呼吸・笑いのみ指定。字幕ではタグを表示しない。"
+  },
+  "scope": "現行リポジトリと公開設定例に基づく独立VNetの構成理解。稼働Azureの取得値・実測結果ではない。",
+  "learningObjectives": [
+    "VNet・アドレス空間・サブネットの包含関係を説明する。",
+    "6つのサブネットの配置目的を役割で説明する。",
+    "通常APIの要求と復路を区間ごとに追う。",
+    "PEの接続口とサービス本体、Firewall経由と直接経路を区別する。"
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "egakumiへの要求は、どこを通る？",
+      "goal": "今日の問いと3人の役割をつかむ",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-overview"
+        }
+      ]
+    },
+    {
+      "id": "why",
+      "title": "区画を分ける目的",
+      "goal": "配置・経路・許可を分けて考える",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "purpose"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-overview"
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "title": "VNet・アドレス空間・サブネット",
+      "goal": "三つの包含関係を図から読める",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "structure"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "summary"
+        }
+      ]
+    },
+    {
+      "id": "addresses",
+      "title": "4つのアドレス空間",
+      "goal": "専用区画・分割範囲・予備の関係を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "address-space"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "subnets"
+        }
+      ]
+    },
+    {
+      "id": "subnets",
+      "title": "6つの区画の役割",
+      "goal": "入口・処理・接続口・管理を配置に結び付ける",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "subnets"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "api-flow",
+      "title": "通常APIの要求を追う",
+      "goal": "公開入口からFoundryへの接続と復路を追う",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-overview"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "direct-paths",
+      "title": "全部がFirewallを通るわけではない",
+      "goal": "直接経路と管理・Portalの通信を区別する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-egress-management"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "図を使って確かめる",
+      "goal": "配置と通信を混同せず自分で説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "purpose"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "subnets"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-control-map"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "今日の地図と次の一歩",
+      "goal": "配置・主経路・直接経路の要点を振り返る",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "summary"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "network-overview"
+        }
+      ]
+    }
+  ],
+  "turns": [
+    {
+      "id": "lesson01-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "エガクミのエーピーアイって、送った要求は、どこを通るんですか？",
+      "caption": "egakumiのAPIって、送った要求は、どこを通るんですか？",
+      "subtitleLines": [
+        "egakumiのAPIって、送った要求は、どこを通るんですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "egakumiのAPIって、送った要求は、どこを通るんですか？",
+          "lines": [
+            "egakumiのAPIって、送った要求は、どこを通るんですか？"
+          ],
+          "weight": 31
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "user",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。",
+      "caption": "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。",
+      "subtitleLines": [
+        "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、",
+        "安全に使う工夫も見えてくるよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、安全に使う工夫も見えてくるよ。",
+          "lines": [
+            "今日は、その中の地図を一緒に見よう。何をどこに置くかが分かると、",
+            "安全に使う工夫も見えてくるよ。"
+          ],
+          "weight": 47
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-003-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "マナブさんには目的を、イクミさんには仕組みを聞きます。まず全体像からですね。",
+      "caption": "MANABUさんには目的を、IKUMIさんには仕組みを聞きます。まず全体像からですね。",
+      "subtitleLines": [
+        "MANABUさんには目的を、IKUMIさんには仕組みを聞きます。",
+        "まず全体像からですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "MANABUさんには目的を、IKUMIさんには仕組みを聞きます。まず全体像からですね。",
+          "lines": [
+            "MANABUさんには目的を、IKUMIさんには仕組みを聞きます。",
+            "まず全体像からですね。"
+          ],
+          "weight": 43
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-004-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "うん。一つのエーピーアイ要求を、入口からサービスまで追ってみよう。",
+      "caption": "うん。一つのAPI要求を、入口からサービスまで追ってみよう。",
+      "subtitleLines": [
+        "うん。一つのAPI要求を、入口からサービスまで追ってみよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。一つのAPI要求を、入口からサービスまで追ってみよう。",
+          "lines": [
+            "うん。一つのAPI要求を、入口からサービスまで追ってみよう。"
+          ],
+          "weight": 30
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "apim",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-005-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "よかった。[laughter] アイピーアドレスの暗記からではないんですね。",
+      "caption": "よかった。 IPアドレスの暗記からではないんですね。",
+      "subtitleLines": [
+        "よかった。 IPアドレスの暗記からではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "よかった。 IPアドレスの暗記からではないんですね。",
+          "lines": [
+            "よかった。 IPアドレスの暗記からではないんですね。"
+          ],
+          "weight": 26
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18,
+      "paralinguistics": [
+        {
+          "tag": "laughter",
+          "intent": "理解がつながる場面の親しみのある笑い。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-006-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。",
+      "caption": "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。",
+      "subtitleLines": [
+        "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体",
+        "図へ進もう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体図へ進もう。",
+          "lines": [
+            "ゴールは、六つの区画と主な道筋を説明できること。それじゃあ、全体",
+            "図へ進もう。"
+          ],
+          "weight": 38
+        }
+      ],
+      "visual": {
+        "layout": "hologram",
+        "diagram": null,
+        "heading": "egakumiへの要求は、どこを通る？",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-007-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "図には、公開入口、エーピーアイの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？",
+      "caption": "図には、公開入口、APIの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？",
+      "subtitleLines": [
+        "図には、公開入口、APIの処理、管理用の場所、サービスへの接続口",
+        "がありますね。どうして、まとめて一か所に置かないんですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図には、公開入口、APIの処理、管理用の場所、サービスへの接続口がありますね。どうして、まとめて一か所に置かないんですか？",
+          "lines": [
+            "図には、公開入口、APIの処理、管理用の場所、サービスへの接続口",
+            "がありますね。どうして、まとめて一か所に置かないんですか？"
+          ],
+          "weight": 61
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-007.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-008-manabu",
+      "speaker": "manabu",
+      "chapterId": "why",
+      "speech": "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。",
+      "caption": "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。",
+      "subtitleLines": [
+        "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も",
+        "権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。",
+          "lines": [
+            "利用者の要求を受ける場所と、基盤を変更する場所では、必要な相手も",
+            "権限も違うからだね。役割を分けると、守る対象が整理しやすくなる。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-008.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-009-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "why",
+      "speech": "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。",
+      "caption": "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。",
+      "subtitleLines": [
+        "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの",
+        "区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。",
+          "lines": [
+            "ネットワークでは、リソースを役割ごとのサブネットに配置する。どの",
+            "区画から、どこへ通信するのかを識別して、制御を組み合わせるんだ。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-009.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-010-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？",
+      "caption": "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？",
+      "subtitleLines": [
+        "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を",
+        "分けたら、勝手に行き来できなくなるんでしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を分けたら、勝手に行き来できなくなるんでしょうか？",
+          "lines": [
+            "なるほど。玄関と作業部屋を分けるような感じですね。でも、部屋を",
+            "分けたら、勝手に行き来できなくなるんでしょうか？"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-010.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            786,
+            198,
+            400,
+            274
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-011-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "why",
+      "speech": "そこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。",
+      "caption": "そこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。",
+      "subtitleLines": [
+        "そこは大事なところ。サブネットを分けただけで、区画間の通信が",
+        "自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこは大事なところ。サブネットを分けただけで、区画間の通信が自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。",
+          "lines": [
+            "そこは大事なところ。サブネットを分けただけで、区画間の通信が",
+            "自動的に遮断されるわけではないよ。通す条件は、別の設定で決める。"
+          ],
+          "weight": 62
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-011.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            786,
+            198,
+            400,
+            274
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-012-manabu",
+      "speaker": "manabu",
+      "chapterId": "why",
+      "speech": "分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。",
+      "caption": "分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。",
+      "subtitleLines": [
+        "分けることは、判断するための土台なんだね。必要な接続を残しながら、",
+        "使わせる範囲を説明するための配置なんだ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "分けることは、判断するための土台なんだね。必要な接続を残しながら、使わせる範囲を説明するための配置なんだ。",
+          "lines": [
+            "分けることは、判断するための土台なんだね。必要な接続を残しながら、",
+            "使わせる範囲を説明するための配置なんだ。"
+          ],
+          "weight": 53
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-012.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？",
+      "caption": "配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？",
+      "subtitleLines": [
+        "配置の図だけを見て、安全に止められているとは言えない、と。では、",
+        "通信を決めるものは、図のどこにあるんですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "配置の図だけを見て、安全に止められているとは言えない、と。では、通信を決めるものは、図のどこにあるんですか？",
+          "lines": [
+            "配置の図だけを見て、安全に止められているとは言えない、と。では、",
+            "通信を決めるものは、図のどこにあるんですか？"
+          ],
+          "weight": 54
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-013.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "why",
+      "speech": "エヌエスジーが区画への送受信の許可や拒否、ユーディーアールが次の転送先、ファイアウォールがそこへ届いた通信の判定を担当する。それぞれ見ているものが違うんだ。",
+      "caption": "NSGが区画への送受信の許可や拒否、UDRが次の転送先、Firewallがそこへ届いた通信の判定を担当する。それぞれ見ているものが違うんだ。",
+      "subtitleLines": [
+        "NSGが区画への送受信の許可や拒否、UDRが次の転送先、",
+        "Firewallがそこへ届いた通信の判定を担当する。それぞれ見て"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "NSGが区画への送受信の許可や拒否、UDRが次の転送先、Firewallがそこへ届いた通信の判定を担当する。それぞれ見て",
+          "lines": [
+            "NSGが区画への送受信の許可や拒否、UDRが次の転送先、",
+            "Firewallがそこへ届いた通信の判定を担当する。それぞれ見て"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "いるものが違うんだ。",
+          "lines": [
+            "いるものが違うんだ。"
+          ],
+          "weight": 10
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-014.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            220,
+            207,
+            960,
+            245
+          ],
+          "zoom": 1.045,
+          "seconds": 0.85
+        },
+        "azureView": "control-roles",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-015-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。",
+      "caption": "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。",
+      "subtitleLines": [
+        "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、",
+        "図の意味が整理できますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、図の意味が整理できますね。",
+          "lines": [
+            "どこに置くか、どこを通るか、通してよいか。この三つを分けて読むと、",
+            "図の意味が整理できますね。"
+          ],
+          "weight": 46
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-015.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-016-manabu",
+      "speaker": "manabu",
+      "chapterId": "why",
+      "speech": "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。",
+      "caption": "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。",
+      "subtitleLines": [
+        "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱う",
+        "から、この図を共通の地図として使っていこう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱うから、この図を共通の地図として使っていこう。",
+          "lines": [
+            "うん。今日は配置と主な経路をつかもう。個々のルールは後の回で扱う",
+            "から、この図を共通の地図として使っていこう。"
+          ],
+          "weight": 54
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-016.svg",
+        "heading": "区画を分ける目的",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-017-mako",
+      "speaker": "mako",
+      "chapterId": "structure",
+      "speech": "全体図の外側に、ブイネットという大きな枠があります。これは、エガクミのリソースを全部入れる箱、と考えていいですか？",
+      "caption": "全体図の外側に、VNetという大きな枠があります。これは、egakumiのリソースを全部入れる箱、と考えていいですか？",
+      "subtitleLines": [
+        "全体図の外側に、VNetという大きな枠があります。これは、",
+        "egakumiのリソースを全部入れる箱、と考えていいですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "全体図の外側に、VNetという大きな枠があります。これは、egakumiのリソースを全部入れる箱、と考えていいですか？",
+          "lines": [
+            "全体図の外側に、VNetという大きな枠があります。これは、",
+            "egakumiのリソースを全部入れる箱、と考えていいですか？"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-017.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "structure",
+      "speech": "ブイネットはアジュール上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブネットを設ける。",
+      "caption": "VNetはAzure上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブネットを設ける。",
+      "subtitleLines": [
+        "VNetはAzure上の仮想ネットワークで、すべてのサービス本体",
+        "を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブ"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VNetはAzure上の仮想ネットワークで、すべてのサービス本体を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブ",
+          "lines": [
+            "VNetはAzure上の仮想ネットワークで、すべてのサービス本体",
+            "を入れる箱ではないよ。一つの環境に一つ作り、その中に六つのサブ"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "ネットを設ける。",
+          "lines": [
+            "ネットを設ける。"
+          ],
+          "weight": 8
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-018.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "vnet-overview",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-019-mako",
+      "speaker": "mako",
+      "chapterId": "structure",
+      "speech": "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。ブイネットとサブネットの間に、もう一段あるんでしょうか？",
+      "caption": "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。VNetとサブネットの間に、もう一段あるんでしょうか？",
+      "subtitleLines": [
+        "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。",
+        "VNetとサブネットの間に、もう一段あるんでしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。VNetとサブネットの間に、もう一段あるんでしょうか？",
+          "lines": [
+            "一つの環境に一つ、ですね。ただ、アドレス空間という枠もあります。",
+            "VNetとサブネットの間に、もう一段あるんでしょうか？"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-019.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-020-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "structure",
+      "speech": "そう。ブイネットが仮想ネットワーク全体、アドレス空間がそこで使うアイピーアドレスの範囲、サブネットがその範囲から切り出す配置先の区画なんだ。",
+      "caption": "そう。VNetが仮想ネットワーク全体、アドレス空間がそこで使うIPアドレスの範囲、サブネットがその範囲から切り出す配置先の区画なんだ。",
+      "subtitleLines": [
+        "そう。VNetが仮想ネットワーク全体、アドレス空間がそこで使う",
+        "IPアドレスの範囲、サブネットがその範囲から切り出す配置先の区画"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そう。VNetが仮想ネットワーク全体、アドレス空間がそこで使うIPアドレスの範囲、サブネットがその範囲から切り出す配置先の区画",
+          "lines": [
+            "そう。VNetが仮想ネットワーク全体、アドレス空間がそこで使う",
+            "IPアドレスの範囲、サブネットがその範囲から切り出す配置先の区画"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "なんだ。",
+          "lines": [
+            "なんだ。"
+          ],
+          "weight": 4
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-020.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-021-manabu",
+      "speaker": "manabu",
+      "chapterId": "structure",
+      "speech": "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。",
+      "caption": "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。",
+      "subtitleLines": [
+        "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの",
+        "区画へ分ける。三つの言葉を、そう整理すると追いやすいね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの区画へ分ける。三つの言葉を、そう整理すると追いやすいね。",
+          "lines": [
+            "場所のまとまりを決め、そこで使う住所の範囲を用意し、用途ごとの",
+            "区画へ分ける。三つの言葉を、そう整理すると追いやすいね。"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-021.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "vnet-overview",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "structure",
+      "speech": "ブイネットの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。",
+      "caption": "VNetの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。",
+      "subtitleLines": [
+        "VNetの中にアドレス空間、その中にサブネット。線でつながって",
+        "いる図と、枠の中に入っている図は、読み方が違うんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "VNetの中にアドレス空間、その中にサブネット。線でつながっている図と、枠の中に入っている図は、読み方が違うんですね。",
+          "lines": [
+            "VNetの中にアドレス空間、その中にサブネット。線でつながって",
+            "いる図と、枠の中に入っている図は、読み方が違うんですね。"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-022.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-023-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "structure",
+      "speech": "うん。[breathing] この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。",
+      "caption": "うん。 この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。",
+      "subtitleLines": [
+        "うん。 この構造図の枠は、包含関係と配置を表している。枠が隣に",
+        "あることや、内側にあることから、通信の順番までは決められないよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。 この構造図の枠は、包含関係と配置を表している。枠が隣にあることや、内側にあることから、通信の順番までは決められないよ。",
+          "lines": [
+            "うん。 この構造図の枠は、包含関係と配置を表している。枠が隣に",
+            "あることや、内側にあることから、通信の順番までは決められないよ。"
+          ],
+          "weight": 63
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-023.svg",
+        "heading": "VNet・アドレス空間・サブネット",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-024-mako",
+      "speaker": "mako",
+      "chapterId": "structure",
+      "speech": "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？",
+      "caption": "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？",
+      "subtitleLines": [
+        "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループ",
+        "も出てきますが、それは、この区画と同じものですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループも出てきますが、それは、この区画と同じものですか？",
+          "lines": [
+            "配置の地図と通信の地図を、重ねて読むわけですね。リソースグループ",
+            "も出てきますが、それは、この区画と同じものですか？"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "structure",
+        "diagram": "network-vnet-structure",
+        "heading": "VNet・アドレス空間・サブネット",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-025-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "structure",
+      "speech": "リソースグループはアジュールリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜないようにする。",
+      "caption": "リソースグループはAzureリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜないようにする。",
+      "subtitleLines": [
+        "リソースグループはAzureリソースを管理する分類で、サブネット",
+        "はネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜ"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "リソースグループはAzureリソースを管理する分類で、サブネットはネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜ",
+          "lines": [
+            "リソースグループはAzureリソースを管理する分類で、サブネット",
+            "はネットワーク上の配置先だよ。分類名が同じでも、二つの役割を混ぜ"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "ないようにする。",
+          "lines": [
+            "ないようにする。"
+          ],
+          "weight": 8
+        }
+      ],
+      "visual": {
+        "layout": "structure",
+        "diagram": "network-vnet-structure",
+        "heading": "VNet・アドレス空間・サブネット",
+        "focus": "subnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-026-manabu",
+      "speaker": "manabu",
+      "chapterId": "structure",
+      "speech": "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。",
+      "caption": "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。",
+      "subtitleLines": [
+        "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れる",
+        "ようにしておくと、後の調査にもつながるんだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れるようにしておくと、後の調査にもつながるんだね。",
+          "lines": [
+            "管理上の分類と通信上の場所を両方確かめる。そのために地図へ戻れる",
+            "ようにしておくと、後の調査にもつながるんだね。"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "structure",
+        "diagram": "network-vnet-structure",
+        "heading": "VNet・アドレス空間・サブネット",
+        "focus": "vnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "addresses",
+      "speech": "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。",
+      "caption": "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。",
+      "subtitleLines": [
+        "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が",
+        "四つあります。区画は六つなのに、数が違うんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が四つあります。区画は六つなのに、数が違うんですね。",
+          "lines": [
+            "では、住所の範囲を見てみましょう。公開設定例では、アドレス空間が",
+            "四つあります。区画は六つなのに、数が違うんですね。"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-027.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            218,
+            224,
+            965,
+            230
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "address-space",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "addresses",
+      "speech": "ここでは、同じ大きさの四つの範囲を一つのブイネットへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つになるんだ。",
+      "caption": "ここでは、同じ大きさの四つの範囲を一つのVNetへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つになるんだ。",
+      "subtitleLines": [
+        "ここでは、同じ大きさの四つの範囲を一つのVNetへ登録している。",
+        "そのうち三つ目だけをさらに四分割するので、配置する区画が六つに"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここでは、同じ大きさの四つの範囲を一つのVNetへ登録している。そのうち三つ目だけをさらに四分割するので、配置する区画が六つに",
+          "lines": [
+            "ここでは、同じ大きさの四つの範囲を一つのVNetへ登録している。",
+            "そのうち三つ目だけをさらに四分割するので、配置する区画が六つに"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "なるんだ。",
+          "lines": [
+            "なるんだ。"
+          ],
+          "weight": 5
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-028.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            215,
+            309,
+            968,
+            167
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-029-mako",
+      "speaker": "mako",
+      "chapterId": "addresses",
+      "speech": "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？",
+      "caption": "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？",
+      "subtitleLines": [
+        "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つ",
+        "ですね。では、四つ目の範囲は、どこに使うんでしょう？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つですね。では、四つ目の範囲は、どこに使うんでしょう？",
+          "lines": [
+            "最初の二つはそれぞれ一つの区画、三つ目は四つの区画。合わせて六つ",
+            "ですね。では、四つ目の範囲は、どこに使うんでしょう？"
+          ],
+          "weight": 58
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-029.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            218,
+            397,
+            965,
+            59
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "address-space",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-030-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "addresses",
+      "speech": "四つ目は将来の拡張用の予備だよ。ブイネットのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。",
+      "caption": "四つ目は将来の拡張用の予備だよ。VNetのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。",
+      "subtitleLines": [
+        "四つ目は将来の拡張用の予備だよ。VNetのアドレス空間には含める",
+        "けれど、この公開例では、そこにサブネットを作っていない。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "四つ目は将来の拡張用の予備だよ。VNetのアドレス空間には含めるけれど、この公開例では、そこにサブネットを作っていない。",
+          "lines": [
+            "四つ目は将来の拡張用の予備だよ。VNetのアドレス空間には含める",
+            "けれど、この公開例では、そこにサブネットを作っていない。"
+          ],
+          "weight": 60
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-030.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            218,
+            397,
+            965,
+            59
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "address-space",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-031-manabu",
+      "speaker": "manabu",
+      "chapterId": "addresses",
+      "speech": "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。",
+      "caption": "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。",
+      "subtitleLines": [
+        "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲が",
+        "あることと、既に何かを配置したことは別なんだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲があることと、既に何かを配置したことは別なんだね。",
+          "lines": [
+            "予備を最初に確保すると、後の配置を考えやすくなる。ただ、範囲が",
+            "あることと、既に何かを配置したことは別なんだね。"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-031.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            218,
+            397,
+            965,
+            59
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "address-space",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-032-mako",
+      "speaker": "mako",
+      "chapterId": "addresses",
+      "speech": "資料には、スラッシュ二十四やスラッシュ二十六という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？",
+      "caption": "資料には、/24や/26という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？",
+      "subtitleLines": [
+        "資料には、/24や/26という表記があります。数字の細かい計算",
+        "より、まず何を読み取ればよいですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "資料には、/24や/26という表記があります。数字の細かい計算より、まず何を読み取ればよいですか？",
+          "lines": [
+            "資料には、/24や/26という表記があります。数字の細かい計算",
+            "より、まず何を読み取ればよいですか？"
+          ],
+          "weight": 49
+        }
+      ],
+      "visual": {
+        "layout": "addresses",
+        "diagram": "network-vnet-structure",
+        "heading": "4つのアドレス空間",
+        "focus": "address",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "addresses",
+      "speech": "その範囲の大きさを表す表記だね。この例では、スラッシュ二十四一つの中に、スラッシュ二十六が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえよう。",
+      "caption": "その範囲の大きさを表す表記だね。この例では、/24一つの中に、/26が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえよう。",
+      "subtitleLines": [
+        "その範囲の大きさを表す表記だね。この例では、/24一つの中に、/",
+        "26が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえ"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その範囲の大きさを表す表記だね。この例では、/24一つの中に、/26が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえ",
+          "lines": [
+            "その範囲の大きさを表す表記だね。この例では、/24一つの中に、/",
+            "26が四つ収まる。三つ目の範囲を四区画へ分ける関係を、まず押さえ"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "よう。",
+          "lines": [
+            "よう。"
+          ],
+          "weight": 3
+        }
+      ],
+      "visual": {
+        "layout": "addresses",
+        "diagram": "network-vnet-structure",
+        "heading": "4つのアドレス空間",
+        "focus": "spaces2",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "addresses",
+      "speech": "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。",
+      "caption": "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。",
+      "subtitleLines": [
+        "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別",
+        "でも、アドレスが重なっていたら困りそうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別でも、アドレスが重なっていたら困りそうです。",
+          "lines": [
+            "同じ範囲を、役割に合わせて小さく切り分けるんですね。図の枠が別",
+            "でも、アドレスが重なっていたら困りそうです。"
+          ],
+          "weight": 53
+        }
+      ],
+      "visual": {
+        "layout": "addresses",
+        "diagram": "network-vnet-structure",
+        "heading": "4つのアドレス空間",
+        "focus": "subnet",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "addresses",
+      "speech": "[breathing] そのとおり。設定では、サブネットがブイネットの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見るのが先だよ。",
+      "caption": "そのとおり。設定では、サブネットがVNetの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見るのが先だよ。",
+      "subtitleLines": [
+        "そのとおり。設定では、サブネットがVNetの範囲内に収まり、",
+        "互いに重ならないことを確認する。数字の暗記より、包含と重複を見る"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのとおり。設定では、サブネットがVNetの範囲内に収まり、互いに重ならないことを確認する。数字の暗記より、包含と重複を見る",
+          "lines": [
+            "そのとおり。設定では、サブネットがVNetの範囲内に収まり、",
+            "互いに重ならないことを確認する。数字の暗記より、包含と重複を見る"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "のが先だよ。",
+          "lines": [
+            "のが先だよ。"
+          ],
+          "weight": 6
+        }
+      ],
+      "visual": {
+        "layout": "addresses",
+        "diagram": "network-vnet-structure",
+        "heading": "4つのアドレス空間",
+        "focus": "address",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-036-manabu",
+      "speaker": "manabu",
+      "chapterId": "addresses",
+      "speech": "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。",
+      "caption": "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。",
+      "subtitleLines": [
+        "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働",
+        "環境の取得値とは分けて、構成を理解する材料として見ていこう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働環境の取得値とは分けて、構成を理解する材料として見ていこう。",
+          "lines": [
+            "ここまでの名前や範囲は、リポジトリの定義と公開設定例だよ。稼働",
+            "環境の取得値とは分けて、構成を理解する材料として見ていこう。"
+          ],
+          "weight": 61
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-036.svg",
+        "heading": "4つのアドレス空間",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "vnet-overview",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-037-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？",
+      "caption": "住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？",
+      "subtitleLines": [
+        "住所の分け方が分かってきました。ここから、六つの区画を見たいです。",
+        "まず、外からの入口はどこになりますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "住所の分け方が分かってきました。ここから、六つの区画を見たいです。まず、外からの入口はどこになりますか？",
+          "lines": [
+            "住所の分け方が分かってきました。ここから、六つの区画を見たいです。",
+            "まず、外からの入口はどこになりますか？"
+          ],
+          "weight": 52
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-037.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "agw-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-038-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "アプリケーションゲートウェイの区画だよ。利用者からのウェブやエーピーアイの要求を受けて、内部の処理先へ中継する。図では、公開入口を示している場所だね。",
+      "caption": "Application Gatewayの区画だよ。利用者からのWebやAPIの要求を受けて、内部の処理先へ中継する。図では、公開入口を示している場所だね。",
+      "subtitleLines": [
+        "Application Gatewayの区画だよ。利用者からの",
+        "WebやAPIの要求を受けて、内部の処理先へ中継する。図では、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Application Gatewayの区画だよ。利用者からのWebやAPIの要求を受けて、内部の処理先へ中継する。図では、",
+          "lines": [
+            "Application Gatewayの区画だよ。利用者からの",
+            "WebやAPIの要求を受けて、内部の処理先へ中継する。図では、"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "公開入口を示している場所だね。",
+          "lines": [
+            "公開入口を示している場所だね。"
+          ],
+          "weight": 15
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-038.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "agw-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-039-manabu",
+      "speaker": "manabu",
+      "chapterId": "subnets",
+      "speech": "利用者の窓口と、エーピーアイを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。",
+      "caption": "利用者の窓口と、APIを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。",
+      "subtitleLines": [
+        "利用者の窓口と、APIを処理する場所を分けているんだ。入口に届い",
+        "ても、まだ目的のサービスへ到達したとは言えないね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者の窓口と、APIを処理する場所を分けているんだ。入口に届いても、まだ目的のサービスへ到達したとは言えないね。",
+          "lines": [
+            "利用者の窓口と、APIを処理する場所を分けているんだ。入口に届い",
+            "ても、まだ目的のサービスへ到達したとは言えないね。"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-039.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "agw-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "次に、エーピーアイを処理する区画。ここがエーピーアイエムですね。入口と名前が似ていて、前は同じようなものだと思っていました。",
+      "caption": "次に、APIを処理する区画。ここがAPIMですね。入口と名前が似ていて、前は同じようなものだと思っていました。",
+      "subtitleLines": [
+        "次に、APIを処理する区画。ここがAPIMですね。入口と名前が似",
+        "ていて、前は同じようなものだと思っていました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次に、APIを処理する区画。ここがAPIMですね。入口と名前が似ていて、前は同じようなものだと思っていました。",
+          "lines": [
+            "次に、APIを処理する区画。ここがAPIMですね。入口と名前が似",
+            "ていて、前は同じようなものだと思っていました。"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-040.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "apim-internal",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "エーピーアイエムは内部ブイネットモードのエーピーアイ処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口のアプリケーションゲートウェイとは担当が違う。",
+      "caption": "APIMは内部VNetモードのAPI処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口のApplication Gatewayとは担当が違う。",
+      "subtitleLines": [
+        "APIMは内部VNetモードのAPI処理基盤だよ。認証やポリシー",
+        "を適用し、バックエンドを呼び出す。公開入口の"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMは内部VNetモードのAPI処理基盤だよ。認証やポリシーを適用し、バックエンドを呼び出す。公開入口の",
+          "lines": [
+            "APIMは内部VNetモードのAPI処理基盤だよ。認証やポリシー",
+            "を適用し、バックエンドを呼び出す。公開入口の"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "Application Gatewayとは担当が違う。",
+          "lines": [
+            "Application Gatewayとは担当が違う。"
+          ],
+          "weight": 27
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-041.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "apim-internal",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-042-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "外の窓口と、エーピーアイの実行を判断する場所ですね。その間にあるファイアウォールも、一つの専用区画を持っているんですか？",
+      "caption": "外の窓口と、APIの実行を判断する場所ですね。その間にあるFirewallも、一つの専用区画を持っているんですか？",
+      "subtitleLines": [
+        "外の窓口と、APIの実行を判断する場所ですね。その間にある",
+        "Firewallも、一つの専用区画を持っているんですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "外の窓口と、APIの実行を判断する場所ですね。その間にあるFirewallも、一つの専用区画を持っているんですか？",
+          "lines": [
+            "外の窓口と、APIの実行を判断する場所ですね。その間にある",
+            "Firewallも、一つの専用区画を持っているんですか？"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-042.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "firewall-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-043-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "うん。アジュールファイアウォールには専用のサブネットを用意する。経路でファイアウォールへ向けた通信を検査・制御する場所だよ。すべての通信が自動的に集まるわけではない。",
+      "caption": "うん。Azure Firewallには専用のサブネットを用意する。経路でFirewallへ向けた通信を検査・制御する場所だよ。すべての通信が自動的に集まるわけではない。",
+      "subtitleLines": [
+        "うん。Azure Firewallには専用のサブネットを用意する。",
+        "経路でFirewallへ向けた通信を検査・制御する場所だよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。Azure Firewallには専用のサブネットを用意する。経路でFirewallへ向けた通信を検査・制御する場所だよ。",
+          "lines": [
+            "うん。Azure Firewallには専用のサブネットを用意する。",
+            "経路でFirewallへ向けた通信を検査・制御する場所だよ。"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "すべての通信が自動的に集まるわけではない。",
+          "lines": [
+            "すべての通信が自動的に集まるわけではない。"
+          ],
+          "weight": 21
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-043.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "firewall-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-044-manabu",
+      "speaker": "manabu",
+      "chapterId": "subnets",
+      "speech": "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。",
+      "caption": "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。",
+      "subtitleLines": [
+        "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を",
+        "置くだけで、すべてを見てくれるわけではないんだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を置くだけで、すべてを見てくれるわけではないんだね。",
+          "lines": [
+            "必要な通信をどこで判断するか決め、それに合わせて経路を作る。箱を",
+            "置くだけで、すべてを見てくれるわけではないんだね。"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-044.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "firewall-subnet",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-045-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "ここまでが、公開入口、エーピーアイ処理、ファイアウォールの三つ。次はプライベートエンドポイントの区画です。これは、サービス本体が並んでいる場所でしょうか？",
+      "caption": "ここまでが、公開入口、API処理、Firewallの三つ。次はPrivate Endpointの区画です。これは、サービス本体が並んでいる場所でしょうか？",
+      "subtitleLines": [
+        "ここまでが、公開入口、API処理、Firewallの三つ。次は",
+        "Private Endpointの区画です。これは、サービス本体"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまでが、公開入口、API処理、Firewallの三つ。次はPrivate Endpointの区画です。これは、サービス本体",
+          "lines": [
+            "ここまでが、公開入口、API処理、Firewallの三つ。次は",
+            "Private Endpointの区画です。これは、サービス本体"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "が並んでいる場所でしょうか？",
+          "lines": [
+            "が並んでいる場所でしょうか？"
+          ],
+          "weight": 14
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-045.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "private-endpoints",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "ここに置くのは、サービスへの接続口だよ。ファウンドリー、キーボルト、エーシーアール、エスキューエルなどへ、ブイネット内のプライベート アイピーで接続するための入口を置いている。",
+      "caption": "ここに置くのは、サービスへの接続口だよ。Foundry、Key Vault、ACR、SQLなどへ、VNet内のprivate IPで接続するための入口を置いている。",
+      "subtitleLines": [
+        "ここに置くのは、サービスへの接続口だよ。Foundry、Key ",
+        "Vault、ACR、SQLなどへ、VNet内のprivate "
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここに置くのは、サービスへの接続口だよ。Foundry、Key Vault、ACR、SQLなどへ、VNet内のprivate ",
+          "lines": [
+            "ここに置くのは、サービスへの接続口だよ。Foundry、Key ",
+            "Vault、ACR、SQLなどへ、VNet内のprivate "
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "IPで接続するための入口を置いている。",
+          "lines": [
+            "IPで接続するための入口を置いている。"
+          ],
+          "weight": 19
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-046.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "private-endpoints",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-047-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "あ、ファウンドリーやエスキューエルのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。",
+      "caption": "あ、FoundryやSQLのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。",
+      "subtitleLines": [
+        "あ、FoundryやSQLのサービス本体を、このサブネットへ",
+        "丸ごと入れているわけではないんですね。接続口を配置する場所、と。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "あ、FoundryやSQLのサービス本体を、このサブネットへ丸ごと入れているわけではないんですね。接続口を配置する場所、と。",
+          "lines": [
+            "あ、FoundryやSQLのサービス本体を、このサブネットへ",
+            "丸ごと入れているわけではないんですね。接続口を配置する場所、と。"
+          ],
+          "weight": 62
+        }
+      ],
+      "visual": {
+        "layout": "subnets",
+        "diagram": "network-vnet-structure",
+        "heading": "6つの区画の役割",
+        "focus": "pe",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "そう。[breathing] サービス本体とピーイーを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分かりやすい。",
+      "caption": "そう。 サービス本体とPEを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分かりやすい。",
+      "subtitleLines": [
+        "そう。 サービス本体とPEを分けて描くのは、その違いを示すため",
+        "なんだ。後で通信を追うときも、まず接続口までの経路として読むと分"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そう。 サービス本体とPEを分けて描くのは、その違いを示すためなんだ。後で通信を追うときも、まず接続口までの経路として読むと分",
+          "lines": [
+            "そう。 サービス本体とPEを分けて描くのは、その違いを示すため",
+            "なんだ。後で通信を追うときも、まず接続口までの経路として読むと分"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "かりやすい。",
+          "lines": [
+            "かりやすい。"
+          ],
+          "weight": 6
+        }
+      ],
+      "visual": {
+        "layout": "subnets",
+        "diagram": "network-vnet-structure",
+        "heading": "6つの区画の役割",
+        "focus": "foundry",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-049-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "残りは、管理ブイエムとコンテナーアップスの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？",
+      "caption": "残りは、管理VMとContainer Appsの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？",
+      "subtitleLines": [
+        "残りは、管理VMとContainer Appsの区画ですね。",
+        "どちらも処理を動かしますが、用途はどう違いますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "残りは、管理VMとContainer Appsの区画ですね。どちらも処理を動かしますが、用途はどう違いますか？",
+          "lines": [
+            "残りは、管理VMとContainer Appsの区画ですね。",
+            "どちらも処理を動かしますが、用途はどう違いますか？"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-049.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "management-vm",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "subnets",
+      "speech": "管理ブイエムは構築・配備・管理作業を行うリナックスの作業場所。コンテナーアップスは、ポータルなどのアプリが動く共用の実行環境で、この構成では内部環境として作る。",
+      "caption": "管理VMは構築・配備・管理作業を行うLinuxの作業場所。Container Appsは、Portalなどのアプリが動く共用の実行環境で、この構成では内部環境として作る。",
+      "subtitleLines": [
+        "管理VMは構築・配備・管理作業を行うLinuxの作業場所。",
+        "Container Appsは、Portalなどのアプリが動く"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理VMは構築・配備・管理作業を行うLinuxの作業場所。Container Appsは、Portalなどのアプリが動く",
+          "lines": [
+            "管理VMは構築・配備・管理作業を行うLinuxの作業場所。",
+            "Container Appsは、Portalなどのアプリが動く"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "共用の実行環境で、この構成では内部環境として作る。",
+          "lines": [
+            "共用の実行環境で、この構成では内部環境として作る。"
+          ],
+          "weight": 25
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-050.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "aca-internal",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-051-manabu",
+      "speaker": "manabu",
+      "chapterId": "subnets",
+      "speech": "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理ブイエムには公開アイピーがなく、接続経路も別途必要になるよ。",
+      "caption": "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理VMには公開IPがなく、接続経路も別途必要になるよ。",
+      "subtitleLines": [
+        "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理",
+        "VMには公開IPがなく、接続経路も別途必要になるよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理VMには公開IPがなく、接続経路も別途必要になるよ。",
+          "lines": [
+            "管理の作業場所と、アプリが動き続ける場所を分けているんだね。管理",
+            "VMには公開IPがなく、接続経路も別途必要になるよ。"
+          ],
+          "weight": 58
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-051.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            549,
+            305,
+            626,
+            51
+          ],
+          "zoom": 1.18,
+          "seconds": 0.85
+        },
+        "azureView": "vm-no-public-ip",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-052-mako",
+      "speaker": "mako",
+      "chapterId": "subnets",
+      "speech": "六つを並べると、入口、エーピーアイ処理、ファイアウォール、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見えてきました。",
+      "caption": "六つを並べると、入口、API処理、Firewall、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見えてきました。",
+      "subtitleLines": [
+        "六つを並べると、入口、API処理、Firewall、サービスへの",
+        "接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見え"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "六つを並べると、入口、API処理、Firewall、サービスへの接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見え",
+          "lines": [
+            "六つを並べると、入口、API処理、Firewall、サービスへの",
+            "接続口、管理作業、アプリ実行。名前より、担当で覚えると配置が見え"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "てきました。",
+          "lines": [
+            "てきました。"
+          ],
+          "weight": 6
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-052.svg",
+        "heading": "6つの区画の役割",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のエーピーアイを呼ぶところからでいいですか？",
+      "caption": "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のAPIを呼ぶところからでいいですか？",
+      "subtitleLines": [
+        "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者",
+        "が通常のAPIを呼ぶところからでいいですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者が通常のAPIを呼ぶところからでいいですか？",
+          "lines": [
+            "では、実際の要求を一つ、図の上で追ってみたいです。今回は、利用者",
+            "が通常のAPIを呼ぶところからでいいですか？"
+          ],
+          "weight": 54
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-053.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-054-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "うん。ここでは通常のエイチティーティーピーエスのエーピーアイ要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。",
+      "caption": "うん。ここでは通常のHTTPSのAPI要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。",
+      "subtitleLines": [
+        "うん。ここでは通常のHTTPSのAPI要求を選ぼう。ほかの経路も",
+        "あるので、これをすべての要求に共通する一本の道としては扱わないよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。ここでは通常のHTTPSのAPI要求を選ぼう。ほかの経路もあるので、これをすべての要求に共通する一本の道としては扱わないよ。",
+          "lines": [
+            "うん。ここでは通常のHTTPSのAPI要求を選ぼう。ほかの経路も",
+            "あるので、これをすべての要求に共通する一本の道としては扱わないよ。"
+          ],
+          "weight": 65
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-054.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "利用者が公開ゲートウェイの名前へ要求を送る。最初に受けるのは、エーピーアイエムではなくアプリケーションゲートウェイの公開入口ですね。",
+      "caption": "利用者が公開Gatewayの名前へ要求を送る。最初に受けるのは、APIMではなくApplication Gatewayの公開入口ですね。",
+      "subtitleLines": [
+        "利用者が公開Gatewayの名前へ要求を送る。最初に受けるのは、",
+        "APIMではなくApplication Gatewayの公開入口"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者が公開Gatewayの名前へ要求を送る。最初に受けるのは、APIMではなくApplication Gatewayの公開入口",
+          "lines": [
+            "利用者が公開Gatewayの名前へ要求を送る。最初に受けるのは、",
+            "APIMではなくApplication Gatewayの公開入口"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "ですね。",
+          "lines": [
+            "ですね。"
+          ],
+          "weight": 4
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-055.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            548,
+            250,
+            629,
+            150
+          ],
+          "zoom": 1.15,
+          "seconds": 0.85
+        },
+        "azureView": "agw-listener",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "そう。通常のエイチティーティーピーエスはアプリケーションゲートウェイで終端する。この入口での処理と、その後に内部のエーピーアイエムへ接続する処理を、分けて考えるんだ。",
+      "caption": "そう。通常のHTTPSはApplication Gatewayで終端する。この入口での処理と、その後に内部のAPIMへ接続する処理を、分けて考えるんだ。",
+      "subtitleLines": [
+        "そう。通常のHTTPSはApplication Gatewayで",
+        "終端する。この入口での処理と、その後に内部のAPIMへ接続する"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そう。通常のHTTPSはApplication Gatewayで終端する。この入口での処理と、その後に内部のAPIMへ接続する",
+          "lines": [
+            "そう。通常のHTTPSはApplication Gatewayで",
+            "終端する。この入口での処理と、その後に内部のAPIMへ接続する"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "処理を、分けて考えるんだ。",
+          "lines": [
+            "処理を、分けて考えるんだ。"
+          ],
+          "weight": 13
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-056.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            548,
+            250,
+            629,
+            150
+          ],
+          "zoom": 1.15,
+          "seconds": 0.85
+        },
+        "azureView": "agw-listener",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-057-manabu",
+      "speaker": "manabu",
+      "chapterId": "api-flow",
+      "speech": "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。",
+      "caption": "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。",
+      "subtitleLines": [
+        "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と",
+        "内部の配置を分けて管理することも、この構成の目的だね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と内部の配置を分けて管理することも、この構成の目的だね。",
+          "lines": [
+            "公開する窓口を決め、内部の処理場所へつなぐ。利用者に見える入口と",
+            "内部の配置を分けて管理することも、この構成の目的だね。"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-057.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            548,
+            250,
+            629,
+            150
+          ],
+          "zoom": 1.15,
+          "seconds": 0.85
+        },
+        "azureView": "agw-listener",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-058-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "公開入口からエーピーアイエムへは、図の緑の線を進みます。この線がファイアウォール経由を表しているんでしたね。",
+      "caption": "公開入口からAPIMへは、図の緑の線を進みます。この線がFirewall経由を表しているんでしたね。",
+      "subtitleLines": [
+        "公開入口からAPIMへは、図の緑の線を進みます。この線が",
+        "Firewall経由を表しているんでしたね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開入口からAPIMへは、図の緑の線を進みます。この線がFirewall経由を表しているんでしたね。",
+          "lines": [
+            "公開入口からAPIMへは、図の緑の線を進みます。この線が",
+            "Firewall経由を表しているんでしたね。"
+          ],
+          "weight": 50
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-058.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "うん。アプリケーションゲートウェイからエーピーアイエムへは、ユーディーアールでファイアウォールを次の転送先にする。届いた通信を、ファイアウォールの規則が判定する。",
+      "caption": "うん。Application GatewayからAPIMへは、UDRでFirewallを次の転送先にする。届いた通信を、Firewallの規則が判定する。",
+      "subtitleLines": [
+        "うん。Application GatewayからAPIMへは、",
+        "UDRでFirewallを次の転送先にする。届いた通信を、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。Application GatewayからAPIMへは、UDRでFirewallを次の転送先にする。届いた通信を、",
+          "lines": [
+            "うん。Application GatewayからAPIMへは、",
+            "UDRでFirewallを次の転送先にする。届いた通信を、"
+          ],
+          "weight": 60
+        },
+        {
+          "caption": "Firewallの規則が判定する。",
+          "lines": [
+            "Firewallの規則が判定する。"
+          ],
+          "weight": 17
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-059.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            215,
+            231,
+            968,
+            54
+          ],
+          "zoom": 1.13,
+          "seconds": 0.85
+        },
+        "azureView": "agw-routes",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-060-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "ここで、エヌエスジーとユーディーアールとファイアウォールの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？",
+      "caption": "ここで、NSGとUDRとFirewallの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？",
+      "subtitleLines": [
+        "ここで、NSGとUDRとFirewallの役割が出てきますね。",
+        "同じ通信を、それぞれ別の視点で見るわけですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで、NSGとUDRとFirewallの役割が出てきますね。同じ通信を、それぞれ別の視点で見るわけですか？",
+          "lines": [
+            "ここで、NSGとUDRとFirewallの役割が出てきますね。",
+            "同じ通信を、それぞれ別の視点で見るわけですか？"
+          ],
+          "weight": 54
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-060.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            220,
+            207,
+            960,
+            245
+          ],
+          "zoom": 1.045,
+          "seconds": 0.85
+        },
+        "azureView": "control-roles",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-061-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "そう。エヌエスジーは送受信の条件、ユーディーアールは次の転送先、ファイアウォールは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の読み方は後の回で深めよう。",
+      "caption": "そう。NSGは送受信の条件、UDRは次の転送先、Firewallは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の読み方は後の回で深めよう。",
+      "subtitleLines": [
+        "そう。NSGは送受信の条件、UDRは次の転送先、Firewall",
+        "は到達した通信の判定を見る。今日はその役割まで押さえて、設定表の"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そう。NSGは送受信の条件、UDRは次の転送先、Firewallは到達した通信の判定を見る。今日はその役割まで押さえて、設定表の",
+          "lines": [
+            "そう。NSGは送受信の条件、UDRは次の転送先、Firewall",
+            "は到達した通信の判定を見る。今日はその役割まで押さえて、設定表の"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "読み方は後の回で深めよう。",
+          "lines": [
+            "読み方は後の回で深めよう。"
+          ],
+          "weight": 13
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-061.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            220,
+            207,
+            960,
+            245
+          ],
+          "zoom": 1.045,
+          "seconds": 0.85
+        },
+        "azureView": "control-roles",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-062-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "エーピーアイエムに届いたら、次はエーピーアイの認証やポリシーの処理ですね。ネットワークが通ったことと、エーピーアイを利用できることは、ここでも別なんですね。",
+      "caption": "APIMに届いたら、次はAPIの認証やポリシーの処理ですね。ネットワークが通ったことと、APIを利用できることは、ここでも別なんですね。",
+      "subtitleLines": [
+        "APIMに届いたら、次はAPIの認証やポリシーの処理ですね。",
+        "ネットワークが通ったことと、APIを利用できることは、ここでも別"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMに届いたら、次はAPIの認証やポリシーの処理ですね。ネットワークが通ったことと、APIを利用できることは、ここでも別",
+          "lines": [
+            "APIMに届いたら、次はAPIの認証やポリシーの処理ですね。",
+            "ネットワークが通ったことと、APIを利用できることは、ここでも別"
+          ],
+          "weight": 62
+        },
+        {
+          "caption": "なんですね。",
+          "lines": [
+            "なんですね。"
+          ],
+          "weight": 6
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-062.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "apim-api",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-063-manabu",
+      "speaker": "manabu",
+      "chapterId": "api-flow",
+      "speech": "道がつながるだけでは、何でも使えることにはならないんだね。エーピーアイの利用許可や入力の確認は、その後の学習で追っていこう。",
+      "caption": "道がつながるだけでは、何でも使えることにはならないんだね。APIの利用許可や入力の確認は、その後の学習で追っていこう。",
+      "subtitleLines": [
+        "道がつながるだけでは、何でも使えることにはならないんだね。API",
+        "の利用許可や入力の確認は、その後の学習で追っていこう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "道がつながるだけでは、何でも使えることにはならないんだね。APIの利用許可や入力の確認は、その後の学習で追っていこう。",
+          "lines": [
+            "道がつながるだけでは、何でも使えることにはならないんだね。API",
+            "の利用許可や入力の確認は、その後の学習で追っていこう。"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-063.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "apim-api",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-064-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "この資料の通常エーピーアイでは、外側のエイチティーティーピーエスを終端した後、エーピーアイエムへの内部中継はエイチティーティーピーを使う。区間を分けて読むのがポイントだよ。",
+      "caption": "この資料の通常APIでは、外側のHTTPSを終端した後、APIMへの内部中継はHTTPを使う。区間を分けて読むのがポイントだよ。",
+      "subtitleLines": [
+        "この資料の通常APIでは、外側のHTTPSを終端した後、APIM",
+        "への内部中継はHTTPを使う。区間を分けて読むのがポイントだよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この資料の通常APIでは、外側のHTTPSを終端した後、APIMへの内部中継はHTTPを使う。区間を分けて読むのがポイントだよ。",
+          "lines": [
+            "この資料の通常APIでは、外側のHTTPSを終端した後、APIM",
+            "への内部中継はHTTPを使う。区間を分けて読むのがポイントだよ。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-064.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            548,
+            252,
+            630,
+            102
+          ],
+          "zoom": 1.18,
+          "seconds": 0.85
+        },
+        "azureView": "agw-backend-http",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-065-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "外側と内側を、同じ一つの接続だと思い込まないことですね。ではエーピーアイエムがファウンドリーを呼ぶときは、どの線を進みますか？",
+      "caption": "外側と内側を、同じ一つの接続だと思い込まないことですね。ではAPIMがFoundryを呼ぶときは、どの線を進みますか？",
+      "subtitleLines": [
+        "外側と内側を、同じ一つの接続だと思い込まないことですね。では",
+        "APIMがFoundryを呼ぶときは、どの線を進みますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "外側と内側を、同じ一つの接続だと思い込まないことですね。ではAPIMがFoundryを呼ぶときは、どの線を進みますか？",
+          "lines": [
+            "外側と内側を、同じ一つの接続だと思い込まないことですね。では",
+            "APIMがFoundryを呼ぶときは、どの線を進みますか？"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-065.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-066-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "ここは青い破線の、ピーイーへの直接経路を使う。エーピーアイエムからファウンドリーの接続口へ進み、その先でサービスを呼ぶ。この標準経路では、ファイアウォールを通らないんだ。",
+      "caption": "ここは青い破線の、PEへの直接経路を使う。APIMからFoundryの接続口へ進み、その先でサービスを呼ぶ。この標準経路では、Firewallを通らないんだ。",
+      "subtitleLines": [
+        "ここは青い破線の、PEへの直接経路を使う。APIMから",
+        "Foundryの接続口へ進み、その先でサービスを呼ぶ。この標準"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここは青い破線の、PEへの直接経路を使う。APIMからFoundryの接続口へ進み、その先でサービスを呼ぶ。この標準",
+          "lines": [
+            "ここは青い破線の、PEへの直接経路を使う。APIMから",
+            "Foundryの接続口へ進み、その先でサービスを呼ぶ。この標準"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "経路では、Firewallを通らないんだ。",
+          "lines": [
+            "経路では、Firewallを通らないんだ。"
+          ],
+          "weight": 21
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-066.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-067-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "入口からエーピーアイエムまではファイアウォール経由。でも、エーピーアイエムからピーイーへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。",
+      "caption": "入口からAPIMまではFirewall経由。でも、APIMからPEへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。",
+      "subtitleLines": [
+        "入口からAPIMまではFirewall経由。でも、APIMから",
+        "PEへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "入口からAPIMまではFirewall経由。でも、APIMからPEへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。",
+          "lines": [
+            "入口からAPIMまではFirewall経由。でも、APIMから",
+            "PEへは直接。ひと続きの処理でも、区間ごとに経路が変わるんですね。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-067.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "うん。[breathing] それに、エーピーアイエムがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめよう。",
+      "caption": "うん。 それに、APIMがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめよう。",
+      "subtitleLines": [
+        "うん。 それに、APIMがバックエンドへ行う呼び出しは、利用者の",
+        "接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめ"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "うん。 それに、APIMがバックエンドへ行う呼び出しは、利用者の接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめ",
+          "lines": [
+            "うん。 それに、APIMがバックエンドへ行う呼び出しは、利用者の",
+            "接続とは別の接続だよ。矢印を追うときも、どの区間の話かを確かめ"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "よう。",
+          "lines": [
+            "よう。"
+          ],
+          "weight": 3
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-068.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-069-mako",
+      "speaker": "mako",
+      "chapterId": "api-flow",
+      "speech": "返ってくる結果は、ファウンドリーの接続口からエーピーアイエムへ。その後、エーピーアイエムから公開入口へ戻る道も、ちゃんと用意する必要があるんですね。",
+      "caption": "返ってくる結果は、Foundryの接続口からAPIMへ。その後、APIMから公開入口へ戻る道も、ちゃんと用意する必要があるんですね。",
+      "subtitleLines": [
+        "返ってくる結果は、Foundryの接続口からAPIMへ。その後、",
+        "APIMから公開入口へ戻る道も、ちゃんと用意する必要があるんで"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "返ってくる結果は、Foundryの接続口からAPIMへ。その後、APIMから公開入口へ戻る道も、ちゃんと用意する必要があるんで",
+          "lines": [
+            "返ってくる結果は、Foundryの接続口からAPIMへ。その後、",
+            "APIMから公開入口へ戻る道も、ちゃんと用意する必要があるんで"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "すね。",
+          "lines": [
+            "すね。"
+          ],
+          "weight": 3
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-069.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "api-flow",
+      "speech": "エーピーアイエムから公開入口へ戻る区間にも、ファイアウォールを経由するユーディーアールを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できるようにしよう。",
+      "caption": "APIMから公開入口へ戻る区間にも、Firewallを経由するUDRを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できるようにしよう。",
+      "subtitleLines": [
+        "APIMから公開入口へ戻る区間にも、Firewallを経由する",
+        "UDRを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できる"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "APIMから公開入口へ戻る区間にも、Firewallを経由するUDRを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できる",
+          "lines": [
+            "APIMから公開入口へ戻る区間にも、Firewallを経由する",
+            "UDRを置くよ。同じ区間の往路と復路を合わせて、道筋を説明できる"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "ようにしよう。",
+          "lines": [
+            "ようにしよう。"
+          ],
+          "weight": 7
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-070.svg",
+        "heading": "通常APIの要求を追う",
+        "azureMotion": {
+          "focus": [
+            215,
+            231,
+            968,
+            54
+          ],
+          "zoom": 1.13,
+          "seconds": 0.85
+        },
+        "azureView": "apim-return-route",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "direct-paths",
+      "speech": "ほかにも直接つながる青い線がありますね。ファイアウォールがあるなら、全部通した方がよさそうにも見えますが。",
+      "caption": "ほかにも直接つながる青い線がありますね。Firewallがあるなら、全部通した方がよさそうにも見えますが。",
+      "subtitleLines": [
+        "ほかにも直接つながる青い線がありますね。Firewallがある",
+        "なら、全部通した方がよさそうにも見えますが。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ほかにも直接つながる青い線がありますね。Firewallがあるなら、全部通した方がよさそうにも見えますが。",
+          "lines": [
+            "ほかにも直接つながる青い線がありますね。Firewallがある",
+            "なら、全部通した方がよさそうにも見えますが。"
+          ],
+          "weight": 53
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-071.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "direct-paths",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "direct-paths",
+      "speech": "この構成では、ピーイーや一部の内部通信に、具体的な直接経路がある。ファイアウォールを通るかは、宛先と実際の経路で決まるよ。",
+      "caption": "この構成では、PEや一部の内部通信に、具体的な直接経路がある。Firewallを通るかは、宛先と実際の経路で決まるよ。",
+      "subtitleLines": [
+        "この構成では、PEや一部の内部通信に、具体的な直接経路がある。",
+        "Firewallを通るかは、宛先と実際の経路で決まるよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この構成では、PEや一部の内部通信に、具体的な直接経路がある。Firewallを通るかは、宛先と実際の経路で決まるよ。",
+          "lines": [
+            "この構成では、PEや一部の内部通信に、具体的な直接経路がある。",
+            "Firewallを通るかは、宛先と実際の経路で決まるよ。"
+          ],
+          "weight": 59
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-072.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            215,
+            429,
+            967,
+            43
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "apim-default-route",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-073-manabu",
+      "speaker": "manabu",
+      "chapterId": "direct-paths",
+      "speech": "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。",
+      "caption": "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。",
+      "subtitleLines": [
+        "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。",
+        "必要な接続を役割ごとに整理した地図なんだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。必要な接続を役割ごとに整理した地図なんだね。",
+          "lines": [
+            "すべてを同じ装置へ集めた図だと思うと、調査する場所も間違えやすい。",
+            "必要な接続を役割ごとに整理した地図なんだね。"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-073.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            215,
+            429,
+            967,
+            43
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "apim-default-route",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "direct-paths",
+      "speech": "たとえば、アプリからエスキューエルへ行く通信は、どこを見ればよいですか。利用者のエーピーアイ呼び出しと、同じ入口から始まるんでしょうか？",
+      "caption": "たとえば、アプリからSQLへ行く通信は、どこを見ればよいですか。利用者のAPI呼び出しと、同じ入口から始まるんでしょうか？",
+      "subtitleLines": [
+        "たとえば、アプリからSQLへ行く通信は、どこを見ればよいですか。",
+        "利用者のAPI呼び出しと、同じ入口から始まるんでしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "たとえば、アプリからSQLへ行く通信は、どこを見ればよいですか。利用者のAPI呼び出しと、同じ入口から始まるんでしょうか？",
+          "lines": [
+            "たとえば、アプリからSQLへ行く通信は、どこを見ればよいですか。",
+            "利用者のAPI呼び出しと、同じ入口から始まるんでしょうか？"
+          ],
+          "weight": 61
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-074.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "sql-private-endpoint",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "direct-paths",
+      "speech": "[breathing] アプリ実行区画のエーシーエーからエスキューエルのピーイーへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。",
+      "caption": "アプリ実行区画のACAからSQLのPEへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。",
+      "subtitleLines": [
+        "アプリ実行区画のACAからSQLのPEへは、直接経路だよ。公開",
+        "入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "アプリ実行区画のACAからSQLのPEへは、直接経路だよ。公開入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。",
+          "lines": [
+            "アプリ実行区画のACAからSQLのPEへは、直接経路だよ。公開",
+            "入口を呼ぶ場面と、アプリがデータへ接続する場面を区別しよう。"
+          ],
+          "weight": 61
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-075.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "sql-private-endpoint",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-076-mako",
+      "speaker": "mako",
+      "chapterId": "direct-paths",
+      "speech": "画面を開く通信と、内部のエスキューエルへの通信は別なんですね。では、ポータルが公開ゲートウェイを試す通信はどうなりますか？",
+      "caption": "画面を開く通信と、内部のSQLへの通信は別なんですね。では、Portalが公開Gatewayを試す通信はどうなりますか？",
+      "subtitleLines": [
+        "画面を開く通信と、内部のSQLへの通信は別なんですね。では、",
+        "Portalが公開Gatewayを試す通信はどうなりますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "画面を開く通信と、内部のSQLへの通信は別なんですね。では、Portalが公開Gatewayを試す通信はどうなりますか？",
+          "lines": [
+            "画面を開く通信と、内部のSQLへの通信は別なんですね。では、",
+            "Portalが公開Gatewayを試す通信はどうなりますか？"
+          ],
+          "weight": 60
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-076.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            215,
+            231,
+            968,
+            54
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "aca-egress",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-077-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "direct-paths",
+      "speech": "その場合は、エーシーエーからファイアウォールを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。",
+      "caption": "その場合は、ACAからFirewallを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。",
+      "subtitleLines": [
+        "その場合は、ACAからFirewallを通って公開入口を呼び、",
+        "その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その場合は、ACAからFirewallを通って公開入口を呼び、その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。",
+          "lines": [
+            "その場合は、ACAからFirewallを通って公開入口を呼び、",
+            "その後、通常の内部中継へ進む。用途に応じて入口へ戻る通信もあるよ。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-077.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "aca-public-gateway",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-078-manabu",
+      "speaker": "manabu",
+      "chapterId": "direct-paths",
+      "speech": "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。",
+      "caption": "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。",
+      "subtitleLines": [
+        "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続",
+        "するのかを、一つずつそろえて考えよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続するのかを、一つずつそろえて考えよう。",
+          "lines": [
+            "操作の名前だけでは経路は決まらない。誰からどこへ、何の目的で接続",
+            "するのかを、一つずつそろえて考えよう。"
+          ],
+          "weight": 51
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-078.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "direct-paths",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-079-mako",
+      "speaker": "mako",
+      "chapterId": "direct-paths",
+      "speech": "ジーアールピーシーやアジュールの管理通信も図にありますね。ここは、今日の通常エーピーアイの道筋に、全部当てはめなくてよいんですね。",
+      "caption": "gRPCやAzureの管理通信も図にありますね。ここは、今日の通常APIの道筋に、全部当てはめなくてよいんですね。",
+      "subtitleLines": [
+        "gRPCやAzureの管理通信も図にありますね。ここは、今日の",
+        "通常APIの道筋に、全部当てはめなくてよいんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "gRPCやAzureの管理通信も図にありますね。ここは、今日の通常APIの道筋に、全部当てはめなくてよいんですね。",
+          "lines": [
+            "gRPCやAzureの管理通信も図にありますね。ここは、今日の",
+            "通常APIの道筋に、全部当てはめなくてよいんですね。"
+          ],
+          "weight": 57
+        }
+      ],
+      "visual": {
+        "layout": "direct-paths",
+        "diagram": "network-overview",
+        "heading": "全部がFirewallを通るわけではない",
+        "focus": "apim",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-080-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "direct-paths",
+      "speech": "ジーアールピーシーは有効時に別の入口でティーシーピーとティーエルエスを中継し、通常エイチティーティーピーエスと同じワフ検査としては扱わない。管理系にも別経路があり、後の回で確認するよ。",
+      "caption": "gRPCは有効時に別の入口でTCPとTLSを中継し、通常HTTPSと同じWAF検査としては扱わない。管理系にも別経路があり、後の回で確認するよ。",
+      "subtitleLines": [
+        "gRPCは有効時に別の入口でTCPとTLSを中継し、通常",
+        "HTTPSと同じWAF検査としては扱わない。管理系にも別経路が"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "gRPCは有効時に別の入口でTCPとTLSを中継し、通常HTTPSと同じWAF検査としては扱わない。管理系にも別経路が",
+          "lines": [
+            "gRPCは有効時に別の入口でTCPとTLSを中継し、通常",
+            "HTTPSと同じWAF検査としては扱わない。管理系にも別経路が"
+          ],
+          "weight": 59
+        },
+        {
+          "caption": "あり、後の回で確認するよ。",
+          "lines": [
+            "あり、後の回で確認するよ。"
+          ],
+          "weight": 13
+        }
+      ],
+      "visual": {
+        "layout": "direct-paths",
+        "diagram": "network-overview",
+        "heading": "全部がFirewallを通るわけではない",
+        "focus": "apim",
+        "bullets": []
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-081-mako",
+      "speaker": "mako",
+      "chapterId": "direct-paths",
+      "speech": "ピーイーで閉域接続していれば、ファウンドリー本体の外向き通信も、このブイネットのファイアウォールで全部管理できるのでしょうか？",
+      "caption": "PEで閉域接続していれば、Foundry本体の外向き通信も、このVNetのFirewallで全部管理できるのでしょうか？",
+      "subtitleLines": [
+        "PEで閉域接続していれば、Foundry本体の外向き通信も、この",
+        "VNetのFirewallで全部管理できるのでしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "PEで閉域接続していれば、Foundry本体の外向き通信も、このVNetのFirewallで全部管理できるのでしょうか？",
+          "lines": [
+            "PEで閉域接続していれば、Foundry本体の外向き通信も、この",
+            "VNetのFirewallで全部管理できるのでしょうか？"
+          ],
+          "weight": 60
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-081.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "direct-paths",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-082-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "direct-paths",
+      "speech": "ピーイーへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。",
+      "caption": "PEへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。",
+      "subtitleLines": [
+        "PEへの接続と、サービス本体の外向き通信は別だよ。この図から、",
+        "サービス本体のすべての送信まで制御しているとは判断しないんだ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "PEへの接続と、サービス本体の外向き通信は別だよ。この図から、サービス本体のすべての送信まで制御しているとは判断しないんだ。",
+          "lines": [
+            "PEへの接続と、サービス本体の外向き通信は別だよ。この図から、",
+            "サービス本体のすべての送信まで制御しているとは判断しないんだ。"
+          ],
+          "weight": 62
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-082.svg",
+        "heading": "全部がFirewallを通るわけではない",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "direct-paths",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-083-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、どうでしょう？",
+      "caption": "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、どうでしょう？",
+      "subtitleLines": [
+        "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つ",
+        "に分かれていれば、その間の通信は自動的に全部遮断される。これは、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つに分かれていれば、その間の通信は自動的に全部遮断される。これは、",
+          "lines": [
+            "ここで、少し確かめてみましょう。最初の問いです。サブネットが六つ",
+            "に分かれていれば、その間の通信は自動的に全部遮断される。これは、"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "どうでしょう？",
+          "lines": [
+            "どうでしょう？"
+          ],
+          "weight": 7
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-083.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            786,
+            198,
+            400,
+            274
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18,
+      "pauseAfterSeconds": 2.5
+    },
+    {
+      "id": "lesson01-turn-084-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。",
+      "caption": "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。",
+      "subtitleLines": [
+        "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める",
+        "仕組みを、別々に思い出すのがヒントだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める仕組みを、別々に思い出すのがヒントだね。",
+          "lines": [
+            "図を見て考えてみよう。区画を分ける目的と、実際に通す条件を決める",
+            "仕組みを、別々に思い出すのがヒントだね。"
+          ],
+          "weight": 52
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-084.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            240,
+            232,
+            918,
+            207
+          ],
+          "zoom": 1.07,
+          "seconds": 0.85
+        },
+        "azureView": "containment",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-085-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。エヌエスジーなどの通信制御と、ユーディーアールによる経路を合わせて確認する必要がある。",
+      "caption": "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。NSGなどの通信制御と、UDRによる経路を合わせて確認する必要がある。",
+      "subtitleLines": [
+        "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。",
+        "NSGなどの通信制御と、UDRによる経路を合わせて確認する必要が"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。NSGなどの通信制御と、UDRによる経路を合わせて確認する必要が",
+          "lines": [
+            "答えは、そうではない。配置を分けただけでは自動遮断にならないよ。",
+            "NSGなどの通信制御と、UDRによる経路を合わせて確認する必要が"
+          ],
+          "weight": 64
+        },
+        {
+          "caption": "ある。",
+          "lines": [
+            "ある。"
+          ],
+          "weight": 3
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-085.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            786,
+            198,
+            400,
+            274
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-086-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "次の問いです。通常エーピーアイでは、公開入口からエーピーアイエムへはファイアウォール経由、エーピーアイエムからファウンドリーのピーイーへは直接経路を使う。これは、どうでしょう？",
+      "caption": "次の問いです。通常APIでは、公開入口からAPIMへはFirewall経由、APIMからFoundryのPEへは直接経路を使う。これは、どうでしょう？",
+      "subtitleLines": [
+        "次の問いです。通常APIでは、公開入口からAPIMへは",
+        "Firewall経由、APIMからFoundryのPEへは直接"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次の問いです。通常APIでは、公開入口からAPIMへはFirewall経由、APIMからFoundryのPEへは直接",
+          "lines": [
+            "次の問いです。通常APIでは、公開入口からAPIMへは",
+            "Firewall経由、APIMからFoundryのPEへは直接"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "経路を使う。これは、どうでしょう？",
+          "lines": [
+            "経路を使う。これは、どうでしょう？"
+          ],
+          "weight": 17
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-086.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18,
+      "pauseAfterSeconds": 2.5
+    },
+    {
+      "id": "lesson01-turn-087-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。",
+      "caption": "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。",
+      "subtitleLines": [
+        "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い",
+        "破線を追い、送信元と宛先を一つずつ確かめよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い破線を追い、送信元と宛先を一つずつ確かめよう。",
+          "lines": [
+            "そのとおり。区間で経路が変わることがポイントだね。緑の線と青い",
+            "破線を追い、送信元と宛先を一つずつ確かめよう。"
+          ],
+          "weight": 54
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-087.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-088-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後は配置の問いです。ピーイーのサブネットにエスキューエルへの接続口があるので、エスキューエルのサービス本体も、そのサブネットの中に置かれている。これはどうでしょう？",
+      "caption": "最後は配置の問いです。PEのサブネットにSQLへの接続口があるので、SQLのサービス本体も、そのサブネットの中に置かれている。これはどうでしょう？",
+      "subtitleLines": [
+        "最後は配置の問いです。PEのサブネットにSQLへの接続口がある",
+        "ので、SQLのサービス本体も、そのサブネットの中に置かれている。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後は配置の問いです。PEのサブネットにSQLへの接続口があるので、SQLのサービス本体も、そのサブネットの中に置かれている。",
+          "lines": [
+            "最後は配置の問いです。PEのサブネットにSQLへの接続口がある",
+            "ので、SQLのサービス本体も、そのサブネットの中に置かれている。"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "これはどうでしょう？",
+          "lines": [
+            "これはどうでしょう？"
+          ],
+          "weight": 10
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-088.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "sql-private-endpoint",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18,
+      "pauseAfterSeconds": 2.5
+    },
+    {
+      "id": "lesson01-turn-089-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "サービス本体と接続口は別だよ。ピーイーはブイネット内のプライベート アイピーでサービスへ接続する入口。図の枠の中に何を配置しているのかを、名前だけでなく役割で読もう。",
+      "caption": "サービス本体と接続口は別だよ。PEはVNet内のprivate IPでサービスへ接続する入口。図の枠の中に何を配置しているのかを、名前だけでなく役割で読もう。",
+      "subtitleLines": [
+        "サービス本体と接続口は別だよ。PEはVNet内のprivate ",
+        "IPでサービスへ接続する入口。図の枠の中に何を配置しているのかを、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "サービス本体と接続口は別だよ。PEはVNet内のprivate IPでサービスへ接続する入口。図の枠の中に何を配置しているのかを、",
+          "lines": [
+            "サービス本体と接続口は別だよ。PEはVNet内のprivate ",
+            "IPでサービスへ接続する入口。図の枠の中に何を配置しているのかを、"
+          ],
+          "weight": 65
+        },
+        {
+          "caption": "名前だけでなく役割で読もう。",
+          "lines": [
+            "名前だけでなく役割で読もう。"
+          ],
+          "weight": 14
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-089.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            240,
+            203,
+            910,
+            260
+          ],
+          "zoom": 1.06,
+          "seconds": 0.85
+        },
+        "azureView": "direct-paths",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-090-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。[laughter]",
+      "caption": "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。",
+      "subtitleLines": [
+        "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、",
+        "見る順番ができました。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、見る順番ができました。",
+          "lines": [
+            "箱と線が多くて身構えましたが、配置、通信、判断の仕組みを分けると、",
+            "見る順番ができました。"
+          ],
+          "weight": 44
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-090.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18,
+      "paralinguistics": [
+        {
+          "tag": "laughter",
+          "intent": "理解がつながる場面の親しみのある笑い。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-091-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。",
+      "caption": "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。",
+      "subtitleLines": [
+        "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、",
+        "接続口、戻り道の順で、図を指してみよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、接続口、戻り道の順で、図を指してみよう。",
+          "lines": [
+            "自分が説明したい要求を一つ選ぶといいね。送信元、入口、処理先、",
+            "接続口、戻り道の順で、図を指してみよう。"
+          ],
+          "weight": 51
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-091.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-092-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。",
+      "caption": "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。",
+      "subtitleLines": [
+        "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境",
+        "を調べるときは、定義と実際の設定を照合する段階を加えよう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境を調べるときは、定義と実際の設定を照合する段階を加えよう。",
+          "lines": [
+            "資料では、全体図から経路の対応表へ進み、必要な節へ戻る。稼働環境",
+            "を調べるときは、定義と実際の設定を照合する段階を加えよう。"
+          ],
+          "weight": 61
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-092.svg",
+        "heading": "図を使って確かめる",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "source-vs-environment",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-093-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "まとめです。一つのブイネットに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。",
+      "caption": "まとめです。一つのVNetに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。",
+      "subtitleLines": [
+        "まとめです。一つのVNetに四つのアドレス空間があり、その範囲を",
+        "使って六つのサブネットを配置する。四つ目は公開例では予備でした。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まとめです。一つのVNetに四つのアドレス空間があり、その範囲を使って六つのサブネットを配置する。四つ目は公開例では予備でした。",
+          "lines": [
+            "まとめです。一つのVNetに四つのアドレス空間があり、その範囲を",
+            "使って六つのサブネットを配置する。四つ目は公開例では予備でした。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-093.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            218,
+            224,
+            965,
+            230
+          ],
+          "zoom": 1.08,
+          "seconds": 0.85
+        },
+        "azureView": "address-space",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-094-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。",
+      "caption": "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。",
+      "subtitleLines": [
+        "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理する",
+        "ため。必要な通信を説明できる土台を作るんだね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理するため。必要な通信を説明できる土台を作るんだね。",
+          "lines": [
+            "区画を分けるのは、入口、処理、管理、サービス接続の役割を整理する",
+            "ため。必要な通信を説明できる土台を作るんだね。"
+          ],
+          "weight": 55
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-094.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            216,
+            230,
+            966,
+            247
+          ],
+          "zoom": 1.065,
+          "seconds": 0.85
+        },
+        "azureView": "subnets",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-095-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "通常エーピーアイは、公開入口からファイアウォール経由でエーピーアイエムへ進み、ファウンドリーのピーイーへは直接接続する。戻り道も含め、区間ごとに確認しよう。",
+      "caption": "通常APIは、公開入口からFirewall経由でAPIMへ進み、FoundryのPEへは直接接続する。戻り道も含め、区間ごとに確認しよう。",
+      "subtitleLines": [
+        "通常APIは、公開入口からFirewall経由でAPIMへ進み、",
+        "FoundryのPEへは直接接続する。戻り道も含め、区間ごとに"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通常APIは、公開入口からFirewall経由でAPIMへ進み、FoundryのPEへは直接接続する。戻り道も含め、区間ごとに",
+          "lines": [
+            "通常APIは、公開入口からFirewall経由でAPIMへ進み、",
+            "FoundryのPEへは直接接続する。戻り道も含め、区間ごとに"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "確認しよう。",
+          "lines": [
+            "確認しよう。"
+          ],
+          "weight": 6
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-095.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16
+    },
+    {
+      "id": "lesson01-turn-096-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "配置だけでは通信を判断できず、すべてがファイアウォールを通るわけでもない。次は、接続先の名前からアイピーへ進むところを知りたいです。",
+      "caption": "配置だけでは通信を判断できず、すべてがFirewallを通るわけでもない。次は、接続先の名前からIPへ進むところを知りたいです。",
+      "subtitleLines": [
+        "配置だけでは通信を判断できず、すべてがFirewallを通るわけ",
+        "でもない。次は、接続先の名前からIPへ進むところを知りたいです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "配置だけでは通信を判断できず、すべてがFirewallを通るわけでもない。次は、接続先の名前からIPへ進むところを知りたいです。",
+          "lines": [
+            "配置だけでは通信を判断できず、すべてがFirewallを通るわけ",
+            "でもない。次は、接続先の名前からIPへ進むところを知りたいです。"
+          ],
+          "weight": 64
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-096.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "vnet-overview",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    },
+    {
+      "id": "lesson01-turn-097-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "次回はディーエヌエスとプライベートエンドポイント。[breathing] 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の流れを追っていこう。",
+      "caption": "次回はDNSとPrivate Endpoint。 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の流れを追っていこう。",
+      "subtitleLines": [
+        "次回はDNSとPrivate Endpoint。 同じサービス名",
+        "から、どの接続先を見つけるのか。今日の地図を使って、名前解決の"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次回はDNSとPrivate Endpoint。 同じサービス名から、どの接続先を見つけるのか。今日の地図を使って、名前解決の",
+          "lines": [
+            "次回はDNSとPrivate Endpoint。 同じサービス名",
+            "から、どの接続先を見つけるのか。今日の地図を使って、名前解決の"
+          ],
+          "weight": 63
+        },
+        {
+          "caption": "流れを追っていこう。",
+          "lines": [
+            "流れを追っていこう。"
+          ],
+          "weight": 10
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-097.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            500,
+            195,
+            670,
+            245
+          ],
+          "zoom": 1.12,
+          "seconds": 0.85
+        },
+        "azureView": "dns-preview",
+        "kind": "portal",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.16,
+      "paralinguistics": [
+        {
+          "tag": "breathing",
+          "intent": "説明の区切りに自然な息継ぎを置く。"
+        }
+      ]
+    },
+    {
+      "id": "lesson01-turn-098-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今回は、全体図で通常エーピーアイの往復を指してみてください。マナブさん、イクミさん、ありがとうございました。また次回、一緒に見ていきましょう。",
+      "caption": "今回は、全体図で通常APIの往復を指してみてください。MANABUさん、IKUMIさん、ありがとうございました。また次回、一緒に見ていきましょう。",
+      "subtitleLines": [
+        "今回は、全体図で通常APIの往復を指してみてください。",
+        "MANABUさん、IKUMIさん、ありがとうございました。また"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今回は、全体図で通常APIの往復を指してみてください。MANABUさん、IKUMIさん、ありがとうございました。また",
+          "lines": [
+            "今回は、全体図で通常APIの往復を指してみてください。",
+            "MANABUさん、IKUMIさん、ありがとうございました。また"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "次回、一緒に見ていきましょう。",
+          "lines": [
+            "次回、一緒に見ていきましょう。"
+          ],
+          "weight": 15
+        }
+      ],
+      "visual": {
+        "layout": "svg",
+        "svg": "diagrams/turn-098.svg",
+        "heading": "今日の地図と次の一歩",
+        "azureMotion": {
+          "focus": [
+            380,
+            226,
+            642,
+            164
+          ],
+          "zoom": 1.09,
+          "seconds": 0.85
+        },
+        "azureView": "api-flow",
+        "kind": "diagram",
+        "teachingReconstruction": true
+      },
+      "gapAfterSeconds": 0.18
+    }
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchors": [
+        "purpose",
+        "structure",
+        "address-space",
+        "subnets",
+        "summary",
+        "network-overview",
+        "network-egress-management",
+        "network-control-map"
+      ],
+      "verifiedDate": "2026-11-01",
+      "basis": "教材本文・公開設定例の構成説明。実環境の設定取得・疎通実績ではない。"
+    },
+    {
+      "file": "../assets/network-vnet-structure.svg",
+      "basis": "1VNet・4アドレス空間・6サブネットの包含関係。"
+    },
+    {
+      "file": "../assets/network-overview.svg",
+      "basis": "通常API入口・PEへの直接経路・サービス本体と接続口の区別。"
+    },
+    {
+      "file": "../assets/network-egress-management.svg",
+      "basis": "公開Gateway呼び出し・外向き通信・管理系の補助経路。"
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [
+      "lesson01-turn-024-mako",
+      "lesson01-turn-025-ikumi",
+      "lesson01-turn-026-manabu",
+      "lesson01-turn-032-mako",
+      "lesson01-turn-033-ikumi",
+      "lesson01-turn-034-mako",
+      "lesson01-turn-035-ikumi",
+      "lesson01-turn-047-mako",
+      "lesson01-turn-048-ikumi",
+      "lesson01-turn-079-mako",
+      "lesson01-turn-080-ikumi"
+    ],
+    "reason": "通常速度で生成した実尺から、補足・重複確認を省き約15分に編集する。4つの到達点、6区画、通常APIの往復、確認問題は維持。",
+    "sourceRecordingsKept": true,
+    "blocks": [
+      {
+        "turns": "024–026",
+        "reason": "リソースグループとサブネットの補足"
+      },
+      {
+        "turns": "032–035",
+        "reason": "CIDR表記と重複検査の詳細"
+      },
+      {
+        "turns": "047–048",
+        "reason": "PEとサービス本体の重複確認"
+      },
+      {
+        "turns": "079–080",
+        "reason": "gRPC・管理系例外の予告"
+      }
+    ]
+  },
+  "output": "output/lesson-01/egakumi-study-01-network-overview.mp4",
+  "actualDurationSeconds": 907.7083333333334,
+  "episodeNumber": 1,
+  "episodeKey": "01",
+  "visualEdition": "azure-walkthrough-v1",
+  "seriesLabel": "AZURE PORTAL WALKTHROUGH / 教材用再現",
+  "visualBasis": {
+    "kind": "teaching-reconstruction",
+    "liveAzureCapture": false,
+    "source": "../01-network-control.html",
+    "notes": "公開設定例・IaCに基づく抜粋。実IPは推測しない。図は教材オーバーレイ。"
+  }
+}

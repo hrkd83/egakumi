@@ -1,0 +1,322 @@
+<policies>
+  <!--
+    通常の REST API の認可・入力制約・接続先認証・転送を管理します。入口認証は base で全体ポリシーを継承します。
+    入口はAPIMの購読キーで認可し、裏側のサービスは設定したマネージドIDまたはCM等の資格情報で呼び出します。
+    __...__ は Bicep が検証済み API 契約から埋める置換箇所、{{...}} は APIM Named Value 参照です。
+    要求 ID で処理を追跡しますが、本文・token・API key を監査へ保存しません。応答を読み切らず SSE を中継します。
+  -->
+  <inbound>
+    <set-variable name="gatewayAuditSettings" value="@{
+      var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)));
+      var backend = settings[&quot;operationBackends&quot;]?[context.Operation.Id];
+      if (backend != null) {
+        settings[&quot;backendService&quot;] = backend[&quot;backendService&quot;];
+        settings[&quot;backendAuthentication&quot;] = backend[&quot;backendAuthentication&quot;];
+      }
+      return settings.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <base />
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
+    <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <!-- JSONを読む前に本文サイズを確認し、要求された入力profileのモデル・形式を検査します。 -->
+    <set-variable name="gatewayProfileSelection" value="@{
+      var result = new JObject(new JProperty(&quot;allowed&quot;, false), new JProperty(&quot;status&quot;, 403), new JProperty(&quot;profileId&quot;, &quot;&quot;));
+      try {
+        var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+        var constraint = config[&quot;operationConstraints&quot;][context.Operation.Id] as JObject;
+        if (constraint == null) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var profiles = constraint[&quot;profiles&quot;] as JArray;
+        var header = &quot;X-Egakumi-Profile&quot;;
+        if (profiles == null) {
+          if (context.Request.Headers.ContainsKey(header)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+          result[&quot;constraint&quot;] = constraint;
+          result[&quot;allowed&quot;] = true;
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        if (profiles.Count == 0) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var maxBytes = profiles.Max(p =&gt; (long)p[&quot;maxRequestBytes&quot;]);
+        if (maxBytes &lt; 1 || maxBytes &gt; 4194304) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var bytes = context.Request.Body == null ? new byte[0] : context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
+        if (bytes.Length &gt; maxBytes) { result[&quot;status&quot;] = 413; return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var profileId = (string)constraint[&quot;defaultProfile&quot;];
+        if (context.Request.Headers.ContainsKey(header)) {
+          if (context.Request.Headers[header].Length != 1) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+          profileId = context.Request.Headers.GetValueOrDefault(header, &quot;&quot;);
+        }
+        var matches = profiles.Where(p =&gt; (string)p[&quot;profileId&quot;] == profileId).ToArray();
+        if (matches.Length != 1) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var selected = (JObject)matches[0];
+        var body = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
+        if (body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)selected[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var requested = new System.Collections.Generic.List&lt;string&gt; { &quot;text&quot; };
+        foreach (var type in body.SelectTokens(&quot;$..type&quot;)) {
+          var name = type.Type == JTokenType.String ? (string)type : &quot;&quot;;
+          if (name == &quot;image_url&quot; || name == &quot;input_image&quot;) { requested.Add(&quot;image&quot;); }
+          if (name == &quot;file&quot; || name == &quot;input_file&quot;) { requested.Add(&quot;file&quot;); }
+          if (name == &quot;input_audio&quot; || name == &quot;output_audio&quot; || name == &quot;audio&quot;) { requested.Add(&quot;audio&quot;); }
+        }
+        foreach (var property in body.Descendants().OfType&lt;JProperty&gt;()) {
+          if (property.Name == &quot;image_url&quot; || property.Name == &quot;image&quot;) { requested.Add(&quot;image&quot;); }
+          if (property.Name == &quot;file&quot; || property.Name == &quot;file_data&quot; || property.Name == &quot;file_url&quot; || property.Name == &quot;file_id&quot;) { requested.Add(&quot;file&quot;); }
+          if (property.Name == &quot;input_audio&quot; || property.Name == &quot;audio&quot; || property.Name == &quot;audio_url&quot;) { requested.Add(&quot;audio&quot;); }
+        }
+        if (body[&quot;modalities&quot;] != null) {
+          var output = body[&quot;modalities&quot;] as JArray;
+          if (output == null || output.Any(m =&gt; m.Type != JTokenType.String || !new string[] { &quot;text&quot;, &quot;audio&quot; }.Contains((string)m))) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+          foreach (var modality in output) { requested.Add((string)modality); }
+        }
+        var allowed = selected[&quot;modalities&quot;] as JArray;
+        if (allowed == null || requested.Any(m =&gt; !allowed.Any(a =&gt; (string)a == m))) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        result[&quot;profileId&quot;] = profileId;
+        result[&quot;constraint&quot;] = selected;
+        result[&quot;allowed&quot;] = true;
+        return result.ToString(Newtonsoft.Json.Formatting.None);
+      } catch { return result.ToString(Newtonsoft.Json.Formatting.None); }
+    }" />
+    <choose><when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;allowed&quot;])">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="PROFILE_NOT_AUTHORIZED" />
+      <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;status&quot;])" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response><set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request profile is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+    </when></choose>
+    <!-- 共通入口が検証した購読を、このAPIの操作制約と監査へ引き渡します。
+         呼出主体は購読IDで固定し、下流の本人認証はAPI固有の処理で確認します。 -->
+    <set-variable name="gatewayDecision" value="@{
+      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
+      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
+      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot; || context.Subscription == null
+          || String.IsNullOrWhiteSpace(context.Subscription.Id) || !context.Request.Headers.ContainsKey(keyHeader)
+          || context.Request.Headers[keyHeader].Length != 1
+          || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return deny.ToString(); }
+      var decision = new JObject(new JProperty(&quot;allowed&quot;, true),
+        new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
+        var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
+        if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
+      }
+      return decision.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="403" reason="API operation is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+      </when>
+    </choose>
+    <!-- 今回の操作に対応するモデル・本文サイズ・出力上限等の制約を選びます。利用者の入力を制約そのものには使いません。 -->
+    <set-variable name="gatewayOperationConstraint" value="@{
+      return JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <!-- Bound JSON bytes before any target-specific parsing. -->
+    <include-fragment fragment-id="core-model-limits" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;allowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;code&quot;])" />
+        <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;status&quot;])" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request limit validation failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (string)context.Variables["gatewayAuditCode"]))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <!-- JSON 内のモデル名やパスの実対象を検査し、同じ API URL から未許可モデル等を呼ばせないようにします。 -->
+    <set-variable name="gatewayTargetAllowed" value="@{
+      try {
+        var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+        var constraint = context.Variables.ContainsKey(&quot;gatewayOperationConstraint&quot;) ? JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]) : config[&quot;operationConstraints&quot;][context.Operation.Id];
+        if (constraint == null) { return false; }
+        var kind = (string)constraint[&quot;kind&quot;];
+        if (kind == &quot;pathModel&quot;) {
+          var target = context.Request.MatchedParameters.GetValueOrDefault((string)constraint[&quot;parameter&quot;], &quot;&quot;);
+          return ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == target);
+        }
+        if (kind == &quot;bodyModel&quot;) {
+          var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+          return body != null &amp;&amp; ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;]);
+        }
+        if (kind == &quot;statelessResponses&quot;) {
+          if (context.Request.Method != &quot;POST&quot; || context.Operation.UrlTemplate != &quot;/responses&quot;) { return false; }
+          var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+          if (body == null || body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return false; }
+          /* This contract forwards complete client-held Items and never looks up saved server state. */
+          var allowedFields = new string[] { &quot;model&quot;, &quot;input&quot;, &quot;instructions&quot;, &quot;max_output_tokens&quot;, &quot;temperature&quot;, &quot;top_p&quot;, &quot;stream&quot;, &quot;stream_options&quot;, &quot;tools&quot;, &quot;tool_choice&quot;, &quot;parallel_tool_calls&quot;, &quot;reasoning&quot;, &quot;text&quot;, &quot;truncation&quot;, &quot;include&quot;, &quot;service_tier&quot;, &quot;max_tool_calls&quot;, &quot;store&quot;, &quot;background&quot; };
+          if (body.Properties().Any(p =&gt; !allowedFields.Contains(p.Name))) { return false; }
+          if (body[&quot;background&quot;] != null &amp;&amp; (body[&quot;background&quot;].Type != JTokenType.Boolean || (bool)body[&quot;background&quot;])) { return false; }
+          var input = body[&quot;input&quot;];
+          if (input == null || (input.Type != JTokenType.String &amp;&amp; input.Type != JTokenType.Array)) { return false; }
+          if (input.Type == JTokenType.Array) {
+            if (input.SelectTokens(&quot;$..type&quot;).Any(t =&gt; (string)t == &quot;item_reference&quot;)) { return false; }
+            if (input.SelectTokens(&quot;$..file_id&quot;).Any() || input.SelectTokens(&quot;$..file_ids&quot;).Any() || input.SelectTokens(&quot;$..vector_store_ids&quot;).Any()) { return false; }
+          }
+          if (body[&quot;tools&quot;] != null) {
+            var tools = body[&quot;tools&quot;] as JArray;
+            if (tools == null || tools.Any(t =&gt; t.Type != JTokenType.Object || (string)t[&quot;type&quot;] != &quot;function&quot;)) { return false; }
+          }
+          if (body[&quot;tool_choice&quot;] != null &amp;&amp; body[&quot;tool_choice&quot;].Type == JTokenType.Object &amp;&amp; (string)body[&quot;tool_choice&quot;][&quot;type&quot;] != &quot;function&quot;) { return false; }
+          if (body[&quot;include&quot;] != null) {
+            var include = body[&quot;include&quot;] as JArray;
+            var allowedIncludes = new string[] { &quot;reasoning.encrypted_content&quot;, &quot;message.output_text.logprobs&quot; };
+            if (include == null || include.Any(v =&gt; v.Type != JTokenType.String || !allowedIncludes.Contains((string)v))) { return false; }
+          }
+          return true;
+        }
+        if (kind == &quot;hostedAgentPost&quot;) {
+          var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+          var fields = new string[] { &quot;input&quot;, &quot;stream&quot;, &quot;store&quot;, &quot;metadata&quot; };
+          if (context.Request.Method != &quot;POST&quot; || body == null || body.Properties().Any(p =&gt; !fields.Contains(p.Name))) { return false; }
+          if (body[&quot;stream&quot;] != null &amp;&amp; body[&quot;stream&quot;].Type != JTokenType.Boolean) { return false; }
+          if (body[&quot;store&quot;] == null || body[&quot;store&quot;].Type != JTokenType.Boolean || (bool)body[&quot;store&quot;]) { return false; }
+          var metadata = body[&quot;metadata&quot;] as JObject;
+          if (metadata == null || metadata.Properties().Count() != 1 || metadata[&quot;sample_mode&quot;]?.Type != JTokenType.String || !(new string[] { &quot;fixed&quot;, &quot;model&quot;, &quot;pii&quot;, &quot;auth-probe&quot; }).Contains((string)metadata[&quot;sample_mode&quot;])) { return false; }
+          var input = body[&quot;input&quot;];
+          if (input == null) { return false; }
+          if (input.Type == JTokenType.String) { return !String.IsNullOrWhiteSpace((string)input); }
+          var items = input as JArray;
+          if (items == null || items.Count != 1 || items[0].Type != JTokenType.Object || ((JObject)items[0]).Properties().Any(p =&gt; !(new string[] { &quot;role&quot;, &quot;content&quot; }).Contains(p.Name)) || (string)items[0][&quot;role&quot;] != &quot;user&quot;) { return false; }
+          var content = items[0][&quot;content&quot;] as JArray;
+          return content != null &amp;&amp; content.Count == 1 &amp;&amp; content[0].Type == JTokenType.Object &amp;&amp; !((JObject)content[0]).Properties().Any(p =&gt; !(new string[] { &quot;type&quot;, &quot;text&quot; }).Contains(p.Name)) &amp;&amp; (string)content[0][&quot;type&quot;] == &quot;input_text&quot; &amp;&amp; content[0][&quot;text&quot;]?.Type == JTokenType.String &amp;&amp; !String.IsNullOrWhiteSpace((string)content[0][&quot;text&quot;]);
+        }
+        if (kind == &quot;a2aJsonRpc&quot;) {
+          var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+          return body != null &amp;&amp; (string)body[&quot;jsonrpc&quot;] == &quot;2.0&quot; &amp;&amp; (body[&quot;id&quot;]?.Type == JTokenType.String || body[&quot;id&quot;]?.Type == JTokenType.Integer) &amp;&amp; body[&quot;method&quot;]?.Type == JTokenType.String &amp;&amp; ((JArray)constraint[&quot;allowedMethods&quot;]).Any(m =&gt; (string)m == (string)body[&quot;method&quot;]);
+        }
+        if (kind == &quot;liveCreate&quot;) {
+          /* Live固有のSDP・固定モデル・session設定はOperationのポリシーで検査します。 */
+          return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.UrlTemplate == &quot;/sessions&quot;;
+        }
+        if (kind == &quot;realtimeCreate&quot; || kind == &quot;realtimeHangup&quot;) {
+          /* The operation policy validates SDP and the signed session-owner ticket. */
+          return context.Request.Method == &quot;POST&quot;;
+        }
+        if (kind == &quot;documentAnalysis&quot;) {
+          /* Binary validation, fixed model selection and bounded native polling
+             belong to the operation policy. No public job URL is accepted. */
+          return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.Id == &quot;analyze_document&quot;;
+        }
+        if (kind == &quot;pii&quot;) {
+          /* The operation policy owns the public {text,language} schema,
+             input errors and Language request/response conversion. The API
+             gate authorizes the operation before any text is processed. */
+          return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.Id == &quot;pii_redact_text&quot;;
+        }
+        return kind == &quot;registeredOperation&quot;;
+      } catch { return false; }
+    }" />
+    <choose>
+      <when condition="@(!(bool)context.Variables[&quot;gatewayTargetAllowed&quot;])">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="403" reason="API target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+      </when>
+    </choose>
+    <!-- 本文からのモデル名取得は通常HTTPに限定し、native streamの共通処理へ混ぜません。 -->
+    <set-variable name="gatewayAuditSettings" value="@{
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+      settings[&quot;operationConstraints&quot;][context.Operation.Id] = JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
+      return settings.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <include-fragment fragment-id="core-audit-body-model" />
+    <include-fragment fragment-id="core-audit-context" />
+    <!-- Foundryの独自header透過を仮定せず、Responses正式metadataへ固定GUIDを注入。
+         利用者metadataは直前のhostedAgentPost制約がsample_modeだけに制限済みです。 -->
+    <choose><when condition="@(!String.IsNullOrEmpty((string)JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;])[&quot;targetAgent&quot;]))">
+      <set-body>@{
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        var metadata = body[&quot;metadata&quot;] as JObject ?? new JObject();
+        metadata[&quot;core_parent_request_id&quot;] = context.RequestId.ToString(&quot;D&quot;);
+        body[&quot;metadata&quot;] = metadata;
+        return body.ToString(Newtonsoft.Json.Formatting.None);
+      }</set-body>
+    </when></choose>
+    <!-- 終了要求を上限で妨げません。認証・操作許可と下流の所有者検査は維持します。 -->
+    <set-variable name="gatewayRateLimitExempt" value="@{
+      var kind = (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;];
+      return kind == &quot;realtimeHangup&quot; || (kind == &quot;a2aJsonRpc&quot; &amp;&amp; (string)context.Request.Body.As&lt;JObject&gt;(preserveContent: true)[&quot;method&quot;] == &quot;tasks/cancel&quot;);
+    }" />
+    __SUBSCRIPTION_PROFILE_XML__
+    <include-fragment fragment-id="core-rate-limit" />
+    __TOKEN_LIMIT_XML__
+    <!-- Stateless Responses is a deliberately narrower public contract.
+         Force storage off even when the client requests store:true. SSE and
+         opaque reasoning/function Items are forwarded without response edits. -->
+    <!-- 共有 Model Gateway の Responses は stateless 契約です。保存や過去応答参照等の状態共有を防ぐ設定へ変換します。 -->
+    <set-variable name="gatewayStatelessResponses" value="@{
+      return (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;] == &quot;statelessResponses&quot;;
+    }" />
+    <choose>
+      <when condition="@((bool)context.Variables[&quot;gatewayStatelessResponses&quot;])">
+        <set-body>@{
+          var body = context.Request.Body.As&lt;JObject&gt;();
+          body[&quot;store&quot;] = false;
+          return body.ToString(Newtonsoft.Json.Formatting.None);
+        }</set-body>
+      </when>
+    </choose>
+    <!-- 裏側への転送前に、入口の資格情報をヘッダーから取り除きます。 -->
+    <set-header name="X-Egakumi-Profile" exists-action="delete" />
+    <set-header name="Authorization" exists-action="delete" />
+    <set-header name="__KEY_HEADER__" exists-action="delete" />
+    <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />
+    <set-header name="api-key" exists-action="delete" />
+    <set-query-parameter name="subscription-key" exists-action="delete" />
+    <set-query-parameter name="api-key" exists-action="delete" />
+    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <set-header name="X-Core-L7-Ingress" exists-action="delete" />
+    __DEFAULT_BACKEND_XML__
+    <set-variable name="gatewayCredentialConnection" value="__CREDENTIAL_CONNECTION_BASE64__" />
+    <choose>
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayCredentialConnection&quot;]))">
+        <include-fragment fragment-id="core-credential-connection" />
+        <include-fragment fragment-id="core-credential-session-use" />
+      </when>
+      <otherwise>__BACKEND_AUTHENTICATION_XML__</otherwise>
+    </choose>
+    <!-- CMの本人セッション証明はGateway内で使い、接続先へ渡しません。 -->
+    <set-header name="X-Core-Connection-Session" exists-action="delete" />
+    <set-header name="X-Core-Connection-Poll" exists-action="delete" />
+    <set-header name="X-Core-Connection-Transaction" exists-action="delete" />
+    __BACKEND_HEADERS_XML__
+    <set-variable name="gatewayAuditPhase" value="accepted" />
+    <set-variable name="gatewayAuditCode" value="GATEWAY_ALLOWED" />
+    <set-variable name="gatewayAuditStatus" value="@(0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><forward-request timeout="240" buffer-response="false" /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <include-fragment fragment-id="core-backend-audit" />
+    <base />
+    <choose>
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayCredentialConnection&quot;]))">
+        <include-fragment fragment-id="core-credential-connection-outbound" />
+      </when>
+    </choose>
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error>
+    <base />
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。
+         Responseの既定値200を成功と誤記せず、実際の400以上のエラー値だけを残します。 -->
+    <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+  </on-error>
+</policies>

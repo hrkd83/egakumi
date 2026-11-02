@@ -1,0 +1,22 @@
+<fragment>
+  <!-- 通常HTTPのモデルAPIだけで、認可済み要求からモデル名を取り出します。
+       preserveContentは後続の実モデル呼出しへ同じ本文を渡すために必要です。
+       本文全体や入力文は変数・ログへ保存せず、共通監査へモデル名だけを渡します。
+       native gRPC/WS/MCPにはこのfragmentを含めません。APIMは未実行分岐の
+       Body.Asも事前bufferの対象にするため、単なるif分岐での共用は避けます。 -->
+  <set-variable name="gatewayAuditBodyModel" value="@{
+    try {
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+      var operation = String.IsNullOrEmpty((string)settings[&quot;operationId&quot;]) ? context.Operation.Id : (string)settings[&quot;operationId&quot;];
+      var constraint = settings[&quot;operationConstraints&quot;][operation];
+      var kind = (string)constraint?[&quot;kind&quot;];
+      /* Live作成では、登録済みの固定配備名を監査の要求モデルとして扱います。 */
+      if (kind == &quot;liveCreate&quot;) { return (string)constraint[&quot;model&quot;] ?? &quot;&quot;; }
+      if (kind != &quot;bodyModel&quot; &amp;&amp; kind != &quot;statelessResponses&quot;) { return &quot;&quot;; }
+      var model = (string)context.Request.Body.As&lt;JObject&gt;(preserveContent: true)[&quot;model&quot;];
+      if (String.IsNullOrEmpty(model) || !System.Text.RegularExpressions.Regex.IsMatch(model, &quot;^[A-Za-z0-9_.-]{1,160}$&quot;)) { return &quot;&quot;; }
+      if (!((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model)) { return &quot;&quot;; }
+      return model;
+    } catch { return &quot;&quot;; }
+  }" />
+</fragment>

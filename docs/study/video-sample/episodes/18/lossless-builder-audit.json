@@ -1,0 +1,22 @@
+{
+  "source": "/path/to/egakumi-core/docs/study/video-sample/build-lesson.mjs",
+  "sourceSha256": "f80f5dfd1d6a27b3e2228e4b0000f4a1fb8c5063e886549a4c53d1c97468ffa5",
+  "derivedSha256": "c0da4ff8fa3478496cc6aa10730e338c3b020b9643a543aa5433c12f7ea404bd",
+  "changes": [
+    "shared import lesson-visual.mjs",
+    "shared import lesson-audio-cache.mjs",
+    "retain shared asset/input root",
+    "retain shared dependency root",
+    "lossless intermediate encoder",
+    "still suffix",
+    "still lossless encoding",
+    "retain PNG poster",
+    "convert approved intro frames losslessly",
+    "fallback logo suffix",
+    "fallback logo lossless encoding",
+    "motion suffix",
+    "motion lossless encoding"
+  ],
+  "rationale": "ENOSPC during temporary PNG rendering. All timing, scene selection, audio, captions, shared rendering and final H.264/AAC settings are inherited unchanged.",
+  "intermediateFormat": "lossless WebP"
+}

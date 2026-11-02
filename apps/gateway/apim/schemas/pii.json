@@ -1,0 +1,35 @@
+{
+  "schemas": {
+    "PiiRedactRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "language"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "description": "Single nonblank text, at most 5,120 Unicode 8.0 text elements. Language validates text elements; the gateway also enforces its configured UTF-8 request-byte limit. No truncation or partial result is returned." },
+        "language": { "type": "string", "enum": ["ja", "en"] }
+      }
+    },
+    "PiiRedactResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redactedText", "language", "detectedCount", "modelVersion", "warningCodes", "requestId"],
+      "properties": {
+        "redactedText": { "type": "string" },
+        "language": { "type": "string", "enum": ["ja", "en"] },
+        "detectedCount": { "type": "integer", "minimum": 0 },
+        "modelVersion": { "type": "string" },
+        "warningCodes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "requestId": { "type": "string", "format": "uuid" }
+      }
+    },
+    "PiiRedactError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "requestId"],
+      "properties": {
+        "error": { "type": "object", "additionalProperties": false, "required": ["code"], "properties": { "code": { "type": "string" } } },
+        "requestId": { "type": "string", "format": "uuid" }
+      }
+    }
+  }
+}

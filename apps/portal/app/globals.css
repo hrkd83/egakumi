@@ -1,0 +1,210 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../styles/shadcn.css";
+@import "@fontsource-variable/noto-sans-jp";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), "Noto Sans JP Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono);
+  /* 仕様書の補足まで読みやすさを保つ、14px以上の共通スケールです。 */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.65;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.75;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* 長い仕様書を読むための白とスレートを基調にし、ブランド色は導線へ絞ります。 */
+:root {
+  --background: #f7f8fa;
+  --foreground: #16202e;
+  --card: #ffffff;
+  --card-foreground: #16202e;
+  --popover: #ffffff;
+  --popover-foreground: #16202e;
+  --primary: #006b5e;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f5;
+  --secondary-foreground: #334155;
+  --muted: #f0f2f5;
+  --muted-foreground: #4b596b;
+  --accent: #e9f3f1;
+  --accent-foreground: #005b50;
+  --border: #d9e0e7;
+  /* 白いフォーム背景でも入力範囲が分かるよう、パネルより濃い境界色を使います。 */
+  --input: #8997a7;
+  --ring: #78b4a2;
+  --radius: 0.7rem;
+}
+
+/* タブごとの行数で縦スクロールの有無が変わっても、本文とカードの横幅を保ちます。 */
+html { scrollbar-gutter: stable; }
+@supports not (scrollbar-gutter: stable) {
+  html { overflow-y: scroll; }
+}
+body { margin: 0; font-size: 1rem; line-height: 1.75; -webkit-font-smoothing: antialiased; font-optical-sizing: auto; }
+button, [role="button"], [role="tab"], [role="combobox"] { cursor: pointer; }
+button:disabled { cursor: default; }
+.portal-layout { display: grid; grid-template-columns: 288px minmax(0, 1fr); min-height: 100svh; }
+.portal-sidebar { position: sticky; top: 0; height: 100svh; overflow-y: auto; border-right: 1px solid var(--border); background: white; }
+.portal-topbar { height: 68px; }
+.portal-content { padding: 36px 40px 64px; }
+.api-documentation pre { tab-size: 2; }
+.api-documentation [role="tabpanel"] { min-width: 0; }
+.api-documentation input, .api-documentation select, .api-documentation textarea { font-size: 15px; }
+.nav-item { transition: background-color 150ms, color 150ms; }
+.nav-item > span { min-width: 0; white-space: nowrap; }
+.nav-item > svg { flex-shrink: 0; }
+.catalog-intro { min-height: 158px; }
+.summary-tile { display: flex; align-items: center; gap: 13px; min-height: 81px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.summary-tile p { margin-bottom: 6px; font-size: 13px; line-height: 1.5; color: var(--muted-foreground); }
+.summary-tile strong { font-size: 19px; font-weight: 600; letter-spacing: -0.025em; }
+.summary-icon { display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; flex-shrink: 0; border-radius: 10px; color: #558875; background: #f2f7f4; }
+.catalog-card { box-shadow: 0 2px 4px #123a2902; transition: border-color 160ms, box-shadow 160ms, transform 160ms; }
+.catalog-card:hover { border-color: #9bbcb7; box-shadow: 0 7px 22px #142b4010; transform: translateY(-2px); }
+.category-chip { padding: 7px 14px; border: 1px solid transparent; border-radius: 7px; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; transition: color 150ms, background-color 150ms; }
+.category-chip:hover { color: var(--primary); background: #edf4ef; }
+.category-chip.active { color: var(--primary); border-color: #d4e7dc; background: #e9f3ed; font-weight: 600; }
+.gateway-illustration { position: relative; width: 210px; height: 155px; }
+.illustration-orbit { position: absolute; width: 148px; height: 148px; border: 1px dashed #c8ded1; border-radius: 50%; }
+.illustration-orbit.small { width: 95px; height: 95px; border-style: solid; border-color: #e1ece5; }
+.illustration-hub { position: absolute; display: flex; align-items: center; justify-content: center; width: 67px; height: 67px; border: 1px solid #b8d6c7; border-radius: 21px; background: linear-gradient(135deg,#f4faf6,#dceee2); color: var(--primary); box-shadow: 0 8px 20px #c4dece50; transform: rotate(-8deg); }
+.illustration-node { position: absolute; display: flex; align-items: center; justify-content: center; width: 37px; height: 37px; border: 1px solid #deebe3; border-radius: 11px; background: white; color: #6d9280; box-shadow: 0 3px 10px #172b3807; }
+.node-model { top: 4px; left: 49px; transform: rotate(-9deg); }
+.node-tool { top: 47px; right: 15px; transform: rotate(9deg); color: #6e80aa; }
+.node-agent { bottom: 3px; left: 48px; transform: rotate(5deg); color: #9275aa; }
+
+@media (max-width: 1023px) {
+  .portal-layout { grid-template-columns: minmax(0, 1fr); }
+  .portal-content { padding: 27px 24px; }
+}
+@media (max-width: 639px) {
+  .portal-content { padding: 24px 18px; }
+  .portal-topbar { height: 60px; }
+  .catalog-intro { min-height: auto; }
+  .summary-tile { min-height: 69px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}

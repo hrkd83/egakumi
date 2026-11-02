@@ -1,0 +1,172 @@
+<policies>
+  <!--
+    PII マスキング用の操作ポリシーです。親の共通ポリシーで認証した後に、本文を安全な固定契約へ変換します。
+    入力サイズと形式を検査し、Foundry の PII 解析へ渡して、応答を必要なマスキング結果へ絞ります。
+    元の個人情報・解析結果の生データを監査ログやエラー本文に含めず、キャッシュも許可しません。
+  -->
+  <inbound>
+    <base />
+    <!-- Public input is never a native Language request. Only this operation
+         constructs the fixed downstream request. The API-level gate runs first. -->
+    <set-variable name="piiSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__PII_SETTINGS_BASE64__&quot;)))" />
+    <set-variable name="piiDocumentId" value="@(context.RequestId.ToString(&quot;N&quot;))" />
+    <!-- 入力の JSON 形式・必須項目・言語・サイズを先に確認。解析 API を呼ぶ前に不正入力を拒否します。 -->
+    <set-variable name="piiInputStatus" value="@{
+      try {
+        var settings = JObject.Parse((string)context.Variables[&quot;piiSettings&quot;]);
+        if (context.Request.Body == null) { return 400; }
+        var bytes = context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
+        if (bytes.Length &gt; (int)settings[&quot;maxRequestBytes&quot;]) { return 413; }
+        if (context.Request.Url.Query.Count != 0 || !String.Equals(context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim(), &quot;application/json&quot;, StringComparison.OrdinalIgnoreCase)) { return 400; }
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        if (body == null || body.Properties().Count() != 2 || body.Properties().Any(p =&gt; p.Name != &quot;text&quot; &amp;&amp; p.Name != &quot;language&quot;)) { return 400; }
+        if (body[&quot;text&quot;]?.Type != JTokenType.String || String.IsNullOrWhiteSpace((string)body[&quot;text&quot;]) || body[&quot;language&quot;]?.Type != JTokenType.String) { return 400; }
+        if (!((JArray)settings[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)body[&quot;language&quot;])) { return 400; }
+        /* Exact TextElements_v8 limits belong to Language. StringInfo is not an
+           allowed APIM policy type; UTF-16 Length must not reject valid emoji or
+           combining sequences. The independent UTF-8 request bound is above. */
+        return 200;
+      } catch { return 400; }
+    }" />
+    <choose>
+      <when condition="@((int)context.Variables[&quot;piiInputStatus&quot;] != 200)">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="@((int)context.Variables[&quot;piiInputStatus&quot;] == 413 ? &quot;REQUEST_TOO_LARGE&quot; : &quot;INVALID_REQUEST&quot;)" />
+        <set-variable name="gatewayAuditStatus" value="@((int)context.Variables[&quot;piiInputStatus&quot;])" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;piiInputStatus&quot;])" reason="Invalid PII input" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+          <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["piiInputStatus"] == 413 ? "PiiInputTooLarge" : "PiiInvalidInput"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <set-variable name="piiInputBytes" value="@(context.Request.Body.As&lt;byte[]&gt;(preserveContent: true).Length)" />
+    <set-variable name="piiLanguage" value="@((string)context.Request.Body.As&lt;JObject&gt;(preserveContent: true)[&quot;language&quot;])" />
+    <set-body>@{
+      var input = context.Request.Body.As&lt;JObject&gt;();
+      var settings = JObject.Parse((string)context.Variables["piiSettings"]);
+      return new JObject(
+        new JProperty("kind", "PiiEntityRecognition"),
+        new JProperty("analysisInput", new JObject(new JProperty("documents", new JArray(new JObject(
+          new JProperty("id", (string)context.Variables["piiDocumentId"]),
+          new JProperty("language", (string)input["language"]),
+          new JProperty("text", (string)input["text"])
+        ))))),
+        new JProperty("parameters", new JObject(
+          new JProperty("loggingOptOut", true),
+          new JProperty("modelVersion", (string)settings["modelVersion"]),
+          new JProperty("stringIndexType", "TextElements_v8")
+        ))
+      ).ToString(Newtonsoft.Json.Formatting.None);
+    }</set-body>
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <rewrite-uri template="/language/:analyze-text?api-version=2025-11-01" copy-unmatched-params="false" />
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><base /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <base />
+    <!-- Shape only the REST result. The generated MCP server references this
+         operation and never buffers/transforms its JSON-RPC or SSE stream. -->
+    <!-- 下流の待ち時間ヘッダーを必要な形式だけで受け取り、自由な値をそのまま応答へ反射しません。 -->
+    <set-variable name="piiRetryAfter" value="@{
+      var value = context.Response.Headers.GetValueOrDefault(&quot;Retry-After&quot;, &quot;&quot;);
+      if (context.Response.StatusCode != 429) { return &quot;&quot;; }
+      if (System.Text.RegularExpressions.Regex.IsMatch(value, &quot;^[0-9]{1,6}$&quot;)) { return value; }
+      DateTimeOffset retryAt;
+      return DateTimeOffset.TryParse(value, out retryAt) ? retryAt.UtcDateTime.ToString(&quot;R&quot;) : &quot;&quot;;
+    }" />
+    <!-- 下流応答をマスキング API の固定出力に変換します。解析失敗時は元の入力やサービス生エラーを返しません。 -->
+    <set-variable name="piiResult" value="@{
+      var requestId = context.RequestId.ToString();
+      var status = context.Response.StatusCode;
+      var code = &quot;PiiUpstreamFailure&quot;;
+      if (status == 429) { code = &quot;PiiThrottled&quot;; }
+      else if (status == 413) { code = &quot;PiiInputTooLarge&quot;; }
+      else if (status == 504) { code = &quot;PiiTimeout&quot;; }
+      else { status = 502; }
+      try {
+        if (context.Response.StatusCode == 200) {
+          var settings = JObject.Parse((string)context.Variables[&quot;piiSettings&quot;]);
+          var body = context.Response.Body.As&lt;JObject&gt;();
+          var results = body?[&quot;results&quot;] as JObject;
+          var documents = results?[&quot;documents&quot;] as JArray;
+          var errors = results?[&quot;errors&quot;] as JArray;
+          var expectedId = (string)context.Variables[&quot;piiDocumentId&quot;];
+          if ((string)body?[&quot;kind&quot;] != &quot;PiiEntityRecognitionResults&quot; || results == null || documents == null || errors == null) {
+            code = &quot;PiiInvalidUpstreamResult&quot;;
+          } else if (errors.Count == 1 &amp;&amp; documents.Count == 0 &amp;&amp; (string)errors[0][&quot;id&quot;] == expectedId) {
+            /* InvalidDocument is not a documented length-specific code. Never
+               infer 413 from free-text messages or expose those messages. */
+            status = 422; code = &quot;PiiDocumentRejected&quot;;
+          } else if (errors.Count != 0 || documents.Count != 1 || (string)documents[0][&quot;id&quot;] != expectedId || (string)results[&quot;modelVersion&quot;] != (string)settings[&quot;modelVersion&quot;] || documents[0][&quot;redactedText&quot;]?.Type != JTokenType.String || !(documents[0][&quot;entities&quot;] is JArray) || !(documents[0][&quot;warnings&quot;] is JArray)) {
+            code = &quot;PiiInvalidUpstreamResult&quot;;
+          } else {
+            var document = documents[0];
+            var warnings = (JArray)document[&quot;warnings&quot;];
+            if (warnings.Any(w =&gt; (string)w[&quot;code&quot;] == &quot;DocumentTruncated&quot;)) {
+              status = 413; code = &quot;PiiInputTooLarge&quot;;
+            } else {
+              var allowed = (JArray)settings[&quot;allowedWarningCodes&quot;];
+              var warningCodes = new JArray(warnings.Where(w =&gt; w[&quot;code&quot;]?.Type == JTokenType.String &amp;&amp; allowed.Any(v =&gt; (string)v == (string)w[&quot;code&quot;])).Select(w =&gt; (string)w[&quot;code&quot;]).Distinct());
+              var result = new JObject(
+                new JProperty(&quot;redactedText&quot;, (string)document[&quot;redactedText&quot;]),
+                new JProperty(&quot;language&quot;, (string)context.Variables[&quot;piiLanguage&quot;]),
+                new JProperty(&quot;detectedCount&quot;, ((JArray)document[&quot;entities&quot;]).Count),
+                new JProperty(&quot;modelVersion&quot;, (string)results[&quot;modelVersion&quot;]),
+                new JProperty(&quot;warningCodes&quot;, warningCodes),
+                new JProperty(&quot;requestId&quot;, requestId)
+              );
+              return new JObject(new JProperty(&quot;status&quot;, 200), new JProperty(&quot;body&quot;, result)).ToString(Newtonsoft.Json.Formatting.None);
+            }
+          }
+        }
+      } catch { status = 502; code = &quot;PiiInvalidUpstreamResult&quot;; }
+      return new JObject(new JProperty(&quot;status&quot;, status), new JProperty(&quot;body&quot;, new JObject(new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, code))), new JProperty(&quot;requestId&quot;, requestId)))).ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;piiResult&quot;])[&quot;status&quot;])" reason="PII processing result" />
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="@(context.Response.StatusCode == 200 ? &quot;PII_REDACTED&quot; : &quot;PII_PROCESSING_FAILED&quot;)" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <trace source="core-pii" severity="information"><message>@{
+      var result = JObject.Parse((string)context.Variables["piiResult"]);
+      var settings = JObject.Parse((string)context.Variables["piiSettings"]);
+      var record = new JObject(new JProperty("requestId", context.RequestId.ToString()), new JProperty("status", context.Response.StatusCode), new JProperty("inputBytes", (int)context.Variables["piiInputBytes"]), new JProperty("documentCount", 1), new JProperty("upstreamAttempt", 1), new JProperty("modelVersion", (string)settings["modelVersion"]));
+      if ((int)result["status"] == 200) { record["detectedCount"] = (int)result["body"]["detectedCount"]; }
+      return record.ToString(Newtonsoft.Json.Formatting.None);
+    }</message></trace>
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    <set-header name="Retry-After" exists-action="delete" />
+    <set-header name="x-ms-error-code" exists-action="delete" />
+    <set-header name="Set-Cookie" exists-action="delete" />
+    <choose>
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;piiRetryAfter&quot;]))">
+        <set-header name="Retry-After" exists-action="override"><value>@((string)context.Variables["piiRetryAfter"])</value></set-header>
+      </when>
+    </choose>
+    <set-body>@(JObject.Parse((string)context.Variables["piiResult"])["body"].ToString(Newtonsoft.Json.Formatting.None))</set-body>
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error>
+    __RATE_LIMIT_ERROR_XML__
+    <!-- No inherited error message may copy request text, entity values or
+         upstream diagnostics into the public REST/MCP result. -->
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
+    <set-variable name="gatewayAuditStatus" value="@(context.LastError.Source == &quot;authorization&quot; &amp;&amp; (context.LastError.Reason == &quot;SubscriptionKeyNotFound&quot; || context.LastError.Reason == &quot;SubscriptionKeyInvalid&quot;) || context.LastError.Source == &quot;validate-azure-ad-token&quot; || context.LastError.Source == &quot;validate-jwt&quot; ? 401 : context.LastError.Reason == &quot;Timeout&quot; || context.LastError.Reason == &quot;BackendConnectionTimeout&quot; ? 504 : 502)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <return-response>
+      <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="PII processing failed" />
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+      <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["gatewayAuditStatus"] == 401 ? "PiiAuthenticationFailed" : (int)context.Variables["gatewayAuditStatus"] == 504 ? "PiiTimeout" : "PiiUpstreamFailure"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+    </return-response>
+  </on-error>
+</policies>

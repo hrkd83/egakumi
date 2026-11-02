@@ -1,0 +1,27 @@
+<fragment>
+  <!--
+    Realtime の補助 WebSocket に入る前に、セッション所有者の署名チケットを照合します。
+    開始操作で発行した call ID・呼出元・契約・期限との一致が必要です。チケットを他の利用者や別セッションへ流用させません。
+    受信専用は Management Console の BFF 中継で実現します。直接このAPIへ接続した所有者のsideband制御は双方向です。
+    APIM の onHandshake は確立後のフレームを検査しないため、この認証だけで送信を禁止したとは扱いません。
+    https://learn.microsoft.com/azure/api-management/websocket-api
+  -->
+  <!-- 補助接続にも所有者照合を要求します。query は call_id １件に限定し、他の接続先指定を許可しません。 -->
+  <set-variable name="realtimeObserverOwnerValid" value="@{         try {             var ticket = context.Request.Headers.GetValueOrDefault(&quot;X-Core-Call-Ticket&quot;, &quot;&quot;);             if (context.Request.Url.Query.Count != 1 || !context.Request.Url.Query.ContainsKey(&quot;call_id&quot;) || context.Request.Url.Query[&quot;call_id&quot;].Length != 1) { return false; }&#10;            var callId = context.Request.Url.Query[&quot;call_id&quot;][0];             if (ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(callId, @&quot;^[A-Za-z0-9_-]{1,160}$&quot;)) { return false; }             var parts = ticket.Split('.');             if (parts.Length != 2) { return false; }             var key = System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;);             string expected;             using (var hmac = new System.Security.Cryptography.HMACSHA256(key)) {                 expected = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(parts[0]))).TrimEnd('=').Replace('+', '-').Replace('/', '_');             }             if (expected.Length != parts[1].Length) { return false; }             var difference = 0;             for (var i = 0; i &lt; expected.Length; i++) { difference |= expected[i] ^ parts[1][i]; }             if (difference != 0) { return false; }             var encoded = parts[0].Replace('-', '+').Replace('_', '/');             encoded += new string('=', (4 - encoded.Length % 4) % 4);             var payload = Newtonsoft.Json.Linq.JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));             var decision = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);             var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);             /* APIMが検証した購読を所有者に使い、追加の本人tokenでは所有権を変更しません。 */
+            if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+                || (bool?)decision[&quot;allowed&quot;] != true || (string)decision[&quot;method&quot;] != &quot;subscriptionKey&quot;
+                || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return false; }
+            var subscriptionId = context.Subscription.Id;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();             return (int?)payload[&quot;v&quot;] == 3 &amp;&amp; (string)payload[&quot;callId&quot;] == callId
+                &amp;&amp; (string)payload[&quot;subscriptionId&quot;] == subscriptionId                 &amp;&amp; (string)payload[&quot;callerId&quot;] == (string)decision[&quot;callerId&quot;]                                  &amp;&amp; (long?)payload[&quot;exp&quot;] &gt; now &amp;&amp; (long?)payload[&quot;exp&quot;] &lt;= now + (int)settings[&quot;sessionTtlSeconds&quot;];         } catch { return false; }     }" />
+  <choose>
+    <when condition="@(!(bool)context.Variables[&quot;realtimeObserverOwnerValid&quot;])">
+      <return-response>
+        <set-status code="403" reason="Session control is not permitted" />
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <!-- onHandshake は set-body 未対応。所有者不一致は本文なしの403で拒否します。 -->
+      </return-response>
+    </when>
+  </choose>
+  <set-header name="X-Core-Call-Ticket" exists-action="delete" />
+</fragment>

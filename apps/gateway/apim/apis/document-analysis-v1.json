@@ -1,0 +1,36 @@
+{
+  "released": true,
+  "name": "document-analysis-v1",
+  "displayName": "Document Intelligence — OCR and layout",
+  "path": "tools/documents/v1",
+  "backendService": "foundryCognitive",
+  "backendAudience": "https://cognitiveservices.azure.com",
+  "productId": "pii-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "analyze_document",
+      "displayName": "Analyze a document",
+      "method": "POST",
+      "urlTemplate": "/analyze",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "analyze_document": {
+        "kind": "documentAnalysis",
+        "bodyFormat": "binary",
+        "contentTypes": ["application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp"],
+        "allowedModels": ["prebuilt-read", "prebuilt-layout"],
+        "maxRequestBytes": 1048576,
+        "maxResponseBytes": 4194304,
+        "apiVersion": "2024-11-30",
+        "timeoutSeconds": 60
+      }
+    }
+  },
+  "serviceClass": "platform"
+}

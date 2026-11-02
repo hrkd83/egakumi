@@ -1,0 +1,43 @@
+{
+  "status": "complete",
+  "visualStyle": "teaching-settings-v2",
+  "durationSeconds": 999.7083333333334,
+  "frameCount": 23993,
+  "file": "egakumi-study-08.mp4",
+  "fileBytes": 51625889,
+  "sha256": "f1ddf391e8daf4c28f62bde955f8b383b96ebd740116aae3fb948b4f2441b6b3",
+  "oldVersionSha256": "6cbfb3874a7e4028a4df73c83dc848ef83c3ea18beeda5b670bdab5dba9c3c3e",
+  "viewCount": 20,
+  "bodyTurns": 82,
+  "subtitleCues": 167,
+  "additionalApiRequests": 0,
+  "rawRecordingsReused": 86,
+  "encodedAudioPacketsIdentical": true,
+  "sharedFilesUnchanged": true,
+  "verification": "passed",
+  "warnings": [],
+  "continuousPreviews": [
+    {
+      "fromTurn": "lesson08-turn-013-mako",
+      "throughTurn": "lesson08-turn-017-ikumi",
+      "sourceRangeSeconds": [
+        127.0,
+        182.79166666666666
+      ],
+      "durationSeconds": 55.791666666666664,
+      "sha256": "f4c58c97dd7d671762dae8682a92ca341e182cebe2bd20c3a98dd7ce272c766c"
+    },
+    {
+      "fromTurn": "lesson08-turn-053-mako",
+      "throughTurn": "lesson08-turn-057-manabu",
+      "sourceRangeSeconds": [
+        584.0,
+        644.5
+      ],
+      "durationSeconds": 60.5,
+      "sha256": "912ab64bd9fea493d4aeacabbf7fa32abfd685c8431dc38f96b4ba43449d80e5"
+    }
+  ],
+  "browserVisualPlayback": "passed",
+  "listeningVerified": false
+}

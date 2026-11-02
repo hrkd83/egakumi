@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "episodeKey": "02",
+  "reviewDateJST": "2026-11-02",
+  "status": "passed",
+  "scope": "最新CONTENT-PLAN第2回の到達点、教材6〜10節、現行IaCと既存80台詞の内容整合。稼働Azureの実測ではない。",
+  "scriptSha256AtContentReview": "7d2e2e4a1688bb6aa62c07fc75bd4c0e47f12e50d3e6aab23ba6b603807064cd",
+  "turnCount": 80,
+  "nonVisualAudioContentReusable": true,
+  "contentChecks": [
+    {
+      "id": "learning-objective",
+      "status": "passed",
+      "finding": "公開名・内部名・PEのprivate IPの関係と、送信元ごとに名前解決を確認する理由を説明する現行80台詞は最新第2回の到達点に適合。"
+    },
+    {
+      "id": "vnet-firewall-dns",
+      "status": "passed",
+      "finding": "VNetとFirewallのDNS入力を区別し、FWキー未指定はVNet入力、明示[]はAzure提供DNSと説明。enableProxyだけでclientDNSは変更されない。"
+    },
+    {
+      "id": "private-endpoints",
+      "status": "passed",
+      "finding": "Foundry・Key Vault・ACR・SQLの4種類。PEをサービス本体と区別し、全NICの全IPを確認。複数IPの可能性を保持。"
+    },
+    {
+      "id": "private-link-zones",
+      "status": "passed",
+      "finding": "Foundry3＋Key Vault＋ACR＋SQLの6ゾーン。VNetリンクとPE zone groupを別の関連付けとして説明。通常FQDN→CNAME→Private Link名→A→PE実IPはDNSの解決順。"
+    },
+    {
+      "id": "internal-and-public-dns",
+      "status": "passed",
+      "finding": "APIM実FQDNのPrivate DNSゾーン/@A→実内部VIP、ACA実defaultDomain/*A→実staticIp、公開名→AppGW公開IPを区別。ACA @A定義なし。公開configで両TTL300秒。"
+    },
+    {
+      "id": "network-auth-separation",
+      "status": "passed",
+      "finding": "Foundry/KV/ACR/SQL PNA DisabledとAPIM Internal/PNA Enabledを区別。SQL Entra認証、DNS成功だけでは通信/認証/操作成功でない。"
+    },
+    {
+      "id": "source-specific-verification",
+      "status": "passed",
+      "finding": "送信元、時刻、問い合わせ先DNS、FQDN、CNAME、回答IP、実NIC全IPを照合。中央DNS/ピアリング、反映、TTLは確認観点として扱い、ハブ切替の操作手順へ広げていない。"
+    }
+  ],
+  "implementationEvidence": [
+    {
+      "file": "infra/modules/network.bicep",
+      "sections": [
+        "dnsServers default",
+        "effectiveDnsServers",
+        "VNet dhcpOptions",
+        "privateDnsLinks",
+        "firewall dnsSettings"
+      ],
+      "finding": "37/174/242/315〜323/373〜375行付近。VNet DNS[]、Azure168.63.129.16、registrationEnabled:false、Foundry/KV4リンクresolutionPolicy:Default、FW dnsServers??VNet、enableProxy:true。"
+    },
+    {
+      "file": "params/production.example.json",
+      "sections": [
+        "network.dnsServers",
+        "network.firewall.dnsServers"
+      ],
+      "finding": "公開paramsは両方[]。"
+    },
+    {
+      "file": "infra/modules/private-endpoint-addresses.bicep",
+      "sections": [
+        "nics",
+        "privateIpsByNic"
+      ],
+      "finding": "返されたNIC ID全てのipConfigurationsを列挙。IPを推測しない。"
+    },
+    {
+      "file": "infra/modules/services-private-endpoints.bicep",
+      "sections": [
+        "foundryPeDns",
+        "vaultPeDns"
+      ],
+      "finding": "Foundry account PEを3DNSゾーン、KV vault PEをKVゾーンへ関連付け。"
+    },
+    {
+      "file": "infra/modules/portal-network.bicep",
+      "sections": [
+        "zone",
+        "link",
+        "dnsGroup"
+      ],
+      "finding": "ACR registry PE、privatelink.azurecr.io、registrationEnabled:false。"
+    },
+    {
+      "file": "infra/modules/credential-broker-network.bicep",
+      "sections": [
+        "zone",
+        "link",
+        "dnsGroup"
+      ],
+      "finding": "SQL sqlServer PE、privatelink.database.windows.net、registrationEnabled:false。"
+    },
+    {
+      "file": "infra/modules/network-bindings.bicep",
+      "sections": [
+        "apimGatewayZone",
+        "apimGatewayLink",
+        "apimGatewayRecord"
+      ],
+      "finding": "APIM自身の実FQDN名に限定したゾーン、@A→apimPrivateIp、TTL config.dnsTtl??300。"
+    },
+    {
+      "file": "infra/modules/portal-dns.bicep",
+      "sections": [
+        "appZone",
+        "appLink",
+        "appRecord"
+      ],
+      "finding": "実defaultDomainゾーン、*A→staticIp、TTL300、@Aリソース定義なし。"
+    },
+    {
+      "file": "infra/modules/portal-platform.bicep",
+      "sections": [
+        "vnetConfiguration"
+      ],
+      "finding": "ACA環境internal:true。"
+    },
+    {
+      "file": "infra/modules/services.bicep",
+      "sections": [
+        "publicNetworkAccess",
+        "virtualNetworkType"
+      ],
+      "finding": "Foundry/KV PNA Disabled、APIM Internal/PNA Enabled。"
+    },
+    {
+      "file": "infra/modules/shared-sql.bicep",
+      "sections": [
+        "publicNetworkAccess",
+        "azureADOnlyAuthentication",
+        "connectionType"
+      ],
+      "finding": "SQL PNA Disabled、Entra-only認証、Proxy接続。"
+    },
+    {
+      "file": "infra/modules/portal-registry.bicep",
+      "sections": [
+        "publicNetworkAccess",
+        "dataEndpointEnabled"
+      ],
+      "finding": "ACR PNA Disabled、データエンドポイント有効。"
+    }
+  ],
+  "visualReview": {
+    "status": "passed",
+    "method": "script.json全76本編turn、27viewId、14自己完結SVGの内容と座標・赤枠をソースで独立確認。画像・連続動画の目視品質確認はroot側で別途実施。",
+    "bodyTurnCount": 76,
+    "viewCount": 27,
+    "layoutCounts": {
+      "settings": 61,
+      "svg": 15
+    },
+    "checks": [
+      {
+        "id": "nonvisual-preservation",
+        "status": "passed",
+        "finding": "退避済みportal-v2版と全80turnのvisual以外の全フィールドが完全一致。音声本文、字幕、style、台詞ID、chapterId、間は維持。"
+      },
+      {
+        "id": "reference-values",
+        "status": "passed",
+        "finding": "新visualから仮IPv4値を除去。PE実IP、APIM実内部VIP、ACA実staticIp/実defaultDomain等の取得を要する値として表記。稼働Azureの取得値ではない旨を全画面フッターに明示。"
+      },
+      {
+        "id": "settings-and-sources",
+        "status": "passed",
+        "finding": "61settings＋15SVGの設定内容は教材6〜10節/IaCと一致。PE4種/PL6ゾーン/APIM＋ACA2ゾーン、DNS入力未指定/[]、proxy、PNA、TTL、ACA頂点Aなしを維持。"
+      },
+      {
+        "id": "spoken-spatial-reference",
+        "status": "passed",
+        "finding": "013はアプリ左/PE中央（x603付近）/KV本体右（x934付近）、022/024は通常名上/Private Link名中央/PE実IP下の配置で発話の参照先に対応。028はFoundryの3ゾーンと同一PEを図示。"
+      },
+      {
+        "id": "turn026-data-switch",
+        "status": "passed",
+        "finding": "021〜026は同じkv-name-and-data viewId。左にDNS連鎖、右にアプリ→PE実IP→Key Vault本体を併記し、025の左DNS全体赤枠から026の右データ通信赤枠へ説明対象を切り替える。台詞の「図をデータ通信へ切替」は、この説明対象の切替として整合。構図や縮尺は変更しない。"
+      },
+      {
+        "id": "held-view-baseline",
+        "status": "passed",
+        "finding": "全27viewId内でhighlightRows/highlightFieldsまたはSVG teaching-highlightグループを除いた本文が同一。質問〜回答の構図、メニュー、行順、縮尺を保持。"
+      },
+      {
+        "id": "quiz-highlight-timing",
+        "status": "passed",
+        "finding": "071/074/077はhighlightRows=[]。回答072で到達/認証/権限、075で実APIM、078で名前/定義/ACA接続口を赤枠にする。質問で正解を赤枠にしない。問いと同じ表は回答中も保持。"
+      },
+      {
+        "id": "fixed-camera-and-brand",
+        "status": "passed",
+        "finding": "本編visualにportal/zoom/camera/motion指定なし。教材用settings shellを使い、Azureブランドバー、検索、疑似ポインタ、pulseを追加しない。SVGは外部参照/script/foreignObject/アニメーションなし。"
+      }
+    ],
+    "continuousPreview": {
+      "status": "pending-root-verification",
+      "fromTurn": "lesson02-turn-030-mako",
+      "throughTurn": "lesson02-turn-033-ikumi",
+      "viewId": "zone-associations",
+      "note": "このレポートはソース意味整合のレビュー。連続動画42.625秒の実ファイル確認はroot側の完成検証に記録する。"
+    },
+    "unresolvedContentFindings": []
+  },
+  "audioPerceptualReview": {
+    "status": "not-performed",
+    "finding": "本文・定義の読取レビューのみ。新規の全編聴取、発音、ASR評価は未実施。"
+  },
+  "sourceSha256": {
+    "docs/study/CONTENT-PLAN.md": "5c86e661869bf43db38d90b3f0f567d91a7018bd75b7c09a40cb2816e6a43e3d",
+    "docs/study/01-network-control.html": "4931406812035bceff1bccc1084dbcb73eea11493ba642dd6745a3eafab0bdeb",
+    "docs/study/video-sample/SETTINGS-VIEW.md": "c3db22777611133ff0b30d41e673bf1c8a91e4bfb5c093ee0b6f9edbec878b47",
+    "infra/modules/network.bicep": "5e70ecaa93e11b0f18322deef05443f4a71f8c19ad25580e36622f39d61d89a1",
+    "params/production.example.json": "4d680a09cf30df665260fa58a7eee839477962343b55580c304203ab5aec24b8",
+    "infra/modules/private-endpoint-addresses.bicep": "5700bf5f9e93ab56a5442d65b450954b8a66955c57f4d3a4e6506c10e14662e7",
+    "infra/modules/services-private-endpoints.bicep": "191314a191abc36cdbbcf65fb31618a269a37e6f26f724fdba14306f22ab2a0d",
+    "infra/modules/portal-network.bicep": "42e34bc5b4d2403b857a98bb4285db0383a36a0e5b9b5f92459d4be3b6600e86",
+    "infra/modules/credential-broker-network.bicep": "349ae6b968ab37feeee49391e0f4720a0eca2e5077829381953a59e9b4342c79",
+    "infra/modules/network-bindings.bicep": "b14e7b8b1399c067e6dcb9cd6d2a09467d479a6bbb6d93513d514a927e577c39",
+    "infra/modules/portal-dns.bicep": "2b3adaff41d1aa4ee87641d208ac2062656b9d832c45f10eb20c37be717ca364",
+    "infra/modules/portal-network-bindings.bicep": "bfd01757ccd3faba619b02e62dafe22b4387df39e07c01228e39de29ef82b2da",
+    "infra/modules/portal-platform.bicep": "c6ebee6c4e882b1a1b0e4fdecb747bce902291b651ffebb4c08dd3ca5a0a9026",
+    "infra/modules/services.bicep": "7813e2cfc93978ec9954a32d6e6480d9f3e490e6a105ce2c9311d68ed69fdc04",
+    "infra/modules/shared-sql.bicep": "d388f671075d53e6ae698a45e2aa9f17c77e8d7545ebe5c1c64c457f322290e2",
+    "infra/modules/portal-registry.bicep": "1230843d2524abfc5c7b55ed916ded1a6fbaa911c35e3b3e3d8d050d292ca876"
+  },
+  "scriptSha256AtVisualReview": "25477f6ca91d9e08c1af71fb3cbc2530039daee39dbc2716ee5b47cbe73f5dff",
+  "nonVisualTurnFieldsPreserved": true,
+  "visualArtifactSha256": {
+    "diagrams/settings-kv-name-and-data-a.svg": "ee238302c7fbfcf7494ac65b8bc5737663c02118c246bbdb450cc6c689db33cd",
+    "diagrams/settings-kv-name-and-data-cname.svg": "5d3238147f257e59794f73a2c658a8223d85167d2329de6d91fb33c4a1f5713d",
+    "diagrams/settings-kv-name-and-data-data.svg": "add6a91921c6644ec522afabf6b92a04664d5c8576460606383bdb26baf77b84",
+    "diagrams/settings-kv-name-and-data-dns.svg": "890f5f88a3c5c41b7eca4560a8313dc2770e8c5b2a10eb2fb1969edc3ff0db1a",
+    "diagrams/settings-kv-name-and-data-none.svg": "15d73dabe75ca7bfe8ac38f52b6a91b5b80be3b3fe818c460ffc7fb7e58b0947",
+    "diagrams/settings-kv-name-and-data-normal.svg": "2d8e28f1ee9072abf8347a27dd0e6b7e1d992122a0b4aa34982d88ebed020e80",
+    "diagrams/settings-pe-location-none.svg": "423a8b1c46344c7247c94d678124603d87f60a48925b9eea515cdef9697cdcf3",
+    "diagrams/settings-pe-location-pe.svg": "a8520c412e5a94048d5c02e96589bfca35652d017210ce57ab27eee739fde498",
+    "diagrams/settings-private-link-zones-foundry.svg": "12346feb94eadae2642544e26ea03d104565d069f27d69bce15f71d71e23e3aa",
+    "diagrams/settings-private-link-zones-none.svg": "3ab2dd07896e19da3d8680225c92a061b2877692cc3cdc867e932ce9fbbb4900",
+    "diagrams/settings-private-link-zones-others.svg": "6aac27e0f19aeff57e00ff836a76b91d21156c71c873004889eb0157db640b50",
+    "diagrams/settings-zone-associations-none.svg": "765d9884450d5f6a6cb4302dbc84339659aa941458789c8520ef58f9a2e21837",
+    "diagrams/settings-zone-associations-roles.svg": "2d40a3695786595e0b684a51a5d4f4d0d970792b87a6eca925e4c16d6d1ee300",
+    "diagrams/settings-zone-associations-settings.svg": "19166b5239e5d688f16418254cc71052290d85bcc83ebe6a84d8d53b3bae0bba"
+  },
+  "storyboardSha256": "bbad843292a249587c6f282d11c33f41f47668849d3453c1f985a8e96f6da8ae"
+}

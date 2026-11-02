@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "profile": "study-series-v1",
+  "tools": {
+    "python3": true,
+    "node": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "gcloud": true
+  },
+  "visualStyle": {
+    "id": "teaching-settings-v2",
+    "guide": "SETTINGS-VIEW.md",
+    "renderer": "settings-visual.mjs",
+    "examples": "settings-view-examples.json",
+    "primaryBodyLayout": "settings",
+    "azurePortalReplica": false,
+    "bodyCamera": "fixed",
+    "automaticBodyZoom": false,
+    "automaticBodyPan": false,
+    "perTurnCameraReset": false,
+    "redOutlinePulse": false,
+    "mockPointer": false,
+    "holdViewIdAcrossQuestionAndAnswer": true,
+    "continuousPreviewRecommendedSeconds": [
+      40,
+      70
+    ],
+    "continuousPreviewHasInternalCuts": false,
+    "episode01OutputRequired": false,
+    "continuousPreviewTool": "make-conversation-preview.py"
+  },
+  "sharp": true,
+  "hostPlatform": "darwin",
+  "availableDiskGiB": 6.38,
+  "fontEnvironment": "Same macOS font environment as the reference",
+  "authenticationRead": false,
+  "networkRequestsMade": false,
+  "episode": {
+    "key": "18",
+    "number": 18,
+    "title": "組織・SQL・APIMの状態を整える",
+    "objective": "所有グループの観測と承認、SQL台帳とAPIM実体を区別し、不一致・取得不能時の確認先を選べる。",
+    "sourceTableCell": "[健全性確認](03-subscription-management.html#group-observation)、[同期](03-subscription-management.html#subscription-sync)、[変更時の確認](03-subscription-management.html#maintenance)",
+    "sourceReferences": [
+      {
+        "file": "../03-subscription-management.html",
+        "anchor": "group-observation"
+      },
+      {
+        "file": "../03-subscription-management.html",
+        "anchor": "subscription-sync"
+      },
+      {
+        "file": "../03-subscription-management.html",
+        "anchor": "maintenance"
+      }
+    ]
+  },
+  "script": "episodes/18/script.json",
+  "output": "output/lesson-18-gemini"
+}

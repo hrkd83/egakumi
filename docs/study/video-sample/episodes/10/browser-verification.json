@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "date": "2026-11-02",
+  "timezone": "Asia/Tokyo",
+  "url": "http://127.0.0.1:58948/",
+  "mediaDurationSeconds": 975.25,
+  "videoSize": [
+    1600,
+    900
+  ],
+  "mediaError": null,
+  "playbackRate": 1,
+  "chapterSeekObservedSeconds": 156.618005,
+  "seekableRangeSeconds": [
+    0,
+    975.25
+  ],
+  "previewURL": "http://127.0.0.1:58948/conversation-preview.html",
+  "previewPlayback": {
+    "durationSeconds": 49.75,
+    "currentTimeAtEnd": 49.75,
+    "ended": true,
+    "pausedAtEnd": true,
+    "playbackRate": 1,
+    "error": null
+  },
+  "visualReview": "Opening cast, topic settings, quiz and closing verified in final MP4; continuous preview sampled at start, 39.48 seconds and end. Stable view and no camera reset corroborated by timeline.",
+  "listeningReview": "Not performed; available tools cannot assess pronunciation or audible distortion.",
+  "server": "episodes/10/serve.py, loopback only, supports HTTP byte ranges",
+  "previousServer": "Shared simple server stopped after chapter seeking limitation was observed."
+}

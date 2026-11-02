@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1410" viewBox="0 0 1600 1410" role="img" aria-labelledby="title desc">
+<title id="title">ネットワーク全体の構成と制御箇所</title><desc id="desc">利用者からAppGW、同一のFirewall、APIMとACAへ中継する。PEはVNet内の接続口、Foundry・Key Vault・ACR・SQL本体はVNet外。青いD経路はFirewallを通らない直接接続で、対応表に宛先を限定する。NSGは4区画、UDRは送信区画、FirewallポリシーはFirewall本体で判定する。</desc>
+<defs><marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#2c6a50"/></marker><marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#376d8c"/></marker><marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#87988d"/></marker></defs><style>text{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;fill:#244c40}.title{font-size:32px;font-weight:700}.head{font-size:27px;font-weight:650}.label{font-size:23px;font-weight:600}.copy{font-size:22px;fill:#617462}.small{font-size:21px;fill:#617462}.blueText{fill:#376d8c}.greenText{fill:#2c6a50}.mono{font-family:ui-monospace,Menlo,Consolas,monospace}.node{fill:#fffefa;stroke:#b6c8ad;stroke-width:2}.firewall{fill:#e6efdd;stroke:#819d73;stroke-width:2}.policy{fill:#f2ead9;stroke:#b99c6b;stroke-width:2}.outside{fill:#f5f4ee;stroke:#bdc3b6;stroke-width:2}.direct{fill:none;stroke:#376d8c;stroke-width:3;stroke-dasharray:9 6;marker-end:url(#blue)}.via{fill:none;stroke:#2c6a50;stroke-width:3.5;marker-start:url(#green);marker-end:url(#green)}.private{fill:none;stroke:#87988d;stroke-width:2;marker-end:url(#gray)}.association{stroke:#9b835a;stroke-width:2;stroke-dasharray:4 4;fill:none}</style>
+<rect width="1600" height="1410" fill="#fffefa"/>
+<text x="26" y="43" class="title" text-anchor="start">ネットワーク全体の構成と制御箇所</text>
+<path d="M30 81H100" class="via"/>
+<text x="118" y="89" class="copy" text-anchor="start">Firewall経由の往復</text>
+<path d="M430 81H500" class="direct"/>
+<text x="517" y="89" class="copy" text-anchor="start">FWを通らない主な要求</text>
+<path d="M920 81H990" class="private"/>
+<text x="1007" y="89" class="copy" text-anchor="start">Private Link（接続口 → サービス）</text>
+<text x="26" y="125" class="copy" text-anchor="start">公開例の構造。入口IP・Firewall IP・PE IPは実出力を使用。線は通信経路、NSG/RTの表示は関連付け先。</text>
+<rect x="220" y="154" width="1100" height="1042" rx="12" class="node"/>
+<text x="244" y="190" class="label" text-anchor="start">VNet：vnet-&lt;環境名&gt;-&lt;製品名&gt;</text>
+<text x="244" y="224" class="copy" text-anchor="start">6サブネット / サービス本体とPE接続口は区別</text>
+<rect x="24" y="320" width="170" height="174" rx="8" class="outside"/>
+<text x="42" y="359" class="head" text-anchor="start">利用者</text>
+<text x="42" y="398" class="copy" text-anchor="start">HTTPS 443</text>
+<text x="42" y="429" class="copy" text-anchor="start">gRPC 8443</text>
+<text x="42" y="460" class="copy" text-anchor="start">（有効時）</text>
+<path d="M202 380H252" class="direct"/>
+<text x="26" y="532" class="small" text-anchor="start">HTTP 80はHTTPSへ</text>
+<text x="26" y="562" class="small" text-anchor="start">リダイレクト</text>
+<rect x="260" y="300" width="230" height="242" rx="8" class="node"/>
+<text x="278" y="339" class="head" text-anchor="start">AppGW</text>
+<text x="278" y="378" class="copy" text-anchor="start">snet-…-agw</text>
+<text x="278" y="409" class="copy" text-anchor="start">HTTP(S)はWAF</text>
+<text x="278" y="440" class="copy" text-anchor="start">NSG：agw</text>
+<text x="278" y="471" class="copy" text-anchor="start">RT：agw</text>
+<rect x="620" y="300" width="230" height="242" rx="8" class="firewall"/>
+<text x="638" y="339" class="head" text-anchor="start">Firewall</text>
+<text x="638" y="378" class="copy" text-anchor="start">AzureFirewallSubnet</text>
+<text x="638" y="409" class="copy" text-anchor="start">Network /</text>
+<text x="638" y="440" class="copy" text-anchor="start">Application規則</text>
+<text x="638" y="471" class="copy" text-anchor="start">NSGなし / RTなし</text>
+<rect x="1020" y="262" width="260" height="242" rx="8" class="node"/>
+<text x="1038" y="301" class="head" text-anchor="start">APIM</text>
+<text x="1038" y="340" class="copy" text-anchor="start">snet-…-apim</text>
+<text x="1038" y="371" class="copy" text-anchor="start">HTTP 80 / gRPC 443</text>
+<text x="1038" y="402" class="copy" text-anchor="start">NSG：apim</text>
+<text x="1038" y="433" class="copy" text-anchor="start">RT：apim</text>
+<rect x="1020" y="634" width="260" height="211" rx="8" class="node"/>
+<text x="1038" y="673" class="head" text-anchor="start">ACA実行環境</text>
+<text x="1038" y="712" class="copy" text-anchor="start">Portal・Broker・Job</text>
+<text x="1038" y="743" class="copy" text-anchor="start">HTTPS 443</text>
+<text x="1038" y="774" class="copy" text-anchor="start">NSGなし / RT：aca</text>
+<rect x="260" y="677" width="230" height="166" rx="8" class="node"/>
+<text x="278" y="716" class="head" text-anchor="start">管理VM</text>
+<text x="278" y="755" class="copy" text-anchor="start">snet-…-vm</text>
+<text x="278" y="786" class="copy" text-anchor="start">NSG：vm / RT：vm</text>
+<rect x="585" y="570" width="280" height="102" rx="8" class="policy"/>
+<text x="603" y="607" class="label mono" text-anchor="start">afwp-&lt;stem&gt;</text>
+<text x="603" y="641" class="label" text-anchor="start">Allowと既定拒否</text>
+<path d="M745 550V568" class="association"/>
+<path d="M498 379H612" class="via"/>
+<text x="555" y="356" class="label greenText" text-anchor="middle">U1・U2</text>
+<path d="M858 379H1012" class="via"/>
+<text x="934" y="351" class="label greenText" text-anchor="middle">80 / 443</text>
+<path d="M858 473H904V706H1012" class="via"/>
+<text x="920" y="592" class="label greenText" text-anchor="start">Portal</text>
+<text x="920" y="625" class="label greenText" text-anchor="start">443</text>
+<path d="M1150 512V626" class="direct"/>
+<text x="1172" y="559" class="label blueText" text-anchor="start">D5</text>
+<text x="1172" y="591" class="copy blueText" text-anchor="start">443</text>
+<path d="M430 550V582" class="direct"/>
+<circle cx="430" cy="612" r="23" fill="#edf4f8" stroke="#376d8c" stroke-width="2"/>
+<text x="430" y="620" class="label blueText" text-anchor="middle">D1</text>
+<path d="M1012 455H971" class="direct"/>
+<circle cx="940" cy="455" r="23" fill="#edf4f8" stroke="#376d8c" stroke-width="2"/>
+<text x="940" y="463" class="label blueText" text-anchor="middle">D2</text>
+<path d="M1012 795H971" class="direct"/>
+<circle cx="940" cy="795" r="23" fill="#edf4f8" stroke="#376d8c" stroke-width="2"/>
+<text x="940" y="803" class="label blueText" text-anchor="middle">D3</text>
+<path d="M498 769H537" class="direct"/>
+<circle cx="567" cy="769" r="23" fill="#edf4f8" stroke="#376d8c" stroke-width="2"/>
+<text x="567" y="777" class="label blueText" text-anchor="middle">D4</text>
+<path d="M324 669V635" class="direct"/>
+<circle cx="324" cy="604" r="23" fill="#edf4f8" stroke="#376d8c" stroke-width="2"/>
+<text x="324" y="612" class="label blueText" text-anchor="middle">D6</text>
+<rect x="244" y="879" width="536" height="298" rx="8" class="outside"/>
+<text x="262" y="914" class="label blueText" text-anchor="start">青いD経路：FWを通らない直接接続</text>
+<text x="262" y="951" class="small blueText" text-anchor="start">D1  AppGW → Key Vault PE /443</text>
+<text x="262" y="981" class="small blueText" text-anchor="start">D2  APIM → Foundry・KV PE /443</text>
+<text x="262" y="1011" class="small blueText" text-anchor="start">D3  ACA → ACR・KV PE /443、</text>
+<text x="262" y="1041" class="small blueText" text-anchor="start">       SQL PE /1433</text>
+<text x="262" y="1071" class="small blueText" text-anchor="start">D4  VM → Foundry・KV・ACR PE /443</text>
+<text x="262" y="1101" class="small blueText" text-anchor="start">D5  APIM → ACA /443（Broker）</text>
+<text x="262" y="1131" class="small blueText" text-anchor="start">D6  VM → APIM /443（gRPC有効時）</text>
+<rect x="805" y="879" width="480" height="298" rx="8" class="node"/>
+<text x="824" y="914" class="label" text-anchor="start">PE区画：snet-…-pep</text>
+<text x="824" y="945" class="copy" text-anchor="start">NSG：pep / RTなし</text>
+<text x="1360" y="913" class="head" text-anchor="start">サービス本体</text>
+<text x="1360" y="944" class="copy" text-anchor="start">VNetの外</text>
+<rect x="823" y="961" width="444" height="40" rx="4" class="outside"/>
+<text x="837" y="989" class="copy" text-anchor="start">Foundry PE / D2・D4</text>
+<rect x="1360" y="961" width="212" height="40" rx="4" class="outside"/>
+<text x="1376" y="989" class="label" text-anchor="start">Foundry</text>
+<path d="M1275 981H1352" class="private"/>
+<rect x="823" y="1009" width="444" height="40" rx="4" class="outside"/>
+<text x="837" y="1037" class="copy" text-anchor="start">Key Vault PE / D1〜D4</text>
+<rect x="1360" y="1009" width="212" height="40" rx="4" class="outside"/>
+<text x="1376" y="1037" class="label" text-anchor="start">Key Vault</text>
+<path d="M1275 1029H1352" class="private"/>
+<rect x="823" y="1057" width="444" height="40" rx="4" class="outside"/>
+<text x="837" y="1085" class="copy" text-anchor="start">ACR PE / D3・D4</text>
+<rect x="1360" y="1057" width="212" height="40" rx="4" class="outside"/>
+<text x="1376" y="1085" class="label" text-anchor="start">ACR</text>
+<path d="M1275 1077H1352" class="private"/>
+<rect x="823" y="1105" width="444" height="40" rx="4" class="outside"/>
+<text x="837" y="1133" class="copy" text-anchor="start">SQL PE / D3</text>
+<rect x="1360" y="1105" width="212" height="40" rx="4" class="outside"/>
+<text x="1376" y="1133" class="label" text-anchor="start">SQL</text>
+<path d="M1275 1125H1352" class="private"/>
+<text x="244" y="1228" class="copy" text-anchor="start">D記号は同じ番号の対応表へ続く経路（配線を省略）。KV＝Key Vault。ポートはTCP。</text>
+<text x="244" y="1262" class="copy" text-anchor="start">U1：APIM VIP /32、U2：ACA入口IP /32 → FWへ。復路はAPIM / ACA → AppGW CIDRを同じFWへ。</text>
+<rect x="26" y="1290" width="498" height="108" rx="5" class="outside"/>
+<text x="41" y="1321" class="label" text-anchor="start">NSG：区画の入口・出口</text>
+<text x="41" y="1351" class="small" text-anchor="start">送信元・宛先・ポートで許可/拒否。</text>
+<text x="41" y="1379" class="small" text-anchor="start">PE接続も、対象PEの実IPへ限定。</text>
+<rect x="548" y="1290" width="498" height="108" rx="5" class="outside"/>
+<text x="563" y="1321" class="label" text-anchor="start">UDR：送信元区画の経路</text>
+<text x="563" y="1351" class="small" text-anchor="start">宛先の/32、AppGW CIDR、0/0で</text>
+<text x="563" y="1379" class="small" text-anchor="start">次ホップを選ぶ。許可自体はしない。</text>
+<rect x="1070" y="1290" width="504" height="108" rx="5" class="outside"/>
+<text x="1085" y="1321" class="label" text-anchor="start">FWポリシー：通過時の判定</text>
+<text x="1085" y="1351" class="small" text-anchor="start">Networkを先に、必要ならFQDNを照合。</text>
+<text x="1085" y="1379" class="small" text-anchor="start">直接経路の通信は判定しない。</text>
+</svg>

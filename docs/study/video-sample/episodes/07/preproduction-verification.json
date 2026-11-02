@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "profile": "study-series-v1",
+  "tools": {
+    "python3": true,
+    "node": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "gcloud": true
+  },
+  "sharp": true,
+  "hostPlatform": "darwin",
+  "availableDiskGiB": 3.38,
+  "fontEnvironment": "Same macOS font environment as the reference",
+  "authenticationRead": false,
+  "networkRequestsMade": false,
+  "episode": {
+    "key": "07",
+    "number": 7,
+    "title": "つながらないときの調べ方",
+    "objective": "DNS・実効経路・NSG・Firewallログを同じ通信について照合し、ログ記録と通知を区別できる。",
+    "sourceTableCell": "[38〜40節](01-network-control.html#observability-logs)、[46節](01-network-control.html#network-control-map)",
+    "sourceReferences": [
+      {
+        "file": "../01-network-control.html",
+        "anchor": "observability-logs"
+      },
+      {
+        "file": "../01-network-control.html",
+        "anchor": "network-control-map"
+      }
+    ]
+  },
+  "script": "episodes/07/script.json",
+  "output": "output/lesson-07-gemini"
+}

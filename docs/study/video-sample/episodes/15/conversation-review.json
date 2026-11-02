@@ -1,0 +1,164 @@
+{
+  "status": "passed-sampled-visual-review",
+  "previewFile": "/path/to/egakumi-core/docs/study/video-sample/output/lesson-15-gemini/conversation-preview.mp4",
+  "previewSha256": "5a208e35d635f5229318979e06125ee17f86961c61f2ae2fd8c1bf02c666197b",
+  "previewDurationSeconds": 63.208333333333336,
+  "previewFrames": 1517,
+  "fps": 24,
+  "sourceSha256": "6b9f183cc76ab89de8907ede1a7524524e9bd133f83a51a40d7b5a40fd6a5231",
+  "sourceRangeSeconds": [
+    679.5,
+    742.7083333333334
+  ],
+  "sourceTurnIds": [
+    "lesson15-turn-056-mako",
+    "lesson15-turn-057-ikumi",
+    "lesson15-turn-058-mako",
+    "lesson15-turn-059-ikumi",
+    "lesson15-turn-060-manabu"
+  ],
+  "sampledFrames": [
+    {
+      "previewSeconds": 0,
+      "sourceSeconds": 679.5,
+      "turnId": "lesson15-turn-056-mako",
+      "speaker": "mako",
+      "viewId": "lesson15-retry",
+      "highlightFields": [],
+      "subtitleLines": [
+        "画面でタイムアウトした場合も、",
+        "必ず発行に失敗したとは言えませんか。"
+      ],
+      "file": "at-00s.png",
+      "sha256": "55f5ea2477696f2fe951f37cefbf73c8add14ff55b20496c42fd0d8bfebd410a"
+    },
+    {
+      "previewSeconds": 10,
+      "sourceSeconds": 689.5,
+      "turnId": "lesson15-turn-056-mako",
+      "speaker": "mako",
+      "viewId": "lesson15-retry",
+      "highlightFields": [],
+      "subtitleLines": [
+        "成功の返事だけを受け取れなかった可能性もありますよね。"
+      ],
+      "file": "at-10s.png",
+      "sha256": "b69bffb70ec98494452c8333cb434a7cde29d16444bf0f522e3aae0bccf9524d"
+    },
+    {
+      "previewSeconds": 20,
+      "sourceSeconds": 699.5,
+      "turnId": "lesson15-turn-057-ikumi",
+      "speaker": "ikumi",
+      "viewId": "lesson15-retry",
+      "highlightFields": [
+        "same",
+        "recheck",
+        "unknown"
+      ],
+      "subtitleLines": [
+        "フォーム側で扱います。",
+        "再試行でも現在の許可と保存状態を確認するので、"
+      ],
+      "file": "at-20s.png",
+      "sha256": "3da5f8ceb69aa08966d9c0d961aff4cf558816b6702befadcb89ced1513556f3"
+    },
+    {
+      "previewSeconds": 30,
+      "sourceSeconds": 709.5,
+      "turnId": "lesson15-turn-058-mako",
+      "speaker": "mako",
+      "viewId": "lesson15-retry",
+      "highlightFields": [],
+      "subtitleLines": [
+        "早く直したくて、",
+        "用途名を少し変えて同じ依頼IDで送ったらどうでしょう。"
+      ],
+      "file": "at-30s.png",
+      "sha256": "286af2c6c95faf2f6660d9ce7a4e158ff6a5e391154281baac9614fe94c821e6"
+    },
+    {
+      "previewSeconds": 40,
+      "sourceSeconds": 719.5,
+      "turnId": "lesson15-turn-059-ikumi",
+      "speaker": "ikumi",
+      "viewId": "lesson15-retry",
+      "highlightFields": [
+        "new",
+        "changed"
+      ],
+      "subtitleLines": [
+        "その組み合わせは競合になります。",
+        "別の依頼IDを発行すれば、新しい発行要求になり得ます。"
+      ],
+      "file": "at-40s.png",
+      "sha256": "2c305d4a0953523cd88174a9172e9e699c595c0d2b0aedd3d0fb7879b9b95afa"
+    },
+    {
+      "previewSeconds": 50,
+      "sourceSeconds": 729.5,
+      "turnId": "lesson15-turn-059-ikumi",
+      "speaker": "ikumi",
+      "viewId": "lesson15-retry",
+      "highlightFields": [
+        "new",
+        "changed"
+      ],
+      "subtitleLines": [
+        "障害からの再開と、新しいキーの発行を、",
+        "同じ操作として混ぜないことが大切です。"
+      ],
+      "file": "at-50s.png",
+      "sha256": "96835dd4c3f9007168098d35c8380770d8bfd0e976498457a07ccc461a2947fb"
+    },
+    {
+      "previewSeconds": 62,
+      "sourceSeconds": 741.5,
+      "turnId": "lesson15-turn-060-manabu",
+      "speaker": "manabu",
+      "viewId": "lesson15-retry",
+      "highlightFields": [
+        "same",
+        "unknown"
+      ],
+      "subtitleLines": [
+        "画面のエラー文だけで新規発行を重ねず、",
+        "段階と保存先を確認する判断につなげましょう。"
+      ],
+      "file": "at-62s.png",
+      "sha256": "b1c561a05313914584a1b48db24309d9a7835a6dc3fdb259223685b902ad6ff5"
+    }
+  ],
+  "sourceVideoChanged": false,
+  "audioListeningPerformed": false,
+  "browserPlaybackEndConfirmed": false,
+  "networkRequestsMade": false,
+  "contactSheets": [
+    {
+      "file": "contact-1.png",
+      "sha256": "f4f980f2cba6ccb63c55b06650227bea987a80cf2d24ca12b194bfc34c1a54a3"
+    },
+    {
+      "file": "contact-2.png",
+      "sha256": "2aacfef3a1bb617ec00b72ae684f9a3b8ac7cccf7d958303f5e5d4a970dba368"
+    }
+  ],
+  "reviewedAt": "2026-11-02T17:03:19.324350+09:00",
+  "sourceFiveTurnGeometryIdentical": true,
+  "sampledViewGeometryConsistent": true,
+  "sampledSpeakerCaptionAndOutlineMatchTimeline": true,
+  "questionOutlineAbsent": true,
+  "sampledSubtitleReadable": true,
+  "visualReviewMethod": "Seven PNG frames from the unchanged continuous preview, inspected as two contact sheets. This is sampled visual inspection, not confirmation of completed realtime playback.",
+  "browserPlaybackStart": {
+    "reportedByParent": true,
+    "playbackRate": 1,
+    "startedAtSeconds": 0,
+    "laterUIUnavailable": true
+  },
+  "limitations": [
+    "発音・会話の自然さ・可聴歪みなどの聴感確認は未実施。",
+    "ブラウザーでの再生開始は親エージェントが確認。最後までの再生UIは取得不能のため未確認。",
+    "目視は0/10/20/30/40/50/62秒の7フレームによる標本確認。全フレームを連続視聴した記録ではない。"
+  ]
+}

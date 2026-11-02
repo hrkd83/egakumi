@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-6.1-sol",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-6-luna",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-6-sol",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-6-astra",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.6-luna",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.6-sol",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.6-terra",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.5",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.4-mini",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions",
+        "responses-create"
+      ],
+      "modelId": "gpt-5.4-nano",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "responses-create"
+      ],
+      "modelId": "gpt-5.4-pro",
+      "maxOutputTokens": 128000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions"
+      ],
+      "modelId": "DeepSeek-V4-Flash",
+      "maxOutputTokens": 384000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions"
+      ],
+      "modelId": "DeepSeek-V4-Pro",
+      "maxOutputTokens": 384000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions"
+      ],
+      "modelId": "grok-4.7",
+      "maxOutputTokens": 500000,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions"
+      ],
+      "modelId": "Mistral-Large-3",
+      "maxOutputTokens": null,
+      "limitKind": "unverified",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-inference-v1"
+      ],
+      "operationIds": [
+        "chat-completions"
+      ],
+      "modelId": "model-router",
+      "maxOutputTokens": null,
+      "limitKind": "dynamic",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-realtime-ws-v1",
+        "openai-realtime-control-v1"
+      ],
+      "operationIds": [
+        "invoke",
+        "realtime-create"
+      ],
+      "modelId": "gpt-realtime-2.1",
+      "maxOutputTokens": 4096,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-realtime-ws-v1"
+      ],
+      "operationIds": [
+        "invoke",
+        "realtime-create"
+      ],
+      "modelId": "gpt-realtime-2.1-mini",
+      "maxOutputTokens": 4096,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-live-ws-v1",
+        "openai-live-control-v1"
+      ],
+      "operationIds": [
+        "invoke",
+        "live-create"
+      ],
+      "modelId": "gpt-live-1",
+      "maxOutputTokens": null,
+      "limitKind": "unsupported",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "openai-transcription-ws-v1"
+      ],
+      "operationIds": [
+        "invoke"
+      ],
+      "modelId": "gpt-live-transcribe",
+      "maxOutputTokens": null,
+      "limitKind": "unsupported",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
+      ],
+      "checkedAt": "2026-10-31"
+    },
+    {
+      "apiIds": [
+        "azure-voice-live-ws-v1",
+        "azure-voice-live-webrtc-v1"
+      ],
+      "operationIds": [
+        "invoke"
+      ],
+      "modelId": "gpt-4.1",
+      "maxOutputTokens": 32768,
+      "limitKind": "documented",
+      "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure",
+        "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-01-01-preview"
+      ],
+      "checkedAt": "2026-10-31",
+      "numericMaxOutputTokens": 4096,
+      "supportsMaximumOutput": true
+    }
+  ]
+}

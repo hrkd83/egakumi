@@ -1,0 +1,104 @@
+// APIM購読別の1分集計。購読キー・本文・URL・個人情報は出力しません。
+// ApimSubscriptionIdはAPIM購読、_SubscriptionIdはAzure購読です。両者を混同しません。
+// 公式列: https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewaylogs
+// 公式LLM列: https://learn.microsoft.com/azure/azure-monitor/reference/tables/apimanagementgatewayllmlog
+let apimResourceId = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.ApiManagement/service/REPLACE';
+// 取り込み遅延を考慮して直近5分を除外。1分未満の端数は比較に含めません。
+let windowEnd = bin(now() - 5m, 1m);
+let windowStart = windowEnd - 1d;
+let canonicalId = (v:string) { iff(v matches regex @'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' and v != '00000000-0000-0000-0000-000000000000', tostring(toguid(v)), '') };
+let boundedNumber = (v:dynamic) { iff(gettype(v) in ('long', 'int', 'real', 'double') and todouble(v) >= 0 and todouble(v) <= 9007199254740991.0 and todouble(v) == tolong(v), tolong(v), long(null)) };
+let nativeRows = materialize(ApiManagementGatewayLogs
+| where _ResourceId =~ apimResourceId
+| where TimeGenerated >= windowStart and TimeGenerated < windowEnd
+| project requestId=canonicalId(tostring(CorrelationId)), requestTime=TimeGenerated,
+    subscriptionId=tolower(tostring(ApimSubscriptionId)), responseCode=toint(ResponseCode), totalTime=todouble(TotalTime), TraceRecords);
+// 相関ID欠落行は重複排除できないため要求数へ推測加算せず、品質指標として別表示します。
+let rowsWithoutCorrelationId = toscalar(nativeRows | where isempty(requestId) | count);
+// TraceRecordsを展開する前に、APIMの相関IDごとに1要求へまとめます。
+// 矛盾したログも要求数から消さず、帰属または結果を不明として残します。
+let nativeRequests = nativeRows
+| where isnotempty(requestId)
+| summarize requestTime=min(requestTime), rawRows=count(),
+    subscriptionVariants=make_set(subscriptionId, 2),
+    resultVariants=make_set(bag_pack('status',responseCode,'time',totalTime), 2) by requestId
+| extend attributionAmbiguous=array_length(subscriptionVariants) != 1,
+    resultAmbiguous=array_length(resultVariants) != 1
+| extend subscriptionId=case(attributionAmbiguous, '[ambiguous]', isempty(tostring(subscriptionVariants[0])), '[unattributed]', tostring(subscriptionVariants[0])),
+    responseCode=iff(resultAmbiguous, int(null), toint(resultVariants[0].status)),
+    totalTime=iff(resultAmbiguous or todouble(resultVariants[0]['time']) < 0, real(null), todouble(resultVariants[0]['time']));
+// トークンを採用する操作だけ、既存の自前監査契約と照合します。
+// accepted/backend-responseの2イベントがあっても、ここから要求件数を数えません。
+let llmEvidence = nativeRows
+| where isnotempty(requestId) and isnotempty(subscriptionId)
+| mv-expand trace = TraceRecords
+| extend record=parse_json(coalesce(tostring(trace.message), tostring(trace.Message)))
+| where gettype(record.schemaVersion) in ('long', 'int') and tolong(record.schemaVersion) == 1
+    and tostring(record.event) == 'gateway-request' and canonicalId(tostring(record.requestId)) == requestId
+| where tostring(record.authorization) == 'allowed' and tostring(record.method) == 'subscriptionKey'
+    and tostring(record.measurementRole) == 'execution' and tostring(record.phase) in ('accepted', 'backend-response')
+    and tostring(record.usageSource) == 'ApiManagementGatewayLlmLog'
+    and tolower(tostring(record.subscriptionId)) == subscriptionId
+    and tostring(record.callerId) == strcat('subscription:', tostring(record.subscriptionId))
+| summarize evidenceVariants=make_set(bag_pack('subscription',subscriptionId,'model',tostring(record.targetModel)), 2) by requestId
+| extend evidenceCount=array_length(evidenceVariants)
+| project requestId, evidenceCount, evidenceSubscription=tostring(evidenceVariants[0].subscription),
+    targetModel=iff(evidenceCount == 1, tostring(evidenceVariants[0].model), '');
+// LLM表未作成時も要求集計を表示します。isfuzzyの警告はトークン計測未確認として扱います。
+let nativeUsage = union isfuzzy=true ApiManagementGatewayLlmLog,
+    (datatable(TimeGenerated:datetime, _ResourceId:string, CorrelationId:string, DeploymentName:string, RequestId:string, PromptTokens:int, CompletionTokens:int, TotalTokens:int) [])
+| where _ResourceId =~ apimResourceId
+// Stream等の終了時刻との差を許容し、結合先はnativeRequestsの観測期間に限定します。
+| where TimeGenerated >= windowStart - 1d and TimeGenerated < windowEnd + 1d
+| project requestId=canonicalId(tostring(CorrelationId)), targetModel=tostring(DeploymentName), providerRequestId=tostring(RequestId),
+    inputTokens=boundedNumber(pack_array(PromptTokens)[0]), outputTokens=boundedNumber(pack_array(CompletionTokens)[0]), totalTokens=boundedNumber(pack_array(TotalTokens)[0])
+| where isnotempty(requestId) and targetModel matches regex @'^[A-Za-z0-9_.-]{1,160}$'
+    and providerRequestId matches regex @'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$'
+| where isnotnull(inputTokens) and isnotnull(outputTokens) and isnotnull(totalTokens)
+    and totalTokens > 0 and totalTokens == inputTokens + outputTokens
+| distinct requestId, targetModel, providerRequestId, inputTokens, outputTokens, totalTokens
+| summarize usageVariants=make_set(bag_pack('provider',providerRequestId,'input',inputTokens,'output',outputTokens,'total',totalTokens), 2) by requestId, targetModel
+| extend usageCount=array_length(usageVariants)
+| project requestId, targetModel, usageCount,
+    measuredInput=tolong(usageVariants[0].input), measuredOutput=tolong(usageVariants[0].output), measuredTotal=tolong(usageVariants[0].total);
+let requests = materialize(nativeRequests
+| join kind=leftouter llmEvidence on requestId
+| join kind=leftouter nativeUsage on requestId, targetModel
+| extend usageStatus=case(attributionAmbiguous, 'ambiguous-request', isnull(evidenceCount), 'not-measured',
+    evidenceCount != 1 or evidenceSubscription != subscriptionId, 'ambiguous-evidence',
+    isnull(usageCount), 'unavailable', usageCount != 1, 'ambiguous-usage', 'available')
+| extend inputTokens=iff(usageStatus == 'available', measuredInput, long(null)),
+    outputTokens=iff(usageStatus == 'available', measuredOutput, long(null)),
+    totalTokens=iff(usageStatus == 'available', measuredTotal, long(null)));
+let minutes = materialize(requests
+| summarize Requests=count(), Responses429=countif(responseCode == 429),
+    Responses4xx=countif(responseCode >= 400 and responseCode < 500), Responses5xx=countif(responseCode >= 500 and responseCode < 600),
+    UnknownResults=countif(isnull(responseCode) or responseCode < 100 or responseCode >= 600),
+    DuplicateRows=sum(rawRows - 1), ConflictingResults=countif(resultAmbiguous),
+    TotalTimeSamples=countif(isnotnull(totalTime)), P50TotalTime=percentile(totalTime, 50), P95TotalTime=percentile(totalTime, 95), MaxTotalTime=max(totalTime),
+    LlmEvidenceRequests=countif(isnotnull(evidenceCount)), MeasuredTokenRequests=countif(usageStatus == 'available'),
+    AmbiguousTokenRequests=countif(usageStatus in ('ambiguous-evidence','ambiguous-usage')),
+    KnownInputTokens=sum(inputTokens), KnownOutputTokens=sum(outputTokens), KnownTotalTokens=sum(totalTokens)
+    by Minute=bin(requestTime, 1m), ApimSubscriptionId=subscriptionId
+| extend RequestsPerSecond=Requests / 60.0,
+    UnmeasuredTokenRequests=Requests - MeasuredTokenRequests,
+    InputTokens=iff(MeasuredTokenRequests > 0, KnownInputTokens, long(null)),
+    OutputTokens=iff(MeasuredTokenRequests > 0, KnownOutputTokens, long(null)),
+    TotalTokens=iff(MeasuredTokenRequests > 0, KnownTotalTokens, long(null))
+| project-away KnownInputTokens, KnownOutputTokens, KnownTotalTokens);
+// P95/最大は「1分あたり要求数」の期間統計。無通信の分も0件として含めます。
+// 表示するminute行は通信があった分だけですが、低稼働時間を除いてP95を押し上げません。
+let rates = minutes
+| make-series MinuteRequests=sum(Requests) default=0 on Minute from windowStart to windowEnd step 1m by ApimSubscriptionId
+| mv-expand MinuteRequests to typeof(long)
+| summarize PeriodRequests=sum(MinuteRequests), P95RequestsPerMinute=percentile(MinuteRequests, 95), MaxRequestsPerMinute=max(MinuteRequests), ObservedMinutes=count() by ApimSubscriptionId
+| extend P95MinuteAverageRps=P95RequestsPerMinute / 60.0, MaxMinuteAverageRps=MaxRequestsPerMinute / 60.0;
+minutes
+| join kind=inner rates on ApimSubscriptionId
+| extend WindowStart=windowStart, WindowEnd=windowEnd, RowsWithoutCorrelationId=rowsWithoutCorrelationId
+| project WindowStart, WindowEnd, Minute, ApimSubscriptionId, Requests, RequestsPerSecond,
+    Responses429, Responses4xx, Responses5xx, UnknownResults, DuplicateRows, ConflictingResults,
+    TotalTimeSamples, P50TotalTime, P95TotalTime, MaxTotalTime,
+    PeriodRequests, P95RequestsPerMinute, MaxRequestsPerMinute, P95MinuteAverageRps, MaxMinuteAverageRps, ObservedMinutes,
+    LlmEvidenceRequests, MeasuredTokenRequests, UnmeasuredTokenRequests, AmbiguousTokenRequests, InputTokens, OutputTokens, TotalTokens, RowsWithoutCorrelationId
+| order by Minute desc, Requests desc, ApimSubscriptionId asc

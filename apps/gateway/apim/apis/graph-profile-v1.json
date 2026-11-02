@@ -1,0 +1,40 @@
+{
+  "released": true,
+  "name": "graph-profile-v1",
+  "displayName": "Microsoft Graph /me V1",
+  "path": "tools/graph/v1",
+  "backendService": "external",
+  "backendUrl": "https://graph.microsoft.com/v1.0",
+  "backendAudience": "https://graph.microsoft.com",
+  "productId": "connection-users",
+  "subscriptionKeyHeader": "api-key",
+  "operations": [
+    {
+      "name": "graph_profile_self",
+      "displayName": "Read signed-in user attributes",
+      "method": "GET",
+      "urlTemplate": "/me",
+      "backendUrlTemplate": "/me?$select=displayName,givenName,surname,userPrincipalName,id,jobTitle,companyName,department,employeeId,officeLocation,mail,accountEnabled",
+      "templateParameters": []
+    }
+  ],
+  "keySubscriptions": [],
+  "authorization": {
+    "mode": "subscriptionKey",
+    "operationConstraints": {
+      "graph_profile_self": {
+        "kind": "registeredOperation",
+        "maxRequestBytes": 32768
+      }
+    }
+  },
+  "credentialConnection": {
+    "mode": "personal",
+    "providerName": "graph-delegated",
+    "enabled": true
+  },
+  "serviceClass": "platform",
+  "backendAuthentication": {
+    "mode": "none"
+  }
+}

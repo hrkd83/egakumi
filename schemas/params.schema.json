@@ -1,0 +1,1666 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Workforce 企業・環境ごとの入力",
+  "description": "企業・環境ごとに確認して指定する入力です。configFileから本番またはテストの標準動作設定を読みます。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "configFile",
+    "productName",
+    "environmentName",
+    "subscriptionId",
+    "azureTenantId",
+    "network",
+    "services",
+    "gateway",
+    "management",
+    "monitoring",
+    "certificate",
+    "location",
+    "foundryLocation",
+    "apiCenterLocation",
+    "tags",
+    "portal"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "default": "../schemas/params.schema.json"
+    },
+    "$comment": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "パラメーターファイルを直接読む人向けの入力候補・説明です。Azureへは渡しません。"
+    },
+    "configFile": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\.[jJ][sS][oO][nN]$",
+      "description": "標準動作設定の正本を選びます。テストは../config/test.json、本番は../config/production.json。企業固有値はこのparamsへ設定し、configはコピーしません。"
+    },
+    "azureTenantId": {
+      "$ref": "#/$defs/guid",
+      "description": "Azureリソースが属するテナントID。構築、Key Vault、Azure RBAC、管理APIの認証に使用します。"
+    },
+    "entraTenantId": {
+      "$ref": "#/$defs/guid",
+      "description": "OAuth接続で利用する既定のEntra認証テナントID。省略時はazureTenantIdと同じです。"
+    },
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 12,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "リソース名とタグに使う任意の環境識別子です。例test/dev/prod。値によるSKU・保持期間などの切替はありません。Azure共通命名のため先頭英小文字、以降は英小文字・数字・内部ハイフン、最大12字。 命名順は種類-環境名-製品名。environmentName-productNameは合計21文字以内、ハイフン除去後は20文字以内にしてください。超過時は構築前にエラーになります。"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "subscriptionId": {
+      "$ref": "#/$defs/guid"
+    },
+    "apiDefinitions": {
+      "type": "array",
+      "description": "azd upのGateway工程と個別のGateway配備で、空配列なら標準18 API、非空なら指定したAPIを登録します。標準APIの接続先は基盤出力からメモリー内で解決し、paramsを書き換えません。基盤のWAF・監査ログに必要な情報も同じ定義から事前に準備します。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "backendAuthentication": {
+            "$ref": "#/$defs/backendAuthentication"
+          },
+          "subscriptionKeyHeader": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9-]+$",
+            "description": "省略時はgateway.authentication.subscriptionKeyHeaderを使います。明示時も同じヘッダー名とし、大文字・小文字だけの差は共通値へ正規化します。",
+            "default": "api-key"
+          },
+          "mcp": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 400
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "operationNames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "maxItems": 1
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "displayName",
+              "operationNames"
+            ]
+          },
+          "serviceClass": {
+            "enum": [
+              "platform",
+              "sample"
+            ],
+            "description": "platform=基盤が初期提供する正式API、sample=本体を別途配備するサンプル用API。"
+          },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "backendOverride": {
+                  "$ref": "#/$defs/operationBackendOverride"
+                }
+              }
+            }
+          },
+          "authorization": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "const": "subscriptionKey",
+                "description": "APIMの有効な購読キーと利用範囲を確認します。"
+              },
+              "operationConstraints": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/operationConstraint"
+                }
+              }
+            },
+            "required": [
+              "mode",
+              "operationConstraints"
+            ]
+          },
+          "websocket": {
+            "type": "object",
+            "properties": {
+              "allowedModels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            }
+          },
+          "credentialConnection": {
+            "$ref": "#/$defs/credentialConnection"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "backendService": {
+            "type": "string"
+          },
+          "backendUrl": {
+            "type": "string"
+          },
+          "backendPath": {
+            "type": "string"
+          },
+          "backendAudience": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "keySubscriptions": {
+            "type": "array"
+          },
+          "apiType": {
+            "type": "string"
+          },
+          "backendHeaders": {
+            "type": "object"
+          },
+          "grpc": {
+            "type": "object"
+          },
+          "mcpProxy": {
+            "type": "object"
+          },
+          "released": {
+            "type": "boolean",
+            "default": false,
+            "description": "trueのAPIと生成MCPを通常キー用のreleased-apis製品へ関連付けます。省略・falseは検証用製品のみ。falseへ変更したAPIの公開製品との関連はGateway配備時に解除します。"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "credentialProviders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/credentialProvider"
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectAdministrators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/principal"
+          },
+          "default": []
+        },
+        "projectDevelopers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/principal"
+          },
+          "default": []
+        },
+        "foundryReaders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/principal"
+          },
+          "default": []
+        },
+        "catalogReaders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/principal"
+          },
+          "default": []
+        }
+      }
+    },
+    "productName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 24,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "各リソース名に使う製品名です。 命名順は種類-環境名-製品名。environmentName-productNameは合計21文字以内、ハイフン除去後は20文字以内にしてください。超過時は構築前にエラーになります。",
+      "examples": [
+        "egakumi"
+      ]
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publisherName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisherEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "publisherName",
+        "publisherEmail"
+      ]
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "購読キーによる共通認可と、必要なAPIから利用する本人OAuth接続の設定です。",
+          "properties": {
+            "subscriptionKeyHeader": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "default": "api-key",
+              "description": "APIMの購読キーを受信する専用ヘッダー名です。標準はAzure OpenAI互換のapi-keyです。"
+            },
+            "credentialLogin": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "本人のOAuth接続を作成し、認証完了後に接続セッションを発行する共通窓口です。",
+              "required": [
+                "providerNames"
+              ],
+              "properties": {
+                "providerNames": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+                  },
+                  "description": "本人接続の作成と認証案内に利用するEntraプロバイダー名です。"
+                },
+                "idleTimeoutSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 31536000,
+                  "default": 604800,
+                  "description": "最終の対象業務API利用からの無操作期限。期限切れのセッションは延長しません。"
+                },
+                "absoluteLifetimeSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 31536000,
+                  "default": 2592000,
+                  "description": "本人確認完了からの最長期限。利用や値の更新でも延長しません。"
+                },
+                "rotationIntervalSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 2592000,
+                  "default": 86400,
+                  "description": "対象業務APIの利用時にセッション値の更新を開始する間隔。"
+                },
+                "rotationGraceSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3600,
+                  "default": 300,
+                  "description": "更新確定後に旧値を受け付ける固定の移行猶予。旧値の利用で延長しません。"
+                },
+                "rotationHandoffSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 3600,
+                  "default": 600,
+                  "description": "更新開始後、保存・確定を待って業務APIを継続できる期間。"
+                },
+                "rotationCandidateTtlSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 3600,
+                  "default": 600,
+                  "description": "更新候補の有効期間。更新確定だけでは利用期限を延長しません。"
+                },
+                "transactionLifetimeSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 600,
+                  "default": 300,
+                  "description": "ログイン開始から認証結果を受け取るまでの有効期間です。"
+                },
+                "loginCallsPerMinute": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000,
+                  "default": 10,
+                  "description": "購読IDごとのログイン開始回数を1分単位で制限します。"
+                }
+              }
+            }
+          }
+        },
+        "publicHostName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "公開DNSで管理するAPI入口のFQDN。スキーム・パス・ポートは付けません。"
+        },
+        "existingWafPolicyId": {
+          "type": "string",
+          "default": ""
+        },
+        "grpc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "publicHostName": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "rateLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "subscriptionKey": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "overrides": {
+                  "type": "array",
+                  "default": [],
+                  "uniqueItems": true,
+                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "callerId",
+                      "calls",
+                      "renewalPeriodSeconds"
+                    ],
+                    "properties": {
+                      "calls": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000000,
+                        "description": "この契約に適用する要求回数の上限です。"
+                      },
+                      "renewalPeriodSeconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "description": "この契約の集計期間（秒）です。"
+                      },
+                      "callerId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512,
+                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
+                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "application": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "overrides": {
+                  "type": "array",
+                  "default": [],
+                  "uniqueItems": true,
+                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "callerId",
+                      "calls",
+                      "renewalPeriodSeconds"
+                    ],
+                    "properties": {
+                      "calls": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000000,
+                        "description": "この契約に適用する要求回数の上限です。"
+                      },
+                      "renewalPeriodSeconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "description": "この契約の集計期間（秒）です。"
+                      },
+                      "callerId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512,
+                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
+                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "publicHostName",
+        "authentication"
+      ]
+    },
+    "management": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adminUsername": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "maxLength": 32,
+          "description": "Linux管理VMのローカル管理者名。root/admin等の予約名は不可。"
+        },
+        "loginAssignments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loginPrincipal"
+          },
+          "default": []
+        },
+        "sshPublicKeyFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SSH公開鍵の必須入力兼生成先。相対パスは設定ファイル基準。有効なOpenSSH RSA 2048bit以上/Ed25519公開鍵1件は、repo外・秘密鍵なしでも再利用。azd upのpreup末尾で公開鍵と対応秘密鍵がともに存在しないときだけ、repo ROOT/secrets配下の.pubへssh-keygenでパスフレーズなしRSA4096鍵対を生成（POSIX:dir700/private600）。秘密鍵のみ既存・無効な既存公開鍵・repo外の未作成先は上書きせず停止。完成鍵対は失敗/down後も保持し、秘密鍵をGit・Azure・ログへ送信しません。",
+          "examples": [
+            "../secrets/management-ssh.pub"
+          ]
+        }
+      },
+      "required": [
+        "adminUsername",
+        "sshPublicKeyFile"
+      ]
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operatorEmailAddresses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "format": "email",
+            "minLength": 1
+          }
+        },
+        "auditAllowedIpAddresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "監査Storageへ接続を許可する環境ごとのIPv4/CIDRです。空配列はIPによる追加許可なしです。"
+        },
+        "auditReaders": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "operatorEmailAddresses"
+      ]
+    },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preparedPfxPasswordFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "prepared方式のPFXパスワードを格納した保護ファイル参照。dnsPlugin方式では省略します。"
+        },
+        "pluginArgumentsFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "azd upが非表示入力から自動生成・再利用するDNS資格情報の内部保存先です。利用者によるJSON手組みは不要です。選択したDNS事業者の必須引数・型を確認し、事業者の変更時は新しい値を入力して検証後に置換します。中止・不正入力・同時変更・非対話の不足や不一致では既存ファイルを保持して停止します。相対パスはこの値を記述したJSONファイル基準。prepared方式では省略します。 Azure DNSではこのファイルを使用せず、事前作成したユーザー割り当てMIを使います。"
+        },
+        "preparedPfxFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "prepared方式で使う秘密鍵付きPFXの保護ファイル参照。dnsPlugin方式では省略します。"
+        },
+        "contactEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 1
+        },
+        "domainNames": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 253
+          },
+          "description": "発行する証明書のDNS名。例: [\"*.example.com\"]。左端一階層のワイルドカード、または通常のホスト名を指定。省略時はGatewayの公開名。Gatewayの公開名を覆う必要があり、ワイルドカードはapex・深い階層を含みません。独立コンソールの証明書は別管理です。"
+        },
+        "plugin": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]+$",
+          "description": "公開DNSのPosh-ACMEプラグイン識別子。azd upのpreupはCloudflare・Route53・Azure Public DNS（値Azure）を対話選択し、変更時に元のparamsへ保存します。Enterはparamsの現在値を保持、qは中止。現在値が標準3種以外の場合だけ「その他」を表示し、その値を保持します。非対話とpreprovisionは保存済みの値を使います。3種類だけのenum制限ではなく、その他の公式識別子はparamsへ事前設定し、公式の既存型付き保護JSON・追加接続先を別途準備します。prepared方式では省略します。"
+        },
+        "azureDnsSubscriptionId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Azure DNSゾーンがあるSubscription ID。Azure選択時にazd upで対話入力しparamsへ保存・再利用します。"
+        },
+        "azureDnsManagedIdentityResourceId": {
+          "type": "string",
+          "pattern": "^/subscriptions/[^/]+/resource[Gg]roups/[^/]+/providers/Microsoft\\.ManagedIdentity/userAssignedIdentities/[^/]+$",
+          "description": "事前作成・DNS操作権限付与済みのユーザー割り当てMIの完全なリソースID。Azure選択時にazd upで対話入力・保存し、証明書取得前に管理VMへ紐づけます。Client IDやObject IDではありません。"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "企業・環境ごとのIP計画、DNS、時刻同期、追加通信先と規則です。addressSpacesとsubnetPrefixesは必須です。",
+      "required": [
+        "addressSpaces",
+        "subnetPrefixes"
+      ],
+      "properties": {
+        "addressSpaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "10.40.0.0/24",
+              "10.40.1.0/24",
+              "10.40.2.0/24",
+              "10.40.3.0/24"
+            ]
+          ],
+          "description": "VNet全体に登録する重複しないIPv4 CIDRです。今回の例は/24を4つとし、10.40.3.0/24はサブネット未作成の予備です。サブネットの割当はsubnetPrefixesで別に指定します。"
+        },
+        "subnetPrefixes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "agw",
+            "pep",
+            "firewall",
+            "apim",
+            "management",
+            "aca"
+          ],
+          "description": "ACAを含む6サブネットのCIDRです。VNetのaddressSpaces内へ重複なく割り当てます。予備/24のサブネットは作りません。",
+          "properties": {
+            "agw": {
+              "type": "string",
+              "description": "Application Gateway専用。基本/24。",
+              "examples": [
+                "10.40.0.0/24"
+              ]
+            },
+            "pep": {
+              "type": "string",
+              "description": "Private Endpoint用。基本/24。",
+              "examples": [
+                "10.40.1.0/24"
+              ]
+            },
+            "firewall": {
+              "type": "string",
+              "description": "AzureFirewallSubnet用。基本/26。",
+              "examples": [
+                "10.40.2.0/26"
+              ]
+            },
+            "apim": {
+              "type": "string",
+              "description": "Internal APIM専用。基本/26。",
+              "examples": [
+                "10.40.2.64/26"
+              ]
+            },
+            "management": {
+              "type": "string",
+              "description": "管理VM用。基本/26。",
+              "examples": [
+                "10.40.2.128/26"
+              ]
+            },
+            "aca": {
+              "type": "string",
+              "description": "Core管理ポータルのACA専用サブネット。基本/26、最小/27。Microsoft.App/environmentsへ委任します。",
+              "examples": [
+                "10.40.2.192/26"
+              ]
+            }
+          }
+        },
+        "clientAddressPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "0.0.0.0/0"
+          ],
+          "examples": [
+            [
+              "203.0.113.10/32"
+            ]
+          ],
+          "description": "公開APIへ接続するクライアントの送信元IPv4/CIDR。AppGWのHTTP80/HTTPS443と有効なgRPC入口のNSG許可に使用します。省略時は[\"0.0.0.0/0\"]でIPv4の送信元による絞り込みなしです。特定のIP/CIDRを指定すると接続元を制限し、明示した空配列だけが一般クライアントの接続を許可しません。全IPv4は0.0.0.0ではなく0.0.0.0/0です。アプリの認証・認可とプラットフォーム用通信の例外は別に維持します。"
+        },
+        "operatorAddressPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [
+            [
+              "10.20.30.0/24"
+            ]
+          ],
+          "description": "管理VMへ接続する運用者の送信元IPv4/CIDR。既定はTCP22をNSGで許可し、空配列は許可しません。管理VMへの経路やpublic IPを作成する設定ではありません。"
+        },
+        "dnsServers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "ipv4"
+          },
+          "default": [],
+          "examples": [
+            [
+              "10.10.0.4",
+              "10.10.0.5"
+            ]
+          ],
+          "description": "VNetが使うDNSサーバーのIPv4アドレス配列。FQDNやCIDRは不可。省略/空配列はAzure提供DNS（168.63.129.16）。指定した場合は到達経路・TCP/UDP53とPrivate DNSの転送を別途確保します。"
+        },
+        "ntpAddressPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "Internet"
+          ]
+        },
+        "managementAdditionalSecurityRules": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "default": []
+        },
+        "firewall": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "環境依存のIPとIP条件を含むFirewall規則配列です。SKUはconfig側にあるため、Premium専用項目との整合は合成後に検証します。",
+          "properties": {
+            "dnsServers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "default": [],
+              "description": "Firewall DNSプロキシの上位DNSサーバーIPv4。空配列はAzure提供DNS。"
+            },
+            "snatPrivateRanges": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "default": [
+                "IANAPrivateRanges"
+              ],
+              "description": "SNATを行わない宛先範囲。IANAPrivateRangesはRFC 1918・RFC 6598等のAzure既定のプライベート範囲です。"
+            },
+            "idpsPrivateRanges": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "default": [],
+              "description": "Premium IDPSが内部とみなすIP範囲。空配列は追加指定なし。Standardでは空配列にします。"
+            },
+            "bypassTrafficSettings": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": [],
+              "description": "Premium IDPS検査を除外する通信。追加しない場合は空配列。"
+            },
+            "apimAdditionalNetworkRules": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": [],
+              "description": "APIM送信元の追加ネットワーク規則。"
+            },
+            "managementAdditionalNetworkRules": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": [],
+              "description": "管理VM送信元の追加ネットワーク規則。"
+            },
+            "apimAdditionalApplicationRules": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": [],
+              "description": "APIM送信元の追加アプリケーション規則。"
+            },
+            "managementAdditionalApplicationRules": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "default": [],
+              "description": "管理VM送信元の追加アプリケーション規則。"
+            },
+            "apimAllowedFqdns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "default": [],
+              "description": "APIMから追加で許可するHTTPS宛先。組み込みのプラットフォーム必須宛先に追加します。"
+            },
+            "managementAllowedFqdns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "default": [],
+              "description": "管理VMから追加で許可するHTTPS宛先。Ubuntu・Azure・証明書の必須宛先に追加します。"
+            }
+          }
+        },
+        "ntpFqdns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "default": [
+            "ntp.ubuntu.com"
+          ],
+          "description": "Linux管理VMが時刻同期に使うNTPサーバーのFQDN。"
+        }
+      }
+    },
+    "location": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]+$",
+      "description": "主要ネットワーク・APIM等を配置するAzureリージョン。"
+    },
+    "foundryLocation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]+$",
+      "description": "Foundryとモデルを配置するAzureリージョン。利用枠・モデル提供地域を確認します。"
+    },
+    "apiCenterLocation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]+$",
+      "description": "API Centerを配置するAzureリージョン。対応地域を確認します。"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "publishApis": {
+      "type": "boolean",
+      "description": "azd up全体とGateway配備の--executeによる反映を許可するか。falseではupをpreup冒頭の課金資源作成前に停止し、trueへ自動変更しません。個別の登録計画はfalseでも生成できます。基盤だけの構築はazd provisionを使います。"
+    },
+    "portal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publicHostName": {
+          "type": "string",
+          "pattern": "^portal\\."
+        }
+      },
+      "description": "Core管理ポータルの必須公開ホスト。専用サブネットはnetwork.subnetPrefixes.acaへ指定します。",
+      "required": [
+        "publicHostName"
+      ]
+    },
+    "portalApiKeys": {
+      "$ref": "#/$defs/portalApiKeys"
+    }
+  },
+  "$defs": {
+    "guid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principalId",
+        "principalType"
+      ],
+      "properties": {
+        "principalId": {
+          "$ref": "#/$defs/guid"
+        },
+        "principalType": {
+          "enum": [
+            "User",
+            "Group",
+            "ServicePrincipal"
+          ]
+        }
+      }
+    },
+    "loginPrincipal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principalId",
+        "principalType",
+        "role"
+      ],
+      "properties": {
+        "principalId": {
+          "$ref": "#/$defs/guid"
+        },
+        "principalType": {
+          "enum": [
+            "User",
+            "Group",
+            "ServicePrincipal"
+          ]
+        },
+        "role": {
+          "enum": [
+            "User",
+            "Administrator"
+          ]
+        }
+      }
+    },
+    "backendAuthentication": {
+      "type": "object",
+      "description": "APIMから下流サービスへ接続するときの認証方式です。CMを使うAPIはcredentialConnectionで接続を指定します。",
+      "properties": {
+        "mode": {
+          "enum": [
+            "managedIdentity",
+            "none",
+            "keyVaultHeader",
+            "speechEntra"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "operationProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId",
+        "modalities",
+        "kind",
+        "allowedModels",
+        "maxRequestBytes"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "registeredOperation",
+            "pathModel",
+            "bodyModel",
+            "statelessResponses",
+            "hostedAgentPost",
+            "a2aJsonRpc",
+            "realtimeCreate",
+            "realtimeHangup",
+            "pii"
+          ]
+        },
+        "parameter": {
+          "type": "string"
+        },
+        "allowedModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "maxRequestBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "maxOutputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "モデル別上限の外側の最大値。不定・非対応のみならnull。"
+        },
+        "outputTokenParameter": {
+          "enum": [
+            "max_output_tokens",
+            "max_completion_tokens",
+            "max_tokens"
+          ]
+        },
+        "modelVersion": {
+          "type": "string"
+        },
+        "allowedLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowedWarningCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bodyFormat": {
+          "enum": [
+            "json",
+            "binary",
+            "multipart",
+            "text",
+            "none"
+          ]
+        },
+        "contentTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowedMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "integerLimits": {
+          "type": "object"
+        },
+        "arrayLimits": {
+          "type": "object"
+        },
+        "stringChoices": {
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "sessionTtlSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600
+        },
+        "publicCallPath": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "modalities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "text",
+              "image",
+              "file",
+              "audio"
+            ]
+          }
+        },
+        "maxOutputTokensByModel": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "description": "API・操作で許可したモデルごとの公開上限。nullは不定または非対応。"
+        },
+        "outputTokenLimitKinds": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "enum": [
+              "documented",
+              "dynamic",
+              "unsupported",
+              "unverified"
+            ]
+          }
+        },
+        "initialOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
+        }
+      }
+    },
+    "operationConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "registeredOperation",
+            "pathModel",
+            "bodyModel",
+            "statelessResponses",
+            "hostedAgentPost",
+            "a2aJsonRpc",
+            "realtimeCreate",
+            "realtimeHangup",
+            "pii",
+            "documentAnalysis"
+          ]
+        },
+        "parameter": {
+          "type": "string"
+        },
+        "allowedModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "maxRequestBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "maxOutputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "モデル別上限の外側の最大値。不定・非対応のみならnull。"
+        },
+        "outputTokenParameter": {
+          "enum": [
+            "max_output_tokens",
+            "max_completion_tokens",
+            "max_tokens"
+          ]
+        },
+        "modelVersion": {
+          "type": "string"
+        },
+        "allowedLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowedWarningCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bodyFormat": {
+          "enum": [
+            "json",
+            "binary",
+            "multipart",
+            "text",
+            "none"
+          ]
+        },
+        "contentTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowedMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "integerLimits": {
+          "type": "object"
+        },
+        "arrayLimits": {
+          "type": "object"
+        },
+        "stringChoices": {
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "sessionTtlSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600
+        },
+        "publicCallPath": {
+          "type": "string"
+        },
+        "profiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operationProfile"
+          }
+        },
+        "defaultProfile": {
+          "type": "string"
+        },
+        "maxOutputTokensByModel": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "description": "API・操作で許可したモデルごとの公開上限。nullは不定または非対応。"
+        },
+        "outputTokenLimitKinds": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "enum": [
+              "documented",
+              "dynamic",
+              "unsupported",
+              "unverified"
+            ]
+          }
+        },
+        "initialOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
+        },
+        "apiVersion": {
+          "type": "string",
+          "enum": [
+            "2024-11-30"
+          ],
+          "description": "Document Intelligenceの検証済みAPI版。"
+        },
+        "maxResponseBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304,
+          "description": "Document分析結果のGateway受信上限。サービスのモデル上限ではありません。"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 60,
+          "description": "Document分析のGateway待機時間。期限超過後に自動再送しません。"
+        }
+      }
+    },
+    "operationBackendOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Operation単位の固定接続先。未指定値はAPI既定から継承。秘密交換はAPI単位。",
+      "properties": {
+        "backendService": {
+          "enum": [
+            "foundryOpenAi",
+            "foundryCognitive",
+            "foundryServices",
+            "external"
+          ]
+        },
+        "backendUrl": {
+          "type": "string"
+        },
+        "backendAudience": {
+          "type": "string"
+        },
+        "backendAuthentication": {
+          "$ref": "#/$defs/backendAuthentication"
+        },
+        "backendHeaders": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "credentialConnection": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "APIから利用するCredential Manager接続です。personalは認証済み接続セッション、serviceは固定のサービス接続を使います。",
+      "required": [
+        "mode",
+        "providerName",
+        "enabled"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "personal",
+            "service"
+          ]
+        },
+        "providerName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        "connectionName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+          "description": "serviceモードで利用する固定接続名です。"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "service"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "connectionName"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "personal"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "connectionName"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "credentialProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OAuth接続先の固定設定です。本人接続用のEntraプロバイダーはidentityEndpointで認証した本人を確認します。",
+      "required": [
+        "name",
+        "displayName",
+        "identityProvider",
+        "clientId",
+        "clientSecretFile",
+        "scopes",
+        "connectionNames"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identityProvider": {
+          "enum": [
+            "aad",
+            "oauth2"
+          ]
+        },
+        "clientId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clientSecretFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "oauthTenantId": {
+          "$ref": "#/$defs/guid"
+        },
+        "scopes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceUri": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "authorizationUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "tokenUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "refreshUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "connectionNames": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+          },
+          "description": "事前作成する固定接続名です。共通ログイン窓口から本人接続を作るプロバイダーは空配列を指定できます。"
+        },
+        "identityEndpoint": {
+          "type": "string",
+          "pattern": "^https://[^\\s?#]+$",
+          "description": "resourceUriと同じホストにある固定の本人情報取得URLです。本人接続用Entraプロバイダーに指定します。"
+        },
+        "identityIdProperty": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+          "default": "id",
+          "description": "本人情報の応答から取得する不変IDのプロパティ名です。"
+        },
+        "pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "capacity"
+          ],
+          "description": "論理プロファイルを-aからの物理CMプロバイダーへ展開する。",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 26
+            },
+            "capacity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8000
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "identityProvider": {
+                "const": "aad"
+              }
+            },
+            "required": [
+              "identityProvider"
+            ]
+          },
+          "then": {
+            "required": [
+              "resourceUri"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "identityProvider": {
+                "const": "oauth2"
+              }
+            },
+            "required": [
+              "identityProvider"
+            ]
+          },
+          "then": {
+            "required": [
+              "authorizationUrl",
+              "tokenUrl",
+              "refreshUrl"
+            ]
+          }
+        }
+      ]
+    },
+    "portalApiKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "検証用購読の所有グループ・基盤管理グループと承認製品。初期のazd upは基盤・Gatewayの後、Portal工程で未設定項目を対話入力し、同じparamsへ保存します。非対話ではgroups・platformGroupId・groupNamePatternの事前設定が必要です。通常の所有候補は環境別の正規表現に一致するセキュリティグループをGraphから取得し、キー値は含めません。",
+      "properties": {
+        "platformGroupId": {
+          "$ref": "#/$defs/guid",
+          "description": "検証用購読の所有グループのうち、管理ダッシュボードへのアクセスを許可するグループのObject ID。groups内のIDを明示します。"
+        },
+        "groupNamePattern": {
+          "type": "string",
+          "maxLength": 512,
+          "default": "",
+          "examples": [
+            "^ORG_",
+            "^(ORG_|DEPT_)",
+            "^組織_.+$"
+          ],
+          "description": "対象セキュリティグループの表示名を選ぶRE2互換の正規表現。通常は大文字小文字を区別します。空欄は初回未設定で、azd up後段または個別のPortal配備で対話入力します。非対話では事前設定が必要です。空欄を全許可にはしません。"
+        },
+        "verificationSubscriptions": {
+          "type": "array",
+          "maxItems": 100,
+          "default": [],
+          "description": "Portal配備で基盤管理グループへ登録する検証用購読。未設定の初回は承認製品ごとにplatform-<製品ID>で作成します。既存の購読は実IDを明示して引き継ぎます。キー値は含めません。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "subscriptionId",
+              "productId",
+              "displayName"
+            ],
+            "properties": {
+              "subscriptionId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
+                "not": {
+                  "pattern": "^[Mm][Aa][Ss][Tt][Ee][Rr]$"
+                }
+              },
+              "productId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "maxItems": 1000,
+          "default": [],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "groupId",
+              "products"
+            ],
+            "properties": {
+              "groupId": {
+                "$ref": "#/$defs/guid"
+              },
+              "products": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "productId"
+                  ],
+                  "properties": {
+                    "productId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+                    },
+                    "maxSubscriptions": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000,
+                      "default": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

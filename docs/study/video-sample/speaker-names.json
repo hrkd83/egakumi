@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "names": {
+    "mako": {
+      "display": "MAKO",
+      "reading": "マコ"
+    },
+    "manabu": {
+      "display": "MANABU",
+      "reading": "マナブ"
+    },
+    "ikumi": {
+      "display": "IKUMI",
+      "reading": "イクミ"
+    }
+  },
+  "policy": "表示名・字幕は全大文字の英字。読み上げ本文ではカタカナ。"
+}

@@ -1,0 +1,5985 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "episodeKey": "02",
+  "episodeNumber": 2,
+  "episodeId": "02-dns-private-endpoint",
+  "title": "第2回 DNSとPrivate Endpoint",
+  "topic": "DNSとPrivate Endpoint",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "現行リポジトリ定義・公開設定例に基づく教材。稼働環境の取得値・実測結果ではない。",
+  "learningObjectives": [
+    "通常のFQDNからPrivate Link用の名前、PEの実private IPへ至る関係を説明する。",
+    "VNetリンクとPEのDNS zone group、VNetとFirewallのDNS入力を区別する。",
+    "APIM・ACAの内部名と、Gateway・Portalの公開名の解決先を説明する。",
+    "送信元・問い合わせ先DNS・FQDN・回答IPをそろえ、期待する接続口の実IPと照合できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../01-network-control.html",
+      "anchor": "dns-vnet"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "dns-private-endpoints"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "dns-private-zones"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "dns-internal-services"
+    },
+    {
+      "file": "../01-network-control.html",
+      "anchor": "dns-maintenance"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "同じ名前でも、同じ接続先？",
+      "goal": "今回の問いを3人の対話でつかむ",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-vnet"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-maintenance"
+        }
+      ]
+    },
+    {
+      "id": "why",
+      "title": "名前解決から、通信の宛先を決める",
+      "goal": "FQDN・回答IP・データ通信を区別する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-vnet"
+        }
+      ]
+    },
+    {
+      "id": "connection-models",
+      "title": "PEとVNet接続の方式を、先に整理する",
+      "goal": "接続口だけをVNet内へ置くPEと、この構成のAPIM・ACAのサブネット接続を図で区別し、DNSが返す入口IPへつなぐ",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-endpoints"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-internal-services"
+        }
+      ]
+    },
+    {
+      "id": "pe",
+      "title": "4種類のPEは、サービスへの接続口",
+      "goal": "サービス本体、接続口、実IP、権限の分担を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-endpoints"
+        }
+      ]
+    },
+    {
+      "id": "links",
+      "title": "通常名からPEのIPへ",
+      "goal": "Key Vaultの例で解決順と2種類の関連付けを追う",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-zones"
+        }
+      ]
+    },
+    {
+      "id": "dns",
+      "title": "VNetとFirewallは、どのDNSを使う？",
+      "goal": "空配列・未指定・DNS proxyと問い合わせ先の関係を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-vnet"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-zones"
+        }
+      ]
+    },
+    {
+      "id": "internal",
+      "title": "APIM・ACAの内部名と、公開入口の名前",
+      "goal": "PE連携と明示Aレコード、公開名の対応を区別する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-internal-services"
+        }
+      ]
+    },
+    {
+      "id": "checking",
+      "title": "送信元ごとに、回答と実体を照合する",
+      "goal": "確認条件・期待IP・ゾーン・反映をつなげて確認する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-maintenance"
+        }
+      ]
+    },
+    {
+      "id": "quiz",
+      "title": "3つの通信で、理解を確かめる",
+      "goal": "名前解決・接続口の種類・到達と権限を自分で判断する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-endpoints"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-internal-services"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-maintenance"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "今日の対応を振り返り、NSGへ",
+      "goal": "公開名・内部名・PEと送信元別確認を説明する",
+      "sourceRefs": [
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-vnet"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-private-zones"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-internal-services"
+        },
+        {
+          "file": "../01-network-control.html",
+          "anchor": "dns-maintenance"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson02-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "同じサービス名なのに、手元のピーシーでは調べられて、アプリからはつながらない。これって、名前の問題なんでしょうか？",
+      "caption": "同じサービス名なのに、手元のPCでは調べられて、アプリからはつながらない。これって、名前の問題なんでしょうか？",
+      "subtitleLines": [
+        "同じサービス名なのに、手元のPCでは調べられて、",
+        "アプリからはつながらない。これって、名前の問題なんでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "DNSとPrivate Endpoint"
+      }
+    },
+    {
+      "id": "lesson02-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "あり得ます。誰が、どのディーエヌエスに聞くかで、接続先のアイピーが変わるからです。まず答えをそろえたいですね。",
+      "caption": "あり得ます。誰が、どのDNSに聞くかで、接続先のIPが変わるからです。まず答えをそろえたいですね。",
+      "subtitleLines": [
+        "あり得ます。誰が、どのDNSに聞くかで、",
+        "接続先のIPが変わるからです。まず答えをそろえたいですね。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "DNSとPrivate Endpoint"
+      }
+    },
+    {
+      "id": "lesson02-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今日は公開名、内部名、それからプライベートエンドポイントのアイピーを、一本の流れで追ってみましょう。",
+      "caption": "今日は公開名、内部名、それからPrivate EndpointのIPを、一本の流れで追ってみましょう。",
+      "subtitleLines": [
+        "今日は公開名、内部名、それからPrivate ",
+        "EndpointのIPを、一本の流れで追ってみましょう。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "DNSとPrivate Endpoint"
+      }
+    },
+    {
+      "id": "lesson02-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "名前が分かれば終わり、ではないんですね。マナブ、イクミ、送信元から順に教えてください。",
+      "caption": "名前が分かれば終わり、ではないんですね。MANABU、IKUMI、送信元から順に教えてください。",
+      "subtitleLines": [
+        "名前が分かれば終わり、ではないんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "DNSとPrivate Endpoint"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "名前が分かれば終わり、ではないんですね。",
+          "lines": [
+            "名前が分かれば終わり、ではないんですね。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "MANABU、IKUMI、送信元から順に教えてください。",
+          "lines": [
+            "MANABU、IKUMI、",
+            "送信元から順に教えてください。"
+          ],
+          "weight": 28
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-005-manabu",
+      "speaker": "manabu",
+      "chapterId": "why",
+      "speech": "前回は要求がどの区画を通るかを見ました。今日はその一歩手前。アプリが接続する宛先を、名前からどう決めるかを扱います。",
+      "caption": "前回は要求がどの区画を通るかを見ました。今日はその一歩手前。アプリが接続する宛先を、名前からどう決めるかを扱います。",
+      "subtitleLines": [
+        "前回は要求がどの区画を通るかを見ました。今日はその一歩手前。",
+        "アプリが接続する宛先を、名前からどう決めるかを扱います。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "name-to-ip",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前から接続先のIPを決める",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：DNSの回答を、後続で調べる宛先とそろえる",
+        "fields": [
+          {
+            "id": "fqdn",
+            "label": "アプリが使う名前",
+            "value": "サービスの通常FQDN"
+          },
+          {
+            "id": "dns",
+            "label": "DNSの役割",
+            "value": "名前に対応するIPを回答"
+          },
+          {
+            "id": "data",
+            "label": "データ通信",
+            "value": "アプリ → 回答されたIP"
+          },
+          {
+            "id": "expected",
+            "label": "最初に照合すること",
+            "value": "期待した接続先IPか"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson02-turn-006-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "ユーアールエルの名前が、接続するときにはアイピーへ変わる。その対応がずれると、調べる経路も変わるんですね。",
+      "caption": "URLの名前が、接続するときにはIPへ変わる。その対応がずれると、調べる経路も変わるんですね。",
+      "subtitleLines": [
+        "URLの名前が、接続するときにはIPへ変わる。",
+        "その対応がずれると、調べる経路も変わるんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "name-to-ip",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前から接続先のIPを決める",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：DNSの回答を、後続で調べる宛先とそろえる",
+        "fields": [
+          {
+            "id": "fqdn",
+            "label": "アプリが使う名前",
+            "value": "サービスの通常FQDN"
+          },
+          {
+            "id": "dns",
+            "label": "DNSの役割",
+            "value": "名前に対応するIPを回答"
+          },
+          {
+            "id": "data",
+            "label": "データ通信",
+            "value": "アプリ → 回答されたIP"
+          },
+          {
+            "id": "expected",
+            "label": "最初に照合すること",
+            "value": "期待した接続先IPか"
+          }
+        ],
+        "highlightFields": [
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-007-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "why",
+      "speech": "そうです。エフキューディーエヌは省略しない完全なドメイン名です。アプリはその名前をディーエヌエスで解決し、得られたアイピーへ通信を始めます。",
+      "caption": "そうです。FQDNは省略しない完全なドメイン名です。アプリはその名前をDNSで解決し、得られたIPへ通信を始めます。",
+      "subtitleLines": [
+        "そうです。FQDNは省略しない完全なドメイン名です。",
+        "アプリはその名前をDNSで解決し、得られたIPへ通信を始めます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "name-to-ip",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前から接続先のIPを決める",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：DNSの回答を、後続で調べる宛先とそろえる",
+        "fields": [
+          {
+            "id": "fqdn",
+            "label": "アプリが使う名前",
+            "value": "サービスの通常FQDN"
+          },
+          {
+            "id": "dns",
+            "label": "DNSの役割",
+            "value": "名前に対応するIPを回答"
+          },
+          {
+            "id": "data",
+            "label": "データ通信",
+            "value": "アプリ → 回答されたIP"
+          },
+          {
+            "id": "expected",
+            "label": "最初に照合すること",
+            "value": "期待した接続先IPか"
+          }
+        ],
+        "highlightFields": [
+          "fqdn",
+          "dns"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-008-manabu",
+      "speaker": "manabu",
+      "chapterId": "why",
+      "speech": "許可規則を広げる前に、接続しようとしている宛先をそろえましょう。想定と違うアイピーなら、違う相手への通信を調べてしまいます。",
+      "caption": "許可規則を広げる前に、接続しようとしている宛先をそろえましょう。想定と違うIPなら、違う相手への通信を調べてしまいます。",
+      "subtitleLines": [
+        "許可規則を広げる前に、接続しようとしている宛先をそろえましょう。",
+        "想定と違うIPなら、違う相手への通信を調べてしまいます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "name-to-ip",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前から接続先のIPを決める",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：DNSの回答を、後続で調べる宛先とそろえる",
+        "fields": [
+          {
+            "id": "fqdn",
+            "label": "アプリが使う名前",
+            "value": "サービスの通常FQDN"
+          },
+          {
+            "id": "dns",
+            "label": "DNSの役割",
+            "value": "名前に対応するIPを回答"
+          },
+          {
+            "id": "data",
+            "label": "データ通信",
+            "value": "アプリ → 回答されたIP"
+          },
+          {
+            "id": "expected",
+            "label": "最初に照合すること",
+            "value": "期待した接続先IPか"
+          }
+        ],
+        "highlightFields": [
+          "expected"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-009-mako",
+      "speaker": "mako",
+      "chapterId": "why",
+      "speech": "名前とアイピーの対応を説明できて、どの送信元で確かめるかを選べることがゴールですね。細かい値を暗記する必要はありますか？",
+      "caption": "名前とIPの対応を説明できて、どの送信元で確かめるかを選べることがゴールですね。細かい値を暗記する必要はありますか？",
+      "subtitleLines": [
+        "名前とIPの対応を説明できて、どの送信元で確かめるかを",
+        "選べることがゴールですね。細かい値を暗記する必要はありますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson-goals",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "今回確認できるようになること",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材6〜10節 / 構築定義と公開設定例を読む",
+        "fields": [
+          {
+            "id": "names",
+            "label": "名前と接続先",
+            "value": "通常名・内部名・PEのprivate IP"
+          },
+          {
+            "id": "source",
+            "label": "確認する場所",
+            "value": "問題の通信を開始する送信元"
+          },
+          {
+            "id": "basis",
+            "label": "画面の値の根拠",
+            "value": "構築定義・公開設定例"
+          },
+          {
+            "id": "actual",
+            "label": "実測との区別",
+            "value": "稼働Azureの取得結果ではない"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson02-turn-010-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "why",
+      "speech": "まず役割を押さえれば大丈夫です。今回も教材の構築定義と公開設定例が基準です。稼働アジュールから取得した実測値ではありません。",
+      "caption": "まず役割を押さえれば大丈夫です。今回も教材の構築定義と公開設定例が基準です。稼働Azureから取得した実測値ではありません。",
+      "subtitleLines": [
+        "まず役割を押さえれば大丈夫です。今回も教材の構築定義と公開設定",
+        "例が基準です。稼働Azureから取得した実測値ではありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson-goals",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "今回確認できるようになること",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材6〜10節 / 構築定義と公開設定例を読む",
+        "fields": [
+          {
+            "id": "names",
+            "label": "名前と接続先",
+            "value": "通常名・内部名・PEのprivate IP"
+          },
+          {
+            "id": "source",
+            "label": "確認する場所",
+            "value": "問題の通信を開始する送信元"
+          },
+          {
+            "id": "basis",
+            "label": "画面の値の根拠",
+            "value": "構築定義・公開設定例"
+          },
+          {
+            "id": "actual",
+            "label": "実測との区別",
+            "value": "稼働Azureの取得結果ではない"
+          }
+        ],
+        "highlightFields": [
+          "basis",
+          "actual"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-011a3-mako",
+      "speaker": "mako",
+      "chapterId": "connection-models",
+      "speech": "ピーイーを作る場合と、エーピーアイエムやエーシーエーのように作らない場合。ディーエヌエスの前に、ブイネットへのつなぎ方を整理してもらえますか？",
+      "caption": "PEを作る場合と、APIMやACAのように作らない場合。DNSの前に、VNetへのつなぎ方を整理してもらえますか？",
+      "subtitleChunks": [
+        {
+          "caption": "PEを作る場合と、APIMやACAのように作らない場合。",
+          "lines": [
+            "PEを作る場合と、APIMやACAのように作らない場合。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "DNSの前に、VNetへのつなぎ方を整理してもらえますか？",
+          "lines": [
+            "DNSの前に、VNetへのつなぎ方を整理してもらえますか？"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "図を見ながら相手へ確かめる素朴な問いとして、穏やかに話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-none.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-011b3-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "connection-models",
+      "speech": "図の上はプライベートエンドポイントです。キーボールトなどのサービス本体を自分たちのブイネットへ移さず、ブイネット内にプライベートアイピーの接続口を作ります。アプリはこのピーイーを通じてサービスへ接続します。",
+      "caption": "図の上はPrivate Endpointです。Key Vaultなどのサービス本体を自分たちのVNetへ移さず、VNet内にprivate IPの接続口を作ります。アプリはこのPEを通じてサービスへ接続します。",
+      "subtitleChunks": [
+        {
+          "caption": "図の上はPrivate Endpointです。",
+          "lines": [
+            "図の上はPrivate Endpointです。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "Key Vaultなどのサービス本体を自分たちのVNetへ移さず、VNet内にprivate IPの接続口を作ります。",
+          "lines": [
+            "Key Vaultなどのサービス本体を自分たちのVNetへ移さず、VNet内にprivate IPの接続口",
+            "を作ります。"
+          ],
+          "weight": 59
+        },
+        {
+          "caption": "アプリはこのPEを通じてサービスへ接続します。",
+          "lines": [
+            "アプリはこのPEを通じてサービスへ接続します。"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "初めて学ぶ相手に図の上下を示すつもりで、用語の前後を軽く区切り、明瞭な通常速度で説明する。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-pe.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-011c3-mako",
+      "speaker": "mako",
+      "chapterId": "connection-models",
+      "speech": "下の図は、エーピーアイエムやエーシーエーの環境を、専用サブネットへ接続する形ですね。こちらの方式には、どんな名前が付いていますか？",
+      "caption": "下の図は、APIMやACAの環境を、専用サブネットへ接続する形ですね。こちらの方式には、どんな名前が付いていますか？",
+      "subtitleChunks": [
+        {
+          "caption": "下の図は、APIMやACAの環境を、専用サブネットへ接続する形ですね。",
+          "lines": [
+            "下の図は、APIMやACAの環境を、専用サブネットへ接続する形ですね。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "こちらの方式には、どんな名前が付いていますか？",
+          "lines": [
+            "こちらの方式には、どんな名前が付いていますか？"
+          ],
+          "weight": 23
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "図を見ながら相手へ確かめる素朴な問いとして、穏やかに話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-subnets.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-011d3-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "connection-models",
+      "speech": "この構成のエーピーアイエムは、ブイネットインジェクションの内部モードです。エーシーエーは、専用サブネットを使う、独自ブイネットとの統合による内部環境です。この二つには、自身のピーイーを作っていません。",
+      "caption": "この構成のAPIMは、VNetインジェクションの内部モードです。ACAは、専用サブネットを使う、独自VNetとの統合による内部環境です。この二つには、自身のPEを作っていません。",
+      "subtitleChunks": [
+        {
+          "caption": "この構成のAPIMは、VNetインジェクションの内部モードです。",
+          "lines": [
+            "この構成のAPIMは、VNetインジェクションの内部モードです。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "ACAは、専用サブネットを使う、独自VNetとの統合による内部環境です。",
+          "lines": [
+            "ACAは、専用サブネットを使う、独自VNetとの統合による内部環境です。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "この二つには、自身のPEを作っていません。",
+          "lines": [
+            "この二つには、自身のPEを作っていません。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "初めて学ぶ相手に図の上下を示すつもりで、用語の前後を軽く区切り、明瞭な通常速度で説明する。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-subnets.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-011e3-manabu",
+      "speaker": "manabu",
+      "chapterId": "connection-models",
+      "speech": "同じサービスでも、構成によって別の接続方式を選べます。今回は、ピーイーの入口と、エーピーアイエム、エーシーエーの内部入口を分けて押さえましょう。",
+      "caption": "同じサービスでも、構成によって別の接続方式を選べます。今回は、PEの入口と、APIM・ACAの内部入口を分けて押さえましょう。",
+      "subtitleChunks": [
+        {
+          "caption": "同じサービスでも、構成によって別の接続方式を選べます。",
+          "lines": [
+            "同じサービスでも、構成によって別の接続方式を選べます。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "今回は、PEの入口と、APIM・ACAの内部入口を分けて押さえましょう。",
+          "lines": [
+            "今回は、PEの入口と、APIM・ACAの内部入口を分けて押さえましょう。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と判断の違いを、同僚へ整理して返す。落ち着いた通常速度で話す。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-subnets.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-011f3-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "connection-models",
+      "speech": "ディーエヌエスの答えも対応させます。ピーイーを使うサービス名なら、ピーイーの実アイピー。エーピーアイエムの内部名なら内部ブイアイピー、エーシーエーの内部アプリ名なら環境の実スタティックアイピーです。この区別を持って、まずピーイーから見ていきましょう。",
+      "caption": "DNSの答えも対応させます。PEを使うサービス名なら、PEの実IP。APIMの内部名なら内部VIP、ACAの内部アプリ名なら環境の実staticIpです。この区別を持って、まずPEから見ていきましょう。",
+      "subtitleChunks": [
+        {
+          "caption": "DNSの答えも対応させます。",
+          "lines": [
+            "DNSの答えも対応させます。"
+          ],
+          "weight": 14
+        },
+        {
+          "caption": "PEを使うサービス名なら、PEの実IP。",
+          "lines": [
+            "PEを使うサービス名なら、PEの実IP。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "APIMの内部名なら内部VIP、ACAの内部アプリ名なら環境の実staticIpです。",
+          "lines": [
+            "APIMの内部名なら内部VIP、ACAの内部アプリ名なら環境の実staticIpです。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "この区別を持って、まずPEから見ていきましょう。",
+          "lines": [
+            "この区別を持って、まずPEから見ていきましょう。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "初めて学ぶ相手に図の上下を示すつもりで、用語の前後を軽く区切り、明瞭な通常速度で説明する。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "connectivity-comparison",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "まず、PEとサブネットを使う方式を分ける",
+        "kind": "ネットワーク設定",
+        "section": "接続方式の比較",
+        "menu": [
+          "接続方式の比較",
+          "Private DNS",
+          "送信元別の確認"
+        ],
+        "subtitle": "この構成の比較 / 用語・機能の範囲はサービスやSKUで異なる",
+        "footer": "教材図 / APIMの管理面まですべてprivateになるという意味ではありません",
+        "svg": "diagrams/connectivity-comparison-dns.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-012r3-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "では、プライベートエンドポイントからお願いします。前回のピーイー区画には、サービス本体が入っているわけではありませんでしたね。",
+      "caption": "では、Private Endpointからお願いします。前回のPE区画には、サービス本体が入っているわけではありませんでしたね。",
+      "subtitleLines": [
+        "では、Private Endpointからお願いします。前回の",
+        "PE区画には、サービス本体が入っているわけではありませんでしたね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "pe-location",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：接続口とサービス本体を分ける",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-pe-location-none.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-013-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "はい。プライベートエンドポイントはアジュールサービスへプライベートアイピーで接続する入口です。中央がブイネット内の接続口、右がキーボールト本体です。",
+      "caption": "はい。Private EndpointはAzureサービスへprivate IPで接続する入口です。中央がVNet内の接続口、右がKey Vault本体です。",
+      "subtitleLines": [
+        "はい。Private EndpointはAzure",
+        "サービスへprivate IPで接続する入口です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "pe-location",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：接続口とサービス本体を分ける",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-pe-location-pe.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "はい。Private EndpointはAzureサービスへprivate IPで接続する入口です。",
+          "lines": [
+            "はい。Private EndpointはAzure",
+            "サービスへprivate IPで接続する入口です。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "中央がVNet内の接続口、右がKey Vault本体です。",
+          "lines": [
+            "中央がVNet内の接続口、右がKey Vault本体です。"
+          ],
+          "weight": 29
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-015-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "この基盤の四種類です。ファウンドリーはエーアイ、キーボールトは証明書や秘密情報。エーシーアールはイメージ、エスキューエルはポータルと認証窓口のデータ保存先へつなぎます。",
+      "caption": "この基盤の4種類です。FoundryはAI、Key Vaultは証明書や秘密情報。ACRはイメージ、SQLはPortalと認証窓口のデータ保存先へつなぎます。",
+      "subtitleLines": [
+        "この基盤の4種類です。FoundryはAI、",
+        "Key Vaultは証明書や秘密情報。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-services",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PE区画に作る4種類の接続口",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：サービス本体をPE区画へ移す構成ではない",
+        "table": {
+          "columns": [
+            {
+              "label": "Private Endpoint",
+              "width": 245
+            },
+            {
+              "label": "接続先",
+              "width": 245
+            },
+            {
+              "label": "主な用途",
+              "width": 482
+            }
+          ],
+          "rows": [
+            {
+              "id": "foundry",
+              "cells": [
+                "Foundry PE",
+                "Foundry",
+                "AIの各API群"
+              ]
+            },
+            {
+              "id": "kv",
+              "cells": [
+                "Key Vault PE",
+                "Key Vault",
+                "証明書・秘密情報"
+              ]
+            },
+            {
+              "id": "acr",
+              "cells": [
+                "ACR PE",
+                "Container Registry",
+                "イメージの取得・登録"
+              ]
+            },
+            {
+              "id": "sql",
+              "cells": [
+                "SQL PE",
+                "共用SQL",
+                "Portal・認証窓口のデータ保存"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "foundry",
+          "kv",
+          "acr",
+          "sql"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "この基盤の4種類です。FoundryはAI、Key Vaultは証明書や秘密情報。",
+          "lines": [
+            "この基盤の4種類です。FoundryはAI、",
+            "Key Vaultは証明書や秘密情報。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "ACRはイメージ、SQLはPortalと認証窓口のデータ保存先へつなぎます。",
+          "lines": [
+            "ACRはイメージ、",
+            "SQLはPortalと認証窓口のデータ保存先へつなぎます。"
+          ],
+          "weight": 38
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-016-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "4種類のピーイーだから、プライベートアイピーも4個、と数えてよいのでしょうか。接続先の一覧を作るときに、そう考えそうです。",
+      "caption": "4種類のPEだから、private IPも4個、と数えてよいのでしょうか。接続先の一覧を作るときに、そう考えそうです。",
+      "subtitleLines": [
+        "4種類のPEだから、private IPも4個、",
+        "と数えてよいのでしょうか。接続先の一覧を作るときに、そう考えそうです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-ip-configs",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PEの個数とIPの個数を分ける",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：先頭のIPやサブネット名から推測しない",
+        "fields": [
+          {
+            "id": "count",
+            "label": "作成するPE",
+            "value": "4種類 / 1 PE = 1 IPとは限らない"
+          },
+          {
+            "id": "foundry",
+            "label": "Foundry・ACR",
+            "value": "用途別の名前・データ側の接続先も確認"
+          },
+          {
+            "id": "nic",
+            "label": "構築処理の取得元",
+            "value": "Azureが返したPEの実NIC ID"
+          },
+          {
+            "id": "ips",
+            "label": "取得する範囲",
+            "value": "実NICの全IP構成 → 整理・重複除去"
+          },
+          {
+            "id": "next",
+            "label": "後段の制御へ",
+            "value": "取得したIP群をNSGなどへ渡す"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson02-turn-017-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "決めつけません。一つのピーイーが複数のアイピーを持つ場合があります。ファウンドリーの用途別の名前や、エーシーアールのデータ側の接続先も確認します。",
+      "caption": "決めつけません。一つのPEが複数のIPを持つ場合があります。Foundryの用途別の名前や、ACRのデータ側の接続先も確認します。",
+      "subtitleLines": [
+        "決めつけません。一つのPEが複数のIPを持つ場合があります。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-ip-configs",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PEの個数とIPの個数を分ける",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：先頭のIPやサブネット名から推測しない",
+        "fields": [
+          {
+            "id": "count",
+            "label": "作成するPE",
+            "value": "4種類 / 1 PE = 1 IPとは限らない"
+          },
+          {
+            "id": "foundry",
+            "label": "Foundry・ACR",
+            "value": "用途別の名前・データ側の接続先も確認"
+          },
+          {
+            "id": "nic",
+            "label": "構築処理の取得元",
+            "value": "Azureが返したPEの実NIC ID"
+          },
+          {
+            "id": "ips",
+            "label": "取得する範囲",
+            "value": "実NICの全IP構成 → 整理・重複除去"
+          },
+          {
+            "id": "next",
+            "label": "後段の制御へ",
+            "value": "取得したIP群をNSGなどへ渡す"
+          }
+        ],
+        "highlightFields": [
+          "count",
+          "foundry"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "決めつけません。一つのPEが複数のIPを持つ場合があります。",
+          "lines": [
+            "決めつけません。一つのPEが複数のIPを持つ場合があります。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "Foundryの用途別の名前や、ACRのデータ側の接続先も確認します。",
+          "lines": [
+            "Foundryの用途別の名前や、ACRのデータ側の接続先も確認します。"
+          ],
+          "weight": 35
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "pe",
+      "speech": "構築処理はアジュールが返したピーイーのニックから全アイピー構成を読み、整理して後段のエヌエスジーなどへ渡します。先頭のアイピーだけを使う方法ではありません。",
+      "caption": "構築処理はAzureが返したPEのNICから全IP構成を読み、整理して後段のNSGなどへ渡します。先頭のIPだけを使う方法ではありません。",
+      "subtitleLines": [
+        "構築処理はAzureが返したPEのNICから全IP構成を読み、",
+        "整理して後段のNSGなどへ渡します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-ip-configs",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PEの個数とIPの個数を分ける",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：先頭のIPやサブネット名から推測しない",
+        "fields": [
+          {
+            "id": "count",
+            "label": "作成するPE",
+            "value": "4種類 / 1 PE = 1 IPとは限らない"
+          },
+          {
+            "id": "foundry",
+            "label": "Foundry・ACR",
+            "value": "用途別の名前・データ側の接続先も確認"
+          },
+          {
+            "id": "nic",
+            "label": "構築処理の取得元",
+            "value": "Azureが返したPEの実NIC ID"
+          },
+          {
+            "id": "ips",
+            "label": "取得する範囲",
+            "value": "実NICの全IP構成 → 整理・重複除去"
+          },
+          {
+            "id": "next",
+            "label": "後段の制御へ",
+            "value": "取得したIP群をNSGなどへ渡す"
+          }
+        ],
+        "highlightFields": [
+          "nic",
+          "ips",
+          "next"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "構築処理はAzureが返したPEのNICから全IP構成を読み、整理して後段のNSGなどへ渡します。",
+          "lines": [
+            "構築処理はAzureが返したPEのNICから全IP構成を読み、",
+            "整理して後段のNSGなどへ渡します。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "先頭のIPだけを使う方法ではありません。",
+          "lines": [
+            "先頭のIPだけを使う方法ではありません。"
+          ],
+          "weight": 20
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-019-mako",
+      "speaker": "mako",
+      "chapterId": "pe",
+      "speech": "ピーイーを作れば、外からは閉じられて、中の利用者は自由に操作できる。そういうセットの機能ではないんですね。",
+      "caption": "PEを作れば、外からは閉じられて、中の利用者は自由に操作できる。そういうセットの機能ではないんですね。",
+      "subtitleLines": [
+        "PEを作れば、外からは閉じられて、中の利用者は自由に操作できる。",
+        "そういうセットの機能ではないんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-responsibilities",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PEだけで通信と操作を許可しない",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：接続口・名前解決・通信許可・認証を分ける",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する設定",
+              "width": 320
+            },
+            {
+              "label": "役割",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "pe",
+              "cells": [
+                "Private Endpoint",
+                "サービスへprivate IPで接続する入口"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS",
+                "名前に対応する宛先IPを決める"
+              ]
+            },
+            {
+              "id": "public",
+              "cells": [
+                "サービス本体の公開アクセス",
+                "Foundry・Key Vault・ACR・SQLは無効"
+              ]
+            },
+            {
+              "id": "network",
+              "cells": [
+                "NSG・具体的な経路",
+                "その宛先へ到達できるか"
+              ]
+            },
+            {
+              "id": "auth",
+              "cells": [
+                "サービス認証・操作権限",
+                "利用者が何を操作できるか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-020-manabu",
+      "speaker": "manabu",
+      "chapterId": "pe",
+      "speech": "はい。ピーイー、ディーエヌエス、公開接続の制限、通信許可、操作権限は別です。この4種類のサービス本体では公開アクセスを無効にしますが、認証も必要です。",
+      "caption": "はい。PE、DNS、公開接続の制限、通信許可、操作権限は別です。この4種類のサービス本体では公開アクセスを無効にしますが、認証も必要です。",
+      "subtitleLines": [
+        "はい。PE、DNS、公開接続の制限、通信許可、操作権限は別です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "pe-responsibilities",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "PEだけで通信と操作を許可しない",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：接続口・名前解決・通信許可・認証を分ける",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する設定",
+              "width": 320
+            },
+            {
+              "label": "役割",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "pe",
+              "cells": [
+                "Private Endpoint",
+                "サービスへprivate IPで接続する入口"
+              ]
+            },
+            {
+              "id": "dns",
+              "cells": [
+                "DNS",
+                "名前に対応する宛先IPを決める"
+              ]
+            },
+            {
+              "id": "public",
+              "cells": [
+                "サービス本体の公開アクセス",
+                "Foundry・Key Vault・ACR・SQLは無効"
+              ]
+            },
+            {
+              "id": "network",
+              "cells": [
+                "NSG・具体的な経路",
+                "その宛先へ到達できるか"
+              ]
+            },
+            {
+              "id": "auth",
+              "cells": [
+                "サービス認証・操作権限",
+                "利用者が何を操作できるか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "public",
+          "network",
+          "auth"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "はい。PE、DNS、公開接続の制限、通信許可、操作権限は別です。",
+          "lines": [
+            "はい。PE、DNS、公開接続の制限、通信許可、操作権限は別です。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "この4種類のサービス本体では公開アクセスを無効にしますが、認証も必要です。",
+          "lines": [
+            "この4種類のサービス本体では公開アクセスを無効にしますが、",
+            "認証も必要です。"
+          ],
+          "weight": 37
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-021-mako",
+      "speaker": "mako",
+      "chapterId": "links",
+      "speech": "キーボールトで名前を追ってみたいです。アプリには、プライベートリンク用の長い名前を直接設定するのでしょうか？",
+      "caption": "Key Vaultで名前を追ってみたいです。アプリには、Private Link用の長い名前を直接設定するのでしょうか？",
+      "subtitleLines": [
+        "Key Vaultで名前を追ってみたいです。アプリには、",
+        "Private Link用の長い名前を直接設定するのでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-none.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-022-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "通常の接続先エフキューディーエヌを使います。図の上がボールト名を含む通常名です。公開ディーエヌエスのシーネームで、中央のプライベートリンク名へつながります。",
+      "caption": "通常の接続先FQDNを使います。図の上がボールト名を含む通常名です。公開DNSのCNAMEで、中央のPrivate Link名へつながります。",
+      "subtitleLines": [
+        "通常の接続先FQDNを使います。図の上がボールト名を含む通常名です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-normal.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "通常の接続先FQDNを使います。図の上がボールト名を含む通常名です。",
+          "lines": [
+            "通常の接続先FQDNを使います。図の上がボールト名を含む通常名です。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "公開DNSのCNAMEで、中央のPrivate Link名へつながります。",
+          "lines": [
+            "公開DNSのCNAMEで、",
+            "中央のPrivate Link名へつながります。"
+          ],
+          "weight": 37
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-023-mako",
+      "speaker": "mako",
+      "chapterId": "links",
+      "speech": "シーネームは別の名前への案内ですね。この時点では、まだ接続先のアイピーが決まっていない、と。",
+      "caption": "CNAMEは別の名前への案内ですね。この時点では、まだ接続先のIPが決まっていない、と。",
+      "subtitleLines": [
+        "CNAMEは別の名前への案内ですね。この時点では、",
+        "まだ接続先のIPが決まっていない、と。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-cname.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "そのとおりです。リンクされたプライベートディーエヌエスゾーンのエーレコードが、中央の名前に対応する、キーボールト ピーイーの実プライベートアイピーを返します。",
+      "caption": "そのとおりです。リンクされたPrivate DNSゾーンのAレコードが、中央の名前に対応する、Key Vault PEの実private IPを返します。",
+      "subtitleLines": [
+        "そのとおりです。リンクされたPrivate ",
+        "DNSゾーンのAレコードが、中央の名前に対応する、"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-a.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "そのとおりです。リンクされたPrivate DNSゾーンのAレコードが、中央の名前に対応する、",
+          "lines": [
+            "そのとおりです。リンクされたPrivate ",
+            "DNSゾーンのAレコードが、中央の名前に対応する、"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "Key Vault PEの実private IPを返します。",
+          "lines": [
+            "Key Vault PEの実private IPを返します。"
+          ],
+          "weight": 30
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-025-manabu",
+      "speaker": "manabu",
+      "chapterId": "links",
+      "speech": "名前を調べる順番と、データが流れる順番を区別しましょう。アプリの要求が、並んだ名前を一つずつ通過するわけではありません。",
+      "caption": "名前を調べる順番と、データが流れる順番を区別しましょう。アプリの要求が、並んだ名前を一つずつ通過するわけではありません。",
+      "subtitleLines": [
+        "名前を調べる順番と、データが流れる順番を区別しましょう。",
+        "アプリの要求が、並んだ名前を一つずつ通過するわけではありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-dns.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "アプリは得られたアイピーへ接続します。プライベートディーエヌエスゾーンは名前の対応表で、中継装置ではありません。ここで、図をデータ通信へ切り替えています。",
+      "caption": "アプリは得られたIPへ接続します。Private DNSゾーンは名前の対応表で、中継装置ではありません。ここで、図をデータ通信へ切り替えています。",
+      "subtitleLines": [
+        "アプリは得られたIPへ接続します。",
+        "Private DNSゾーンは名前の対応表で、中継装置ではありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "kv-name-and-data",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Key Vault：DNSの解決順とデータ通信",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-kv-name-and-data-data.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "アプリは得られたIPへ接続します。Private DNSゾーンは名前の対応表で、中継装置ではありません。",
+          "lines": [
+            "アプリは得られたIPへ接続します。",
+            "Private DNSゾーンは名前の対応表で、中継装置ではありません。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "ここで、図をデータ通信へ切り替えています。",
+          "lines": [
+            "ここで、図をデータ通信へ切り替えています。"
+          ],
+          "weight": 21
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "links",
+      "speech": "では、プライベートリンク用のゾーンはいくつあるんですか？ピーイーの数とは別に数える必要がありそうですね。",
+      "caption": "では、Private Link用のゾーンはいくつあるんですか？PEの数とは別に数える必要がありそうですね。",
+      "subtitleLines": [
+        "では、Private Link用のゾーンはいくつあるんですか？",
+        "PEの数とは別に数える必要がありそうですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-link-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用の6ゾーンと接続先",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-private-link-zones-none.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "6ゾーンです。図の3つはコグニティブ系、オープンエーアイ系、サービシズ系の名前を扱い、同じファウンドリー ピーイーへ関連付けます。",
+      "caption": "6ゾーンです。図の3つはCognitive系、OpenAI系、Services系の名前を扱い、同じFoundry PEへ関連付けます。",
+      "subtitleLines": [
+        "6ゾーンです。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-link-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用の6ゾーンと接続先",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-private-link-zones-foundry.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "6ゾーンです。",
+          "lines": [
+            "6ゾーンです。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "図の3つはCognitive系、OpenAI系、Services系の名前を扱い、同じFoundry PEへ関連付けます。",
+          "lines": [
+            "図の3つはCognitive系、OpenAI系、Services",
+            "系の名前を扱い、同じFoundry PEへ関連付けます。"
+          ],
+          "weight": 60
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-029-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "残りはキーボールト、エーシーアール、エスキューエル用です。全部暗唱するより、サービスに合うゾーンとピーイーが結び付くか、資料の一覧と照合しましょう。",
+      "caption": "残りはKey Vault、ACR、SQL用です。全部暗唱するより、サービスに合うゾーンとPEが結び付くか、資料の一覧と照合しましょう。",
+      "subtitleLines": [
+        "残りはKey Vault、ACR、SQL用です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "private-link-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用の6ゾーンと接続先",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-private-link-zones-others.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "残りはKey Vault、ACR、SQL用です。",
+          "lines": [
+            "残りはKey Vault、ACR、SQL用です。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "全部暗唱するより、サービスに合うゾーンとPEが結び付くか、資料の一覧と照合しましょう。",
+          "lines": [
+            "全部暗唱するより、サービスに合うゾーンとPEが結び付くか、",
+            "資料の一覧と照合しましょう。"
+          ],
+          "weight": 43
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-030-mako",
+      "speaker": "mako",
+      "chapterId": "links",
+      "speech": "ブイネットリンクとディーエヌエス、ゾーングループは、どちらもつなぐ設定に見えます。役割はどう違うのでしょう？",
+      "caption": "VNetリンクとDNS zone groupは、どちらもつなぐ設定に見えます。役割はどう違うのでしょう？",
+      "subtitleLines": [
+        "VNetリンクとDNS zone groupは、",
+        "どちらもつなぐ設定に見えます。役割はどう違うのでしょう？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "zone-associations",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetリンクとDNS zone groupの役割",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-zone-associations-none.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-031-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "ブイネットリンクは、このブイネットからゾーンを参照するための関連付けです。ピーイーのディーエヌエス、ゾーングループは、ピーイーにゾーンアイディーを指定し、ディーエヌエスレコードを連携させます。",
+      "caption": "VNetリンクは、このVNetからゾーンを参照するための関連付けです。PEのDNS zone groupは、PEにゾーンIDを指定し、DNSレコードを連携させます。",
+      "subtitleLines": [
+        "VNetリンクは、このVNetからゾーンを参照するための関連付けです。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "zone-associations",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetリンクとDNS zone groupの役割",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-zone-associations-roles.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "VNetリンクは、このVNetからゾーンを参照するための関連付けです。",
+          "lines": [
+            "VNetリンクは、このVNetからゾーンを参照するための関連付けです。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "PEのDNS zone groupは、PEにゾーンIDを指定し、DNSレコードを連携させます。",
+          "lines": [
+            "PEのDNS zone groupは、",
+            "PEにゾーンIDを指定し、DNSレコードを連携させます。"
+          ],
+          "weight": 47
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-032-manabu",
+      "speaker": "manabu",
+      "chapterId": "links",
+      "speech": "どの範囲から名前を引くかと、どの接続口のレコードを連携するか、ですね。片方だけで両方の役割を満たしたとは判断できません。",
+      "caption": "どの範囲から名前を引くかと、どの接続口のレコードを連携するか、ですね。片方だけで両方の役割を満たしたとは判断できません。",
+      "subtitleLines": [
+        "どの範囲から名前を引くかと、どの接続口のレコードを連携するか、",
+        "ですね。片方だけで両方の役割を満たしたとは判断できません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "zone-associations",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetリンクとDNS zone groupの役割",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-zone-associations-roles.svg"
+      }
+    },
+    {
+      "id": "lesson02-turn-033-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "links",
+      "speech": "このブイネットリンクはブイエム名の自動登録を無効にしています。ピーイー用のエーレコードも、別のバイセップで手書きして二重管理する定義ではありません。",
+      "caption": "このVNetリンクはVM名の自動登録を無効にしています。PE用のAレコードも、別のBicepで手書きして二重管理する定義ではありません。",
+      "subtitleLines": [
+        "このVNetリンクはVM名の自動登録を無効にしています。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "zone-associations",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetリンクとDNS zone groupの役割",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "svg": "diagrams/settings-zone-associations-settings.svg"
+      },
+      "subtitleChunks": [
+        {
+          "caption": "このVNetリンクはVM名の自動登録を無効にしています。",
+          "lines": [
+            "このVNetリンクはVM名の自動登録を無効にしています。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "PE用のAレコードも、別のBicepで手書きして二重管理する定義ではありません。",
+          "lines": [
+            "PE用のAレコードも、",
+            "別のBicepで手書きして二重管理する定義ではありません。"
+          ],
+          "weight": 40
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-034-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "リンクができたら、ブイネットの全員が必ずその答えを使うのでしょうか。聞きに行くディーエヌエスも関係するんですよね。",
+      "caption": "リンクができたら、VNetの全員が必ずその答えを使うのでしょうか。聞きに行くDNSも関係するんですよね。",
+      "subtitleLines": [
+        "リンクができたら、VNetの全員が必ずその答えを使うのでしょうか。",
+        "聞きに行くDNSも関係するんですよね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "vnet-dns",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetクライアントのDNSサーバー",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：VNetリンクだけで独自DNSへ転送設定は入らない",
+        "fields": [
+          {
+            "id": "input",
+            "label": "IaC：network.dnsServers",
+            "value": "公開params例：[]"
+          },
+          {
+            "id": "azure",
+            "label": "空配列の意味",
+            "value": "Azure提供DNS"
+          },
+          {
+            "id": "custom",
+            "label": "独自DNSのIPv4を指定",
+            "value": "そのDNSから必要な名前を解決する準備"
+          },
+          {
+            "id": "refs",
+            "label": "独自DNS側の準備",
+            "value": "ゾーン参照・転送・DNSへの到達性"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson02-turn-035-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "はい。ブイネットのディーエヌエスサーバー設定を見ます。公開パラメーター例は空配列でアジュール提供ディーエヌエスを使います。独自ディーエヌエスなら、そのディーエヌエスが必要な名前を解決できる準備が要ります。",
+      "caption": "はい。VNetのDNSサーバー設定を見ます。公開params例は空配列でAzure提供DNSを使います。独自DNSなら、そのDNSが必要な名前を解決できる準備が要ります。",
+      "subtitleLines": [
+        "はい。VNetのDNSサーバー設定を見ます。",
+        "公開params例は空配列でAzure提供DNSを使います。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "vnet-dns",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetクライアントのDNSサーバー",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：VNetリンクだけで独自DNSへ転送設定は入らない",
+        "fields": [
+          {
+            "id": "input",
+            "label": "IaC：network.dnsServers",
+            "value": "公開params例：[]"
+          },
+          {
+            "id": "azure",
+            "label": "空配列の意味",
+            "value": "Azure提供DNS"
+          },
+          {
+            "id": "custom",
+            "label": "独自DNSのIPv4を指定",
+            "value": "そのDNSから必要な名前を解決する準備"
+          },
+          {
+            "id": "refs",
+            "label": "独自DNS側の準備",
+            "value": "ゾーン参照・転送・DNSへの到達性"
+          }
+        ],
+        "highlightFields": [
+          "input",
+          "azure",
+          "custom"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "はい。VNetのDNSサーバー設定を見ます。公開params例は空配列でAzure提供DNSを使います。",
+          "lines": [
+            "はい。VNetのDNSサーバー設定を見ます。",
+            "公開params例は空配列でAzure提供DNSを使います。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "独自DNSなら、そのDNSが必要な名前を解決できる準備が要ります。",
+          "lines": [
+            "独自DNSなら、そのDNSが必要な名前を解決できる準備が要ります。"
+          ],
+          "weight": 33
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-036-manabu",
+      "speaker": "manabu",
+      "chapterId": "dns",
+      "speech": "ブイネットリンクだけで、独自ディーエヌエスへ転送設定まで入るわけではありません。企業のディーエヌエスへ変えるなら、名前を解決できる参照先や転送も用意します。",
+      "caption": "VNetリンクだけで、独自DNSへ転送設定まで入るわけではありません。企業のDNSへ変えるなら、名前を解決できる参照先や転送も用意します。",
+      "subtitleLines": [
+        "VNetリンクだけで、独自DNSへ転送設定まで入るわけではありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "vnet-dns",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "VNetクライアントのDNSサーバー",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：VNetリンクだけで独自DNSへ転送設定は入らない",
+        "fields": [
+          {
+            "id": "input",
+            "label": "IaC：network.dnsServers",
+            "value": "公開params例：[]"
+          },
+          {
+            "id": "azure",
+            "label": "空配列の意味",
+            "value": "Azure提供DNS"
+          },
+          {
+            "id": "custom",
+            "label": "独自DNSのIPv4を指定",
+            "value": "そのDNSから必要な名前を解決する準備"
+          },
+          {
+            "id": "refs",
+            "label": "独自DNS側の準備",
+            "value": "ゾーン参照・転送・DNSへの到達性"
+          }
+        ],
+        "highlightFields": [
+          "refs"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "VNetリンクだけで、独自DNSへ転送設定まで入るわけではありません。",
+          "lines": [
+            "VNetリンクだけで、独自DNSへ転送設定まで入るわけではありません。"
+          ],
+          "weight": 35
+        },
+        {
+          "caption": "企業のDNSへ変えるなら、名前を解決できる参照先や転送も用意します。",
+          "lines": [
+            "企業のDNSへ変えるなら、名前を解決できる参照先や転送も用意します。"
+          ],
+          "weight": 34
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-037-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "ファイアウォール側にもディーエヌエスサーバーの入力があります。ブイネットの入力を変えれば、そちらも同じように変わりますか？",
+      "caption": "Firewall側にもDNSサーバーの入力があります。VNetの入力を変えれば、そちらも同じように変わりますか？",
+      "subtitleLines": [
+        "Firewall側にもDNSサーバーの入力があります。",
+        "VNetの入力を変えれば、そちらも同じように変わりますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "firewall-dns-input",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Firewall自身の上流DNSを確認する",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：network.firewall.dnsServers はVNetの入力と別",
+        "table": {
+          "columns": [
+            {
+              "label": "Firewall側の入力",
+              "width": 320
+            },
+            {
+              "label": "適用される上流DNS",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "omitted",
+              "cells": [
+                "キーを未指定",
+                "VNetのnetwork.dnsServers入力を使用"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "空配列 [] を明示",
+                "Azure提供DNSを指定"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNSのIPv4を指定",
+                "指定したDNSを使用"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "VNetだけを独自DNSへ変更",
+                "Firewall側 [] は独自DNSへ置換されない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-038-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "二つは別です。ファイアウォール側は、自身が名前を解決するための上流ディーエヌエスです。ファイアウォール側のキーが未指定なら、ブイネットのディーエヌエス入力を使います。",
+      "caption": "二つは別です。Firewall側は、自身が名前を解決するための上流DNSです。Firewall側のキーが未指定なら、VNetのDNS入力を使います。",
+      "subtitleLines": [
+        "二つは別です。Firewall側は、",
+        "自身が名前を解決するための上流DNSです。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "firewall-dns-input",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Firewall自身の上流DNSを確認する",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：network.firewall.dnsServers はVNetの入力と別",
+        "table": {
+          "columns": [
+            {
+              "label": "Firewall側の入力",
+              "width": 320
+            },
+            {
+              "label": "適用される上流DNS",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "omitted",
+              "cells": [
+                "キーを未指定",
+                "VNetのnetwork.dnsServers入力を使用"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "空配列 [] を明示",
+                "Azure提供DNSを指定"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNSのIPv4を指定",
+                "指定したDNSを使用"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "VNetだけを独自DNSへ変更",
+                "Firewall側 [] は独自DNSへ置換されない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "omitted"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "二つは別です。Firewall側は、自身が名前を解決するための上流DNSです。",
+          "lines": [
+            "二つは別です。Firewall側は、",
+            "自身が名前を解決するための上流DNSです。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "Firewall側のキーが未指定なら、VNetのDNS入力を使います。",
+          "lines": [
+            "Firewall側のキーが未指定なら、VNetのDNS入力を使います。"
+          ],
+          "weight": 35
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ただし、ファイアウォール側に空配列を明示するとアジュール提供ディーエヌエスの指定です。ブイネットを独自ディーエヌエスへ変えても、その空配列は独自ディーエヌエスへ置き換わりません。",
+      "caption": "ただし、Firewall側に空配列を明示するとAzure提供DNSの指定です。VNetを独自DNSへ変えても、その空配列は独自DNSへ置き換わりません。",
+      "subtitleLines": [
+        "ただし、Firewall側に空配列を",
+        "明示するとAzure提供DNSの指定です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "firewall-dns-input",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Firewall自身の上流DNSを確認する",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：network.firewall.dnsServers はVNetの入力と別",
+        "table": {
+          "columns": [
+            {
+              "label": "Firewall側の入力",
+              "width": 320
+            },
+            {
+              "label": "適用される上流DNS",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "omitted",
+              "cells": [
+                "キーを未指定",
+                "VNetのnetwork.dnsServers入力を使用"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "空配列 [] を明示",
+                "Azure提供DNSを指定"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNSのIPv4を指定",
+                "指定したDNSを使用"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "VNetだけを独自DNSへ変更",
+                "Firewall側 [] は独自DNSへ置換されない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "empty",
+          "difference"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "ただし、Firewall側に空配列を明示するとAzure提供DNSの指定です。",
+          "lines": [
+            "ただし、Firewall側に空配列を",
+            "明示するとAzure提供DNSの指定です。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "VNetを独自DNSへ変えても、その空配列は独自DNSへ置き換わりません。",
+          "lines": [
+            "VNetを独自DNSへ変えても、",
+            "その空配列は独自DNSへ置き換わりません。"
+          ],
+          "weight": 37
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-040-mako",
+      "speaker": "mako",
+      "chapterId": "dns",
+      "speech": "ああ、未指定と、空の配列を書くことの意味が違うんですね。変更時はブイネットとファイアウォールの両方を見る必要がありそうです。",
+      "caption": "ああ、未指定と、空の配列を書くことの意味が違うんですね。変更時はVNetとFirewallの両方を見る必要がありそうです。",
+      "subtitleLines": [
+        "ああ、未指定と、空の配列を書くことの意味が違うんですね。",
+        "変更時はVNetとFirewallの両方を見る必要がありそうです。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "firewall-dns-input",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Firewall自身の上流DNSを確認する",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：network.firewall.dnsServers はVNetの入力と別",
+        "table": {
+          "columns": [
+            {
+              "label": "Firewall側の入力",
+              "width": 320
+            },
+            {
+              "label": "適用される上流DNS",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "omitted",
+              "cells": [
+                "キーを未指定",
+                "VNetのnetwork.dnsServers入力を使用"
+              ]
+            },
+            {
+              "id": "empty",
+              "cells": [
+                "空配列 [] を明示",
+                "Azure提供DNSを指定"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNSのIPv4を指定",
+                "指定したDNSを使用"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "VNetだけを独自DNSへ変更",
+                "Firewall側 [] は独自DNSへ置換されない"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "omitted",
+          "empty"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-041-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ディーエヌエス、プロキシが有効でも、それだけでクライアントの問い合わせ先は変わりません。ファイアウォールへ問い合わせるなら、クライアント側のディーエヌエス設定も対応させます。",
+      "caption": "DNS proxyが有効でも、それだけでクライアントの問い合わせ先は変わりません。Firewallへ問い合わせるなら、クライアント側のDNS設定も対応させます。",
+      "subtitleLines": [
+        "DNS proxyが有効でも、",
+        "それだけでクライアントの問い合わせ先は変わりません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "dns-proxy-and-path",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNS proxyとクライアントの問い合わせ先",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：実際の問い合わせ経路に沿って許可を確認する",
+        "fields": [
+          {
+            "id": "proxy",
+            "label": "FirewallのenableProxy",
+            "value": "true / DNS proxyを有効化"
+          },
+          {
+            "id": "client",
+            "label": "クライアントのDNS設定",
+            "value": "proxy有効化だけでは変更されない"
+          },
+          {
+            "id": "firewall",
+            "label": "Firewallへ問い合わせる場合",
+            "value": "クライアント側のDNS設定も対応"
+          },
+          {
+            "id": "port",
+            "label": "DNS通信",
+            "value": "TCP / UDP 53"
+          },
+          {
+            "id": "rules",
+            "label": "確認する制御",
+            "value": "対応NSG / 通る場合は独自DNS用FW規則"
+          }
+        ],
+        "highlightFields": [
+          "proxy",
+          "client",
+          "firewall"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "DNS proxyが有効でも、それだけでクライアントの問い合わせ先は変わりません。",
+          "lines": [
+            "DNS proxyが有効でも、",
+            "それだけでクライアントの問い合わせ先は変わりません。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "Firewallへ問い合わせるなら、クライアント側のDNS設定も対応させます。",
+          "lines": [
+            "Firewallへ問い合わせるなら、",
+            "クライアント側のDNS設定も対応させます。"
+          ],
+          "weight": 39
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-043-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ディーエヌエス通信ではティーシーピーとユーディーピーの53番を確認します。対応するエヌエスジー規則や、独自ディーエヌエス用のファイアウォール規則も、実際の問い合わせ経路に沿って確認します。",
+      "caption": "DNS通信ではTCPとUDPの53番を確認します。対応するNSG規則や、独自DNS用のFirewall規則も、実際の問い合わせ経路に沿って確認します。",
+      "subtitleLines": [
+        "DNS通信ではTCPとUDPの53番を確認します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "dns-proxy-and-path",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNS proxyとクライアントの問い合わせ先",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：実際の問い合わせ経路に沿って許可を確認する",
+        "fields": [
+          {
+            "id": "proxy",
+            "label": "FirewallのenableProxy",
+            "value": "true / DNS proxyを有効化"
+          },
+          {
+            "id": "client",
+            "label": "クライアントのDNS設定",
+            "value": "proxy有効化だけでは変更されない"
+          },
+          {
+            "id": "firewall",
+            "label": "Firewallへ問い合わせる場合",
+            "value": "クライアント側のDNS設定も対応"
+          },
+          {
+            "id": "port",
+            "label": "DNS通信",
+            "value": "TCP / UDP 53"
+          },
+          {
+            "id": "rules",
+            "label": "確認する制御",
+            "value": "対応NSG / 通る場合は独自DNS用FW規則"
+          }
+        ],
+        "highlightFields": [
+          "port",
+          "rules"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "DNS通信ではTCPとUDPの53番を確認します。",
+          "lines": [
+            "DNS通信ではTCPとUDPの53番を確認します。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "対応するNSG規則や、独自DNS用のFirewall規則も、実際の問い合わせ経路に沿って確認します。",
+          "lines": [
+            "対応するNSG規則や、独自DNS用のFirewall規則も、",
+            "実際の問い合わせ経路に沿って確認します。"
+          ],
+          "weight": 50
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "dns",
+      "speech": "ゾーン内にない名前が、必ず公開ディーエヌエスへ逃がされるとも扱いません。この定義はインターネットフォールバックを有効にする指定ではなく、名前ごとの確認が必要です。",
+      "caption": "ゾーン内にない名前が、必ず公開DNSへ逃がされるとも扱いません。この定義はInternet fallbackを有効にする指定ではなく、名前ごとの確認が必要です。",
+      "subtitleLines": [
+        "ゾーン内にない名前が、必ず公開DNSへ逃がされるとも扱いません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "dns-fallback",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ゾーン内にない名前の扱いも確認する",
+        "kind": "ネットワーク設定",
+        "section": "DNSの問い合わせ先",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：必ず公開DNSへ逃がされるとは扱わない",
+        "fields": [
+          {
+            "id": "policy",
+            "label": "Foundry・Key Vaultの4リンク",
+            "value": "resolutionPolicy:Default"
+          },
+          {
+            "id": "others",
+            "label": "その他のリンク",
+            "value": "resolutionPolicy属性を省略"
+          },
+          {
+            "id": "fallback",
+            "label": "Internet fallback",
+            "value": "有効化する指定ではない"
+          },
+          {
+            "id": "check",
+            "label": "確認する単位",
+            "value": "問い合わせる名前ごとに回答を確認"
+          }
+        ],
+        "highlightFields": [
+          "fallback",
+          "check"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "ゾーン内にない名前が、必ず公開DNSへ逃がされるとも扱いません。",
+          "lines": [
+            "ゾーン内にない名前が、必ず公開DNSへ逃がされるとも扱いません。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "この定義はInternet fallbackを有効にする指定ではなく、名前ごとの確認が必要です。",
+          "lines": [
+            "この定義はInternet fallbackを有効にする指定ではなく、",
+            "名前ごとの確認が必要です。"
+          ],
+          "weight": 48
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-045-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "6ゾーンのほかに、エーピーアイエムとエーシーエーにも内部の名前があります。この二つもピーイーへ接続するための名前ですか？",
+      "caption": "6ゾーンのほかに、APIMとACAにも内部の名前があります。この二つもPEへ接続するための名前ですか？",
+      "subtitleLines": [
+        "6ゾーンのほかに、APIMとACAにも内部の名前があります。",
+        "この二つもPEへ接続するための名前ですか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "eight-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用と内部入口用のゾーンを分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：privateな名前だけでPEとは判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "用途",
+              "width": 300
+            },
+            {
+              "label": "ゾーン数",
+              "width": 140
+            },
+            {
+              "label": "名前を対応させる先",
+              "width": 532
+            }
+          ],
+          "rows": [
+            {
+              "id": "pe",
+              "cells": [
+                "Private Link用",
+                "6",
+                "Foundry・Key Vault・ACR・SQLのPE"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM内部入口用",
+                "1",
+                "APIMの実内部VIP / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACA内部入口用",
+                "1",
+                "ACAの実staticIp / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "total",
+              "cells": [
+                "合計",
+                "8",
+                "同じVNetへリンク"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "この構成では違います。エーピーアイエムとエーシーエー自身のピーイーは作らず、内部入口用のプライベートディーエヌエスゾーンを二つ追加します。先ほどと合わせて計8ゾーンです。",
+      "caption": "この構成では違います。APIMとACA自身のPEは作らず、内部入口用のPrivate DNSゾーンを二つ追加します。先ほどと合わせて計8ゾーンです。",
+      "subtitleLines": [
+        "この構成では違います。APIMとACA自身のPEは作らず、",
+        "内部入口用のPrivate DNSゾーンを二つ追加します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "eight-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用と内部入口用のゾーンを分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：privateな名前だけでPEとは判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "用途",
+              "width": 300
+            },
+            {
+              "label": "ゾーン数",
+              "width": 140
+            },
+            {
+              "label": "名前を対応させる先",
+              "width": 532
+            }
+          ],
+          "rows": [
+            {
+              "id": "pe",
+              "cells": [
+                "Private Link用",
+                "6",
+                "Foundry・Key Vault・ACR・SQLのPE"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM内部入口用",
+                "1",
+                "APIMの実内部VIP / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACA内部入口用",
+                "1",
+                "ACAの実staticIp / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "total",
+              "cells": [
+                "合計",
+                "8",
+                "同じVNetへリンク"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim",
+          "aca",
+          "total"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "この構成では違います。APIMとACA自身のPEは作らず、内部入口用のPrivate DNSゾーンを二つ追加します。",
+          "lines": [
+            "この構成では違います。APIMとACA自身のPEは作らず、",
+            "内部入口用のPrivate DNSゾーンを二つ追加します。"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "先ほどと合わせて計8ゾーンです。",
+          "lines": [
+            "先ほどと合わせて計8ゾーンです。"
+          ],
+          "weight": 16
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-047-manabu",
+      "speaker": "manabu",
+      "chapterId": "internal",
+      "speech": "内部アイピーへ名前を対応させる目的は似ていますが、接続口の種類が異なります。プライベートな名前を見ただけで、ピーイーだと決めないことが大切です。",
+      "caption": "内部IPへ名前を対応させる目的は似ていますが、接続口の種類が異なります。privateな名前を見ただけで、PEだと決めないことが大切です。",
+      "subtitleLines": [
+        "内部IPへ名前を対応させる目的は似ていますが、",
+        "接続口の種類が異なります。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "eight-zones",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "Private Link用と内部入口用のゾーンを分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：privateな名前だけでPEとは判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "用途",
+              "width": 300
+            },
+            {
+              "label": "ゾーン数",
+              "width": 140
+            },
+            {
+              "label": "名前を対応させる先",
+              "width": 532
+            }
+          ],
+          "rows": [
+            {
+              "id": "pe",
+              "cells": [
+                "Private Link用",
+                "6",
+                "Foundry・Key Vault・ACR・SQLのPE"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "APIM内部入口用",
+                "1",
+                "APIMの実内部VIP / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACA内部入口用",
+                "1",
+                "ACAの実staticIp / 自身のPEは作らない"
+              ]
+            },
+            {
+              "id": "total",
+              "cells": [
+                "合計",
+                "8",
+                "同じVNetへリンク"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "pe",
+          "apim",
+          "aca"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "内部IPへ名前を対応させる目的は似ていますが、接続口の種類が異なります。",
+          "lines": [
+            "内部IPへ名前を対応させる目的は似ていますが、",
+            "接続口の種類が異なります。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "privateな名前を見ただけで、PEだと決めないことが大切です。",
+          "lines": [
+            "privateな名前を見ただけで、PEだと決めないことが大切です。"
+          ],
+          "weight": 33
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "エーピーアイエムは自身の実エフキューディーエヌと同じ名前のゾーンを作り、頂点のエーレコードを実内部ブイアイピーへ対応付けます。アットマークが、ゾーンの頂点です。",
+      "caption": "APIMは自身の実FQDNと同じ名前のゾーンを作り、頂点のAレコードを実内部VIPへ対応付けます。アットマークが、ゾーンの頂点です。",
+      "subtitleLines": [
+        "APIMは自身の実FQDNと同じ名前のゾーンを作り、",
+        "頂点のAレコードを実内部VIPへ対応付けます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "APIM：実FQDNと同名のゾーンを作る",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：azure-api.net 全体を自分たちのゾーンで覆わない",
+        "fields": [
+          {
+            "id": "zone",
+            "label": "Private DNSゾーン名",
+            "value": "対象APIM自身の実FQDN"
+          },
+          {
+            "id": "name",
+            "label": "通常の接続先名の形式",
+            "value": "<apim名>.azure-api.net"
+          },
+          {
+            "id": "record",
+            "label": "Aレコードの名前",
+            "value": "@ / ゾーンの頂点"
+          },
+          {
+            "id": "ip",
+            "label": "対応させる値",
+            "value": "作成後のAPIM実内部VIP"
+          },
+          {
+            "id": "ttl",
+            "label": "TTL / 公開config",
+            "value": "network.dnsTtl / 300秒"
+          }
+        ],
+        "highlightFields": [
+          "zone",
+          "record",
+          "ip"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "APIMは自身の実FQDNと同じ名前のゾーンを作り、頂点のAレコードを実内部VIPへ対応付けます。",
+          "lines": [
+            "APIMは自身の実FQDNと同じ名前のゾーンを作り、",
+            "頂点のAレコードを実内部VIPへ対応付けます。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "アットマークが、ゾーンの頂点です。",
+          "lines": [
+            "アットマークが、ゾーンの頂点です。"
+          ],
+          "weight": 17
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-049-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "エーピーアイエムの名前そのものをゾーンにする。共通のアジュール、ハイフン、エーピーアイ、ドット、ネット全体を、自分たちのゾーンにするわけではない、と。",
+      "caption": "APIMの名前そのものをゾーンにする。共通のazure-api.net全体を、自分たちのゾーンにするわけではない、と。",
+      "subtitleLines": [
+        "APIMの名前そのものをゾーンにする。共通のazure-",
+        "api.net全体を、自分たちのゾーンにするわけではない、と。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "APIM：実FQDNと同名のゾーンを作る",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：azure-api.net 全体を自分たちのゾーンで覆わない",
+        "fields": [
+          {
+            "id": "zone",
+            "label": "Private DNSゾーン名",
+            "value": "対象APIM自身の実FQDN"
+          },
+          {
+            "id": "name",
+            "label": "通常の接続先名の形式",
+            "value": "<apim名>.azure-api.net"
+          },
+          {
+            "id": "record",
+            "label": "Aレコードの名前",
+            "value": "@ / ゾーンの頂点"
+          },
+          {
+            "id": "ip",
+            "label": "対応させる値",
+            "value": "作成後のAPIM実内部VIP"
+          },
+          {
+            "id": "ttl",
+            "label": "TTL / 公開config",
+            "value": "network.dnsTtl / 300秒"
+          }
+        ],
+        "highlightFields": [
+          "zone",
+          "name"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "はい。対象エーピーアイエムの完全な名前へ絞ります。広い親ドメインを覆うと、別の名前への回答も影響し得ます。内部ブイアイピーも作成後の実値を使います。",
+      "caption": "はい。対象APIMの完全な名前へ絞ります。広い親ドメインを覆うと、別の名前への回答も影響し得ます。内部VIPも作成後の実値を使います。",
+      "subtitleLines": [
+        "はい。対象APIMの完全な名前へ絞ります。",
+        "広い親ドメインを覆うと、別の名前への回答も影響し得ます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "APIM：実FQDNと同名のゾーンを作る",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：azure-api.net 全体を自分たちのゾーンで覆わない",
+        "fields": [
+          {
+            "id": "zone",
+            "label": "Private DNSゾーン名",
+            "value": "対象APIM自身の実FQDN"
+          },
+          {
+            "id": "name",
+            "label": "通常の接続先名の形式",
+            "value": "<apim名>.azure-api.net"
+          },
+          {
+            "id": "record",
+            "label": "Aレコードの名前",
+            "value": "@ / ゾーンの頂点"
+          },
+          {
+            "id": "ip",
+            "label": "対応させる値",
+            "value": "作成後のAPIM実内部VIP"
+          },
+          {
+            "id": "ttl",
+            "label": "TTL / 公開config",
+            "value": "network.dnsTtl / 300秒"
+          }
+        ],
+        "highlightFields": [
+          "zone",
+          "ip"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "はい。対象APIMの完全な名前へ絞ります。広い親ドメインを覆うと、別の名前への回答も影響し得ます。",
+          "lines": [
+            "はい。対象APIMの完全な名前へ絞ります。",
+            "広い親ドメインを覆うと、別の名前への回答も影響し得ます。"
+          ],
+          "weight": 49
+        },
+        {
+          "caption": "内部VIPも作成後の実値を使います。",
+          "lines": [
+            "内部VIPも作成後の実値を使います。"
+          ],
+          "weight": 18
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-051-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "エーシーエーはアプリ名が付いた長い名前ですね。ポータルのアプリ名と、環境のドメイン名は、どうつながりますか？",
+      "caption": "ACAはアプリ名が付いた長い名前ですね。Portalのアプリ名と、環境のドメイン名は、どうつながりますか？",
+      "subtitleLines": [
+        "ACAはアプリ名が付いた長い名前ですね。",
+        "Portalのアプリ名と、環境のドメイン名は、どうつながりますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "aca-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ACA：実defaultDomainと子のアプリ名",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：PE zone groupの連携とは別に、BicepでAを明示作成",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する項目",
+              "width": 320
+            },
+            {
+              "label": "この構築定義",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "zone",
+              "cells": [
+                "Private DNSゾーン名",
+                "ACA環境の実defaultDomain"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "* A / ワイルドカード",
+                "子のアプリ名 → 環境の実staticIp"
+              ]
+            },
+            {
+              "id": "app",
+              "cells": [
+                "内部アプリ名の形式",
+                "ca-<stem>-portal.<defaultDomain>"
+              ]
+            },
+            {
+              "id": "apex",
+              "cells": [
+                "@ A / ゾーン頂点",
+                "この定義には作らない"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "TTL",
+                "ACAは300秒 / APIMも公開configは300秒"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "環境の実デフォルトドメインをゾーン名にします。ワイルドカードのエーを実スタティックアイピーへ向け、ポータルなどの子のアプリ名を解決します。",
+      "caption": "環境の実defaultDomainをゾーン名にします。ワイルドカードのAを実staticIpへ向け、Portalなどの子のアプリ名を解決します。",
+      "subtitleLines": [
+        "環境の実defaultDomainをゾーン名にします。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "aca-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ACA：実defaultDomainと子のアプリ名",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：PE zone groupの連携とは別に、BicepでAを明示作成",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する項目",
+              "width": 320
+            },
+            {
+              "label": "この構築定義",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "zone",
+              "cells": [
+                "Private DNSゾーン名",
+                "ACA環境の実defaultDomain"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "* A / ワイルドカード",
+                "子のアプリ名 → 環境の実staticIp"
+              ]
+            },
+            {
+              "id": "app",
+              "cells": [
+                "内部アプリ名の形式",
+                "ca-<stem>-portal.<defaultDomain>"
+              ]
+            },
+            {
+              "id": "apex",
+              "cells": [
+                "@ A / ゾーン頂点",
+                "この定義には作らない"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "TTL",
+                "ACAは300秒 / APIMも公開configは300秒"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "zone",
+          "wildcard",
+          "app"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "環境の実defaultDomainをゾーン名にします。",
+          "lines": [
+            "環境の実defaultDomainをゾーン名にします。"
+          ],
+          "weight": 27
+        },
+        {
+          "caption": "ワイルドカードのAを実staticIpへ向け、Portalなどの子のアプリ名を解決します。",
+          "lines": [
+            "ワイルドカードのAを実staticIpへ向け、",
+            "Portalなどの子のアプリ名を解決します。"
+          ],
+          "weight": 45
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "internal",
+      "speech": "ワイルドカードがあれば、環境のドメイン名だけでも同じアイピーになりますか？子の名前がない場合です。",
+      "caption": "ワイルドカードがあれば、環境のドメイン名だけでも同じIPになりますか？子の名前がない場合です。",
+      "subtitleLines": [
+        "ワイルドカードがあれば、",
+        "環境のドメイン名だけでも同じIPになりますか？子の名前がない場合です。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "aca-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ACA：実defaultDomainと子のアプリ名",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：PE zone groupの連携とは別に、BicepでAを明示作成",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する項目",
+              "width": 320
+            },
+            {
+              "label": "この構築定義",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "zone",
+              "cells": [
+                "Private DNSゾーン名",
+                "ACA環境の実defaultDomain"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "* A / ワイルドカード",
+                "子のアプリ名 → 環境の実staticIp"
+              ]
+            },
+            {
+              "id": "app",
+              "cells": [
+                "内部アプリ名の形式",
+                "ca-<stem>-portal.<defaultDomain>"
+              ]
+            },
+            {
+              "id": "apex",
+              "cells": [
+                "@ A / ゾーン頂点",
+                "この定義には作らない"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "TTL",
+                "ACAは300秒 / APIMも公開configは300秒"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-054-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "この定義に頂点のエーレコードはありません。子の名前を扱うアスタリスクと、頂点のアットマークは区別し、内部アプリの完全な名前で確認してください。",
+      "caption": "この定義に頂点のAレコードはありません。子の名前を扱うアスタリスクと、頂点のアットマークは区別し、内部アプリの完全な名前で確認してください。",
+      "subtitleLines": [
+        "この定義に頂点のAレコードはありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "aca-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ACA：実defaultDomainと子のアプリ名",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：PE zone groupの連携とは別に、BicepでAを明示作成",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する項目",
+              "width": 320
+            },
+            {
+              "label": "この構築定義",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "zone",
+              "cells": [
+                "Private DNSゾーン名",
+                "ACA環境の実defaultDomain"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "* A / ワイルドカード",
+                "子のアプリ名 → 環境の実staticIp"
+              ]
+            },
+            {
+              "id": "app",
+              "cells": [
+                "内部アプリ名の形式",
+                "ca-<stem>-portal.<defaultDomain>"
+              ]
+            },
+            {
+              "id": "apex",
+              "cells": [
+                "@ A / ゾーン頂点",
+                "この定義には作らない"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "TTL",
+                "ACAは300秒 / APIMも公開configは300秒"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "wildcard",
+          "apex"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "この定義に頂点のAレコードはありません。",
+          "lines": [
+            "この定義に頂点のAレコードはありません。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "子の名前を扱うアスタリスクと、頂点のアットマークは区別し、内部アプリの完全な名前で確認してください。",
+          "lines": [
+            "子の名前を扱うアスタリスクと、頂点のアットマークは区別し、",
+            "内部アプリの完全な名前で確認してください。"
+          ],
+          "weight": 50
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-055-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "エーピーアイエムの頂点のエーとエーシーエーのワイルドカードのエーは、バイセップが明示的に作ります。ピーイーのゾーングループ連携とは別です。公開コンフィグでは、両方のティーティーエルが300秒です。",
+      "caption": "APIMの頂点のAとACAのワイルドカードのAは、Bicepが明示的に作ります。PEのzone group連携とは別です。公開configでは、両方のTTLが300秒です。",
+      "subtitleLines": [
+        "APIMの頂点のAとACAのワイルドカードのAは、Bicepが",
+        "明示的に作ります。PEのzone group連携とは別です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "aca-internal-record",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "ACA：実defaultDomainと子のアプリ名",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：PE zone groupの連携とは別に、BicepでAを明示作成",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する項目",
+              "width": 320
+            },
+            {
+              "label": "この構築定義",
+              "width": 652
+            }
+          ],
+          "rows": [
+            {
+              "id": "zone",
+              "cells": [
+                "Private DNSゾーン名",
+                "ACA環境の実defaultDomain"
+              ]
+            },
+            {
+              "id": "wildcard",
+              "cells": [
+                "* A / ワイルドカード",
+                "子のアプリ名 → 環境の実staticIp"
+              ]
+            },
+            {
+              "id": "app",
+              "cells": [
+                "内部アプリ名の形式",
+                "ca-<stem>-portal.<defaultDomain>"
+              ]
+            },
+            {
+              "id": "apex",
+              "cells": [
+                "@ A / ゾーン頂点",
+                "この定義には作らない"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "TTL",
+                "ACAは300秒 / APIMも公開configは300秒"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "ttl"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "APIMの頂点のAとACAのワイルドカードのAは、Bicepが明示的に作ります。PEのzone group連携とは別です。",
+          "lines": [
+            "APIMの頂点のAとACAのワイルドカードのAは、Bicepが",
+            "明示的に作ります。PEのzone group連携とは別です。"
+          ],
+          "weight": 61
+        },
+        {
+          "caption": "公開configでは、両方のTTLが300秒です。",
+          "lines": [
+            "公開configでは、両方のTTLが300秒です。"
+          ],
+          "weight": 25
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-056-manabu",
+      "speaker": "manabu",
+      "chapterId": "internal",
+      "speech": "利用者向けゲートウェイとポータルの公開名は、公開ディーエヌエスでアップジーダブリューの公開アイピーへ向けます。エーピーアイエムの内部ブイアイピーやエーシーエーの内部アイピーへ直接つなぐ名前ではありません。",
+      "caption": "利用者向けGatewayとPortalの公開名は、公開DNSでAppGWの公開IPへ向けます。APIMの内部VIPやACAの内部IPへ直接つなぐ名前ではありません。",
+      "subtitleLines": [
+        "利用者向けGatewayとPortalの公開名は、",
+        "公開DNSでAppGWの公開IPへ向けます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "public-hostnames",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "利用者向け公開名はAppGWの公開入口へ",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：内部IPへ直接つなぐための公開名ではない",
+        "fields": [
+          {
+            "id": "names",
+            "label": "公開ホスト名",
+            "value": "利用者向けGateway / Portal"
+          },
+          {
+            "id": "dns",
+            "label": "公開DNS",
+            "value": "Aレコード"
+          },
+          {
+            "id": "ip",
+            "label": "公開名の解決先",
+            "value": "Application Gatewayの公開IP"
+          },
+          {
+            "id": "internal",
+            "label": "内部入口と区別",
+            "value": "APIM実内部VIP / ACA実staticIp"
+          }
+        ],
+        "highlightFields": [
+          "dns",
+          "ip"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "利用者向けGatewayとPortalの公開名は、公開DNSでAppGWの公開IPへ向けます。",
+          "lines": [
+            "利用者向けGatewayとPortalの公開名は、",
+            "公開DNSでAppGWの公開IPへ向けます。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "APIMの内部VIPやACAの内部IPへ直接つなぐ名前ではありません。",
+          "lines": [
+            "APIMの内部VIPやACAの内部IPへ直接つなぐ名前ではありません。"
+          ],
+          "weight": 35
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-057-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "internal",
+      "speech": "エーピーアイエムはインターナル、ブイネットモードですが、管理面もあるため公開ネットワーク設定はイネーブルドです。内部名があれば全部ディセーブルド、とはまとめません。",
+      "caption": "APIMはInternal VNetモードですが、管理面もあるため公開ネットワーク設定はEnabledです。内部名があれば全部Disabled、とはまとめません。",
+      "subtitleLines": [
+        "APIMはInternal VNetモードですが、",
+        "管理面もあるため公開ネットワーク設定はEnabledです。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "apim-network-mode",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "APIMの内部接続と公開設定を区別する",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：内部名を持つ全サービスをDisabledと一括にしない",
+        "fields": [
+          {
+            "id": "vnet",
+            "label": "APIM VNetモード",
+            "value": "Internal"
+          },
+          {
+            "id": "pna",
+            "label": "publicNetworkAccess",
+            "value": "Enabled / 管理面もあるため"
+          },
+          {
+            "id": "aca",
+            "label": "ACA環境",
+            "value": "internal:true / 環境の内部入口"
+          },
+          {
+            "id": "pe",
+            "label": "Foundry・KV・ACR・SQL本体",
+            "value": "公開ネットワークアクセスを無効化"
+          }
+        ],
+        "highlightFields": [
+          "vnet",
+          "pna"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "APIMはInternal VNetモードですが、管理面もあるため公開ネットワーク設定はEnabledです。",
+          "lines": [
+            "APIMはInternal VNetモードですが、",
+            "管理面もあるため公開ネットワーク設定はEnabledです。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "内部名があれば全部Disabled、とはまとめません。",
+          "lines": [
+            "内部名があれば全部Disabled、とはまとめません。"
+          ],
+          "weight": 27
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-058-mako",
+      "speaker": "mako",
+      "chapterId": "checking",
+      "speech": "名前が原因か調べるとき、手元ピーシーで名前を確認し、正しければディーエヌエスの調査は終わりにできますか？",
+      "caption": "名前が原因か調べるとき、手元PCで名前を確認し、正しければDNSの調査は終わりにできますか？",
+      "subtitleLines": [
+        "名前が原因か調べるとき、手元PCで名前を確認し、",
+        "正しければDNSの調査は終わりにできますか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-source",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前解決は問題の通信を始める場所で確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：手元PCの結果をアプリへそのまま当てはめない",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM / ACA / APIMなど実際の実行元"
+          },
+          {
+            "id": "time",
+            "label": "確認時刻",
+            "value": "問い合わせた時刻を記録"
+          },
+          {
+            "id": "dns",
+            "label": "問い合わせるDNS",
+            "value": "その送信元が実際に使うDNS"
+          },
+          {
+            "id": "fqdn",
+            "label": "問い合わせる名前",
+            "value": "アプリが使う完全なFQDN"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson02-turn-059-manabu",
+      "speaker": "manabu",
+      "chapterId": "checking",
+      "speech": "手元の結果を、アプリ側へそのまま当てはめることはできません。問題の通信を始める場所で、同じ名前の回答を確認しましょう。",
+      "caption": "手元の結果を、アプリ側へそのまま当てはめることはできません。問題の通信を始める場所で、同じ名前の回答を確認しましょう。",
+      "subtitleLines": [
+        "手元の結果を、アプリ側へそのまま当てはめることはできません。",
+        "問題の通信を始める場所で、同じ名前の回答を確認しましょう。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-source",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前解決は問題の通信を始める場所で確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：手元PCの結果をアプリへそのまま当てはめない",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM / ACA / APIMなど実際の実行元"
+          },
+          {
+            "id": "time",
+            "label": "確認時刻",
+            "value": "問い合わせた時刻を記録"
+          },
+          {
+            "id": "dns",
+            "label": "問い合わせるDNS",
+            "value": "その送信元が実際に使うDNS"
+          },
+          {
+            "id": "fqdn",
+            "label": "問い合わせる名前",
+            "value": "アプリが使う完全なFQDN"
+          }
+        ],
+        "highlightFields": [
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-060-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "送信元、確認時刻、問い合わせるディーエヌエス、アプリが使うエフキューディーエヌをそろえます。管理ブイエムの処理ならブイエム側、エーシーエーの処理ならエーシーエー側の条件を見ます。",
+      "caption": "送信元、確認時刻、問い合わせるDNS、アプリが使うFQDNをそろえます。管理VMの処理ならVM側、ACAの処理ならACA側の条件を見ます。",
+      "subtitleLines": [
+        "送信元、確認時刻、問い合わせるDNS、",
+        "アプリが使うFQDNをそろえます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-source",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "名前解決は問題の通信を始める場所で確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：手元PCの結果をアプリへそのまま当てはめない",
+        "fields": [
+          {
+            "id": "source",
+            "label": "送信元",
+            "value": "管理VM / ACA / APIMなど実際の実行元"
+          },
+          {
+            "id": "time",
+            "label": "確認時刻",
+            "value": "問い合わせた時刻を記録"
+          },
+          {
+            "id": "dns",
+            "label": "問い合わせるDNS",
+            "value": "その送信元が実際に使うDNS"
+          },
+          {
+            "id": "fqdn",
+            "label": "問い合わせる名前",
+            "value": "アプリが使う完全なFQDN"
+          }
+        ],
+        "highlightFields": [
+          "source",
+          "time",
+          "dns",
+          "fqdn"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "送信元、確認時刻、問い合わせるDNS、アプリが使うFQDNをそろえます。",
+          "lines": [
+            "送信元、確認時刻、問い合わせるDNS、",
+            "アプリが使うFQDNをそろえます。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "管理VMの処理ならVM側、ACAの処理ならACA側の条件を見ます。",
+          "lines": [
+            "管理VMの処理ならVM側、ACAの処理ならACA側の条件を見ます。"
+          ],
+          "weight": 33
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-061-mako",
+      "speaker": "mako",
+      "chapterId": "checking",
+      "speech": "同じ名前に加えて、誰が誰に聞いたかまで記録するんですね。結果では、最後のアイピーだけ見れば十分でしょうか？",
+      "caption": "同じ名前に加えて、誰が誰に聞いたかまで記録するんですね。結果では、最後のIPだけ見れば十分でしょうか？",
+      "subtitleLines": [
+        "同じ名前に加えて、誰が誰に聞いたかまで記録するんですね。",
+        "結果では、最後のIPだけ見れば十分でしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-answer-and-pe",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNSの回答と対象PEの実体を照合する",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：private IPらしい値だけで正しいPEと判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "そろえる対応",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "chain",
+              "cells": [
+                "CNAMEとAの連鎖",
+                "通常名 → Private Link名 → 対象PEのIP"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "PEの接続先・種類・状態",
+                "対象リソース / groupId / 接続状態"
+              ]
+            },
+            {
+              "id": "ips",
+              "cells": [
+                "PEが返したNIC",
+                "実NICの全IP構成と回答IP群を照合"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "期待する宛先との違い",
+                "公開IP / 別の内部IP / 名前が見つからない"
+              ]
+            },
+            {
+              "id": "link",
+              "cells": [
+                "レコード連携",
+                "ゾーン / VNetリンク / zone group / A"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNS",
+                "そのDNSから対象ゾーンを解決する構成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-062-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "シーネームも追えると、どの名前へ案内されたか分かります。キーボールトなら通常名からプライベートリンク名へ進み、対象ピーイーのアイピーが返るかを照合します。",
+      "caption": "CNAMEも追えると、どの名前へ案内されたか分かります。Key Vaultなら通常名からPrivate Link名へ進み、対象PEのIPが返るかを照合します。",
+      "subtitleLines": [
+        "CNAMEも追えると、どの名前へ案内されたか分かります。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-answer-and-pe",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNSの回答と対象PEの実体を照合する",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：private IPらしい値だけで正しいPEと判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "そろえる対応",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "chain",
+              "cells": [
+                "CNAMEとAの連鎖",
+                "通常名 → Private Link名 → 対象PEのIP"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "PEの接続先・種類・状態",
+                "対象リソース / groupId / 接続状態"
+              ]
+            },
+            {
+              "id": "ips",
+              "cells": [
+                "PEが返したNIC",
+                "実NICの全IP構成と回答IP群を照合"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "期待する宛先との違い",
+                "公開IP / 別の内部IP / 名前が見つからない"
+              ]
+            },
+            {
+              "id": "link",
+              "cells": [
+                "レコード連携",
+                "ゾーン / VNetリンク / zone group / A"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNS",
+                "そのDNSから対象ゾーンを解決する構成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "chain"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "CNAMEも追えると、どの名前へ案内されたか分かります。",
+          "lines": [
+            "CNAMEも追えると、どの名前へ案内されたか分かります。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "Key Vaultなら通常名からPrivate Link名へ進み、対象PEのIPが返るかを照合します。",
+          "lines": [
+            "Key Vaultなら通常名からPrivate Link名へ進み、",
+            "対象PEのIPが返るかを照合します。"
+          ],
+          "weight": 51
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-063-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "ピーイー側の接続先、接続の種類、接続状態と、実ニックの全アイピー構成を比べます。プライベートアイピーらしい値が返っただけで、正しいピーイーだとは判断しません。",
+      "caption": "PE側の接続先、接続の種類、接続状態と、実NICの全IP構成を比べます。private IPらしい値が返っただけで、正しいPEだとは判断しません。",
+      "subtitleLines": [
+        "PE側の接続先、接続の種類、接続状態と、",
+        "実NICの全IP構成を比べます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-answer-and-pe",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNSの回答と対象PEの実体を照合する",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：private IPらしい値だけで正しいPEと判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "そろえる対応",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "chain",
+              "cells": [
+                "CNAMEとAの連鎖",
+                "通常名 → Private Link名 → 対象PEのIP"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "PEの接続先・種類・状態",
+                "対象リソース / groupId / 接続状態"
+              ]
+            },
+            {
+              "id": "ips",
+              "cells": [
+                "PEが返したNIC",
+                "実NICの全IP構成と回答IP群を照合"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "期待する宛先との違い",
+                "公開IP / 別の内部IP / 名前が見つからない"
+              ]
+            },
+            {
+              "id": "link",
+              "cells": [
+                "レコード連携",
+                "ゾーン / VNetリンク / zone group / A"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNS",
+                "そのDNSから対象ゾーンを解決する構成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "identity",
+          "ips"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "PE側の接続先、接続の種類、接続状態と、実NICの全IP構成を比べます。",
+          "lines": [
+            "PE側の接続先、接続の種類、接続状態と、",
+            "実NICの全IP構成を比べます。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "private IPらしい値が返っただけで、正しいPEだとは判断しません。",
+          "lines": [
+            "private IPらしい値が返っただけで、",
+            "正しいPEだとは判断しません。"
+          ],
+          "weight": 37
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-064-manabu",
+      "speaker": "manabu",
+      "chapterId": "checking",
+      "speech": "公開アイピーが返ったのか、別の内部アイピーなのか、名前が見つからないのか。期待する宛先との違いを分けると、確認する設定を絞れます。",
+      "caption": "公開IPが返ったのか、別の内部IPなのか、名前が見つからないのか。期待する宛先との違いを分けると、確認する設定を絞れます。",
+      "subtitleLines": [
+        "公開IPが返ったのか、別の内部IPなのか、名前が見つからないのか。",
+        "期待する宛先との違いを分けると、確認する設定を絞れます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-answer-and-pe",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNSの回答と対象PEの実体を照合する",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：private IPらしい値だけで正しいPEと判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "そろえる対応",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "chain",
+              "cells": [
+                "CNAMEとAの連鎖",
+                "通常名 → Private Link名 → 対象PEのIP"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "PEの接続先・種類・状態",
+                "対象リソース / groupId / 接続状態"
+              ]
+            },
+            {
+              "id": "ips",
+              "cells": [
+                "PEが返したNIC",
+                "実NICの全IP構成と回答IP群を照合"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "期待する宛先との違い",
+                "公開IP / 別の内部IP / 名前が見つからない"
+              ]
+            },
+            {
+              "id": "link",
+              "cells": [
+                "レコード連携",
+                "ゾーン / VNetリンク / zone group / A"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNS",
+                "そのDNSから対象ゾーンを解決する構成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "difference"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-065-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "ピーイーの名前なら、ゾーン、ブイネットリンク、ゾーングループ、エーレコードを照合します。独自ディーエヌエスでは、そのディーエヌエスから対象ゾーンを解決する構成も含めます。",
+      "caption": "PEの名前なら、ゾーン、VNetリンク、zone group、Aレコードを照合します。独自DNSでは、そのDNSから対象ゾーンを解決する構成も含めます。",
+      "subtitleLines": [
+        "PEの名前なら、ゾーン、VNetリンク、",
+        "zone group、Aレコードを照合します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-answer-and-pe",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "DNSの回答と対象PEの実体を照合する",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：private IPらしい値だけで正しいPEと判断しない",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "そろえる対応",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "chain",
+              "cells": [
+                "CNAMEとAの連鎖",
+                "通常名 → Private Link名 → 対象PEのIP"
+              ]
+            },
+            {
+              "id": "identity",
+              "cells": [
+                "PEの接続先・種類・状態",
+                "対象リソース / groupId / 接続状態"
+              ]
+            },
+            {
+              "id": "ips",
+              "cells": [
+                "PEが返したNIC",
+                "実NICの全IP構成と回答IP群を照合"
+              ]
+            },
+            {
+              "id": "difference",
+              "cells": [
+                "期待する宛先との違い",
+                "公開IP / 別の内部IP / 名前が見つからない"
+              ]
+            },
+            {
+              "id": "link",
+              "cells": [
+                "レコード連携",
+                "ゾーン / VNetリンク / zone group / A"
+              ]
+            },
+            {
+              "id": "custom",
+              "cells": [
+                "独自DNS",
+                "そのDNSから対象ゾーンを解決する構成"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "link",
+          "custom"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "PEの名前なら、ゾーン、VNetリンク、zone group、Aレコードを照合します。",
+          "lines": [
+            "PEの名前なら、ゾーン、VNetリンク、",
+            "zone group、Aレコードを照合します。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "独自DNSでは、そのDNSから対象ゾーンを解決する構成も含めます。",
+          "lines": [
+            "独自DNSでは、そのDNSから対象ゾーンを解決する構成も含めます。"
+          ],
+          "weight": 33
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-066-mako",
+      "speaker": "mako",
+      "chapterId": "checking",
+      "speech": "エーピーアイエムやエーシーエーなら、明示的に作ったエーレコードと内部入口の実アイピーを比べるんですね。接続口の種類が、確認場所の選択に役立ちます。",
+      "caption": "APIMやACAなら、明示的に作ったAレコードと内部入口の実IPを比べるんですね。接続口の種類が、確認場所の選択に役立ちます。",
+      "subtitleLines": [
+        "APIMやACAなら、明示的に作ったAレコードと内部入口の実IPを",
+        "比べるんですね。接続口の種類が、確認場所の選択に役立ちます。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-internal-reflection",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "内部名のAレコードと変更後の反映を確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：書き換えとサービスへの反映は別に確かめる",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "照合・反映の観点",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの@ A",
+                "実内部VIP / ネットワーク構成の適用"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACAの* A",
+                "環境の実staticIp"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "変更直後のDNS",
+                "TTL / キャッシュ / サービスへの反映"
+              ]
+            },
+            {
+              "id": "appgw",
+              "cells": [
+                "Application Gateway",
+                "資料の確認点：StopとStart"
+              ]
+            },
+            {
+              "id": "vm",
+              "cells": [
+                "管理VM",
+                "DNS再取得 / 必要な再起動 / 保守時間"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      }
+    },
+    {
+      "id": "lesson02-turn-067-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "はい。変更直後ならティーティーエルやキャッシュ、サービスへの反映も見ます。設定を書き換えたことと、各サービスが新しい設定で動くことを分けて確かめます。",
+      "caption": "はい。変更直後ならTTLやキャッシュ、サービスへの反映も見ます。設定を書き換えたことと、各サービスが新しい設定で動くことを分けて確かめます。",
+      "subtitleLines": [
+        "はい。変更直後ならTTLやキャッシュ、サービスへの反映も見ます。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-internal-reflection",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "内部名のAレコードと変更後の反映を確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：書き換えとサービスへの反映は別に確かめる",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "照合・反映の観点",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの@ A",
+                "実内部VIP / ネットワーク構成の適用"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACAの* A",
+                "環境の実staticIp"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "変更直後のDNS",
+                "TTL / キャッシュ / サービスへの反映"
+              ]
+            },
+            {
+              "id": "appgw",
+              "cells": [
+                "Application Gateway",
+                "資料の確認点：StopとStart"
+              ]
+            },
+            {
+              "id": "vm",
+              "cells": [
+                "管理VM",
+                "DNS再取得 / 必要な再起動 / 保守時間"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "ttl"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "はい。変更直後ならTTLやキャッシュ、サービスへの反映も見ます。",
+          "lines": [
+            "はい。変更直後ならTTLやキャッシュ、サービスへの反映も見ます。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "設定を書き換えたことと、各サービスが新しい設定で動くことを分けて確かめます。",
+          "lines": [
+            "設定を書き換えたことと、",
+            "各サービスが新しい設定で動くことを分けて確かめます。"
+          ],
+          "weight": 38
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "エーピーアイエムのネットワーク構成適用、アップジーダブリューのストップとスタート、ブイエムのディーエヌエス再取得などが資料の確認点です。反映方法と保守時間はサービスごとに調べます。",
+      "caption": "APIMのネットワーク構成適用、AppGWのStopとStart、VMのDNS再取得などが資料の確認点です。反映方法と保守時間はサービスごとに調べます。",
+      "subtitleLines": [
+        "APIMのネットワーク構成適用、AppGWのStopとStart、",
+        "VMのDNS再取得などが資料の確認点です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "check-internal-reflection",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "内部名のAレコードと変更後の反映を確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：書き換えとサービスへの反映は別に確かめる",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 310
+            },
+            {
+              "label": "照合・反映の観点",
+              "width": 662
+            }
+          ],
+          "rows": [
+            {
+              "id": "apim",
+              "cells": [
+                "APIMの@ A",
+                "実内部VIP / ネットワーク構成の適用"
+              ]
+            },
+            {
+              "id": "aca",
+              "cells": [
+                "ACAの* A",
+                "環境の実staticIp"
+              ]
+            },
+            {
+              "id": "ttl",
+              "cells": [
+                "変更直後のDNS",
+                "TTL / キャッシュ / サービスへの反映"
+              ]
+            },
+            {
+              "id": "appgw",
+              "cells": [
+                "Application Gateway",
+                "資料の確認点：StopとStart"
+              ]
+            },
+            {
+              "id": "vm",
+              "cells": [
+                "管理VM",
+                "DNS再取得 / 必要な再起動 / 保守時間"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim",
+          "appgw",
+          "vm"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "APIMのネットワーク構成適用、AppGWのStopとStart、VMのDNS再取得などが資料の確認点です。",
+          "lines": [
+            "APIMのネットワーク構成適用、AppGWのStopとStart、",
+            "VMのDNS再取得などが資料の確認点です。"
+          ],
+          "weight": 54
+        },
+        {
+          "caption": "反映方法と保守時間はサービスごとに調べます。",
+          "lines": [
+            "反映方法と保守時間はサービスごとに調べます。"
+          ],
+          "weight": 22
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-069-manabu",
+      "speaker": "manabu",
+      "chapterId": "checking",
+      "speech": "中央ディーエヌエスへの切替も、先に名前の参照先とディーエヌエスへの到達を用意します。ブイネットピアリングだけでプライベートディーエヌエスの解決設定まで共有されるとは考えません。",
+      "caption": "中央DNSへの切替も、先に名前の参照先とDNSへの到達を用意します。VNetピアリングだけでPrivate DNSの解決設定まで共有されるとは考えません。",
+      "subtitleLines": [
+        "中央DNSへの切替も、先に名前の参照先とDNSへの到達を用意します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "dns-to-connection",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "参照先と到達性を準備してから接続を確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：VNetピアリングだけでPrivate DNS設定は共有されない",
+        "fields": [
+          {
+            "id": "resolve",
+            "label": "独自・中央DNSへの切替前",
+            "value": "名前の参照先・転送を準備"
+          },
+          {
+            "id": "dnsnet",
+            "label": "DNSへ到達するために",
+            "value": "TCP / UDP 53の経路・許可"
+          },
+          {
+            "id": "expected",
+            "label": "期待するIPが返った後",
+            "value": "NSG / 具体的な経路 / サービス認証"
+          },
+          {
+            "id": "limit",
+            "label": "名前解決の成功",
+            "value": "後続の通信や操作の成功は別に確認"
+          }
+        ],
+        "highlightFields": [
+          "resolve",
+          "dnsnet"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "中央DNSへの切替も、先に名前の参照先とDNSへの到達を用意します。",
+          "lines": [
+            "中央DNSへの切替も、先に名前の参照先とDNSへの到達を用意します。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "VNetピアリングだけでPrivate DNSの解決設定まで共有されるとは考えません。",
+          "lines": [
+            "VNetピアリングだけでPrivate ",
+            "DNSの解決設定まで共有されるとは考えません。"
+          ],
+          "weight": 43
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "checking",
+      "speech": "期待するアイピーが返ったら、エヌエスジー、具体的な経路、サービス認証へ進みます。名前解決の成功は、後続の通信や操作の成功を保証しません。",
+      "caption": "期待するIPが返ったら、NSG、具体的な経路、サービス認証へ進みます。名前解決の成功は、後続の通信や操作の成功を保証しません。",
+      "subtitleLines": [
+        "期待するIPが返ったら、NSG、具体的な経路、サービス認証へ進みます。",
+        "名前解決の成功は、後続の通信や操作の成功を保証しません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "dns-to-connection",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "参照先と到達性を準備してから接続を確認",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：VNetピアリングだけでPrivate DNS設定は共有されない",
+        "fields": [
+          {
+            "id": "resolve",
+            "label": "独自・中央DNSへの切替前",
+            "value": "名前の参照先・転送を準備"
+          },
+          {
+            "id": "dnsnet",
+            "label": "DNSへ到達するために",
+            "value": "TCP / UDP 53の経路・許可"
+          },
+          {
+            "id": "expected",
+            "label": "期待するIPが返った後",
+            "value": "NSG / 具体的な経路 / サービス認証"
+          },
+          {
+            "id": "limit",
+            "label": "名前解決の成功",
+            "value": "後続の通信や操作の成功は別に確認"
+          }
+        ],
+        "highlightFields": [
+          "expected",
+          "limit"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "quiz",
+      "speech": "三つ確かめます。一問目。エーシーエーからエスキューエルの名前を引くと、対象のエスキューエル ピーイーのアイピーが返りました。これでデータベースを操作できる、と言えますか？",
+      "caption": "三つ確かめます。一問目。ACAからSQLの名前を引くと、対象のSQL PEのIPが返りました。これでデータベースを操作できる、と言えますか？",
+      "subtitleLines": [
+        "三つ確かめます。一問目。ACAからSQLの名前を引くと、",
+        "対象のSQL PEのIPが返りました。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-sql",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認1：SQL PEのIPが返った後の判断",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：名前解決できれば、データベースを操作できる？",
+        "table": {
+          "columns": [
+            {
+              "label": "判断する対象",
+              "width": 330
+            },
+            {
+              "label": "確認する条件",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "dns",
+              "cells": [
+                "今回得られた回答",
+                "ACAから対象SQL PEのIPが返った"
+              ]
+            },
+            {
+              "id": "network",
+              "cells": [
+                "到達性",
+                "回答IPへの経路・通信許可"
+              ]
+            },
+            {
+              "id": "auth",
+              "cells": [
+                "サービス認証",
+                "SQLのEntra認証"
+              ]
+            },
+            {
+              "id": "rights",
+              "cells": [
+                "操作権限",
+                "接続する主体が何を操作できるか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      },
+      "pauseAfterSeconds": 1.1,
+      "subtitleChunks": [
+        {
+          "caption": "三つ確かめます。一問目。ACAからSQLの名前を引くと、対象のSQL PEのIPが返りました。",
+          "lines": [
+            "三つ確かめます。一問目。ACAからSQLの名前を引くと、",
+            "対象のSQL PEのIPが返りました。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "これでデータベースを操作できる、と言えますか？",
+          "lines": [
+            "これでデータベースを操作できる、と言えますか？"
+          ],
+          "weight": 23
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-072-manabu",
+      "speaker": "manabu",
+      "chapterId": "quiz",
+      "speech": "まだ言えません。期待する接続口が分かった段階です。そのアイピーへの到達と、サービスの認証、操作権限を続けて確認します。",
+      "caption": "まだ言えません。期待する接続口が分かった段階です。そのIPへの到達と、サービスの認証、操作権限を続けて確認します。",
+      "subtitleLines": [
+        "まだ言えません。期待する接続口が分かった段階です。",
+        "そのIPへの到達と、サービスの認証、操作権限を続けて確認します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-sql",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認1：SQL PEのIPが返った後の判断",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：名前解決できれば、データベースを操作できる？",
+        "table": {
+          "columns": [
+            {
+              "label": "判断する対象",
+              "width": 330
+            },
+            {
+              "label": "確認する条件",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "dns",
+              "cells": [
+                "今回得られた回答",
+                "ACAから対象SQL PEのIPが返った"
+              ]
+            },
+            {
+              "id": "network",
+              "cells": [
+                "到達性",
+                "回答IPへの経路・通信許可"
+              ]
+            },
+            {
+              "id": "auth",
+              "cells": [
+                "サービス認証",
+                "SQLのEntra認証"
+              ]
+            },
+            {
+              "id": "rights",
+              "cells": [
+                "操作権限",
+                "接続する主体が何を操作できるか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "network",
+          "auth",
+          "rights"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-073-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "quiz",
+      "speech": "正解です。このエスキューエルはエントラ認証です。名前が正しくても、接続の許可やサービス側の権限をディーエヌエスが設定してくれるわけではありません。",
+      "caption": "正解です。このSQLはEntra認証です。名前が正しくても、接続の許可やサービス側の権限をDNSが設定してくれるわけではありません。",
+      "subtitleLines": [
+        "正解です。このSQLはEntra認証です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-sql",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認1：SQL PEのIPが返った後の判断",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：名前解決できれば、データベースを操作できる？",
+        "table": {
+          "columns": [
+            {
+              "label": "判断する対象",
+              "width": 330
+            },
+            {
+              "label": "確認する条件",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "dns",
+              "cells": [
+                "今回得られた回答",
+                "ACAから対象SQL PEのIPが返った"
+              ]
+            },
+            {
+              "id": "network",
+              "cells": [
+                "到達性",
+                "回答IPへの経路・通信許可"
+              ]
+            },
+            {
+              "id": "auth",
+              "cells": [
+                "サービス認証",
+                "SQLのEntra認証"
+              ]
+            },
+            {
+              "id": "rights",
+              "cells": [
+                "操作権限",
+                "接続する主体が何を操作できるか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "auth",
+          "rights"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "正解です。このSQLはEntra認証です。",
+          "lines": [
+            "正解です。このSQLはEntra認証です。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "名前が正しくても、接続の許可やサービス側の権限をDNSが設定してくれるわけではありません。",
+          "lines": [
+            "名前が正しくても、接続の許可やサービス側の権限を",
+            "DNSが設定してくれるわけではありません。"
+          ],
+          "weight": 45
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-074-mako",
+      "speaker": "mako",
+      "chapterId": "quiz",
+      "speech": "二問目。手元ピーシーからキーボールトの名前を解決できました。同じ名前を使うエーピーアイエム側では、確認を省略してよいでしょうか？",
+      "caption": "二問目。手元PCからKey Vaultの名前を解決できました。同じ名前を使うAPIM側では、確認を省略してよいでしょうか？",
+      "subtitleLines": [
+        "二問目。手元PCからKey Vaultの名前を解決できました。",
+        "同じ名前を使うAPIM側では、確認を省略してよいでしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-source",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認2：PCの回答をAPIMへ当てはめられる？",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：PCで同じ名前を解決できれば、APIM側の確認を省略できる？",
+        "table": {
+          "columns": [
+            {
+              "label": "送信元",
+              "width": 240
+            },
+            {
+              "label": "問い合わせ条件",
+              "width": 380
+            },
+            {
+              "label": "回答と比較先",
+              "width": 352
+            }
+          ],
+          "rows": [
+            {
+              "id": "pc",
+              "cells": [
+                "手元PC",
+                "PCが使うDNS・参照ゾーン",
+                "手元で得られた回答"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "実際のAPIM",
+                "APIMが使うDNS・参照ゾーン",
+                "回答を対象PEの実IP群と照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      },
+      "pauseAfterSeconds": 1.1
+    },
+    {
+      "id": "lesson02-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "quiz",
+      "speech": "省略できません。ディーエヌエスや参照ゾーンが同じとは限らないからです。実際の送信元が使うディーエヌエスと回答を確認し、対象ピーイーのアイピー群と照合します。",
+      "caption": "省略できません。DNSや参照ゾーンが同じとは限らないからです。実際の送信元が使うDNSと回答を確認し、対象PEのIP群と照合します。",
+      "subtitleLines": [
+        "省略できません。DNSや参照ゾーンが同じとは限らないからです。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-source",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認2：PCの回答をAPIMへ当てはめられる？",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：PCで同じ名前を解決できれば、APIM側の確認を省略できる？",
+        "table": {
+          "columns": [
+            {
+              "label": "送信元",
+              "width": 240
+            },
+            {
+              "label": "問い合わせ条件",
+              "width": 380
+            },
+            {
+              "label": "回答と比較先",
+              "width": 352
+            }
+          ],
+          "rows": [
+            {
+              "id": "pc",
+              "cells": [
+                "手元PC",
+                "PCが使うDNS・参照ゾーン",
+                "手元で得られた回答"
+              ]
+            },
+            {
+              "id": "apim",
+              "cells": [
+                "実際のAPIM",
+                "APIMが使うDNS・参照ゾーン",
+                "回答を対象PEの実IP群と照合"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "apim"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "省略できません。DNSや参照ゾーンが同じとは限らないからです。",
+          "lines": [
+            "省略できません。DNSや参照ゾーンが同じとは限らないからです。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "実際の送信元が使うDNSと回答を確認し、対象PEのIP群と照合します。",
+          "lines": [
+            "実際の送信元が使うDNSと回答を確認し、対象PEのIP群と照合します。"
+          ],
+          "weight": 35
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "quiz",
+      "speech": "三問目。エーシーエーにワイルドカードのエーがありますが、環境のドメイン名だけでは期待するエーが返りません。ピーイーの故障でしょうか？",
+      "caption": "三問目。ACAにワイルドカードのAがありますが、環境のドメイン名だけでは期待するAが返りません。PEの故障でしょうか？",
+      "subtitleLines": [
+        "三問目。ACAにワイルドカードのAがありますが、",
+        "環境のドメイン名だけでは期待するAが返りません。PEの故障でしょうか？"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-aca-apex",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認3：ACAで問い合わせた名前を見分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：環境ドメイン名だけで期待するAが返らない。PEの故障？",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 330
+            },
+            {
+              "label": "この構築定義で比較すること",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "問い合わせた名前",
+                "子のアプリ名か / ゾーン頂点か"
+              ]
+            },
+            {
+              "id": "record",
+              "cells": [
+                "レコードの名前",
+                "ワイルドカード * / 頂点 @"
+              ]
+            },
+            {
+              "id": "config",
+              "cells": [
+                "構築定義",
+                "* Aを作成 / @ Aは定義しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "ACAの接続口",
+                "自身のPEを作らず、環境の内部入口を使用"
+              ]
+            }
+          ]
+        },
+        "highlightRows": []
+      },
+      "pauseAfterSeconds": 1.1
+    },
+    {
+      "id": "lesson02-turn-078-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "quiz",
+      "speech": "そうは言えません。このエーシーエーは自身のピーイーを作らず、定義に頂点のエーもありません。子のアプリ名か、ゾーン頂点か、問い合わせた名前を区別します。",
+      "caption": "そうは言えません。このACAは自身のPEを作らず、定義に頂点のAもありません。子のアプリ名か、ゾーン頂点か、問い合わせた名前を区別します。",
+      "subtitleLines": [
+        "そうは言えません。このACAは自身のPEを作らず、",
+        "定義に頂点のAもありません。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-aca-apex",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認3：ACAで問い合わせた名前を見分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：環境ドメイン名だけで期待するAが返らない。PEの故障？",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 330
+            },
+            {
+              "label": "この構築定義で比較すること",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "問い合わせた名前",
+                "子のアプリ名か / ゾーン頂点か"
+              ]
+            },
+            {
+              "id": "record",
+              "cells": [
+                "レコードの名前",
+                "ワイルドカード * / 頂点 @"
+              ]
+            },
+            {
+              "id": "config",
+              "cells": [
+                "構築定義",
+                "* Aを作成 / @ Aは定義しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "ACAの接続口",
+                "自身のPEを作らず、環境の内部入口を使用"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "name",
+          "config",
+          "pe"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "そうは言えません。このACAは自身のPEを作らず、定義に頂点のAもありません。",
+          "lines": [
+            "そうは言えません。このACAは自身のPEを作らず、",
+            "定義に頂点のAもありません。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "子のアプリ名か、ゾーン頂点か、問い合わせた名前を区別します。",
+          "lines": [
+            "子のアプリ名か、ゾーン頂点か、問い合わせた名前を区別します。"
+          ],
+          "weight": 30
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-079-mako",
+      "speaker": "mako",
+      "chapterId": "quiz",
+      "speech": "なるほど。どの名前でも同じではなく、レコードの対象を見るんですね。アスタリスクとアットマークの違いが、確認につながりました。",
+      "caption": "なるほど。どの名前でも同じではなく、レコードの対象を見るんですね。アスタリスクとアットマークの違いが、確認につながりました。",
+      "subtitleLines": [
+        "なるほど。どの名前でも同じではなく、レコードの対象を見るんですね。",
+        "アスタリスクとアットマークの違いが、確認につながりました。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-aca-apex",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "確認3：ACAで問い合わせた名前を見分ける",
+        "kind": "ネットワーク設定",
+        "section": "Private DNS",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "問い：環境ドメイン名だけで期待するAが返らない。PEの故障？",
+        "table": {
+          "columns": [
+            {
+              "label": "確認する対象",
+              "width": 330
+            },
+            {
+              "label": "この構築定義で比較すること",
+              "width": 642
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "問い合わせた名前",
+                "子のアプリ名か / ゾーン頂点か"
+              ]
+            },
+            {
+              "id": "record",
+              "cells": [
+                "レコードの名前",
+                "ワイルドカード * / 頂点 @"
+              ]
+            },
+            {
+              "id": "config",
+              "cells": [
+                "構築定義",
+                "* Aを作成 / @ Aは定義しない"
+              ]
+            },
+            {
+              "id": "pe",
+              "cells": [
+                "ACAの接続口",
+                "自身のPEを作らず、環境の内部入口を使用"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "name",
+          "record"
+        ]
+      },
+      "pauseAfterSeconds": 1.1
+    },
+    {
+      "id": "lesson02-turn-080-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "一つ目は、通常名からプライベートリンク名を経てピーイーの実プライベートアイピーを得る関係です。名前解決の順番と、データ通信の中継順を区別しましょう。",
+      "caption": "一つ目は、通常名からPrivate Link名を経てPEの実private IPを得る関係です。名前解決の順番と、データ通信の中継順を区別しましょう。",
+      "subtitleLines": [
+        "一つ目は、通常名からPrivate Link名を",
+        "経てPEの実private IPを得る関係です。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "目的と確認の理由を、同僚への短い返答として穏やかに整理する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "summary-correspondence",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "今日確認した3つの対応",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：名前の対応表とデータ通信の経路を区別する",
+        "table": {
+          "columns": [
+            {
+              "label": "説明できる関係",
+              "width": 300
+            },
+            {
+              "label": "設定・確認する対応",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "通常名とPEのIP",
+                "通常FQDN → Private Link名 → PE実private IP"
+              ]
+            },
+            {
+              "id": "types",
+              "cells": [
+                "接続口とゾーン",
+                "4種類のPE / Private Link用6ゾーン"
+              ]
+            },
+            {
+              "id": "internal",
+              "cells": [
+                "内部入口と公開入口",
+                "APIM・ACAの内部用2ゾーン / 公開名はAppGWへ"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元と回答",
+                "どこから / どのDNSへ / 何を聞き / どのIPか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "name"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "一つ目は、通常名からPrivate Link名を経てPEの実private IPを得る関係です。",
+          "lines": [
+            "一つ目は、通常名からPrivate Link名を",
+            "経てPEの実private IPを得る関係です。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "名前解決の順番と、データ通信の中継順を区別しましょう。",
+          "lines": [
+            "名前解決の順番と、データ通信の中継順を区別しましょう。"
+          ],
+          "weight": 27
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-081-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "二つ目は接続口の種類。4種類のピーイーと6ゾーンに加え、エーピーアイエムとエーシーエーには内部入口用ゾーンがあります。公開名はアップジーダブリューの公開入口へ向けます。",
+      "caption": "二つ目は接続口の種類。4種類のPEと6ゾーンに加え、APIMとACAには内部入口用ゾーンがあります。公開名はAppGWの公開入口へ向けます。",
+      "subtitleLines": [
+        "二つ目は接続口の種類。4種類のPEと6ゾーンに加え、",
+        "APIMとACAには内部入口用ゾーンがあります。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "summary-correspondence",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "今日確認した3つの対応",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：名前の対応表とデータ通信の経路を区別する",
+        "table": {
+          "columns": [
+            {
+              "label": "説明できる関係",
+              "width": 300
+            },
+            {
+              "label": "設定・確認する対応",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "通常名とPEのIP",
+                "通常FQDN → Private Link名 → PE実private IP"
+              ]
+            },
+            {
+              "id": "types",
+              "cells": [
+                "接続口とゾーン",
+                "4種類のPE / Private Link用6ゾーン"
+              ]
+            },
+            {
+              "id": "internal",
+              "cells": [
+                "内部入口と公開入口",
+                "APIM・ACAの内部用2ゾーン / 公開名はAppGWへ"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元と回答",
+                "どこから / どのDNSへ / 何を聞き / どのIPか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "types",
+          "internal"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "二つ目は接続口の種類。4種類のPEと6ゾーンに加え、APIMとACAには内部入口用ゾーンがあります。",
+          "lines": [
+            "二つ目は接続口の種類。4種類のPEと6ゾーンに加え、",
+            "APIMとACAには内部入口用ゾーンがあります。"
+          ],
+          "weight": 50
+        },
+        {
+          "caption": "公開名はAppGWの公開入口へ向けます。",
+          "lines": [
+            "公開名はAppGWの公開入口へ向けます。"
+          ],
+          "weight": 20
+        }
+      ]
+    },
+    {
+      "id": "lesson02-turn-082-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "三つ目は送信元をそろえること。どこから、どのディーエヌエスに何を聞き、どのアイピーが返ったか。対象ピーイーや内部入口の実アイピーと比べるんですね。",
+      "caption": "三つ目は送信元をそろえること。どこから、どのDNSに何を聞き、どのIPが返ったか。対象PEや内部入口の実IPと比べるんですね。",
+      "subtitleLines": [
+        "三つ目は送信元をそろえること。どこから、どのDNSに何を聞き、",
+        "どのIPが返ったか。対象PEや内部入口の実IPと比べるんですね。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "summary-correspondence",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "今日確認した3つの対応",
+        "kind": "ネットワーク設定",
+        "section": "送信元別の確認",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：名前の対応表とデータ通信の経路を区別する",
+        "table": {
+          "columns": [
+            {
+              "label": "説明できる関係",
+              "width": 300
+            },
+            {
+              "label": "設定・確認する対応",
+              "width": 672
+            }
+          ],
+          "rows": [
+            {
+              "id": "name",
+              "cells": [
+                "通常名とPEのIP",
+                "通常FQDN → Private Link名 → PE実private IP"
+              ]
+            },
+            {
+              "id": "types",
+              "cells": [
+                "接続口とゾーン",
+                "4種類のPE / Private Link用6ゾーン"
+              ]
+            },
+            {
+              "id": "internal",
+              "cells": [
+                "内部入口と公開入口",
+                "APIM・ACAの内部用2ゾーン / 公開名はAppGWへ"
+              ]
+            },
+            {
+              "id": "source",
+              "cells": [
+                "送信元と回答",
+                "どこから / どのDNSへ / 何を聞き / どのIPか"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "source"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-084-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "次回はエヌエスジーです。今回そろえた送信元と宛先に対し、送信と受信の規則がどう評価されるか、優先順位と状態追跡を使って判断します。",
+      "caption": "次回はNSGです。今回そろえた送信元と宛先に対し、送信と受信の規則がどう評価されるか、優先順位と状態追跡を使って判断します。",
+      "subtitleLines": [
+        "次回はNSGです。今回そろえた送信元と宛先に対し、送信と受信の",
+        "規則がどう評価されるか、優先順位と状態追跡を使って判断します。"
+      ],
+      "gapAfterSeconds": 0.12,
+      "delivery": "質問への返答として仕組みを明瞭に説明する。用語の前後を軽く区切り、列挙は落ち着いて読む。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "next-nsg",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "次回：決まった宛先への通信を判断する",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：今回そろえた送信元と宛先を、次の通信制御へつなぐ",
+        "fields": [
+          {
+            "id": "source",
+            "label": "今回そろえるもの",
+            "value": "送信元 / 使うDNS / 名前 / 回答IP"
+          },
+          {
+            "id": "direction",
+            "label": "NSGで確かめるもの",
+            "value": "送信と受信の規則"
+          },
+          {
+            "id": "priority",
+            "label": "判断に使うもの",
+            "value": "優先順位 / 状態追跡"
+          },
+          {
+            "id": "goal",
+            "label": "次の問い",
+            "value": "その宛先への通信は許可されるか"
+          }
+        ],
+        "highlightFields": [
+          "direction",
+          "priority"
+        ]
+      }
+    },
+    {
+      "id": "lesson02-turn-085-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "宛先が決まったら、その通信は許可されるのか。次はそこを確かめます。今日もありがとうございました。では、次回の勉強会でお会いしましょう。",
+      "caption": "宛先が決まったら、その通信は許可されるのか。次はそこを確かめます。今日もありがとうございました。では、次回の勉強会でお会いしましょう。",
+      "subtitleLines": [
+        "宛先が決まったら、その通信は許可されるのか。",
+        "次はそこを確かめます。今日もありがとうございました。"
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の説明を受け、視聴者の疑問や理解のつながりを自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "next-nsg",
+        "areaLabel": "DNSとPrivate Endpoint",
+        "title": "次回：決まった宛先への通信を判断する",
+        "kind": "ネットワーク設定",
+        "section": "名前と接続口",
+        "menu": [
+          "名前と接続口",
+          "Private DNS",
+          "DNSの問い合わせ先",
+          "送信元別の確認"
+        ],
+        "subtitle": "構築定義・公開設定例から確認する",
+        "footer": "教材用の設定ビュー / 稼働Azureから取得した値ではありません",
+        "notice": "教材注釈：今回そろえた送信元と宛先を、次の通信制御へつなぐ",
+        "fields": [
+          {
+            "id": "source",
+            "label": "今回そろえるもの",
+            "value": "送信元 / 使うDNS / 名前 / 回答IP"
+          },
+          {
+            "id": "direction",
+            "label": "NSGで確かめるもの",
+            "value": "送信と受信の規則"
+          },
+          {
+            "id": "priority",
+            "label": "判断に使うもの",
+            "value": "優先順位 / 状態追跡"
+          },
+          {
+            "id": "goal",
+            "label": "次の問い",
+            "value": "その宛先への通信は許可されるか"
+          }
+        ],
+        "highlightFields": [
+          "goal"
+        ]
+      },
+      "subtitleChunks": [
+        {
+          "caption": "宛先が決まったら、その通信は許可されるのか。次はそこを確かめます。今日もありがとうございました。",
+          "lines": [
+            "宛先が決まったら、その通信は許可されるのか。",
+            "次はそこを確かめます。今日もありがとうございました。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "では、次回の勉強会でお会いしましょう。",
+          "lines": [
+            "では、次回の勉強会でお会いしましょう。"
+          ],
+          "weight": 19
+        }
+      ]
+    }
+  ],
+  "description": "PEとAPIM・ACAのVNet接続方式を最初に図で比較し、各入口のIPとDNSの対応を設定メニューで学ぶ第2回。",
+  "seriesLabel": "egakumi STUDY / 設定ビュー",
+  "editorialNotes": [
+    "Key VaultのCNAMEとAは名前解決順として示し、データの中継経路と分ける。",
+    "ゾーン名の一覧は図で示し、台詞では用途と対応を説明する。",
+    "図のIPは実値を創作せず「実IP」と表示する。公開例と稼働環境の実測を区別する。",
+    "Foundry/Key Vault/ACR/SQLの公開アクセス無効と、APIMのInternal VNet + PNA Enabledを区別する。",
+    "DNSの反映・TTL・キャッシュは確認観点として扱い、切替操作の実行手順へ広げない。"
+  ],
+  "visualEdition": "teaching-settings-connectivity-v3",
+  "visualStyle": "teaching-settings-v2",
+  "externalSourceReferences": [
+    {
+      "title": "Private Endpoint overview",
+      "url": "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview"
+    },
+    {
+      "title": "API Management virtual network concepts",
+      "url": "https://learn.microsoft.com/en-us/azure/api-management/virtual-network-concepts"
+    },
+    {
+      "title": "Container Apps virtual network configuration",
+      "url": "https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks"
+    }
+  ]
+}

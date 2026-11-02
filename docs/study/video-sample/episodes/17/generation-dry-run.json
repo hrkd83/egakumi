@@ -1,0 +1,20 @@
+{
+  "networkRequestsMade": false,
+  "authenticationRead": false,
+  "provider": "google-cloud",
+  "modelId": "gemini-3.8-flash-tts",
+  "project": "egakumi-example",
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/egakumi-example/locations/global/publishers/google/models/gemini-3.8-flash-tts:generateContent",
+  "requests": 75,
+  "workers": 1,
+  "configuration": "episodes/17/generation.json",
+  "output": "lesson-17-gemini",
+  "voices": {
+    "mako": "Aoede",
+    "manabu": "Charon",
+    "ikumi": "Orus"
+  },
+  "speed": 1,
+  "sourceScriptSha256": "f5b2cac0713fc5617f0bdf00ddf67aab830c0dd9f2a050c746d75c7cc79e0599",
+  "configurationSha256": "908006261e671c8fb2bbbaf50ff068f1e646fef8e6686b961154bbb97bdd2d5c"
+}

@@ -1,0 +1,5858 @@
+{
+  "schemaVersion": 1,
+  "productionProfile": "study-series-v1",
+  "visualStyle": "teaching-settings-v2",
+  "episodeKey": "10",
+  "episodeNumber": 10,
+  "episodeId": "10",
+  "title": "第10回 Firewallの許可とIDPSの検知",
+  "topic": "Firewallの許可とIDPSの検知",
+  "status": "ready-for-generation",
+  "cast": "podcast-cast-gemini.json",
+  "speed": 1,
+  "targetDurationSeconds": 900,
+  "durationPolicy": "通常速度の実音声で確定。尺合わせの加速や長い無音の追加は行わない。",
+  "logoIntroSeconds": 4,
+  "logoClosingSeconds": 8,
+  "speechSettings": {
+    "language": "ja-JP",
+    "speed": 1,
+    "enhancePronunciation": null
+  },
+  "scope": "現行リポジトリ定義・公開設定例に基づく教材。稼働環境の取得値・実測結果ではない。",
+  "learningObjectives": [
+    "通信規則のAllow／DenyとIDPS Alert／Deny、経路・TLS・方向による検査範囲を区別できる。"
+  ],
+  "sourceReferences": [
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "idps-settings"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "idps-detection"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "idps-coverage"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "ingress"
+    },
+    {
+      "file": "../02-external-protection.html",
+      "anchor": "idps-logs"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "opening",
+      "title": "Allowなのに検知される？",
+      "goal": "許可ログと攻撃検知が両立する問いを共有する。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-detection"
+        }
+      ]
+    },
+    {
+      "id": "purpose",
+      "title": "本番定義と二つの判断",
+      "goal": "通信規則とIDPSの役割、本番とテストの指定値を区別する。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-settings"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-detection"
+        }
+      ]
+    },
+    {
+      "id": "mechanism",
+      "title": "AlertとDenyの動き",
+      "goal": "並列検知とinline遮断、署名ごとの有効モードを説明する。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-detection"
+        }
+      ]
+    },
+    {
+      "id": "coverage",
+      "title": "経路・TLS・方向の境界",
+      "goal": "FW通過、復号の有無、方向分類と例外から検査範囲を絞る。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "ingress"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-coverage"
+        }
+      ]
+    },
+    {
+      "id": "walkthrough",
+      "title": "一つの要求とログを追う",
+      "goal": "通常API要求の許可・検知・最終結果を分けて確認する。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-detection"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-logs"
+        }
+      ]
+    },
+    {
+      "id": "check",
+      "title": "三つの確認問題",
+      "goal": "モード・暗号化・方向の誤解を自分で訂正できる。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-detection"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-coverage"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "title": "判断を分けて次の層へ",
+      "goal": "確認順を振り返り、第11回のAPIM認証と入力検査へ接続する。",
+      "sourceRefs": [
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-settings"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "idps-coverage"
+        },
+        {
+          "file": "../02-external-protection.html",
+          "anchor": "apim-scope"
+        }
+      ]
+    }
+  ],
+  "firstCut": {
+    "omitTurnIds": [],
+    "sourceRecordingsKept": true
+  },
+  "turns": [
+    {
+      "id": "lesson10-turn-001-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "ファイアウォールのログはアロー。でも、攻撃を検知したログもある。これ、同じ通信なら矛盾していませんか？",
+      "caption": "FirewallのログはAllow。でも、攻撃を検知したログもある。これ、同じ通信なら矛盾していませんか？",
+      "subtitleLines": [
+        "FirewallのログはAllow。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "FirewallのログはAllow。",
+          "lines": [
+            "FirewallのログはAllow。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "でも、攻撃を検知したログもある。",
+          "lines": [
+            "でも、攻撃を検知したログもある。"
+          ],
+          "weight": 16
+        },
+        {
+          "caption": "これ、同じ通信なら矛盾していませんか？",
+          "lines": [
+            "これ、同じ通信なら矛盾していませんか？"
+          ],
+          "weight": 19
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallの許可とIDPSの検知"
+      }
+    },
+    {
+      "id": "lesson10-turn-002-manabu",
+      "speaker": "manabu",
+      "chapterId": "opening",
+      "speech": "許可した条件と、見つけた危険を分ければ説明できます。管理者が知りたいのは、何を根拠に通し、何を記録したかです。",
+      "caption": "許可した条件と、見つけた危険を分ければ説明できます。管理者が知りたいのは、何を根拠に通し、何を記録したかです。",
+      "subtitleLines": [
+        "許可した条件と、見つけた危険を分ければ説明できます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "許可した条件と、見つけた危険を分ければ説明できます。",
+          "lines": [
+            "許可した条件と、見つけた危険を分ければ説明できます。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "管理者が知りたいのは、何を根拠に通し、何を記録したかです。",
+          "lines": [
+            "管理者が知りたいのは、何を根拠に通し、何を記録したかです。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallの許可とIDPSの検知"
+      }
+    },
+    {
+      "id": "lesson10-turn-003-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "opening",
+      "speech": "今日は通信規則とアイディーピーエスを分け、経路、暗号化、方向から、検査範囲を確かめましょう。",
+      "caption": "今日は通信規則とIDPSを分け、経路、暗号化、方向から、検査範囲を確かめましょう。",
+      "subtitleLines": [
+        "今日は通信規則とIDPSを分け、経路、暗号化、方向から、",
+        "検査範囲を確かめましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日は通信規則とIDPSを分け、経路、暗号化、方向から、検査範囲を確かめましょう。",
+          "lines": [
+            "今日は通信規則とIDPSを分け、経路、暗号化、方向から、",
+            "検査範囲を確かめましょう。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallの許可とIDPSの検知"
+      }
+    },
+    {
+      "id": "lesson10-turn-004-mako",
+      "speaker": "mako",
+      "chapterId": "opening",
+      "speech": "ログの単語だけで結論を出さず、通信の条件を見るんですね。二つの判断を整理します。",
+      "caption": "ログの単語だけで結論を出さず、通信の条件を見るんですね。二つの判断を整理します。",
+      "subtitleLines": [
+        "ログの単語だけで結論を出さず、通信の条件を見るんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ログの単語だけで結論を出さず、通信の条件を見るんですね。",
+          "lines": [
+            "ログの単語だけで結論を出さず、通信の条件を見るんですね。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "二つの判断を整理します。",
+          "lines": [
+            "二つの判断を整理します。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "hologram",
+        "heading": "Firewallの許可とIDPSの検知"
+      }
+    },
+    {
+      "id": "lesson10-turn-005-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "通信規則とアイディーピーエスは、どちらも危ない通信を止める設定ですか？",
+      "caption": "通信規則とIDPSは、どちらも危ない通信を止める設定ですか？",
+      "subtitleLines": [
+        "通信規則とIDPSは、どちらも危ない通信を止める設定ですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通信規則とIDPSは、どちらも危ない通信を止める設定ですか？",
+          "lines": [
+            "通信規則とIDPSは、どちらも危ない通信を止める設定ですか？"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-006-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "役割を分けましょう。ネットワークやアプリケーション規則は、接続元と宛先、ポートやエフキューディーエヌなど、規則の条件から許可や拒否を判断します。",
+      "caption": "役割を分けましょう。NetworkやApplication規則は、接続元と宛先、ポートやFQDNなど、規則の条件から許可や拒否を判断します。",
+      "subtitleLines": [
+        "役割を分けましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "役割を分けましょう。",
+          "lines": [
+            "役割を分けましょう。"
+          ],
+          "weight": 10
+        },
+        {
+          "caption": "NetworkやApplication規則は、接続元と宛先、ポートやFQDNなど、規則の条件から許可や拒否を判断します。",
+          "lines": [
+            "NetworkやApplication規則は、接続元と宛先、",
+            "ポートやFQDNなど、規則の条件から許可や拒否を判断します。"
+          ],
+          "weight": 60
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": [
+          "rules"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-007-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "業務に必要な接続の条件ですね。許可先への通信にも、攻撃の特徴が含まれる可能性は残ります。",
+      "caption": "業務に必要な接続の条件ですね。許可先への通信にも、攻撃の特徴が含まれる可能性は残ります。",
+      "subtitleLines": [
+        "業務に必要な接続の条件ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "業務に必要な接続の条件ですね。",
+          "lines": [
+            "業務に必要な接続の条件ですね。"
+          ],
+          "weight": 15
+        },
+        {
+          "caption": "許可先への通信にも、攻撃の特徴が含まれる可能性は残ります。",
+          "lines": [
+            "許可先への通信にも、攻撃の特徴が含まれる可能性は残ります。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": [
+          "rules"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-008-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "そこでアイディーピーエスが通信の特徴を、既知の攻撃パターンである署名と照合します。接続の許可と、攻撃らしい特徴の検知は、違う観点です。",
+      "caption": "そこでIDPSが通信の特徴を、既知の攻撃パターンである署名と照合します。接続の許可と、攻撃らしい特徴の検知は、違う観点です。",
+      "subtitleLines": [
+        "そこでIDPSが通信の特徴を、",
+        "既知の攻撃パターンである署名と照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこでIDPSが通信の特徴を、既知の攻撃パターンである署名と照合します。",
+          "lines": [
+            "そこでIDPSが通信の特徴を、",
+            "既知の攻撃パターンである署名と照合します。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "接続の許可と、攻撃らしい特徴の検知は、違う観点です。",
+          "lines": [
+            "接続の許可と、攻撃らしい特徴の検知は、違う観点です。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": [
+          "idps"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-009-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "なるほど。アローは、安全な業務要求として最後まで成功した、という印でもないんですね。",
+      "caption": "なるほど。Allowは、安全な業務要求として最後まで成功した、という印でもないんですね。",
+      "subtitleLines": [
+        "なるほど。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "なるほど。",
+          "lines": [
+            "なるほど。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "Allowは、安全な業務要求として最後まで成功した、という印でもないんですね。",
+          "lines": [
+            "Allowは、安全な業務要求として最後まで成功した、",
+            "という印でもないんですね。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-010-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "はい。次のエーピーアイエムで認証に失敗する場合もあります。接続条件、攻撃の検知、下流の結果を分けて確認します。",
+      "caption": "はい。次のAPIMで認証に失敗する場合もあります。接続条件、攻撃の検知、下流の結果を分けて確認します。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "次のAPIMで認証に失敗する場合もあります。",
+          "lines": [
+            "次のAPIMで認証に失敗する場合もあります。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "接続条件、攻撃の検知、下流の結果を分けて確認します。",
+          "lines": [
+            "接続条件、攻撃の検知、下流の結果を分けて確認します。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "decision-roles",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "同じ通信を、別の観点で判断する",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rules",
+            "label": "Network / Application規則",
+            "value": "接続条件により Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "IDPS",
+            "value": "既知の攻撃パターンと通信を照合"
+          },
+          {
+            "id": "outcome",
+            "label": "利用者から見た結果",
+            "value": "下流の認証・処理結果も別に確認"
+          }
+        ],
+        "highlightFields": [
+          "outcome"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-011-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "今のegakumiは何をする設定ですか？本番とテストを並べて見ましょう。",
+      "caption": "今のegakumiは何をする設定ですか？本番とテストを並べて見ましょう。",
+      "subtitleLines": [
+        "今のegakumiは何をする設定ですか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今のegakumiは何をする設定ですか？",
+          "lines": [
+            "今のegakumiは何をする設定ですか？"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "本番とテストを並べて見ましょう。",
+          "lines": [
+            "本番とテストを並べて見ましょう。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-012-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "本番のコンフィグはファイアウォールがプレミアムで、アイディーピーエスのモードはアラートです。署名の一致を検知して記録する指定で、アイディーピーエスによる遮断は選んでいません。",
+      "caption": "本番のconfigはFirewallがPremiumで、IDPSのモードはAlertです。署名の一致を検知して記録する指定で、IDPSによる遮断は選んでいません。",
+      "subtitleLines": [
+        "本番のconfigはFirewallがPremiumで、",
+        "IDPSのモードはAlertです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番のconfigはFirewallがPremiumで、IDPSのモードはAlertです。",
+          "lines": [
+            "本番のconfigはFirewallがPremiumで、",
+            "IDPSのモードはAlertです。"
+          ],
+          "weight": 45
+        },
+        {
+          "caption": "署名の一致を検知して記録する指定で、IDPSによる遮断は選んでいません。",
+          "lines": [
+            "署名の一致を検知して記録する指定で、",
+            "IDPSによる遮断は選んでいません。"
+          ],
+          "weight": 36
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "sku",
+          "mode"
+        ],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-013-mako",
+      "speaker": "mako",
+      "chapterId": "purpose",
+      "speech": "テストはスタンダードとオフですね。本番と同じ検査の、簡略版でしょうか？",
+      "caption": "テストはStandardとOffですね。本番と同じ検査の、簡略版でしょうか？",
+      "subtitleLines": [
+        "テストはStandardとOffですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "テストはStandardとOffですね。",
+          "lines": [
+            "テストはStandardとOffですね。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "本番と同じ検査の、簡略版でしょうか？",
+          "lines": [
+            "本番と同じ検査の、簡略版でしょうか？"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-014-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "いいえ。テストはアイディーピーエス機能を使いません。入力検証でスタンダードのオフを取り除き、バイセップもプレミアムの場合だけアイディーピーエスのプロパティを構成します。",
+      "caption": "いいえ。テストはIDPS機能を使いません。入力検証でStandardのOffを取り除き、BicepもPremiumの場合だけIDPSのプロパティを構成します。",
+      "subtitleLines": [
+        "いいえ。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "いいえ。",
+          "lines": [
+            "いいえ。"
+          ],
+          "weight": 4
+        },
+        {
+          "caption": "テストはIDPS機能を使いません。",
+          "lines": [
+            "テストはIDPS機能を使いません。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "入力検証でStandardのOffを取り除き、BicepもPremiumの場合だけIDPSのプロパティを構成します。",
+          "lines": [
+            "入力検証でStandardのOffを取り除き、Bicepも",
+            "Premiumの場合だけIDPSのプロパティを構成します。"
+          ],
+          "weight": 58
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "sku",
+          "mode"
+        ],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-015-manabu",
+      "speaker": "manabu",
+      "chapterId": "purpose",
+      "speech": "スタンダードのテスト環境では、本番アイディーピーエスの実検知や遮断を確認できません。検証できる範囲が違うんですね。",
+      "caption": "Standardのテスト環境では、本番IDPSの実検知や遮断を確認できません。検証できる範囲が違うんですね。",
+      "subtitleLines": [
+        "Standardのテスト環境では、",
+        "本番IDPSの実検知や遮断を確認できません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Standardのテスト環境では、本番IDPSの実検知や遮断を確認できません。",
+          "lines": [
+            "Standardのテスト環境では、",
+            "本番IDPSの実検知や遮断を確認できません。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "検証できる範囲が違うんですね。",
+          "lines": [
+            "検証できる範囲が違うんですね。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "mode"
+        ],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-016-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "purpose",
+      "speech": "ここに表示するのは現行のリポジトリ定義です。実際の配備値や実測結果とは分けます。署名の上書きは両方とも空で、スレットインテリジェンスも別にアラートです。",
+      "caption": "ここに表示するのは現行のリポジトリ定義です。実際の配備値や実測結果とは分けます。署名の上書きは両方とも空で、Threat Intelligenceも別にAlertです。",
+      "subtitleLines": [
+        "ここに表示するのは現行のリポジトリ定義です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここに表示するのは現行のリポジトリ定義です。",
+          "lines": [
+            "ここに表示するのは現行のリポジトリ定義です。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "実際の配備値や実測結果とは分けます。",
+          "lines": [
+            "実際の配備値や実測結果とは分けます。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "署名の上書きは両方とも空で、Threat Intelligenceも別にAlertです。",
+          "lines": [
+            "署名の上書きは両方とも空で、Threat ",
+            "Intelligenceも別にAlertです。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "environment-modes",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "本番とテストの指定値を比較する",
+        "kind": "Firewall Policy",
+        "section": "環境とモード",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "table": {
+          "columns": [
+            {
+              "label": "設定",
+              "width": 332
+            },
+            {
+              "label": "本番 config",
+              "width": 320
+            },
+            {
+              "label": "テスト config",
+              "width": 320
+            }
+          ],
+          "rows": [
+            {
+              "id": "sku",
+              "cells": [
+                "SKU",
+                "Premium",
+                "Standard"
+              ]
+            },
+            {
+              "id": "mode",
+              "cells": [
+                "idpsMode",
+                "Alert",
+                "Off"
+              ]
+            },
+            {
+              "id": "override",
+              "cells": [
+                "signatureOverrides",
+                "[]",
+                "[]"
+              ]
+            },
+            {
+              "id": "threat",
+              "cells": [
+                "threatIntelMode",
+                "Alert",
+                "Alert"
+              ]
+            }
+          ]
+        },
+        "highlightRows": [
+          "override",
+          "threat"
+        ],
+        "notice": "稼働環境を取得した画面ではなく、現行定義の比較"
+      }
+    },
+    {
+      "id": "lesson10-turn-017-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "最初の疑問へ戻ります。上段のアラートでは、通常規則のアローとアイディーピーエスの検知が、どう両立するのでしょう？",
+      "caption": "最初の疑問へ戻ります。上段のAlertでは、通常規則のAllowとIDPSの検知が、どう両立するのでしょう？",
+      "subtitleLines": [
+        "最初の疑問へ戻ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最初の疑問へ戻ります。",
+          "lines": [
+            "最初の疑問へ戻ります。"
+          ],
+          "weight": 11
+        },
+        {
+          "caption": "上段のAlertでは、通常規則のAllowとIDPSの検知が、どう両立するのでしょう？",
+          "lines": [
+            "上段のAlertでは、通常規則のAllowとIDPSの検知が、",
+            "どう両立するのでしょう？"
+          ],
+          "weight": 43
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-018-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "上段の二つの枝が本番定義です。通信規則とアイディーピーエスの検知が並列に動きます。アイディーピーエスの合格を待って送る、直列の関門ではありません。",
+      "caption": "上段の二つの枝が本番定義です。通信規則とIDPSの検知が並列に動きます。IDPSの合格を待って送る、直列の関門ではありません。",
+      "subtitleLines": [
+        "上段の二つの枝が本番定義です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "上段の二つの枝が本番定義です。",
+          "lines": [
+            "上段の二つの枝が本番定義です。"
+          ],
+          "weight": 15
+        },
+        {
+          "caption": "通信規則とIDPSの検知が並列に動きます。",
+          "lines": [
+            "通信規則とIDPSの検知が並列に動きます。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "IDPSの合格を待って送る、直列の関門ではありません。",
+          "lines": [
+            "IDPSの合格を待って送る、直列の関門ではありません。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-019-manabu",
+      "speaker": "manabu",
+      "chapterId": "mechanism",
+      "speech": "接続条件でアローとなり、別の観点で署名に一致した、という二つの記録が残るわけですね。",
+      "caption": "接続条件でAllowとなり、別の観点で署名に一致した、という二つの記録が残るわけですね。",
+      "subtitleLines": [
+        "接続条件でAllowとなり、別の観点で署名に一致した、",
+        "という二つの記録が残るわけですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "接続条件でAllowとなり、別の観点で署名に一致した、という二つの記録が残るわけですね。",
+          "lines": [
+            "接続条件でAllowとなり、別の観点で署名に一致した、",
+            "という二つの記録が残るわけですね。"
+          ],
+          "weight": 44
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-020-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "では、通常規則がデナイでも、アイディーピーエスがアラートなら、検知だけで通してくれるのでしょうか？",
+      "caption": "では、通常規則がDenyでも、IDPSがAlertなら、検知だけで通してくれるのでしょうか？",
+      "subtitleLines": [
+        "では、通常規則がDenyでも、IDPSがAlertなら、",
+        "検知だけで通してくれるのでしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "では、通常規則がDenyでも、IDPSがAlertなら、検知だけで通してくれるのでしょうか？",
+          "lines": [
+            "では、通常規則がDenyでも、IDPSがAlertなら、",
+            "検知だけで通してくれるのでしょうか？"
+          ],
+          "weight": 46
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-021-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "アイディーピーエスのアラートは、通常規則のデナイを解除しません。同じ通信に検知ログがあっても、規則の拒否は有効です。",
+      "caption": "IDPSのAlertは、通常規則のDenyを解除しません。同じ通信に検知ログがあっても、規則の拒否は有効です。",
+      "subtitleLines": [
+        "IDPSのAlertは、通常規則のDenyを解除しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "IDPSのAlertは、通常規則のDenyを解除しません。",
+          "lines": [
+            "IDPSのAlertは、通常規則のDenyを解除しません。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "同じ通信に検知ログがあっても、規則の拒否は有効です。",
+          "lines": [
+            "同じ通信に検知ログがあっても、規則の拒否は有効です。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-022-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "アラートは、アイディーピーエス自身が検知をどう扱うかの指定なんですね。",
+      "caption": "Alertは、IDPS自身が検知をどう扱うかの指定なんですね。",
+      "subtitleLines": [
+        "Alertは、IDPS自身が検知をどう扱うかの指定なんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Alertは、IDPS自身が検知をどう扱うかの指定なんですね。",
+          "lines": [
+            "Alertは、IDPS自身が検知をどう扱うかの指定なんですね。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-023-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "次は下段です。アイディーピーエスをデナイへ変える場合、どの位置で通信を止めるのですか？",
+      "caption": "次は下段です。IDPSをDenyへ変える場合、どの位置で通信を止めるのですか？",
+      "subtitleLines": [
+        "次は下段です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は下段です。",
+          "lines": [
+            "次は下段です。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "IDPSをDenyへ変える場合、どの位置で通信を止めるのですか？",
+          "lines": [
+            "IDPSをDenyへ変える場合、どの位置で通信を止めるのですか？"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-024-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "下段は機能の説明です。通常規則の処理後に、アイディーピーエスが通信経路の中でインラインに動きます。デナイ対象の署名に一致すると、記録して通信を遮断できます。",
+      "caption": "下段は機能の説明です。通常規則の処理後に、IDPSが通信経路の中でinlineに動きます。Deny対象の署名に一致すると、記録して通信を遮断できます。",
+      "subtitleLines": [
+        "下段は機能の説明です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "下段は機能の説明です。",
+          "lines": [
+            "下段は機能の説明です。"
+          ],
+          "weight": 11
+        },
+        {
+          "caption": "通常規則の処理後に、IDPSが通信経路の中でinlineに動きます。",
+          "lines": [
+            "通常規則の処理後に、IDPSが通信経路の中でinlineに動きます。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "Deny対象の署名に一致すると、記録して通信を遮断できます。",
+          "lines": [
+            "Deny対象の署名に一致すると、記録して通信を遮断できます。"
+          ],
+          "weight": 30
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-025-manabu",
+      "speaker": "manabu",
+      "chapterId": "mechanism",
+      "speech": "後段のアイディーピーエスで止まる可能性がある。通常規則のアローログだけでは、最終的な通過を保証できないんですね。",
+      "caption": "後段のIDPSで止まる可能性がある。通常規則のAllowログだけでは、最終的な通過を保証できないんですね。",
+      "subtitleLines": [
+        "後段のIDPSで止まる可能性がある。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "後段のIDPSで止まる可能性がある。",
+          "lines": [
+            "後段のIDPSで止まる可能性がある。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "通常規則のAllowログだけでは、最終的な通過を保証できないんですね。",
+          "lines": [
+            "通常規則のAllowログだけでは、",
+            "最終的な通過を保証できないんですね。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-026-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "その通りです。コンフィグのデナイは、製品の画面でいうアラートアンドデナイに対応します。ただし、ポリシーのモード名だけで、すべての署名が遮断すると決めないでください。",
+      "caption": "その通りです。configのDenyは、製品の画面でいうAlert and Denyに対応します。ただし、ポリシーのモード名だけで、すべての署名が遮断すると決めないでください。",
+      "subtitleLines": [
+        "その通りです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その通りです。",
+          "lines": [
+            "その通りです。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "configのDenyは、製品の画面でいうAlert and Denyに対応します。",
+          "lines": [
+            "configのDenyは、製品の画面でいうAlert and ",
+            "Denyに対応します。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "ただし、ポリシーのモード名だけで、すべての署名が遮断すると決めないでください。",
+          "lines": [
+            "ただし、ポリシーのモード名だけで、",
+            "すべての署名が遮断すると決めないでください。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-027-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "拒否なら、ワフのようにエイチティーティーピーのエラー応答が返る、と予想してしまいそうです。見え方も同じですか？",
+      "caption": "拒否なら、WAFのようにHTTPのエラー応答が返る、と予想してしまいそうです。見え方も同じですか？",
+      "subtitleLines": [
+        "拒否なら、WAFのようにHTTPのエラー応答が返る、",
+        "と予想してしまいそうです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "拒否なら、WAFのようにHTTPのエラー応答が返る、と予想してしまいそうです。",
+          "lines": [
+            "拒否なら、WAFのようにHTTPのエラー応答が返る、",
+            "と予想してしまいそうです。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "見え方も同じですか？",
+          "lines": [
+            "見え方も同じですか？"
+          ],
+          "weight": 10
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-028-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "アイディーピーエスの遮断はティーシーピーのリセットを返さず、timeoutなどで見える場合があります。エラー名だけで、拒否した機能を特定しないでください。",
+      "caption": "IDPSの遮断はTCPのRSTを返さず、timeoutなどで見える場合があります。エラー名だけで、拒否した機能を特定しないでください。",
+      "subtitleLines": [
+        "IDPSの遮断はTCPのRSTを返さず、",
+        "timeoutなどで見える場合があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "IDPSの遮断はTCPのRSTを返さず、timeoutなどで見える場合があります。",
+          "lines": [
+            "IDPSの遮断はTCPのRSTを返さず、",
+            "timeoutなどで見える場合があります。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "エラー名だけで、拒否した機能を特定しないでください。",
+          "lines": [
+            "エラー名だけで、拒否した機能を特定しないでください。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "idps-modes",
+        "heading": "Alertの並列検知とDenyのinline遮断",
+        "svg": "diagrams/idps-modes.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-029-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "デナイでも全部の署名が遮断するわけではない。署名の何を確認すればよいですか？",
+      "caption": "Denyでも全部の署名が遮断するわけではない。署名の何を確認すればよいですか？",
+      "subtitleLines": [
+        "Denyでも全部の署名が遮断するわけではない。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Denyでも全部の署名が遮断するわけではない。",
+          "lines": [
+            "Denyでも全部の署名が遮断するわけではない。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "署名の何を確認すればよいですか？",
+          "lines": [
+            "署名の何を確認すればよいですか？"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-030-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "署名は脆弱性を突く通信や、マルウェアの指令通信であるシーツーなどの特徴を表します。Microsoftが管理、更新する署名を、適用条件に沿って照合します。",
+      "caption": "署名は脆弱性を突く通信や、マルウェアの指令通信であるC2などの特徴を表します。Microsoftが管理、更新する署名を、適用条件に沿って照合します。",
+      "subtitleLines": [
+        "署名は脆弱性を突く通信や、",
+        "マルウェアの指令通信であるC2などの特徴を表します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "署名は脆弱性を突く通信や、マルウェアの指令通信であるC2などの特徴を表します。",
+          "lines": [
+            "署名は脆弱性を突く通信や、",
+            "マルウェアの指令通信であるC2などの特徴を表します。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "Microsoftが管理、更新する署名を、適用条件に沿って照合します。",
+          "lines": [
+            "Microsoftが管理、更新する署名を、",
+            "適用条件に沿って照合します。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": [
+          "signature",
+          "conditions"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-031-manabu",
+      "speaker": "manabu",
+      "chapterId": "mechanism",
+      "speech": "既知の特徴への一致を見る判断ですね。検知がないことだけを、安全の保証にはできません。",
+      "caption": "既知の特徴への一致を見る判断ですね。検知がないことだけを、安全の保証にはできません。",
+      "subtitleLines": [
+        "既知の特徴への一致を見る判断ですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "既知の特徴への一致を見る判断ですね。",
+          "lines": [
+            "既知の特徴への一致を見る判断ですね。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "検知がないことだけを、安全の保証にはできません。",
+          "lines": [
+            "検知がないことだけを、安全の保証にはできません。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": [
+          "signature"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-032-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "ポリシーがデナイでも、一部の署名は既定でアラートオンリーです。署名ごとの有効モードと、変更できる範囲を確認して、記録なのか遮断なのかを判断します。",
+      "caption": "ポリシーがDenyでも、一部の署名は既定でAlert Onlyです。署名ごとの有効モードと、変更できる範囲を確認して、記録なのか遮断なのかを判断します。",
+      "subtitleLines": [
+        "ポリシーがDenyでも、一部の署名は既定でAlert Onlyです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ポリシーがDenyでも、一部の署名は既定でAlert Onlyです。",
+          "lines": [
+            "ポリシーがDenyでも、一部の署名は既定でAlert Onlyです。"
+          ],
+          "weight": 34
+        },
+        {
+          "caption": "署名ごとの有効モードと、変更できる範囲を確認して、記録なのか遮断なのかを判断します。",
+          "lines": [
+            "署名ごとの有効モードと、変更できる範囲を確認して、",
+            "記録なのか遮断なのかを判断します。"
+          ],
+          "weight": 42
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": [
+          "mode"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-033-mako",
+      "speaker": "mako",
+      "chapterId": "mechanism",
+      "speech": "本番のシグネチャーオーバーライドが空なら、署名は一つも有効でない、という読み方でしょうか？",
+      "caption": "本番のsignatureOverridesが空なら、署名は一つも有効でない、という読み方でしょうか？",
+      "subtitleLines": [
+        "本番のsignatureOverridesが空なら、",
+        "署名は一つも有効でない、という読み方でしょうか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番のsignatureOverridesが空なら、署名は一つも有効でない、という読み方でしょうか？",
+          "lines": [
+            "本番のsignatureOverridesが空なら、",
+            "署名は一つも有効でない、という読み方でしょうか？"
+          ],
+          "weight": 50
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-034-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "mechanism",
+      "speech": "利用者によるモードの上書きがない、という意味です。署名をなくす設定ではありません。実際の署名条件や更新も含めて確認します。",
+      "caption": "利用者によるモードの上書きがない、という意味です。署名をなくす設定ではありません。実際の署名条件や更新も含めて確認します。",
+      "subtitleLines": [
+        "利用者によるモードの上書きがない、という意味です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者によるモードの上書きがない、という意味です。",
+          "lines": [
+            "利用者によるモードの上書きがない、という意味です。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "署名をなくす設定ではありません。",
+          "lines": [
+            "署名をなくす設定ではありません。"
+          ],
+          "weight": 16
+        },
+        {
+          "caption": "実際の署名条件や更新も含めて確認します。",
+          "lines": [
+            "実際の署名条件や更新も含めて確認します。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "signature-actions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "モード名と、署名の有効な動作を分ける",
+        "kind": "Firewall Policy",
+        "section": "署名の動作",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "signature",
+            "label": "署名が見る特徴",
+            "value": "攻撃に特徴的なパターンと適用条件"
+          },
+          {
+            "id": "mode",
+            "label": "ポリシーが Deny の場合",
+            "value": "一部署名は既定で Alert Only"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "本番定義 []：利用者による上書きなし"
+          },
+          {
+            "id": "conditions",
+            "label": "照合する条件",
+            "value": "方向・プロトコル・ポートなど"
+          }
+        ],
+        "highlightFields": [
+          "override"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-035-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "この図の三つの区間で、ファイアウォールは同じように本文まで検査できますか？",
+      "caption": "この図の三つの区間で、Firewallは同じように本文まで検査できますか？",
+      "subtitleLines": [
+        "この図の三つの区間で、Firewall",
+        "は同じように本文まで検査できますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "この図の三つの区間で、Firewallは同じように本文まで検査できますか？",
+          "lines": [
+            "この図の三つの区間で、Firewall",
+            "は同じように本文まで検査できますか？"
+          ],
+          "weight": 37
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-036-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "最初に実際の経路を選びます。上段の通常エーピーアイは、アップジーダブリューからファイアウォールを通り、エーピーアイエムへエイチティーティーピーのはちじゅう番で進みます。この区間は平文なので、条件に合う署名で内容を検査できます。",
+      "caption": "最初に実際の経路を選びます。上段の通常APIは、AppGWからFirewallを通り、APIMへHTTPの80番で進みます。この区間は平文なので、条件に合う署名で内容を検査できます。",
+      "subtitleLines": [
+        "最初に実際の経路を選びます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最初に実際の経路を選びます。",
+          "lines": [
+            "最初に実際の経路を選びます。"
+          ],
+          "weight": 14
+        },
+        {
+          "caption": "上段の通常APIは、AppGWからFirewallを通り、APIMへHTTPの80番で進みます。",
+          "lines": [
+            "上段の通常APIは、AppGWからFirewallを通り、",
+            "APIMへHTTPの80番で進みます。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "この区間は平文なので、条件に合う署名で内容を検査できます。",
+          "lines": [
+            "この区間は平文なので、条件に合う署名で内容を検査できます。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-037-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "利用者からはエイチティーティーピーエスでも、アップジーダブリューが終端した後の接続を見るんですね。区間ごとに暗号化の状態を確認します。",
+      "caption": "利用者からはHTTPSでも、AppGWが終端した後の接続を見るんですね。区間ごとに暗号化の状態を確認します。",
+      "subtitleLines": [
+        "利用者からはHTTPSでも、",
+        "AppGWが終端した後の接続を見るんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "利用者からはHTTPSでも、AppGWが終端した後の接続を見るんですね。",
+          "lines": [
+            "利用者からはHTTPSでも、",
+            "AppGWが終端した後の接続を見るんですね。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "区間ごとに暗号化の状態を確認します。",
+          "lines": [
+            "区間ごとに暗号化の状態を確認します。"
+          ],
+          "weight": 18
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-038-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "中段のポータル向けエイチティーティーピーエスはファイアウォールを通ります。同じ機器を通るのなら、こちらも本文を読めますか？",
+      "caption": "中段のPortal向けHTTPSはFirewallを通ります。同じ機器を通るのなら、こちらも本文を読めますか？",
+      "subtitleLines": [
+        "中段のPortal向けHTTPSはFirewallを通ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "中段のPortal向けHTTPSはFirewallを通ります。",
+          "lines": [
+            "中段のPortal向けHTTPSはFirewallを通ります。"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "同じ機器を通るのなら、こちらも本文を読めますか？",
+          "lines": [
+            "同じ機器を通るのなら、こちらも本文を読めますか？"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-039-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "現行のファイアウォールにはティーエルエス復号検査の設定がありません。ポータルやジーアールピーシー、エイチティーティーピーエスの外向き通信では、暗号化内部の本文をアイディーピーエスが読めるとは扱いません。",
+      "caption": "現行のFirewallにはTLS復号検査の設定がありません。PortalやgRPC、HTTPSの外向き通信では、暗号化内部の本文をIDPSが読めるとは扱いません。",
+      "subtitleLines": [
+        "現行のFirewallにはTLS復号検査の設定がありません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "現行のFirewallにはTLS復号検査の設定がありません。",
+          "lines": [
+            "現行のFirewallにはTLS復号検査の設定がありません。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "PortalやgRPC、HTTPSの外向き通信では、暗号化内部の本文をIDPSが読めるとは扱いません。",
+          "lines": [
+            "PortalやgRPC、HTTPSの外向き通信では、",
+            "暗号化内部の本文をIDPSが読めるとは扱いません。"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-040-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "プレミアムを選ぶだけで、ティーエルエスの復号に必要な設定まで整うわけではないんですね。",
+      "caption": "Premiumを選ぶだけで、TLSの復号に必要な設定まで整うわけではないんですね。",
+      "subtitleLines": [
+        "Premiumを選ぶだけで、",
+        "TLSの復号に必要な設定まで整うわけではないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Premiumを選ぶだけで、TLSの復号に必要な設定まで整うわけではないんですね。",
+          "lines": [
+            "Premiumを選ぶだけで、",
+            "TLSの復号に必要な設定まで整うわけではないんですね。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-041-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "下段はエーピーアイエムからファウンドリーのピーイーへ直接進んでいます。この経路にも、ファイアウォールのアイディーピーエスが関わるのでしょうか？",
+      "caption": "下段はAPIMからFoundryのPEへ直接進んでいます。この経路にも、FirewallのIDPSが関わるのでしょうか？",
+      "subtitleLines": [
+        "下段はAPIMからFoundryのPEへ直接進んでいます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "下段はAPIMからFoundryのPEへ直接進んでいます。",
+          "lines": [
+            "下段はAPIMからFoundryのPEへ直接進んでいます。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "この経路にも、FirewallのIDPSが関わるのでしょうか？",
+          "lines": [
+            "この経路にも、FirewallのIDPSが関わるのでしょうか？"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-042-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "ファイアウォールを通らないピーイーへの直接経路は、このファイアウォールのアイディーピーエスでは検査しません。まず通るか、次に暗号化内部が見えるか、その先に署名条件、という順で確認します。",
+      "caption": "Firewallを通らないPEへの直接経路は、このFirewallのIDPSでは検査しません。まず通るか、次に暗号化内部が見えるか、その先に署名条件、という順で確認します。",
+      "subtitleLines": [
+        "Firewallを通らないPEへの直接経路は、",
+        "このFirewallのIDPSでは検査しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Firewallを通らないPEへの直接経路は、このFirewallのIDPSでは検査しません。",
+          "lines": [
+            "Firewallを通らないPEへの直接経路は、",
+            "このFirewallのIDPSでは検査しません。"
+          ],
+          "weight": 47
+        },
+        {
+          "caption": "まず通るか、次に暗号化内部が見えるか、その先に署名条件、という順で確認します。",
+          "lines": [
+            "まず通るか、次に暗号化内部が見えるか、その先に署名条件、",
+            "という順で確認します。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "coverage-paths",
+        "heading": "FW通過と、暗号化の境界を確認する",
+        "svg": "diagrams/coverage-paths.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-043-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "次は方向です。Internetの利用者から来た通常エーピーアイ要求なら、アイディーピーエスでも必ずインバウンド扱いですか？",
+      "caption": "次は方向です。Internetの利用者から来た通常API要求なら、IDPSでも必ずInbound扱いですか？",
+      "subtitleLines": [
+        "次は方向です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次は方向です。",
+          "lines": [
+            "次は方向です。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "Internetの利用者から来た通常API要求なら、IDPSでも必ずInbound扱いですか？",
+          "lines": [
+            "Internetの利用者から来た通常API要求なら、",
+            "IDPSでも必ずInbound扱いですか？"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-044-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "ファイアウォールから見える通信のアイピーで考えます。独自のprivate範囲を指定しない公開例では、既定のアールエフシー、いちきゅういちはちを使い、送信元と宛先がprivateかどうかで方向を分類します。",
+      "caption": "Firewallから見える通信のIPで考えます。独自のprivate範囲を指定しない公開例では、既定のRFC 1918を使い、送信元と宛先がprivateかどうかで方向を分類します。",
+      "subtitleLines": [
+        "Firewallから見える通信のIPで考えます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Firewallから見える通信のIPで考えます。",
+          "lines": [
+            "Firewallから見える通信のIPで考えます。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "独自のprivate範囲を指定しない公開例では、既定のRFC 1918を使い、",
+          "lines": [
+            "独自のprivate範囲を指定しない公開例では、既定のRFC ",
+            "1918を使い、"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "送信元と宛先がprivateかどうかで方向を分類します。",
+          "lines": [
+            "送信元と宛先がprivateかどうかで方向を分類します。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-045-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "観測する接続の両端を見るんですね。アップジーダブリューが代理接続を作ることが、ここで効いてきます。",
+      "caption": "観測する接続の両端を見るんですね。AppGWが代理接続を作ることが、ここで効いてきます。",
+      "subtitleLines": [
+        "観測する接続の両端を見るんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "観測する接続の両端を見るんですね。",
+          "lines": [
+            "観測する接続の両端を見るんですね。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "AppGWが代理接続を作ることが、ここで効いてきます。",
+          "lines": [
+            "AppGWが代理接続を作ることが、ここで効いてきます。"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-046-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "図の下段にあるprivate同士がインターナルです。公開例のアップジーダブリューからエーピーアイエムはこの分類です。元の利用者がInternet上でも、インバウンド専用の署名がすべて適用されるとは限りません。",
+      "caption": "図の下段にあるprivate同士がInternalです。公開例のAppGWからAPIMはこの分類です。元の利用者がInternet上でも、Inbound専用の署名がすべて適用されるとは限りません。",
+      "subtitleLines": [
+        "図の下段にあるprivate同士がInternalです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図の下段にあるprivate同士がInternalです。",
+          "lines": [
+            "図の下段にあるprivate同士がInternalです。"
+          ],
+          "weight": 28
+        },
+        {
+          "caption": "公開例のAppGWからAPIMはこの分類です。",
+          "lines": [
+            "公開例のAppGWからAPIMはこの分類です。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "元の利用者がInternet上でも、Inbound専用の署名がすべて適用されるとは限りません。",
+          "lines": [
+            "元の利用者がInternet上でも、",
+            "Inbound専用の署名がすべて適用されるとは限りません。"
+          ],
+          "weight": 47
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-047-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "図の上二段では、公開側からprivate側がインバウンド、private側から公開側がアウトバウンド。署名は、その方向の条件も見るわけですね。",
+      "caption": "図の上二段では、公開側からprivate側がInbound、private側から公開側がOutbound。署名は、その方向の条件も見るわけですね。",
+      "subtitleLines": [
+        "図の上二段では、公開側からprivate側がInbound、",
+        "private側から公開側がOutbound。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "図の上二段では、公開側からprivate側がInbound、private側から公開側がOutbound。",
+          "lines": [
+            "図の上二段では、公開側からprivate側がInbound、",
+            "private側から公開側がOutbound。"
+          ],
+          "weight": 53
+        },
+        {
+          "caption": "署名は、その方向の条件も見るわけですね。",
+          "lines": [
+            "署名は、その方向の条件も見るわけですね。"
+          ],
+          "weight": 20
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-048-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "はい。アイディーピーエスのプライベート範囲の空配列は独自範囲を指定しない意味で、検査対象が空という意味ではありません。企業で独自範囲を変える場合も、経路と署名の適用を合わせて確認します。",
+      "caption": "はい。idpsPrivateRangesの空配列は独自範囲を指定しない意味で、検査対象が空という意味ではありません。企業で独自範囲を変える場合も、経路と署名の適用を合わせて確認します。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "idpsPrivateRangesの空配列は独自範囲を指定しない意味で、検査対象が空という意味ではありません。",
+          "lines": [
+            "idpsPrivateRangesの空配列は独自範囲を指",
+            "定しない意味で、検査対象が空という意味ではありません。"
+          ],
+          "weight": 55
+        },
+        {
+          "caption": "企業で独自範囲を変える場合も、経路と署名の適用を合わせて確認します。",
+          "lines": [
+            "企業で独自範囲を変える場合も、経路と署名の適用を合わせて確認します。"
+          ],
+          "weight": 34
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "svg",
+        "viewId": "direction",
+        "heading": "IDPSから見えるIPで方向を分類する",
+        "svg": "diagrams/direction.svg"
+      }
+    },
+    {
+      "id": "lesson10-turn-049-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "誤検知があったら、どこで例外を作るのでしょう？前回のワフで扱った除外と、同じ粒度ですか？",
+      "caption": "誤検知があったら、どこで例外を作るのでしょう？前回のWAFで扱った除外と、同じ粒度ですか？",
+      "subtitleLines": [
+        "誤検知があったら、どこで例外を作るのでしょう？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "誤検知があったら、どこで例外を作るのでしょう？",
+          "lines": [
+            "誤検知があったら、どこで例外を作るのでしょう？"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "前回のWAFで扱った除外と、同じ粒度ですか？",
+          "lines": [
+            "前回のWAFで扱った除外と、同じ粒度ですか？"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-050-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "設定ごとに範囲が違います。シグネチャーオーバーライドは、指定した署名の動作を変更します。公開の本番定義は空で、利用者による署名モードの上書きはありません。",
+      "caption": "設定ごとに範囲が違います。signatureOverridesは、指定した署名の動作を変更します。公開の本番定義は空で、利用者による署名モードの上書きはありません。",
+      "subtitleLines": [
+        "設定ごとに範囲が違います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "設定ごとに範囲が違います。",
+          "lines": [
+            "設定ごとに範囲が違います。"
+          ],
+          "weight": 13
+        },
+        {
+          "caption": "signatureOverridesは、指定した署名の動作を変更します。",
+          "lines": [
+            "signatureOverridesは、",
+            "指定した署名の動作を変更します。"
+          ],
+          "weight": 36
+        },
+        {
+          "caption": "公開の本番定義は空で、利用者による署名モードの上書きはありません。",
+          "lines": [
+            "公開の本番定義は空で、利用者による署名モードの上書きはありません。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": [
+          "override"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-051-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "その署名が見る通信へ影響しますね。一要求だけの調整と決めつけず、ほかの正規通信への影響も考えます。",
+      "caption": "その署名が見る通信へ影響しますね。一要求だけの調整と決めつけず、ほかの正規通信への影響も考えます。",
+      "subtitleLines": [
+        "その署名が見る通信へ影響しますね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "その署名が見る通信へ影響しますね。",
+          "lines": [
+            "その署名が見る通信へ影響しますね。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "一要求だけの調整と決めつけず、ほかの正規通信への影響も考えます。",
+          "lines": [
+            "一要求だけの調整と決めつけず、ほかの正規通信への影響も考えます。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": [
+          "override"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-052-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "バイパストラフィック設定は、指定した通信をアイディーピーエス検査から外します。公開パラムズ例は空で、通信単位の追加除外はありません。署名のモード変更と、通信の検査除外は別です。",
+      "caption": "bypassTrafficSettingsは、指定した通信をIDPS検査から外します。公開params例は空で、通信単位の追加除外はありません。署名のモード変更と、通信の検査除外は別です。",
+      "subtitleLines": [
+        "bypassTrafficSettingsは、",
+        "指定した通信をIDPS検査から外します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "bypassTrafficSettingsは、指定した通信をIDPS検査から外します。",
+          "lines": [
+            "bypassTrafficSettingsは、",
+            "指定した通信をIDPS検査から外します。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "公開params例は空で、通信単位の追加除外はありません。",
+          "lines": [
+            "公開params例は空で、通信単位の追加除外はありません。"
+          ],
+          "weight": 29
+        },
+        {
+          "caption": "署名のモード変更と、通信の検査除外は別です。",
+          "lines": [
+            "署名のモード変更と、通信の検査除外は別です。"
+          ],
+          "weight": 22
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": [
+          "bypass",
+          "example"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-053-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "ワフで扱った、パスと引数と原因ルールを絞る除外を、そのまま移して考えることはできないんですね。",
+      "caption": "WAFで扱った、パスと引数と原因ルールを絞る除外を、そのまま移して考えることはできないんですね。",
+      "subtitleLines": [
+        "WAFで扱った、パスと引数と原因ルールを絞る除外を、",
+        "そのまま移して考えることはできないんですね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "WAFで扱った、パスと引数と原因ルールを絞る除外を、そのまま移して考えることはできないんですね。",
+          "lines": [
+            "WAFで扱った、パスと引数と原因ルールを絞る除外を、",
+            "そのまま移して考えることはできないんですね。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-054-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "はい。再現条件を調べ、変更の対象と残る検査を説明できる範囲に絞ります。原因を調べず、例外だけを増やさないようにします。",
+      "caption": "はい。再現条件を調べ、変更の対象と残る検査を説明できる範囲に絞ります。原因を調べず、例外だけを増やさないようにします。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "再現条件を調べ、変更の対象と残る検査を説明できる範囲に絞ります。",
+          "lines": [
+            "再現条件を調べ、変更の対象と残る検査を説明できる範囲に絞ります。"
+          ],
+          "weight": 32
+        },
+        {
+          "caption": "原因を調べず、例外だけを増やさないようにします。",
+          "lines": [
+            "原因を調べず、例外だけを増やさないようにします。"
+          ],
+          "weight": 24
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "idps-exceptions",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "署名の上書きと通信のbypass",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "range",
+            "label": "idpsPrivateRanges",
+            "value": "公開params例 []：独自範囲の指定なし"
+          },
+          {
+            "id": "override",
+            "label": "signatureOverrides",
+            "value": "指定した署名の動作を変更"
+          },
+          {
+            "id": "bypass",
+            "label": "bypassTrafficSettings",
+            "value": "指定した通信を IDPS 検査から外す"
+          },
+          {
+            "id": "example",
+            "label": "公開params例の bypass",
+            "value": "[]：通信単位の追加除外なし"
+          }
+        ],
+        "highlightFields": [
+          "override",
+          "bypass"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-055-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "private範囲という名前を見ると、送信元を書き換えるエスナットの設定も思い出します。同じものですか？",
+      "caption": "private範囲という名前を見ると、送信元を書き換えるSNATの設定も思い出します。同じものですか？",
+      "subtitleLines": [
+        "private範囲という名前を見ると、",
+        "送信元を書き換えるSNATの設定も思い出します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "private範囲という名前を見ると、送信元を書き換えるSNATの設定も思い出します。",
+          "lines": [
+            "private範囲という名前を見ると、",
+            "送信元を書き換えるSNATの設定も思い出します。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "同じものですか？",
+          "lines": [
+            "同じものですか？"
+          ],
+          "weight": 8
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-056-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "別です。アイディーピーエスのprivate範囲は方向分類、エスナットのプライベート範囲はネットワーク規則の送信元変換を判断します。アイディーピーエスの範囲を変えても、エスナットを設定したことにはなりません。",
+      "caption": "別です。IDPSのprivate範囲は方向分類、snatPrivateRangesはNetwork規則の送信元変換を判断します。IDPSの範囲を変えても、SNATを設定したことにはなりません。",
+      "subtitleLines": [
+        "別です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "別です。",
+          "lines": [
+            "別です。"
+          ],
+          "weight": 4
+        },
+        {
+          "caption": "IDPSのprivate範囲は方向分類、",
+          "lines": [
+            "IDPSのprivate範囲は方向分類、"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "snatPrivateRangesはNetwork規則の送信元変換を判断します。",
+          "lines": [
+            "snatPrivateRangesはNetwork規則の",
+            "送信元変換を判断します。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "IDPSの範囲を変えても、SNATを設定したことにはなりません。",
+          "lines": [
+            "IDPSの範囲を変えても、SNATを設定したことにはなりません。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": [
+          "idps",
+          "snat"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-057-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "公開例のアップジーダブリューからエーピーアイエムは、private宛てのネットワーク規則なので、送信元アップジーダブリューのアイピーを保持します。アプリケーション規則には別のエスナット動作があるため、一律に説明しません。",
+      "caption": "公開例のAppGWからAPIMは、private宛てのNetwork規則なので、送信元AppGWのIPを保持します。Application規則には別のSNAT動作があるため、一律に説明しません。",
+      "subtitleLines": [
+        "公開例のAppGWからAPIMは、private宛ての",
+        "Network規則なので、送信元AppGWのIPを保持します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "公開例のAppGWからAPIMは、private宛てのNetwork規則なので、送信元AppGWのIPを保持します。",
+          "lines": [
+            "公開例のAppGWからAPIMは、private宛ての",
+            "Network規則なので、送信元AppGWのIPを保持します。"
+          ],
+          "weight": 58
+        },
+        {
+          "caption": "Application規則には別のSNAT動作があるため、一律に説明しません。",
+          "lines": [
+            "Application規則には別のSNAT動作があるため、",
+            "一律に説明しません。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": [
+          "snat"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-058-mako",
+      "speaker": "mako",
+      "chapterId": "coverage",
+      "speech": "ディーエヌエス proxyやスレットインテリジェンスも並んでいますが、アイディーピーエスのモードを変えると、一緒に変わるのでしょうか？",
+      "caption": "DNS proxyやThreat Intelligenceも並んでいますが、IDPSのモードを変えると、一緒に変わるのでしょうか？",
+      "subtitleLines": [
+        "DNS proxyやThreat Intelligenceも",
+        "並んでいますが、IDPSのモードを変えると、"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "DNS proxyやThreat Intelligenceも並んでいますが、IDPSのモードを変えると、",
+          "lines": [
+            "DNS proxyやThreat Intelligenceも",
+            "並んでいますが、IDPSのモードを変えると、"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "一緒に変わるのでしょうか？",
+          "lines": [
+            "一緒に変わるのでしょうか？"
+          ],
+          "weight": 13
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-059-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "coverage",
+      "speech": "ディーエヌエス proxyは名前解決の問い合わせを中継する設定です。スレットインテリジェンスは悪性アイピーやエフキューディーエヌなどの脅威情報と照合します。どちらもアイディーピーエスの署名検知と別に読みます。",
+      "caption": "DNS proxyは名前解決の問い合わせを中継する設定です。Threat Intelligenceは悪性IPやFQDNなどの脅威情報と照合します。どちらもIDPSの署名検知と別に読みます。",
+      "subtitleLines": [
+        "DNS proxyは名前解決の問い合わせを中継する設定です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "DNS proxyは名前解決の問い合わせを中継する設定です。",
+          "lines": [
+            "DNS proxyは名前解決の問い合わせを中継する設定です。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "Threat Intelligenceは悪性IPやFQDNなどの脅威情報と照合します。",
+          "lines": [
+            "Threat Intelligenceは悪性",
+            "IPやFQDNなどの脅威情報と照合します。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "どちらもIDPSの署名検知と別に読みます。",
+          "lines": [
+            "どちらもIDPSの署名検知と別に読みます。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": [
+          "dns",
+          "threat"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-060-manabu",
+      "speaker": "manabu",
+      "chapterId": "coverage",
+      "speech": "本番もテストもスレットインテリジェンスはアラート。アイディーピーエスをデナイへ変えても、そちらの動作モードは自動では変わらないんですね。",
+      "caption": "本番もテストもThreat IntelligenceはAlert。IDPSをDenyへ変えても、そちらの動作モードは自動では変わらないんですね。",
+      "subtitleLines": [
+        "本番もテストもThreat IntelligenceはAlert。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "本番もテストもThreat IntelligenceはAlert。",
+          "lines": [
+            "本番もテストもThreat IntelligenceはAlert。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "IDPSをDenyへ変えても、そちらの動作モードは自動では変わらないんですね。",
+          "lines": [
+            "IDPSをDenyへ変えても、",
+            "そちらの動作モードは自動では変わらないんですね。"
+          ],
+          "weight": 39
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "related-settings",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "似た名前の設定も、判断する対象は別",
+        "kind": "Firewall Policy",
+        "section": "例外と関連設定",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "idps",
+            "label": "IDPS private範囲",
+            "value": "Inbound / Outbound / Internal の分類"
+          },
+          {
+            "id": "snat",
+            "label": "SNAT private範囲",
+            "value": "Network規則の送信元変換を判断"
+          },
+          {
+            "id": "dns",
+            "label": "DNS proxy",
+            "value": "DNS問い合わせの中継"
+          },
+          {
+            "id": "threat",
+            "label": "Threat Intelligence",
+            "value": "悪性IP・FQDN等の脅威情報と照合"
+          }
+        ],
+        "highlightFields": [
+          "threat"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-061-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "ここまでの条件を、一つの要求でつなげましょう。通常エーピーアイで、ワフを通過してアップジーダブリューからエーピーアイエムへ向かう区間を選びます。",
+      "caption": "ここまでの条件を、一つの要求でつなげましょう。通常APIで、WAFを通過してAppGWからAPIMへ向かう区間を選びます。",
+      "subtitleLines": [
+        "ここまでの条件を、一つの要求でつなげましょう。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "ここまでの条件を、一つの要求でつなげましょう。",
+          "lines": [
+            "ここまでの条件を、一つの要求でつなげましょう。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "通常APIで、WAFを通過してAppGWからAPIMへ向かう区間を選びます。",
+          "lines": [
+            "通常APIで、WAFを通過して",
+            "AppGWからAPIMへ向かう区間を選びます。"
+          ],
+          "weight": 38
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-062-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "選んだ区間はエイチティーティーピーのはちじゅう番です。経路はアップジーダブリュー、ファイアウォール、エーピーアイエム。通信規則は必要な接続をアローします。方向はprivate同士なのでインターナルとして考えます。",
+      "caption": "選んだ区間はHTTPの80番です。経路はAppGW、Firewall、APIM。通信規則は必要な接続をAllowします。方向はprivate同士なのでInternalとして考えます。",
+      "subtitleLines": [
+        "選んだ区間はHTTPの80番です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "選んだ区間はHTTPの80番です。",
+          "lines": [
+            "選んだ区間はHTTPの80番です。"
+          ],
+          "weight": 17
+        },
+        {
+          "caption": "経路はAppGW、Firewall、APIM。",
+          "lines": [
+            "経路はAppGW、Firewall、APIM。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "通信規則は必要な接続をAllowします。",
+          "lines": [
+            "通信規則は必要な接続をAllowします。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "方向はprivate同士なのでInternalとして考えます。",
+          "lines": [
+            "方向はprivate同士なのでInternalとして考えます。"
+          ],
+          "weight": 31
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": [
+          "path",
+          "rule"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-063-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "そこで条件に合う署名が一致したとします。今の本番定義はアラートだから、検知ログを残す。要求はどうなりますか？",
+      "caption": "そこで条件に合う署名が一致したとします。今の本番定義はAlertだから、検知ログを残す。要求はどうなりますか？",
+      "subtitleLines": [
+        "そこで条件に合う署名が一致したとします。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そこで条件に合う署名が一致したとします。",
+          "lines": [
+            "そこで条件に合う署名が一致したとします。"
+          ],
+          "weight": 20
+        },
+        {
+          "caption": "今の本番定義はAlertだから、検知ログを残す。",
+          "lines": [
+            "今の本番定義はAlertだから、検知ログを残す。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "要求はどうなりますか？",
+          "lines": [
+            "要求はどうなりますか？"
+          ],
+          "weight": 11
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-064-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "アイディーピーエスの検知だけでは遮断しません。通常規則が許可していればエーピーアイエムへ進めます。ただし、認証や入力検査で拒否される可能性は、その先に残っています。",
+      "caption": "IDPSの検知だけでは遮断しません。通常規則が許可していればAPIMへ進めます。ただし、認証や入力検査で拒否される可能性は、その先に残っています。",
+      "subtitleLines": [
+        "IDPSの検知だけでは遮断しません。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "IDPSの検知だけでは遮断しません。",
+          "lines": [
+            "IDPSの検知だけでは遮断しません。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "通常規則が許可していればAPIMへ進めます。",
+          "lines": [
+            "通常規則が許可していればAPIMへ進めます。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "ただし、認証や入力検査で拒否される可能性は、その先に残っています。",
+          "lines": [
+            "ただし、認証や入力検査で拒否される可能性は、その先に残っています。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": [
+          "idps",
+          "final"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-065-manabu",
+      "speaker": "manabu",
+      "chapterId": "walkthrough",
+      "speech": "もし同じ条件でアイディーピーエスのデナイを有効にし、その署名も遮断対象なら、通常規則のアロー後に止まる場合があります。モードを変えるときは正規通信への影響を確認するわけですね。",
+      "caption": "もし同じ条件でIDPSのDenyを有効にし、その署名も遮断対象なら、通常規則のAllow後に止まる場合があります。モードを変えるときは正規通信への影響を確認するわけですね。",
+      "subtitleLines": [
+        "もし同じ条件でIDPSのDenyを有効にし、その署名も遮断対象なら、",
+        "通常規則のAllow後に止まる場合があります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "もし同じ条件でIDPSのDenyを有効にし、その署名も遮断対象なら、通常規則のAllow後に止まる場合があります。",
+          "lines": [
+            "もし同じ条件でIDPSのDenyを有効にし、その署名も遮断対象なら、",
+            "通常規則のAllow後に止まる場合があります。"
+          ],
+          "weight": 57
+        },
+        {
+          "caption": "モードを変えるときは正規通信への影響を確認するわけですね。",
+          "lines": [
+            "モードを変えるときは正規通信への影響を確認するわけですね。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": [
+          "rule",
+          "idps"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-066-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "はい。無害な試験入力、ログのAction、利用側のtimeoutや遅延も確認します。今日は設定と機能の説明で、稼働環境へデナイを適用して検証した結果ではありません。",
+      "caption": "はい。無害な試験入力、ログのAction、利用側のtimeoutや遅延も確認します。今日は設定と機能の説明で、稼働環境へDenyを適用して検証した結果ではありません。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "無害な試験入力、ログのAction、利用側のtimeoutや遅延も確認します。",
+          "lines": [
+            "無害な試験入力、ログのAction、",
+            "利用側のtimeoutや遅延も確認します。"
+          ],
+          "weight": 39
+        },
+        {
+          "caption": "今日は設定と機能の説明で、稼働環境へDenyを適用して検証した結果ではありません。",
+          "lines": [
+            "今日は設定と機能の説明で、",
+            "稼働環境へDenyを適用して検証した結果ではありません。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "request-walkthrough",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "通常API要求：AppGWからAPIMへ",
+        "kind": "Firewall Policy",
+        "section": "判断の分担",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "path",
+            "label": "今回選ぶ区間",
+            "value": "AppGW → Firewall → APIM / HTTP 80"
+          },
+          {
+            "id": "rule",
+            "label": "通信規則",
+            "value": "必要な接続を Allow"
+          },
+          {
+            "id": "idps",
+            "label": "本番定義の IDPS",
+            "value": "Alert：署名一致を記録"
+          },
+          {
+            "id": "final",
+            "label": "APIM以降",
+            "value": "キー認証・入力検査・処理結果を確認"
+          }
+        ],
+        "highlightFields": [
+          "idps"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-067-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "調査では、アローログと検知ログをどう並べて読みますか？",
+      "caption": "調査では、Allowログと検知ログをどう並べて読みますか？",
+      "subtitleLines": [
+        "調査では、Allowログと検知ログをどう並べて読みますか？"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "調査では、Allowログと検知ログをどう並べて読みますか？",
+          "lines": [
+            "調査では、Allowログと検知ログをどう並べて読みますか？"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-068-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "ネットワーク規則とアプリケーション規則のログで、どの接続がアローかデナイかを確認します。アイディーピーエスは専用のログで署名とActionを読みます。異なる判断の証拠として扱います。",
+      "caption": "Network規則とApplication規則のログで、どの接続がAllowかDenyかを確認します。IDPSは専用のログで署名とActionを読みます。異なる判断の証拠として扱います。",
+      "subtitleLines": [
+        "Network規則とApplication規則のログで、",
+        "どの接続がAllowかDenyかを確認します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Network規則とApplication規則のログで、どの接続がAllowかDenyかを確認します。",
+          "lines": [
+            "Network規則とApplication規則のログで、",
+            "どの接続がAllowかDenyかを確認します。"
+          ],
+          "weight": 51
+        },
+        {
+          "caption": "IDPSは専用のログで署名とActionを読みます。",
+          "lines": [
+            "IDPSは専用のログで署名とActionを読みます。"
+          ],
+          "weight": 26
+        },
+        {
+          "caption": "異なる判断の証拠として扱います。",
+          "lines": [
+            "異なる判断の証拠として扱います。"
+          ],
+          "weight": 16
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": [
+          "network",
+          "app",
+          "idps"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-069-manabu",
+      "speaker": "manabu",
+      "chapterId": "walkthrough",
+      "speech": "同じ時刻の検知でも、目の前の要求とは限りませんね。照合の手掛かりは何ですか？",
+      "caption": "同じ時刻の検知でも、目の前の要求とは限りませんね。照合の手掛かりは何ですか？",
+      "subtitleLines": [
+        "同じ時刻の検知でも、目の前の要求とは限りませんね。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "同じ時刻の検知でも、目の前の要求とは限りませんね。",
+          "lines": [
+            "同じ時刻の検知でも、目の前の要求とは限りませんね。"
+          ],
+          "weight": 25
+        },
+        {
+          "caption": "照合の手掛かりは何ですか？",
+          "lines": [
+            "照合の手掛かりは何ですか？"
+          ],
+          "weight": 13
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-070-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "FWリソースID、ユー・ティー・シー時刻、送受信アイピー、ポート、プロトコルを照合します。アイディーピーエスのテーブルに共通のTransactionIdがあるとは扱わず、アップジーダブリューの代理接続も考慮します。",
+      "caption": "FWリソースID、UTC時刻、送受信IP、ポート、プロトコルを照合します。IDPSのテーブルに共通のTransactionIdがあるとは扱わず、AppGWの代理接続も考慮します。",
+      "subtitleLines": [
+        "FWリソースID、UTC時刻、送受信IP、ポート、",
+        "プロトコルを照合します。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "FWリソースID、UTC時刻、送受信IP、ポート、プロトコルを照合します。",
+          "lines": [
+            "FWリソースID、UTC時刻、送受信IP、ポート、",
+            "プロトコルを照合します。"
+          ],
+          "weight": 37
+        },
+        {
+          "caption": "IDPSのテーブルに共通のTransactionIdがあるとは扱わず、AppGWの代理接続も考慮します。",
+          "lines": [
+            "IDPSのテーブルに共通のTransactionId",
+            "があるとは扱わず、AppGWの代理接続も考慮します。"
+          ],
+          "weight": 52
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": [
+          "join"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-071-mako",
+      "speaker": "mako",
+      "chapterId": "walkthrough",
+      "speech": "アラートという名前だと、担当者にメールが届く設定まで含んでいるようにも聞こえます。そこも区別が必要ですか？",
+      "caption": "Alertという名前だと、担当者にメールが届く設定まで含んでいるようにも聞こえます。そこも区別が必要ですか？",
+      "subtitleLines": [
+        "Alertという名前だと、",
+        "担当者にメールが届く設定まで含んでいるようにも聞こえます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "Alertという名前だと、担当者にメールが届く設定まで含んでいるようにも聞こえます。",
+          "lines": [
+            "Alertという名前だと、",
+            "担当者にメールが届く設定まで含んでいるようにも聞こえます。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "そこも区別が必要ですか？",
+          "lines": [
+            "そこも区別が必要ですか？"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-072-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "walkthrough",
+      "speech": "必要です。アイディーピーエスのアラートは検知ログの動作モードです。通知の設定とは別で、現行のログアラート定義にはアイディーピーエス検知用クエリがありません。記録されたことと通知されたことを分けます。",
+      "caption": "必要です。IDPSのAlertは検知ログの動作モードです。通知の設定とは別で、現行のログアラート定義にはIDPS検知用クエリがありません。記録されたことと通知されたことを分けます。",
+      "subtitleLines": [
+        "必要です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "必要です。",
+          "lines": [
+            "必要です。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "IDPSのAlertは検知ログの動作モードです。",
+          "lines": [
+            "IDPSのAlertは検知ログの動作モードです。"
+          ],
+          "weight": 24
+        },
+        {
+          "caption": "通知の設定とは別で、現行のログアラート定義にはIDPS検知用クエリがありません。",
+          "lines": [
+            "通知の設定とは別で、現行のログアラート定",
+            "義にはIDPS検知用クエリがありません。"
+          ],
+          "weight": 40
+        },
+        {
+          "caption": "記録されたことと通知されたことを分けます。",
+          "lines": [
+            "記録されたことと通知されたことを分けます。"
+          ],
+          "weight": 21
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "log-evidence",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "Allowと検知Actionを、別の証拠として読む",
+        "kind": "Firewall Policy",
+        "section": "ログの確認",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "network",
+            "label": "AZFWNetworkRule",
+            "value": "Network規則の Allow / Deny"
+          },
+          {
+            "id": "app",
+            "label": "AZFWApplicationRule",
+            "value": "Application規則の Allow / Deny"
+          },
+          {
+            "id": "idps",
+            "label": "AZFWIdpsSignature",
+            "value": "署名・Action・送受信情報"
+          },
+          {
+            "id": "join",
+            "label": "照合の手掛かり",
+            "value": "FWリソースID・UTC時刻・IP / port / protocol"
+          },
+          {
+            "id": "notify",
+            "label": "IDPS Alert",
+            "value": "検知ログの動作。メール通知の設定とは別"
+          }
+        ],
+        "highlightFields": [
+          "notify"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-073-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "確認問題です。通常規則はデナイ、アイディーピーエスはアラート。この通信は、アイディーピーエスが検知だけのモードだから通せるでしょうか？候補を選んでみてください。",
+      "caption": "確認問題です。通常規則はDeny、IDPSはAlert。この通信は、IDPSが検知だけのモードだから通せるでしょうか？候補を選んでみてください。",
+      "subtitleLines": [
+        "確認問題です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "確認問題です。",
+          "lines": [
+            "確認問題です。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "通常規則はDeny、IDPSはAlert。",
+          "lines": [
+            "通常規則はDeny、IDPSはAlert。"
+          ],
+          "weight": 21
+        },
+        {
+          "caption": "この通信は、IDPSが検知だけのモードだから通せるでしょうか？",
+          "lines": [
+            "この通信は、IDPSが検知だけのモードだから通せるでしょうか？"
+          ],
+          "weight": 31
+        },
+        {
+          "caption": "候補を選んでみてください。",
+          "lines": [
+            "候補を選んでみてください。"
+          ],
+          "weight": 13
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "問題の条件を落ち着いて提示し、候補を考える短い間を取る。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-alert-deny",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認1：どの判断が通信を止める？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "通常規則 Deny / IDPS Alert"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "IDPSがAlertなら、通常規則の拒否も解除"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "通常規則の拒否は、そのまま有効"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-074-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "候補Bです。アイディーピーエスのモードと、通常規則の許可は別なので、拒否はそのまま有効です。",
+      "caption": "候補Bです。IDPSのモードと、通常規則の許可は別なので、拒否はそのまま有効です。",
+      "subtitleLines": [
+        "候補Bです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "候補Bです。",
+          "lines": [
+            "候補Bです。"
+          ],
+          "weight": 6
+        },
+        {
+          "caption": "IDPSのモードと、通常規則の許可は別なので、拒否はそのまま有効です。",
+          "lines": [
+            "IDPSのモードと、通常規則の許可は別なので、",
+            "拒否はそのまま有効です。"
+          ],
+          "weight": 35
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-alert-deny",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認1：どの判断が通信を止める？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "通常規則 Deny / IDPS Alert"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "IDPSがAlertなら、通常規則の拒否も解除"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "通常規則の拒否は、そのまま有効"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-075-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "正解です。アラートは通常規則のデナイを解除しません。アイディーピーエスをデナイにすると、規則がアローでも、遮断対象の署名に一致して止まる場合があります。",
+      "caption": "正解です。Alertは通常規則のDenyを解除しません。IDPSをDenyにすると、規則がAllowでも、遮断対象の署名に一致して止まる場合があります。",
+      "subtitleLines": [
+        "正解です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正解です。",
+          "lines": [
+            "正解です。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "Alertは通常規則のDenyを解除しません。",
+          "lines": [
+            "Alertは通常規則のDenyを解除しません。"
+          ],
+          "weight": 23
+        },
+        {
+          "caption": "IDPSをDenyにすると、規則がAllowでも、遮断対象の署名に一致して止まる場合があります。",
+          "lines": [
+            "IDPSをDenyにすると、規則がAllowでも、",
+            "遮断対象の署名に一致して止まる場合があります。"
+          ],
+          "weight": 48
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-alert-deny",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認1：どの判断が通信を止める？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "通常規則 Deny / IDPS Alert"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "IDPSがAlertなら、通常規則の拒否も解除"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "通常規則の拒否は、そのまま有効"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-076-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "通信規則のデナイかアイディーピーエスのデナイか、主語と一緒に読む。最初の疑問も解けました。",
+      "caption": "通信規則のDenyかIDPSのDenyか、主語と一緒に読む。最初の疑問も解けました。",
+      "subtitleLines": [
+        "通信規則のDenyかIDPSのDenyか、主語と一緒に読む。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通信規則のDenyかIDPSのDenyか、主語と一緒に読む。",
+          "lines": [
+            "通信規則のDenyかIDPSのDenyか、主語と一緒に読む。"
+          ],
+          "weight": 30
+        },
+        {
+          "caption": "最初の疑問も解けました。",
+          "lines": [
+            "最初の疑問も解けました。"
+          ],
+          "weight": 12
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-alert-deny",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認1：どの判断が通信を止める？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "通常規則 Deny / IDPS Alert"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "IDPSがAlertなら、通常規則の拒否も解除"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "通常規則の拒否は、そのまま有効"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-077-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "次の問題です。ポータル向けエイチティーティーピーエスはファイアウォールを通り、ティーエルエスの復号設定はありません。アイディーピーエスは暗号化内部の本文も検査できる、と言えますか？",
+      "caption": "次の問題です。Portal向けHTTPSはFirewallを通り、TLSの復号設定はありません。IDPSは暗号化内部の本文も検査できる、と言えますか？",
+      "subtitleLines": [
+        "次の問題です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次の問題です。",
+          "lines": [
+            "次の問題です。"
+          ],
+          "weight": 7
+        },
+        {
+          "caption": "Portal向けHTTPSはFirewallを通り、TLSの復号設定はありません。",
+          "lines": [
+            "Portal向けHTTPSはFirewallを通り、",
+            "TLSの復号設定はありません。"
+          ],
+          "weight": 41
+        },
+        {
+          "caption": "IDPSは暗号化内部の本文も検査できる、と言えますか？",
+          "lines": [
+            "IDPSは暗号化内部の本文も検査できる、と言えますか？"
+          ],
+          "weight": 27
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "条件を一つずつ示して答えを考える間を取る。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-tls-path",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認2：どこまで読めると言える？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "Portal向け HTTPS / FW通過 / TLS復号なし"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "FWを通るので、暗号化内部の本文も検査"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "暗号化内部の本文を読めるとは扱わない"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-078-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "候補Bです。通過しただけでは、暗号化内部が見えるとは言えません。",
+      "caption": "候補Bです。通過しただけでは、暗号化内部が見えるとは言えません。",
+      "subtitleLines": [
+        "候補Bです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "候補Bです。",
+          "lines": [
+            "候補Bです。"
+          ],
+          "weight": 6
+        },
+        {
+          "caption": "通過しただけでは、暗号化内部が見えるとは言えません。",
+          "lines": [
+            "通過しただけでは、暗号化内部が見えるとは言えません。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-tls-path",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認2：どこまで読めると言える？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "Portal向け HTTPS / FW通過 / TLS復号なし"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "FWを通るので、暗号化内部の本文も検査"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "暗号化内部の本文を読めるとは扱わない"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-079-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "はい。通常エーピーアイのエイチティーティーピー区間とは条件が違います。ピーイーの直接経路は、ファイアウォールを通らない点も確認しましょう。",
+      "caption": "はい。通常APIのHTTP区間とは条件が違います。PEの直接経路は、Firewallを通らない点も確認しましょう。",
+      "subtitleLines": [
+        "はい。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "はい。",
+          "lines": [
+            "はい。"
+          ],
+          "weight": 3
+        },
+        {
+          "caption": "通常APIのHTTP区間とは条件が違います。",
+          "lines": [
+            "通常APIのHTTP区間とは条件が違います。"
+          ],
+          "weight": 22
+        },
+        {
+          "caption": "PEの直接経路は、Firewallを通らない点も確認しましょう。",
+          "lines": [
+            "PEの直接経路は、Firewallを通らない点も確認しましょう。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-tls-path",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認2：どこまで読めると言える？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "Portal向け HTTPS / FW通過 / TLS復号なし"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "FWを通るので、暗号化内部の本文も検査"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "暗号化内部の本文を読めるとは扱わない"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-080-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "まず経路、次にその区間のティーエルエス境界。サービス名が同じだから同じ検査、とまとめないことが大切なんですね。",
+      "caption": "まず経路、次にその区間のTLS境界。サービス名が同じだから同じ検査、とまとめないことが大切なんですね。",
+      "subtitleLines": [
+        "まず経路、次にその区間のTLS境界。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "まず経路、次にその区間のTLS境界。",
+          "lines": [
+            "まず経路、次にその区間のTLS境界。"
+          ],
+          "weight": 18
+        },
+        {
+          "caption": "サービス名が同じだから同じ検査、とまとめないことが大切なんですね。",
+          "lines": [
+            "サービス名が同じだから同じ検査、とまとめないことが大切なんですね。"
+          ],
+          "weight": 33
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-tls-path",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認2：どこまで読めると言える？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "Portal向け HTTPS / FW通過 / TLS復号なし"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "FWを通るので、暗号化内部の本文も検査"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "暗号化内部の本文を読めるとは扱わない"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-081-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "最後です。Internetの利用者から始まった要求が、アップジーダブリューからエーピーアイエムへprivate アイピー同士で進みます。公開例の範囲設定なら、アイディーピーエスではどの方向でしょう？",
+      "caption": "最後です。Internetの利用者から始まった要求が、AppGWからAPIMへprivate IP同士で進みます。公開例の範囲設定なら、IDPSではどの方向でしょう？",
+      "subtitleLines": [
+        "最後です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "最後です。",
+          "lines": [
+            "最後です。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "Internetの利用者から始まった要求が、AppGWからAPIMへprivate IP同士で進みます。",
+          "lines": [
+            "Internetの利用者から始まった要求が、",
+            "AppGWからAPIMへprivate IP同士で進みます。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "公開例の範囲設定なら、IDPSではどの方向でしょう？",
+          "lines": [
+            "公開例の範囲設定なら、IDPSではどの方向でしょう？"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "元の利用者と観測区間を区別する問いとして自然に提示する。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-direction",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認3：利用者の居場所と方向は同じ？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "AppGW → APIM / private IP同士"
+          },
+          {
+            "id": "range",
+            "label": "private範囲の指定",
+            "value": "idpsPrivateRanges=[] / 既定 RFC 1918"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "Internet利用者の要求なので Inbound"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "FWが見る区間は Internal"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-082-manabu",
+      "speaker": "manabu",
+      "chapterId": "check",
+      "speech": "候補Bのインターナルです。ファイアウォールが見る区間の送信元と宛先を選ぶので、利用者がInternetにいるという情報だけではインバウンドにできません。",
+      "caption": "候補BのInternalです。Firewallが見る区間の送信元と宛先を選ぶので、利用者がInternetにいるという情報だけではInboundにできません。",
+      "subtitleLines": [
+        "候補BのInternalです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "候補BのInternalです。",
+          "lines": [
+            "候補BのInternalです。"
+          ],
+          "weight": 15
+        },
+        {
+          "caption": "Firewallが見る区間の送信元と宛先を選ぶので、利用者がInternetにいるという情報だけではInboundにできません。",
+          "lines": [
+            "Firewallが見る区間の送信元と宛先を選ぶので、利用者が",
+            "Internetにいるという情報だけではInboundにできません。"
+          ],
+          "weight": 64
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-direction",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認3：利用者の居場所と方向は同じ？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "AppGW → APIM / private IP同士"
+          },
+          {
+            "id": "range",
+            "label": "private範囲の指定",
+            "value": "idpsPrivateRanges=[] / 既定 RFC 1918"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "Internet利用者の要求なので Inbound"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "FWが見る区間は Internal"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-083-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "check",
+      "speech": "正解です。空配列は独自のprivate範囲を指定しない意味で、既定のアールエフシー、いちきゅういちはちを使います。その方向と、各署名の方向条件を組み合わせて検査範囲を確認します。",
+      "caption": "正解です。空配列は独自のprivate範囲を指定しない意味で、既定のRFC 1918を使います。その方向と、各署名の方向条件を組み合わせて検査範囲を確認します。",
+      "subtitleLines": [
+        "正解です。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "正解です。",
+          "lines": [
+            "正解です。"
+          ],
+          "weight": 5
+        },
+        {
+          "caption": "空配列は独自のprivate範囲を指定しない意味で、既定のRFC 1918を使います。",
+          "lines": [
+            "空配列は独自のprivate範囲を指定しない意味で、既定のRFC ",
+            "1918を使います。"
+          ],
+          "weight": 43
+        },
+        {
+          "caption": "その方向と、各署名の方向条件を組み合わせて検査範囲を確認します。",
+          "lines": [
+            "その方向と、各署名の方向条件を組み合わせて検査範囲を確認します。"
+          ],
+          "weight": 32
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-direction",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認3：利用者の居場所と方向は同じ？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "AppGW → APIM / private IP同士"
+          },
+          {
+            "id": "range",
+            "label": "private範囲の指定",
+            "value": "idpsPrivateRanges=[] / 既定 RFC 1918"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "Internet利用者の要求なので Inbound"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "FWが見る区間は Internal"
+          }
+        ],
+        "highlightFields": [
+          "range",
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-084-mako",
+      "speaker": "mako",
+      "chapterId": "check",
+      "speech": "方向は観測する接続から考える。元の利用者からの一本の通信だと思い込まないようにします。",
+      "caption": "方向は観測する接続から考える。元の利用者からの一本の通信だと思い込まないようにします。",
+      "subtitleLines": [
+        "方向は観測する接続から考える。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "方向は観測する接続から考える。",
+          "lines": [
+            "方向は観測する接続から考える。"
+          ],
+          "weight": 15
+        },
+        {
+          "caption": "元の利用者からの一本の通信だと思い込まないようにします。",
+          "lines": [
+            "元の利用者からの一本の通信だと思い込まないようにします。"
+          ],
+          "weight": 28
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "quiz-direction",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "確認3：利用者の居場所と方向は同じ？",
+        "kind": "Firewall Policy",
+        "section": "確認問題",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "condition",
+            "label": "条件",
+            "value": "AppGW → APIM / private IP同士"
+          },
+          {
+            "id": "range",
+            "label": "private範囲の指定",
+            "value": "idpsPrivateRanges=[] / 既定 RFC 1918"
+          },
+          {
+            "id": "a",
+            "label": "候補 A",
+            "value": "Internet利用者の要求なので Inbound"
+          },
+          {
+            "id": "b",
+            "label": "候補 B",
+            "value": "FWが見る区間は Internal"
+          }
+        ],
+        "highlightFields": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-085-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "今日の到達点を振り返ります。通信規則のアローやデナイと、アイディーピーエスのアラートやデナイを、どのように説明すればよいでしょう？",
+      "caption": "今日の到達点を振り返ります。通信規則のAllowやDenyと、IDPSのAlertやDenyを、どのように説明すればよいでしょう？",
+      "subtitleLines": [
+        "今日の到達点を振り返ります。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "今日の到達点を振り返ります。",
+          "lines": [
+            "今日の到達点を振り返ります。"
+          ],
+          "weight": 14
+        },
+        {
+          "caption": "通信規則のAllowやDenyと、IDPSのAlertやDenyを、どのように説明すればよいでしょう？",
+          "lines": [
+            "通信規則のAllowやDenyと、IDPSのAlertやDenyを、",
+            "どのように説明すればよいでしょう？"
+          ],
+          "weight": 51
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": []
+      }
+    },
+    {
+      "id": "lesson10-turn-086-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "通信規則は接続条件の許可と拒否。アイディーピーエスは既知の攻撃の特徴を検知し、モードと署名の動作に応じて記録や遮断を行います。二つの判断を分けて説明します。",
+      "caption": "通信規則は接続条件の許可と拒否。IDPSは既知の攻撃の特徴を検知し、モードと署名の動作に応じて記録や遮断を行います。二つの判断を分けて説明します。",
+      "subtitleLines": [
+        "通信規則は接続条件の許可と拒否。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "通信規則は接続条件の許可と拒否。",
+          "lines": [
+            "通信規則は接続条件の許可と拒否。"
+          ],
+          "weight": 16
+        },
+        {
+          "caption": "IDPSは既知の攻撃の特徴を検知し、モードと署名の動作に応じて記録や遮断を行います。",
+          "lines": [
+            "IDPSは既知の攻撃の特徴を検知し、",
+            "モードと署名の動作に応じて記録や遮断を行います。"
+          ],
+          "weight": 42
+        },
+        {
+          "caption": "二つの判断を分けて説明します。",
+          "lines": [
+            "二つの判断を分けて説明します。"
+          ],
+          "weight": 15
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": [
+          "rule"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-087-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "検査範囲は、ファイアウォールを通るか、暗号化内部が見えるか、方向や署名条件に合うかで確かめます。範囲設定とエスナット、署名の上書きと通信除外も別です。",
+      "caption": "検査範囲は、Firewallを通るか、暗号化内部が見えるか、方向や署名条件に合うかで確かめます。範囲設定とSNAT、署名の上書きと通信除外も別です。",
+      "subtitleLines": [
+        "検査範囲は、Firewallを通るか、暗号化内部が見えるか、",
+        "方向や署名条件に合うかで確かめます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "検査範囲は、Firewallを通るか、暗号化内部が見えるか、方向や署名条件に合うかで確かめます。",
+          "lines": [
+            "検査範囲は、Firewallを通るか、暗号化内部が見えるか、",
+            "方向や署名条件に合うかで確かめます。"
+          ],
+          "weight": 48
+        },
+        {
+          "caption": "範囲設定とSNAT、署名の上書きと通信除外も別です。",
+          "lines": [
+            "範囲設定とSNAT、署名の上書きと通信除外も別です。"
+          ],
+          "weight": 26
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": [
+          "scope"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-088-manabu",
+      "speaker": "manabu",
+      "chapterId": "summary",
+      "speech": "そしてアローや検知の一行だけで業務成功を断定せず、定義とログのAction、下流の結果を合わせます。本番とテスト、定義と実測の区別も忘れないようにしましょう。",
+      "caption": "そしてAllowや検知の一行だけで業務成功を断定せず、定義とログのAction、下流の結果を合わせます。本番とテスト、定義と実測の区別も忘れないようにしましょう。",
+      "subtitleLines": [
+        "そしてAllowや検知の一行だけで業務成功を断定せず、",
+        "定義とログのAction、下流の結果を合わせます。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "そしてAllowや検知の一行だけで業務成功を断定せず、定義とログのAction、下流の結果を合わせます。",
+          "lines": [
+            "そしてAllowや検知の一行だけで業務成功を断定せず、",
+            "定義とログのAction、下流の結果を合わせます。"
+          ],
+          "weight": 52
+        },
+        {
+          "caption": "本番とテスト、定義と実測の区別も忘れないようにしましょう。",
+          "lines": [
+            "本番とテスト、定義と実測の区別も忘れないようにしましょう。"
+          ],
+          "weight": 29
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": [
+          "evidence"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-089-mako",
+      "speaker": "mako",
+      "chapterId": "summary",
+      "speech": "次回はエーピーアイエムです。届いた要求を、どのサブスクリプションの要求として受け、Operationやモデルの契約をどう確かめるのでしょうか？",
+      "caption": "次回はAPIMです。届いた要求を、どのサブスクリプションの要求として受け、Operationやモデルの契約をどう確かめるのでしょうか？",
+      "subtitleLines": [
+        "次回はAPIMです。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "次回はAPIMです。",
+          "lines": [
+            "次回はAPIMです。"
+          ],
+          "weight": 10
+        },
+        {
+          "caption": "届いた要求を、どのサブスクリプションの要求として受け、Operationやモデルの契約をどう確かめるのでしょうか？",
+          "lines": [
+            "届いた要求を、どのサブスクリプションの要求として受け、",
+            "Operationやモデルの契約をどう確かめるのでしょうか？"
+          ],
+          "weight": 57
+        }
+      ],
+      "gapAfterSeconds": 0.16,
+      "delivery": "視聴者の疑問を自然に確かめる。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": [
+          "next"
+        ]
+      }
+    },
+    {
+      "id": "lesson10-turn-090-ikumi",
+      "speaker": "ikumi",
+      "chapterId": "summary",
+      "speech": "第11回では、入口の認証と入力検査、ポリシーが動く順番を追います。今日選んだ通常エーピーアイ要求が、その先で何を確かめられるのか、一緒に見ていきましょう。",
+      "caption": "第11回では、入口の認証と入力検査、ポリシーが動く順番を追います。今日選んだ通常API要求が、その先で何を確かめられるのか、一緒に見ていきましょう。",
+      "subtitleLines": [
+        "第11回では、入口の認証と入力検査、ポリシーが動く順番を追います。"
+      ],
+      "subtitleChunks": [
+        {
+          "caption": "第11回では、入口の認証と入力検査、ポリシーが動く順番を追います。",
+          "lines": [
+            "第11回では、入口の認証と入力検査、ポリシーが動く順番を追います。"
+          ],
+          "weight": 33
+        },
+        {
+          "caption": "今日選んだ通常API要求が、その先で何を確かめられるのか、一緒に見ていきましょう。",
+          "lines": [
+            "今日選んだ通常API要求が、その先で何を確かめられるのか、",
+            "一緒に見ていきましょう。"
+          ],
+          "weight": 41
+        }
+      ],
+      "gapAfterSeconds": 0.14,
+      "delivery": "相手の問いに落ち着いて答える。",
+      "visual": {
+        "layout": "settings",
+        "viewId": "lesson10-summary",
+        "areaLabel": "Firewall Policy / 教材用設定",
+        "title": "経路と設定から、判断の意味を確かめる",
+        "kind": "Firewall Policy",
+        "section": "まとめ",
+        "menu": [
+          "判断の分担",
+          "環境とモード",
+          "署名の動作",
+          "検査範囲",
+          "例外と関連設定",
+          "ログの確認",
+          "確認問題",
+          "まとめ"
+        ],
+        "subtitle": "リポジトリ定義・公開設定例から確認する",
+        "fields": [
+          {
+            "id": "rule",
+            "label": "通信規則と IDPS",
+            "value": "Allow / Deny と Alert / Deny を区別"
+          },
+          {
+            "id": "scope",
+            "label": "検査範囲",
+            "value": "FW通過・TLS境界・方向・署名条件"
+          },
+          {
+            "id": "evidence",
+            "label": "確認する証拠",
+            "value": "定義・ログAction・下流の最終結果"
+          },
+          {
+            "id": "next",
+            "label": "第11回の問い",
+            "value": "APIMはどの利用契約で受ける？"
+          }
+        ],
+        "highlightFields": [
+          "next"
+        ]
+      }
+    }
+  ],
+  "description": "通信規則とIDPSの動作を分け、経路・暗号化・方向から検査範囲を確かめる。"
+}

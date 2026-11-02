@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "profile": "study-series-v1",
+  "tools": {
+    "python3": true,
+    "node": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "gcloud": true
+  },
+  "sharp": true,
+  "hostPlatform": "darwin",
+  "availableDiskGiB": 3.68,
+  "fontEnvironment": "Same macOS font environment as the reference",
+  "authenticationRead": false,
+  "networkRequestsMade": false,
+  "episode": {
+    "key": "08",
+    "number": 8,
+    "title": "基盤管理者の接続と作業実行",
+    "objective": "管理VMへのprivate接続、NSG、SSH認証、Managed Run Commandの分担を説明できる。",
+    "sourceTableCell": "[41〜43節](01-network-control.html#maintenance-network)",
+    "sourceReferences": [
+      {
+        "file": "../01-network-control.html",
+        "anchor": "maintenance-network"
+      }
+    ]
+  },
+  "script": "episodes/08/script.json",
+  "output": "output/lesson-08-gemini"
+}

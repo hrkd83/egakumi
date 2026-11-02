@@ -1,0 +1,19 @@
+{
+  "status": "complete",
+  "revision": "teaching-settings-v2",
+  "file": "/path/to/egakumi-core/docs/study/video-sample/output/lesson-04-gemini/egakumi-study-04.mp4",
+  "duration": 934.9583333333334,
+  "sha256": "3c23fd32735c8d46767fe16147fda110d3039439bd2c1c92f4f148cbaec23572",
+  "videoValidation": "passed",
+  "settingsValidation": "passed",
+  "httpRangeValidation": "passed",
+  "viewCount": 27,
+  "reusedRawTurns": 85,
+  "newTTSRequests": 2,
+  "perceptualListeningPerformed": false,
+  "playbackUrl": "http://127.0.0.1:54658/",
+  "continuousPreviewUrls": [
+    "http://127.0.0.1:54658/conversation-preview.html",
+    "http://127.0.0.1:54658/quiz-conversation/conversation-preview.html"
+  ]
+}

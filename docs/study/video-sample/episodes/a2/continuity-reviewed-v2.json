@@ -1,0 +1,21 @@
+{
+  "previewSha256": "70d987a2756a4e39a34e6186aa70c02f7da057803aedf7ee214a86a9e06df819",
+  "reviewedAnomalies": [
+    {
+      "pairIndex": 249,
+      "seconds": 10.416667,
+      "meanYDifference": 0.434625,
+      "classification": "Reviewed encoded I-frame refresh; no composition or red-outline movement",
+      "inspection": "Decoded frames 249 and 250 viewed at 1600x900 and a 12x amplified body difference image. Menu, table, text and red outlines occupy the same positions; residual differences follow existing edges.",
+      "decodedBodyMeanRGBDifference": 0.7381160451832672,
+      "decodedBodyRGBSamplesOver8Fraction": 0.004144123402785772,
+      "registrationMeanRGBDifference": {
+        "zeroPixelOffset": 0.7266192397594661,
+        "minimumAnyOnePixelOffset": 5.65391474196385,
+        "maximumAnyOnePixelOffset": 10.514180798278247
+      },
+      "beforeFrame": {"index": 249, "keyFrame": false, "pictType": "P"},
+      "afterFrame": {"index": 250, "keyFrame": true, "pictType": "I"}
+    }
+  ]
+}

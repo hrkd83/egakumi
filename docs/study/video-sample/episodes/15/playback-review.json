@@ -1,0 +1,26 @@
+{
+  "checkedAt": "2026-11-02T17:04:14.197446+09:00",
+  "url": "http://127.0.0.1:64361/conversation-preview.html",
+  "start": {
+    "currentTime": 0.062019,
+    "duration": 63.208333,
+    "paused": false,
+    "ended": false,
+    "playbackRate": 1,
+    "readyState": 4,
+    "error": null
+  },
+  "end": {
+    "currentTime": 63.208333,
+    "duration": 63.208333,
+    "paused": true,
+    "ended": true,
+    "playbackRate": 1,
+    "readyState": 4,
+    "error": null
+  },
+  "continuousPlaybackEnded": true,
+  "readOnlyDOMAssessment": true,
+  "listeningAssessment": false,
+  "connectionRecovery": "The browser connection was temporarily unavailable; resetting the CUA runtime and rebinding the same IAB tab restored read access without reloading or seeking."
+}

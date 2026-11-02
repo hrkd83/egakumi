@@ -1,0 +1,72 @@
+{
+  "status": "passed",
+  "checkedAt": "2026-11-02T03:42:11.974148+09:00",
+  "url": "http://127.0.0.1:52168/",
+  "episodeKey": "08",
+  "html": {
+    "status": 200,
+    "title": "第8回｜基盤管理者の接続と作業実行",
+    "matchesLocal": true,
+    "videoSource": "egakumi-study-08.mp4",
+    "captionSource": "lesson-captions.vtt",
+    "requiredLinks": [
+      "egakumi-common-closing.mp4",
+      "egakumi-study-08.mp4",
+      "lesson-captions.vtt",
+      "lesson-transcript.md"
+    ],
+    "downloadAttribute": true
+  },
+  "resources": [
+    {
+      "path": "lesson-captions.vtt",
+      "status": 200,
+      "bytes": 22209,
+      "sha256": "5e856678158dad2e0effef7bc463642563f3024fa6aa38d94f510d6d64c0a73d",
+      "matchesLocal": true
+    },
+    {
+      "path": "lesson-transcript.md",
+      "status": 200,
+      "bytes": 16704,
+      "sha256": "803969e4e884135eaca5aff56dba5ab52b4971e3b221a3dc5930cbf7282c6c99",
+      "matchesLocal": true
+    }
+  ],
+  "video": {
+    "file": "egakumi-study-08.mp4",
+    "bytes": 47916376,
+    "sha256": "6cbfb3874a7e4028a4df73c83dc848ef83c3ea18beeda5b670bdab5dba9c3c3e",
+    "matchesExpectedSha256": true,
+    "head": {
+      "status": 200,
+      "contentType": "video/mp4",
+      "contentLength": 47916376,
+      "acceptRanges": "bytes",
+      "bodyBytes": 0
+    },
+    "prefixRange": {
+      "request": "bytes=0-1023",
+      "status": 206,
+      "contentRange": "bytes 0-1023/47916376",
+      "bytes": 1024,
+      "matchesLocal": true
+    },
+    "suffixRange": {
+      "request": "bytes=-1024",
+      "status": 206,
+      "contentRange": "bytes 47915352-47916375/47916376",
+      "bytes": 1024,
+      "matchesLocal": true
+    },
+    "invalidRange": {
+      "request": "bytes=47916376-",
+      "status": 416,
+      "contentRange": "bytes */47916376",
+      "bodyBytes": 0
+    }
+  },
+  "scope": "Read-only HTTP requests to the existing episode-08 server and reads of episode-08 output. No server/process changes.",
+  "browserPlaybackChecked": false,
+  "listeningChecked": false
+}
