@@ -2,7 +2,7 @@
 
 [README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
 
-本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](../INTEGRATION_TESTS.md)で確認し、実環境の試験状態・再開記録はリポジトリ外の非公開運用用ワークスペースで管理します。この一般手順だけを理由に再構築や撤去を開始しません。
+本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](testing/integration-tests.md)で確認し、実環境の試験状態・再開記録はリポジトリ外の非公開運用用ワークスペースで管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
 ## 対象環境と記録を確認する
 
@@ -44,7 +44,7 @@ Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化
 
 更新前に、対象revision、params・非秘密の設定hash、現在のアプリrevision・digest、必要なDBバックアップ、API／ポリシーの変更点を記録します。SQL初期化・migration失敗時はアプリや後続APIの公開へ進みません。復旧は原因を直して同じ入口を再実行し、自動ロールバックが完了したものとして扱いません。
 
-基盤の更新は、所有確認済みのNSG規則・UDR・APIMホスト／証明書参照、追加済みのAPIM外向け許可先を読み取り、構築入力へ引き継ぎます。企業ネットワーク変更時は [ハブ接続手順](setup/07-hub-spoke.md)も確認します。変更後の公開API実行・Portalログイン・本人接続・ログ到達は [動作テスト](../INTEGRATION_TESTS.md)で別途確認します。Gatewayの`status: deployed`は業務APIの`runtimeVerified`を合格へ変更するものではありません。
+基盤の更新は、所有確認済みのNSG規則・UDR・APIMホスト／証明書参照、追加済みのAPIM外向け許可先を読み取り、構築入力へ引き継ぎます。企業ネットワーク変更時は [ハブ接続手順](setup/07-hub-spoke.md)も確認します。変更後の公開API実行・Portalログイン・本人接続・ログ到達は [動作テスト](testing/integration-tests.md)で別途確認します。Gatewayの`status: deployed`は業務APIの`runtimeVerified`を合格へ変更するものではありません。
 
 ### API・ポリシー・購読を変更する
 

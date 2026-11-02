@@ -8,8 +8,8 @@
 | --- | --- |
 | [README](README.md) | 導入手順と構成、構築・運用資料への入口 |
 | 本書 | 開発・コーディング・テストの共通ルール、ローカル実行方法、開発用の補助手順 |
-| [INTEGRATION_TESTS](INTEGRATION_TESTS.md) | 構築後の動作テストの対象・手順・受入条件・判定・証跡 |
-| [CONSTRUCTION_TESTS](CONSTRUCTION_TESTS.md) | 構築資材のテストの対象・手順・受入条件・判定・証跡 |
+| [動作テスト仕様書](docs/testing/integration-tests.md) | 構築後の動作テストの対象・手順・受入条件・判定・証跡 |
+| [構築テスト仕様書](docs/testing/construction-tests.md) | 構築資材のテストの対象・手順・受入条件・判定・証跡 |
 
 公開する受入条件と架空値による結果例は各テスト仕様書を正本とし、本書には再掲しません。実環境の結果・対象・証跡は別の非公開運用用ワークスペースで管理します。動作テストと資材改修・再試験の完了後に、確定した資材で再構築して構築テストを別試行で行います。具体的な実施順・開始条件は各仕様書を参照してください。
 
@@ -144,7 +144,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 
 ### 実環境の試験
 
-構築済み環境の動作確認は [INTEGRATION_TESTS.md](INTEGRATION_TESTS.md)、資材の構築・更新・撤去の確認は [CONSTRUCTION_TESTS.md](CONSTRUCTION_TESTS.md)の手順・結果票を使います。共通の実行準備を終えたら、該当する仕様書で対象構成を展開し、項目ごとに実測と証跡を記録します。構築と個別配備のコマンドは [README](README.md)、コマンドごとの役割は [スクリプト一覧](scripts/README.md)を参照してください。
+構築済み環境の動作確認は [動作テスト仕様書](docs/testing/integration-tests.md)、資材の構築・更新・撤去の確認は [構築テスト仕様書](docs/testing/construction-tests.md)の手順・結果票を使います。共通の実行準備を終えたら、該当する仕様書で対象構成を展開し、項目ごとに実測と証跡を記録します。構築と個別配備のコマンドは [README](README.md)、コマンドごとの役割は [スクリプト一覧](scripts/README.md)を参照してください。
 
 ## 構築前チェックの責務
 

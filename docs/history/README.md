@@ -2,7 +2,7 @@
 
 このフォルダーは、現行仕様へ文書を整理する際に分離した調査・設計・検証の記録です。本文の日付・対象revision・当時の範囲で参照し、現在の構成・配備状態・試験の合格や操作手順として使いません。
 
-現行仕様は [参照資料](../reference/platform.md)、開発共通ルールは [DEVELOPMENT.md](../../DEVELOPMENT.md)、受入条件と現在の判定は [動作テスト](../../INTEGRATION_TESTS.md)・[構築テスト](../../CONSTRUCTION_TESTS.md)で管理します。進行中の試行の詳細と再開記録は各仕様書から参照してください。
+現行仕様は [参照資料](../reference/platform.md)、開発共通ルールは [DEVELOPMENT.md](../../DEVELOPMENT.md)、受入条件と現在の判定は [動作テスト](../testing/integration-tests.md)・[構築テスト](../testing/construction-tests.md)で管理します。進行中の試行の詳細と再開記録は各仕様書から参照してください。
 
 ## 2026-11-01の整理前記録
 

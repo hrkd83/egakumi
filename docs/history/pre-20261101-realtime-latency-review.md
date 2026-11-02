@@ -32,7 +32,7 @@
 | Azure DNSの認証を事前作成したユーザー割り当てMIへ変更 | [証明書worker](../../guest/certificate.ps1#L425)がIMDSの`mi_res_id`でDNS用IDを選び、ARM tokenを実行時に取得する | 証明書の初回取得・更新の認証が変わる。通話中の音声フレームを処理する変更ではない |
 | 管理VMへDNS用MIを追加 | [管理VM](../../infra/modules/management.bicep#L87)は従来のシステム割り当てMIも維持。[親Bicep](../../infra/main.bicep#L273)がAzure DNS選択時だけ既存IDを渡す | 管理VMの変更であり、APIMのMIやWebRTCのメディア終端は変わらない |
 | Azure DNSの準備入力と送信先を変更 | `certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`を入力し、旧SP資格情報は使わない。管理VMのAzure DNS用自動追加FQDNは`management.azure.com`になる | 旧Azure DNS入力のまま再構築する場合は新しいID参照と権限が必要。これは証明書のDNS-01用で、VNetの名前解決先を変更するものではない |
-| 音声・ネットワークの受入 | [動作テスト仕様書](../../INTEGRATION_TESTS.md) に従い、採用構成の音声と経路を確認する | WebRTCの制御とmediaを分けて測定する |
+| 音声・ネットワークの受入 | [動作テスト仕様書](../testing/integration-tests.md) に従い、採用構成の音声と経路を確認する | WebRTCの制御とmediaを分けて測定する |
 
 Azure DNSの新しいIDが利用できなければ、証明書の取得・更新が成立しない。証明書の有効期限や入口への反映条件を満たせない場合には、新規接続の可用性に影響し得るため、[新しいAzure DNS準備手順](../setup/03a-azure-dns-managed-identity.md)と[証明書運用](../operations.md#dns資格情報を更新する)で確認する。これを、通常の音声転送へ追加される遅延とは分ける。変更のないCloudflare／Route53方式や、音声用のAPI認証へDNS用MIの変更を広げて解釈しない。
 
@@ -171,7 +171,7 @@ Twilioの入口はTCP443のWSSと`X-Twilio-Signature`の検証を必要とする
 
 ## 音声の実測で確認すること
 
-[音声の受入条件](../../INTEGRATION_TESTS.md#35-model-gatewayリアルタイム音声) に従い、実音声、認識、正常終端、割込み・停止・再接続を確認する。応答開始時間の分布、同時通話負荷、ジッター・損失・再生バッファ、他APIとの競合も、採用するモデル・設定・経路で測定する。
+[音声の受入条件](../testing/integration-tests.md#35-model-gatewayリアルタイム音声) に従い、実音声、認識、正常終端、割込み・停止・再接続を確認する。応答開始時間の分布、同時通話負荷、ジッター・損失・再生バッファ、他APIとの競合も、採用するモデル・設定・経路で測定する。
 
 [回帰試験用ブラウザーの観測コード](../../tests/browser/realtime.html) の `candidate-pair.currentRoundTripTime` はSTUN疎通確認による直近の往復時間であり、会話の「発話終了→返答再生」の時間とは区別する。hangup要求の応答時間も、音声生成・再生開始時間と分けて記録する。[W3CのICE候補ペア統計](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-currentroundtriptime)
 
@@ -199,7 +199,7 @@ Coreは、WebRTCの制御だけをGatewayへ通すため、この推奨と整合
 
 この構成では、サーバーが電話側の音声をWebRTCの音声trackへ渡し、返答を電話側の形式へ戻す。必要なcodec・sample rateの変換、送信タイミング、バッファ、UDP経路と接続維持を含めて実装・評価する。電話側のWebSocket区間の待ち時間は残り、変換処理もあるため、全区間で遅延が減るかは比較測定で決める。
 
-Coreでのサーバー発WebRTCは、既存のブラウザー音声試験とは別に、採用ライブラリとAzureの接続、Gateway向け認証・所有者・終了制御、サーバーからのメディア経路を受け入れる必要がある。公開例の本人委任登録は、常駐サーバー用のapp-only登録を自動では含まない。今回の追補では、既存policyと設定検証がサービス主体に対応し、対象APIへの登録追加で利用する方針を確認した。詳細と担当範囲は本書の「電話サービス→自社サーバー→WebRTC→AIへの対応」を参照する。[Coreの音声の受入](../../INTEGRATION_TESTS.md#35-model-gatewayリアルタイム音声)、[本人認証の受入](../../INTEGRATION_TESTS.md#32-認証本人接続購読管理sql)
+Coreでのサーバー発WebRTCは、既存のブラウザー音声試験とは別に、採用ライブラリとAzureの接続、Gateway向け認証・所有者・終了制御、サーバーからのメディア経路を受け入れる必要がある。公開例の本人委任登録は、常駐サーバー用のapp-only登録を自動では含まない。今回の追補では、既存policyと設定検証がサービス主体に対応し、対象APIへの登録追加で利用する方針を確認した。詳細と担当範囲は本書の「電話サービス→自社サーバー→WebRTC→AIへの対応」を参照する。[Coreの音声の受入](../testing/integration-tests.md#35-model-gatewayリアルタイム音声)、[本人認証の受入](../testing/integration-tests.md#32-認証本人接続購読管理sql)
 
 認証、社内DBの検索、業務APIの呼出し、対応するセッション制御だけが目的なら、音声を端末とAzureの間に流し、サーバーは制御やtool処理を担当できる。Voice Liveはこの分担を公式に説明している。録音済み音声の送信と、会話中の音声中継も別の用途であり、WebSocketを使うこと自体は録音済み処理を意味しない。[Voice Liveのメディアとサーバー制御](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-webrtc)
 
@@ -248,9 +248,9 @@ Microsoft公表のAzureバックボーン統計では、Japan East→East US 2�
 
 出典：[Speech／Voice Liveの地域と処理scope](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/regions?tabs=voice-live)。Japan EastでVoice Liveの2.1系が使えても、上表のAzure OpenAI配備を同じ地域へ作れる根拠にはならない。Voice Live WebRTCには最寄りリージョンへの自動ルーティングの説明もあるため、資源を日本へ置く変更の効果は実メディア経路と応答時間で判定する。[Voice Live WebRTCのルーティング](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-webrtc#prerequisites)
 
-Voice Liveの採用モデルは配備設定から確定し、音声認識・テキストモデル・音声合成の処理経路を確認する。公開例のモデル選択を全構成の必須条件にせず、モデル・接続方式ごとに [音声の受入](../../INTEGRATION_TESTS.md#35-model-gatewayリアルタイム音声) を実施する。[Voice Liveのモデル別構成](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live#supported-models-and-regions)
+Voice Liveの採用モデルは配備設定から確定し、音声認識・テキストモデル・音声合成の処理経路を確認する。公開例のモデル選択を全構成の必須条件にせず、モデル・接続方式ごとに [音声の受入](../testing/integration-tests.md#35-model-gatewayリアルタイム音声) を実施する。[Voice Liveのモデル別構成](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live#supported-models-and-regions)
 
-なお、CoreのRealtime miniはWebSocketのみを公開する契約だが、MicrosoftのWebRTC対応モデル一覧にはminiも含まれる。miniによる低遅延対話が必要なら、Coreで固定モデルのWebRTC作成・所有者・終了契約を追加する候補になる。[Coreのmini契約](../reference/platform.md#音声サービスの選び方)、[音声の受入条件](../../INTEGRATION_TESTS.md#35-model-gatewayリアルタイム音声)
+なお、CoreのRealtime miniはWebSocketのみを公開する契約だが、MicrosoftのWebRTC対応モデル一覧にはminiも含まれる。miniによる低遅延対話が必要なら、Coreで固定モデルのWebRTC作成・所有者・終了契約を追加する候補になる。[Coreのmini契約](../reference/platform.md#音声サービスの選び方)、[音声の受入条件](../testing/integration-tests.md#35-model-gatewayリアルタイム音声)
 
 Coreの[Foundryリソースとモデル配備](../../infra/modules/services.bicep#L111)は一つの共通Foundryを親とし、[backendの合成](../../infra/main.bicep#L308)もその接続先を使う。そのため、`foundryLocation`は音声だけの切替スイッチではない。本調査では、現行East US 2の共通Foundryを維持し、必要ならJapan EastのVoice Live／Speech用リソースを別に用意して比較する案を推奨する。別リソース側のAPIM MI権限、固定backend、必要なPE・DNS・通信許可を揃える。Voice Liveへ切り替える場合には、自社アプリ側もその交渉・イベント・終了契約へ対応する。これは既存Realtimeをサーバーから利用するための設定追加とは別の構成変更である。
 

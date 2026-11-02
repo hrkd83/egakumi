@@ -227,7 +227,7 @@ CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確�
 
 現在セッションのlogout、本人の全セッション失効、CM接続解除はそれぞれ別操作です。SQLの期限・失効検査は次の要求から適用しますが、既に始まった上流処理の取消や、Entraのgrant取消が独自セッションへ即時伝播することは保証しません。接続解除はCMの削除確認後に容量を解放します。
 
-短命取引・候補の回収、CMの定期照合、SQL障害・更新不能時の扱いは [プール・セッション仕様](credential-pool-design.md)を参照してください。実機の受入条件・判定は [動作テスト](../../INTEGRATION_TESTS.md)に記録します。
+短命取引・候補の回収、CMの定期照合、SQL障害・更新不能時の扱いは [プール・セッション仕様](credential-pool-design.md)を参照してください。実機の受入条件・判定は [動作テスト](../testing/integration-tests.md)に記録します。
 
 ### 更新と撤去
 

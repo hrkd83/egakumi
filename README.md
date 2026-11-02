@@ -39,7 +39,7 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 | 7 | [ハブ＆スポーク対応（任意）](docs/setup/07-hub-spoke.md) | ピアリング、中央DNS・Private DNS、出口・ルート伝搬の調整と再確認 |
 | 8 | [Gatewayの個別配備](#8-gatewayを配備する) | API・ポリシー・製品・購読、CM、credentials DB、認証窓口・SQL初期化・照合ジョブ |
 | 9 | [Portalの個別配備](#9-portalを配備する) | Next.jsイメージ、Portal専用DB・SQL初期化、アプリ、ヘルス監視・認証callback用WAF設定 |
-| 10 | [疎通・受入確認](INTEGRATION_TESTS.md) | 公開APIの正規キー・本人接続、PortalのEntraサインイン・サインアウト |
+| 10 | [疎通・受入確認](docs/testing/integration-tests.md) | 公開APIの正規キー・本人接続、PortalのEntraサインイン・サインアウト |
 
 ### 8. Gatewayを配備する
 
@@ -125,7 +125,7 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 - [API・認証・モデル・音声・証明書の仕様](docs/reference/platform.md)：公開APIの契約と運用上の動作を確認します。
 - [Foundryモデルの分類・リリース日一覧](docs/reference/foundry-model-catalog.md)：モデルの提供状態と、用途・プロバイダー別の公開日・出典・参考性能値を確認します。
 - [企業ネットワークへの接続（任意）](docs/setup/07-hub-spoke.md)：ハブ＆スポーク、中央DNS、経路伝搬等を担当部隊と調整します。
-- [動作テスト項目・結果](INTEGRATION_TESTS.md)／[資材（構築）テスト項目・結果](CONSTRUCTION_TESTS.md)：現在は既存環境の動作テストを進め、全対象のクリアと資材改修の完了後に、その資材で再構築して構築テストを行います。
+- [テスト・検証](docs/testing/README.md)：構築テスト・動作テストの対象、手順、受入条件と、検証用の補助資料をまとめています。
 - [音声の回帰試験画面](tests/browser/realtime.html)：`scripts/realtime_browser.py`のローカル専用relayで利用します。PortalやGatewayのAzure配備には含めません。
 - [開発共通ルール・保守手順](DEVELOPMENT.md)：コーディング規約、[テストの共通ルール](DEVELOPMENT.md#テストの共通ルール)と[実行方法](DEVELOPMENT.md#テストの実行方法)、任意の配備補助を扱います。
 

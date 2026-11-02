@@ -1,6 +1,6 @@
 # アクセスログのquery非保持
 
-Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。本書は配備資材の保存経路と既存環境の更新手順を説明します。実環境への反映状態・実測結果は[動作テストの判定](../../INTEGRATION_TESTS.md)と、その試行の証跡で確認してください。
+Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。本書は配備資材の保存経路と既存環境の更新手順を説明します。実環境への反映状態・実測結果は[動作テストの判定](integration-tests.md)と、その試行の証跡で確認してください。
 
 ## Coreの保存経路
 
@@ -62,7 +62,7 @@ source
 
 ## 検証記録
 
-`RequestQuery`と`OriginalRequestUriWithArgs`に合成要求の識別値が残らないことを、変換・export・Storageの各経路で確認します。ヘッダー・Cookie・本文も個別に試験します。受入条件は[動作テスト仕様書](../../INTEGRATION_TESTS.md)を参照し、実環境の結果・残件はリポジトリ外の非公開運用用ワークスペースで管理します。
+`RequestQuery`と`OriginalRequestUriWithArgs`に合成要求の識別値が残らないことを、変換・export・Storageの各経路で確認します。ヘッダー・Cookie・本文も個別に試験します。受入条件は[動作テスト仕様書](integration-tests.md)を参照し、実環境の結果・残件はリポジトリ外の非公開運用用ワークスペースで管理します。
 
 ## 一次資料
 
