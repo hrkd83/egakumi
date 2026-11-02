@@ -6,6 +6,7 @@ import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { z } from "zod";
 import { getRealtimeEndpoint } from "./realtime-integration.ts";
 import { runRealtimeConversation, type RealtimeConversationCommand } from "./realtime-gateway.ts";
+import { resolveRealtimeVoice } from "./realtime-voices.ts";
 import { handleRealtimeWebRtc } from "./realtime-webrtc.ts";
 import { realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, REALTIME_MAX_STREAM_BYTES, REALTIME_MAX_EVENTS, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { REALTIME_RELAY_PATH, realtimeRelayStartSchema, verifyRealtimeInternalProof, type RealtimeRelayContext } from "./realtime-relay-contract.ts";
@@ -89,11 +90,12 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
         try {
           context = await authorize(input, cookie, cancellation.signal); if (cancellation.signal.aborted) return;
           resolveRealtimeOutputTokens(context.model, input);
+          resolveRealtimeVoice(context.model, input);
           if ((context.model.transport === "webrtc") !== Boolean(input.sdp)) throw new Error("InvalidRequest");
           if (context.model.transport === "webrtc") {
             const allowed = new Set([context.model.apiId, ...(context.model.observer ? [context.model.observer.apiId] : [])]);
             const response = await (dependencies.runWebRtc ?? handleRealtimeWebRtc)(new Request(`${origin}/api/models/realtime/webrtc`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
-              body: JSON.stringify({ modelId: input.modelId, apiKeyId: input.apiKeyId, maxOutputTokens: input.maxOutputTokens, sdp: input.sdp }), signal: cancellation.signal }), {
+              body: JSON.stringify({ modelId: input.modelId, apiKeyId: input.apiKeyId, maxOutputTokens: input.maxOutputTokens, voice: input.voice, sdp: input.sdp }), signal: cancellation.signal }), {
               readSession: async () => context!.actor, readPortalOrigin: () => origin, readModels: () => [context!.model], readGatewayEnvironment: async () => ({ origin: context!.gatewayOrigin }),
               resolveSubscriptionKey: async (actor, id, apiId) => { if (id !== context!.apiKeyId || actor.tenantId !== context!.actor.tenantId || actor.objectId !== context!.actor.objectId || !allowed.has(apiId)) throw new Error("Invalid subscription binding"); return context!.key; },
             });
@@ -103,7 +105,7 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
               let split: number; while ((split = pending.indexOf("\n\n")) >= 0) { const frame = pending.slice(0, split); pending = pending.slice(split + 2); if (!frame.startsWith("data: ")) throw new Error("Invalid stream frame"); emit(realtimeStreamEventSchema.parse(JSON.parse(frame.slice(6)))); }
             } } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
           } else {
-            await (dependencies.runConversation ?? runRealtimeConversation)(context.model, { modelId: input.modelId, maxOutputTokens: input.maxOutputTokens }, getRealtimeEndpoint(context.model, context.gatewayOrigin), context.key, cancellation.signal, emit, (receive) => { command = receive; return () => { command = undefined; }; });
+            await (dependencies.runConversation ?? runRealtimeConversation)(context.model, { modelId: input.modelId, maxOutputTokens: input.maxOutputTokens, ...(input.voice !== undefined ? { voice: input.voice } : {}) }, getRealtimeEndpoint(context.model, context.gatewayOrigin), context.key, cancellation.signal, emit, (receive) => { command = receive; return () => { command = undefined; }; });
           }
         } catch (error) {
           if (!stopped && client.readyState === WebSocket.OPEN) fail(error instanceof Error && ["InvalidRequest", "AuthenticationRequired", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"].includes(error.message) ? error.message as "InvalidRequest" : "GenerationFailed");

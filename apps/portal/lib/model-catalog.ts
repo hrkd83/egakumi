@@ -294,18 +294,19 @@ export function getSpeechModels(): SpeechModel[] {
 /**
  * リアルタイム音声の公開契約を、モデル・方式ごとの実行先へ整理します。
  * @remarks 観測APIは通話を開始するモデルとして表示せず、WebRTCの認可対象に結び付けます。
+ * 対応するシリーズはWebRTCを先頭に置き、初回の接続方式として選びます。
  * WebSocketの出力上限はPortalの短い実行確認用です。APIMが接続後のフレームを検査するという意味ではありません。
  */
 export function getRealtimeModels(): RealtimeModel[] {
   const models: RealtimeModel[] = [];
   const registrations = [
-    ["openai-realtime-ws-v1", "invoke", "realtime", "websocket"],
     ["openai-realtime-control-v1", "realtime-create", "realtime", "webrtc"],
-    ["openai-live-ws-v1", "invoke", "live", "websocket"],
+    ["openai-realtime-ws-v1", "invoke", "realtime", "websocket"],
     ["openai-live-control-v1", "live-create", "live", "webrtc"],
+    ["openai-live-ws-v1", "invoke", "live", "websocket"],
     ["openai-transcription-ws-v1", "invoke", "transcription", "websocket"],
-    ["azure-voice-live-ws-v1", "invoke", "voice-live", "websocket"],
     ["azure-voice-live-webrtc-v1", "invoke", "voice-live", "webrtc"],
+    ["azure-voice-live-ws-v1", "invoke", "voice-live", "websocket"],
   ] as const;
   for (const [apiId, operationId, family, transport] of registrations) {
     const definition = definitions.find((item) => item.name === apiId);

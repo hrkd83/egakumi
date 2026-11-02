@@ -35,7 +35,11 @@ class VoiceContractTests(unittest.TestCase):
         self.assertIn("audio", realtime)
         self.assertEqual(realtime["max_output_tokens"], 512)
         self.assertEqual(realtime["instructions"], "Reply only OK.")
-        self.assertIn("input_audio_format", voice_client.settings("voice-live", "en-US-AvaNeural")["session"])
+        voice = voice_client.settings("voice-live", "en-US-AvaNeural")["session"]
+        self.assertIn("input_audio_format", voice)
+        self.assertEqual(voice["max_response_output_tokens"], 4096)
+        self.assertEqual(voice["reasoning_effort"], "low")
+        self.assertEqual(voice["instructions"], "Reply only OK.")
         with self.assertRaises(ValueError): voice_client.settings("unknown", "marin")
 
     def test_terminal_status_reason_are_allowlisted_without_provider_details(self):
@@ -53,21 +57,21 @@ class VoiceContractTests(unittest.TestCase):
             self.assertNotIn("PRIVATE", json.dumps(result))
 
     def test_streaming_asr_requires_explicit_compatible_text_model_and_language(self):
-        options = {"expected_transcript": "Hello workforce", "language": "en-US", "model": "gpt-4.1"}
+        options = {"expected_transcript": "Hello workforce", "language": "en-US", "model": "gpt-6.1-sol"}
         session = voice_client.settings("voice-live", "en-US-AvaNeural", **options)["session"]
         self.assertEqual(session["input_audio_transcription"], {"model": "azure-speech", "language": "en-US"})
         self.assertEqual(session["input_audio_sampling_rate"], 24000)
-        self.assertEqual(session["max_response_output_tokens"], 128)
+        self.assertEqual(session["max_response_output_tokens"], 4096)
         for product, changes in (("realtime", {}), ("voice-live", {"model": "gpt-realtime"}),
                                  ("voice-live", {"model": None}), ("voice-live", {"language": None}),
                                  ("voice-live", {"expected_transcript": ""}), ("voice-live", {"expected_transcript": "private\nwords"})):
             with self.subTest(product=product, changes=changes), self.assertRaises(ValueError):
                 voice_client.settings(product, "en-US-AvaNeural", **{**options, **changes})
         with self.assertRaises(ValueError):
-            voice_client.settings("voice-live", "en-US-AvaNeural", model="gpt-4.1")
+            voice_client.settings("voice-live", "en-US-AvaNeural", model="gpt-6.1-sol")
 
     def test_partial_or_output_transcript_is_not_completed_input_recognition(self):
-        evidence = voice_client.Evidence("voice-live", b"x" * 4800, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+        evidence = voice_client.Evidence("voice-live", b"x" * 4800, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         evidence.result.update(webSocketConnected=True, serviceTerminal=True, sessionModelMatched=True, transcriptionSettingsAcknowledged=True)
         for event in ({"type": "input_audio_buffer.committed", "item_id": "input-one"},
                       {"type": "conversation.item.input_audio_transcription.delta", "item_id": "input-one", "content_index": 0, "delta": "Hello workforce"},
@@ -84,7 +88,7 @@ class VoiceContractTests(unittest.TestCase):
         self.assertFalse(evidence.finish()["succeeded"])
 
     def test_transcription_buffers_are_bounded_and_do_not_emit_text(self):
-        evidence = voice_client.Evidence("voice-live", b"x" * 4800, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+        evidence = voice_client.Evidence("voice-live", b"x" * 4800, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         with self.assertRaises(ValueError):
             evidence.event(json.dumps({"type": "conversation.item.input_audio_transcription.delta", "item_id": "input-one", "content_index": 0, "delta": "PRIVATE" * 2000}))
         self.assertNotIn("PRIVATE", json.dumps(evidence.finish()))
@@ -147,7 +151,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
     @staticmethod
     def transcription_events():
-        return [{"type": "session.created", "session": {"model": "gpt-4.1"}},
+        return [{"type": "session.created", "session": {"model": "gpt-6.1-sol"}},
                 {"type": "session.updated", "session": {"input_audio_transcription": {"model": "azure-speech", "language": "en-US", "phrase_list": []}}},
                 {"type": "input_audio_buffer.committed", "item_id": "own-input"}]
 
@@ -162,17 +166,19 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_requires_service_cancelled_terminal_and_never_retries(self):
         """取消要求の送信だけで合格にせず、応答が既に完了した場合も区別する。"""
-        for terminal, expected in (("cancelled", True), ("completed", False)):
-            socket = FakeSocket([{"type": "session.updated"}, self.audio_response()[0],
-                                 {"type": "response.done", "response": {"status": terminal}}])
-            result = await voice_client.probe("wss://gateway.invalid/voice", "realtime", "marin", b"x" * 4800, {},
-                connector=lambda *args, **kwargs: socket, scenario="cancel")
-            self.assertEqual(result["scenarioSucceeded"], expected)
-            self.assertEqual(result["cancellationConfirmed"], expected)
-            self.assertEqual(sum(event["type"] == "response.cancel" for event in socket.sent), 1)
-            create = next(event for event in socket.sent if event["type"] == "response.create")
-            self.assertEqual(create["response"]["instructions"], "Count from one to ten. Finish in under ten seconds.")
-            self.assertEqual(result["connectionAttempts"], 1)
+        for product, voice in (("realtime", "marin"), ("voice-live", "en-US-AvaNeural")):
+            for terminal, expected in (("cancelled", True), ("completed", False)):
+                with self.subTest(product=product, terminal=terminal):
+                    socket = FakeSocket([{"type": "session.updated"}, self.audio_response()[0],
+                                         {"type": "response.done", "response": {"status": terminal}}])
+                    result = await voice_client.probe("wss://gateway.invalid/voice", product, voice, b"x" * 4800, {},
+                        connector=lambda *args, **kwargs: socket, scenario="cancel")
+                    self.assertEqual(result["scenarioSucceeded"], expected)
+                    self.assertEqual(result["cancellationConfirmed"], expected)
+                    self.assertEqual(sum(event["type"] == "response.cancel" for event in socket.sent), 1)
+                    create = next(event for event in socket.sent if event["type"] == "response.create")
+                    self.assertEqual(create["response"]["instructions"], "Count from one to ten. Finish in under ten seconds.")
+                    self.assertEqual(result["connectionAttempts"], 1)
 
     async def test_mid_response_disconnect_only_proves_client_close(self):
         socket = FakeSocket([{"type": "session.updated"}, self.audio_response()[0]])
@@ -193,7 +199,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_control_scenarios_do_not_replace_streaming_asr_acceptance(self):
         with self.assertRaisesRegex(ValueError, "separate"):
             await voice_client.probe("wss://gateway.invalid/voice", "voice-live", "en-US-AvaNeural", b"x" * 4800, {},
-                scenario="cancel", expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                scenario="cancel", expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
 
     async def test_real_protocol_flow_waits_for_ack_and_sends_one_audio_request(self):
         socket = FakeSocket([{"type": "session.created"}, {"type": "session.updated"},
@@ -216,11 +222,11 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
                   for part in ("Hello work", "force")]
         socket = FakeSocket([*self.transcription_events(), *deltas, *self.audio_response(), self.completed_input("Hello, workforce!")])
         result = await voice_client.probe("wss://gateway.invalid/voice-live", "voice-live", "en-US-AvaNeural", b"x" * 4800, {},
-                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         self.assertTrue(result["succeeded"])
         self.assertTrue(result["voiceRoundtripSucceeded"] and result["streamingRecognitionSucceeded"])
         self.assertEqual(result["streamingRecognitionProduct"], "voice-live/azure-speech")
-        self.assertEqual(result["selectedChatModel"], "gpt-4.1")
+        self.assertEqual(result["selectedChatModel"], "gpt-6.1-sol")
         self.assertEqual(result["inputTranscriptionDeltaEvents"], 2)
         self.assertTrue(result["inputItemMatched"] and result["inputTranscriptionCompleted"] and result["expectedTranscriptObserved"])
         self.assertEqual(socket.sent[0]["session"]["input_audio_transcription"], {"model": "azure-speech", "language": "en-US"})
@@ -231,7 +237,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_asr_completed_before_response_still_waits_for_audio_terminal(self):
         socket = FakeSocket([*self.transcription_events(), self.completed_input(), *self.audio_response()])
         result = await voice_client.probe("wss://gateway.invalid/voice-live", "voice-live", "en-US-AvaNeural", b"x" * 4800, {},
-                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         self.assertTrue(result["succeeded"])
 
     async def test_wrong_item_cannot_complete_own_asr_and_partial_timeout_is_failure(self):
@@ -244,7 +250,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
         socket = WaitingSocket([*self.transcription_events(), *self.audio_response(), self.completed_input(item="other-input"),
                                 {"type": "conversation.item.input_audio_transcription.delta", "item_id": "own-input", "content_index": 0, "delta": "Hello workforce"}])
         result = await voice_client.probe("wss://gateway.invalid/voice-live", "voice-live", "en-US-AvaNeural", b"x" * 4800, {}, timeout=0.02,
-                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         self.assertEqual(result["failureClass"], "TimeoutError")
         self.assertTrue(result["voiceRoundtripSucceeded"])
         self.assertFalse(result["inputTranscriptionCompleted"])
@@ -256,7 +262,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
                   "error": {"message": "PRIVATE-TRANSCRIPTION-ERROR"}}
         socket = FakeSocket([*self.transcription_events(), *self.audio_response(), failed])
         result = await voice_client.probe("wss://gateway.invalid/voice-live", "voice-live", "en-US-AvaNeural", b"x" * 4800, {},
-                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                                          connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
         self.assertTrue(result["voiceRoundtripSucceeded"])
         self.assertTrue(result["inputTranscriptionFailed"])
         self.assertFalse(result["streamingRecognitionSucceeded"] or result["succeeded"])
@@ -269,7 +275,7 @@ class VoiceFlowTests(unittest.IsolatedAsyncioTestCase):
             else: events[1]["session"]["input_audio_transcription"]["model"] = "whisper-1"
             socket = FakeSocket(events)
             result = await voice_client.probe("wss://gateway.invalid/voice-live", "voice-live", "en-US-AvaNeural", b"x" * 4800, {},
-                                              connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-4.1")
+                                              connector=lambda *args, **kwargs: socket, expected_transcript="Hello workforce", language="en-US", model="gpt-6.1-sol")
             self.assertEqual(result["failureClass"], "ValueError")
             self.assertFalse(result["succeeded"])
             self.assertEqual([event["type"] for event in socket.sent], ["session.update"])

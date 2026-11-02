@@ -6,6 +6,8 @@ import { buildSpeechRequest, defaultSpeechInput, getSpeechEndpoint, getSpeechHea
 import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, speechInputSchema } from "../lib/speech-request.ts";
 import { inspectSpeechWav, parseSpeechTranscript, readSpeechResponse, speechAudioBytes } from "../lib/speech-response.ts";
 import type { SpeechModel } from "../lib/model-types.ts";
+import { AZURE_SPEECH_VOICES, AZURE_SPEECH_VOICE_IDS } from "../lib/speech-voices.ts";
+import { buildSpeechExecutionRequest } from "../lib/speech-client.ts";
 
 const tts: SpeechModel = { id: "azure-speech-tts", label: "Azure Speech TTS", providerId: "azure-ai-speech", provider: "Azure AI Speech", apiId: "azure-speech-v1", operationId: "tts", kind: "tts", path: "/models/azure-speech/v1/synthesize", maxRequestBytes: 8192, language: "ja-JP" };
 const stt: SpeechModel = { ...tts, id: "azure-speech-stt", label: "Azure Speech STT", operationId: "stt", kind: "stt", path: "/models/azure-speech/v1/recognize", maxRequestBytes: 1_048_576 };
@@ -37,6 +39,48 @@ function request(model: SpeechModel = tts, extra: Record<string, unknown> = {}, 
 test("音声入力は文章を受け付け、任意SSML・URL・キー実値は拒否する", () => {
   assert.ok(speechInputSchema.safeParse(defaultSpeechInput(tts)).success);
   for (const extra of [{ ssml: "<speak/>" }, { file: "audio.wav" }, { url: "https://other.invalid" }, { apiKey: secret }, { voice: 'x"><audio src="https://other.invalid"/>' }, { rate: "100%" }]) assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), ...extra }).success, false);
+});
+
+test("日本語の標準Neural音声7種を許可し、既定Nanamiと日英の表示名を揃える", () => {
+  assert.deepEqual(AZURE_SPEECH_VOICE_IDS, [
+    "ja-JP-NanamiNeural", "ja-JP-KeitaNeural", "ja-JP-AoiNeural", "ja-JP-DaichiNeural",
+    "ja-JP-MayuNeural", "ja-JP-NaokiNeural", "ja-JP-ShioriNeural",
+  ]);
+  assert.equal(defaultSpeechInput(tts).voice, "ja-JP-NanamiNeural");
+  for (const voice of AZURE_SPEECH_VOICES) {
+    assert.ok(voice.label.ja.length > 0 && voice.label.en.length > 0);
+    assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), voice: voice.id }).success, true);
+  }
+  for (const voice of ["unapproved", "custom-voice", "en-US-AvaNeural", "ja-JP-Nanami:DragonHDLatestNeural"])
+    assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), voice }).success, false);
+});
+
+test("7種の声の選択をSSML・5言語の例・ブラウザーから上流への実送信へ反映する", async () => {
+  const text = "同じ文章で声を比較します & <テスト>";
+  for (const voice of AZURE_SPEECH_VOICE_IDS) {
+    const input = { ...defaultSpeechInput(tts), voice, text };
+    const xml = String(buildSpeechRequest(tts, input));
+    assert.ok(xml.includes(`<voice name="${voice}">`));
+    assert.ok(xml.includes("同じ文章で声を比較します &amp; &lt;テスト&gt;"));
+    for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
+      const code = getSpeechIntegrationExample(language, tts, input, gatewayOrigin);
+      assert.ok(code.includes(voice), language);
+      assert.ok(code.includes("同じ文章で声を比較します &amp; &lt;テスト&gt;"), language);
+    }
+    let calls = 0;
+    const init = buildSpeechExecutionRequest(tts, input, apiKeyId, null);
+    const headers = new Headers(init.headers); headers.set("origin", portalOrigin);
+    const response = await handleSpeech(new Request(`${portalOrigin}/api/models/speech`, { ...init, headers }), dependencies({
+      fetch: async (_url, options) => {
+        calls++;
+        assert.equal(options?.body, xml);
+        assert.equal(new Headers(options?.headers).get("Content-Type"), "application/ssml+xml");
+        return new Response(new Uint8Array(audio).buffer, { headers: { "Content-Type": "audio/wav" } });
+      },
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(calls, 1);
+  }
 });
 
 test("SSMLには入力文・許可音声・話速を使い、STTの本文と区別する", () => {

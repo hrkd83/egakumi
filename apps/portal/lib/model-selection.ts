@@ -1,9 +1,9 @@
-/** 提供元別に記憶するモデルの識別子です。キーや会話内容は含みません。 */
+/** 提供元・音声シリーズ別に記憶するモデルの識別子です。キーや会話内容は含みません。 */
 export type ModelSelection = { id: string; operationId?: string };
 
-/** 分類と提供元で選択を分離し、別の提供元へ前回のモデルを持ち込みません。 */
-export function modelSelectionScope(category: string, providerId: string): string {
-  return `${category}/${providerId}`;
+/** 分類と提供元またはシリーズで選択を分離し、別のグループへ前回のモデルを持ち込みません。 */
+export function modelSelectionScope(category: string, groupId: string): string {
+  return `${category}/${groupId}`;
 }
 
 /**

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 import type { RealtimeModel } from "./model-types.ts";
 
-/** 会話で選択できるモデルと応答上限だけを受け取ります。接続先・上流イベントの任意入力は許可しません。 */
-export const realtimeInputSchema = z.object({ modelId: z.string().min(1).max(200), maxOutputTokens: z.union([z.number().int().min(1).max(1_000_000), z.literal("model-max")]).optional() }).strict();
+/** 開始時のモデル・音声・応答上限だけを受け取り、接続先や上流イベントの任意入力を拒否します。 */
+export const realtimeInputSchema = z.object({ modelId: z.string().min(1).max(200), voice: z.string().regex(/^[A-Za-z0-9:._-]{1,150}$/).optional(), maxOutputTokens: z.union([z.number().int().min(1).max(1_000_000), z.literal("model-max")]).optional() }).strict();
 /** リアルタイム音声の表示設定です。認証情報は保持しません。 */
 export type RealtimeInput = z.infer<typeof realtimeInputSchema>;
 

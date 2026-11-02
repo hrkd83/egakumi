@@ -11,7 +11,7 @@ Voice Liveの入力音声認識を試す場合は、互換性を確認したテ�
 
 公式仕様:
 https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to#audio-input-transcription
-https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2025-10-01#conversationiteminput_audio_transcriptioncompleted
+https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-04-10#realtimerequestsession
 """
 from __future__ import annotations
 import argparse
@@ -38,7 +38,7 @@ EVENTS = frozenset(("session.created", "session.updated", "input_audio_buffer.co
 
 # 音声入力認識に使うテキストモデルは、公式仕様で互換性を確認したものに限定する。
 # 新しいモデルを加える場合は別途互換性を確認し、失敗時の代用として切り替えない。
-ASR_CHAT_MODELS = frozenset(("gpt-4.1",))
+ASR_CHAT_MODELS = frozenset(("gpt-6.1-sol",))
 SCENARIOS = ("roundtrip", "cancel", "disconnect", "keepalive")
 
 
@@ -110,9 +110,12 @@ def settings(product, voice, *, expected_transcript=None, language=None, model=N
                    "audio": {"input": {"format": {"type": "audio/pcm", "rate": 24000}, "turn_detection": None},
                              "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": voice}}}
     elif product == "voice-live":
+        # 推論モデルの疎通でも本文・音声用の出力枠を確保し、短文指示とlowで試験を小さく保つ。
+        # Voice Liveの数値指定上限を使い、モデル最大を許すinfへは広げない。
         session = {"modalities": ["text", "audio"], "input_audio_format": "pcm16", "output_audio_format": "pcm16",
                    "voice": {"type": "azure-standard", "name": voice}, "turn_detection": None,
-                   "input_audio_sampling_rate": 24000, "max_response_output_tokens": 128, "tools": []}
+                   "input_audio_sampling_rate": 24000, "max_response_output_tokens": 4096, "tools": [],
+                   "reasoning_effort": "low", "instructions": "Reply only OK."}
         if transcription: session["input_audio_transcription"] = transcription
     else: raise ValueError("Choose the actual product, not a substitute")
     return {"type": "session.update", "session": session}
@@ -297,9 +300,9 @@ async def probe(url, product, voice, pcm, headers, *, timeout=60, connector=None
                         evidence.event(await socket.recv())
                     if evidence.result["serviceError"]: return evidence.finish()
                 create = {"type": "response.create"}
-                if product == "realtime" and scenario == "cancel":
+                if scenario == "cancel":
                     # 一語の OK は取消前に完了し得るため、取消ケースだけ短い数唱を
-                    # 要求する。session の 512 枠と全体 timeout は変えず再送もしない。
+                    # 要求する。各製品の有限出力枠と全体 timeout は変えず再送もしない。
                     create["response"] = {"instructions": "Count from one to ten. Finish in under ten seconds."}
                 await socket.send(json.dumps(create))
                 while not (evidence.result["serviceTerminal"] and (not evidence.transcription or evidence.recognition_terminal())) and not evidence.result["serviceError"]:

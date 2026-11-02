@@ -1,12 +1,12 @@
 # Core API・Operation定義
 
-初期配備32モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/gateway/apim/apis/)と [モデル設定](../../config/test.json)。`azd up`は共通基盤の完了後、GatewayのAPI公開とPortal配備まで実行する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
+初期配備28モデルとPII・Graph・文書解析を提供する**標準19 APIの登録定義**を説明する。正本は [API別JSON](../../apps/gateway/apim/apis/)と [モデル設定](../../config/test.json)。`azd up`は共通基盤の完了後、GatewayのAPI公開とPortal配備まで実行する。登録後の実通信・受入判定は2つのテスト仕様書で別途記録する。ポリシーの適用順は[APIMポリシー一覧](apim-policy-catalog.md)を参照する。
 
 入口認可と本人接続の分担は[Gatewayの購読キー認証](gateway-key-auth-plan.md)を参照する。現行の標準19 APIでは、共通入口の購読キー検証と、個人向けAPIの本人OAuth接続を分けて設計する。
 
 ## 現在の公開定義
 
-初期32モデルとPII・Graph・Document Analysisを19 APIで提供する。本人のGraphユーザー情報取得は、CMを使う1つのAPIへまとめる。文書解析はモデル配備とは別のFoundryサービスを使い、独立したAPIとして登録する。
+初期28モデルとPII・Graph・Document Analysisを19 APIで提供する。本人のGraphユーザー情報取得は、CMを使う1つのAPIへまとめる。文書解析はモデル配備とは別のFoundryサービスを使い、独立したAPIとして登録する。
 
 | 数える対象 | 定義数 |
 |---|---:|
@@ -14,7 +14,7 @@
 | HTTP Operation（method＋route） | 19 |
 | WebSocket API | 6 |
 | API登録定義の合計 | **19** |
-| 操作定義で扱う初期配備モデル | **32** |
+| 操作定義で扱う初期配備モデル | **28** |
 
 上表はリポジトリの標準API定義の件数である。Azureに登録済みの件数とは区別する。WebSocketの`invoke`／`onHandshake`は接続時の代表操作として扱い、HTTP Operationの件数には含めない。PII生成MCPと、採用時のCM補助API2個は別計上する。
 
@@ -91,9 +91,9 @@ flowchart TD
 | `openai-live-ws-v1` | WebSocket | `wss://gateway.example.com/models/openai-live/v1/ws` |
 | `openai-transcription-ws-v1` | WebSocket | `wss://gateway.example.com/models/openai-transcription/v1/ws` |
 
-## 初期32モデルとAPI・Operationの対応
+## 初期28モデルとAPI・Operationの対応
 
-表のモデル名は、この環境で使う配備名を表す。固定版・SKU・容量の正本は`services.modelDeployments`、モデルの選定理由は[モデル一覧](foundry-model-catalog.md#初回配備する32モデル)を参照する。
+表のモデル名は、この環境で使う配備名を表す。固定版・SKU・容量の正本は`services.modelDeployments`、モデルの選定理由は[モデル一覧](foundry-model-catalog.md#初回配備する28モデル)を参照する。
 
 | # | 配備名 | API識別子 | 操作・選択方法 |
 |---|---|---|---|
@@ -104,31 +104,27 @@ flowchart TD
 | 5 | `gpt-5.6-luna` | `openai-inference-v1` | Chat／Responses |
 | 6 | `gpt-5.6-sol` | `openai-inference-v1` | Chat／Responses |
 | 7 | `gpt-5.6-terra` | `openai-inference-v1` | Chat／Responses |
-| 8 | `gpt-5.5` | `openai-inference-v1` | Chat／Responses |
-| 9 | `gpt-5.4-mini` | `openai-inference-v1` | Chat／Responses |
-| 10 | `gpt-5.4-nano` | `openai-inference-v1` | Chat／Responses |
-| 11 | `gpt-5.4-pro` | `openai-inference-v1` | Responses |
-| 12 | `DeepSeek-V4-Flash` | `openai-inference-v1` | Chatのcompatible profile |
-| 13 | `DeepSeek-V4-Pro` | `openai-inference-v1` | Chatのcompatible profile |
-| 14 | `Mistral-Large-3` | `openai-inference-v1` | Chatのcompatible profile |
-| 15 | `grok-4.7` | `openai-inference-v1` | Chatのcompatible profile |
-| 16 | `gpt-live-1` | `openai-live-control-v1`・`openai-live-ws-v1` | Liveセッション作成／接続 |
-| 17 | `gpt-realtime-2.1` | `openai-realtime-control-v1`・`openai-realtime-ws-v1`・`openai-realtime-observer-v1` | WebRTC制御／WSS／sideband |
-| 18 | `gpt-realtime-2.1-mini` | `openai-realtime-ws-v1` | WSSのmodelクエリー選択 |
-| 19 | `gpt-live-transcribe` | `openai-transcription-ws-v1` | 認識途中／確定テキスト |
-| 20 | `gpt-transcribe` | `openai-audio-v1` | ファイル文字起こし |
-| 21 | `gpt-image-2.5-flare` | `openai-images-v1` | 画像生成／編集 |
-| 22 | `gpt-image-2.5-sunburst` | `openai-images-v1` | 画像生成／編集 |
-| 23 | `gpt-image-2` | `openai-images-v1` | 画像生成／編集 |
-| 24 | `FLUX.2-flex` | `blackforest-images-v1` | FLUX 2生成／編集、flex profile |
-| 25 | `FLUX.2-pro` | `blackforest-images-v1` | FLUX 2生成／編集、pro profile |
-| 26 | `text-embedding-3-large` | `openai-embeddings-v1` | embeddings |
-| 27 | `text-embedding-3-small` | `openai-embeddings-v1` | embeddings |
-| 28 | `embed-v-4-0` | `cohere-inference-v1` | cohere-embeddings |
-| 29 | `Cohere-rerank-v4.0-fast` | `cohere-inference-v1` | rerankのモデル選択 |
-| 30 | `Cohere-rerank-v4.0-pro` | `cohere-inference-v1` | rerankのモデル選択 |
-| 31 | `model-router` | `openai-inference-v1` | Chatのrouter profile |
-| 32 | `decision-1` | `microsoft-decision-v1` | systemone。提供モデル名は`Microsoft-Decision-1` |
+| 8 | `DeepSeek-V4-Flash` | `openai-inference-v1` | Chatのcompatible profile |
+| 9 | `DeepSeek-V4-Pro` | `openai-inference-v1` | Chatのcompatible profile |
+| 10 | `Mistral-Large-3` | `openai-inference-v1` | Chatのcompatible profile |
+| 11 | `grok-4.7` | `openai-inference-v1` | Chatのcompatible profile |
+| 12 | `gpt-live-1` | `openai-live-control-v1`・`openai-live-ws-v1` | Liveセッション作成／接続 |
+| 13 | `gpt-realtime-2.1` | `openai-realtime-control-v1`・`openai-realtime-ws-v1`・`openai-realtime-observer-v1` | WebRTC制御／WSS／sideband |
+| 14 | `gpt-realtime-2.1-mini` | `openai-realtime-ws-v1` | WSSのmodelクエリー選択 |
+| 15 | `gpt-live-transcribe` | `openai-transcription-ws-v1` | 認識途中／確定テキスト |
+| 16 | `gpt-transcribe` | `openai-audio-v1` | ファイル文字起こし |
+| 17 | `gpt-image-2.5-flare` | `openai-images-v1` | 画像生成／編集 |
+| 18 | `gpt-image-2.5-sunburst` | `openai-images-v1` | 画像生成／編集 |
+| 19 | `gpt-image-2` | `openai-images-v1` | 画像生成／編集 |
+| 20 | `FLUX.2-flex` | `blackforest-images-v1` | FLUX 2生成／編集、flex profile |
+| 21 | `FLUX.2-pro` | `blackforest-images-v1` | FLUX 2生成／編集、pro profile |
+| 22 | `text-embedding-3-large` | `openai-embeddings-v1` | embeddings |
+| 23 | `text-embedding-3-small` | `openai-embeddings-v1` | embeddings |
+| 24 | `embed-v-4-0` | `cohere-inference-v1` | cohere-embeddings |
+| 25 | `Cohere-rerank-v4.0-fast` | `cohere-inference-v1` | rerankのモデル選択 |
+| 26 | `Cohere-rerank-v4.0-pro` | `cohere-inference-v1` | rerankのモデル選択 |
+| 27 | `model-router` | `openai-inference-v1` | Chatのrouter profile |
+| 28 | `decision-1` | `microsoft-decision-v1` | systemone。提供モデル名は`Microsoft-Decision-1` |
 
 モデル対応はOperationの許可モデル・profile・固定上流、および音声セッションの接続契約で定義する。
 
@@ -140,11 +136,11 @@ ChatとResponsesの2つのOperationを使い、同じ操作内の差をprofile�
 
 | Operation | profile | 対象 | 出力token項目・モデル別上限 |
 |---|---|---|---|
-| `chat-completions` | `chat` | 上表1〜10のOpenAIモデル | `max_completion_tokens`、128,000 |
+| `chat-completions` | `chat` | 上表1〜7のOpenAIモデル | `max_completion_tokens`、128,000 |
 | `chat-completions` | **`compatible`** | DeepSeek 2種・Mistral・Grok | `max_tokens`、DeepSeek 384,000／Grok 500,000。Mistralは未確認のため数値を表示しない |
 | `chat-completions` | **`router`** | Model Router | 振り分け先によって変わるため、自動値を使用 |
 | `chat-completions` | `vision` | `gpt-6.1-sol` | 既存の画像入力形式、128,000 |
-| `responses-create` | `response` | 上表1〜11のOpenAIモデル | `max_output_tokens`、128,000 |
+| `responses-create` | `response` | 上表1〜7のOpenAIモデル | `max_output_tokens`、128,000 |
 | `responses-create` | `pdf` | `gpt-6.1-sol` | 既存のPDF入力形式、128,000 |
 
 上限と確認元は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json) で一元管理し、API配備とPortalカタログの双方へ展開する。要求の初期値とモデル上限は別の値であり、初期値を最大値まで増やすものではない。実際に出力できる量は入力とコンテキスト残量によっても変わる。
@@ -246,11 +242,11 @@ PII MCPは`pii-v1`の`pii_redact_text`から生成し、RESTと同じProductの�
 
 ## 現行資材の参照先
 
-- 初期配備32モデル：`config/test.json`・`config/production.json`と[モデル一覧](foundry-model-catalog.md)。
+- 初期配備28モデル：`config/test.json`・`config/production.json`と[モデル一覧](foundry-model-catalog.md)。
 - 標準19 APIの配備定義：[apps/gateway/apim/apis/](../../apps/gateway/apim/apis/)。1 API 1ファイルで、APIの名前とファイル名を一致させる。
 - 現行の登録・検査・移行：`scripts/deploy_gateway.py`・`scripts/deployment/helpers/configuration.py`・`scripts/api_migration.py`。
 - 公開の実装：`apps/gateway/apim/api-publication.bicep`・`apps/gateway/apim/policies/`。
-- 本文の19 API一覧と32モデル対応表：登録内容の確認と受入試験に使用する。
+- 本文の19 API一覧と28モデル対応表：登録内容の確認と受入試験に使用する。
 - ポリシーの適用順・検査内容：[APIMポリシー一覧](apim-policy-catalog.md)。
 
 ## 整理前の記録

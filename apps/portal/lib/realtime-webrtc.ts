@@ -12,6 +12,7 @@ import { openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCallHandle
 import { REALTIME_MAX_DURATION_MS, REALTIME_MAX_EVENTS, REALTIME_MAX_STREAM_BYTES, realtimeStopSchema, realtimeStreamEventSchema, realtimeWebRtcExecutionSchema, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { readSpeechBody } from "./speech-response.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS as conversationInstructions } from "./realtime-protocol.ts";
+import { resolveRealtimeVoice } from "./realtime-voices.ts";
 
 const privateHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
 const eventNames = new Set(["session.created", "session.updated", "rtc.call.sdp.created", "response.created", "response.done", "input_audio_buffer.speech_started", "input_audio_buffer.speech_stopped", "input_audio_buffer.committed", "conversation.item.created", "conversation.item.input_audio_transcription.completed", "response.output_audio_transcript.done", "response.audio_transcript.done", "error", "rtc.call.error"]);
@@ -54,7 +55,7 @@ function validateModel(model: RealtimeModel): void {
   if (model.transport !== "webrtc") throw new Error("A WebRTC operation is required");
   const expected = model.family === "realtime" ? ["openai-realtime-control-v1", "/models/openai-realtime/v1/calls", "gpt-realtime-2.1"]
     : model.family === "live" ? ["openai-live-control-v1", "/models/openai-live/v1/sessions", "gpt-live-1"]
-      : model.family === "voice-live" ? ["azure-voice-live-webrtc-v1", "/models/voice-live/v1/webrtc/", "gpt-4.1"] : null;
+      : model.family === "voice-live" ? ["azure-voice-live-webrtc-v1", "/models/voice-live/v1/webrtc/", "gpt-6.1-sol"] : null;
   if (!expected || model.apiId !== expected[0] || model.path !== expected[1] || model.modelId !== expected[2]) throw new Error("Unregistered WebRTC operation");
   if (model.family === "realtime" && (model.observer?.apiId !== "openai-realtime-observer-v1" || model.observer.path !== "/models/openai-realtime/v1/observer/"
     || model.hangupPath !== "/models/openai-realtime/v1/calls/{callId}/hangup")) throw new Error("Incomplete call ownership contract");
@@ -67,7 +68,7 @@ function websocketEndpoint(path: string, origin: string): string { const url = n
 /** Voice Liveの制御イベントを公式契約で組み立て、通常の音声WSS用イベントと混同させません。 */
 function voiceLiveOffer(model: RealtimeModel, sdp: string, input: RealtimeInput): Record<string, unknown> {
   return { type: "rtc.call.sdp.create", sdp_offer: sdp, session: {
-    modalities: ["text", "audio"], instructions: conversationInstructions, voice: { type: "azure-standard", name: model.voice },
+    modalities: ["text", "audio"], instructions: conversationInstructions, voice: { type: "azure-standard", name: resolveRealtimeVoice(model, input) },
     turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 }, max_response_output_tokens: resolveRealtimeOutputTokens(model, input), tools: [],
   } };
 }
@@ -159,14 +160,15 @@ export async function handleRealtimeStop(request: Request, dependencies: Realtim
 export async function handleRealtimeWebRtc(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
   if (request.headers.get("content-type")?.split(";", 1)[0] !== "application/json") return failure("InvalidRequest", 415);
-  let input: RealtimeInput & { apiKeyId: string; sdp: string }; let model: RealtimeModel; let origin: string;
+  let input: RealtimeInput & { apiKeyId: string; sdp: string }; let model: RealtimeModel; let origin: string; let selectedVoice: string | undefined;
   try {
     if (Number(request.headers.get("content-length") ?? 0) > 135_000) return failure("InvalidRequest", 413);
     input = realtimeWebRtcExecutionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 135_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]))))); validateRealtimeSdp(input.sdp);
     const selected = (await (dependencies.readModels ?? getRealtimeModels)()).find((entry) => entry.id === input.modelId); if (!selected) throw new Error("Missing model"); model = selected; validateModel(model);
     resolveRealtimeOutputTokens(model, input);
+    selectedVoice = resolveRealtimeVoice(model, input);
     const payload = model.family === "voice-live" ? voiceLiveOffer(model, input.sdp, input)
-      : model.family === "live" ? { sdp: input.sdp, instructions: conversationInstructions, voice: model.voice } : { sdp: input.sdp };
+      : model.family === "live" ? { sdp: input.sdp, instructions: conversationInstructions, voice: selectedVoice } : { sdp: input.sdp };
     if (Buffer.byteLength(JSON.stringify(payload)) > model.maxRequestBytes) throw new Error("Invalid request bounds");
   } catch { return failure("InvalidRequest", 400); }
   try { origin = (dependencies.readGatewayEnvironment ? await dependencies.readGatewayEnvironment() : { origin: getPublicModelGatewayOrigin() ?? "" }).origin; getTextGenerationEndpoint(model, origin); }
@@ -203,7 +205,7 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
           } else {
             createAttempted = true;
             const upstream = await fetcher(getTextGenerationEndpoint(model, origin), { method: "POST", headers: { "api-key": key, "Content-Type": "application/json", Accept: model.family === "realtime" ? "application/sdp" : "application/json" },
-              body: JSON.stringify(model.family === "realtime" ? { sdp: input.sdp } : { sdp: input.sdp, instructions: conversationInstructions, voice: model.voice }), redirect: "error", cache: "no-store", signal });
+              body: JSON.stringify(model.family === "realtime" ? { sdp: input.sdp } : { sdp: input.sdp, instructions: conversationInstructions, voice: selectedVoice }), redirect: "error", cache: "no-store", signal });
             upstreamStatus = upstream.status; stage = "validating-answer";
             if (model.family === "realtime") { call = captureCall(upstream, actor, input.apiKeyId, model.id); if (call) handle = sealRealtimeCallHandle(call, secret!); }
             if (model.family === "realtime" ? upstream.status !== 201 : !upstream.ok) { void upstream.body?.cancel().catch(() => undefined); throw new Error("Gateway session creation failed"); }

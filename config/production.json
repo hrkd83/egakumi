@@ -112,46 +112,6 @@
         "versionUpgradeOption": "NoAutoUpgrade"
       },
       {
-        "name": "gpt-5.5",
-        "modelName": "gpt-5.5",
-        "modelFormat": "OpenAI",
-        "modelVersion": "2026-04-24",
-        "skuName": "GlobalStandard",
-        "capacity": 1,
-        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.5",
-        "versionUpgradeOption": "NoAutoUpgrade"
-      },
-      {
-        "name": "gpt-5.4-mini",
-        "modelName": "gpt-5.4-mini",
-        "modelFormat": "OpenAI",
-        "modelVersion": "2026-03-17",
-        "skuName": "GlobalStandard",
-        "capacity": 1,
-        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-mini",
-        "versionUpgradeOption": "NoAutoUpgrade"
-      },
-      {
-        "name": "gpt-5.4-nano",
-        "modelName": "gpt-5.4-nano",
-        "modelFormat": "OpenAI",
-        "modelVersion": "2026-03-17",
-        "skuName": "GlobalStandard",
-        "capacity": 1,
-        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-nano",
-        "versionUpgradeOption": "NoAutoUpgrade"
-      },
-      {
-        "name": "gpt-5.4-pro",
-        "modelName": "gpt-5.4-pro",
-        "modelFormat": "OpenAI",
-        "modelVersion": "2026-03-05",
-        "skuName": "GlobalStandard",
-        "capacity": 1,
-        "quotaUsageName": "OpenAI.GlobalStandard.gpt-5.4-pro",
-        "versionUpgradeOption": "NoAutoUpgrade"
-      },
-      {
         "name": "DeepSeek-V4-Flash",
         "modelName": "DeepSeek-V4-Flash",
         "modelFormat": "DeepSeek",

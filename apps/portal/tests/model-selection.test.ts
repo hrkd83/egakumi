@@ -20,7 +20,7 @@ test("各カテゴリは正本順を維持し、単一モデルや同世代の�
   assert.equal(resolveInitialModel(getImageGenerationModels().filter((model) => model.providerId === "black-forest-labs"))?.id, "FLUX.2-flex");
   assert.equal(resolveInitialModel(getSpeechModels().filter((model) => model.providerId === "openai"))?.id, "gpt-transcribe");
   assert.equal(resolveInitialModel(getRealtimeModels().filter((model) => model.providerId === "openai"))?.modelId, "gpt-realtime-2.1");
-  assert.equal(resolveInitialModel(getRealtimeModels().filter((model) => model.providerId === "azure-ai-speech"))?.modelId, "gpt-4.1");
+  assert.equal(resolveInitialModel(getRealtimeModels().filter((model) => model.providerId === "azure-ai-speech"))?.modelId, "gpt-6.1-sol");
 });
 
 test("明示選択はカテゴリ・提供元別のメモリーに保持し、カタログから消えた場合だけ先頭へ戻す", () => {
@@ -35,4 +35,13 @@ test("明示選択はカテゴリ・提供元別のメモリーに保持し、�
   assert.equal(resolveInitialModel(models, { id: "removed-model" })?.id, "gpt-image-2.5-flare");
   assert.deepEqual(createPortalStore().getState().modelSelections, {});
   assert.equal(resolveInitialModel([], { id: "missing" }), undefined);
+});
+
+test("廃止した5.4系・5.5の選択を引き継いでも現在の先頭モデルと対応方式へ戻す", () => {
+  const models = getTextGenerationModels().filter((model) => model.providerId === "openai");
+  for (const modelId of ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.5"]) {
+    const selected = resolveTextModelVariant(models, { modelId, operationId: "chat-completions" });
+    assert.equal(selected?.id, "gpt-6.1-sol");
+    assert.equal(selected?.operationId, "responses-create");
+  }
 });

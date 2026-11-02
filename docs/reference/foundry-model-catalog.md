@@ -1,6 +1,6 @@
 # Foundryモデルの分類・リリース日一覧
 
-初回配備の正本は`config/test.json`・`config/production.json`の`services.modelDeployments`である。本書の初回配備一覧は現行configの32モデルを説明する。
+初回配備の正本は`config/test.json`・`config/production.json`の`services.modelDeployments`である。本書の初回配備一覧は現行configの28モデルを説明する。
 
 採用検討用の67モデル・品質指数・速度・公開日の一覧は**2026年10月27日の調査記録**であり、現時点の提供可否や配備済み状態を保証しない。配備前には採用モデルの版・リージョン・SKU・利用枠を確認する。
 
@@ -14,15 +14,15 @@
 
 GAにも将来の終了日が設定される。提供状態・終了日は、モデル名に加えてバージョン・リージョン・SKUごとに確認する。
 
-## 初回配備する32モデル
+## 初回配備する28モデル
 
-テスト用・本番用の`config`とAPI例は、次の32モデルを共通の初回配備対象とする。
+テスト用・本番用の`config`とAPI例は、次の28モデルを共通の初回配備対象とする。
 下記の67モデルの調査一覧は採用検討用のカタログであり、初回配備の正本は
 `config/test.json`・`config/production.json`の`services.modelDeployments`である。
 
 | 分類 | プロバイダー | 初回配備モデル | 件数 |
 |---|---|---|---:|
-| チャット・推論 | OpenAI | `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-sol`、`gpt-6-astra`、`gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.5`、`gpt-5.4-mini`、`gpt-5.4-nano`、`gpt-5.4-pro` | 11 |
+| チャット・推論 | OpenAI | `gpt-6.1-sol`、`gpt-6-luna`、`gpt-6-sol`、`gpt-6-astra`、`gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra` | 7 |
 | チャット・推論 | DeepSeek | `DeepSeek-V4-Flash`、`DeepSeek-V4-Pro` | 2 |
 | チャット・推論 | Mistral AI | `Mistral-Large-3` | 1 |
 | チャット・推論 | xAI | `grok-4.7` | 1 |
@@ -35,12 +35,12 @@ GAにも将来の終了日が設定される。提供状態・終了日は、モ
 | 埋め込み | Cohere | `embed-v-4-0` | 1 |
 | 検索結果の再ランキング | Cohere | `Cohere-rerank-v4.0-fast`、`Cohere-rerank-v4.0-pro` | 2 |
 | モデルルーティング | Microsoft | `model-router` | 1 |
-| **合計** | | | **32** |
+| **合計** | | | **28** |
 
 Decisionは判断用の追加採用モデルで、確認した版はPreviewである。
 配備版は`1`、SKUは`DataZoneStandard`、利用枠名は
 `AIServices.DataZoneStandard.Microsoft-Decision-1`を保持する。
-ほかの31モデルは、確認したGA版を`GlobalStandard`で配備する。
+ほかの27モデルは、確認したGA版を`GlobalStandard`で配備する。
 初期capacityは`gpt-6.1-sol`が50、`gpt-5.6-luna`が5、ほかが1。
 これらは初期割当値であり、配備前に対象サブスクリプションのSKU・利用枠・提供容量を再確認する。
 
@@ -48,7 +48,7 @@ Decisionは判断用の追加採用モデルで、確認した版はPreviewで�
 現在のモデルと採用configの差分、既存利用、利用枠を確認して変更対象を決める。
 通常のincremental配備では、配列から外した既存モデルの削除は別途実施する。
 
-現行の32モデルを選定した際、候補から次の5モデルを外した。以下は2026-10-27の選定理由であり、現在の提供可否を示すものではない。
+2026-10-27の初回選定では、候補から次の5モデルを外した。以下は当時の選定理由であり、現在の提供可否を示すものではない。
 
 | モデル | 選定理由 |
 |---|---|
@@ -58,10 +58,12 @@ Decisionは判断用の追加採用モデルで、確認した版はPreviewで�
 | `text-embedding-ada-002` | 埋め込みは第3世代のlarge・smallとCohereを採用する |
 | `gpt-5.4` | 同用途の後継世代とDecisionを採用する |
 
+2026-11-02の初期配備見直しでは、`gpt-5.4-mini`・`gpt-5.4-nano`・`gpt-5.4-pro`・`gpt-5.5`を初期配備とChat／Responsesの許可一覧から外した。下記の過去の調査一覧は変更しない。
+
 ### モデル配備後のAPI公開
 
-`azd up`は上記32モデルと共通基盤を準備し、Gateway工程でAPIを公開してからPortalを配備する。個別のAPI更新には同じ`deploy_gateway.py`を使う。
-初期32モデルに対応するAPI・接続定義に加え、現在の標準APIは文書解析を含め19件ある。文書解析はこの32モデルへの追加配備ではなく、既存FoundryのDocument Intelligenceを使う。[標準API一覧](api-design-proposal.md)
+`azd up`は上記28モデルと共通基盤を準備し、Gateway工程でAPIを公開してからPortalを配備する。個別のAPI更新には同じ`deploy_gateway.py`を使う。
+初期28モデルに対応するAPI・接続定義に加え、現在の標準APIは文書解析を含め19件ある。文書解析はこの28モデルへの追加配備ではなく、既存FoundryのDocument Intelligenceを使う。[標準API一覧](api-design-proposal.md)
 次のモデルは、それぞれ異なる公開契約で扱う。実環境への公開時は、モデル別の要求・応答と上流到達を受入する。
 
 | 対象 | API登録時に確認する内容 |
@@ -72,9 +74,9 @@ Decisionは判断用の追加採用モデルで、確認した版はPreviewで�
 | `FLUX.2-pro` | pro用のprovider routeと生成・編集の要求形式 |
 | `model-router` | RouterのChat API設定とルーティング先の候補・選択方針 |
 
-[API・Operation対応表](api-design-proposal.md#初期32モデルとapioperationの対応)と[組み込むポリシー](apim-policy-catalog.md)を参照する。
+[API・Operation対応表](api-design-proposal.md#初期28モデルとapioperationの対応)と[組み込むポリシー](apim-policy-catalog.md)を参照する。
 
-Routerの選択先はAzure側のRouter定義で管理される。上記32モデルの配備配列とは別に確認する。
+Routerの選択先はAzure側のRouter定義で管理される。上記28モデルの配備配列とは別に確認する。
 
 ### テキスト生成の出力トークン入力範囲
 
@@ -113,6 +115,14 @@ SpeechのAPI例にはSSML読み上げとWAV認識がある。Foundryに配備す
 `gpt-live-1`というモデル名と、Azure SpeechのVoice Liveというサービス名は別の接続契約を表す。
 モデル名が似ていても、接続URL・認証・イベント形式は利用するAPIの仕様を確認する。
 `gpt-live-transcribe`のリアルタイム文字起こしも、音声ファイルを送るTranscriptions APIとは別に接続仕様を確認する。
+
+### Voice Liveの会話モデル
+
+Voice Liveの通常WSSとWebRTC制御は、[公開bindings](../../apps/gateway/apim/public-bindings.json)で`gpt-6.1-sol`を選ぶ。2026-11-02に[Microsoftの対応モデル表](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live)を確認し、`gpt-4.1`から、同じAzure音声認識・テキストLLM・Azure音声合成の構成に対応するモデルへ更新した。Voice Liveが管理するモデルの選択であり、Foundryの初期28配備へ追加する指定ではない。
+
+通常WSSはAPI版`2026-04-10`、WebRTC制御の`/voice-live/realtime/calls`は`2026-01-01-preview`を使う。数値の`max_response_output_tokens`は1〜4,096、モデル最大を選ぶ場合は`"inf"`を送る。モデル仕様の出力最大128,000と、この数値指定の範囲を区別する。[通常WSSの仕様](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-04-10)、[WebRTC制御の仕様](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-webrtc)
+
+[地域表](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/regions?tabs=voice-live)では、East US 2のLLM処理scopeは`gpt-4.1`のRegionalから`gpt-6.1-sol`のData zoneへ変わる。WebRTCはGlobal Standardの経路を使うため、リソースの配置地域だけで処理地域を判断しない。今回の確認は公式仕様との照合とローカル検証であり、更新後の実音声往復・最大出力の受入結果ではない。[音声の受入試験](../testing/integration-tests.md)
 
 ### OCRはAzure Document Intelligenceを使う
 

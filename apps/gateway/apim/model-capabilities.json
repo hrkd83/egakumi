@@ -118,69 +118,6 @@
         "openai-inference-v1"
       ],
       "operationIds": [
-        "chat-completions",
-        "responses-create"
-      ],
-      "modelId": "gpt-5.5",
-      "maxOutputTokens": 128000,
-      "limitKind": "documented",
-      "sourceUrls": [
-        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
-      ],
-      "checkedAt": "2026-10-31"
-    },
-    {
-      "apiIds": [
-        "openai-inference-v1"
-      ],
-      "operationIds": [
-        "chat-completions",
-        "responses-create"
-      ],
-      "modelId": "gpt-5.4-mini",
-      "maxOutputTokens": 128000,
-      "limitKind": "documented",
-      "sourceUrls": [
-        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
-      ],
-      "checkedAt": "2026-10-31"
-    },
-    {
-      "apiIds": [
-        "openai-inference-v1"
-      ],
-      "operationIds": [
-        "chat-completions",
-        "responses-create"
-      ],
-      "modelId": "gpt-5.4-nano",
-      "maxOutputTokens": 128000,
-      "limitKind": "documented",
-      "sourceUrls": [
-        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
-      ],
-      "checkedAt": "2026-10-31"
-    },
-    {
-      "apiIds": [
-        "openai-inference-v1"
-      ],
-      "operationIds": [
-        "responses-create"
-      ],
-      "modelId": "gpt-5.4-pro",
-      "maxOutputTokens": 128000,
-      "limitKind": "documented",
-      "sourceUrls": [
-        "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure"
-      ],
-      "checkedAt": "2026-10-31"
-    },
-    {
-      "apiIds": [
-        "openai-inference-v1"
-      ],
-      "operationIds": [
         "chat-completions"
       ],
       "modelId": "DeepSeek-V4-Flash",
@@ -324,14 +261,16 @@
       "operationIds": [
         "invoke"
       ],
-      "modelId": "gpt-4.1",
-      "maxOutputTokens": 32768,
+      "modelId": "gpt-6.1-sol",
+      "maxOutputTokens": 128000,
       "limitKind": "documented",
       "sourceUrls": [
+        "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live",
         "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure",
+        "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-04-10",
         "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-01-01-preview"
       ],
-      "checkedAt": "2026-10-31",
+      "checkedAt": "2026-11-02",
       "numericMaxOutputTokens": 4096,
       "supportsMaximumOutput": true
     }

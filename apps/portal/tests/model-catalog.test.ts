@@ -56,7 +56,9 @@ test("テキスト一覧は正本の許可モデルを網羅し、各モデル�
   }
   assert.deepEqual(models.filter((model) => model.id === "gpt-6.1-sol").map((model) => model.operationId).sort(),
     ["chat-completions", "responses-create"]);
-  assert.deepEqual(models.filter((model) => model.id === "gpt-5.4-pro").map((model) => model.operationId), ["responses-create"]);
+  assert.ok(models.every((model) => !/^gpt-5\.(?:4|5)(?:-|$)/.test(model.id)));
+  assert.ok(getModelCatalog().find((category) => category.id === "text")?.operations
+    .every((operation) => operation.models.every((model) => !/^gpt-5\.(?:4|5)(?:-|$)/.test(model))));
 });
 
 test("埋め込み一覧はOpenAIとCohereの正本だけを実行先とし、配列上限と入力用途を引き継ぐ", () => {
@@ -153,7 +155,12 @@ test("リアルタイムは公開APIと方式を束縛し、観測・終了を�
       assert.equal(model.observer?.apiId, "openai-realtime-observer-v1");
       assert.equal(model.hangupPath, "/models/openai-realtime/v1/calls/{callId}/hangup");
     } else { assert.equal(model.observer, undefined); assert.equal(model.hangupPath, undefined); }
-    if (model.family === "voice-live") assert.equal(model.modelId, "gpt-4.1");
+    if (model.family === "voice-live") {
+      assert.equal(model.modelId, "gpt-6.1-sol");
+      assert.equal(model.maxOutputTokens, 128000);
+      assert.equal(model.numericMaxOutputTokens, 4096);
+      assert.equal(model.supportsMaximumOutput, true);
+    }
     if (model.modelId.endsWith("-mini")) assert.equal(model.transport, "websocket");
   }
   assert.ok(!JSON.stringify(models).includes("backendUrl"));

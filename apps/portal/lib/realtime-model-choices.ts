@@ -1,6 +1,7 @@
 import type { RealtimeModel } from "./model-types.ts";
 import type { RealtimeInput } from "./realtime-request.ts";
 import { defaultRealtimeInput } from "./realtime-integration.ts";
+import { getRealtimeVoiceOptions } from "./realtime-voices.ts";
 
 /** 同じモデルの接続方式をまとめた選択肢です。送信にはvariants内の実API定義を使います。 */
 export type RealtimeModelChoice = {
@@ -29,8 +30,10 @@ export function chooseRealtimeVariant(choice: RealtimeModelChoice, preferred: Re
 
 /** モデル・方式を変えたときだけ最大値に戻し、同じ選択内で編集した値は保持します。 */
 export function updateRealtimeModelSelection(current: { input: RealtimeInput; apiKeyId: string }, previous: RealtimeModel | undefined, next: RealtimeModel): { input: RealtimeInput; apiKeyId: string } {
+  const nextInput = defaultRealtimeInput(next);
+  if (current.input.voice && getRealtimeVoiceOptions(next).some((voice) => voice.id === current.input.voice)) nextInput.voice = current.input.voice;
   return {
-    input: previous?.id === next.id && current.input.modelId === next.id ? current.input : defaultRealtimeInput(next),
+    input: previous?.id === next.id && current.input.modelId === next.id ? current.input : nextInput,
     apiKeyId: previous?.apiId === next.apiId ? current.apiKeyId : "",
   };
 }

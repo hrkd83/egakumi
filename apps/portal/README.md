@@ -14,6 +14,21 @@ Egakumi Coreに含まれる管理ポータルです。AIモデルとツールAPI
 
 モデル・ツールの詳細ページには「使い方ガイド」「API仕様」「試す」を用意しています。入力や選択に応じた要求例・組み込みコード例と、実APIの応答を確認できます。利用できるモデル・操作・入力上限は、配備したAPI定義と画面の案内に従います。
 
+Model Gatewayのリアルタイム音声は、次の4シリーズで案内します。WebRTC対応モデルは初回にWebRTCを選び、WebSocketのみ対応するモデルはWebSocketを選びます。利用者が明示的に選んだモデル・接続方式はシリーズごとに保持し、各ページには公開APIが対応する選択肢だけを表示します。
+
+| シリーズ | 詳細ページ（日本語） | 用途 |
+| --- | --- | --- |
+| GPT-Live | `/ja/models/realtime/gpt-live` | 聞きながら話す全二重の音声会話 |
+| GPT Realtime | `/ja/models/realtime/gpt-realtime` | 音声を直接理解して応答。通常・miniを同じシリーズで選択 |
+| Voice Live + GPT | `/ja/models/realtime/voice-live-gpt` | Azureの音声認識・GPT・音声合成を連携。現行の会話モデルは`gpt-6.1-sol` |
+| GPT Live Transcribe | `/ja/models/realtime/gpt-live-transcribe` | マイクの音声を継続して文字起こし。AIの音声応答は返さない |
+
+旧リアルタイム音声の`openai`詳細URLはGPT Realtimeへ、`azure-ai-speech`詳細URLはVoice Live + GPTへ案内します。シリーズの分類は表示・選択用であり、APIの提供元ID・接続契約・キーの利用権限は各APIの定義に従います。
+
+Azure SpeechのTTSは「読み上げ（TTS）」→「試す」で、日本語の標準Neural音声7種から選べます。同じ文章で声を変えて生成し、返ったWAVを再生して比較します。音声を変えると以前の生成結果を消し、選択した音声名をSSMLとコード例にも反映します。[Microsoftの音声一覧](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts)
+
+リアルタイムの「試す」では、GPT Realtimeは10音声、Voice Live + GPTは同じ日本語7音声から選べます。声は接続前に選び、変更するときは接続を終了してから再接続します。GPT-Liveは現在の公開契約で確認したMarinを使用し、文字起こし専用シリーズには声の選択を表示しません。UIで選択できることと、実サービスで音声を生成・聴取できたことは分けて確認します。[Realtimeの音声](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-webrtc)、[Voice Liveの音声合成](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-how-to#audio-output-through-azure-text-to-speech)
+
 Hosted Agent APIとA2Aは準備中です。画像編集はGateway APIで提供し、Portalの実行パネルには含めていません。金額に基づく利用上限とGraph認証完了のプッシュ通知は未対応です。
 
 ## 使い始める

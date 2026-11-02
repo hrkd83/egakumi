@@ -6,13 +6,13 @@ import { runRealtimeConversation, type RealtimeConversationCommand, type Realtim
 import { decodeRealtimeAudio } from "../lib/realtime-audio.ts";
 import { buildRealtimeSessionEvent, RealtimeProtocol, REALTIME_CONVERSATION_INSTRUCTIONS } from "../lib/realtime-protocol.ts";
 import { defaultRealtimeInput, getRealtimeEndpoint, getRealtimeIntegrationCode, getRealtimeProtocolGuide, getRealtimeRequestExample, getRealtimeRequestSchema, getRealtimeResponseSchema } from "../lib/realtime-integration.ts";
-import { REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_EVENTS, realtimeExecutionSchema, type RealtimeStreamEvent } from "../lib/realtime-request.ts";
+import { REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_EVENTS, realtimeExecutionSchema, type RealtimeInput, type RealtimeStreamEvent } from "../lib/realtime-request.ts";
 import type { RealtimeModel } from "../lib/model-types.ts";
 
 const realtime: RealtimeModel = { id: "realtime", label: "Realtime", providerId: "openai", provider: "OpenAI", family: "realtime", transport: "websocket", apiId: "openai-realtime-ws-v1", operationId: "invoke", path: "/models/openai-realtime/v1/ws", modelId: "gpt-realtime-2.1", voice: "marin", maxRequestBytes: 65536, maxOutputTokens: 512 };
 const live: RealtimeModel = { ...realtime, id: "live", label: "Live", family: "live", apiId: "openai-live-ws-v1", path: "/models/openai-live/v1/ws", modelId: "gpt-live-1" };
 const transcription: RealtimeModel = { ...realtime, id: "transcription", family: "transcription", apiId: "openai-transcription-ws-v1", path: "/models/openai-transcription/v1/ws", modelId: "gpt-live-transcribe" };
-const voice: RealtimeModel = { ...realtime, id: "voice", family: "voice-live", apiId: "azure-voice-live-ws-v1", path: "/models/voice-live/v1/ws", modelId: "gpt-4.1", voice: "ja-JP-NanamiNeural" };
+const voice: RealtimeModel = { ...realtime, id: "voice", family: "voice-live", apiId: "azure-voice-live-ws-v1", path: "/models/voice-live/v1/ws", modelId: "gpt-6.1-sol", voice: "ja-JP-NanamiNeural" };
 const models = [realtime, live, transcription, voice];
 const key = "test-only-realtime-private-key"; const gateway = "https://gateway.example.invalid";
 const chunk = Buffer.alloc(4800).toString("base64");
@@ -29,11 +29,11 @@ class FakeSocket extends EventEmitter {
 }
 
 /** 認可後の継続会話を作り、ブラウザー側の開始・入力・停止を試験から操作します。 */
-function conversation(model = realtime, dependencies: RealtimeConversationDependencies = {}) {
+function conversation(model = realtime, dependencies: RealtimeConversationDependencies = {}, input: RealtimeInput = defaultRealtimeInput(model)) {
   const controller = new AbortController(); const events: RealtimeStreamEvent[] = []; const diagnostics: RealtimeConversationDiagnostic[] = [];
   let receive: (command: RealtimeConversationCommand) => void = () => undefined; let removed = 0; let socket: FakeSocket;
   let connected: () => void = () => undefined; const ready = new Promise<void>((resolve) => { connected = resolve; });
-  const promise = runRealtimeConversation(model, defaultRealtimeInput(model), getRealtimeEndpoint(model, gateway), key, controller.signal,
+  const promise = runRealtimeConversation(model, input, getRealtimeEndpoint(model, gateway), key, controller.signal,
     (event) => { events.push(event); if (event.type === "status" && event.stage === "connected") connected(); },
     (handler) => { receive = handler; return () => { removed++; }; }, { timeoutMs: 500, stopTimeoutMs: 5, diagnose: (value) => diagnostics.push(value), connect: (url, options) => {
       assert.equal(url, getRealtimeEndpoint(model, gateway)); assert.equal(options.followRedirects, false); assert.equal(options.maxPayload, 262144); assert.deepEqual(options.headers, { "api-key": key, "User-Agent": "egakumi-portal-realtime/1.0" });
@@ -58,6 +58,30 @@ test("開始設定は自然な日本語会話とVADを使い、WSSにだけPCM24
   assert.equal(buildRealtimeSessionEvent(live, defaultRealtimeInput(live))?.type, "session.start");
   const voiceSettings = JSON.stringify(buildRealtimeSessionEvent(voice, defaultRealtimeInput(voice))); assert.ok(voiceSettings.includes("azure-standard")); assert.ok(voiceSettings.includes("ja-JP-NanamiNeural")); assert.ok(voiceSettings.includes("server_vad"));
   const asr = JSON.stringify(buildRealtimeSessionEvent(transcription, defaultRealtimeInput(transcription))); assert.ok(asr.includes('"type":"transcription"')); assert.ok(asr.includes("gpt-live-transcribe")); assert.ok(asr.includes('"turn_detection":null')); assert.ok(!asr.includes("server_vad"));
+});
+
+test("選択音声をWSS開始設定とRealtimeのDataChannel設定へ反映する", async () => {
+  const rtc = { ...realtime, transport: "webrtc" as const };
+  const rtcStart = buildRealtimeSessionEvent(rtc, { ...defaultRealtimeInput(rtc), voice: "cedar" }) as { session: { audio: { output: { voice: string } } } };
+  assert.equal(rtcStart.session.audio.output.voice, "cedar");
+  for (const [model, selectedVoice] of [[realtime, "cedar"], [voice, "ja-JP-KeitaNeural"], [live, "marin"]] as const) {
+    const run = conversation(model, {}, { ...defaultRealtimeInput(model), voice: selectedVoice });
+    try {
+      await run.ready;
+      const session = run.socket().sent[0].session as { audio?: { output: { voice: string } }; voice?: { name: string } };
+      assert.equal(model.family === "voice-live" ? session.voice?.name : session.audio?.output.voice, selectedVoice);
+      run.send({ type: "stop" }); await run.promise;
+    } finally { run.controller.abort(); }
+  }
+});
+
+test("未知・別系列・文字起こしへの音声指定は上流WSSを開く前に拒否する", async () => {
+  let connected = 0;
+  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [live, "cedar"], [transcription, "marin"], [realtime, " cedar"], [realtime, "a".repeat(151)]] as const) {
+    await assert.rejects(runRealtimeConversation(model, { ...defaultRealtimeInput(model), voice: selectedVoice }, getRealtimeEndpoint(model, gateway), key,
+      new AbortController().signal, () => undefined, () => () => undefined, { connect: () => { connected++; throw new Error("Unexpected connection"); } }));
+  }
+  assert.equal(connected, 0);
 });
 
 test("接続先・モデル・秘密のURL埋め込み・任意イベントを拒否する", async () => {

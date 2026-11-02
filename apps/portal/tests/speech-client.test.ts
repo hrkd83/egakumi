@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildSpeechExecutionRequest } from "../lib/speech-client.ts";
 import type { SpeechModel } from "../lib/model-types.ts";
+import { AZURE_SPEECH_VOICE_IDS } from "../lib/speech-voices.ts";
 
 const tts: SpeechModel = { id: "tts", label: "TTS", provider: "Azure AI Speech", providerId: "azure-ai-speech", apiId: "azure-speech-v1", operationId: "tts", kind: "tts", path: "/models/azure-speech/v1/synthesize", maxRequestBytes: 65_536, language: "ja-JP" };
 const input = { modelId: "tts", voice: "ja-JP-NanamiNeural" as const, rate: "0%" as const, text: "編集した本文 <test> & 日本語" };
 
-test("TTSは編集文をJSONで送り、前のSTTファイルが残っていても添付しない", () => {
-  const request = buildSpeechExecutionRequest(tts, input, "fixture-key", new File(["unused"], "previous.wav"));
-  assert.deepEqual(JSON.parse(String(request.body)), { ...input, apiKeyId: "fixture-key" });
-  assert.equal(new Headers(request.headers).get("Content-Type"), "application/json");
+test("TTSは7種の選択した声と同じ編集文をJSONで送り、前のSTTファイルは添付しない", () => {
+  for (const voice of AZURE_SPEECH_VOICE_IDS) {
+    const selected = { ...input, voice };
+    const request = buildSpeechExecutionRequest(tts, selected, "fixture-key", new File(["unused"], "previous.wav"));
+    assert.deepEqual(JSON.parse(String(request.body)), { ...selected, apiKeyId: "fixture-key" });
+    assert.equal(new Headers(request.headers).get("Content-Type"), "application/json");
+  }
 });
 
 test("STTは選択ファイルの内容と入力設定を送り、multipart境界はブラウザーへ任せる", async () => {
