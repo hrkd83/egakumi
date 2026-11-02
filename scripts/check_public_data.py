@@ -90,6 +90,7 @@ POLICY_PATH = "scripts/public-data-policy.json"
 GENERATED_DEPENDENCY_ROOTS = {
     ".venv", "apps/portal/node_modules", "apps/portal/.next",
 }
+LOCAL_ONLY_TRACKED_ROOTS = {"docs/study"}
 
 
 class InspectionError(Exception):
@@ -424,6 +425,8 @@ class Guard:
             mode, oid, stage = header.split()
             if stage != b"0":
                 raise InspectionError("unmerged-index")
+            if self.local_only_path(os.fsdecode(name)):
+                self.record(os.fsdecode(name), "local-only-path-tracked", "")
             self.scan_blob(os.fsdecode(name), self.blob(oid.decode()),
                            mode.decode())
         self.current_metadata()
@@ -432,7 +435,23 @@ class Guard:
         """追跡対象の現在の作業ファイルを調べる。"""
         for name in git(self.repository, "ls-files", "-z").split(b"\0"):
             if name:
-                self.work_file(os.fsdecode(name))
+                path = os.fsdecode(name)
+                if self.local_only_path(path):
+                    self.record(path, "local-only-path-tracked", "")
+                self.work_file(path)
+
+    @staticmethod
+    def local_only_path(path: str) -> bool:
+        """公開Gitツリーへ新たに含めないローカル専用ルートを判定する。"""
+        return any(path == root or path.startswith(root + "/")
+                   for root in LOCAL_ONLY_TRACKED_ROOTS)
+
+    def check_local_only_tip(self, revision: str) -> None:
+        """現在または明示送信する先端ツリーだけに追跡禁止を適用する。"""
+        names = git(self.repository, "ls-tree", "-r", "-z", "--name-only", revision)
+        for name in names.split(b"\0"):
+            if name and self.local_only_path(os.fsdecode(name)):
+                self.record(os.fsdecode(name), "local-only-path-tracked", "")
 
     def work_file(self, name: str) -> None:
         """リンクは追跡せず、読み取り不能も安全側で止める。"""
@@ -462,7 +481,7 @@ class Guard:
                     self.work_file(path.relative_to(self.repository).as_posix())
                     directories.remove(item)
                 elif (not strict and path.relative_to(self.repository).as_posix()
-                      in GENERATED_DEPENDENCY_ROOTS):
+                      in GENERATED_DEPENDENCY_ROOTS | LOCAL_ONLY_TRACKED_ROOTS):
                     directories.remove(item)
             for item in files:
                 self.work_file((Path(root) / item).relative_to(
@@ -525,8 +544,11 @@ class Guard:
                     raise InspectionError("tag-nesting-review-required")
                 resolved.append(git(self.repository, "rev-parse", "--verify",
                                     "--end-of-options", revision + "^{commit}").strip().decode())
+            for revision in resolved:
+                self.check_local_only_tip(revision)
             revision_args = resolved
         else:
+            self.check_local_only_tip("HEAD")
             revision_args = ["HEAD", *self.public_refs()]
         commits = git(self.repository, "rev-list", *revision_args).splitlines()
         for commit in commits:

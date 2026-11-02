@@ -339,6 +339,53 @@ class PublicDataGuardTests(unittest.TestCase):
         self.outcome(self.check("--staged"), 1, "unknown-uuid")
         self.outcome(self.check("--worktree-strict"), 1, "unknown-uuid")
 
+    def test_local_study_media_is_excluded_only_from_normal_worktree(self) -> None:
+        self.write("docs/study/output/fixture.bin", bytes([0, 255, 1, 2]))
+        self.outcome(self.check("--worktree"), 0)
+        self.outcome(self.check("--worktree-strict"), 1, "binary-review-required")
+        self.write("outside-study.txt", self.identifier())
+        self.outcome(self.check("--worktree"), 1, "unknown-uuid")
+
+    def test_local_study_root_symlink_is_not_exempt(self) -> None:
+        outside = self.directory / "outside-study"
+        outside.mkdir()
+        (self.repository / "docs").mkdir()
+        (self.repository / "docs/study").symlink_to(outside, target_is_directory=True)
+        self.outcome(self.check("--worktree"), 1, "symlink-review-required")
+
+    def test_forced_study_tracking_is_refused_even_with_reviewed_hash(self) -> None:
+        name = "docs/study/fixture.md"
+        content = b"Independent synthetic study fixture.\n"
+        self.write(".gitignore", "docs/study/\n")
+        self.write(name, content)
+        self.git("add", "-f", "--", name)
+        self.policy_data["reviewed_binary_assets"] = [{
+            "path": name, "sha256": hashlib.sha256(content).hexdigest(),
+            "reason": "Independently generated synthetic review fixture",
+        }]
+        self.save_policy()
+        self.outcome(self.check("--staged"), 1, "local-only-path-tracked")
+        self.outcome(self.check("--tracked"), 1, "local-only-path-tracked")
+        self.git("commit", "--quiet", "-m", "Add synthetic study fixture")
+        self.outcome(self.check("--all-history"), 1, "local-only-path-tracked")
+
+    def test_removed_study_history_is_readable_but_old_push_tip_is_refused(self) -> None:
+        name = "docs/study/fixture.md"
+        self.stage("Independent synthetic study fixture.\n", name)
+        self.git("commit", "--quiet", "-m", "Add synthetic legacy study fixture")
+        previous = self.git("rev-parse", "HEAD").strip().decode()
+        self.git("rm", "--quiet", name)
+        self.git("commit", "--quiet", "-m", "Stop tracking synthetic study fixture")
+        self.git("update-ref", "refs/remotes/origin/legacy-study", previous)
+        self.git("tag", "legacy-study", previous)
+        self.outcome(self.check("--staged"), 0)
+        self.outcome(self.check("--tracked"), 0)
+        self.outcome(self.check("--all-history"), 0)
+        self.outcome(self.check("--revisions", previous), 1, "local-only-path-tracked")
+        data = "HEAD " + previous + " refs/heads/review " + "0" * 40 + "\n"
+        self.outcome(self.check("--pre-push-refs", stdin=data),
+                     1, "local-only-path-tracked")
+
     def test_push_checks_dangling_annotated_tag_message(self) -> None:
         self.git("tag", "-a", "synthetic-review", "-m",
                  "Synthetic annotation " + self.identifier())

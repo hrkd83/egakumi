@@ -31,3 +31,6 @@ outputs/
 # Core sample portal
 apps/portal/node_modules/
 apps/portal/.next/
+
+# 勉強会の制作資材・出力はローカルで管理します。
+/docs/study/

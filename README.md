@@ -8,7 +8,7 @@ Egakumiは、AIを企業・組織の「働き手」として迎え、既存の�
 
 このリポジトリでは、その土台となる **Egakumi Core** を公開しています。企業でAIを利用するための接続、APIの保護と認証、利用制限、APIキー管理、監視・監査を、Azure上で構築・運用するための資材です。将来の体験構想と、このCoreが提供する機能の範囲は区別して説明します。
 
-[YouTube再生リスト：企業向けAI基盤を学ぶ｜Egakumi勉強会](https://www.youtube.com/playlist?list=PLNZqnNo-J21s) · [勉強会動画と資料](docs/study/VIDEOS.md) · [導入ガイド](docs/setup/01-prerequisites.md) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
+[YouTube再生リスト：企業向けAI基盤を学ぶ｜Egakumi勉強会](https://www.youtube.com/playlist?list=PLNZqnNo-J21s) · [勉強会動画](docs/videos.md) · [導入ガイド](docs/setup/01-prerequisites.md) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
 
 変更に着手する前に、[リポジトリ共通ルール（AGENTS.md）](AGENTS.md)と[開発ルール](DEVELOPMENT.md)を確認してください。**企業・実環境固有の情報は、ソースだけでなく作業記録・画像・ログ・コミット履歴にも一切含めません。** 実情報を扱う作業は、この公開リポジトリとは別の非公開作業環境で行います。
 
@@ -129,7 +129,7 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 - [音声の回帰試験画面](tests/browser/realtime.html)：`scripts/realtime_browser.py`のローカル専用relayで利用します。PortalやGatewayのAzure配備には含めません。
 - [開発共通ルール・保守手順](DEVELOPMENT.md)：コーディング規約、[テストの共通ルール](DEVELOPMENT.md#テストの共通ルール)と[実行方法](DEVELOPMENT.md#テストの実行方法)、任意の配備補助を扱います。
 
-関連資料：[勉強会動画と資料](docs/study/VIDEOS.md)・[過去の調査・検証記録](docs/history/README.md)。
+関連資料：[勉強会動画](docs/videos.md)・[過去の調査・検証記録](docs/history/README.md)。
 
 ## ライセンスと開発方針
 

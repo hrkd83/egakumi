@@ -1,9 +1,0 @@
-{
-  "status": "complete",
-  "completedAt": "2026-11-02T17:13:40+09:00",
-  "noPendingProduction": true,
-  "currentWavNotUsedByOtherVersion": true,
-  "audioWavDeletionPermitted": true,
-  "adoptedVideoSha256": "a77bd91111e89e7082b48f20b628f62fd979db726c5d4bb5ee8863e3040cd1ad",
-  "basis": "Final verification, 53.375s browser playback and latest visual review complete. Current WAV is the 83-turn local mix; archived 94-turn comparison MP4 is self-contained. Other episodes do not reference these WAV paths. User requested the CONTENT-PLAN cleanup procedure."
-}
