@@ -68,6 +68,14 @@ UNQUOTED_CONFIG = re.compile(
     r"password|client[_-]?secret|api[_-]?key|access[_-]?token)"
     r"\s*:\s*([a-zA-Z0-9][a-zA-Z0-9_.!+-]{2,})\s*(?:#.*)?$"
 )
+STANDARD_ENV_ASSIGNMENT = re.compile(
+    r"(?im)^\s*(?:export\s+|\$env:)?(GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|"
+    r"AWS_ACCOUNT_ID|AZURE_SUBSCRIPTION_ID|AZURE_TENANT_ID|AZURE_CLIENT_ID|"
+    r"AZURE_OBJECT_ID|AZURE_CLIENT_SECRET|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|"
+    r"OPENAI_API_KEY|GITHUB_TOKEN)\s*[:=]\s*"
+    r"(?:\"([^\"\r\n]*)\"|'([^'\r\n]*)'|([a-zA-Z0-9][a-zA-Z0-9_.!+-]*))"
+    r"\s*(?:#.*)?$"
+)
 BASE64 = re.compile(r"(?<![\w+/])[A-Za-z0-9+/]{24,}={0,2}(?![\w+/=])")
 SENSITIVE_PATH = re.compile(
     r"(?i)(?:^|/)(?:\.env(?:\..+)?|\.azure|\.aws|\.state|secrets)(?:/|$)|"
@@ -121,6 +129,7 @@ def synthetic(value: str) -> bool:
         return len(set(compact)) == 1
     return bool(
         re.fullmatch(r"<[^<>]+>|\$\{[^{}]+\}|\$\([^()]+\)|\{[^{}]+\}", value)
+        or re.fullmatch(r"\$(?:env:)?[A-Za-z_][A-Za-z0-9_]*", value)
         or value in {"common", "organizations", "consumers", "123456789012",
                      "egakumi-example", "undefined", "null", "example",
                      "dummy", "test", "fake", "sample", "placeholder",
@@ -200,15 +209,19 @@ class Guard:
         line = text.count("\n", 0, offset) + 1 if text else 0
         self.findings.add((rule, self.locations[path], line))
 
-    def allowed_host(self, host: str) -> bool:
-        """予約済みの文書用ドメインと個別承認した共通ホストを許可する。"""
+    @staticmethod
+    def reserved_host(host: str) -> bool:
+        """文書・合成例のために予約されたドメインだけを判定する。"""
         host = host.lower().rstrip(".")
         return (
-            host in self.hosts or host in {"localhost", "example.com",
-                                         "example.org", "example.net"}
+            host in {"localhost", "example.com", "example.org", "example.net"}
             or host.endswith((".example.com", ".example.org", ".example.net",
                               ".invalid", ".localhost", ".test"))
         )
+
+    def allowed_host(self, host: str) -> bool:
+        """共通URLホストの承認を、個々のメールアドレスへ拡張しない。"""
+        return host.lower().rstrip(".") in self.hosts or self.reserved_host(host)
 
     def scan_text(self, path: str, text: str, depth: int = 0,
                   approved_asset: bool = False) -> None:
@@ -231,7 +244,7 @@ class Guard:
                             match.start())
         for match in EMAIL.finditer(text):
             value = match.group()
-            if value not in self.emails and not self.allowed_host(value.split("@")[-1]):
+            if value not in self.emails and not self.reserved_host(value.split("@")[-1]):
                 self.record(path, "nonpublic-email", value, text, match.start())
         for match in URL.finditer(text):
             value = match.group()
@@ -286,6 +299,12 @@ class Guard:
                 if (not synthetic(value) and value.lower() not in self.constants
                         and not UUID.fullmatch(value)):
                     self.record(path, rule, value, text, match.start())
+        for match in STANDARD_ENV_ASSIGNMENT.finditer(text):
+            value = next(group for group in match.groups()[1:] if group is not None)
+            if (not synthetic(value) and value.lower() not in self.constants
+                    and not UUID.fullmatch(value)):
+                self.record(path, "environment-variable-literal", value, text,
+                            match.start())
         for match in UNQUOTED_CONFIG.finditer(text):
             if Path(path).suffix.lower() in {
                 ".py", ".ts", ".tsx", ".js", ".mjs", ".bicep",

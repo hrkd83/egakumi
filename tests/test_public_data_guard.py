@@ -130,6 +130,31 @@ class PublicDataGuardTests(unittest.TestCase):
         self.stage(json.dumps({"clientId": opaque}))
         self.outcome(self.check("--staged"), 1, "environment-identifier")
 
+    def test_standard_environment_keys_are_checked_in_shell_files(self) -> None:
+        value = "deployment-" + uuid.uuid4().hex
+        variants = (
+            "export GOOGLE_CLOUD_PROJECT=" + value + "\n",
+            '$env:AZURE_CLIENT_ID = "' + value + '"\n',
+            "GITHUB_TOKEN: '" + value + "'\n",
+        )
+        for index, content in enumerate(variants):
+            with self.subTest(syntax=index):
+                self.stage(content, "candidate.sh")
+                self.outcome(self.check("--staged"), 1,
+                             "environment-variable-literal")
+        runtime_forms = (
+            'export GOOGLE_CLOUD_PROJECT="${PROJECT_FROM_PRIVATE_WORKSPACE}"\n',
+            'export GOOGLE_CLOUD_PROJECT="$PROJECT_FROM_PRIVATE_WORKSPACE"\n',
+            '$env:AZURE_CLIENT_ID = "$env:CLIENT_FROM_PRIVATE_WORKSPACE"\n',
+        )
+        for index, content in enumerate(runtime_forms):
+            with self.subTest(runtime=index):
+                self.stage(content, "candidate.sh")
+                self.outcome(self.check("--staged"), 0)
+        self.stage('export GOOGLE_CLOUD_PROJECT="$PROJECT_ID-' + value + '"\n',
+                   "candidate.sh")
+        self.outcome(self.check("--staged"), 1, "environment-variable-literal")
+
     def test_unknown_host_and_email_are_blocked(self) -> None:
         host = "organization-" + uuid.uuid4().hex + ".com"
         for content, rule in (("https://" + host, "nonpublic-host"),
@@ -137,6 +162,20 @@ class PublicDataGuardTests(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.stage(content)
                 self.outcome(self.check("--staged"), 1, rule)
+
+    def test_public_url_host_does_not_approve_every_email_on_that_host(self) -> None:
+        host = "github.com"
+        approved = "approved-" + uuid.uuid4().hex + "@" + host
+        other = "other-" + uuid.uuid4().hex + "@" + host
+        self.policy_data["public_hosts"] = [host]
+        self.policy_data["public_emails"] = [approved]
+        self.save_policy()
+        self.stage("https://" + host + "/docs")
+        self.outcome(self.check("--staged"), 0)
+        self.stage(approved)
+        self.outcome(self.check("--staged"), 0)
+        self.stage(other)
+        self.outcome(self.check("--staged"), 1, "nonpublic-email")
 
     def test_private_ip_is_blocked_and_documentation_ip_passes(self) -> None:
         private = ".".join(["10", *[str(part) for part in uuid.uuid4().bytes[:3]]])

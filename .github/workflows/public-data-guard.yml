@@ -138,6 +138,42 @@ jobs:
                   stop()
               return result.stdout
 
+          def require_guard_files(directory):
+              essential = (
+                  ".github/workflows/public-data-guard.yml",
+                  ".githooks/pre-commit",
+                  ".githooks/commit-msg",
+                  ".githooks/pre-push",
+                  "scripts/check_public_data.py",
+                  "scripts/public-data-policy.json",
+                  "scripts/install_git_hooks.py",
+                  "tests/test_public_data_guard.py",
+                  "AGENTS.md",
+                  ".github/CODEOWNERS",
+              )
+              for path in essential:
+                  entries = checked_git(
+                      directory, "ls-tree", "-z", "HEAD", "--", path,
+                  ).split(b"\0")
+                  entries = [entry for entry in entries if entry]
+                  if len(entries) != 1:
+                      stop()
+                  fields = entries[0].split(b"\t", 1)
+                  if len(fields) != 2 or fields[1] != path.encode("utf-8"):
+                      stop()
+                  header = fields[0].split()
+                  if len(header) != 3:
+                      stop()
+                  mode, kind, oid = header
+                  modes = (b"100755",) if path.startswith(".githooks/") else (b"100644", b"100755")
+                  if kind != b"blob" or mode not in modes:
+                      stop()
+                  size = checked_git(
+                      directory, "cat-file", "-s", oid.decode("ascii"),
+                  ).strip()
+                  if not size.isdigit() or int(size) <= 0:
+                      stop()
+
           def run(command, directory, environment, input_bytes=None):
               try:
                   result = subprocess.run(
@@ -231,6 +267,8 @@ jobs:
                           + request["base"]["sha"] + "\n"
                       ).encode("utf-8")
 
+                  # Check only the candidate HEAD, never pre-guard historical snapshots.
+                  require_guard_files(candidate)
                   command = [sys.executable, "-I", "-S", str(scanner), "--repository", str(candidate), "--policy", str(policy)]
                   run(command + ["--all-history"], trusted, environment)
                   if ref_input is not None:

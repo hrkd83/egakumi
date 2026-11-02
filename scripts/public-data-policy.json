@@ -71,11 +71,14 @@
     "youtu.be"
   ],
   "public_emails": [
-    "21281595+hrkd83@users.noreply.github.com"
+    "21281595+hrkd83@users.noreply.github.com",
+    "noreply@github.com"
   ],
   "public_author_names": [
     "Egakumi contributors",
-    "Example developer"
+    "Example developer",
+    "GitHub",
+    "hrkd83"
   ],
   "literal_exceptions": [
     {
@@ -3498,6 +3501,23 @@
       "reason": "Exactly one NUL byte AA== in an intentionally invalid offline image-policy fixture; no private payload.",
       "paths": [
         "tests/test_api_profile_policy.py"
+      ]
+    },
+    {
+      "rule": "environment-variable-literal",
+      "value": "schemaIdentity.clientId",
+      "reason": "Evaluated Bicep managed-identity object property; not a literal identifier",
+      "paths": [
+        "apps/gateway/deploy/broker.bicep",
+        "apps/portal/deploy/schema-job.bicep"
+      ]
+    },
+    {
+      "rule": "environment-variable-literal",
+      "value": "runtimeIdentity.clientId",
+      "reason": "Evaluated Bicep managed-identity object property; not a literal identifier",
+      "paths": [
+        "apps/portal/deploy/application.bicep"
       ]
     }
   ],
