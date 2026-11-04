@@ -137,7 +137,7 @@ class ContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "source"; target.write_text("keep")
             link = Path(temp) / "link"; link.symlink_to(target)
-            with self.assertRaises(OSError): probe.private_bytes(link, b"replace")
+            with self.assertRaisesRegex(ValueError, "symbolic links"): probe.private_bytes(link, b"replace")
             self.assertEqual(target.read_text(), "keep")
 
     def test_generated_png_is_decoded_and_truncation_or_bad_crc_is_rejected(self):

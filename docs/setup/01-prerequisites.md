@@ -4,13 +4,13 @@
 
 ## このページのゴール
 
-新しい端末・新規クローンから、Entra・DNS担当者へ依頼する情報を揃えます。AzureのRGや有料設備はまだ作成しません。既存の個人用`.tools/`・`.state/`・秘密ファイルを前提にしません。
+新しい端末・新規クローンから、Entra・DNS担当者へ依頼する情報と、環境別のローカル保存先を揃えます。AzureのRGや有料設備はまだ作成しません。既存の個人用`.tools/`・過去環境のstate・秘密ファイルを前提にしません。
 
 ## 1-1. 実行する端末を用意する
 
 macOS・Linux・WindowsのWSLで、POSIX `sh`を実行できる端末を使います。Windowsの通常のPowerShellだけでhookを動かす構成ではありません。インターネットへ接続し、GitHub、Microsoftのログイン／Azure管理API、ツール・PowerShellモジュールの配布元へ到達できる必要があります。
 
-WSLでWindowsドライブ（`/mnt/c`等）にあるcloneを使う場合は、DrvFSの`metadata`を有効にし、`chmod`でディレクトリー700・秘密ファイル600を保存できる状態にします。既存の`secrets/`も700にします。`wsl.conf`の変更は対象ディストリビューションの再起動後に反映されます。[WSLのファイル権限](https://learn.microsoft.com/windows/wsl/file-permissions)・[マウント設定](https://learn.microsoft.com/windows/wsl/wsl-config#automount-options)
+WSLでWindowsドライブ（`/mnt/c`等）にあるcloneを使う場合は、DrvFSの`metadata`を有効にし、`chmod`でディレクトリー700・秘密ファイル600を保存できる状態にします。既存の`.local/<environment>/secrets/`も700にします。`wsl.conf`の変更は対象ディストリビューションの再起動後に反映されます。[WSLのファイル権限](https://learn.microsoft.com/windows/wsl/file-permissions)・[マウント設定](https://learn.microsoft.com/windows/wsl/wsl-config#automount-options)
 
 Linux用スクリプトは`.gitattributes`でLFを指定しています。Windowsで編集してCRLFになった場合も、VMへ埋め込むshell・PowerShellの本文はBicep側でLFへ正規化します。
 
@@ -19,7 +19,7 @@ Linux用スクリプトは`.gitattributes`でLFを指定しています。Window
 | Git | クローン・版の確認 | `git --version` | [Git](https://git-scm.com/downloads) |
 | Python | 3.11以上。通常のup/downには試験用package不要 | `python3 --version` | [Python](https://www.python.org/downloads/) |
 | Azure CLI | Azure管理操作 | `az version` | [Microsoft](https://learn.microsoft.com/cli/azure/install-azure-cli) |
-| Azure Developer CLI | up/down・環境管理 | `azd version` | [Microsoft](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) |
+| Azure Developer CLI | 1.33以上。up/down・環境管理 | `azd version` | [Microsoft](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) |
 | Bicep CLI | 名前計算・テンプレートのコンパイル | `az bicep version` | [Microsoft](https://learn.microsoft.com/azure/azure-resource-manager/bicep/install) |
 | PowerShell | 7.2以上。監視設定に使用 | `pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'` | [Microsoft](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) |
 | OpenSSH | SSH鍵の生成 | `command -v ssh-keygen` | OSのOpenSSHを導入 |
@@ -104,11 +104,42 @@ export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>
 
 資源名は`apim-<environment>-<product>`等の固定規則で導出します。世界で一意の名前が必要な資源では、既存利用と競合しない意味のある製品名・環境名を組織内で選びます。ランダムな末尾やAPIMだけの別名を自動追加しません。
 
-ここで決めた非秘密の値は担当者間の設定表へ控え、[4. params](04-params.md)にも同じ値を記入します。シェル変数はターミナルを閉じると消えるため、別の日や別ターミナルで続ける場合は自社の設定表から再設定します。secretの値をこの変数群へ追加しません。
+ここで決めた非秘密の値は、次節で用意する環境別の`evidence/`内の設定表へ控え、[4. params](04-params.md)にも同じ値を記入します。シェル変数はターミナルを閉じると消えるため、別の日や別ターミナルで続ける場合は自社の設定表から再設定します。secretの値をこの変数群へ追加しません。
+
+## 1-5. 環境別のローカル領域を準備する
+
+公開資材はこの1つのcheckoutを正本として使い、実情報はリポジトリルートの`.local/`とazd専用の`.azure/`だけへ保存します。[共通ルール](../../AGENTS.md)に従い、この2領域はGit・公開文書・配布物へ含めません。ルートの`secrets/`・`.state/`、`params/`内の実params、アプリ直下の`.env.local`へ実情報を作らないでください。
+
+初回は、標準構成を`test`または`production`から1つ選んで準備します。次のコマンドはAzure資源を作成せず、公開exampleのconfig・secret参照を環境別保存先へ合わせます。
+
+```sh
+umask 077
+export DEPLOY_PROFILE='test' # 本番向け標準構成を選ぶ場合は production
+python3 scripts/prepare_local_environment.py \
+  --environment "$DEPLOY_ENVIRONMENT" --profile "$DEPLOY_PROFILE"
+export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
+export DEPLOY_PARAMS_FILE="$DEPLOY_LOCAL_DIRECTORY/params.local.json"
+export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
+```
+
+| 保存先 | 用途 |
+| --- | --- |
+| `.local/<environment>/params.local.json` | 導入先のID・公開名・IP・グループ等の実設定 |
+| `.local/<environment>/secrets/` | DNS・Entraの秘密、SSH鍵、採用時のPFX等 |
+| `.local/<environment>/state/` | 容量検査、配備・ビルド・撤去の記録 |
+| `.local/<environment>/generated/` | azdへ渡す一時生成入力。`main.parameters.json`は秘密を含み得るため保護する |
+| `.local/<environment>/evidence/` | 設定表、試験結果、保存後の画面証跡 |
+| `.local/<environment>/portal/` | ローカルPortal開発を採用するときのサーバー専用設定 |
+| `.azure/` | azdが管理する環境選択・配備先等。手動の証跡置場にはしない |
+
+公開資材の`infra/main.bicepparam`が、環境別の生成JSONをazdへ渡します。構築前処理がazd環境へ保存する`EGAKUMI_ARM_PARAMETERS_FILE`は、`.local/<environment>/generated/main.parameters.json`という非秘密の相対パスだけです。client secret・DNS token・PFX等の秘密値はazdの`.env`へ設定せず、保護された生成JSONから配備パラメーターとして渡します。構築前にBicepが生成JSONを正しく読み取れることを、Azureへ変更を加える前に検査します。
+
+同じ環境を再開するときは、このparamsと記録を保持し、別profileの公開例で上書きしません。環境名・params・azd環境・Tenant／Subscription・stateの対応を照合し、同じcheckoutで構築・更新・撤去を同時実行しません。`.gitignore`は通常の追加を避ける補助であり、強制追加やフォルダー全体の共有を許可するものではありません。
 
 ## 次へ進む前の確認
 
 - cloneしたルートに`azure.yaml`、`infra/`、`params/`、`config/`がある。
+- 環境別の`.local/<environment>/`を準備し、実paramsと証跡の保存先を確認した。
 - 上記ツールとPowerShellの依存検査が成功する。
 - Azure／Entra／DNSの担当・権限、公開名とIP計画が決まっている。
 - 選択したモデルの料金・地域提供・クォータと、組織の購入条件を確認する担当がいる。

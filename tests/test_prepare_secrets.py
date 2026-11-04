@@ -628,18 +628,22 @@ class PrepareSecretsTests(unittest.TestCase):
         self.assertIn("hidden interactive prompts", self.errors.getvalue())
 
     def test_cli_success_prints_counts_only_and_loads_without_ssh(self):
+        config = json.loads(json.dumps(self.config))
+        config['certificate']['pluginArgumentsFile'] = str(self.root / '.local/test/secrets/dns-plugin-arguments.json')
+        config['credentialProviders'][0]['clientSecretFile'] = str(self.root / '.local/test/secrets/entra-client-secret.txt')
         with mock.patch.object(prepare_secrets, "ROOT", self.root), \
-                mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config) as load, \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(prepare_secrets, "load_configuration", return_value=config) as load, \
                 mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=True), \
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=[CLIENT_SECRET, TOKEN]), \
                 mock.patch("builtins.input", return_value=""), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            self.assertEqual(prepare_secrets.main(["--config", "params/test.local.json"]), 0)
-        load.assert_called_once_with(Path("params/test.local.json"))
+            self.assertEqual(prepare_secrets.main(["--config", ".local/test/params.local.json"]), 0)
+        load.assert_called_once_with(Path(".local/test/params.local.json"))
         self.assertIn("2 created, 0 reused", self.output.getvalue())
         self.assertNotIn(TOKEN, self.output.getvalue() + self.errors.getvalue())
         self.assertNotIn(CLIENT_SECRET, self.output.getvalue() + self.errors.getvalue())
-        self.assertFalse((self.root / "secrets/management-ssh").exists())
+        self.assertFalse((self.root / ".local/test/secrets/management-ssh").exists())
 
     def test_windows_permission_branch_does_not_require_unix_fchmod(self):
         path = self.root / "synthetic-staged-input"
@@ -650,6 +654,9 @@ class PrepareSecretsTests(unittest.TestCase):
         unix_permission.assert_not_called()
 
     def test_cli_write_encoding_error_does_not_disclose_its_secret_arguments(self):
+        config = json.loads(json.dumps(self.config))
+        config['certificate']['pluginArgumentsFile'] = str(self.root / '.local/test/secrets/dns-plugin-arguments.json')
+        config['credentialProviders'][0]['clientSecretFile'] = str(self.root / '.local/test/secrets/entra-client-secret.txt')
         real_fdopen = os.fdopen
         private_error = UnicodeEncodeError("utf-8", CLIENT_SECRET, 0, len(CLIENT_SECRET), CLIENT_SECRET)
         def broken_writer(descriptor, *arguments, **keywords):
@@ -660,13 +667,14 @@ class PrepareSecretsTests(unittest.TestCase):
             wrapped.write.side_effect = private_error
             return wrapped
         with mock.patch.object(prepare_secrets, "ROOT", self.root), \
-                mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config), \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(prepare_secrets, "load_configuration", return_value=config), \
                 mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=True), \
                 mock.patch.object(prepare_secrets.getpass, "getpass", return_value=TOKEN), \
                 mock.patch("builtins.input", return_value=""), \
                 mock.patch.object(prepare_secrets.os, "fdopen", side_effect=broken_writer), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            self.assertEqual(prepare_secrets.main(["--config", "public.json"]), 1)
+            self.assertEqual(prepare_secrets.main(["--config", ".local/test/params.local.json"]), 1)
         self.assertIn("input values were suppressed", self.errors.getvalue())
         self.assertNotIn(TOKEN, self.output.getvalue() + self.errors.getvalue())
         self.assertNotIn(CLIENT_SECRET, self.output.getvalue() + self.errors.getvalue())
@@ -674,10 +682,12 @@ class PrepareSecretsTests(unittest.TestCase):
         self.assertEqual(list(self.root.rglob(".secret-input-*")), [])
 
     def test_cli_interruption_is_safe_and_actionable(self):
-        with mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config), \
+        with mock.patch.object(prepare_secrets, "ROOT", self.root), \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config), \
                 mock.patch.object(prepare_secrets, "prepare_secrets", side_effect=KeyboardInterrupt), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            self.assertEqual(prepare_secrets.main(["--config", "public.json"]), 1)
+            self.assertEqual(prepare_secrets.main(["--config", ".local/test/params.local.json"]), 1)
         self.assertIn("interrupted", self.errors.getvalue())
 
 

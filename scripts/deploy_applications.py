@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from deployment.helpers.configuration import load_configuration
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, configuration_path, local_paths
 
 
 class ApplicationDeploymentError(ValueError):
@@ -25,13 +25,17 @@ def _repository_path(path: Path) -> Path:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path,
-                        default=Path(os.environ.get('WORKFORCE_CONFIG', 'params/test.local.json')))
-    parser.add_argument('--state-file', type=Path, default=REPOSITORY / '.state/latest.json')
+                        default=None)
+    parser.add_argument('--state-file', type=Path)
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     try:
-        source, state_file = _repository_path(args.config), _repository_path(args.state_file)
+        source = _repository_path(args.config or configuration_path(REPOSITORY))
         config = load_configuration(source)
+        workspace = local_paths(config, REPOSITORY)
+        workspace.checked(source)
+        workspace.check_selection(config)
+        state_file = workspace.checked(args.state_file or workspace.state / 'latest.json')
         state = json.loads(state_file.read_text(encoding='utf-8'))
         if not isinstance(state, dict) or any(state.get(key) != config[key]
                 for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):

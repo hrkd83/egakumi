@@ -23,11 +23,11 @@ class ApplicationDeploymentTests(unittest.TestCase):
         self.root = Path(directory.name).resolve()
         self.config = {'subscriptionId': '11111111-1111-4111-8111-111111111111',
                        'azureTenantId': '22222222-2222-4222-8222-222222222222',
-                       'resourceStem': 'test-fixture', 'publishApis': True}
-        self.source = self.root / 'params/test.local.json'
-        self.source.parent.mkdir()
+                       'resourceStem': 'test-fixture', 'environmentName': 'test', 'publishApis': True}
+        self.source = self.root / '.local/test/params.local.json'
+        self.source.parent.mkdir(parents=True)
         self.source.write_text('public configuration fixture')
-        self.state = self.root / '.state/latest.json'
+        self.state = self.root / '.local/test/state/latest.json'
         self.state.parent.mkdir()
         self.state.write_text(json.dumps({key: self.config[key]
                                          for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}))
@@ -37,7 +37,7 @@ class ApplicationDeploymentTests(unittest.TestCase):
         for patcher in (mock.patch.object(applications, 'REPOSITORY', self.root),
                         mock.patch.object(applications, 'load_configuration', return_value=self.config),
                         mock.patch.object(applications.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)),
-                        mock.patch.dict(os.environ, {}, clear=True),
+                        mock.patch.dict(os.environ, {'AZURE_ENV_NAME': 'test', 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True),
                         contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors)):
             self.enterContext(patcher)
 
@@ -54,6 +54,19 @@ class ApplicationDeploymentTests(unittest.TestCase):
             self.assertEqual(call.kwargs, {'cwd': self.root, 'shell': False, 'check': False})
         self.assertIn('GatewayとPortalの計画が完了しました。', self.output.getvalue())
 
+    def test_unselected_environment_does_not_start_either_child(self):
+        with mock.patch.dict(os.environ, {'PYTHONDONTWRITEBYTECODE': '1'}, clear=True):
+            self.assertEqual(applications.main([]), 1)
+        applications.subprocess.run.assert_not_called()
+        applications.load_configuration.assert_not_called()
+
+    def test_foreign_environment_paths_are_refused_before_children(self):
+        for option, path in (("--config", self.root / ".local/other/params.local.json"),
+                             ("--state-file", self.root / ".local/other/state/latest.json")):
+            with self.subTest(option=option):
+                self.assertEqual(applications.main([option, str(path)]), 1)
+        applications.subprocess.run.assert_not_called()
+
     def test_execute_waits_for_success_before_portal_and_streams_existing_clis(self):
         stages = []
         def run(command, **kwargs):
@@ -69,11 +82,11 @@ class ApplicationDeploymentTests(unittest.TestCase):
     def test_environment_and_explicit_paths_are_resolved_from_repository(self):
         selected = self.source.parent / 'selected.json'
         selected.write_text('selected public configuration')
-        with mock.patch.dict(os.environ, {'WORKFORCE_CONFIG': 'params/selected.json'}):
+        with mock.patch.dict(os.environ, {'WORKFORCE_CONFIG': '.local/test/selected.json'}):
             self.assertEqual(applications.main([]), 0)
         self.assertEqual(self.run_commands()[0][3], str(selected))
         applications.subprocess.run.reset_mock()
-        self.assertEqual(applications.main(['--config', str(selected), '--state-file', '.state/latest.json']), 0)
+        self.assertEqual(applications.main(['--config', str(selected), '--state-file', '.local/test/state/latest.json']), 0)
         self.assertEqual(self.run_commands()[1][3:], [str(selected), '--state-file', str(self.state)])
 
     def test_publication_opt_in_is_required_only_for_execute_and_never_rewritten(self):

@@ -14,6 +14,8 @@ import stat
 import tempfile
 import threading
 
+from deployment.helpers.paths import private_parent
+
 
 class SessionStateConflict(RuntimeError):
     """読み取り後に別処理が保存したため、古い状態を上書きできない。"""
@@ -67,7 +69,7 @@ class FileSessionStore:
                 finally:
                     self._lock_depth -= 1
                 return
-            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self.path = private_parent(self.path)
             lock_path = self.path.with_name(self.path.name + ".lock")
             flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
             descriptor = os.open(lock_path, flags, 0o600)

@@ -2,7 +2,7 @@
 
 APIM経由で本人接続を管理する内部FastAPIサービスです。MSALの認可コードフローで本人を確認し、Azure SQLの永続台帳でプール割当・接続・取引・セッションを管理します。業務API用のアクセストークンと更新トークンはCredential Managerが管理します。
 
-初期配備は`azd up`のGateway工程で行います。構築済み環境を個別に更新する場合は、リポジトリのルートから`python3 scripts/deploy_gateway.py --config params/<environment>.local.json --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../../docs/setup/credential-sql.md#4-gatewayを配備する)と[CM共通接続手順](../../../docs/setup/credential-manager-login.md)を参照してください。
+初期配備は`azd up`のGateway工程で行います。構築済み環境を個別に更新する場合は、リポジトリのルートから`python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../../docs/setup/credential-sql.md#4-gatewayを配備する)と[CM共通接続手順](../../../docs/setup/credential-manager-login.md)を参照してください。
 
 ## 起動に必要な設定
 

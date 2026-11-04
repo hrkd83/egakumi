@@ -5,6 +5,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ CORE = Path(__file__).resolve().parents[1]
 SCRIPTS = CORE / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from deployment.helpers.configuration import load_configuration
+from deployment.helpers.paths import private_parent
 SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
 TENANT = "99999999-9999-4999-8999-999999999999"
 CONNECTION = "44444444-4444-4444-8444-444444444444"
@@ -25,12 +27,18 @@ class SplitCliTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="workforce-split-cli-")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.parameter_directory = self.root / "company" / "parameters"
+        self.root = Path(self.temporary.name).resolve()
+        self.parameter_directory = self.root / ".local" / "test"
         self.config_directory = self.root / "platform" / "config"
-        self.output_directory = self.root / "generated"
-        for directory in (self.parameter_directory, self.config_directory, self.output_directory):
-            directory.mkdir(parents=True)
+        self.output_directory = self.parameter_directory / "generated"
+        self.config_directory.mkdir(parents=True)
+        private_parent(self.output_directory / "synthetic.json", self.root)
+        # lifecycleの実行ROOTも合成repoへ揃える。公開資材だけをコピーし、実値領域を含めない。
+        shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(CORE / "apps/gateway/apim", self.root / "apps/gateway/apim",
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        (self.root / "infra").mkdir()
+        shutil.copyfile(CORE / "infra/log-privacy.json", self.root / "infra/log-privacy.json")
         self.options = json.loads((CORE / "config/test.json").read_text())
         self.parameters = json.loads((CORE / "params/test.example.json").read_text())
         self.parameters.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,
@@ -41,18 +49,19 @@ class SplitCliTests(unittest.TestCase):
         self.parameters["credentialProviders"][0]["clientId"] = CONNECTION
         # 企業固有の参照はparamsだけに置きます。標準configの配置や合成先が
         # 異なるフォルダーでも、同じ公開鍵・DNS入力先を参照し続けることを調べます。
-        self.parameters["management"]["sshPublicKeyFile"] = "../nonexistent-protected/management.pub"
-        self.parameters["certificate"]["pluginArgumentsFile"] = "../nonexistent-protected/dns.json"
-        self.parameters["credentialProviders"][0]["clientSecretFile"] = "../nonexistent-protected/connection.txt"
+        self.parameters["management"]["sshPublicKeyFile"] = "secrets/nonexistent-protected/management.pub"
+        self.parameters["certificate"]["pluginArgumentsFile"] = "secrets/nonexistent-protected/dns.json"
+        self.parameters["credentialProviders"][0]["clientSecretFile"] = "secrets/nonexistent-protected/connection.txt"
         self.config = self.config_directory / "options.json"
-        self.source = self.parameter_directory / "company.local.json"
+        self.source = self.parameter_directory / "params.local.json"
         self.config.write_text(json.dumps(self.options))
         self.source.write_text(json.dumps(self.parameters))
+        self.source.chmod(0o600)
 
     def run_cli(self, script, *arguments):
-        result = subprocess.run([sys.executable, str(SCRIPTS / script), *map(str, arguments)],
+        result = subprocess.run([sys.executable, str(self.root / "scripts" / script), *map(str, arguments)],
                                 cwd=self.root, capture_output=True, text=True,
-                                env={**os.environ, "PATH": str(self.root / "no-external-tools"),
+                                env={"PATH": str(self.root / "no-external-tools"),
                                      "PYTHONDONTWRITEBYTECODE": "1"}, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout)
@@ -60,8 +69,8 @@ class SplitCliTests(unittest.TestCase):
     def assert_composed_paths(self, compiled, output):
         """保存JSONは相対参照とし、paramsの宣言元を再読込後も保つ。"""
         expected = {
-            ("management", "sshPublicKeyFile"): self.parameter_directory / "../nonexistent-protected/management.pub",
-            ("certificate", "pluginArgumentsFile"): self.parameter_directory / "../nonexistent-protected/dns.json",
+            ("management", "sshPublicKeyFile"): self.parameter_directory / "secrets/nonexistent-protected/management.pub",
+            ("certificate", "pluginArgumentsFile"): self.parameter_directory / "secrets/nonexistent-protected/dns.json",
         }
         reloaded = load_configuration(output)
         for (section, key), original_target in expected.items():
@@ -71,7 +80,7 @@ class SplitCliTests(unittest.TestCase):
             self.assertEqual(reloaded[section][key], str(original_target.resolve()))
             self.assertFalse(original_target.exists())
         # 読込・保存の試験では管理鍵を生成しない。
-        self.assertFalse((self.parameter_directory / "../nonexistent-protected/management").exists())
+        self.assertFalse((self.parameter_directory / "secrets/nonexistent-protected/management").exists())
         self.assertNotIn("configFile", compiled)
 
     def test_integration_cli_preserves_all_pinned_models_and_source_relative_paths(self):
@@ -100,7 +109,7 @@ class SplitCliTests(unittest.TestCase):
     def test_coverage_template_cli_uses_split_parameters_without_azure(self):
         output = self.output_directory / "bindings.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", CORE / "apps/gateway/apim/apis",
+                               "--overlay", self.root / "apps/gateway/apim/apis",
                                "--bindings-template", "--output", output)
         bindings = json.loads(output.read_text())
         self.assertIn("OPENAI_RESOURCE_BASE_URL", bindings)
@@ -119,7 +128,7 @@ class SplitCliTests(unittest.TestCase):
                      "--cm-client-secret-file", "../nonexistent-secret/connection.txt")
         binding_file = self.output_directory / "standard-bindings.json"
         self.run_cli("prepare_coverage.py", "--base", self.source,
-                     "--overlay", CORE / "apps/gateway/apim/apis",
+                     "--overlay", self.root / "apps/gateway/apim/apis",
                      "--bindings-template", "--output", binding_file)
         bindings = json.loads(binding_file.read_text())
         self.assertFalse(any(key.startswith(("TOOLS_", "HOSTED_AGENT_")) for key in bindings))
@@ -131,6 +140,7 @@ class SplitCliTests(unittest.TestCase):
             "LIVE_WS_BASE_URL": "wss://provider.example.com/openai/v1/live/sessions",
             "TRANSCRIPTION_WS_BASE_URL": "wss://provider.example.com/openai/v1/realtime",
             "STT_LANGUAGE": "en-US",
+            **json.loads((CORE / "apps/gateway/apim/public-bindings.json").read_text())["bindings"],
         }
         for key in bindings:
             bindings[key] = known.get(key) or (
@@ -140,7 +150,7 @@ class SplitCliTests(unittest.TestCase):
         binding_file.write_text(json.dumps(bindings))
         output = self.output_directory / "formal-standard.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", CORE / "apps/gateway/apim/apis",
+                               "--overlay", self.root / "apps/gateway/apim/apis",
                                "--bindings", binding_file, "--output", output)
         compiled = json.loads(output.read_text())
         self.assert_composed_paths(compiled, output)
@@ -167,7 +177,7 @@ class SplitCliTests(unittest.TestCase):
     def test_foundation_cli_preserves_models_and_paths_when_compiling_to_another_folder(self):
         template = self.output_directory / "foundation-bindings.json"
         self.run_cli("prepare_coverage.py", "--base", self.source,
-                     "--overlay", CORE / "apps/gateway/apim/apis", "--phase", "foundation",
+                     "--overlay", self.root / "apps/gateway/apim/apis", "--phase", "foundation",
                      "--bindings-template", "--output", template)
         bindings = json.loads(template.read_text())
         models = {model["modelFormat"] + "/" + model["name"]: model
@@ -191,7 +201,7 @@ class SplitCliTests(unittest.TestCase):
         template.write_text(json.dumps(bindings))
         output = self.output_directory / "foundation.local.json"
         receipt = self.run_cli("prepare_coverage.py", "--base", self.source,
-                               "--overlay", CORE / "apps/gateway/apim/apis",
+                               "--overlay", self.root / "apps/gateway/apim/apis",
                                "--phase", "foundation", "--bindings", template, "--output", output)
         compiled = json.loads(output.read_text())
         self.assert_composed_paths(compiled, output)
@@ -203,7 +213,7 @@ class SplitCliTests(unittest.TestCase):
         self.assertNotIn("oauthTenantId", provider)
         self.assertEqual(load_configuration(output)["credentialProviders"][0]["oauthTenantId"], TENANT)
         self.assertEqual(compiled["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
-        expected_secret = (self.parameter_directory / "../nonexistent-protected/connection.txt").resolve()
+        expected_secret = (self.parameter_directory / "secrets/nonexistent-protected/connection.txt").resolve()
         self.assertEqual((output.parent / provider["clientSecretFile"]).resolve(), expected_secret)
         self.assertFalse(expected_secret.exists())
         self.assertFalse(compiled["publishApis"])

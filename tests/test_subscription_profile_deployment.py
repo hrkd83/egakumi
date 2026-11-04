@@ -213,7 +213,9 @@ class SubscriptionProfileSecretTests(unittest.TestCase):
             'subscriptionId': '11111111-1111-4111-8111-111111111111',
             'azureTenantId': '22222222-2222-4222-8222-222222222222',
             'resourceStem': 'test-fixture', 'resourceGroupNames': {'svc': 'rg-test-fixture-svc'},
+            'environmentName': 'test',
         }
+        self.enterContext(mock.patch.dict(os.environ, {'PYTHONDONTWRITEBYTECODE': '1'}))
         self.values = {'vaultName': 'kv-test-fixture'}
 
     def test_existing_vault_secret_is_not_retrieved_or_rotated(self):
@@ -241,8 +243,10 @@ class SubscriptionProfileSecretTests(unittest.TestCase):
              mock.patch.object(portal, 'protected_json', side_effect=write_protected), \
              mock.patch('deployment.helpers.grpc_lifecycle.secrets.token_hex', return_value='a' * 128) as random_value, \
              contextlib.redirect_stdout(io.StringIO()) as output:
-            first = portal.profile_secret(self.config, self.values, transport, Path(directory))
-            second = portal.profile_secret(self.config, self.values, transport, Path(directory))
+            root = Path(directory).resolve()
+            first = portal.profile_secret(self.config, self.values, transport, root)
+            second = portal.profile_secret(self.config, self.values, transport, root)
+            self.assertEqual(writes[0], root / '.local/test/secrets/subscription-profile-test-fixture.json')
         self.assertEqual(first, second)
         self.assertEqual(len(writes), 1)
         self.assertEqual(writes[0].name, 'subscription-profile-test-fixture.json')

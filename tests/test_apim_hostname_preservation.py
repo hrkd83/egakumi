@@ -204,7 +204,7 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(lifecycle.main([phase]), 0)
                 discover.assert_called_once()
-                values = json.loads(lifecycle.PARAMETERS.read_text())["parameters"]
+                values = json.loads(self.paths.parameters.read_text())["parameters"]
                 self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected())
 
     def test_direct_core_put_includes_snapshot_and_monitoring_does_not_discover_domains(self):

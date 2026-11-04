@@ -37,7 +37,7 @@ Claudeはazdの構築対象外です。専用の配備・Marketplace確認・購
 1. 選んだconfig正本の`certificate.mode`を`prepared`にする。
 2. paramsの`certificate`から`plugin`・`pluginArgumentsFile`・`azureDnsSubscriptionId`・`azureDnsManagedIdentityResourceId`を削除する。DNS用項目を残すと構造検査で停止する。
 3. paramsの`certificate.preparedPfxFile`と`certificate.preparedPfxPasswordFile`に、それぞれ保護したPFX／パスワードファイルへの相対パスを設定する。
-4. 証明書担当者がSAN・有効期限・秘密鍵・chainを満たすPFXと、そのパスワードファイルをGit管理外へ準備する。この2ファイルは標準のDNS／Entra対話入力の自動生成対象ではない。
+4. 証明書担当者がSAN・有効期限・秘密鍵・chainを満たすPFXと、そのパスワードファイルを同じ環境の`.local/<environment>/secrets/`へ保護保存する。この2ファイルは標準のDNS／Entra対話入力の自動生成対象ではない。
 5. 同じparamsで設定を検査する。この方式ではDNS事業者の選択・DNS資格情報の入力を行わず、証明書の更新は証明書管理者が担当する。Gateway・Portalの公開AレコードはDNS担当者が準備する。
 
 PFXとパスワードをGitへ登録しません。標準の`dnsPlugin`方式を使う導入では、この例外手順とPFXの準備は不要です。

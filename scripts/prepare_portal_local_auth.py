@@ -14,11 +14,19 @@ import stat
 import subprocess
 
 from deployment.helpers.configuration import load_configuration, _read_protected_file
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, local_paths, private_parent
 
 
 class PreparationError(ValueError):
     """秘密の値を含めず、手元で見直す必要がある状態を伝える。"""
+
+
+class PreparationArgumentParser(argparse.ArgumentParser):
+    """入力間違いでもコマンドラインの値をエラーへ転載しない。"""
+
+    def error(self, _message: str) -> None:
+        """引数の内容にかかわらず固定した説明で停止する。"""
+        self.exit(2, "Local Portal command stopped: invalid arguments; no command was started.\n")
 
 
 def encode_environment(values: dict[str, str]) -> str:
@@ -67,12 +75,12 @@ def protect_new_file(path: Path) -> None:
     )
 
 
-def write_new_pair(documents: dict[Path, dict[str, str]]) -> None:
+def write_new_pair(documents: dict[Path, dict[str, str]], root: Path) -> None:
     """既存ファイルは上書きせず、途中で失敗した場合は今回作った分だけ取り除く。"""
     created: list[Path] = []
     try:
         for path, values in documents.items():
-            path.parent.mkdir(parents=True, exist_ok=True)
+            private_parent(path, root)
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             created.append(path)
             try:
@@ -110,12 +118,27 @@ def expected_settings(configuration: dict) -> dict[str, str]:
     }
 
 
+def environment_paths(configuration: dict, root: Path) -> tuple[Path, Path]:
+    """ローカルPortalの実行用とSQL管理用の保存先を同じ環境へ限定する。"""
+    paths = local_paths(configuration, root)
+    return (paths.checked(paths.root / "portal/runtime.env"),
+            paths.checked(paths.secrets / "portal-local-sql-admin.env"))
+
+
+def reject_legacy_settings(root: Path) -> None:
+    """Next.jsが自動読込する旧設定は読まず、明示的な移行を求める。"""
+    portal = root / "apps/portal"
+    names = (".env", ".env.local", ".env.development", ".env.development.local",
+             ".env.production", ".env.production.local", ".env.test", ".env.test.local")
+    if any((portal / name).exists() or (portal / name).is_symlink() for name in names):
+        raise PreparationError("Legacy Portal environment settings exist; migrate them to .local/<environment>/portal/runtime.env before continuing. No legacy settings were read or changed")
+
+
 def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: bool) -> dict:
     """実行時だけ既存Entra secretを読み、管理用・アプリ用を分けて保護保存する。"""
-    runtime_path = root / "apps" / "portal" / ".env.local"
-    admin_path = root / "secrets" / "portal-local-sql-admin.env"
+    reject_legacy_settings(root)
+    runtime_path, admin_path = environment_paths(configuration, root)
     paths = (runtime_path, admin_path)
-    expected = expected_settings(configuration)
     existing = [path.exists() or path.is_symlink() for path in paths]
     result = {
         "mode": "execute" if execute else "plan",
@@ -136,6 +159,7 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         raise PreparationError("SQL Server Developer EULA consent is required: review it, then pass --accept-sql-eula")
     if any(existing) and not all(existing):
         raise PreparationError("Only one local settings file exists; review it before creating the pair. No files were changed")
+    expected = expected_settings(configuration)
     profile = configuration["portalAuthentication"]["credentialProviderName"]
     provider = next(item for item in configuration["credentialProviders"] if item["name"] == profile)
     client_secret = _read_protected_file(provider["clientSecretFile"], "Portal Entra client secret")
@@ -143,6 +167,8 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         raise PreparationError("The existing Entra client secret must be a non-empty, single-line value")
     expected["MICROSOFT_CLIENT_SECRET"] = client_secret
     if all(existing):
+        for path in paths:
+            private_parent(path, root)
         runtime = read_environment(runtime_path)
         admin = read_environment(admin_path)
         required_runtime = set(expected) | {"BETTER_AUTH_SECRET", "PORTAL_SQL_PASSWORD"}
@@ -164,7 +190,7 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         "PORTAL_SQL_PASSWORD": "aA9_" + secrets.token_urlsafe(36),
     }
     admin = admin_settings(runtime, "aA9_" + secrets.token_urlsafe(36))
-    write_new_pair({runtime_path: runtime, admin_path: admin})
+    write_new_pair({runtime_path: runtime, admin_path: admin}, root)
     return result
 
 
@@ -189,7 +215,7 @@ def admin_settings(runtime: dict[str, str], admin_password: str) -> dict[str, st
 
 def main(argv: list[str] | None = None) -> int:
     """既定は計画表示。明示実行でもファイル作成だけでコンテナを起動しない。"""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = PreparationArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--accept-sql-eula", action="store_true", help="SQL Server Developerのライセンス条項に同意した場合だけ指定")

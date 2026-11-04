@@ -56,7 +56,7 @@ python3 scripts/deploy_gateway.py \
   --execute
 ```
 
-最初のコマンドはローカル計画`.state/gateway-plan.json`を作る。通常は保存済みCore stateから生成し、Azureへのアクセス・変更やparamsの編集は行わない。CIなどで`--deployment-name`を指定した場合は、Coreの配備結果をAzureから読み取る。`--execute`は次を順に実行する。
+最初のコマンドはローカル計画`.local/<environment>/state/gateway-plan.json`を作る。通常は保存済みCore stateから生成し、Azureへのアクセス・変更やparamsの編集は行わない。CIなどで`--deployment-name`を指定した場合は、Coreの配備結果をAzureから読み取る。`--execute`は次を順に実行する。
 
 1. 共通基盤の実IDを確認し、認証窓口の公開ソースだけを既存管理VMへ転送する。params・secrets・個人セッションはイメージへ含めない。
 2. 管理VMへACRスコープの組み込み`AcrPush`を一時付与し、イメージを作成して非公開ACRへ登録する。実際のdigestを取得し、そのビルドで作成した一時Run Commandと一時権限を回収する。
@@ -71,7 +71,7 @@ python3 scripts/deploy_gateway.py \
 
 ACR・SQLの公開アクセスは無効のまま。追加の常設VMやカスタムロールは作らない。実行者には管理VMのRun Command操作、対象資源の配備、必要なスコープでのロール割当・解除権限が必要。`Owner`、または`Contributor`と`Role Based Access Control Administrator`等の組み込みロールの組合せを使う。通常実行用IDへ`AcrPush`やSQL管理者権限は付けない。
 
-配備結果は`.state/gateway-deployment.json`、イメージ作成と一時資源の回収状況は`.state/credential-broker-build.json`へ記録する。`azd up` から呼ぶ場合も同じ記録を使い、Coreの `.state/latest.json` は維持する。実行したコマンドの終了コードと更新された記録で結果を確認し、古い成功JSONを流用しない。
+配備結果は`.local/<environment>/state/gateway-deployment.json`、イメージ作成と一時資源の回収状況は`.local/<environment>/state/credential-broker-build.json`へ記録する。`azd up` から呼ぶ場合も同じ記録を使い、Coreの `.local/<environment>/state/latest.json` は維持する。実行したコマンドの終了コードと更新された記録で結果を確認し、古い成功JSONを流用しない。
 
 Gatewayが失敗するとPortalへ進まず、全体構築も失敗で終了する。Portalだけが失敗した場合は、作成済みの基盤・Gatewayを保持して原因を修正し、Portalの個別コマンドから再試行できる。Gatewayを再試行するときも、同じ環境・同じソースで登録済みのイメージを再利用し、既存のDB・CM接続・購読キーを初期化し直さない。
 

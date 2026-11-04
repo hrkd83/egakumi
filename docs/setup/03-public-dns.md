@@ -2,7 +2,7 @@
 
 [← 02. Core用Entraアプリを登録・設定する](02-entra.md) · [次へ：04. paramsを設定する →](04-params.md)
 
-このページでは、Gateway・Portalの公開名を管理するDNSゾーンと、証明書の発行・自動更新に使うID・資格情報を用意します。DNS担当者が事前に準備し、構築担当者は後の`azd up`で必要な値を対話入力します。AzureはマネージドIDの公開参照を使い、Cloudflare／Route53の秘密値は非表示入力します。**資格情報のJSONや`secrets/`フォルダーを手作業で作る必要はありません。**
+このページでは、Gateway・Portalの公開名を管理するDNSゾーンと、証明書の発行・自動更新に使うID・資格情報を用意します。DNS担当者が事前に準備し、構築担当者は後の`azd up`で必要な値を対話入力します。AzureはマネージドIDの公開参照を使い、Cloudflare／Route53の秘密値は非表示入力します。**資格情報のJSONや`.local/<environment>/secrets/`フォルダーを手作業で作る必要はありません。**
 
 標準の`dnsPlugin`方式を説明します。用意済みのPFXを使う`prepared`方式は[05. config](05-config.md)と[運用手順](../operations.md)で確認してください。CoreのIaCは公開DNSゾーンやDNS管理用のアカウント・権限を作成しません。
 
@@ -143,7 +143,7 @@ Azure Portalの作成フォーム、DNS用RGのIAM、マネージドIDの選択�
 
 値は1項目ずつ貼り付け、Enterで確定します。表示用の`<...>`記号ごと入力せず、取得した実際の値だけを入れてください。秘密値をparams・config・コマンド引数・環境変数の設定例・パイプへ書きません。
 
-Azureは上記の公開IDだけを保存し、DNS資格情報ファイルを作成しません。CloudflareとRoute53についても、利用者がJSONを作成する必要はありません。clone直後に`secrets/`がなくても自動作成します。内部保存先はparamsの`certificate.pluginArgumentsFile`で参照し、公開サンプルの相対参照を通常は変更する必要がありません。POSIXではディレクトリー700・ファイル600で、ローカルの値は構築後も再実行用に残ります。**Key Vaultだけに保存されるわけではありません。**
+Azureは上記の公開IDだけを保存し、DNS資格情報ファイルを作成しません。CloudflareとRoute53についても、利用者がJSONを作成する必要はありません。clone直後に`.local/<environment>/secrets/`がなくても自動作成します。内部保存先はparamsの`certificate.pluginArgumentsFile`で参照し、第1章の準備コマンドが環境別の`./secrets/...`参照へ変換するため、その作成済みparamsを使います。POSIXではディレクトリー700・ファイル600で、ローカルの値は構築後も再実行用に残ります。**Key Vaultだけに保存されるわけではありません。**
 
 既存の入力は値を表示せず再利用します。事業者を変更した場合は、旧事業者の資格情報を流用せず、新しい事業者の入力を検査した後だけDNS用の内部ファイルを置き換えます。途中で中止すると旧資格情報は保持します。ただし、既に保存されたparamsの事業者選択は残ります。同じ事業者のtokenが期限切れかどうかは、この形式検査だけでは判断しません。
 
@@ -175,9 +175,9 @@ CIなど非対話の実行では選択・入力画面を表示せず、paramsの
 
 DNSゾーンは`certificate.azureDnsSubscriptionId`内から、公開ホスト名に最も長く一致するゾーンを探します。構築実行者には、対象ゾーンの読取とAレコードの編集権限が必要です。証明書更新時は引き続き管理VMのDNS用マネージドIDを使います。
 
-両ホストを先に検査してから更新し、既存のTTL・メタデータを保持します。別のサービスを参照するレコードや同名CNAMEがある場合は停止するため、対象を確認してから再実行してください。結果は`.state/public-dns.json`へ保存します。paramsファイルへの書戻しは行いません。
+両ホストを先に検査してから更新し、既存のTTL・メタデータを保持します。別のサービスを参照するレコードや同名CNAMEがある場合は停止するため、対象を確認してから再実行してください。結果は`.local/<environment>/state/public-dns.json`へ保存します。paramsファイルへの書戻しは行いません。
 
-Cloudflare・Route 53・証明書持込方式では、DNS担当者がGatewayとPortalのAレコードを`.state/latest.json`の`outputs.gateway.publicIp`へ設定します。Cloudflareは**DNS only（灰色の雲）**を使います。
+Cloudflare・Route 53・証明書持込方式では、DNS担当者がGatewayとPortalのAレコードを`.local/<environment>/state/latest.json`の`outputs.gateway.publicIp`へ設定します。Cloudflareは**DNS only（灰色の雲）**を使います。
 
 公開DNSの保存後、実際に利用するブラウザ・ネットワークからTLS接続とPortalの初期画面を確認します。DNSの保存成功と、端末や社内プロキシを含む経路での表示成功は、それぞれ確認します。
 

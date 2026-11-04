@@ -2,6 +2,8 @@
 
 Application Gatewayのアクセスログでは、URLのqueryを含み得る`RequestQuery`・`OriginalRequestUriWithArgs`・`RequestUri`を対象に非保持を設定します。WAFの`logScrubbing`はWAFログを対象にするため、アクセスログには別の取り込み変換が必要です。本書は配備資材の保存経路と既存環境の更新手順を説明します。実環境への反映状態・実測結果は[動作テストの判定](integration-tests.md)と、その試行の証跡で確認してください。
 
+コマンドはリポジトリルートで実行し、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
+
 ## Coreの保存経路
 
 `infra/log-privacy.json`をBicepと既存環境更新スクリプトで共用します。`AGWAccessLogs`に対する変換は次のとおりです。path、status、TransactionId、backend、時刻等の調査項目は保持します。
@@ -27,8 +29,8 @@ CoreのアクセスログはStorageへ直接送る設定から外し、変換後
 既定のコマンドはGETだけで計画を作ります。値を含む詳細な変更前後は、指定したGit管理外ファイルへ保護保存できます。
 
 ```sh
-python3 scripts/configure_log_privacy.py --config 'params/<environment>.local.json' \
-  --plan-file .state/log-privacy-plan.json
+python3 scripts/configure_log_privacy.py --config "$DEPLOY_PARAMS_FILE" \
+  --plan-file "$DEPLOY_LOCAL_DIRECTORY/state/log-privacy-plan.json"
 ```
 
 更新は以下の3段階です。これは承認済みの対象へだけ実行してください。
@@ -62,7 +64,7 @@ source
 
 ## 検証記録
 
-`RequestQuery`と`OriginalRequestUriWithArgs`に合成要求の識別値が残らないことを、変換・export・Storageの各経路で確認します。ヘッダー・Cookie・本文も個別に試験します。受入条件は[動作テスト仕様書](integration-tests.md)を参照し、実環境の結果・残件はリポジトリ外の非公開運用用ワークスペースで管理します。
+`RequestQuery`と`OriginalRequestUriWithArgs`に合成要求の識別値が残らないことを、変換・export・Storageの各経路で確認します。ヘッダー・Cookie・本文も個別に試験します。受入条件は[動作テスト仕様書](integration-tests.md)を参照し、実環境の結果・残件は環境別のGit管理外領域`.local/<environment>/`で管理します。
 
 ## 一次資料
 

@@ -30,6 +30,8 @@ import time
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
+from deployment.helpers.paths import private_parent
+
 
 KNOWN_FIELDS = frozenset((
     "id", "object", "created", "created_at", "model", "choices", "output", "usage",
@@ -55,12 +57,11 @@ def private_text(path: str | Path) -> str:
 
 def private_write(path: str | Path, value: str) -> None:
     """リンクをたどらず、所有者だけが読める権限でローカルファイルを保存する。"""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = private_parent(Path(path))
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     try:
         os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(value)
     except BaseException:
         try:
@@ -648,6 +649,14 @@ def main():
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     logging.disable(logging.CRITICAL)  # SDK error strings can include OAuth response bodies.
+    try:
+        args.output = private_parent(Path(args.output))
+        for name in ("oauth_token_file", "login_url_file"):
+            if getattr(args, name):
+                setattr(args, name, private_parent(Path(getattr(args, name))))
+    except (ValueError, OSError) as error:
+        print(json.dumps({"kind": args.kind, "succeeded": False, "failureClass": type(error).__name__}))
+        return 2
     login = None
     try:
         if not 1 <= args.timeout <= 600 or not 1 <= args.max_output_tokens <= 512 or args.stop_after_events < 0:

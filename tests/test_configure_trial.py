@@ -1,6 +1,9 @@
 """Gateway と本人接続の公開 ID・ファイル参照から試験設定を作る。"""
 import copy
+import contextlib
+import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -106,3 +109,37 @@ class TrialConfigurationTests(unittest.TestCase):
             saved=json.loads(output.read_text())
             self.assertEqual(saved['gateway']['authentication']['subscriptionKeyHeader'],'api-key')
             self.assertEqual(saved['credentialProviders'][0]['clientId'],APP)
+
+    def test_cli_defaults_follow_selected_environment_without_reading_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with mock.patch.object(trial, 'CORE', root), \
+                    mock.patch.dict(os.environ, {'AZURE_ENV_NAME': 'test'}, clear=True), \
+                    mock.patch.object(trial, 'load_configuration_source', return_value=configured_base()), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(trial.main(['--cm-client-id', APP]), 0)
+            output = root / '.local/test/state/integration.local.json'
+            saved = json.loads(output.read_text())
+            secret = (output.parent / saved['credentialProviders'][0]['clientSecretFile']).resolve()
+            self.assertEqual(secret, root / '.local/test/secrets/entra-client-secret.txt')
+            self.assertFalse(secret.exists())
+            self.assertFalse((root / '.state').exists())
+            self.assertFalse((root / 'secrets').exists())
+            if os.name != 'nt':
+                self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(output.parent.stat().st_mode & 0o777, 0o700)
+
+    def test_cli_rejects_public_output_and_other_selected_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            for output, environment in [(root / 'infra/private.json', 'test'),
+                                        (root / '.local/other/state/trial.json', 'test'),
+                                        (root / '.local/test/state/trial.json', 'other')]:
+                with self.subTest(output=output, environment=environment), \
+                        mock.patch.object(trial, 'CORE', root), \
+                        mock.patch.dict(os.environ, {'AZURE_ENV_NAME': environment}, clear=True), \
+                        mock.patch.object(trial, 'load_configuration_source', return_value=configured_base()), \
+                        contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(trial.main(['--base', str(root / '.local/test/params.local.json'),
+                                                 '--output', str(output), '--cm-client-id', APP]), 1)
+                self.assertFalse(output.exists())

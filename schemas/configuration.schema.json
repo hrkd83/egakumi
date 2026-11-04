@@ -1324,7 +1324,7 @@
     },
     "apiDefinitions": {
       "type": "array",
-      "description": "azd upのGateway工程と個別のGateway配備で、空配列なら標準18 API、定義があれば指定したAPIだけを登録します。標準APIの接続先は基盤出力からメモリー内で解決し、paramsを書き換えません。基盤のWAF・監査ログに必要な情報も同じ定義から事前に準備します。",
+      "description": "azd upのGateway工程と個別のGateway配備で、空配列なら標準19 API、定義があれば指定したAPIだけを登録します。標準APIの接続先は基盤出力からメモリー内で解決し、paramsを書き換えません。基盤のWAF・監査ログに必要な情報も同じ定義から事前に準備します。",
       "items": {
         "type": "object",
         "properties": {

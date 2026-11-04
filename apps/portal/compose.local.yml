@@ -6,7 +6,7 @@ services:
   sql:
     image: mcr.microsoft.com/mssql/server:2022-latest
     env_file:
-      - ../../secrets/portal-local-sql-admin.env
+      - ${PORTAL_LOCAL_SQL_ENV_FILE:?Set PORTAL_LOCAL_SQL_ENV_FILE to the private SQL administrator environment file}
     ports:
       - "127.0.0.1:14330:1433"
     volumes:

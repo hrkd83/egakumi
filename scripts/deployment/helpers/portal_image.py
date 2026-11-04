@@ -330,5 +330,5 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
         record(receipt)
         if cleanup_errors:
             detail = (str(failure) + '; ') if failure is not None else ''
-            raise ValueError(detail + 'Image build cleanup did not finish; inspect .state/portal-build.json') from None
+            raise ValueError(detail + 'Image build cleanup did not finish; inspect .local/<environment>/state/portal-build.json') from None
     return receipt['imageDigest']

@@ -23,6 +23,7 @@ from deployment.helpers.configuration import ConfigurationError, normalize_confi
 from integration_client import private_write
 from api_migration import is_sample_api_definition, migrate_api_definitions
 from standard_apis import load_api_definitions
+from deployment.helpers.paths import private_parent
 
 CORE = Path(__file__).resolve().parents[1]
 STANDARD_OVERLAY_DIRECTORY = CORE / "apps/gateway/apim/apis"
@@ -81,7 +82,7 @@ def prepare(base, overlay, bindings, *, base_directory, phase="full", overlay_di
         raise ValueError("Secret values must not be supplied as bindings")
     extra = substitute(overlay, bindings)
     # API例のファイル参照も、必ずそのJSONを置いたフォルダーを基準に扱います。
-    # 合成設定を.stateへ出しても、CM用secretが.state/secrets等へずれないよう、
+    # 合成設定を環境別stateへ出しても、CM用secretが別の相対保存先へずれないよう、
     # いったんbase側の場所から読める相対参照へ変換します。内容は読みません。
     extra = configuration_for_file(extra,
         base_directory=Path(overlay_directory) if overlay_directory is not None else STANDARD_OVERLAY_DIRECTORY,
@@ -163,6 +164,7 @@ def main():
     parser.add_argument("--phase", choices=("foundation", "full"), default="full")
     args = parser.parse_args()
     try:
+        args.output = private_parent(args.output)
         if args.overlay.is_dir():
             overlay = {"apiDefinitions": load_api_definitions(args.overlay)}
         else:

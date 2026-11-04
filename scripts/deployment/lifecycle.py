@@ -13,7 +13,7 @@ Azure変更を伴う。作成後の資源には料金が発生し得る。Graph�
 
 preup引数（python3 scripts/deployment/lifecycle.py preup）の目的と実行内容:
 利用者が用意した設定ファイルと対話入力に、既存のAzure設定を合わせ、
-構築に渡すinfra/main.parameters.jsonを組み立てるための事前準備を行う。
+構築に渡す.local/<environment>/generated/main.parameters.jsonを組み立てるための事前準備を行う。
   1. パラメータファイルと、そこから参照される構成設定を読み込む。
   2. 必要なツールと環境設定を確認し、DNSプロバイダーの選択、秘密情報の
      入力・再利用、管理VM用SSH鍵の準備を行う。
@@ -23,14 +23,14 @@ preup引数（python3 scripts/deployment/lifecycle.py preup）の目的と実行
   4. サブスクリプション・Azureテナント・リージョンをazdの環境設定に保存する。
   5. 既存のNSG、ルート、APIMのカスタムドメイン、PortalのCAの実在を確認する。
   6. 入力と取得結果をまとめ、秘密情報を含む一時ファイルとしてアクセスを
-     制限したinfra/main.parameters.jsonを生成する。
+     制限した.local/<environment>/generated/main.parameters.jsonを生成する。
 この段階ではVMやVNetの本体構築は行わないが、上記のAzure側の事前登録は行う。
 生成したファイルは、次のpreprovisionでも監視基盤の準備後に再生成し、
 通常のazd provisionによる本体構築へ渡す。
 
 preprovision引数（python3 scripts/deployment/lifecycle.py preprovision）の目的と実行内容:
 本体構築の前提条件を確認し、監視・監査の保存先を先に構築してから、
-infra/main.parameters.jsonを本体構築用に再生成する。
+.local/<environment>/generated/main.parameters.jsonを本体構築用に再生成する。
 azd provision単独でも実行されるため、preupと共通する前提確認も行う。
   1. 設定を読み込み、必要なツール・環境設定・秘密情報・管理VM用SSH鍵を
      確認・準備する。準備済みの入力や鍵は再利用する。
@@ -41,13 +41,13 @@ azd provision単独でも実行されるため、preupと共通する前提確�
      保護済みの保持設定や有効なログ収集を弱めないようにする。
   5. infra/main.bicepをmonitoringフェーズで実行し、5つのリソースグループ、
      証明書参照用マネージドID、監視・監査の保存先を先行構築する。
-     完了後、実際のリソースIDなどを.state/latest.jsonへ記録する。
+     完了後、実際のリソースIDなどを.local/<environment>/state/latest.jsonへ記録する。
   6. 監査ログの保持ロックを設定に応じて適用・確認し、Application Insightsの
      日次上限を設定する。API Centerの利用可否も確認し、同名の対象が
      論理削除されていれば復元する。
   7. 既存のNSG・ルート・APIM設定・PortalのCAの実在を再確認する。API公開時に
      追加されたFirewallの宛先も読み、今回の構築入力へ引き継ぐ。秘密情報を含む
-     一時ファイルとして、アクセスを制限したinfra/main.parameters.jsonを再生成する。
+     一時ファイルとして、アクセスを制限した.local/<environment>/generated/main.parameters.jsonを再生成する。
 正常終了すると、azd provisionが続いてVM・VNetなどの本体構築を行う。
 この処理の途中で失敗した場合は、生成済みのmain.parameters.jsonを削除して停止する。
 
@@ -57,7 +57,7 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
   1. azdの環境設定から、今回の本体配備名CORE_DEPLOYMENT_NAMEを取得する。
   2. その配備のoutputsをAzureから読み、リソースグループが設定した5つのRGと
      一致することを確認する。他の配備を名前から推測して利用しない。
-  3. 実際のリソースIDなどを.state/latest.jsonへ保存する。入口の仕上げが
+  3. 実際のリソースIDなどを.local/<environment>/state/latest.jsonへ保存する。入口の仕上げが
      失敗しても、後の更新・撤去に必要な構築記録を残すため、先に保存する。
   4. deployment/helpers/grpc_lifecycle.pyのconfigure_endpoint()を呼び、
      gateway.grpc.enabledとgateway.realtimeControlEnabled、およびAPI定義内の
@@ -66,11 +66,11 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
        設定し、HTTP/2を有効化して、反映完了を確認する。
      - gRPCが無効の場合は、入口設定の変更を省略する。
        Named Valueの配置・Key Vault参照の確認は後続のGateway配備が担当する。
-  5. 上記機能が有効なら、仕上げの確認結果を.state/ingress-bootstrap.jsonへ保存する。
+  5. 上記機能が有効なら、仕上げの確認結果を.local/<environment>/state/ingress-bootstrap.jsonへ保存する。
   6. Azure Public DNSを選んだ場合は、DNS用Subscriptionの公開ゾーンを照合し、
      GatewayとPortalのAエイリアスを今回のApp Gateway Public IPへ接続する。
-     保存した参照先を読み直し、結果を.state/public-dns.jsonへ記録する。
-  7. 入口設定の処理はfinallyでinfra/main.parameters.jsonを削除する。仕上げが
+     保存した参照先を読み直し、結果を.local/<environment>/state/public-dns.jsonへ記録する。
+  7. 入口設定の処理はfinallyで.local/<environment>/generated/main.parameters.jsonを削除する。仕上げが
      失敗しても生成した秘密入り入力は回収し、元の保護ファイルは保持する。
 正常終了すると、公開URLと基盤工程の完了を表示する。
 PortalのCAはcoreフェーズで初期イメージを使って作成する。
@@ -103,7 +103,8 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     __package__ = "deployment"
 
-from .helpers.paths import REPOSITORY
+from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
+from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_secret_inputs
 from .helpers.prepare_secrets import SecretPreparationError, prepare_secrets
 from .helpers.dns_selection import DnsSelectionError, select_dns_provider
@@ -116,9 +117,6 @@ from .helpers.powershell_runtime import locate_powershell, powershell_environmen
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
 
 ROOT = REPOSITORY
-PARAMETERS = ROOT / "infra/main.parameters.json"
-STATE = ROOT / ".state/latest.json"
-CAPACITY = ROOT / ".state/capacity.json"
 PROJECT_NAME = "ai-workforce-core"
 PROVIDERS = (
     "Microsoft.Network", "Microsoft.ManagedIdentity", "Microsoft.KeyVault",
@@ -174,7 +172,7 @@ def run(arguments: list[str], *, payload: dict | None = None, environment: dict 
 
 def protected_json(path: Path, value: dict) -> None:
     """所有者だけが読める一時ファイルへ書き、置換によって途中までのJSONを残さない。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = private_parent(path)
     handle, temporary = tempfile.mkstemp(prefix=".core-", dir=path.parent)
     try:
         os.fchmod(handle, 0o600)
@@ -184,6 +182,32 @@ def protected_json(path: Path, value: dict) -> None:
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
+
+
+def write_arm_parameters(config: dict, document: dict) -> None:
+    """秘密を保護生成物へ保存し、azdへは環境別の相対パスだけを渡す。"""
+    protected_json(local_paths(config, ROOT).parameters, complete_arm_parameters(document))
+    run(["azd", "env", "set", ARM_PARAMETERS_ENV, arm_parameters_reference(config["environmentName"]),
+         "--environment", config["environmentName"]])
+
+
+def check_parameter_bridge(config: dict) -> None:
+    """Azure変更前に、秘密なしの合成入力でBicep bridgeの実読取を確かめる。"""
+    override = os.environ.get("BICEP_CLI")
+    executable = override or shutil.which("bicep") or str(Path.home() / ".azure/bin/bicep")
+    if not Path(executable).is_file() or not os.access(executable, os.X_OK):
+        raise DeploymentError("Install Bicep CLI and set BICEP_CLI before deployment")
+    target = local_paths(config, ROOT).parameters
+    expected = complete_arm_parameters(parameters(config, "core"))
+    protected_json(target, expected)
+    try:
+        environment = {**os.environ, ARM_PARAMETERS_ENV: arm_parameters_reference(config["environmentName"])}
+        result = run([executable, "build-params", str(ROOT / "infra/main.bicepparam"),
+                      "--stdout", "--no-restore"], environment=environment)
+        if json.loads(result.get("parametersJson", "{}")) != expected:
+            raise DeploymentError("Bicep parameter bridge did not reproduce the selected inputs; use a compatible Bicep CLI")
+    finally:
+        target.unlink(missing_ok=True)
 
 
 def arm_access_token(subscription: str, tenant: str) -> dict:
@@ -613,6 +637,9 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
             raise DeploymentError(str(error)) from error
         run([executable, "-NoLogo", "-NoProfile", "-File", str(ROOT / "scripts/deployment/helpers/set-app-insights-cap.ps1"), "-CheckDependencies"], environment=powershell_environment(executable))
 
+    # パラメーター読取の互換性を、RP登録や監視資源作成より前に実測する。
+    check_parameter_bridge(config)
+
     # 初回に必要な秘密は、対象と取得先を短く案内してから端末で非表示入力します。
     # ローカル準備に失敗・中断した場合はSSH鍵もAzure資源も作りません。
     # 既に準備済みなら秘密を表示せず再利用し、azdの次のhookで再入力させません。
@@ -624,7 +651,7 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
             if selected is not config:
                 config.clear()
                 config.update(selected)
-        prepare_secrets(config, ROOT)
+        prepare_secrets(config, local_paths(config, ROOT).root)
     except (KeyboardInterrupt, EOFError):
         raise DeploymentError("Secret input was cancelled; no Azure resources were changed.") from None
     except (SecretPreparationError, ConfigurationError, DnsSelectionError) as error:
@@ -639,7 +666,7 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
     # validate/renderは鍵を作らず、既存の公開鍵は従来どおりそのまま使います。
     # 秘密鍵はこの端末のsecrets内だけに保ち、後段は公開鍵だけを読み込みます。
     try:
-        prepared = ensure_management_ssh_key(config, ROOT)
+        prepared = ensure_management_ssh_key(config, local_paths(config, ROOT).root)
     except ValueError as error:
         raise DeploymentError(str(error)) from None
     if prepared["created"]:
@@ -693,10 +720,10 @@ def capacity_preflight(config: dict, transport: ArmTransport, previous_outputs: 
             if next_page is not None and not isinstance(next_page, str):
                 raise DeploymentError("The existing model allocation continuation was malformed")
     report = verify_capacity(config, run, existing_resources=existing)
-    protected_json(CAPACITY, report)
+    protected_json((local_paths(config, ROOT).state / "capacity.json"), report)
     if report["status"] != "verified":
         codes = sorted({issue["code"] for issue in report["issues"]})
-        raise DeploymentError("VM/model capacity is not ready: " + ", ".join(codes) + "; see .state/capacity.json")
+        raise DeploymentError("VM/model capacity is not ready: " + ", ".join(codes) + "; see .local/<environment>/state/capacity.json")
     return report
 
 
@@ -845,19 +872,19 @@ def state_from_outputs(config: dict, outputs: dict) -> dict:
 def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | None:
     """同じ環境の撤去記録だけを引き継ぎ、再構築で旧CAEの管理RGを見失わない。"""
     try:
-        previous = json.loads(STATE.read_text(encoding="utf-8"))
+        previous = json.loads((local_paths(config, ROOT).state / "latest.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
         raise DeploymentError("Existing Core state could not be verified; preserve it and review it before rebuilding") from None
     if not isinstance(previous, dict):
         raise DeploymentError("Existing Core state could not be verified; preserve it and review it before rebuilding")
-    if "applicationInfrastructure" not in previous:
-        return None
     if (any(not isinstance(previous.get(key), str) or previous[key].casefold() != config[key].casefold()
             for key in ("subscriptionId", "azureTenantId", "resourceStem"))
             or previous.get("resourceGroupNames") != config["resourceGroupNames"]):
         raise DeploymentError("Existing application infrastructure checkpoint belongs to a different Core environment")
+    if "applicationInfrastructure" not in previous:
+        return None
     from .helpers.cleanup import CleanupError, _application_infrastructure
     try:
         return _application_infrastructure(config, previous["applicationInfrastructure"])
@@ -871,7 +898,7 @@ def _save_deployment_state(config: dict, outputs: dict) -> dict:
     state = state_from_outputs(config, outputs)
     if inventory is not None:
         state["applicationInfrastructure"] = inventory
-    protected_json(STATE, state)
+    protected_json((local_paths(config, ROOT).state / "latest.json"), state)
     return state
 
 
@@ -1060,7 +1087,7 @@ def _preprovision(config: dict) -> None:
     transport = ArmTransport(config)
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
     # 回避名のAPIMを増やさず、同名で再実行できる状態かだけを読み取る。
-    apim_name_receipt = ROOT / ".state/apim-name-preparation.json"
+    apim_name_receipt = local_paths(config, ROOT).state / "apim-name-preparation.json"
     apim_name_receipt.unlink(missing_ok=True)
     try:
         apim_name_check = verify_apim_name(config, transport)
@@ -1083,8 +1110,8 @@ def _preprovision(config: dict) -> None:
     preserve_collection = previous_outputs.get("monitoring", {}).get("value", {}).get("auditCollectionEnabled", False)
     # 前段の監視配備だけでは直近の収集状態を表せない場合がある。前回コアの成功出力も
     # 調べ、再upによって有効なログ収集を弱めない。
-    if STATE.exists():
-        state = json.loads(STATE.read_text())
+    if (local_paths(config, ROOT).state / "latest.json").exists():
+        state = json.loads((local_paths(config, ROOT).state / "latest.json").read_text())
         if all(state.get(key) == config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem")):
             preserve_collection = preserve_collection or state.get("monitoring", {}).get("auditCollectionEnabled", False)
     if previous_outputs.get("monitoring", {}).get("value", {}).get("workspaceId"):
@@ -1111,7 +1138,7 @@ def _preprovision(config: dict) -> None:
     configure_app_insights_cap(config, outputs)
     # 監視段階で5RGを作った後なら、同じsvc RG内の論理削除を照合・復元できる。
     # 公開名を変更せず、事前登録したEntra Portalの戻り先もそのまま使う。
-    api_center_receipt = ROOT / ".state/api-center-preparation.json"
+    api_center_receipt = local_paths(config, ROOT).state / "api-center-preparation.json"
     api_center_receipt.unlink(missing_ok=True)
     protected_json(api_center_receipt, {
         **ensure_api_center_available(config, outputs, transport),
@@ -1126,7 +1153,7 @@ def _preprovision(config: dict) -> None:
     existing_portal_app = discover_existing_portal_app(config, transport)
     existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport)
 
-    protected_json(PARAMETERS, parameters(config, "core", secrets=secrets,
+    write_arm_parameters(config, parameters(config, "core", secrets=secrets,
         manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
         existing_nsg_names=existing_nsg_names,
         existing_route_table_routes=existing_routes,
@@ -1142,14 +1169,14 @@ def preprovision(config: dict) -> None:
     try:
         _preprovision(config)
     except BaseException:
-        PARAMETERS.unlink(missing_ok=True)
+        local_paths(config, ROOT).parameters.unlink(missing_ok=True)
         raise
 
 
 def postprovision(config: dict) -> None:
     # このazd環境が記録したメイン配備だけから実際の出力を読む。
     """実配備出力を照合・保存し、証明書と入口設定を仕上げて生成秘密入力を回収する。"""
-    env = run(["azd", "env", "get-values", "-o", "json"])
+    env = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
     deployment_name = env.get("CORE_DEPLOYMENT_NAME")
     if not deployment_name:
         raise DeploymentError("CORE_DEPLOYMENT_NAME is missing; deployment outputs were not recorded")
@@ -1162,13 +1189,13 @@ def postprovision(config: dict) -> None:
     # 仕上げが失敗しても、作成済み資源の正確な撤去記録を失わない順番にする。
     try:
         _save_deployment_state(config, outputs)
-        dns_receipt_path = ROOT / ".state/public-dns.json"
+        dns_receipt_path = local_paths(config, ROOT).state / "public-dns.json"
         # 以前の成功記録を、今回の仕上げに成功した記録として残さない。
         dns_receipt_path.unlink(missing_ok=True)
         transport = ArmTransport(config)
         grpc_receipt = configure_grpc_endpoint(config, outputs, transport)
         if grpc_receipt["enabled"]:
-            protected_json(ROOT / ".state/ingress-bootstrap.json", grpc_receipt)
+            protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json", grpc_receipt)
         # DNS専用Subscriptionへの操作は別の接続に限定する。認証するテナントは
         # Azureリソースのテナントで、CM用Entraアプリのテナントとは分ける。
         certificate = config["certificate"]
@@ -1185,7 +1212,7 @@ def postprovision(config: dict) -> None:
     finally:
         # 証明書やドメイン設定の確認が失敗しても、生成した秘密入りARM入力は残さない。
         # 元の保護ファイルは保持するため、原因解消後に再利用できる。
-        PARAMETERS.unlink(missing_ok=True)
+        local_paths(config, ROOT).parameters.unlink(missing_ok=True)
     print(json.dumps({"deployed": True, "publicUrl": outputs["endpoints"]["public"],
                       "publicDnsStatus": dns_receipt["status"],
                       "apiPublicationStatus": "managed-separately"}))
@@ -1195,15 +1222,21 @@ def main(argv=None) -> int:
     """CLI/hookを振り分ける。validate・読取確認・構築・撤去でAzure変更の有無が異なる。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("validate", "capacity", "clear-inputs", "preup", "preprovision", "postprovision", "predown", "postdown"))
-    parser.add_argument("--config", type=Path, default=os.environ.get("WORKFORCE_CONFIG", "params/test.local.json"))
+    parser.add_argument("--config", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
+        selected = args.config or configuration_path(ROOT)
+        source = selected if selected.is_absolute() else ROOT / selected
+        config = load_configuration(source)
+        workspace = local_paths(config, ROOT)
+        workspace.checked(source)
+        workspace.check_selection(config)
         if args.command == "clear-inputs":
-            PARAMETERS.unlink(missing_ok=True)
+            workspace.parameters.unlink(missing_ok=True)
             print("Generated credential inputs removed. Protected source files are unchanged.")
             return 0
-        source = args.config if args.config.is_absolute() else ROOT / args.config
-        config = load_configuration(source)
+        if args.command != "validate":
+            workspace.ensure()
         if args.command == "validate":
             print(json.dumps({"valid": True, "resourceGroups": config["resourceGroupNames"], "apiPublicationStatus": config["apiPublicationStatus"]}))
         elif args.command == "capacity":
@@ -1226,7 +1259,7 @@ def main(argv=None) -> int:
             # preprovisionにも同じ確認を残し、azd provision単独でも前提を満たす。
             register_providers(config)
             for key, value in (("AZURE_SUBSCRIPTION_ID", config["subscriptionId"]), ("AZURE_TENANT_ID", config["azureTenantId"]), ("AZURE_LOCATION", config["location"])):
-                run(["azd", "env", "set", key, value])
+                run(["azd", "env", "set", key, value, "--environment", config["environmentName"]])
             # azdがpreup後に読む入力枠を用意する。秘密入りの実入力は監視基盤の準備後に作る。
             transport = ArmTransport(config)
             existing_nsg_names = discover_existing_network_security_groups(config, transport)
@@ -1234,7 +1267,7 @@ def main(argv=None) -> int:
             existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)
             existing_portal_app = discover_existing_portal_app(config, transport)
 
-            protected_json(PARAMETERS, parameters(config, "core", secrets={**secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json)},
+            write_arm_parameters(config, parameters(config, "core", secrets={**secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json)},
                 existing_nsg_names=existing_nsg_names,
                 existing_route_table_routes=existing_routes,
                 existing_apim_hostname_configurations=existing_apim_hostnames,
@@ -1245,19 +1278,22 @@ def main(argv=None) -> int:
             postprovision(config)
         else:
             from .helpers.cleanup import CleanupError, pre_down, post_down
-            PARAMETERS.unlink(missing_ok=True)
-            if not STATE.exists():
+            if not (local_paths(config, ROOT).state / "latest.json").exists():
                 raise DeploymentError("No core deployment state is available; recover the exact deployment outputs before cleanup")
-            state = json.loads(STATE.read_text())
+            state = json.loads((local_paths(config, ROOT).state / "latest.json").read_text())
+            _read_application_infrastructure_checkpoint(config)
+            if args.command == "predown":
+                # native downもbridgeを評価する。撤去中は秘密なしの入力だけを残す。
+                write_arm_parameters(config, parameters(config, "core"))
             operation = pre_down if args.command == "predown" else post_down
-            receipt_path = ROOT / ".state" / ("cleanup-" + args.command + ".json")
+            receipt_path = local_paths(config, ROOT).state / ("cleanup-" + args.command + ".json")
             receipt_path.unlink(missing_ok=True)
             try:
                 def checkpoint(inventory: list[dict]) -> None:
                     # CAEの削除後は管理RG名をAzureから再取得できないため、
                     # 変更前に確認したIDを保護保存し、中断後の撤去でも引き継ぐ。
                     updated = {**state, "applicationInfrastructure": inventory}
-                    protected_json(STATE, updated)
+                    protected_json((local_paths(config, ROOT).state / "latest.json"), updated)
                     state["applicationInfrastructure"] = inventory
 
                 options = {"checkpoint": checkpoint} if args.command == "predown" else {}
@@ -1269,7 +1305,7 @@ def main(argv=None) -> int:
             except CleanupError as error:
                 raise DeploymentError(f"Cleanup requires attention: {error.code}: {error}") from error
             if args.command == "postdown":
-                PARAMETERS.unlink(missing_ok=True)
+                local_paths(config, ROOT).parameters.unlink(missing_ok=True)
                 remove_grpc_secret(config, ROOT)
         return 0
     except (ValueError, OSError, KeyError, DeploymentError, LogPrivacyError) as error:

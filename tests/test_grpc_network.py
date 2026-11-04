@@ -46,10 +46,11 @@ class GrpcBootstrapTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        self.root = Path(self.directory.name).resolve()
+        self.enterContext(mock.patch.dict(os.environ, {"PYTHONDONTWRITEBYTECODE": "1"}))
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
             "azureTenantId": "22222222-2222-4222-8222-222222222222", "resourceStem": "test-fixture",
-            "location": "japaneast",
+            "location": "japaneast", "environmentName": "test",
             "resourceGroupNames": {"svc": "rg-test-fixture-svc"},
             "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True,
                 "publicHostName": "fixture.example.com", "publicPort": 8443, "backendPort": 443}},
@@ -139,7 +140,7 @@ class GrpcBootstrapTests(unittest.TestCase):
         ticket = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
         self.assertEqual(ticket, {"realtimeTicketKey": both["realtimeTicketKey"]})
         grpc.remove_secret(self.config, self.root)
-        self.assertFalse(list((self.root / ".state").glob("*.json")))
+        self.assertFalse(list((lifecycle.local_paths(self.config, self.root).secrets).glob("*.json")))
 
     def test_foundation_can_prepare_ticket_before_api_publication(self):
         self.config["gateway"]["grpc"]["enabled"] = False
@@ -152,7 +153,7 @@ class GrpcBootstrapTests(unittest.TestCase):
 
     def test_wrong_environment_weak_file_and_symlink_fail_without_replacing(self):
         path = grpc.secret_path(self.config, self.root)
-        path.parent.mkdir()
+        lifecycle.private_parent(path, self.root)
         lifecycle.protected_json(path, {"value": "a" * 128, "subscriptionId": "other"})
         with self.assertRaisesRegex(ValueError, "different environment"):
             grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
@@ -176,7 +177,9 @@ class GrpcBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as outside:
             external = Path(outside) / grpc.secret_path(self.config, self.root).name
             external.write_text("unrelated fixture")
-            (self.root / ".state").symlink_to(Path(outside), target_is_directory=True)
+            directory = lifecycle.local_paths(self.config, self.root).secrets
+            lifecycle.private_parent(directory, self.root)
+            directory.symlink_to(Path(outside), target_is_directory=True)
             for action in (lambda: grpc.prepare_secret(self.config, self.root, lifecycle.protected_json),
                            lambda: grpc.remove_secret(self.config, self.root)):
                 with self.assertRaisesRegex(ValueError, "symlinks"):
@@ -422,12 +425,12 @@ class GrpcBootstrapTests(unittest.TestCase):
     def test_pending_custom_domain_removes_arm_secret_inputs_but_retains_cleanup_state(self):
         config = {**self.config, "location": "japaneast", "foundryLocation": "eastus2"}
         outputs = {**self.outputs, "resourceGroups": config["resourceGroupNames"]}
-        parameter_file, state_file = self.root / "parameters.json", self.root / "state.json"
+        workspace = lifecycle.local_paths(config, self.root)
+        parameter_file, state_file = workspace.parameters, workspace.state / "latest.json"
         lifecycle.protected_json(parameter_file, {"l7IngressSecret": "PRIVATE_FIXTURE"})
         response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned"}, response]), \
-             mock.patch.object(lifecycle, "STATE", state_file), \
-             mock.patch.object(lifecycle, "PARAMETERS", parameter_file), \
+             mock.patch.object(lifecycle, "ROOT", self.root), \
              mock.patch.object(lifecycle, "ArmTransport"), \
              mock.patch.object(lifecycle, "configure_grpc_endpoint", side_effect=ValueError("Still pending")):
             with self.assertRaisesRegex(ValueError, "Still pending"):
@@ -570,7 +573,8 @@ if ($script:Reads -ne $beforeReads -or $script:Writes -ne $beforeWrites) {throw 
             fixture.write_text(script, encoding="utf-8")
             result = subprocess.run([runtime, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(fixture),
                                      "-Source", str(core / "guest/certificate.ps1")],
-                                    capture_output=True, text=True, timeout=30, check=False)
+                                    capture_output=True, text=True, timeout=30, check=False,
+                                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("fixtures PASS", result.stdout)
 

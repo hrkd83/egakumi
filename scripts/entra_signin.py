@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 import os
 from pathlib import Path
 import stat
@@ -23,20 +24,52 @@ import time
 from urllib.parse import parse_qsl, urlsplit
 from uuid import UUID
 
+from deployment.helpers.paths import LocalPaths, private_output, private_parent
+
 
 CORE = Path(__file__).resolve().parents[1]
-LOGIN_URL_FILE = CORE / ".state/gateway-login-url.txt"
 
 
 class SigninError(RuntimeError):
     """認証失敗を、秘密を含まない固定コードだけで呼出元へ返す例外。"""
 
 
+def checked_auth_path(path: Path, *, private_input: bool = False) -> Path:
+    """ローカル専用領域または明示した外部保護先を検査し、リンクを拒否する。"""
+    try:
+        target = private_output(path if path.is_absolute() else CORE / path, CORE)
+        if target.exists():
+            info = target.stat()
+            if (not stat.S_ISREG(info.st_mode) or (private_input and info.st_mode & 0o077)
+                    or (hasattr(os, "getuid") and info.st_uid != os.getuid())):
+                raise SigninError("AUTH_UNSAFE_FILE")
+        return target
+    except ValueError:
+        raise SigninError("AUTH_UNSAFE_FILE") from None
+
+
+def signin_paths(environment_name: str | None) -> LocalPaths:
+    """実paramsを開かず、明示環境、AZURE_ENV_NAME、azd既定環境の順に選ぶ。"""
+    try:
+        selected = environment_name or os.environ.get("AZURE_ENV_NAME")
+        if not selected:
+            selection = private_output(CORE / ".azure/config.json", CORE)
+            if selection.exists():
+                selected = json.loads(selection.read_text(encoding="utf-8")).get("defaultEnvironment")
+        if not selected:
+            raise ValueError("Select an environment")
+        return LocalPaths(CORE, selected)
+    except (ValueError, OSError, AttributeError):
+        raise SigninError("AUTH_INVALID_ARGUMENTS") from None
+
+
 def protected_text(path: Path, value: str) -> None:
     """所有者限定の一時ファイルへ書いて置換し、リンクや中途半端な出力を避ける。"""
-    if path.is_symlink():
-        raise SigninError("AUTH_UNSAFE_FILE")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = checked_auth_path(path)
+    try:
+        private_parent(path, CORE)
+    except ValueError:
+        raise SigninError("AUTH_UNSAFE_FILE") from None
     handle, temporary = tempfile.mkstemp(prefix=".auth-", dir=path.parent)
     try:
         os.fchmod(handle, 0o600)
@@ -50,6 +83,7 @@ def protected_text(path: Path, value: str) -> None:
 def read_protected_text(path: Path) -> str:
     """通常ファイル・所有者・専用権限を検査して認証入力を読む。"""
     try:
+        path = checked_auth_path(path, private_input=True)
         handle = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(handle, "r", encoding="utf-8") as stream:
             info = os.fstat(stream.fileno())
@@ -64,8 +98,7 @@ def read_protected_text(path: Path) -> str:
 
 def clear_output(path: Path) -> None:
     """失敗後に古いトークンを誤って再利用しないよう、前の出力を回収する。"""
-    if path.is_symlink():
-        raise SigninError("AUTH_UNSAFE_FILE")
+    path = checked_auth_path(path)
     path.unlink(missing_ok=True)
 
 
@@ -231,7 +264,7 @@ def user_token(arguments, msal_module) -> None:
         # 受信口を開いてからURLを渡し、ブラウザーの戻りがサーバー起動を追い越さないようにする。
         with CallbackServer(arguments.redirect_uri, flow["state"]) as server:
             clear_output(arguments.token_file)
-            protected_text(LOGIN_URL_FILE, flow["auth_uri"])
+            protected_text(arguments.login_url_file, flow["auth_uri"])
             published_url = True
             print("AUTH_URL_READY", flush=True)
             response = wait_for_callback(server, arguments.timeout_seconds)
@@ -244,7 +277,7 @@ def user_token(arguments, msal_module) -> None:
         save_result(result, arguments.token_file, cache, arguments.cache_file)
     finally:
         if published_url:
-            clear_output(LOGIN_URL_FILE)
+            clear_output(arguments.login_url_file)
 
 
 def app_token(arguments, msal_module) -> None:
@@ -278,8 +311,8 @@ def parse_arguments(argv=None):
         command.add_argument("--tenant-id", required=True)
         command.add_argument("--client-id", required=True)
         command.add_argument("--scope", action="append", required=True)
-        command.add_argument("--token-file", type=Path, default=CORE / "secrets" / (
-            "gateway-access-token.txt" if name == "user-token" else "service-access-token.txt"))
+        command.add_argument("--environment", help="Local environment; default: AZURE_ENV_NAME or saved azd selection")
+        command.add_argument("--token-file", type=Path, help="Protected token output; default: .local/<environment>/secrets")
         command.add_argument("--cache-file", type=Path)
         if name == "user-token":
             command.add_argument("--redirect-uri", "--redirect", default="http://localhost:8400")
@@ -301,11 +334,25 @@ def parse_arguments(argv=None):
             raise SigninError("AUTH_INVALID_ARGUMENTS")
     elif len(arguments.scope) != 1 or not arguments.scope[0].endswith("/.default"):
         raise SigninError("AUTH_INVALID_ARGUMENTS")
+    runtime = signin_paths(arguments.environment)
+    arguments.login_url_file = checked_auth_path(runtime.state / "gateway-login-url.txt")
+    arguments.token_file = checked_auth_path(arguments.token_file if arguments.token_file else runtime.secrets / (
+        "gateway-access-token.txt" if arguments.mode == "user-token" else "service-access-token.txt"))
+    if arguments.cache_file is not None:
+        arguments.cache_file = checked_auth_path(arguments.cache_file, private_input=True)
+    if arguments.mode == "app-token":
+        arguments.client_secret_file = checked_auth_path(arguments.client_secret_file, private_input=True)
     paths = [arguments.token_file, arguments.cache_file]
     if arguments.mode == "app-token":
         paths.append(arguments.client_secret_file)
-    paths = [path.resolve() for path in paths if path is not None]
-    if len(set(paths + [LOGIN_URL_FILE.resolve()])) != len(paths) + 1:
+    paths = [path for path in paths if path is not None]
+    try:
+        for path in paths:
+            if path.is_relative_to(CORE.resolve()):
+                runtime.checked(path)
+    except ValueError:
+        raise SigninError("AUTH_UNSAFE_FILE") from None
+    if len(set(paths + [arguments.login_url_file])) != len(paths) + 1:
         raise SigninError("AUTH_INVALID_ARGUMENTS")
     return arguments
 

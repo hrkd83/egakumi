@@ -332,6 +332,115 @@ class PublicDataGuardTests(unittest.TestCase):
         self.write(".env.fixture", "Synthetic public content.\n")
         self.outcome(self.check("--worktree"), 1, "sensitive-path")
 
+    def test_private_runtime_roots_are_not_read_by_either_worktree_scan(self) -> None:
+        self.write(".gitignore", "/.local/\n/.azure/\n")
+        for root in (".local", ".azure"):
+            self.write(root + "/fixture/secret.txt", self.identifier())
+            self.write(root + "/fixture/evidence.bin", bytes([0, 255, 1, 2]))
+        self.outcome(self.check("--worktree"), 0)
+        self.outcome(self.check("--worktree-strict"), 0)
+
+    def test_private_runtime_root_symlinks_are_refused_before_exclusion(self) -> None:
+        outside = self.directory / "private-fixture"
+        outside.mkdir()
+        for root in (".local", ".azure"):
+            with self.subTest(root=root):
+                linked = self.repository / root
+                linked.symlink_to(outside, target_is_directory=True)
+                self.policy_data["literal_exceptions"] = [{
+                    "path": root, "rule": "private-runtime-root-symlink",
+                    "value": root, "reason": "Synthetic attempted boundary override",
+                }]
+                self.save_policy()
+                self.outcome(self.check("--worktree"), 1,
+                             "private-runtime-root-symlink")
+                self.outcome(self.check("--worktree-strict"), 1,
+                             "private-runtime-root-symlink")
+                linked.unlink()
+
+    def test_private_runtime_exclusion_does_not_cover_nested_names(self) -> None:
+        for root in (".local", ".azure"):
+            name = "nested/" + root + "/fixture.txt"
+            with self.subTest(root=root):
+                self.write(name, "Independent synthetic public fixture.\n")
+                self.outcome(self.check("--worktree"), 1, "sensitive-path")
+                self.outcome(self.check("--worktree-strict"), 1, "sensitive-path")
+                (self.repository / name).unlink()
+
+    def test_forced_private_tracking_is_refused_without_reading_or_exemptions(self) -> None:
+        self.write(".gitignore", "/.local/\n/.azure/\n")
+        content = b"Independent synthetic public fixture.\n"
+        names = [root + "/fixture.txt" for root in (".local", ".azure")]
+        for name in names:
+            self.write(name, content)
+            self.git("add", "-f", "--", name)
+        self.policy_data["literal_exceptions"] = [{
+            "path": name, "rule": "private-runtime-path-tracked", "value": name,
+            "reason": "Synthetic attempted boundary override",
+        } for name in names]
+        self.policy_data["reviewed_binary_assets"] = [{
+            "path": name, "sha256": hashlib.sha256(content).hexdigest(),
+            "reason": "Independently generated synthetic review fixture",
+        } for name in names]
+        self.save_policy()
+        for mode in ("--staged", "--tracked", "--worktree", "--worktree-strict"):
+            with self.subTest(mode=mode):
+                self.outcome(self.check(mode), 1, "private-runtime-path-tracked")
+        self.git("commit", "--quiet", "-m", "Add synthetic private tracking fixture")
+        self.outcome(self.check("--all-history"), 1, "private-runtime-path-tracked")
+
+    def test_deleted_private_paths_remain_blocked_in_history_and_push(self) -> None:
+        names = [root + "/fixture.txt" for root in (".local", ".azure")]
+        for name in names:
+            self.stage("Independent synthetic public fixture.\n", name)
+        self.git("commit", "--quiet", "-m", "Add synthetic private history fixture")
+        self.git("rm", "--quiet", *names)
+        self.git("commit", "--quiet", "-m", "Remove synthetic private history fixture")
+        self.outcome(self.check("--staged"), 0)
+        self.outcome(self.check("--tracked"), 0)
+        self.outcome(self.check("--all-history"), 1, "private-runtime-path-tracked")
+        self.outcome(self.check("--revisions", "HEAD"), 1,
+                     "private-runtime-path-tracked")
+        revision = self.git("rev-parse", "HEAD").strip().decode()
+        data = "HEAD " + revision + " refs/heads/review " + "0" * 40 + "\n"
+        self.outcome(self.check("--pre-push-refs", stdin=data), 1,
+                     "private-runtime-path-tracked")
+
+    def test_misplaced_runtime_paths_are_forbidden_even_if_locally_ignored(self) -> None:
+        names = (".state/fixture.txt", "secrets/fixture.txt",
+                 "params/fixture.local.json", "infra/main.parameters.json")
+        self.write(".gitignore", ".state/\nsecrets/\nparams/*.local.json\n"
+                   "infra/main.parameters.json\n")
+        for name in names:
+            self.write(name, "Independent synthetic public fixture.\n")
+        self.outcome(self.check("--worktree"), 1, "sensitive-path")
+        self.outcome(self.check("--worktree-strict"), 1, "sensitive-path")
+
+    def test_repository_ignore_only_hides_private_roots_and_current_caches(self) -> None:
+        source = Path(__file__).resolve().parents[1] / ".gitignore"
+        self.write(".gitignore", source.read_text(encoding="utf-8"))
+        allowed = {
+            ".local/example/params.local.json", ".azure/example/.env",
+            "__pycache__/fixture.pyc", ".venv/fixture", ".venv-example/fixture",
+            "apps/portal/node_modules/fixture", "apps/portal/.next/fixture",
+            "docs/study/fixture", ".DS_Store",
+        }
+        visible = {
+            ".state/result.json", "secrets/fixture.txt", "params/example.local.json",
+            "infra/main.parameters.json", "infra/main.json", "infra/bicepconfig.json",
+            "nested/.local/fixture", "nested/.azure/fixture", ".tools/fixture",
+            "artifacts/result.json", "outputs/result.json", "Archives/fixture",
+            "fixture.pem", "fixture.key", "fixture.pfx", "fixture.cer", "fixture.token",
+            "fixture.log", ".env", ".env.local", "apps/portal/.env.local",
+        }
+        inspected = subprocess.run(
+            ["git", "-C", str(self.repository), "check-ignore", "--no-index", "--stdin", "-z"],
+            input=b"\0".join(name.encode() for name in sorted(allowed | visible)) + b"\0",
+            env=self.environment, capture_output=True, timeout=30, check=False,
+        )
+        self.assertTrue(inspected.returncode == 0, "temporary ignore inspection failed")
+        self.assertEqual({os.fsdecode(name) for name in inspected.stdout.split(b"\0") if name}, allowed)
+
     def test_dependency_exclusion_does_not_exempt_index_or_strict_scan(self) -> None:
         name = "apps/portal/node_modules/synthetic/fixture.txt"
         self.stage(self.identifier(), name)

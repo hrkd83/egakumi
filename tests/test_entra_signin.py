@@ -8,6 +8,7 @@ import hashlib
 import http.client
 import io
 import json
+import os
 from pathlib import Path
 import socket
 import stat
@@ -122,7 +123,7 @@ class ProtectedFileTests(unittest.TestCase):
     """本人認証のcallbackとtoken保存の境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def test_token_cache_and_url_are_atomic_owner_only_files(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             for name, value in [("token", "private-token"), ("cache", '{"RefreshToken":"private"}'),
                                 ("url", "https://login.microsoftonline.com/authorize?state=private")]:
                 path = root / name
@@ -135,7 +136,7 @@ class ProtectedFileTests(unittest.TestCase):
 
     def test_secret_read_rejects_shared_permissions_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "secret"
+            target = Path(directory).resolve() / "secret"
             target.write_text("private-secret")
             target.chmod(0o644)
             with self.assertRaisesRegex(signin.SigninError, "AUTH_UNSAFE_FILE"):
@@ -152,7 +153,7 @@ class ProtectedFileTests(unittest.TestCase):
 
     def test_failed_acquisition_does_not_save_token_json_or_refresh_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "token"
+            path = Path(directory).resolve() / "token"
             cache = MagicMock()
             with self.assertRaisesRegex(signin.SigninError, "AUTH_TOKEN_NOT_ACQUIRED"):
                 signin.save_result({"error_description": "private-detail", "refresh_token": "private-refresh"},
@@ -163,8 +164,16 @@ class ProtectedFileTests(unittest.TestCase):
 
 class SigninCommandTests(unittest.TestCase):
     """本人認証のcallbackとtoken保存の境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    def runtime_root(self, directory):
+        """合成の選択環境を用意し、公開checkoutへ認証出力を作らない。"""
+        repository = Path(directory).resolve()
+        token = repository / '.local/test/secrets/token'
+        signin.private_parent(token, repository)
+        self.enterContext(patch.object(signin, 'CORE', repository))
+        return token.parent
+
     def arguments(self, root, *, mode="user-token"):
-        arguments = [mode, "--tenant-id", TENANT, "--client-id", CLIENT,
+        arguments = [mode, "--environment", "test", "--tenant-id", TENANT, "--client-id", CLIENT,
                      "--scope", SCOPE if mode == "user-token" else "https://gateway.example.com/.default",
                      "--token-file", str(root / "token"), "--cache-file", str(root / "cache")]
         if mode == "app-token":
@@ -191,23 +200,22 @@ class SigninCommandTests(unittest.TestCase):
 
     def test_user_uses_msal_pkce_flow_and_protected_url_without_browser_launch(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = self.runtime_root(directory)
             sdk = self.sdk()
             output, errors = io.StringIO(), io.StringIO()
             def callback(server, timeout):
-                self.assertEqual((root / "url").read_text(),
+                self.assertEqual((root.parent / "state/gateway-login-url.txt").read_text(),
                                  "https://login.microsoftonline.com/authorize?state=expected-state")
-                self.assertEqual(stat.S_IMODE((root / "url").stat().st_mode), 0o600)
+                self.assertEqual(stat.S_IMODE((root.parent / "state/gateway-login-url.txt").stat().st_mode), 0o600)
                 return {"state": "expected-state", "code": "private-code"}
-            with patch.object(signin, "LOGIN_URL_FILE", root / "url"), \
-                    patch.object(signin, "CallbackServer"), \
+            with patch.object(signin, "CallbackServer"), \
                     patch.object(signin, "wait_for_callback", side_effect=callback), \
                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                 result = signin.main(self.arguments(root), msal_module=sdk)
             self.assertEqual(result, 0)
             self.assertEqual(output.getvalue(), "AUTH_URL_READY\nAUTH_COMPLETE\n")
             self.assertEqual(errors.getvalue(), "")
-            self.assertFalse((root / "url").exists())
+            self.assertFalse((root.parent / "state/gateway-login-url.txt").exists())
             self.assertEqual((root / "token").read_text(), "private-user-token")
             self.assertEqual(stat.S_IMODE((root / "cache").stat().st_mode), 0o600)
             sdk.PublicClientApplication.return_value.initiate_auth_code_flow.assert_called_once_with(
@@ -222,25 +230,25 @@ class SigninCommandTests(unittest.TestCase):
                               "AUTH_CONSENT_OR_SIGNIN_REJECTED"),
                              (signin.SigninError("AUTH_SIGNIN_TIMEOUT"), "AUTH_SIGNIN_TIMEOUT")]:
             with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = self.runtime_root(directory)
                 (root / "token").write_text("stale-token")
+                (root / "token").chmod(0o600)
                 sdk = self.sdk()
                 output, errors = io.StringIO(), io.StringIO()
                 callback = {"side_effect": result} if isinstance(result, Exception) else {"return_value": result}
-                with patch.object(signin, "LOGIN_URL_FILE", root / "url"), \
-                        patch.object(signin, "CallbackServer"), \
+                with patch.object(signin, "CallbackServer"), \
                         patch.object(signin, "wait_for_callback", **callback), \
                         contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                     status = signin.main(self.arguments(root), msal_module=sdk)
                 self.assertEqual(status, 2)
                 self.assertEqual(errors.getvalue(), code + "\n")
-                self.assertFalse((root / "url").exists())
+                self.assertFalse((root.parent / "state/gateway-login-url.txt").exists())
                 self.assertFalse((root / "token").exists())
                 sdk.PublicClientApplication.return_value.acquire_token_by_auth_code_flow.assert_not_called()
 
     def test_app_secret_is_read_from_file_and_error_body_is_suppressed(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = self.runtime_root(directory)
             signin.protected_text(root / "secret", "private-secret")
             sdk = self.sdk()
             output, errors = io.StringIO(), io.StringIO()
@@ -264,7 +272,7 @@ class SigninCommandTests(unittest.TestCase):
 
     def test_arguments_do_not_accept_inline_secret_or_overwrite_input_or_cache(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = self.runtime_root(directory)
             base = self.arguments(root)
             for arguments in [base + ["--client-secret", "private-secret"],
                               base + ["--token-file", str(root / "cache")],
@@ -275,6 +283,67 @@ class SigninCommandTests(unittest.TestCase):
                 self.assertEqual(status, 2)
                 self.assertEqual(output.getvalue(), "")
                 self.assertEqual(errors.getvalue(), "AUTH_INVALID_ARGUMENTS\n")
+
+
+class SigninLocalStorageTests(unittest.TestCase):
+    """認証せず、選択環境と明示的な外部保護ファイルの保存境界を確認する。"""
+    def arguments(self):
+        return ['user-token', '--tenant-id', TENANT, '--client-id', CLIENT, '--scope', SCOPE]
+
+    def test_explicit_and_shell_environments_choose_separate_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with patch.object(signin, 'CORE', root), patch.dict(os.environ, {'AZURE_ENV_NAME': 'beta'}, clear=True):
+                explicit = signin.parse_arguments(self.arguments() + ['--environment', 'alpha'])
+                selected = signin.parse_arguments(self.arguments())
+            self.assertEqual(explicit.token_file, root / '.local/alpha/secrets/gateway-access-token.txt')
+            self.assertEqual(explicit.login_url_file, root / '.local/alpha/state/gateway-login-url.txt')
+            self.assertEqual(selected.token_file, root / '.local/beta/secrets/gateway-access-token.txt')
+            self.assertFalse((root / '.local').exists())
+
+    def test_saved_azd_selection_does_not_require_or_read_parameters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve();selection = root / '.azure/config.json'
+            signin.private_parent(selection, root)
+            selection.write_text(json.dumps({'defaultEnvironment': 'saved'}))
+            with patch.object(signin, 'CORE', root), \
+                    patch.dict(os.environ, {'WORKFORCE_CONFIG': 'must-not-be-read.json'}, clear=True):
+                arguments = signin.parse_arguments(self.arguments())
+            self.assertEqual(arguments.token_file, root / '.local/saved/secrets/gateway-access-token.txt')
+            self.assertFalse((root / '.local').exists())
+
+    def test_explicit_existing_external_protected_token_and_cache_are_allowed(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as external:
+            root = Path(directory).resolve();outside = Path(external).resolve()
+            token, cache = outside / 'token', outside / 'cache'
+            for path in (token, cache):
+                path.write_text('synthetic-only');path.chmod(0o600)
+            with patch.object(signin, 'CORE', root), patch.dict(os.environ, {}, clear=True):
+                arguments = signin.parse_arguments(self.arguments() + ['--environment', 'test',
+                    '--token-file', str(token), '--cache-file', str(cache)])
+            self.assertEqual(arguments.token_file, token)
+            self.assertEqual(arguments.cache_file, cache)
+            self.assertEqual(token.read_text(), 'synthetic-only')
+
+    def test_public_and_symlink_destinations_fail_before_sdk(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as external:
+            root = Path(directory).resolve()
+            with patch.object(signin, 'CORE', root), patch.dict(os.environ, {}, clear=True):
+                for relative in ('secrets/token', '.state/token', 'apps/portal/.local/token', '.local/other/secrets/token'):
+                    with self.subTest(relative=relative), self.assertRaises(signin.SigninError):
+                        signin.parse_arguments(self.arguments() + ['--environment', 'test', '--token-file', str(root / relative)])
+                (root / '.local').symlink_to(Path(external).resolve(), target_is_directory=True)
+                with self.assertRaises(signin.SigninError):
+                    signin.parse_arguments(self.arguments() + ['--environment', 'test'])
+
+    def test_no_selected_environment_fails_without_loading_authentication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sdk = MagicMock();output, errors = io.StringIO(), io.StringIO()
+            with patch.object(signin, 'CORE', Path(directory).resolve()), patch.dict(os.environ, {}, clear=True), \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                self.assertEqual(signin.main(self.arguments(), msal_module=sdk), 2)
+            sdk.PublicClientApplication.assert_not_called()
+            self.assertEqual(errors.getvalue(), 'AUTH_INVALID_ARGUMENTS\n')
 
 
 class InstalledMsalTests(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 本書はEgakumi CoreのIaC、Gateway・Portal、配備・運用スクリプトを変更する担当者向けに、コーディング規約、コメント、テストの共通ルールと実行方法、保守用の開発手順をまとめたものです。
 
-作業開始前に[リポジトリ共通ルール](AGENTS.md)を確認します。本プロジェクトはWIPです。企業・実環境固有のID、設定、記録、認証情報は、作業メモやGit履歴を含め、この公開リポジトリへ一切持ち込みません。ignore対象でも実情報の保存先にはできません。既存ツールがリポジトリ内へ実情報を書き込む場合は、このチェックアウトで実行せず、別の非公開運用用ワークスペースを使います。以下の記録指示もこの制約に従います。
+作業開始前に[リポジトリ共通ルール](AGENTS.md)を確認します。本プロジェクトはWIPです。公開資材は1つのcheckoutを正本とし、実設定・秘密・実行記録はルートの`.local/<environment>/`、azd専用情報は`.azure/`へ保護保存します。実情報をGit管理する資材・文書・履歴へ含めません。この2領域以外のignore対象は実情報の保存先になりません。以下の記録指示もこの境界に従います。
 
 | 文書 | 管理する内容 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | [動作テスト仕様書](docs/testing/integration-tests.md) | 構築後の動作テストの対象・手順・受入条件・判定・証跡 |
 | [構築テスト仕様書](docs/testing/construction-tests.md) | 構築資材のテストの対象・手順・受入条件・判定・証跡 |
 
-公開する受入条件と架空値による結果例は各テスト仕様書を正本とし、本書には再掲しません。実環境の結果・対象・証跡は別の非公開運用用ワークスペースで管理します。動作テストと資材改修・再試験の完了後に、確定した資材で再構築して構築テストを別試行で行います。具体的な実施順・開始条件は各仕様書を参照してください。
+公開する受入条件と架空値による結果例は各テスト仕様書を正本とし、本書には再掲しません。実環境の結果・対象・証跡は環境別のGit管理外領域`.local/<environment>/`で管理します。動作テストと資材改修・再試験の完了後に、確定した資材で再構築して構築テストを別試行で行います。具体的な実施順・開始条件は各仕様書を参照してください。
 
 ## 目次
 
@@ -85,11 +85,11 @@ protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](t
 
 実環境の試験では以下を共通ルールとします。各試験の対象・具体的な受入条件・実行順は2つの仕様書に従います。
 
-- 試行開始前に、対象の仕様書・結果票をリポジトリ外の非公開運用用ワークスペースへ保存します。対象環境・入力参照・相関ID・実測値を含む記録はその環境内で管理し、この公開チェックアウトの`.state/`等へ保存しません。別環境・別試行の結果は分けます。
+- 試行開始前に、対象の仕様書・結果票を環境別のGit管理外領域`.local/<environment>/`へ保存します。対象環境・入力参照・相関ID・実測値を含む記録はその環境内で管理し、配備記録は同じ環境の`state/`、試験結果と生証跡は`evidence/`へ分けます。別環境・別試行の結果は分けます。
 - 項目ごとの実施直後に、非公開側の仕様書・詳細記録へ判定・確認済み条件・未確認条件・証跡を記録します。公開側へは、元環境に結び付かない一般化した修正内容・架空値での再現条件だけを反映します。
 - 全期待条件を実測した項目だけを`PASS`とします。不具合を修正しただけでは合格にせず、修正後の再試験結果を記録します。判定区分は各仕様書に従います。
 - 採用しない構成や利用者指定の除外は理由を記録します。外部条件不足、試験中断、未実施を成功扱いにしません。
-- 生証跡と実環境の相関ID・参照先は、リポジトリ外の保護した非公開環境内だけで管理します。公開する仕様書・作業記録に、企業固有情報、禁止対象の実値を元にしたハッシュ、秘密値、個人情報、実環境の要求／応答本文を貼り付けません。
+- 生証跡と実環境の相関ID・参照先は、環境別の保護した`.local/<environment>/evidence/`内だけで管理します。公開する仕様書・作業記録に、企業固有情報、禁止対象の実値を元にしたハッシュ、秘密値、個人情報、実環境の要求／応答本文を貼り付けません。
 - 実Azureの更新・課金・障害注入・撤去は対象環境で合意した範囲に限定し、専用データと復元条件を用意します。一時権限・試験データ・一時設定の後片付けと、残る資源・保持・費用も記録します。
 
 ## テストの実行方法
@@ -120,11 +120,13 @@ Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利
 | 認証窓口 | 取引とセッションの所有者・期限・一度限りの利用、Cookie、CM接続、SQL競合・利用枠 |
 | Portal | 認証、テナント・グループ・所有者の認可、APIキー管理、購読同期、モデル応答とstream |
 
+以下の出力を保存する場合は、[第1章](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で`DEPLOY_ENVIRONMENT`・`DEPLOY_LOCAL_DIRECTORY`・`DEPLOY_PARAMS_FILE`を設定します。架空データだけの確認でも保存先を環境別領域へ揃えます。
+
 PowerShellを使う試験は `WORKFORCE_PWSH`、インストール済み `pwsh`、対応するportable版から実行環境を選びます。Bicepの実行ファイルは `BICEP_CLI` で指定できます。依存不足でスキップした項目は理由とともに記録します。
 
 ```sh
-mkdir -p .state
-az bicep build --file infra/main.bicep --outfile .state/main.json
+mkdir -p "$DEPLOY_LOCAL_DIRECTORY/generated"
+az bicep build --file infra/main.bicep --outfile "$DEPLOY_LOCAL_DIRECTORY/generated/main.compiled.json"
 export WORKFORCE_PWSH="$(.venv/bin/python -c 'from scripts.deployment.helpers.powershell_runtime import locate_powershell; print(locate_powershell())')"
 "$WORKFORCE_PWSH" -NoProfile -File tests/certificate-offline.ps1
 .venv/bin/python tests/cap-offline.py
@@ -176,7 +178,7 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `azd provision`は基盤だけを対象にします。全体の`azd up`には`publishApis:true`が必要で、falseなら`preup`の冒頭で課金資源の作成前に停止します。既存のlocal paramsを自動変更しません。標準APIの空配列はメモリー内で解決し、基盤に必要なWAF・監査ログの情報も同じ定義から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
-構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初期グループ設定は最後の対話工程で同じparamsへ保存します。非対話なら`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定します。
+構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初期グループ設定は最後の対話工程で同じparamsへ保存します。非対話なら`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定します。
 
 APIM全体ポリシーは[service.xml](apps/gateway/apim/policies/service.xml)、各APIのXMLは`apps/gateway/apim/policies/`、標準APIのJSONは[apps/gateway/apim/apis/](apps/gateway/apim/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、CMプロバイダーと環境固有値はparamsで管理します。`apps/gateway/apim/api-publication.bicep`と`apps/gateway/deploy/api_publication.py`が登録を担当し、`apps/gateway/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 
@@ -188,11 +190,11 @@ DNS事業者の選択は`scripts/deployment/helpers/dns_selection.py`、秘密�
 
 ## 設定生成と独立した回帰確認
 
-通常の構築・更新は公開例をコピーしたparamsと、その参照先configを使います。`apiDefinitions: []`は [標準API定義](apps/gateway/apim/apis/)を読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
+通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。`apiDefinitions: []`は [標準API定義](apps/gateway/apim/apis/)を読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
 
 設定を変更するときは [params](docs/setup/04-params.md)・[config](docs/setup/05-config.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
 
-以下は目的を限定した開発用補助です。この公開チェックアウト内で作る入力・出力は、実値から独立した架空データだけに限定します。実環境を扱う入力・出力は別の非公開運用用ワークスペースへ分離し、既存ツールの既定保存先がリポジトリ内ならこのチェックアウトでは実行しません。通常の導入手順と分けます。
+以下は目的を限定した開発用補助です。公開用の入力・結果例は、実値から独立した架空データだけに限定します。実環境を扱う入力・出力は環境別の`.local/<environment>/`に限定します。ルートの`.state/`・`secrets/`等へ実情報を保存しません。通常の導入手順と分けます。
 
 | 補助CLI | 用途と範囲 |
 | --- | --- |
@@ -207,17 +209,17 @@ python3 scripts/integration_client.py --help
 python3 scripts/coverage_client.py run --help
 ```
 
-補助CLIの入力・出力・実行条件は [スクリプト一覧](scripts/README.md)を参照してください。実環境の設定・秘密ファイル・参照先は、リポジトリ外の非公開運用用ワークスペース内で管理します。token・キー・実環境固有値を公開側の引数例・ログ・作業記録へ直接書きません。
+補助CLIの入力・出力・実行条件は [スクリプト一覧](scripts/README.md)を参照してください。実環境の設定・秘密ファイル・参照先は、環境別のGit管理外領域`.local/<environment>/`内で管理します。token・キー・実環境固有値を公開側の引数例・ログ・作業記録へ直接書きません。
 
 APIの公開パス・認可・操作を変更したら、GatewayとPortalの呼出し処理・カタログ・ガイドを整合させます。正常系の画面操作はPortalで確認し、Gatewayの直接実行結果と分けます。本人接続の仮セッション保存・本人照合・再実行は [共通クライアント契約](docs/reference/connection-session-clients.md)に従います。
 
 ## 音声・モデルのCLI確認
 
-`coverage_client.py prepare --directory .state/preparation/assets`は合成PNG／PDF／無音WAVを生成します。STT正常系には既知の発話を含む合成WAVを使います。Speech REST TTSの16kHz WAVは16kHz STTへ渡し、WSS用には変換します。
+`coverage_client.py prepare --directory "$DEPLOY_LOCAL_DIRECTORY/evidence/preparation/assets"`は合成PNG／PDF／無音WAVを生成します。STT正常系には既知の発話を含む合成WAVを使います。Speech REST TTSの16kHz WAVは16kHz STTへ渡し、WSS用には変換します。
 
 ```sh
 python3 scripts/coverage_client.py convert-audio \
-  --input .state/tts-16k.wav --output .state/tts-24k.wav
+  --input "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-16k.wav" --output "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-24k.wav"
 ```
 
 WSSの独立CLIは同じ合成WAVで各製品・scenarioを確認します。`roundtrip`は実音声と正常終端、`cancel`は取消確認、`disconnect`は途中切断、`keepalive`は短い無送信後の往復です。取消送信・端末切断だけでサービス側の停止・課金終了と判定しません。
@@ -225,8 +227,8 @@ WSSの独立CLIは同じ合成WAVで各製品・scenarioを確認します。`ro
 ```sh
 python3 scripts/voice_client.py --url wss://gateway.example.com/models/voice-live/v1/ws \
   --product voice-live --voice en-US-Ava:DragonHDLatestNeural \
-  --audio-file .state/tts-24k.wav --key-file secrets/gateway-key.txt \
-  --scenario cancel --output .state/voice-live-cancel.json
+  --audio-file "$DEPLOY_LOCAL_DIRECTORY/evidence/tts-24k.wav" --key-file "$DEPLOY_LOCAL_DIRECTORY/secrets/gateway-key.txt" \
+  --scenario cancel --output "$DEPLOY_LOCAL_DIRECTORY/evidence/voice-live-cancel.json"
 ```
 
 RealtimeとVoice Live、Speech単体のSTT／TTSは固定モデル・voice・API版・イベントを分けます。WebRTCはPortalと回帰試験画面で確認し、ICE／DTLS・実RTP・正常終端・終了制御を記録します。CLI等を併用しても、単なるSDP交換や無音ファイルを音声往復成功にしません。
@@ -239,4 +241,4 @@ DecisionのCLIは既定で計画表示だけです。実行はhelpの`--execute`
 
 CoreのPython依存は[共通requirements](scripts/integration-requirements.txt)と[Brokerのrequirements](apps/gateway/credential-broker/requirements.txt)、PortalのNode依存は[package.json](apps/portal/package.json)と[package-lock.json](apps/portal/package-lock.json)で管理します。変更内容に応じたローカル検査と、該当する仕様書の実環境試験で確認します。
 
-公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡はリポジトリ外の非公開運用用ワークスペースで管理し、wheel／image／ZIP等の配布物にも混入させません。ignore対象であることを保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。
+公開ソースには架空値と配布可能な素材だけを含めます。秘密・実環境の導入先設定・証明書・実行証跡は環境別のGit管理外領域`.local/<environment>/`で管理し、wheel／image／ZIP等の配布物にも混入させません。実情報の保存を認めるのはルートの`.local/`とazd専用の`.azure/`だけであり、ignore対象一般を保存・公開の許可と解釈しません。不要な生成物は個別に回収し、別用途のデータを一括削除しません。

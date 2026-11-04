@@ -78,7 +78,8 @@ STANDARD_ENV_ASSIGNMENT = re.compile(
 )
 BASE64 = re.compile(r"(?<![\w+/])[A-Za-z0-9+/]{24,}={0,2}(?![\w+/=])")
 SENSITIVE_PATH = re.compile(
-    r"(?i)(?:^|/)(?:\.env(?:\..+)?|\.azure|\.aws|\.state|secrets)(?:/|$)|"
+    r"(?i)^infra/main\.parameters\.json$|"
+    r"(?:^|/)(?:\.env(?:\..+)?|\.local|\.azure|\.aws|\.state|secrets)(?:/|$)|"
     r"(?i:.*\.(?:pfx|p12|pem|key|token|local\.json))$"
 )
 DOCUMENTATION_NETWORKS = tuple(ipaddress.ip_network(value) for value in (
@@ -91,6 +92,10 @@ GENERATED_DEPENDENCY_ROOTS = {
     ".venv", "apps/portal/node_modules", "apps/portal/.next",
 }
 LOCAL_ONLY_TRACKED_ROOTS = {"docs/study"}
+PRIVATE_RUNTIME_ROOTS = {".local", ".azure"}
+PRIVATE_BOUNDARY_RULES = {
+    "private-runtime-path-tracked", "private-runtime-root-symlink",
+}
 
 
 class InspectionError(Exception):
@@ -201,10 +206,11 @@ class Guard:
     def record(self, path: str, rule: str, value: str,
                text: str = "", offset: int = 0) -> None:
         """例外は完全一致だけとし、出力用には値を保持しない。"""
-        if (path, rule, value) in self.exception_keys:
-            return
-        if path == POLICY_PATH and (rule, value) in self.policy_values:
-            return
+        if rule not in PRIVATE_BOUNDARY_RULES:
+            if (path, rule, value) in self.exception_keys:
+                return
+            if path == POLICY_PATH and (rule, value) in self.policy_values:
+                return
         if path not in self.locations:
             self.locations[path] = f"item-{len(self.locations) + 1}"
         line = text.count("\n", 0, offset) + 1 if text else 0
@@ -425,6 +431,8 @@ class Guard:
             mode, oid, stage = header.split()
             if stage != b"0":
                 raise InspectionError("unmerged-index")
+            if self.reject_private_tracking(os.fsdecode(name)):
+                continue
             if self.local_only_path(os.fsdecode(name)):
                 self.record(os.fsdecode(name), "local-only-path-tracked", "")
             self.scan_blob(os.fsdecode(name), self.blob(oid.decode()),
@@ -436,9 +444,24 @@ class Guard:
         for name in git(self.repository, "ls-files", "-z").split(b"\0"):
             if name:
                 path = os.fsdecode(name)
+                if self.reject_private_tracking(path):
+                    continue
                 if self.local_only_path(path):
                     self.record(path, "local-only-path-tracked", "")
                 self.work_file(path)
+
+    @staticmethod
+    def private_runtime_path(path: str) -> bool:
+        """実情報の保管を認めたチェックアウト直下の2領域だけを判定する。"""
+        return any(path == root or path.startswith(root + "/")
+                   for root in PRIVATE_RUNTIME_ROOTS)
+
+    def reject_private_tracking(self, path: str) -> bool:
+        """私有領域のGit混入は、内容を読まず許可リストにも関係なく拒否する。"""
+        if not self.private_runtime_path(path):
+            return False
+        self.record(path, "private-runtime-path-tracked", path)
+        return True
 
     @staticmethod
     def local_only_path(path: str) -> bool:
@@ -457,7 +480,9 @@ class Guard:
         """リンクは追跡せず、読み取り不能も安全側で止める。"""
         path = self.repository / name
         if path.is_symlink():
-            self.record(name, "symlink-review-required", "")
+            rule = ("private-runtime-root-symlink" if name in PRIVATE_RUNTIME_ROOTS
+                    else "symlink-review-required")
+            self.record(name, rule, name)
             return
         try:
             if path.exists():
@@ -466,10 +491,13 @@ class Guard:
             raise InspectionError("worktree-unreadable") from error
 
     def worktree(self, strict: bool = False) -> None:
-        """ignore対象も調べ、通常時は明記した依存生成先だけを省く。"""
+        """私有2領域は常に本文を読まず、追跡混入とルートのリンクは拒否する。"""
         def failed(_error: OSError) -> None:
             raise InspectionError("worktree-unreadable")
 
+        for name in git(self.repository, "ls-files", "-z").split(b"\0"):
+            if name:
+                self.reject_private_tracking(os.fsdecode(name))
         for root, directories, files in os.walk(
                 self.repository, followlinks=False, onerror=failed):
             if Path(root) == self.repository:
@@ -479,6 +507,8 @@ class Guard:
                 path = Path(root) / item
                 if path.is_symlink():
                     self.work_file(path.relative_to(self.repository).as_posix())
+                    directories.remove(item)
+                elif path.relative_to(self.repository).as_posix() in PRIVATE_RUNTIME_ROOTS:
                     directories.remove(item)
                 elif (not strict and path.relative_to(self.repository).as_posix()
                       in GENERATED_DEPENDENCY_ROOTS | LOCAL_ONLY_TRACKED_ROOTS):
@@ -569,6 +599,8 @@ class Guard:
                 header, name = record.split(b"\t", 1)
                 mode, object_type, blob = header.split()
                 path = os.fsdecode(name)
+                if self.reject_private_tracking(path):
+                    continue
                 if object_type != b"blob":
                     self.record(path, "unsupported-git-object", "")
                     continue

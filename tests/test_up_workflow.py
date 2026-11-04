@@ -69,17 +69,17 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "run") as cli, \
              mock.patch.object(lifecycle, "ArmTransport") as arm, \
              contextlib.redirect_stderr(io.StringIO()) as messages:
-            self.assertEqual(lifecycle.main(["preup", "--config", "params/selected.local.json"]), 1)
+            self.assertEqual(lifecycle.main(["preup", "--config", str(self.paths.params)]), 1)
         local.assert_not_called()
         azure.assert_not_called()
         cli.assert_not_called()
         arm.assert_not_called()
         self.assertIn("publishApis", messages.getvalue())
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertFalse(self.paths.parameters.exists())
 
     def test_postprovision_stays_foundation_only_then_postup_uses_its_saved_state_and_selected_params(self):
-        selected = self.root / "company inputs" / "selected.local.json"
-        selected.parent.mkdir()
+        selected = self.paths.root / "company inputs" / "selected.local.json"
+        lifecycle.private_parent(selected, self.root)
         selected.write_text("{}", encoding="utf-8")
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://gateway.example.invalid"}
@@ -101,16 +101,16 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             args = hook_arguments("postprovision", "lifecycle.py")
             self.assertEqual(lifecycle.main([*args, "--config", str(selected)]), 0)
-        saved = json.loads(lifecycle.STATE.read_text())
+        saved = json.loads((self.paths.state / "latest.json").read_text())
         self.assertEqual(saved["outputs"], outputs)
         self.assertEqual(saved["resourceStem"], self.config["resourceStem"])
 
         def application_cli(command, **kwargs):
-            self.assertEqual(json.loads(lifecycle.STATE.read_text()), saved)
+            self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), saved)
             self.assertEqual(kwargs["cwd"], self.root)
             self.assertFalse(kwargs["shell"])
             self.assertEqual(Path(command[command.index("--config") + 1]), selected.resolve())
-            self.assertEqual(Path(command[command.index("--state-file") + 1]), lifecycle.STATE.resolve())
+            self.assertEqual(Path(command[command.index("--state-file") + 1]), (self.paths.state / "latest.json").resolve())
             self.assertIn("--execute", command)
             children.append(Path(command[1]).name)
             return mock.Mock(returncode=0)
@@ -122,7 +122,7 @@ class UpWorkflowTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(applications.main(hook_arguments("postup", "deploy_applications.py")), 0)
         self.assertEqual(children, ["deploy_gateway.py", "deploy_portal.py"])
-        self.assertEqual(json.loads(lifecycle.STATE.read_text()), saved)
+        self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), saved)
         self.assertEqual(selected.read_text(), "{}")
 
 

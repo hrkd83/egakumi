@@ -7,15 +7,15 @@
     "prepare:catalog": "node --experimental-strip-types scripts/prepare-model-catalog.ts",
     "prepare:realtime": "node --experimental-strip-types scripts/prepare-realtime-worklet.ts",
     "predev": "npm run prepare:catalog && npm run prepare:realtime",
-    "dev": "node --use-env-proxy --env-file-if-exists=.env.local --conditions=react-server --experimental-strip-types scripts/serve-portal.ts --dev",
+    "dev": "node --use-env-proxy --conditions=react-server --experimental-strip-types scripts/serve-portal.ts --dev",
     "prebuild": "npm run prepare:catalog && npm run prepare:realtime",
     "build": "next build",
-    "start": "node --env-file-if-exists=.env.local --conditions=react-server --experimental-strip-types scripts/serve-portal.ts",
+    "start": "node --conditions=react-server --experimental-strip-types scripts/serve-portal.ts",
     "lint": "eslint",
     "pretest": "npm run prepare:catalog",
     "test": "node --conditions=react-server --experimental-strip-types --test tests/*.test.ts",
-    "db:migrate": "node --env-file-if-exists=.env.local --conditions=react-server --experimental-strip-types scripts/migrate-auth.ts",
-    "db:bootstrap-local": "node --env-file=../../secrets/portal-local-sql-admin.env --conditions=react-server --experimental-strip-types scripts/bootstrap-local-sql.ts"
+    "db:migrate": "node --conditions=react-server --experimental-strip-types scripts/migrate-auth.ts",
+    "db:bootstrap-local": "node --conditions=react-server --experimental-strip-types scripts/bootstrap-local-sql.ts"
   },
   "dependencies": {
     "@azure/identity": "4.13.0",

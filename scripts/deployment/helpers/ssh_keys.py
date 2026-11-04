@@ -36,10 +36,10 @@ def _managed_target(public: Path, root: Path) -> Path:
         except ValueError:
             continue
     else:
-        _fail("automatic generation requires a .pub file under this repository's secrets directory")
+        _fail("automatic generation requires a .pub file under the selected environment's secrets directory")
     if (not relative.parts or relative.parts[0] != "secrets" or ".." in relative.parts
             or public.suffix != ".pub" or len(relative.parts) < 2):
-        _fail("automatic generation requires a .pub file under this repository's secrets directory")
+        _fail("automatic generation requires a .pub file under the selected environment's secrets directory")
     cursor = public
     while cursor != base:
         if cursor.is_symlink():

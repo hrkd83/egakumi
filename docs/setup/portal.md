@@ -45,7 +45,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 
 Portal配備はネットワークRGの専用Firewall規則グループ `rcg-portal-gateway` も管理します。ACAサブネットから、構築入力の `gateway.publicHostName` だけへのHTTPS/443を許可します。既存の共通規則を置き換えず、PortalのサーバーからAPIM経由でモデルを実行するための通信経路を追加します。
 
-DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`で管理します。検証用はBasic・5 DTU・2 GB・バックアップ7日・Local、本番用はGeneral Purpose・2 vCore・32 GB・14日・Geoです。配備コマンドは既存の`params/<環境>.local.json`を正本として読みます。APIキー所有グループが未設定の場合だけ、実行時に対話入力した内容を同じparamsの`portalApiKeys`へ保存します。
+DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`で管理します。検証用はBasic・5 DTU・2 GB・バックアップ7日・Local、本番用はGeneral Purpose・2 vCore・32 GB・14日・Geoです。配備コマンドは既存の`.local/<environment>/params.local.json`を正本として読みます。APIキー所有グループが未設定の場合だけ、実行時に対話入力した内容を同じparamsの`portalApiKeys`へ保存します。
 
 ## Entraと認証の準備
 
@@ -82,7 +82,7 @@ Gateway配備に失敗した場合はPortalへ進まず、Portal配備に失敗�
 python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
 ```
 
-既定の計画モードは配備先と作業内容を表示し、Azureリソースの変更・イメージ作成・秘密の生成は行いません。既定では構築時の`.state/latest.json`を参照します。
+既定の計画モードは配備先と作業内容を表示し、Azureリソースの変更・イメージ作成・秘密の生成は行いません。既定では構築時の`.local/<environment>/state/latest.json`を参照します。
 
 実行するときは`--execute`を追加します。
 
@@ -155,7 +155,7 @@ Graphへ正規表現を送るのではなく、取得した名前をサーバー
 4. 既存App Gatewayの`probe-portal`を、認証不要の`/api/health`からHTTP 200が返ることを確認する設定へ合わせます。Microsoft認証の戻り先には、後述の限定WAF設定も適用します。ほかのプローブ・API転送は変更しません。
 5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、認証用環境変数とKey Vault参照を渡します。
 6. 新しいリビジョンの起動と公開URLの`/api/health`を確認します。Readinessでは`/api/health/ready`から実行用IDのSQL照会と専用鍵の準備も確認します。
-7. Gatewayの固定ポリシーとKey Vault参照を確認して、購読プロファイルの参照を有効化します。結果は`.state/portal-deployment.json`へ保存します。
+7. Gatewayの固定ポリシーとKey Vault参照を確認して、購読プロファイルの参照を有効化します。結果は`.local/<environment>/state/portal-deployment.json`へ保存します。
 
 SQL初期化ジョブはスケジュール実行しません。テーブル初期化をアプリの起動処理にも含めません。再配備では既存データを維持し、未適用のマイグレーションを適用します。
 
@@ -217,14 +217,13 @@ APIキー管理の組み込みロールは購読以外のAPIM設定も変更で�
 }
 ```
 
-`apps/portal`で、最初は`--execute`を付けず計画を確認します。`--apim-resource-id`には配備先のAPIMリソースIDを独立に指定し、マニフェストの対象と照合します。`PORTAL_APIM_RESOURCE_ID`が設定済みなら、この引数は省略できます。
+リポジトリルートで、絶対パスの`DEPLOY_LOCAL_DIRECTORY`と同じ環境の`DEPLOY_PARAMS_FILE`を設定し、最初は`--execute`を付けず計画を確認します。マニフェストは`.local/<environment>/evidence/`へ保存します。`--apim-resource-id`には配備先のAPIMリソースIDを独立に指定し、マニフェストの対象と照合します。`PORTAL_APIM_RESOURCE_ID`が設定済みなら、この引数は省略できます。
 
 ```sh
-node --env-file=.env.local \
-  --env-file=../../secrets/portal-local-sql-admin.env \
-  --conditions=react-server --experimental-strip-types \
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" --admin -- \
+  node --conditions=react-server --experimental-strip-types \
   scripts/import-local-api-key-subscriptions.ts \
-  --manifest ../../.state/portal-subscription-import.json \
+  --manifest "$DEPLOY_LOCAL_DIRECTORY/evidence/portal-subscription-import.json" \
   --apim-resource-id '<配備先APIMリソースID>'
 ```
 
@@ -238,7 +237,7 @@ Azure上のPortal本体はKey Vaultの次の値をマネージドIDで参照し�
 - `core-portal-auth-secret`：Better Auth専用の署名鍵。初回だけ作成し、存在する場合は更新しません。
 - `core-subscription-profile-key`：APIMからPortalへのプロファイル照会専用鍵。両方の実行IDへ、このsecretを読むための組み込みロールを割り当てます。
 
-新規署名鍵は端末のGit管理外ファイル`.state/portal-auth-<環境>-<製品>.json`に保護保存してからsecureパラメーターでKey Vaultへ渡します。ローカル検証用の`.env.local`はAzureへ渡しません。カスタムAzureロールは作成しません。
+新規署名鍵は端末の環境別領域に保護保存してからsecureパラメーターでKey Vaultへ渡します。ローカル検証用の`portal/runtime.env`はAzureへ渡しません。カスタムAzureロールは作成しません。
 
 配備を実行するIDにはサービスRGへの配備、既存管理VMでのRun Command、対象マネージドIDの割当、対象ACR・Key Vaultシークレット・APIMへの必要な組み込みロールの割当、および既存App Gatewayのヘルス監視を更新する権限が必要です。これは利用者のPortalログイン権限とは別です。
 
@@ -253,7 +252,7 @@ GitHub Actionsを使う場合、`.github/workflow-templates/portal.yml.example`�
 | `AZURE_CLIENT_ID` | Azure配備用OIDCログインID |
 | `AZURE_TENANT_ID` | コア基盤の`azureTenantId` |
 | `AZURE_SUBSCRIPTION_ID` | コア基盤のサブスクリプション |
-| `CORE_PARAMS_PATH` | runner上の構築パラメーターファイル。checkoutで消えないリポジトリ外の絶対パス |
+| `CORE_PARAMS_PATH` | runner上の`.local/<environment>/params.local.json`への絶対パス。checkout後に保護した入力から準備し、別環境のファイルを流用しない |
 | `CORE_DEPLOYMENT_NAME` | 完了済みのコア基盤のsubscription deployment名 |
 
 OIDCのfederated credentialは`repo:<owner>/<repository>:environment:portal`を対象にします。公開の未信頼PRを配備runnerで実行しません。CIのAzureログイン先は`azureTenantId`で、利用者のサインイン先`entraTenantId`と区別します。
@@ -321,7 +320,7 @@ Portal配備で`009_subscription_sync.sql`を適用し、実行IDへ監査表の
 
 ## ローカル開発と撤去（開発環境）
 
-ローカルSQL・localhostのEntra戻り先・`.env.local`の作成は[ローカル認証テスト](../testing/portal-local-auth.md)を使います。実装・検証コマンドは[PortalのREADME](../../apps/portal/README.md)を参照してください。
+ローカルSQL・localhostのEntra戻り先・環境別の`portal/runtime.env`の作成とlauncherは[ローカル認証テスト](../testing/portal-local-auth.md)を使います。実装・検証コマンドは[PortalのREADME](../../apps/portal/README.md)を参照してください。
 
 コア基盤全体の`azd down`は同じRG内のPortal DB・初期化ジョブ・Container App・ACRも撤去対象にします。Portalだけの再配備では共有リソースや既存DBを削除しません。
 
