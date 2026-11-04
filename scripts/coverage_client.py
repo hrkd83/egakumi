@@ -30,6 +30,7 @@ from xml.sax.saxutils import escape
 import zlib
 
 from integration_client import auth_headers, correlations, endpoint, json_shape, private_write, usage_numbers, StreamSummary
+from deployment.helpers.paths import private_parent
 
 KINDS = ("embedding", "rerank", "messages", "image-generate", "image-edit", "vision", "pdf", "audio-chat", "tts", "stt", "agent")
 PROFILE_REQUESTS = {("chat-completions", "vision"): "vision",
@@ -78,7 +79,7 @@ def silence_wav(seconds=1, rate=24000) -> bytes:
 
 def private_bytes(path: Path, data: bytes):
     """生成資材を所有者だけが読めるバイナリーファイルとして保存する。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = private_parent(path)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "wb") as stream:
         os.fchmod(stream.fileno(), 0o600); stream.write(data)
@@ -440,9 +441,13 @@ def main():
         result = assets(args.directory)
     elif args.command == "convert-audio":
         if args.input.resolve() == args.output.resolve(): raise ValueError("Keep the original 16 kHz fixture")
+        args.output = private_parent(args.output)
         converted = upsample_speech(args.input.read_bytes()); private_bytes(args.output, converted)
         result = {"inputRate": 16000, "outputRate": 24000, "outputBytes": len(converted), "sha256": hashlib.sha256(converted).hexdigest(), "azureRequests": 0}
     else:
+        args.output = private_parent(Path(args.output))
+        if args.artifact:
+            args.artifact = private_parent(args.artifact)
         request = request_for(args.kind, model=args.model, voice=args.voice, audio=args.audio_file.read_bytes() if args.audio_file else None, stream=args.stream, expected_text=args.expected_text, agent_mode=args.agent_mode, max_tokens=args.max_tokens,
                               operation_id=args.operation_id, profile_id=args.profile_id)
         result = asyncio.run(probe(args.url, request, auth_headers(args.token_file, args.key_file), stream=args.stream, artifact=args.artifact, timeout=args.timeout))

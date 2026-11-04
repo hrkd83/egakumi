@@ -14,37 +14,41 @@ http://localhost:3000/api/auth/callback/microsoft
 
 ## 2. ローカル設定の準備
 
-リポジトリ直下で、まず変更予定を確認します。ファイル作成、秘密の読み取り、Azureへの操作は行いません。
+リポジトリ直下で、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)の`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、まず変更予定を確認します。計画だけではファイル作成、秘密の読み取り、Azureへの操作は行いません。
 
 ```sh
-python3 scripts/prepare_portal_local_auth.py --config 'params/<environment>.local.json'
+python3 scripts/prepare_portal_local_auth.py --config "$DEPLOY_PARAMS_FILE"
 ```
 
 `--execute`を付けて実行すると、指定したparamsが参照する既存Entraシークレットを使い、以下のGit管理外ファイルを保護して保存します。元のparamsは変更しません。設定が一致する既存ファイルは再利用し、上書きしません。
 
-- `apps/portal/.env.local`: Next.jsサーバー用。Entra設定、Cookie署名鍵、SQL実行用ユーザーの資格情報。
-- `secrets/portal-local-sql-admin.env`: SQL初期化用。管理者資格情報とDeveloper版の起動設定。Next.jsには読み込ませません。
+- `.local/<environment>/portal/runtime.env`: Next.jsサーバー用。Entra設定、Cookie署名鍵、SQL実行用ユーザーの資格情報。
+- `.local/<environment>/secrets/portal-local-sql-admin.env`: SQL初期化用。管理者資格情報とDeveloper版の起動設定。Next.jsには読み込ませません。
 
 SQL Server Developerは開発・テスト専用で、本番業務に使用できません。[Microsoftの説明](https://learn.microsoft.com/en-us/sql/sql-server/editions-and-components-of-sql-server-2022?view=sql-server-ver16#sql-server-editions)とライセンスを確認し、同意した場合だけ実行します。
 
 ```sh
 python3 scripts/prepare_portal_local_auth.py \
-  --config 'params/<environment>.local.json' --execute --accept-sql-eula
+  --config "$DEPLOY_PARAMS_FILE" --execute --accept-sql-eula
 ```
 
-Windowsでは`python3`の代わりに利用中のPythonを指定できます。ファイルは実際に開発する本人のアカウントで作成します。秘密値を表示・チャット貼付・`NEXT_PUBLIC_`環境変数へ設定しないでください。
+Windowsでは`python3`の代わりに利用中のPythonを指定できます。ファイルは実際に開発する本人のアカウントで作成します。`apps/portal/.env.local`は作成せず、設定は環境別の保護ファイルとlauncherで扱います。秘密値を表示・チャット貼付・`NEXT_PUBLIC_`環境変数へ設定しないでください。
 
 ## 3. SQLとアプリの起動
 
 Docker EngineとComposeを利用できる開発環境で実行します。WindowsでWSL内のDockerを使う場合は、リポジトリと開発用設定を参照できる同じ環境から実行します。SQLは`127.0.0.1:14330`だけで待ち受け、専用の永続ボリュームと2GBのメモリ上限を使います。
 
 ```sh
-cd apps/portal
-docker compose -f compose.local.yml up -d --wait
-npm ci
-npm run db:bootstrap-local
-npm run dev
+PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  -f apps/portal/compose.local.yml up -d --wait
+npm --prefix apps/portal ci
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
+  --admin -- npm run db:bootstrap-local
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
 ```
+
+`run_portal_local.py`は対象環境の保護ファイルを子プロセスの環境へ読み込み、`apps/portal`を作業フォルダーとしてコマンドを実行します。`--admin`はSQL初期化・管理作業にだけ指定し、通常の`npm run dev`へ管理者資格情報を渡しません。
 
 `db:bootstrap-local`は、ローカルに`egakumi_portal`データベースと未適用のテーブル定義を用意し、`portal_app`へ用途別の実行権限を付与します。Graphの保存表は`010_connection_sessions.sql`で追加し、実行用ユーザーにはSELECT・INSERT・UPDATEだけを付与します。DDL権限は与えません。再実行しても既存データは削除しません。Azure SQLは対象外です。Node.js 24を使い、`node_modules`は実行するOS側で`npm ci`してください。
 
@@ -61,19 +65,19 @@ npm run dev
 Portalログインと、Graph用の`X-Core-Connection-Session`は別です。Portalへのログインだけでは、Graphの本人接続を作成しません。
 
 ```sh
-npm test
-npm run lint
-npm run build
-npm audit
+npm --prefix apps/portal test
+npm --prefix apps/portal run lint
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run build
+npm --prefix apps/portal audit
 ```
 
 ## 5. Tool GatewayのGraph確認
 
 Gatewayには本人接続v2とGraph APIを配備しておきます。実APIの選択項目は`apps/gateway/apim/apis/graph-profile-v1.json`の固定`$select`で、氏名・所属・連絡先・アカウント状態など本人の12属性です。変更を反映したGateway→Portalの順に配備します。ローカル画面の確認だけならAzure側のPortal配備は不要です。
 
-`.env.local`にサーバー専用の`PORTAL_GATEWAY_URL=https://<GATEWAY_HOST>`を設定します。購読の参照にはAPIキー管理と同じAPIM接続・Entraアプリ権限を使用します。必要な所属グループ・製品承認・既存購読のローカル台帳登録は[Portal配備手順](../setup/portal.md#ローカルsqlへの既存購読登録)に従います。ローカルとAzureのSQLは同期しません。
+同じ環境の`portal/runtime.env`にサーバー専用の`PORTAL_GATEWAY_URL=https://<GATEWAY_HOST>`を設定します。購読の参照にはAPIキー管理と同じAPIM接続・Entraアプリ権限を使用します。必要な所属グループ・製品承認・既存購読のローカル台帳登録は[Portal配備手順](../setup/portal.md#ローカルsqlへの既存購読登録)に従います。ローカルとAzureのSQLは同期しません。
 
-1. `npm run db:bootstrap-local`で未適用の010と実行権限を準備してから`npm run dev`を起動する。
+1. 上のlauncherから`--admin -- npm run db:bootstrap-local`で未適用の010と実行権限を準備し、管理者設定なしの`-- npm run dev`を起動する。
 2. `/ja/tools`のRESTタブでMicrosoft Graph /meカードを開く。自分のグループ所有で、Graph APIを含む有効な購読を選ぶ。
 3. 「自分のユーザー情報を取得」で、先にGraph APIが呼ばれることを確認する。接続がなければMicrosoft認証のリンクが表示される。
 4. 別タブのMicrosoft認証でPortalと同じアカウントを使用する。Portalへ戻ると完了確認後、本人のユーザー情報を自動で一度取得する。
@@ -91,9 +95,11 @@ Microsoftトークンの保管・更新はCM、Portalが送る本人接続セッ
 Next.jsを起動した端末で`Ctrl+C`を押し、SQLを停止します。停止だけならデータは残ります。
 
 ```sh
-docker compose -f compose.local.yml stop
+PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  -f apps/portal/compose.local.yml stop
 ```
 
 ローカル開発を終了して戻り先が不要になったら、開発用Entraアプリから追加したlocalhostの戻り先だけを削除します。既存の公開用戻り先や有効なシークレットは残します。データを破棄する操作は自動では行いません。
 
-Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。構築済みのコア基盤に対し、Portal配備のための`azd up`再実行は不要です。ローカルのDB・`.env.local`・管理者資格情報をAzureへコピーしません。
+Azure用の`sqldb-<環境>-<製品>-portal`は、[Portal配備コマンド](../setup/portal.md)が共通SQLサーバー上に作成します。同じ配備処理が手動SQL初期化ジョブを起動し、テーブルと実行用IDの権限を準備してからアプリを更新します。構築済みのコア基盤に対し、Portal配備のための`azd up`再実行は不要です。ローカルのDB・`portal/runtime.env`・管理者資格情報をAzureへコピーしません。

@@ -12,7 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, build_opener
 
 from deployment.helpers.configuration import load_configuration
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.portal_authentication import prepare_secret
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
@@ -40,7 +40,7 @@ def group_scope(config):
 
 
 def deployment_inputs(config, state, image_digest=None):
-    """旧版を含む基盤出力から、今回の環境だけを参照する公開パラメーターを作る。"""
+    """現在のinfraが保存した基盤出力から、今回の環境だけを参照する。"""
     if image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', image_digest):
         raise ValueError('Use an immutable sha256 image digest')
     if any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):
@@ -48,7 +48,6 @@ def deployment_inputs(config, state, image_digest=None):
     stem = config['resourceStem']
     outputs = state.get('outputs', {})
     portal = outputs.get('portal', {})
-    broker = outputs.get('credentialBroker', {})
     svc = group_scope(config) + '/providers/'
     identities = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
     expected = {
@@ -60,12 +59,14 @@ def deployment_inputs(config, state, image_digest=None):
             raise ValueError('Portal foundation output differs from the selected environment: ' + key)
     if str(portal.get('applicationId', '')).lower() != (svc + 'Microsoft.App/containerApps/' + expected['applicationName']).lower():
         raise ValueError('Portal application scope differs from the selected service group')
-    runtime = portal.get('runtimeIdentity') or {'id': portal.get('pullIdentityId')}
-    schema = portal.get('schemaIdentity') or broker.get('schemaIdentity', {})
+    runtime = portal.get('runtimeIdentity')
+    schema = portal.get('schemaIdentity')
+    if not isinstance(runtime, dict) or not isinstance(schema, dict):
+        raise ValueError('Current Portal foundation identity outputs are required')
     for identity, name in ((runtime, f'id-{stem}-portal-pull'), (schema, f'id-{stem}-credential-schema')):
         if str(identity.get('id', '')).lower() != (identities + name).lower():
             raise ValueError('Portal SQL identity differs from the selected foundation')
-    sql_server = portal.get('sharedSqlServer') or broker.get('sqlServer')
+    sql_server = portal.get('sharedSqlServer')
     if sql_server != f'sql-{stem}.database.windows.net':
         raise ValueError('Shared SQL server is missing from the completed foundation')
     profile_name = config['portalAuthentication']['credentialProviderName']
@@ -276,12 +277,16 @@ def deploy_release(config, values, template, transport):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
-    parser.add_argument('--state-file', default=str(REPOSITORY / '.state/latest.json'))
+    parser.add_argument('--state-file', type=Path)
     parser.add_argument('--deployment-name', help='Completed Core subscription deployment, when using CI or no local state file')
     parser.add_argument('--image-digest', help='Use an already registered portal image instead of building it')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     config = load_configuration(args.config)
+    workspace = local_paths(config, REPOSITORY)
+    workspace.checked(Path(args.config))
+    workspace.check_selection(config)
+    args.state_file = workspace.checked(args.state_file or workspace.state / 'latest.json')
     if args.deployment_name:
         result = run_json(['az', 'deployment', 'sub', 'show', '--name', args.deployment_name,
             '--subscription', config['subscriptionId'], '-o', 'json'])
@@ -296,7 +301,7 @@ def main(argv=None):
         config = prepare_api_key_groups(args.config, config)
         values = deployment_inputs(config, state, args.image_digest)
     data, source_hash = (None, None) if args.image_digest else source_bundle()
-    build_record = REPOSITORY / '.state/portal-build.json'
+    build_record = workspace.state / 'portal-build.json'
     if not args.image_digest:
         values['imageDigest'] = reusable_image(config, state, source_hash, build_record)
     plan = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
@@ -305,7 +310,7 @@ def main(argv=None):
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
         'steps': ['build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-health-probe', 'configure-portal-auth-callback-waf', 'update-application', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
-    protected_json(REPOSITORY / '.state/portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
+    protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))
         return 0
@@ -323,7 +328,7 @@ def main(argv=None):
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
         'gatewayProbe': gateway_readiness['probe'], 'callbackWaf': gateway_readiness['callbackWaf'],
         'subscriptionProfiles': gateway_readiness['subscriptionProfiles']}
-    protected_json(REPOSITORY / '.state/portal-deployment.json', result)
+    protected_json(workspace.state / 'portal-deployment.json', result)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

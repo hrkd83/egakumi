@@ -127,7 +127,7 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                         mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
                         contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(lifecycle.main([phase]), 0)
-                    values = json.loads(lifecycle.PARAMETERS.read_text())["parameters"]
+                    values = json.loads(self.paths.parameters.read_text())["parameters"]
                     self.assertIs(values["existingPortalApp"]["value"], exists)
                     self.assertFalse(transport.responses)
                     self.assertFalse(transport.mutations())

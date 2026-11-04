@@ -88,15 +88,15 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
 
         def prepare(config, root):
             self.assertIs(config, self.config)
-            self.assertEqual(root, self.root)
-            self.assertEqual(Path(config["management"]["sshPublicKeyFile"]), self.root / "secrets/management-ssh.pub")
+            self.assertEqual(root, self.paths.root)
+            self.assertEqual(Path(config["management"]["sshPublicKeyFile"]), self.root / ".local/test/secrets/management-ssh.pub")
             self.assertTrue(Path(config["management"]["sshPublicKeyFile"]).is_relative_to(root))
             events.append("ssh")
             return {"created": False}
 
         def secrets(config, root):
             self.assertIs(config, self.config)
-            self.assertEqual(root, self.root)
+            self.assertEqual(root, self.paths.root)
             events.append("secret-preparation")
             return {"created": [], "reused": []}
 
@@ -107,10 +107,10 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "prepare_secrets", side_effect=secrets) as secret_preparation, \
              mock.patch.object(lifecycle, "ensure_management_ssh_key", side_effect=prepare) as key:
             lifecycle.local_preflight(self.config)
-        secret_preparation.assert_called_once_with(self.config, self.root)
-        key.assert_called_once_with(self.config, self.root)
+        secret_preparation.assert_called_once_with(self.config, self.paths.root)
+        key.assert_called_once_with(self.config, self.paths.root)
         self.assertEqual(events, ["dependencies", "secret-preparation", "ssh"])
-        self.assertFalse((self.root / "secrets").exists())
+        self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
     def test_environment_or_dependency_failure_never_attempts_key_preparation(self):
         cases = [
@@ -135,7 +135,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                     lifecycle.local_preflight(self.config)
                 secret_preparation.assert_not_called()
                 key.assert_not_called()
-        self.assertFalse((self.root / "secrets").exists())
+        self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
     def test_both_provision_hooks_prepare_secret_then_key_then_load_before_azure_boundary(self):
         """実local_preflightを通し、Azure入口をsentinelで止めるので外部処理はない。"""
@@ -145,7 +145,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
 
             def prepare(config, root):
                 self.assertIs(config, self.config)
-                self.assertEqual(root, self.root)
+                self.assertEqual(root, self.paths.root)
                 events.append("ssh")
                 return {"created": False}
 
@@ -174,17 +174,17 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, "deploy_phase") as deploy, \
                  contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(lifecycle.main([hook]), 1)
-                secret_preparation.assert_called_once_with(self.config, self.root)
-                key.assert_called_once_with(self.config, self.root)
+                secret_preparation.assert_called_once_with(self.config, self.paths.root)
+                key.assert_called_once_with(self.config, self.paths.root)
                 if hook == "preup":
-                    self.dns_selection.assert_called_once_with(self.root / "params/test.local.json", self.config)
+                    self.dns_selection.assert_called_once_with(self.root / ".local/test/params.local.json", self.config)
                 else:
                     self.dns_selection.assert_not_called()
                 providers.assert_not_called()
                 arm.assert_not_called()
                 deploy.assert_not_called()
             self.assertEqual(events, ["dependencies", "secret-preparation", "ssh", "secret-inputs", "azure-boundary"])
-            self.assertFalse(lifecycle.PARAMETERS.exists())
+            self.assertFalse(self.paths.parameters.exists())
 
     def test_key_preparation_failure_stops_both_hooks_before_secret_or_azure_access(self):
         for hook in ("preup", "preprovision"):
@@ -205,13 +205,13 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, "deploy_phase") as deploy, \
                  contextlib.redirect_stderr(error_output):
                 self.assertEqual(lifecycle.main([hook]), 1)
-                secret_preparation.assert_called_once_with(self.config, self.root)
-                key.assert_called_once_with(self.config, self.root)
+                secret_preparation.assert_called_once_with(self.config, self.paths.root)
+                key.assert_called_once_with(self.config, self.paths.root)
                 for downstream in (secrets, ingress, azure, providers, arm, deploy):
                     downstream.assert_not_called()
             self.assertIn("fixture SSH preparation failed", error_output.getvalue())
-            self.assertFalse(lifecycle.PARAMETERS.exists())
-            self.assertFalse((self.root / "secrets").exists())
+            self.assertFalse(self.paths.parameters.exists())
+            self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
     def test_secret_failure_or_cancel_stops_both_hooks_before_key_and_azure_without_secret_output(self):
         """未入力・非対話端末・キャンセルを合成し、値をエラーへ出さないことも調べる。"""
@@ -243,13 +243,13 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                      mock.patch.object(lifecycle, "deploy_phase") as deploy, \
                      contextlib.redirect_stderr(output), contextlib.redirect_stdout(output):
                     self.assertEqual(lifecycle.main([hook]), 1)
-                    secret_preparation.assert_called_once_with(self.config, self.root)
+                    secret_preparation.assert_called_once_with(self.config, self.paths.root)
                     for downstream in (key, secrets, ingress, azure, providers, arm, deploy):
                         downstream.assert_not_called()
                 self.assertIn(message, output.getvalue())
                 self.assertNotIn("PRIVATE_SECRET_FIXTURE", output.getvalue())
-                self.assertFalse(lifecycle.PARAMETERS.exists())
-                self.assertFalse((self.root / "secrets").exists())
+                self.assertFalse(self.paths.parameters.exists())
+                self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
     def test_validation_and_input_cleanup_never_start_interactive_preparation(self):
         """設定だけの確認や生成入力の掃除で、秘密を求めたり鍵を作ったりしない。"""
@@ -264,7 +264,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 self.assertEqual(lifecycle.main([command]), 0)
                 for preparation in (secrets, key, azure, arm):
                     preparation.assert_not_called()
-            self.assertFalse((self.root / "secrets").exists())
+            self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
     def test_fresh_clone_secret_input_reaches_real_loader_and_non_tty_retry_reuses_files(self):
         """実際の対話準備と読込をつなぎ、両構築hookをAzure入口の直前で停止する。
@@ -280,14 +280,14 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             with self.subTest(hook=hook), tempfile.TemporaryDirectory(dir=self.root) as directory:
                 root = Path(directory).resolve()
                 raw = connection_fixture()
-                dns = root / "secrets/dns-plugin-arguments.json"
-                entra = root / "secrets/entra-client-secret.txt"
-                public_key = root / "secrets/management-ssh.pub"
+                dns = root / ".local/test/secrets/dns-plugin-arguments.json"
+                entra = root / ".local/test/secrets/entra-client-secret.txt"
+                public_key = root / ".local/test/secrets/management-ssh.pub"
                 raw["management"]["sshPublicKeyFile"] = str(public_key)
                 raw["certificate"]["pluginArgumentsFile"] = str(dns)
                 raw["credentialProviders"][0]["clientSecretFile"] = str(entra)
                 config = normalize_configuration(raw, base_directory=root)
-                self.assertFalse((root / "secrets").exists())
+                self.assertEqual(list((root / ".local/test/secrets").glob("*")), [])
 
                 for first_run in (True, False):
                     events = []
@@ -316,7 +316,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
 
                     def prepare_key(actual_config, actual_root):
                         self.assertIs(actual_config, config)
-                        self.assertEqual(actual_root, root)
+                        self.assertEqual(actual_root, root / ".local/test")
                         # 本物の秘密準備が先に完了していなければ失敗させる。
                         self.assertTrue(entra.is_file())
                         self.assertTrue(dns.is_file())
@@ -360,7 +360,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                         stack.enter_context(contextlib.redirect_stdout(output))
                         stack.enter_context(contextlib.redirect_stderr(output))
                         self.assertEqual(lifecycle.main([hook]), 1)
-                        prepare.assert_called_once_with(config, root)
+                        prepare.assert_called_once_with(config, root / ".local/test")
                         if first_run:
                             ready.assert_called_once()
                             self.assertEqual(secret_input.call_count, 2)
@@ -375,20 +375,20 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                     self.assertEqual(events, expected + ["ssh", "load-inputs", "azure-boundary"])
                     self.assertNotIn(client_secret, output.getvalue())
                     self.assertNotIn(dns_token, output.getvalue())
-                    self.assertEqual(stat.S_IMODE((root / "secrets").stat().st_mode), 0o700)
+                    self.assertEqual(stat.S_IMODE((root / ".local/test/secrets").stat().st_mode), 0o700)
                     for path in (entra, dns):
                         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
                     if before:
                         self.assertEqual(before, {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in (entra, dns)})
-                    self.assertFalse(lifecycle.PARAMETERS.exists())
+                    self.assertFalse((root / ".local/test/generated/main.parameters.json").exists())
 
 
     def clone_public_inputs(self):
         """公開入力のコピーへ架空IDと参照だけを入れ、実ユーザー設定から独立させる。"""
         core = Path(__file__).resolve().parents[1]
         # macOSの/tmpや/varはsymlinkなので、selectorへ渡す専用入力は実体パスにします。
-        source = (self.root / "params/test.local.json").resolve()
-        source.parent.mkdir()
+        source = (self.root / ".local/test/params.local.json").resolve()
+        lifecycle.private_parent(source, self.root)
         (self.root / "config").mkdir()
         raw = json.loads((core / "params/test.example.json").read_text())
         raw["subscriptionId"] = self.config["subscriptionId"]
@@ -398,7 +398,10 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         raw["gateway"]["authentication"]["credentialLogin"] = copy.deepcopy(
             connection_fixture()["gateway"]["authentication"]["credentialLogin"])
         raw["credentialProviders"] = connection_fixture()["credentialProviders"]
-        raw["credentialProviders"][0]["clientSecretFile"] = "../secrets/entra-client-secret.txt"
+        raw["configFile"] = "../../config/test.json"
+        raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
+        raw["certificate"]["pluginArgumentsFile"] = "./secrets/dns-plugin-arguments.json"
+        raw["credentialProviders"][0]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         source.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
         (self.root / "config/test.json").write_bytes((core / "config/test.json").read_bytes())
         return source
@@ -422,11 +425,11 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         access_key = "SYNTHETIC-SELECTION-ACCESS-ID"
         dns_secret = "SYNTHETIC-SELECTION-DNS-DO-NOT-DISPLAY"
         output = io.StringIO()
-        public_key = self.root / "secrets/management-ssh.pub"
+        public_key = self.root / ".local/test/secrets/management-ssh.pub"
         events = []
         preparation_reports = []
-        dns_file = (self.root / "secrets/dns-plugin-arguments.json").resolve()
-        entra_file = (self.root / "secrets/entra-client-secret.txt").resolve()
+        dns_file = (self.root / ".local/test/secrets/dns-plugin-arguments.json").resolve()
+        entra_file = (self.root / ".local/test/secrets/entra-client-secret.txt").resolve()
         old_dns_token = "SYNTHETIC-OLD-CLOUDFLARE-DO-NOT-REUSE"
         original_entra = None
         if existing_dns:
@@ -452,13 +455,13 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             events.append("dns-selection")
             self.assertEqual(actual_source, source)
             self.assertEqual(actual_config["certificate"]["plugin"], "Cloudflare")
-            self.assertEqual((self.root / "secrets").exists(), existing_dns)
+            self.assertEqual(dns_file.exists(), existing_dns)
             return dns_selection.select_dns_provider(actual_source, actual_config)
 
         def prepare_key(actual_config, actual_root):
-            self.assertEqual(actual_root, self.root)
+            self.assertEqual(actual_root, self.paths.root)
             self.assertEqual(actual_config["certificate"]["plugin"], "Route53")
-            self.assertTrue((self.root / "secrets/dns-plugin-arguments.json").is_file())
+            self.assertTrue((self.root / ".local/test/secrets/dns-plugin-arguments.json").is_file())
             if not public_key.exists():
                 public_key.write_text(ssh_fixture_key() + "\n")
             events.append("ssh")
@@ -487,7 +490,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             first = hook == "preup"
             events.clear()
             before_files = ({path: (path.read_bytes(), path.stat().st_mtime_ns)
-                             for path in (self.root / "secrets").iterdir()} if not first else {})
+                             for path in (self.root / ".local/test/secrets").iterdir()} if not first else {})
             with self.subTest(hook=hook), contextlib.ExitStack() as stack:
                 selector = stack.enter_context(mock.patch.object(lifecycle, "select_dns_provider", side_effect=select))
                 stack.enter_context(mock.patch.object(lifecycle, "load_configuration", wraps=real_configuration))
@@ -527,8 +530,8 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             self.assertEqual(saved, expected_params)
             if before_files:
                 self.assertEqual(before_files, {path: (path.read_bytes(), path.stat().st_mtime_ns)
-                                              for path in (self.root / "secrets").iterdir()})
-            self.assertFalse(lifecycle.PARAMETERS.exists())
+                                              for path in (self.root / ".local/test/secrets").iterdir()})
+            self.assertFalse(self.paths.parameters.exists())
             if original_entra:
                 self.assertEqual((entra_file.read_bytes(), entra_file.stat().st_ino, entra_file.stat().st_mtime_ns), original_entra)
         if existing_dns:
@@ -569,7 +572,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 for downstream in (secrets, ssh, azure, providers, arm):
                     downstream.assert_not_called()
             self.assertEqual(source.read_bytes(), before)
-            self.assertFalse((self.root / "secrets").exists())
+            self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
 
 if __name__ == "__main__":

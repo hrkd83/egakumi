@@ -15,7 +15,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.state = lifecycle.state_from_outputs(self.config, self.outputs())
-        lifecycle.protected_json(lifecycle.STATE, self.state)
+        lifecycle.protected_json((self.paths.state / "latest.json"), self.state)
         prefix = "/subscriptions/" + self.config["subscriptionId"] + "/resourceGroups/"
         self.inventory = [{
             "environmentId": prefix + self.config["resourceGroupNames"]["svc"]
@@ -27,12 +27,12 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
              mock.patch.object(lifecycle, "ArmTransport"), \
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            return lifecycle.main([command, "--config", "fixture.json"])
+            return lifecycle.main([command, "--config", str(self.paths.params)])
 
     def test_interrupted_predown_preserves_inventory_for_postdown(self):
         def interrupted(source, state, transport, *, checkpoint):
             checkpoint(self.inventory)
-            saved = json.loads(lifecycle.STATE.read_text())
+            saved = json.loads((self.paths.state / "latest.json").read_text())
             self.assertEqual(saved["applicationInfrastructure"], self.inventory)
             self.assertEqual(saved["outputs"], self.state["outputs"])
             self.assertEqual(state["applicationInfrastructure"], self.inventory)
@@ -40,7 +40,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
 
         with mock.patch.object(cleanup, "pre_down", side_effect=interrupted):
             self.assertEqual(self.run_hook("predown"), 1)
-        self.assertFalse((self.root / ".state/cleanup-predown.json").exists())
+        self.assertFalse((self.root / ".local/test/state/cleanup-predown.json").exists())
 
         def finish(source, state, transport):
             self.assertEqual(state["applicationInfrastructure"], self.inventory)
@@ -52,26 +52,34 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
 
     def test_checkpoint_write_failure_stops_before_cleanup_continues(self):
         mutations = []
+        write = lifecycle.protected_json
+
+        def fail_checkpoint(path, value):
+            if path == self.paths.state / "latest.json":
+                raise OSError("fixture storage unavailable")
+            return write(path, value)
 
         def execute(source, state, transport, *, checkpoint):
             checkpoint(self.inventory)
             mutations.append("delete")
 
-        with mock.patch.object(lifecycle, "protected_json", side_effect=OSError("fixture storage unavailable")), \
-             mock.patch.object(cleanup, "pre_down", side_effect=execute):
+        with mock.patch.object(lifecycle, "protected_json", side_effect=fail_checkpoint), \
+             mock.patch.object(cleanup, "pre_down", side_effect=execute) as operation:
             self.assertEqual(self.run_hook("predown"), 1)
+        operation.assert_called_once()
         self.assertEqual(mutations, [])
-        self.assertEqual(json.loads(lifecycle.STATE.read_text()), self.state)
+        self.assertEqual(json.loads((self.paths.state / "latest.json").read_text()), self.state)
 
     def test_missing_core_state_stops_without_starting_cleanup(self):
-        lifecycle.STATE.unlink()
+        (self.paths.state / "latest.json").unlink()
         with mock.patch.object(cleanup, "pre_down") as operation:
             self.assertEqual(self.run_hook("predown"), 1)
         operation.assert_not_called()
+        self.assertFalse(self.paths.parameters.exists())
 
     def test_rebuild_preserves_checkpoint_through_monitoring_and_core_then_checks_old_and_new_groups(self):
         self.state['applicationInfrastructure'] = copy.deepcopy(self.inventory)
-        lifecycle.protected_json(lifecycle.STATE, self.state)
+        lifecycle.protected_json((self.paths.state / "latest.json"), self.state)
         transport = mock.Mock()
         transport.request.return_value = {'statusCode': 404, 'body': None, 'headers': {}}
         with mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
@@ -90,7 +98,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'discover_existing_apim_egress_fqdns', return_value=[]), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        self.assertEqual(json.loads(lifecycle.STATE.read_text())['applicationInfrastructure'], self.inventory)
+        self.assertEqual(json.loads((self.paths.state / "latest.json").read_text())['applicationInfrastructure'], self.inventory)
 
         outputs = {**self.outputs(), 'endpoints': {'public': 'https://gateway.example.test'}}
         response = {'properties': {'outputs': {key: {'value': value} for key, value in outputs.items()}}}
@@ -99,7 +107,7 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'configure_grpc_endpoint', return_value={'enabled': False}), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.postprovision(self.config)
-        rebuilt = json.loads(lifecycle.STATE.read_text())
+        rebuilt = json.loads((self.paths.state / "latest.json").read_text())
         self.assertEqual(rebuilt['applicationInfrastructure'], self.inventory)
         self.assertEqual(rebuilt['outputs'], outputs)
 
@@ -137,8 +145,8 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
         for inventory in (None, {}, [{}], [{**self.inventory[0], 'resourceGroupId': cleanup._rg_id(self.config, 'svc')}]):
             invalid.append({**self.state, 'applicationInfrastructure': inventory})
         for state in invalid:
-            lifecycle.protected_json(lifecycle.STATE, state)
-            original = lifecycle.STATE.read_bytes()
+            lifecycle.protected_json((self.paths.state / "latest.json"), state)
+            original = (self.paths.state / "latest.json").read_bytes()
             with self.subTest(state=state), mock.patch.object(lifecycle, 'local_preflight') as local, \
                  mock.patch.object(lifecycle, 'run') as cli, mock.patch.object(lifecycle, 'deploy_phase') as deploy:
                 with self.assertRaises(lifecycle.DeploymentError):
@@ -149,30 +157,37 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
             local.assert_not_called()
             cli.assert_not_called()
             deploy.assert_not_called()
-            self.assertEqual(lifecycle.STATE.read_bytes(), original)
+            self.assertEqual((self.paths.state / "latest.json").read_bytes(), original)
 
-    def test_state_without_checkpoint_keeps_existing_rebuild_behavior_for_other_environments(self):
-        lifecycle.protected_json(lifecycle.STATE, {**self.state, 'resourceStem': 'another-environment'})
+    def test_state_without_checkpoint_cannot_replace_another_environment(self):
+        path = self.paths.state / "latest.json"
+        lifecycle.protected_json(path, {**self.state, 'resourceStem': 'another-environment'})
+        before = path.read_bytes()
+        with self.assertRaisesRegex(lifecycle.DeploymentError, 'different Core environment'):
+            lifecycle._save_deployment_state(self.config, self.outputs())
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_owned_state_without_checkpoint_keeps_existing_rebuild_behavior(self):
         saved = lifecycle._save_deployment_state(self.config, self.outputs())
         self.assertEqual(saved, lifecycle.state_from_outputs(self.config, self.outputs()))
         self.assertNotIn('applicationInfrastructure', saved)
 
     def test_state_conversion_remains_pure_and_save_failure_preserves_previous_checkpoint(self):
         previous = {**self.state, 'applicationInfrastructure': self.inventory}
-        lifecycle.protected_json(lifecycle.STATE, previous)
+        lifecycle.protected_json((self.paths.state / "latest.json"), previous)
         self.assertNotIn('applicationInfrastructure', lifecycle.state_from_outputs(self.config, self.outputs()))
-        original = lifecycle.STATE.read_bytes()
+        original = (self.paths.state / "latest.json").read_bytes()
         with mock.patch.object(lifecycle.os, 'replace', side_effect=OSError('fixture storage unavailable')):
             with self.assertRaises(OSError):
                 lifecycle._save_deployment_state(self.config, self.outputs())
-        self.assertEqual(lifecycle.STATE.read_bytes(), original)
-        self.assertEqual(list(lifecycle.STATE.parent.glob('.core-*')), [])
+        self.assertEqual((self.paths.state / "latest.json").read_bytes(), original)
+        self.assertEqual(list((self.paths.state / "latest.json").parent.glob('.core-*')), [])
 
     def test_postprovision_invalid_checkpoint_retains_state_clears_secret_inputs_and_skips_finishing(self):
         previous = {**self.state, 'applicationInfrastructure': [{}]}
-        lifecycle.protected_json(lifecycle.STATE, previous)
-        lifecycle.protected_json(lifecycle.PARAMETERS, {'fixture': 'PRIVATE_INPUT'})
-        original = lifecycle.STATE.read_bytes()
+        lifecycle.protected_json((self.paths.state / "latest.json"), previous)
+        lifecycle.protected_json(self.paths.parameters, {'fixture': 'PRIVATE_INPUT'})
+        original = (self.paths.state / "latest.json").read_bytes()
         outputs = self.outputs()
         response = {'properties': {'outputs': {key: {'value': value} for key, value in outputs.items()}}}
         with mock.patch.object(lifecycle, 'run', side_effect=[{'CORE_DEPLOYMENT_NAME': 'rebuilt-core'}, response]), \
@@ -181,8 +196,8 @@ class TeardownCheckpointTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.postprovision(self.config)
         grpc.assert_not_called()
         self.public_dns.assert_not_called()
-        self.assertEqual(lifecycle.STATE.read_bytes(), original)
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertEqual((self.paths.state / "latest.json").read_bytes(), original)
+        self.assertFalse(self.paths.parameters.exists())
 
 
 if __name__ == "__main__":

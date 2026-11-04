@@ -121,7 +121,31 @@ class AuditPublicationTests(unittest.TestCase):
   facade=ET.fromstring(self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]"))
   graph=self.expanded_fragment_graph(facade)
   self.assertNotIn('core-audit-body-model',graph)
-  self.assert_body_free_nodes({'generated-mcp':facade,**graph})
+  self.assert_body_free_nodes(graph)
+
+ def test_generated_mcp_argument_guard_preserves_input_and_only_builds_a_fixed_error(self):
+  """本文を監査せず、PII引数の検査とJSON-RPCエラー生成だけに使う。"""
+  facade=ET.fromstring(self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]"))
+  readers=[]
+  for node in facade.iter():
+   values=[*node.attrib.values(),node.text or '']
+   for value in values:
+    self.assertNotRegex(value,r'Response\s*\.\s*Body\b')
+   if any(re.search(r'Request\s*\.\s*Body\b',value) for value in values):readers.append(node)
+  self.assertEqual([(node.tag,node.attrib.get('name')) for node in readers],
+                   [('set-variable','gatewayMcpArgumentError')])
+  guard=readers[0].attrib['value']
+  self.assertIn('preserveContent: true',guard)
+  self.assertIn('constraint?["kind"] != "pii"',guard)
+  self.assertIn('constraint["allowedLanguages"]',guard)
+  self.assertIn('constraint["maxRequestBytes"]',guard)
+  self.assertIn('new JProperty("code", -32602)',guard)
+  branch,=[node for node in facade.findall('inbound/choose/when')
+           if 'gatewayMcpArgumentError' in node.attrib.get('condition','')]
+  self.assertEqual(branch.find('return-response/set-status').attrib['code'],'400')
+  body,=facade.findall('.//set-body')
+  self.assertIs(body,branch.find('return-response/set-body'))
+  self.assertEqual(body.text,'@((string)context.Variables["gatewayMcpArgumentError"])')
 
  def test_native_diagnostics_only_select_chat_and_never_enable_message_capture(self):
   diagnostic=self.template['resources']['apiDiagnostics']

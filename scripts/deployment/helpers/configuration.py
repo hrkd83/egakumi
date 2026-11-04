@@ -1808,8 +1808,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "render":
             if args.output is None:
                 parser.error("render requires --output")
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(build_bicep_configuration(config), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            from .paths import private_parent
+            try:
+                output = private_parent(args.output)
+                descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
+                    os.fchmod(destination.fileno(), 0o600)
+                    destination.write(json.dumps(build_bicep_configuration(config), ensure_ascii=False, indent=2) + "\n")
+            except (OSError, ValueError):
+                _fail("output", "cannot write a protected runtime output")
         print(json.dumps({"valid": True, "resourceGroupNames": config["resourceGroupNames"], "apiPublicationStatus": config["apiPublicationStatus"]}, ensure_ascii=False))
         return 0
     except ConfigurationError as error:

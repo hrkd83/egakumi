@@ -33,11 +33,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         outputs = self.outputs()
         outputs["endpoints"] = {"public": "https://fixture.example.com"}
         response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
-        receipt = lifecycle.ROOT / ".state/api-catalog-publication.json"
+        receipt = lifecycle.ROOT / ".local/test/state/api-catalog-publication.json"
         transport = mock.Mock()
         transport.request.side_effect = AssertionError("Foundation must not update API resources")
         for fails in (False, False, True):
-            lifecycle.protected_json(lifecycle.PARAMETERS, {"fixture": "PRIVATE_INPUT"})
+            lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_INPUT"})
             lifecycle.protected_json(receipt, {"status": "explicit-api-publication"})
             with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned-core"}, response]), \
                  mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -51,8 +51,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                     lifecycle.postprovision(self.config)
             ingress.assert_called_once()
             transport.request.assert_not_called()
-            self.assertTrue(lifecycle.STATE.exists())
-            self.assertFalse(lifecycle.PARAMETERS.exists())
+            self.assertTrue((self.paths.state / "latest.json").exists())
+            self.assertFalse(self.paths.parameters.exists())
             self.assertEqual(json.loads(receipt.read_text()), {"status": "explicit-api-publication"})
 
     def test_postprovision_scopes_public_dns_to_its_subscription_and_keeps_azure_tenant(self):
@@ -72,14 +72,14 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(dns_config["subscriptionId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(dns_config["azureTenantId"], self.config["azureTenantId"])
         self.public_dns.assert_called_once_with(self.config, outputs, core, dns)
-        self.assertEqual(json.loads((lifecycle.ROOT / ".state/public-dns.json").read_text()), {"status": "configured"})
+        self.assertEqual(json.loads((lifecycle.ROOT / ".local/test/state/public-dns.json").read_text()), {"status": "configured"})
 
     def test_public_dns_failure_preserves_deployment_state_and_removes_secret_inputs(self):
         """DNSの保存失敗を成功扱いにせず、構築記録と秘密入力回収を維持する。"""
         outputs = self.outputs()
         response = {"properties": {"outputs": {key: {"value": value} for key, value in outputs.items()}}}
-        lifecycle.protected_json(lifecycle.PARAMETERS, {"fixture": "PRIVATE_INPUT"})
-        lifecycle.protected_json(lifecycle.ROOT / ".state/public-dns.json", {"status": "old-success"})
+        lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_INPUT"})
+        lifecycle.protected_json(lifecycle.ROOT / ".local/test/state/public-dns.json", {"status": "old-success"})
         self.public_dns.side_effect = ValueError("Public DNS: record conflict")
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned-core"}, response]), \
              mock.patch.object(lifecycle, "ArmTransport"), \
@@ -87,16 +87,17 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(ValueError, "record conflict"):
                 lifecycle.postprovision(self.config)
-        self.assertTrue(lifecycle.STATE.exists())
-        self.assertFalse(lifecycle.PARAMETERS.exists())
-        self.assertFalse((lifecycle.ROOT / ".state/public-dns.json").exists())
+        self.assertTrue((self.paths.state / "latest.json").exists())
+        self.assertFalse(self.paths.parameters.exists())
+        self.assertFalse((lifecycle.ROOT / ".local/test/state/public-dns.json").exists())
 
     def test_preprovision_all_mutable_paths_and_ingress_credentials_stay_in_temporary_root(self):
         """実 ROOT の鍵を読まず、gRPC/音声の fixture 鍵も temp だけへ作成する。"""
         self.config["gateway"]["grpc"]["enabled"] = True
         self.config["gateway"]["realtimeControlEnabled"] = True
-        for name in ("ROOT", "PARAMETERS", "STATE", "CAPACITY"):
-            self.assertTrue(getattr(lifecycle, name).resolve().is_relative_to(self.root.resolve()))
+        for path in (lifecycle.ROOT, self.paths.parameters, self.paths.state / "latest.json",
+                     self.paths.state / "capacity.json"):
+            self.assertTrue(path.resolve().is_relative_to(self.root.resolve()))
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -107,10 +108,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         for purpose in ("l7-ingress", "realtime-ticket"):
-            path = self.root / ".state" / (purpose + "-" + self.config["resourceStem"] + ".json")
+            path = self.paths.secrets / (purpose + "-" + self.config["resourceStem"] + ".json")
             self.assertEqual(json.loads(path.read_text())["subscriptionId"], self.config["subscriptionId"])
-        self.assertTrue(lifecycle.PARAMETERS.exists())
-        self.assertTrue(lifecycle.STATE.exists())
+        self.assertTrue(self.paths.parameters.exists())
+        self.assertTrue((self.paths.state / "latest.json").exists())
         self.assertTrue(all(call.args[0].resolve().is_relative_to(self.root.resolve())
                             for call in lifecycle.protected_json.call_args_list))
 
@@ -123,8 +124,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         def recovery(config, actual_outputs, actual_transport):
             self.assertEqual(actual_outputs, outputs)
             self.assertIs(actual_transport, transport)
-            self.assertEqual(json.loads(lifecycle.STATE.read_text())["outputs"]["names"], outputs["names"])
-            self.assertFalse(lifecycle.PARAMETERS.exists())
+            self.assertEqual(json.loads((self.paths.state / "latest.json").read_text())["outputs"]["names"], outputs["names"])
+            self.assertFalse(self.paths.parameters.exists())
             events.append("recovery")
             return {"status": "restored"}
 
@@ -140,8 +141,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         self.assertEqual(events, ["apim-name", "monitoring", "cap", "recovery"])
-        self.assertEqual(json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["phase"]["value"], "core")
-        receipt = json.loads((self.root / ".state/api-center-preparation.json").read_text())
+        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["phase"]["value"], "core")
+        receipt = json.loads((self.root / ".local/test/state/api-center-preparation.json").read_text())
         self.assertEqual(receipt["status"], "restored")
         self.assertEqual(receipt["resourceStem"], self.config["resourceStem"])
         self.assertIn("observedAtUtc", receipt)
@@ -159,13 +160,13 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "固定したAPIM名"):
                 lifecycle.preprovision(self.config)
         deploy.assert_not_called()
-        self.assertFalse(lifecycle.STATE.exists())
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertFalse((self.paths.state / "latest.json").exists())
+        self.assertFalse(self.paths.parameters.exists())
 
     def test_api_center_recovery_failure_clears_core_inputs_and_preserves_cleanup_state(self):
         """復元失敗を無視してcoreへ進まず、監視資源の撤去用記録は残す。"""
-        lifecycle.protected_json(lifecycle.PARAMETERS, {"fixture": "PRIVATE_FIXTURE"})
-        receipt = self.root / ".state/api-center-preparation.json"
+        lifecycle.protected_json(self.paths.parameters, {"fixture": "PRIVATE_FIXTURE"})
+        receipt = self.root / ".local/test/state/api-center-preparation.json"
         lifecycle.protected_json(receipt, {"status": "restored", "observedAtUtc": "old-fixture"})
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}])
         self.api_center.side_effect = lifecycle.DeploymentError("API Center restore failed")
@@ -177,9 +178,9 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              self.assertRaisesRegex(lifecycle.DeploymentError, "API Center restore failed"):
             lifecycle.preprovision(self.config)
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertFalse(self.paths.parameters.exists())
         self.assertFalse(receipt.exists())
-        self.assertTrue(lifecycle.STATE.exists())
+        self.assertTrue((self.paths.state / "latest.json").exists())
         self.assertEqual(len(transport.calls), 1)
         self.assertFalse(transport.mutations())
 
@@ -248,11 +249,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.local_preflight(self.config, check_power_shell=False)
 
     def test_failed_monitoring_preparation_removes_secret_parameters_but_keeps_cleanup_state(self):
-        parameter_path, state_path = self.root / "parameters.json", self.root / "state.json"
+        parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
         lifecycle.protected_json(parameter_path, {"fixture": "PREVIOUS_SECRET_FIXTURE"})
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}])
-        with mock.patch.object(lifecycle, "PARAMETERS", parameter_path), mock.patch.object(lifecycle, "STATE", state_path), \
-             mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={"sshPublicKey": "NEW_SECRET_FIXTURE"}), \
@@ -267,11 +267,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertNotIn("NEW_SECRET_FIXTURE", state_path.read_text())
 
     def test_first_up_prepares_monitoring_without_a_prior_state_or_seed_deployment(self):
-        parameter_path, state_path = self.root / "parameters.json", self.root / "state.json"
+        parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
         self.assertFalse(state_path.exists())
-        with mock.patch.object(lifecycle, "PARAMETERS", parameter_path), mock.patch.object(lifecycle, "STATE", state_path), \
-             mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={"sshPublicKey": "LOCAL_ONLY_FIXTURE"}), \
@@ -310,7 +309,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
                                        retained_policy_ids=[], preserve_collection=False)
-        params = json.loads(lifecycle.PARAMETERS.read_text())['parameters']
+        params = json.loads(self.paths.parameters.read_text())['parameters']
         self.assertEqual(params['phase']['value'], 'core')
         self.assertFalse(transport.mutations())
 
@@ -337,7 +336,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
                                        retained_policy_ids=[policy], preserve_collection=False)
         # 監視で保護を揃えた後のnative coreは、LockedへのPUTをしない。
-        params = json.loads(lifecycle.PARAMETERS.read_text())['parameters']
+        params = json.loads(self.paths.parameters.read_text())['parameters']
         self.assertFalse(params['manageAuditImmutabilityPolicies']['value'])
         self.assertEqual(params['retainedAuditImmutabilityPolicyIds']['value'], [])
 
@@ -363,8 +362,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
 
     def test_failed_capacity_prevents_billable_preparation_after_free_provider_registration(self):
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": {"error": {"code": "NotFound"}}}])
-        with mock.patch.object(lifecycle, "PARAMETERS", self.root / "parameters.json"), \
-             mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
              mock.patch.object(lifecycle, "capacity_preflight", side_effect=lifecycle.DeploymentError("mock unavailable quota")), \
@@ -378,8 +376,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_capacity_404_receives_no_existing_allocation_credit(self):
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": {"error": {"code": "NotFound"}}}])
         report = {"status": "verified", "issues": []}
-        with mock.patch.object(lifecycle, "CAPACITY", self.root / "capacity.json"), \
-             mock.patch.object(lifecycle, "verify_capacity", return_value=report) as verify:
+        with mock.patch.object(lifecycle, "verify_capacity", return_value=report) as verify:
             self.assertEqual(lifecycle.capacity_preflight(self.config, transport, {}), report)
         self.assertEqual(verify.call_args.kwargs["existing_resources"], {"vm": None, "modelDeployments": []})
         self.assertFalse(transport.mutations())
@@ -394,8 +391,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             {"statusCode": 200, "body": {"value": items[:1], "nextLink": next_link}},
             {"statusCode": 200, "body": {"value": items[1:]}},
         ])
-        with mock.patch.object(lifecycle, "CAPACITY", self.root / "capacity.json"), \
-             mock.patch.object(lifecycle, "verify_capacity", return_value={"status": "verified"}) as verify:
+        with mock.patch.object(lifecycle, "verify_capacity", return_value={"status": "verified"}) as verify:
             lifecycle.capacity_preflight(self.config, transport, {"cleanup": {"value": self.outputs()["cleanup"]}})
         self.assertEqual(verify.call_args.kwargs["existing_resources"]["modelDeployments"], items)
         self.assertFalse(transport.mutations())
@@ -406,8 +402,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             {"statusCode": 404, "body": {}},
             {"statusCode": 200, "body": {"value": [{"properties": {"model": {"format": "Anthropic", "name": "claude-existing"}}}]}},
         ])
-        with mock.patch.object(lifecycle, "CAPACITY", self.root / "capacity.json"), \
-             mock.patch.object(lifecycle, "verify_capacity", return_value={"status": "verified"}) as verify:
+        with mock.patch.object(lifecycle, "verify_capacity", return_value={"status": "verified"}) as verify:
             lifecycle.capacity_preflight(self.config, transport, {"cleanup": {"value": self.outputs()["cleanup"]}})
         self.assertFalse(transport.mutations())
         verify.assert_called_once()
@@ -446,9 +441,9 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             self.assertFalse(transport.mutations())
 
     def test_early_local_preflight_failure_also_clears_existing_secret_file(self):
-        path = self.root / "parameters.json"
+        path = self.paths.parameters
         lifecycle.protected_json(path, {"fixture": "SECRET_FIXTURE"})
-        with mock.patch.object(lifecycle, "PARAMETERS", path), mock.patch.object(lifecycle, "local_preflight", side_effect=lifecycle.DeploymentError("mock missing tool")):
+        with mock.patch.object(lifecycle, "local_preflight", side_effect=lifecycle.DeploymentError("mock missing tool")):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "mock missing tool"):
                 lifecycle.preprovision(self.config)
         self.assertFalse(path.exists())
@@ -457,7 +452,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         with mock.patch.object(lifecycle, "ROOT", self.root), mock.patch.object(lifecycle, "run", side_effect=lifecycle.DeploymentError("mock deployment failure")):
             with self.assertRaisesRegex(lifecycle.DeploymentError, "mock deployment failure"):
                 lifecycle.deploy_phase(self.config, "monitoring")
-        self.assertFalse((self.root / ".state/monitoring.parameters.json").exists())
+        self.assertFalse((self.root / ".local/test/state/monitoring.parameters.json").exists())
 
     def test_pre_stage_has_native_azd_ownership_tags_and_waits_for_success(self):
         transport = ScriptedTransport([
@@ -480,25 +475,31 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         result = mock.Mock(returncode=1, stdout="PRIVATE_STDOUT_FIXTURE", stderr="PRIVATE_STDERR_FIXTURE")
         with mock.patch.object(lifecycle.subprocess, "run", return_value=result):
             with self.assertRaises(lifecycle.DeploymentError) as error:
-                lifecycle.run(["az", "mock-command"])
+                self.real_run(["az", "mock-command"])
         self.assertNotIn("PRIVATE_STDOUT_FIXTURE", str(error.exception))
         self.assertNotIn("PRIVATE_STDERR_FIXTURE", str(error.exception))
 
     def test_predown_retains_environment_scoped_model_deletion_receipt(self):
-        state_path = self.root / "state.json"
-        lifecycle.protected_json(state_path, {})
+        state_path = self.paths.state / "latest.json"
+        lifecycle.protected_json(state_path, lifecycle.state_from_outputs(self.config, self.outputs()))
         result = {"phase": "predown", "status": "ready-for-azd-down", "modelDeployments": {
             "modelDeletionVerified": True, "quotaReleaseVerified": False, "quotaStatus": "not-read", "deployments": []}}
-        with mock.patch.object(lifecycle, "ROOT", self.root), mock.patch.object(lifecycle, "STATE", state_path), \
-             mock.patch.object(lifecycle, "PARAMETERS", self.root / "parameters.json"), \
+        with mock.patch.object(lifecycle, "ROOT", self.root), \
              mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
              mock.patch.object(lifecycle, "ArmTransport"), mock.patch.object(cleanup, "pre_down", return_value=result), \
              mock.patch("builtins.print"):
-            self.assertEqual(lifecycle.main(["predown", "--config", "fixture.json"]), 0)
-        receipt = json.loads((self.root / ".state/cleanup-predown.json").read_text())
+            self.assertEqual(lifecycle.main(["predown", "--config", str(self.paths.params)]), 0)
+        receipt = json.loads((self.root / ".local/test/state/cleanup-predown.json").read_text())
         self.assertEqual(receipt["resourceStem"], self.config["resourceStem"])
         self.assertEqual(receipt["result"], result)
         self.assertIn("observedAtUtc", receipt)
+        generated = json.loads(self.paths.parameters.read_text())["parameters"]
+        self.assertEqual(generated["dnsPluginArgumentsJson"]["value"], "")
+        self.assertEqual(generated["credentialProviderSecrets"]["value"], {})
+        self.assertEqual(generated["l7IngressSecret"]["value"], "")
+        self.arm_environment.assert_called_once_with([
+            "azd", "env", "set", "EGAKUMI_ARM_PARAMETERS_FILE",
+            ".local/test/generated/main.parameters.json", "--environment", "test"])
 
 
 if __name__ == "__main__":

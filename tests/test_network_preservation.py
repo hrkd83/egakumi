@@ -123,13 +123,22 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         routes = {f"rt-{self.config['resourceStem']}-agw": [{"name": "actual-vip", "properties": {
             "addressPrefix": "10.40.2.68/32", "nextHopType": "VirtualAppliance", "nextHopIpAddress": "10.40.2.4"}}]}
         observed_order = []
+
+        def environment_command(arguments):
+            self.assertEqual(arguments[:3], ["azd", "env", "set"])
+            if arguments[3] == "EGAKUMI_ARM_PARAMETERS_FILE":
+                self.assertEqual(arguments[4:], [".local/test/generated/main.parameters.json", "--environment", "test"])
+                observed_order.append("parameter-reference")
+            else:
+                observed_order.append("environment")
+            return {}
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
                 mock.patch.object(lifecycle, "local_preflight"), \
                 mock.patch.object(lifecycle, "azure_preflight", side_effect=lambda _: observed_order.append("tenant")) as login, \
                 mock.patch.object(lifecycle, "register_providers", side_effect=lambda _: observed_order.append("register")) as register, \
                 mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
                 mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \
-                mock.patch.object(lifecycle, "run", side_effect=lambda _: observed_order.append("environment") or {}), \
+                mock.patch.object(lifecycle, "run", side_effect=environment_command), \
                 mock.patch.object(lifecycle, "ArmTransport") as arm, \
                 mock.patch.object(lifecycle, "discover_existing_network_security_groups", side_effect=lambda *_: observed_order.append("nsg") or expected) as discover, \
                 mock.patch.object(lifecycle, "discover_existing_route_table_routes", side_effect=lambda *_: observed_order.append("routes") or routes) as discover_routes, \
@@ -140,9 +149,9 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
             register.assert_called_once_with(self.config)
             discover.assert_called_once_with(self.config, arm.return_value)
             discover_routes.assert_called_once_with(self.config, arm.return_value)
-        self.assertEqual(observed_order, ["tenant", "register", "environment", "environment", "environment", "nsg", "routes"])
-        self.assertEqual(json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
-        self.assertEqual(json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["existingRouteTableRoutes"]["value"], routes)
+        self.assertEqual(observed_order, ["tenant", "register", "environment", "environment", "environment", "nsg", "routes", "parameter-reference"])
+        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
+        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingRouteTableRoutes"]["value"], routes)
 
     def test_preup_authentication_mismatch_stops_before_discovery_or_env_updates(self):
         with mock.patch.object(lifecycle, "load_configuration", return_value=self.config), \
@@ -159,7 +168,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         discover.assert_not_called()
         discover_routes.assert_not_called()
         run.assert_not_called()
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertFalse(self.paths.parameters.exists())
 
     def test_preup_registration_failure_stops_before_env_or_resource_reads(self):
         """RP登録失敗で止まり、azd設定やARM資源読取へ進まない。"""
@@ -182,7 +191,7 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
         discover.assert_not_called()
         routes.assert_not_called()
         domains.assert_not_called()
-        self.assertFalse(lifecycle.PARAMETERS.exists())
+        self.assertFalse(self.paths.parameters.exists())
 
     def test_final_preprovision_generates_current_discovered_internal_parameter(self):
         expected = [f"nsg-{self.config['resourceStem']}-agw"]
@@ -197,8 +206,8 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
                 contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        self.assertEqual(json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
-        self.assertEqual(json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["existingRouteTableRoutes"]["value"],
+        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingNetworkSecurityGroupNames"]["value"], expected)
+        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["existingRouteTableRoutes"]["value"],
                          {f"rt-{self.config['resourceStem']}-{suffix}": [] for suffix in ("agw", "apim", "vm", "aca")})
 
 
@@ -346,8 +355,8 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
                 self.assertRaises(lifecycle.DeploymentError):
             lifecycle.preprovision(self.config)
-        self.assertFalse(lifecycle.PARAMETERS.exists())
-        self.assertTrue(lifecycle.STATE.exists())
+        self.assertFalse(self.paths.parameters.exists())
+        self.assertTrue((self.paths.state / "latest.json").exists())
         self.assertFalse(transport.mutations())
 
 

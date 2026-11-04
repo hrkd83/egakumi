@@ -21,6 +21,7 @@ import time
 import uuid
 
 from integration_client import auth_headers, correlations, endpoint, usage_numbers
+from deployment.helpers.paths import private_parent
 
 
 CASES = ("normal", "invalid-question", "anonymous", "unregistered", "disallowed-model", "missing-model", "oversized")
@@ -177,8 +178,7 @@ async def probe(url, model, case, headers, *, transport=None, timeout=60):
 
 def open_new(path):
     """要求を送る前に証跡を確保し、既存ファイルやリンクは上書きしない。"""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = private_parent(Path(path))
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     os.fchmod(descriptor, 0o600)
     return os.fdopen(descriptor, "w")

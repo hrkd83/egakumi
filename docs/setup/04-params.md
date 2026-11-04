@@ -10,24 +10,25 @@
 
 | ファイル | 管理するもの |
 | --- | --- |
-| `params/*.local.json` | 導入先の企業・環境ごとに確認する値。Subscription／Tenant、製品・環境名、公開名、IP・DNS、担当者、利用者・API登録 |
+| `.local/<environment>/params.local.json` | 導入先の企業・環境ごとに確認する値。Subscription／Tenant、製品・環境名、公開名、IP・DNS、担当者、利用者・API登録 |
 | `config/test.json`／`config/production.json` | 標準構成の正本。SKU、ゾーン、モデル、ポート、保護機能、回数制限等。調整は次のページで行う |
-| `secrets/` | `azd up`が対話入力から自動保存する保護ファイル。利用者がJSONを作成する場所ではない |
+| `.local/<environment>/secrets/` | `azd up`が対話入力から自動保存する保護ファイル。利用者がJSONを作成する場所ではない |
 | `schemas/` | 設定の型・指定可能値を検査するSchema。実値を設定する場所ではない |
 
-ファイル参照は**そのJSONのあるフォルダを基準に解決**します。paramsを標準の`params/`へ置くと、`../config/`・`../secrets/`の参照をそのまま利用できます。秘密値はJSONへ記載しません。
+ファイル参照は**そのJSONのあるフォルダを基準に解決**します。準備コマンドで作成したparamsは、configを`../../config/test.json`または`../../config/production.json`、秘密ファイルを`./secrets/...`で参照します。`params/`内の公開exampleは配布用の架空値の正本として保持し、実値を直接書き込みません。秘密値はJSONへ記載しません。
 
-## 4-2. 公開例を一つコピーする
+## 4-2. 環境別paramsを確認する
 
-第1章で決めた環境名を使い、Git管理外の`*.local.json`を作ります。環境名自体は任意で、SKUの選択とは独立です。
+第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleから作成したparamsを使います。環境名自体は任意で、SKUの選択とは独立です。別ターミナルでは同じ環境名から参照を設定し直します。
 
 ```sh
-export DEPLOY_PARAMS_FILE="params/${DEPLOY_ENVIRONMENT}.local.json"
-# 検証向け構成を使う場合
-cp params/test.example.json "$DEPLOY_PARAMS_FILE"
+export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
+export DEPLOY_PARAMS_FILE="$DEPLOY_LOCAL_DIRECTORY/params.local.json"
+export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
+test -f "$DEPLOY_PARAMS_FILE"
 ```
 
-本番向けの標準構成を採用する場合は、上のコピー元だけ`params/production.example.json`にします。2つを順にコピーして同じファイルを上書きしません。configファイルはコピーせず、paramsの`configFile`から選んだ正本を参照します。
+ファイルが存在しなければ第1章の準備を完了してから進みます。本番向け標準構成は準備時に`--profile production`を選びます。作成済みの実paramsへ公開例を重ねてコピーしません。configファイルはコピーせず、paramsの`configFile`から選んだ正本を参照します。
 
 公開例のゼロGUID・名前・ドメイン・会社名・メール・IPは見本です。以後の手順で自社の値へ書き換えてください。
 
@@ -87,7 +88,7 @@ APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`で
 1. [標準API定義](../../apps/gateway/apim/apis/)から必要なAPIファイルを選び、そのJSONオブジェクトをparamsの`apiDefinitions`配列へ記載します。モデルだけなら[openai-inference-v1.json](../../apps/gateway/apim/apis/openai-inference-v1.json)、PIIなら[pii-v1.json](../../apps/gateway/apim/apis/pii-v1.json)を選べます。各ファイルは1つのAPI定義です。
 2. 利用するProductと購読を設定し、CM接続の条件が必要なAPIにはその設定を加えます。下の省略条件と[認証設定と購読](04-params.md#認証設定と購読)を確認し、`__NAME__`の置換欄を実値へ置換します。
 3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、gRPC有効化、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。モデル名と許可モデルの整合も確認します。
-4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config params/<environment>.local.json`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
+4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
 
 | 利用する方式 | 必要な定義と省略できるもの |
 | --- | --- |
@@ -124,12 +125,12 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 ### 企業・環境ごとに確認する値（params）
 
-この表が最初に確認する範囲です。ID・連絡先・公開名・IP計画・権限と秘密ファイル参照を確定します。CM providerと、個別指定する`apiDefinitions`は初期構築前に設定します。標準一式は空配列のまま使います。
+この表が最初に確認する範囲です。ファイル参照の例は準備後の`.local/<environment>/params.local.json`を基準にしています。ID・連絡先・公開名・IP計画・権限と秘密ファイル参照を確定します。CM providerと、個別指定する`apiDefinitions`は初期構築前に設定します。標準一式は空配列のまま使います。
 
 | パラメタ名 | 指定値・公開例 | 意味 |
 | --- | --- | --- |
 | `schemaVersion` | `1` | 設定形式の版。整数1。 |
-| `configFile` | テスト：`"../config/test.json"`／本番：`"../config/production.json"` | 標準configの正本への相対パス。このparamsファイルのフォルダーを基準に解決。 |
+| `configFile` | テスト：`"../../config/test.json"`／本番：`"../../config/production.json"` | 標準configの正本への相対パス。このparamsファイルのフォルダーを基準に解決。 |
 | `productName` | `"<PRODUCT_NAME>"` | リソース名に使う製品名。先頭英小文字、英小文字・数字・内部ハイフン、最大24字。 |
 | `environmentName` | `"<ENVIRONMENT_NAME>"` | 命名とタグに使う任意の環境名。test/dev/prodは参考例。先頭英小文字、英小文字・数字・内部ハイフン、最大12字。SKU・保持・保護の切替には使わない。 |
 | `subscriptionId` | `"<SUBSCRIPTION_ID>"` | 構築先Subscription ID。公開例のゼロGUIDを企業の実値へ置換。 |
@@ -141,14 +142,14 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `gateway.authentication.subscriptionKeyHeader` | `"api-key"` | 全API共通の購読キー受信ヘッダー名。APIの設定と一致させる。 |
 | `gateway.authentication.credentialLogin` | `graph-delegated`を対象に設定済み | CM本人接続の対象provider・セッション有効期間・ログイン取引の期限・回数制限。詳細は後述。 |
 | `management.adminUsername` | `"<MANAGEMENT_USERNAME>"` | Linuxの初期管理者名。root/admin等の予約名を除く、最大32字。 |
-| `management.sshPublicKeyFile` | `"../secrets/management-ssh.pub"` | 必須の公開鍵入力兼生成先。有効な既存RSA 2048bit以上/Ed25519公開鍵は外部保存でも再利用。公開鍵・秘密鍵が両方ない場合だけ、repo直下のsecrets配下へパスフレーズなしRSA4096鍵対をpreupで生成。秘密鍵はAzureへ送らない。 |
+| `management.sshPublicKeyFile` | `"./secrets/management-ssh.pub"` | 必須の公開鍵入力兼生成先。有効な既存RSA 2048bit以上/Ed25519公開鍵は外部保存でも再利用。公開鍵・秘密鍵が両方ない場合だけ、同じ環境の`.local/<environment>/secrets/`へパスフレーズなしRSA4096鍵対をpreupで生成。秘密鍵はAzureへ送らない。 |
 | `management.loginAssignments` | `[]` | Azure RBACのVMログイン許可。各要素principalId/principalType/role。roleはUser/Administrator。 |
 | `monitoring.operatorEmailAddresses` | `["<OPERATOR_EMAIL>"]` | 監視通知先メール配列、1件以上。 |
 | `certificate.contactEmail` | `"<ACME_CONTACT_EMAIL>"` | ACME連絡先。 |
 | `certificate.domainNames` | `["<CERTIFICATE_SAN>"]` | 証明書のSAN。ワイルドカードは直下の一階層のみ。省略時はGatewayの公開名。 |
 | `certificate.azureDnsSubscriptionId` | Azure選択時に対話入力 | DNSゾーンがあるSubscription ID。保存後は再利用。非対話では事前設定。 |
 | `certificate.azureDnsManagedIdentityResourceId` | Azure選択時に対話入力 | DNS操作権限を事前付与したユーザー割り当てMIの完全なリソースID。管理VMへ紐づける。Client IDではない。 |
-| `certificate.pluginArgumentsFile` | `"../secrets/dns-plugin-arguments.json"` | azd upが対話入力から自動生成・再利用するDNS API資格情報の内部保存先。Azure DNSでは使用しない。DNS切替時は切替先の値を入力し、検査後に置換。中止・不正・競合時は旧ファイル保持。値をparams/config/Gitへ入れない。 |
+| `certificate.pluginArgumentsFile` | `"./secrets/dns-plugin-arguments.json"` | azd upが対話入力から自動生成・再利用するDNS API資格情報の内部保存先。Azure DNSでは使用しない。DNS切替時は切替先の値を入力し、検査後に置換。中止・不正・競合時は旧ファイル保持。値をparams/config/Gitへ入れない。 |
 | `authorization.projectAdministrators` | `[]` | 初期Foundry Project管理者。 |
 | `authorization.projectDevelopers` | `[]` | 初期Project開発者。 |
 | `authorization.foundryReaders` | `[]` | FoundryのReader。 |
@@ -325,7 +326,7 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | `rotationHandoffSeconds` | 600（10分） | 60〜3600秒。候補を初めて発行してから更新確定が必要になるまでの時間 |
 | `rotationCandidateTtlSeconds` | 600（10分） | 60〜3600秒、引き渡し猶予以下。保存・確定する候補の有効期間 |
 
-これらは認証完了時にセッションへ固定します。設定変更で既存セッションの最長期限は延長しません。ポーリング・ヘルスチェック・更新確定は無操作期限を延長せず、期限切れ・失効済みのセッションも復活させません。旧方式の固定期限との互換は設けません。
+これらは認証完了時にセッションへ固定します。設定変更で既存セッションの最長期限は延長しません。ポーリング・ヘルスチェック・更新確定は無操作期限を延長せず、期限切れ・失効済みのセッションも復活させません。
 
 `/auth/connections`のstart/status/logout/logout-all/disconnectと、`/auth/connections/session/commit`は購読キーで保護します。認証取引の`transactionId`・`pollSecret`と、バックエンドに保存する本人接続セッションは独立しています。`/auth/connections/browser`のGET/POST launch・callbackは一時取引・起動秘密・Cookie・期限で照合します。SQLは本人・接続の世代と証明ハッシュを管理し、Microsoftのアクセストークン・更新トークンはCMが管理します。[呼出手順](credential-manager-login.md)を参照してください。
 
@@ -395,13 +396,13 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 
 #### OAuth provider（credentialProviders[]）
 
-[Entraアプリの準備](02-entra.md)で控えた値を、`params/<環境名>.local.json`へ記入します。公開例にはGraph本人接続用のproviderがあるため、その`clientId`のゼロGUIDを作成したアプリのIDへ置き換えます。
+[Entraアプリの準備](02-entra.md)で控えた値を、`.local/<environment>/params.local.json`へ記入します。公開例にはGraph本人接続用のproviderがあるため、その`clientId`のゼロGUIDを作成したアプリのIDへ置き換えます。
 
 | Entraの準備で控えた値 | 構築設定の記入先 |
 | --- | --- |
 | アプリケーション（クライアント）ID | `credentialProviders[].clientId` |
 | ディレクトリ（テナント）ID | トップレベルの`entraTenantId`。providerごとに認証先を変える場合は`credentialProviders[].oauthTenantId` |
-| client secretを保存する保護ファイルのパス | `credentialProviders[].clientSecretFile`。入力例は`../secrets/entra-client-secret.txt`。秘密の値はファイル参照で渡す |
+| client secretを保存する保護ファイルのパス | `credentialProviders[].clientSecretFile`。入力例は`./secrets/entra-client-secret.txt`。秘密の値はファイル参照で渡す |
 
 Graphの本人接続では、公開例の`identityEndpoint`は`https://graph.microsoft.com/v1.0/me`、`identityIdProperty`は`id`です。シークレットファイルがまだなければ、`azd up`開始時に値を非表示で入力し、`clientSecretFile`の保護ファイルへ保存します。Gateway配備時に、その値をCM providerへ設定します。本人接続の窓口を有効にする`gateway.authentication.credentialLogin`と、対象APIの`credentialConnection`は、[CM共通接続手順](credential-manager-login.md#entraと基盤の準備)を参照してください。
 

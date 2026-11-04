@@ -124,7 +124,8 @@ class LinuxManagementTemplateTests(unittest.TestCase):
 
     def test_dcr_uses_linux_syslog_and_linux_counters_without_process_arguments(self):
         template = self.templates["monitoring"]
-        rule, = self.resources(template, "Microsoft.Insights/dataCollectionRules")
+        rule, = [item for item in self.resources(template, "Microsoft.Insights/dataCollectionRules")
+                  if item.get("kind") == "Linux"]
         self.assertEqual(rule["kind"], "Linux")
         sources = rule["properties"]["dataSources"]
         self.assertNotIn("windowsEventLogs", sources)
@@ -140,7 +141,8 @@ class LinuxManagementTemplateTests(unittest.TestCase):
     def test_dcr_waits_for_its_workspace_tables_on_a_fresh_deployment(self):
         """初回は空のWorkspaceなので、収集規則より前に出力テーブルを作る。"""
         template = self.templates["monitoring"]
-        rule, = self.resources(template, "Microsoft.Insights/dataCollectionRules")
+        rule, = [item for item in self.resources(template, "Microsoft.Insights/dataCollectionRules")
+                  if item.get("kind") == "Linux"]
         tables, = self.resources(template, "Microsoft.OperationalInsights/workspaces/tables")
         # Bicepの行順ではAzureの作成順は決まらない。コンパイル済みARMの
         # 依存グラフが、テーブル配列全件の完了をDCRの開始条件にすることを確認する。

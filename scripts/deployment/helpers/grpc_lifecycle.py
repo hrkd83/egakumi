@@ -22,6 +22,8 @@ import stat
 import time
 from urllib.parse import parse_qsl, unquote, urlparse
 
+from .paths import local_paths
+
 
 API = "2024-05-01"
 HTTP2 = "Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2"
@@ -43,9 +45,9 @@ def realtime_enabled(config: dict) -> bool:
 
 def secret_path(config: dict, root: Path, purpose="l7-ingress") -> Path:
     # macOSの/varのようなOS側リンクは信頼した作業ルートの解決時だけ許す。
-    # その下の.stateや資格情報ファイルがリンクなら、別ファイルを開かないよう拒否する。
+    # 環境別のsecretsや資格情報ファイルがリンクなら、別ファイルを開かないよう拒否する。
     """環境と用途ごとに分離したローカル資格情報ファイルの場所を求める。"""
-    return root.resolve() / ".state" / (purpose + "-" + config["resourceStem"] + ".json")
+    return local_paths(config, root).secrets / (purpose + "-" + config["resourceStem"] + ".json")
 
 
 def prepare_secret(config: dict, root: Path, write_protected) -> dict:

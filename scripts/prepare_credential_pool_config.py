@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 
 from deployment.helpers.configuration import load_configuration_source, normalize_configuration
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, configuration_path, local_paths, private_output, private_parent
 from deployment.helpers.credential_login import SESSION_POLICY_DEFAULTS
 
 
@@ -42,18 +42,24 @@ def transform(document, *, old_name="graph-personal", new_name="graph-delegated"
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True)
+    parser.add_argument("--config", type=Path, help="Parameters; default: WORKFORCE_CONFIG or the selected azd environment")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
-    path = Path(args.config).resolve()
+    path = args.config.expanduser() if args.config else configuration_path(REPOSITORY)
+    path = private_output(path if path.is_absolute() else REPOSITORY / path, REPOSITORY)
     original = path.read_bytes()
     updated = transform(json.loads(original.decode("utf-8")))
-    normalize_configuration(transform(load_configuration_source(path)))
+    configuration = normalize_configuration(transform(load_configuration_source(path)))
+    runtime = local_paths(configuration, REPOSITORY)
+    runtime.check_selection(configuration)
+    if args.execute:
+        path = runtime.checked(path)
     changed = json.loads(original.decode("utf-8")) != updated
     backup = None
     if args.execute and changed:
-        backup = REPOSITORY / ".state" / ("credential-pools-" + hashlib.sha256(original).hexdigest() + ".params.backup.json")
-        backup.parent.mkdir(exist_ok=True)
+        backup = runtime.state / ("credential-pools-" + hashlib.sha256(original).hexdigest() + ".params.backup.json")
+        private_parent(backup, REPOSITORY)
+        private_parent(path, REPOSITORY)
         if not backup.exists():
             with open(backup, "xb") as stream:
                 os.chmod(backup, 0o600)

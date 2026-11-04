@@ -15,13 +15,13 @@ A 403 alone is ambiguous; confirm exclusions using AppGW firewall rule logs.
 Examples::
 
     python scripts/waf_probe.py --list
-    python scripts/waf_probe.py --dry-run --output .state/waf-plan.json
+    python scripts/waf_probe.py --dry-run --output .local/example/evidence/waf-plan.json
     python scripts/waf_probe.py --gateway-base-url https://gateway.example.com \
         --portal-base-url https://portal.example.com --phase before \
-        --output .state/waf-before.json
+        --output .local/example/evidence/waf-before.json
     python scripts/waf_probe.py --gateway-base-url https://gateway.example.com \
-        --case-filter 'authenticated-canary' --key-file secrets/probe-key.txt \
-        --output .state/waf-canary.json
+        --case-filter 'authenticated-canary' --key-file .local/example/secrets/probe-key.txt \
+        --output .local/example/evidence/waf-canary.json
 
 This finite corpus cannot enumerate every possible request. WebSocket probes
 cover the HTTP upgrade only, not frames (which AppGW WAF does not inspect).
@@ -53,6 +53,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 from xml.sax.saxutils import escape
+
+from deployment.helpers.paths import private_parent
+from integration_client import private_write
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1054,8 +1057,7 @@ def run_probe(case: Probe, base: str, run_id: str, timeout: float, limiter: Rate
 
 
 def _write(path: Path, report: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    private_write(path, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1092,6 +1094,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("no cases selected")
     if not (args.list or args.dry_run) and (not bases or not args.output):
         parser.error("live probes require at least one base URL and --output")
+    if args.output:
+        try:
+            args.output = private_parent(args.output)
+        except (ValueError, OSError):
+            parser.error("output requires a protected runtime destination; no probes were sent")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:6]
     report = {"schema_version": 1, "run_id": run_id, "phase": args.phase,
         "started_at": datetime.now(timezone.utc).isoformat(), "dry_run": args.list or args.dry_run,

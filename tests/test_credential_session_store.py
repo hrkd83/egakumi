@@ -50,7 +50,7 @@ class PrivateSessionStoreTests(unittest.TestCase):
             path.chmod(0o600)
             linked = path.with_name("link.json")
             linked.symlink_to(path)
-            with self.assertRaises(OSError): FileSessionStore(linked).read()
+            with self.assertRaisesRegex(ValueError, "symbolic links"): FileSessionStore(linked).read()
 
     @unittest.skipIf(os.name == "nt", "診断CLIの所有者限定ファイルはWSL/POSIX専用")
     def test_nested_lock_and_reopened_store_preserve_pending_candidate(self):

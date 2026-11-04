@@ -18,6 +18,7 @@ import sys
 import uuid
 
 from deployment.helpers.configuration import ConfigurationError, normalize_configuration, load_configuration_source, configuration_for_file
+from deployment.helpers.paths import configuration_path, local_paths, private_output, private_parent
 from standard_apis import API_DEFINITION_DIRECTORY, load_api_definitions
 
 
@@ -92,21 +93,35 @@ class PublicArguments(argparse.ArgumentParser):
 def main(argv=None) -> int:
     """公開IDを受け取り、基盤paramsとAPI雛形からローカル試験設定を新規保存する。"""
     parser = PublicArguments(description=__doc__)
-    parser.add_argument("--base", type=Path, default=CORE / "params/test.local.json", help="Organization parameters referencing an optional config file")
-    parser.add_argument("--output", type=Path, default=CORE / ".state/generated-config/integration.local.json", help="Create a compiled integration configuration; an existing file is never overwritten")
+    parser.add_argument("--base", type=Path, help="Parameters; default: WORKFORCE_CONFIG or the selected azd environment")
+    parser.add_argument("--output", type=Path, help="New protected configuration; default: .local/<environment>/state/integration.local.json")
     parser.add_argument("--cm-client-id", required=True, help="Entra application client ID used by Credential Manager; an existing Core app can be reused")
-    parser.add_argument("--cm-client-secret-file", type=Path, default=CORE / "secrets/entra-client-secret.txt", help="Protected-file path relative to output directory; its contents are not read")
+    parser.add_argument("--cm-client-secret-file", type=Path, help="Protected-file reference; default: .local/<environment>/secrets/entra-client-secret.txt; contents are not read")
     args = parser.parse_args(argv)
     try:
-        base_path, output = args.base.expanduser().resolve(), args.output.expanduser().resolve()
+        base_path = args.base.expanduser() if args.base else configuration_path(CORE)
+        base_path = base_path if base_path.is_absolute() else CORE / base_path
+        base_path = private_output(base_path, CORE)
+        base = load_configuration_source(base_path)
+        runtime = local_paths(base, CORE)
+        runtime.check_selection(base)
+        if base_path.is_relative_to(CORE.resolve()):
+            runtime.checked(base_path)
+        output = args.output.expanduser() if args.output else runtime.state / "integration.local.json"
+        output = private_output(output if output.is_absolute() else CORE / output, CORE)
+        if output.is_relative_to(CORE.resolve()):
+            runtime.checked(output)
         if output.exists():
             raise ValueError("Output already exists; choose a new --output file for review")
-        base = load_configuration_source(base_path)
+        secret = args.cm_client_secret_file.expanduser() if args.cm_client_secret_file else runtime.secrets / "entra-client-secret.txt"
+        secret = private_output(secret if secret.is_absolute() else output.parent / secret, CORE)
+        if secret.is_relative_to(CORE.resolve()):
+            runtime.checked(secret)
         value = build_trial_configuration(base, base_directory=base_path.parent, output_directory=output.parent,
-            cm_client_id=args.cm_client_id, cm_client_secret_file=args.cm_client_secret_file)
+            cm_client_id=args.cm_client_id, cm_client_secret_file=secret)
         # build内で元の入力元へ解決した参照を、保存先基準の相対パスへ戻す。
         value = configuration_for_file(value, base_directory=output.parent, output_directory=output.parent)
-        output.parent.mkdir(parents=True, exist_ok=True)
+        private_parent(output, CORE)
         handle = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as stream:

@@ -10,7 +10,7 @@ Egakumiは、AIを企業・組織の「働き手」として迎え、既存の�
 
 [YouTube再生リスト：企業向けAI基盤を学ぶ｜Egakumi勉強会](https://www.youtube.com/playlist?list=PLNZqnNo-J21s) · [勉強会動画](docs/videos.md) · [導入ガイド](docs/setup/01-prerequisites.md) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
 
-変更に着手する前に、[リポジトリ共通ルール（AGENTS.md）](AGENTS.md)と[開発ルール](DEVELOPMENT.md)を確認してください。**企業・実環境固有の情報は、ソースだけでなく作業記録・画像・ログ・コミット履歴にも一切含めません。** 実情報を扱う作業は、この公開リポジトリとは別の非公開作業環境で行います。
+変更に着手する前に、[リポジトリ共通ルール（AGENTS.md）](AGENTS.md)と[開発ルール](DEVELOPMENT.md)を確認してください。**企業・実環境固有の情報は、Git管理する資材・公開文書・画像・ログ・コミット履歴へ含めません。** 資材はこの1つのcheckoutを正本として使い、実設定・秘密・記録はルートの`.local/<environment>/`、azd専用情報は`.azure/`へ保護保存します。この2領域はGit・公開用の配布物へ含めません。
 
 ## Egakumi Coreの構成
 
@@ -43,7 +43,7 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 
 ### 8. Gatewayを配備する
 
-`azd up`のGateway工程と同じ入口です。Gatewayだけを更新・再試行するときは、第4章で設定した`DEPLOY_PARAMS_FILE`と、同じクローンの`.state/latest.json`を使います。最初のコマンドで計画を確認し、次のコマンドで反映します。GatewayとPortalを同時に配備せず、各処理の完了を待ちます。
+`azd up`のGateway工程と同じ入口です。Gatewayだけを更新・再試行するときは、第4章で設定した`DEPLOY_PARAMS_FILE`と、同じクローンの`.local/<environment>/state/latest.json`を使います。最初のコマンドで計画を確認し、次のコマンドで反映します。GatewayとPortalを同時に配備せず、各処理の完了を待ちます。
 
 ```sh
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
@@ -52,7 +52,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 管理VMで認証窓口のイメージを作成・ACRへ登録し、credentials DB・CM・実行用IDを配備します。SQL初期化と認証窓口の正常起動を確認してから、API・バックエンド・ポリシー・製品・購読を登録します。本人接続を使わない設定では認証窓口の工程を省略します。`apiDefinitions: []`なら[1 API 1ファイルで管理する標準19 API](apps/gateway/apim/apis/)が対象です。
 
-`.state/gateway-deployment.json`の`status: deployed`を確認します。API公開にはparamsの`publishApis: true`が必要です。計画確認だけなら`false`のまま使えます。詳細と必要権限は[Gateway配備手順](docs/setup/credential-sql.md#4-gatewayを配備する)を参照してください。
+`.local/<environment>/state/gateway-deployment.json`の`status: deployed`を確認します。API公開にはparamsの`publishApis: true`が必要です。計画確認だけなら`false`のまま使えます。詳細と必要権限は[Gateway配備手順](docs/setup/credential-sql.md#4-gatewayを配備する)を参照してください。
 
 ### 9. Portalを配備する
 
@@ -63,7 +63,7 @@ python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-管理VMでNext.jsのイメージを作成・ACRへ登録し、共通SQLサーバー内のPortal専用DBを準備します。SQL初期化の成功後にPortalアプリを更新し、Application Gatewayのヘルス監視と認証callbackのWAF設定を反映して、公開ヘルスAPIを確認します。完了結果は`.state/portal-deployment.json`です。[Portalの配備手順](docs/setup/portal.md)も参照してください。
+管理VMでNext.jsのイメージを作成・ACRへ登録し、共通SQLサーバー内のPortal専用DBを準備します。SQL初期化の成功後にPortalアプリを更新し、Application Gatewayのヘルス監視と認証callbackのWAF設定を反映して、公開ヘルスAPIを確認します。完了結果は`.local/<environment>/state/portal-deployment.json`です。[Portalの配備手順](docs/setup/portal.md)も参照してください。
 
 購読別の任意の利用制限も、このGateway→Portalの順で配備します。既定は全項目無制限で、Portalの保存はSQL内のプロファイル更新だけです。APIMは固定ポリシーで設定を参照します。[利用量の観測と上限の確認](docs/testing/subscription-limits.md)を、運用開始後の確認に使ってください。
 
@@ -77,7 +77,7 @@ Azure構築先は`azureTenantId`、CM等の認証テナントの既定値は`ent
 
 購読キーと本人接続のセッションはアプリのサーバー側で保持します。ブラウザはBFF等を経由し、承認済みSaaSは秘密設定へキーを登録します。購読IDを基本の利用主体として計数し、本人向けAPIだけ追加の本人接続を照合します。
 
-新規クローンに秘密情報や過去の構築状態は含まれません。Entra／DNSの資格情報は担当者が準備し、`azd up`が用途・保存先を説明してから非表示で入力を受け付けます。利用者が秘密JSONや`secrets/`を手作業で作る必要はありません。
+新規クローンに秘密情報や過去の構築状態は含まれません。Entra／DNSの資格情報は担当者が準備し、`azd up`が用途・保存先を説明してから非表示で入力を受け付けます。利用者が秘密JSONや`.local/<environment>/secrets/`を手作業で作る必要はありません。
 
 ## 作成される構成
 
@@ -135,6 +135,6 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 
 本プロジェクトの独自ソフトウェア・文書・図は [Apache License 2.0](LICENSE) で提供します。第三者のライブラリ・素材は各権利者の条件に従い、音楽・人物イラスト・ブランド素材・音声サンプルなどの扱いは [MEDIA-LICENSES.md](MEDIA-LICENSES.md) を参照してください。Egakumiの名称・ロゴについて、商標の使用許諾を与えるものではありません。
 
-設定例は架空値であり、実環境での動作確認を示すものではありません。企業・実環境固有情報は作業記録も含めて持ち込まず、[共通ルール](AGENTS.md)に従ってください。
+設定例は架空値であり、実環境での動作確認を示すものではありません。実環境の設定・作業記録は環境別の`.local/<environment>/`へ保護保存し、公開側へ転載せず、[共通ルール](AGENTS.md)に従ってください。
 
 clone後は`python3 -I -B scripts/install_git_hooks.py`でローカルの混入検査を有効にします。[検査の範囲・GitHub Actions・許可リストの管理](docs/public-data-guard.md)も確認してください。

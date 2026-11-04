@@ -3,6 +3,7 @@ import contextlib
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -12,6 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_portal as portal
+from deployment.helpers.paths import local_paths
 
 
 def fixture():
@@ -33,14 +35,47 @@ def fixture():
     state['outputs'] = {
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
+            'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
+            'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
+            'sharedSqlServer': 'sql-test-sample.database.windows.net',
             'applicationId': portal.group_scope(config) + '/providers/Microsoft.App/containerApps/ca-test-sample-portal'},
-        'credentialBroker': {'sqlServer': 'sql-test-sample.database.windows.net',
-            'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'}},
     }
     return config, state
 
 
 class PortalDeploymentTests(unittest.TestCase):
+    def test_cli_refuses_public_or_other_environment_inputs_before_building(self):
+        """同名ファイルを探したり、別環境の入力からbuildを始めたりしない。"""
+        config, state = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            workspace = local_paths(config, root)
+            workspace.ensure()
+            workspace.params.write_text('unchanged-input')
+            state_file = workspace.state / 'latest.json'
+            state_file.write_text(json.dumps(state))
+            before = {path: path.read_bytes() for path in (workspace.params, state_file)}
+            for option, relative in (
+                ('--config', 'params/test.local.json'),
+                ('--config', '.local/other/params.local.json'),
+                ('--state-file', '.local/other/state/latest.json'),
+            ):
+                with self.subTest(option=option, path=relative), \
+                     mock.patch.object(portal, 'REPOSITORY', root), \
+                     mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
+                     mock.patch.object(portal, 'load_configuration', return_value=config), \
+                     mock.patch.object(portal, 'source_bundle') as bundle, \
+                     mock.patch.object(portal, 'run_json') as cli, \
+                     mock.patch.object(portal, 'ArmTransport') as transport, \
+                     mock.patch.object(portal, 'protected_json') as write:
+                    arguments = ['--config', str(workspace.params), '--state-file', str(state_file), '--execute']
+                    arguments[arguments.index(option) + 1] = str(root / relative)
+                    with self.assertRaisesRegex(ValueError, r'Runtime (?:files|input/output)'):
+                        portal.main(arguments)
+                    for boundary in (bundle, cli, transport, write):
+                        boundary.assert_not_called()
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+
     def test_existing_core_output_is_usable_without_redeploying_core(self):
         config, state = fixture()
         original = copy.deepcopy(state)
@@ -67,11 +102,18 @@ class PortalDeploymentTests(unittest.TestCase):
     def test_new_foundation_output_does_not_need_broker_application(self):
         config, state = fixture()
         output = state['outputs']['portal']
-        output.update(runtimeIdentity={'id': output.pop('pullIdentityId')},
-                      schemaIdentity=state['outputs']['credentialBroker']['schemaIdentity'],
-                      sharedSqlServer=state['outputs']['credentialBroker']['sqlServer'])
-        del state['outputs']['credentialBroker']
+        self.assertNotIn('credentialBroker', state['outputs'])
         self.assertEqual(portal.deployment_inputs(config, state)['schemaIdentity'], output['schemaIdentity'])
+
+    def test_legacy_identity_and_broker_aliases_do_not_fill_missing_current_outputs(self):
+        for missing in ('runtimeIdentity', 'schemaIdentity', 'sharedSqlServer'):
+            config, state = fixture()
+            output = state['outputs']['portal']
+            state['outputs']['credentialBroker'] = {'schemaIdentity': output['schemaIdentity'],
+                'sqlServer': output['sharedSqlServer']}
+            del output[missing]
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                portal.deployment_inputs(config, state)
 
     def test_verification_ids_are_passed_to_the_schema_job_without_issuing_or_reading_keys(self):
         config, state = fixture()
@@ -87,8 +129,8 @@ class PortalDeploymentTests(unittest.TestCase):
             lambda c, s: s.update(subscriptionId='other-subscription'),
             lambda c, s: s['outputs']['portal'].update(applicationName='ca-other-portal'),
             lambda c, s: s['outputs']['portal'].update(applicationId='/another/app'),
-            lambda c, s: s['outputs']['portal'].update(pullIdentityId='/another/identity'),
-            lambda c, s: s['outputs']['credentialBroker'].update(sqlServer='other.database.windows.net'),
+            lambda c, s: s['outputs']['portal'].update(runtimeIdentity={'id': '/another/identity'}),
+            lambda c, s: s['outputs']['portal'].update(sharedSqlServer='other.database.windows.net'),
             lambda c, s: c.update(credentialProviders=[]),
         ):
             config, state = fixture()
@@ -192,10 +234,13 @@ class PortalDeploymentTests(unittest.TestCase):
     def test_plan_does_not_authenticate_or_write_to_azure(self):
         config, state = fixture()
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state_file = root / 'state.json'
+            root = Path(directory).resolve()
+            workspace = local_paths(config, root)
+            workspace.ensure()
+            state_file = workspace.state / 'latest.json'
             state_file.write_text(json.dumps(state), encoding='utf-8')
             with mock.patch.object(portal, 'REPOSITORY', root), \
+                 mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
                  mock.patch.object(portal, 'load_configuration', return_value=config), \
                  mock.patch.object(portal, 'source_bundle', return_value=(b'public', 'checksum')), \
                  mock.patch.object(portal, 'reusable_image', return_value=None), \
@@ -204,7 +249,7 @@ class PortalDeploymentTests(unittest.TestCase):
                  mock.patch.object(portal, 'prepare_secret') as prepare, \
                  mock.patch.object(portal, 'profile_secret') as profile_secret, \
                  contextlib.redirect_stdout(io.StringIO()) as output:
-                self.assertEqual(portal.main(['--config', 'fixture', '--state-file', str(state_file)]), 0)
+                self.assertEqual(portal.main(['--config', str(workspace.params), '--state-file', str(state_file)]), 0)
             result = json.loads(output.getvalue())
             self.assertEqual(result['azureWrites'], 0)
             self.assertFalse(result['azdUpRequired'])
@@ -214,7 +259,7 @@ class PortalDeploymentTests(unittest.TestCase):
             cli.assert_not_called()
             prepare.assert_not_called()
             profile_secret.assert_not_called()
-            saved = json.loads((root / '.state/portal-plan.json').read_text(encoding='utf-8'))
+            saved = json.loads((workspace.state / 'portal-plan.json').read_text(encoding='utf-8'))
             self.assertNotIn('signingSecret', saved['parameters'])
             self.assertNotIn('profileSecret', saved['parameters'])
 

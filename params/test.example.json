@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/params.schema.json",
-  "$comment": "企業・環境固有の入力です。このファイルをparams/test.local.jsonへコピーし、公開ID・DNS・IP計画・連絡先等を設定します。秘密値は書かずazd upの対話入力を使います。azureTenantIdはAzure構築先、entraTenantIdはCMのOAuth認証先です。同一テナントなら両方に同じID、別テナントならそれぞれのIDを設定します。credentialProvidersのclientIdに準備したEntraアプリのIDを記入します。CM providerはentraTenantIdを使い、client secretは参照先ファイルへ非表示で入力します。azd upは基盤の構築後、GatewayとPortalを順に配備し、API登録まで完了します。 Portal配備時にはportalApiKeysのグループ名正規表現・所有グループObject ID・許可製品・購読数上限を対話入力し、platformGroupIdも同じparamsへ保存します。表示名はGraphから取得します。",
+  "$comment": "企業・環境固有の入力です。prepare_local_environment.pyで.local/<environment>/params.local.jsonへ展開し、ファイル参照を自動調整してから、公開ID・DNS・IP計画・連絡先等を設定します。秘密値は書かずazd upの対話入力を使います。azureTenantIdはAzure構築先、entraTenantIdはCMのOAuth認証先です。同一テナントなら両方に同じID、別テナントならそれぞれのIDを設定します。credentialProvidersのclientIdに準備したEntraアプリのIDを記入します。CM providerはentraTenantIdを使い、client secretは参照先ファイルへ非表示で入力します。azd upは基盤の構築後、GatewayとPortalを順に配備し、API登録まで完了します。 Portal配備時にはportalApiKeysのグループ名正規表現・所有グループObject ID・許可製品・購読数上限を対話入力し、platformGroupIdも同じparamsへ保存します。表示名はGraphから取得します。",
   "schemaVersion": 1,
   "configFile": "../config/test.json",
   "productName": "egakumi",

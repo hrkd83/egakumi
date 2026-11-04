@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -35,6 +36,7 @@ from pathlib import Path
 import sys
 
 root, source, rendered, arguments = map(Path, sys.argv[1:])
+allowed_runtime_files = {source, rendered, arguments}
 sys.path.insert(0, str(root / "scripts"))
 
 def local_only(event, arguments):
@@ -47,20 +49,24 @@ def local_only(event, arguments):
             relative = path.relative_to(root)
             if relative.parts and relative.parts[0] in ("secrets", ".state", ".tools", ".azure", "Archives"):
                 raise AssertionError("Public input validation must not read protected local inputs")
+            if relative.parts and relative.parts[0] == ".local" and path not in allowed_runtime_files:
+                raise AssertionError("Fresh validation must not read another runtime input")
 
 sys.addaudithook(local_only)
 from deployment.helpers import configuration
 from deployment import lifecycle
-from deployment.helpers import powershell_runtime, prepare_secrets
+from deployment.helpers import prepare_secrets
 
 for module in (configuration, lifecycle):
     if not Path(module.__file__).resolve().is_relative_to(root):
         raise AssertionError("The isolated copy must provide its own implementation")
-if any(actual != root for actual in (lifecycle.ROOT, prepare_secrets.ROOT, powershell_runtime.REPOSITORY)):
+if any(actual != root for actual in (lifecycle.ROOT, prepare_secrets.ROOT)):
     raise AssertionError("Moved deployment modules must keep using the repository root")
-if lifecycle.PARAMETERS != root / "infra/main.parameters.json" or lifecycle.STATE != root / ".state/latest.json":
-    raise AssertionError("Moving scripts must not relocate deployment inputs or recorded state")
 normalized = configuration.load_configuration(source)
+workspace = lifecycle.local_paths(normalized, root)
+if (workspace.params != source or workspace.parameters != root / ".local" / normalized["environmentName"] / "generated/main.parameters.json"
+        or workspace.state != source.parent / "state"):
+    raise AssertionError("Deployment inputs and state must stay in the selected environment")
 messages = io.StringIO()
 with contextlib.redirect_stdout(messages), contextlib.redirect_stderr(messages):
     if lifecycle.main(["validate", "--config", str(source)]) != 0:
@@ -82,6 +88,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
     """新しい利用者が公開例を編集した時の、入口から出力までの契約を検査する。"""
 
     def setUp(self):
+        self.enterContext(mock.patch.dict("os.environ", {"PYTHONDONTWRITEBYTECODE": "1"}))
         self.directory = tempfile.TemporaryDirectory(prefix="core-public-clone-", dir="/tmp")
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
@@ -104,6 +111,10 @@ class FreshCloneReadinessTests(unittest.TestCase):
         for name in PROTECTED_DIRECTORIES:
             self.assertFalse((self.root / name).exists(), name + " must not be required for public validation")
         self.assertFalse((self.root / ".git").exists())
+        for environment in (self.root / ".local").glob("*"):
+            for name in ("secrets", "state", "generated"):
+                self.assertFalse((environment / name).exists(),
+                                 "Input validation must not create runtime secrets, state or parameters")
 
     def enterprise_parameters(self, profile):
         """公開例へ架空の企業情報だけを設定し、標準configは編集しない。"""
@@ -120,17 +131,25 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["certificate"]["contactEmail"] = "operator@fresh-clone.example"
         raw["services"].update(publisherName="Fresh clone organization", publisherEmail="operator@fresh-clone.example")
         raw["monitoring"]["operatorEmailAddresses"] = ["operator@fresh-clone.example"]
+        raw["configFile"] = "../../config/" + profile + ".json"
+        raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
+        raw["certificate"]["pluginArgumentsFile"] = "./secrets/dns-plugin-arguments.json"
+        raw["credentialProviders"][0]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         return raw
 
     def check_in_isolated_process(self, profile, parameters):
         """-I/-Sの別プロセスで実loader・CLI・ARM引数生成を一度ずつ通す。"""
-        source = self.root / "params" / (profile + ".local.json")
+        source = self.root / ".local" / parameters["environmentName"] / "params.local.json"
+        (self.root / ".local").mkdir(mode=0o700, exist_ok=True)
+        source.parent.mkdir(mode=0o700, exist_ok=True)
         source.write_text(json.dumps(parameters, ensure_ascii=False, indent=2) + "\n")
-        rendered, arguments = self.root / "rendered.json", self.root / "arm-arguments.json"
+        evidence = source.parent / "evidence"
+        evidence.mkdir(mode=0o700, exist_ok=True)
+        rendered, arguments = evidence / "rendered.json", evidence / "arm-arguments.json"
         process = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", ISOLATED_CHECK,
             str(self.root), str(source), str(rendered), str(arguments)],
             cwd=self.root, text=True, capture_output=True, timeout=30,
-            env={"PATH": str(self.root / "no-external-tools"), "LC_ALL": "C"})
+            env={"PATH": str(self.root / "no-external-tools"), "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1"})
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
         report = json.loads(process.stdout)
         public = json.loads(rendered.read_text())
@@ -181,7 +200,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
             cwd=self.root, text=True, capture_output=True, timeout=30, check=True)
         template = json.loads(prepare.stdout)
         replacements = {"TENANT_ID": TENANT, "CM_CLIENT_ID": GATEWAY,
-            "CM_CLIENT_SECRET_FILE": "../secrets/entra-client-secret.txt",
+            "CM_CLIENT_SECRET_FILE": "./secrets/entra-client-secret.txt",
             "PUBLIC_HOST_NAME": self.enterprise_parameters("test")["gateway"]["publicHostName"]}
         payload = json.dumps(template)
         for name, value in replacements.items():

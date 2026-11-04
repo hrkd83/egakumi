@@ -70,7 +70,7 @@ class DecisionTests(unittest.TestCase):
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
             with self.assertRaises(FileExistsError): probe.write_new(target, {})
             link = Path(directory) / "link"; link.symlink_to(target)
-            with self.assertRaises(OSError): probe.write_new(link, {})
+            with self.assertRaisesRegex(ValueError, "symbolic links"): probe.write_new(link, {})
 
     def test_unwritable_or_existing_output_is_detected_before_token_read(self):
         with tempfile.TemporaryDirectory() as directory:

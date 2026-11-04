@@ -2,7 +2,7 @@
 
 [README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
 
-本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](testing/integration-tests.md)で確認し、実環境の試験状態・再開記録はリポジトリ外の非公開運用用ワークスペースで管理します。この一般手順だけを理由に再構築や撤去を開始しません。
+本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](testing/integration-tests.md)で確認し、実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
 ## 対象環境と記録を確認する
 
@@ -10,23 +10,25 @@
 
 ```sh
 cd '<構築に使用したクローン先ディレクトリ>'
-export DEPLOY_PARAMS_FILE='<構築に使用したparamsのパス>'
 export DEPLOY_ENVIRONMENT='<構築に使用した環境名>'
+export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
+export DEPLOY_PARAMS_FILE="$DEPLOY_LOCAL_DIRECTORY/params.local.json"
 export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 ```
 
-Azure CLI・azdの認証先、paramsのTenant／Subscription・環境名、対象5RGを照合します。秘密値はコマンド引数・通常ログへ入力しません。
+Azure CLI・azdの認証先、`.local/`内の環境名、paramsのTenant／Subscription・環境名、stateの所有記録と対象5RGを照合します。不一致のまま続行せず、別環境のstateや秘密を流用しません。同じcheckoutで構築・更新・撤去を同時実行しません。秘密値はコマンド引数・通常ログへ入力しません。
 
 | 記録 | 用途 |
 | --- | --- |
 | paramsと参照config | 構築・更新・撤去で使う入力の正本 |
-| `.azure/` | azd環境と配備先の設定 |
-| `.state/latest.json` | 共通基盤の実配備ID・outputs・所有資源・監査保護・ACA管理RGの記録 |
-| `.state/gateway-deployment.json`・`portal-deployment.json` | 各アプリの配備結果・イメージdigest・確認範囲 |
-| `.state/credential-broker-build.json`・`portal-build.json` | ビルドしたソースとイメージの対応、再利用・一時資源の回収結果 |
-| `.state/acceptance/<run-id>/` | 試行ごとの実測・証跡。配備完了と業務動作の合格を分けて記録 |
+| `.azure/` | azd専用の環境と配備先の設定 |
+| `.local/<environment>/params.local.json`・`secrets/` | 今回の環境に対応する導入先設定と秘密・SSH鍵 |
+| `.local/<environment>/state/latest.json` | 共通基盤の実配備ID・outputs・所有資源・監査保護・ACA管理RGの記録 |
+| `.local/<environment>/state/gateway-deployment.json`・`portal-deployment.json` | 各アプリの配備結果・イメージdigest・確認範囲 |
+| `.local/<environment>/state/credential-broker-build.json`・`portal-build.json` | ビルドしたソースとイメージの対応、再利用・一時資源の回収結果 |
+| `.local/<environment>/evidence/<run-id>/` | 試行ごとの実測・証跡。配備完了と業務動作の合格を分けて記録 |
 
-Gitからクローンし直しても`.azure/`・`.state/`・保護入力は復元されません。別端末への引継ぎや障害に備えて安全に保管します。既存の記録を削除して再試行したり、名前からResource IDを推測してstateを作ったりしません。
+Gitからクローンし直しても`.azure/`・`.local/`は復元されません。構築時の環境別領域とazd環境を、別端末への引継ぎや障害に備えて保護保管します。公開用の資材コピーや配布物へ混ぜません。既存の記録を削除して再試行したり、名前からResource IDを推測してstateを作ったりしません。
 
 ## 同じ環境を更新する
 
@@ -63,7 +65,7 @@ Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（
 `azd up`は共通基盤の`postprovision`成功後にGateway→Portalを実行します。Gatewayが失敗したらPortalへ進まず、Portalが失敗したらup全体が失敗します。基盤の作成結果だけを一式の完了としません。
 
 1. 終了した工程・終了コード・配備記録と、現在のAzure上の状態を確認する。
-2. 同じparamsと`.state/latest.json`を保持して原因を修正する。SQLやイメージ構築の失敗を飛ばさない。
+2. 同じparamsと`.local/<environment>/state/latest.json`を保持して原因を修正する。SQLやイメージ構築の失敗を飛ばさない。
 3. Gatewayで停止した場合はGatewayを再試行し、その成功後にPortalを実行する。Portalで停止した場合はPortalの専用コマンドから再開できる。
 4. アプリの稼働・公開ヘルス・イメージdigestと、変更対象の業務動作を確認して記録する。
 
@@ -90,7 +92,7 @@ Azure DNSは事前作成したユーザー割り当てマネージドIDを使い
 Cloudflare／Route53等の資格情報ファイル方式では、同じ事業者の正常な保護ファイルを再利用します。`azd up`だけで新しい値の入力を必ず要求する仕様ではありません。
 
 1. 必要なゾーン・権限範囲の新資格情報を発行し、旧資格情報を有効に保つ。
-2. paramsの`certificate.pluginArgumentsFile`を、`secrets/`配下の未作成の新しい保護ファイルへの相対パスへ変更する。JSONを手入力で作成しない。
+2. paramsの`certificate.pluginArgumentsFile`を、同じ環境の`secrets/`配下の未作成の新しい保護ファイルへの相対パス（例：`./secrets/dns-plugin-arguments-next.json`）へ変更する。JSONを手入力で作成しない。
 3. 同じparamsで`azd up`を実行し、同じDNS事業者を選んで新資格情報を非表示入力する。基盤・Gateway・Portalの通常更新も実行される。
 4. Key Vaultの新version、DNS操作・証明書更新と公開証明書の反映を確認してから旧資格情報を失効させる。
 
@@ -108,7 +110,7 @@ Brokerの本人対応・セッションはAzure SQL、下流OAuth tokenはCMが�
 
 ## 撤去する
 
-対象環境の利用を終了するときに実行します。実行中の音声セッション等を停止し、構築時のparams・config・`.azure/`・`.state/latest.json`、監査保持とDB／必要データの保管を確認します。
+対象環境の利用を終了するときに実行します。実行中の音声セッション等を停止し、構築時のparams・config・`.azure/`・`.local/<environment>/state/latest.json`、監査保持とDB／必要データの保管を確認します。
 
 `azd down`では、azd本体のRG削除確認より前に`predown` hookがモデル・APIM・アプリ・管理VMの削除を開始します。対象Tenant／Subscription・環境名・所有5RGは、コマンド実行前に照合します。
 
@@ -118,6 +120,8 @@ azd down --environment "$DEPLOY_ENVIRONMENT"
 ```
 
 Coreの`postdown`は`--purge`の有無にかかわらず、対象のKey Vault・Foundry・APIMの論理削除記録を照合して、保護設定が許すものを完全削除します。Key Vaultのpurge protectionや監査WORMを解除する指定ではありません。
+
+azd本体の撤去も`infra/main.bicepparam`を評価するため、`predown`は同じ環境の`generated/main.parameters.json`へ秘密なしの撤去用入力を再生成します。azd環境の`EGAKUMI_ARM_PARAMETERS_FILE`にはその相対パスだけを保持し、秘密値を`.env`へ追加しません。生成入力はazd本体の撤去が終わるまで保持し、`postdown`で回収します。再試行に必要な元のparams・secret・stateは消しません。
 
 | 段階 | 処理・完了確認 |
 | --- | --- |
@@ -130,7 +134,7 @@ Gateway／Portalの配備成功記録がなくても、固定IDと実資源の�
 
 Locked WORMがある場合は変更前に停止します。Unlockedでも構成の監査保持が有効なら解除しません。Key Vaultのpurge protectionは期限まで保持します。環境名だけで削除保護を切り替えません。外部DNSゾーン・DNS用ID・Entra登録・同意・企業ハブは撤去対象に広げません。
 
-結果は`.state/cleanup-predown.json`と`.state/cleanup-postdown.json`に保存されます。成功・未完了・保護による保持・確認不能を区別し、保持・残存があるものを完全消去済みとは扱いません。
+結果は`.local/<environment>/state/cleanup-predown.json`と`.local/<environment>/state/cleanup-postdown.json`に保存されます。成功・未完了・保護による保持・確認不能を区別し、保持・残存があるものを完全消去済みとは扱いません。
 
 ### 削除待ち・再実行時に確認すること
 
@@ -142,7 +146,7 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
 
 ### 一部のRGを削除した後、再実行がResourceGroupNotFoundで止まる場合
 
-1. `.state/cleanup-predown.json`の対象が一致し、`result.status`が`ready-for-azd-down`であることを確認する。モデル・APIM・アプリ／ジョブ・CAE・サブネット・管理VMの先行回収と保持確認が済んだ記録を使う。
+1. `.local/<environment>/state/cleanup-predown.json`の対象が一致し、`result.status`が`ready-for-azd-down`であることを確認する。モデル・APIM・アプリ／ジョブ・CAE・サブネット・管理VMの先行回収と保持確認が済んだ記録を使う。
 2. 同じSubscriptionで5RGの現存状態を読み取り、残るRGの所有と資源を照合する。削除中なら完了を待つ。
 3. 残る所有RGだけを1件ずつ削除し、正常終了を確認する。削除済みRGを再作成せず、stateも書き換えない。
 
@@ -160,11 +164,11 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
 
 ### 初回構築の途中で失敗し、撤去用stateがない場合
 
-監視配備の成功前に停止すると、資源の一部が存在しても`.state/latest.json`がない場合があります。通常の撤去hookは正確なstateなしでは続行しません。
+監視配備の成功前に停止すると、資源の一部が存在しても`.local/<environment>/state/latest.json`がない場合があります。通常の撤去hookは正確なstateなしでは続行しません。
 
 1. 同じSubscriptionのAzure Portalで対象の配備・時刻・環境名・製品名・所有タグ・操作履歴を確認し、実際に作成された資源IDを特定する。処理中の操作を重複実行しない。
 2. 成功済み配備の完全なoutputsやバックアップがある場合は、管理担当者が実資源・保護設定と照合して正確な記録を回復する。アプリ用`--deployment-name`を撤去用stateの代用にしない。
 3. 成功済みoutputsがない場合はstateを捏造せず、管理担当者が確認できた資源だけをAzure Portalで限定回収する。存在するモデル・APIM・アプリ・ネットワークの依存順と監査保持を守る。
 4. 実IDごとの残存・保持・費用を記録する。削除保護・WORM・purge protectionを回避しない。
 
-生成された秘密入力だけを回収する場合は`python3 scripts/deployment/lifecycle.py clear-inputs`を使います。対象は`infra/main.parameters.json`であり、元の保護入力・SSH鍵・配備記録を削除せず、Azure資源も撤去しません。
+生成された秘密入力だけを回収する場合は`python3 scripts/deployment/lifecycle.py clear-inputs --config "$DEPLOY_PARAMS_FILE"`を使います。対象は`.local/<environment>/generated/main.parameters.json`であり、元の保護入力・SSH鍵・配備記録を削除せず、Azure資源も撤去しません。azdが入力を使っている構築・撤去の実行中には、この回収を行いません。

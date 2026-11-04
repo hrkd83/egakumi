@@ -98,26 +98,28 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 id_base = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/'
                            + config['resourceGroupNames']['id']
                            + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/')
-                broker = {
-                    'applicationName': 'ca-' + stem + '-credential-broker',
+                foundation = {
                     'resourceGroup': config['resourceGroupNames']['svc'],
+                    'identityResourceGroup': config['resourceGroupNames']['id'],
+                    'apimName': 'apim-' + stem,
+                    'vaultName': 'kv-' + stem,
                     'sqlServer': 'sql-' + stem + '.database.windows.net',
-                    'database': 'sqldb-' + stem + '-credentials',
-                    'runtimeIdentity': {'id': id_base + names['runtimeIdentity']},
                     'schemaIdentity': {'id': id_base + names['schemaIdentity']},
                     'environmentName': 'cae-' + stem,
-                    'registryName': 'acr' + stem.replace('-', ''), 'brokerKeySecretUri': 'https://vault.invalid/secrets/key',
-                    'oidcSecrets': [], 'apimPrincipalId': '44444444-4444-4444-8444-444444444444',
+                    'environmentDomain': 'environment.example.com',
+                    'registryName': 'acr' + stem.replace('-', ''),
                 }
                 state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
-                state['outputs'] = {'credentialBroker': broker}
+                state['outputs'] = {'gatewayFoundation': foundation}
+                original = copy.deepcopy(state)
                 inputs = foundation_inputs(config, state)
                 self.assertEqual(names['sqlServer'], 'sql-' + stem)
                 self.assertEqual(names['database'], 'sqldb-' + stem + '-credentials')
-                self.assertEqual(inputs['sqlServer'], broker['sqlServer'])
+                self.assertEqual(inputs['sqlServer'], foundation['sqlServer'])
                 self.assertEqual(inputs['schemaIdentity']['id'], id_base + names['schemaIdentity'])
                 self.assertNotIn('database', inputs)
                 self.assertNotIn('runtimeIdentity', inputs)
+                self.assertEqual(state, original)
 
     def test_sql_is_private_and_separate_from_runtime_admin(self):
         sql = (ROOT/'infra/modules/shared-sql.bicep').read_text(encoding='utf-8')

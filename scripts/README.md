@@ -8,6 +8,7 @@
 
 ```text
 scripts/
+├── prepare_local_environment.py  # 環境別の保護領域・paramsの初回準備
 ├── deployment/
 │   ├── lifecycle.py              # azd hookの入口
 │   └── helpers/                  # 入口から呼び出す補助処理
@@ -36,6 +37,7 @@ scripts/
 
 | 補助処理 | 役割 | 呼ばれる段階 |
 | --- | --- | --- |
+| `prepare_local_environment.py` | 公開exampleから環境別paramsを作成し、config・secretの相対参照を変換 | 導入先の環境名とprofileの決定後。Azure操作なし |
 | `configuration.py` | 設定の読込・合成・入力検査、秘密ファイルの読込 | 各hook。手動の設定検査・API登録等でも共用 |
 | `catalog_descriptions.py` | API説明の組み立て | 設定の正規化から呼出し。API登録でも共用 |
 | `dns_selection.py` | 証明書検証用DNS事業者の選択とparams保存 | `preup` |
@@ -56,14 +58,16 @@ scripts/
 
 `helpers/`は構築で利用する処理をまとめた配置です。設定検査やAPI登録などから同じ実装を再利用する場合もあり、構築専用のコードを複製しているわけではありません。
 
-`predown`は配備記録と実資源の所有関係を照合し、モデル→APIM→Gateway／Portalのジョブ・認証窓口→PortalのCA→CAE→管理VM／NICの順で削除します。成功したアプリ出力がなくても現在の固定ID・所有タグ・接続先を検証し、全CA／ジョブの404とsubnet解放を待って本体・RG削除へ進みます。CAEのマネージドRGは実際のIDを削除前にstateへ保存し、`postdown`でAzureによる回収後の404を確認します。Portalの処理結果は`.state/cleanup-predown.json`の`portal`、管理RGの確認結果は`cleanup-postdown.json`の`applicationInfrastructure`へ記録します。
+`predown`は配備記録と実資源の所有関係を照合し、モデル→APIM→Gateway／Portalのジョブ・認証窓口→PortalのCA→CAE→管理VM／NICの順で削除します。成功したアプリ出力がなくても現在の固定ID・所有タグ・接続先を検証し、全CA／ジョブの404とsubnet解放を待って本体・RG削除へ進みます。CAEのマネージドRGは実際のIDを削除前にstateへ保存し、`postdown`でAzureによる回収後の404を確認します。Portalの処理結果は`.local/<environment>/state/cleanup-predown.json`の`portal`、管理RGの確認結果は`cleanup-postdown.json`の`applicationInfrastructure`へ記録します。
 
 管理VM上で実行する証明書・OS設定のスクリプトは[guest/](../guest/)にあります。Bicepから管理VMへ渡して実行する資材です。
 
-入口は、リポジトリのルートから次のように実行します。`validate`はローカルの入力検査です。Azureを変更する構築・撤去は通常`azd up`・`azd down`から実行します。
+実設定は`.local/<environment>/params.local.json`、秘密は同じ環境の`secrets/`、配備・撤去記録は`state/`、一時生成入力は`generated/`、試験証跡は`evidence/`を使います。`.azure/`はazd専用です。
+
+入口は、[第1章](../docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`を使い、リポジトリのルートから次のように実行します。`validate`はローカルの入力検査です。Azureを変更する構築・撤去は通常`azd up`・`azd down`から実行します。
 
 ```sh
-python3 scripts/deployment/lifecycle.py validate --config params/<environment>.local.json
+python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
 `azd up`には`publishApis:true`が必要です。基盤だけを扱う`azd provision`ではGateway・Portalを実行しません。`deploy_applications.py --config <params>`は両アプリの計画、`--execute`付きは順次配備です。Gateway失敗時はPortalを開始せず、Portal失敗時もup全体を失敗にします。個別コマンドを実行し、今回の終了コードと配備記録で成否を確認します。過去の成功記録だけで工程を省略しません。
@@ -71,7 +75,7 @@ python3 scripts/deployment/lifecycle.py validate --config params/<environment>.l
 設定の検査・出力だけを手動実行するときは、補助処理のCLIも利用できます。
 
 ```sh
-python3 scripts/deployment/helpers/configuration.py validate --config params/<environment>.local.json
+python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
 ## 個別に使うコマンド
@@ -85,7 +89,8 @@ Gateway・Portalの配備コマンドは`azd up`からも呼ばれ、個別の�
 | Gatewayの初期配備・更新（`postup`でも使用） | `deploy_gateway.py`（[手順](../docs/setup/credential-sql.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、認証窓口・照合ジョブ、API・バックエンド・製品・購読・ポリシーを順に配備。PCのDocker・Actionsは不要 |
 | API定義の準備・移行 | `standard_apis.py`、`catalog_publication.py`、`api_migration.py` | `apps/gateway/apim/apis/`で1 API 1ファイルに分けた標準19 APIの展開、カタログ文書、明示したAPI定義の変換を支援する。統合配備の内部処理は`apps/gateway/deploy/`にある |
 | Portalの初期配備・更新（`postup`でも使用） | `deploy_portal.py`（[手順](../docs/setup/portal.md)） | 同じparamsから計画を作成。`--execute`で管理VM上のイメージ作成・非公開ACR登録、Portal専用DB作成、手動ジョブでのテーブル・実行用権限の設定、既存Container Appの更新・公開ヘルス確認を実行。構築済みの共通基盤を使うため`azd up`再実行とPCのDockerは不要 |
-| Portalのローカル認証設定 | `prepare_portal_local_auth.py`（[手順](../docs/testing/portal-local-auth.md)） | 既定は計画のみ。明示実行で開発端末の`.env.local`とSQL管理用設定を保護保存。Azure設定を変更せず、Azure SQLのデータも取得しない |
+| Portalのローカル起動 | `run_portal_local.py`（[手順](../docs/testing/portal-local-auth.md)） | 環境別の保護設定を子プロセスだけへ読み込み、`apps/portal`でコマンドを実行。SQL管理作業だけ`--admin`を指定 |
+| Portalのローカル認証設定 | `prepare_portal_local_auth.py`（[手順](../docs/testing/portal-local-auth.md)） | 既定は計画のみ。明示実行で環境別の`portal/runtime.env`と`secrets/portal-local-sql-admin.env`を保護保存。Azure設定を変更せず、Azure SQLのデータも取得しない |
 | 全体ポリシーの移行準備 | `render_apim_policy.py` | 共通認証を含む全体ポリシーXMLをローカルへ出力。Azureの変更は行わない |
 | CM接続の回収 | `cleanup_credential_connections.py`（[手順](../docs/setup/credential-manager-login.md)） | 専用providerの所有接続を照合して回収。セッション失効とCM接続削除を分ける |
 | APIの疎通試験 | `integration_client.py`、`coverage_client.py`、`decision_client.py`、`voice_client.py`、`realtime_browser.py` | 構築済みAPIへの要求、応答・通信方式の確認 |

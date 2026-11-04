@@ -65,29 +65,31 @@ SQLへ保存するのは、利用者の識別情報・ログインセッショ�
 構築済み環境のPortalだけを更新・再試行する場合は、構築に使用したparamsとstateを使い、リポジトリ直下で計画を確認してから実行します。
 
 ```sh
-python3 scripts/deploy_portal.py --config 'params/<environment>.local.json'
-python3 scripts/deploy_portal.py --config 'params/<environment>.local.json' --execute
+python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 配備コマンドが管理VMでのイメージ作成、DB初期化、アプリ更新、公開ヘルス確認を行います。手元のDockerや、Portal更新のための基盤再構築は不要です。更新・失敗時の再試行・撤去は[運用手順](../../docs/operations.md)を使います。
 
 ## ローカルで起動する
 
-Node.js 24、Docker Engine・Compose、開発用Entraの戻り先と資格情報を用意します。初回は[ローカル認証テストの準備](../../docs/testing/portal-local-auth.md)に従って、サーバー用`.env.local`とSQL管理用設定を作成してください。Gatewayを実行する場合は、構築済みGatewayへの接続設定と、ローカル台帳のグループ・購読設定も必要です。
+Node.js 24、Docker Engine・Compose、開発用Entraの戻り先と資格情報を用意します。初回は[ローカル認証テストの準備](../../docs/testing/portal-local-auth.md)に従って、`.local/<environment>/portal/runtime.env`と同じ環境のSQL管理用設定を作成してください。アプリ直下に`.env.local`を作らず、launcherから保護した設定を子プロセスへ渡します。Gatewayを実行する場合は、構築済みGatewayへの接続設定と、ローカル台帳のグループ・購読設定も必要です。
 
-準備後、リポジトリ直下から実行します。
+準備後、`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を設定して、リポジトリ直下から実行します。
 
 ```sh
-cd apps/portal
-docker compose -f compose.local.yml up -d --wait
-npm ci
-npm run db:bootstrap-local
-npm run dev
+PORTAL_LOCAL_SQL_ENV_FILE="$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  docker compose --env-file "$DEPLOY_LOCAL_DIRECTORY/secrets/portal-local-sql-admin.env" \
+  -f apps/portal/compose.local.yml up -d --wait
+npm --prefix apps/portal ci
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" \
+  --admin -- npm run db:bootstrap-local
+python3 scripts/run_portal_local.py --config "$DEPLOY_PARAMS_FILE" -- npm run dev
 ```
 
 [日本語画面](http://localhost:3000/ja)または[英語画面](http://localhost:3000/en)を開きます。`db:bootstrap-local`は開発専用のローカルDBと実行用権限を用意し、Azure SQLを変更しません。
 
-アプリは起動した端末で`Ctrl+C`、SQLは`docker compose -f compose.local.yml stop`で停止します。停止してもローカルDBのデータは保持されます。開発用設定やローカルSQLの資格情報はGitへ登録せず、Azureへコピーしません。
+アプリは起動した端末で`Ctrl+C`、SQLは上のComposeコマンドの`up -d --wait`を`stop`へ置き換えて停止します。停止してもローカルDBのデータは保持されます。開発用設定やローカルSQLの資格情報はGitへ登録せず、Azureへコピーしません。
 
 ## 開発・テスト・保守
 

@@ -22,8 +22,8 @@ apps/gateway/
 `azd up`は共通基盤を準備した後、この配備コマンドを呼び出します。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。基盤だけを先に作る場合は`azd provision`を使います。
 
 ```bash
-python3 scripts/deploy_gateway.py --config 'params/<environment>.local.json'
-python3 scripts/deploy_gateway.py --config 'params/<environment>.local.json' --execute
+python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
+python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録、credentials DB・CM・実行用ID、SQL初期化、アプリ・照合ジョブ、API・ポリシー・製品・購読、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。本人接続を使わない設定では認証窓口の配備を省略します。
@@ -34,7 +34,7 @@ python3 scripts/deploy_gateway.py --config 'params/<environment>.local.json' --e
 
 `model-users`・`pii-users`・`connection-users`等の製品と検証用購読は維持します。本人接続の開始・完了確認・終了APIは同じ通常キーで利用できる補助関連を付けます。ブラウザー用の匿名補助APIは製品に含めません。`azd up`では基盤完成後にこのGatewayコマンドを呼んで製品を用意し、その成功後にPortalを配備します。個別コマンドで段階構築・更新する場合も同じ順序です。
 
-計画は`.state/gateway-plan.json`、完了結果は`.state/gateway-deployment.json`に保存します。実際のMicrosoftサインインと各業務APIの疎通は、配備成功後に確認します。
+計画は`.local/<environment>/state/gateway-plan.json`、完了結果は`.local/<environment>/state/gateway-deployment.json`に保存します。実際のMicrosoftサインインと各業務APIの疎通は、配備成功後に確認します。
 
 Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesize`とWAVの`/models/azure-speech/v1/recognize`に、既存の`wafpol-agw-<stem>-custom-mime`を関連付けます。パスは選択したAPI定義のPOST・本文形式・MIME契約から決めます。共通WAFの設定を引き継ぎ、正規のSSML/WAVを拒否する規則`920420`だけをこの完全パスで調整します。`920470`（Content-Type構文）、他の管理規則・本文検査、Portalや認証callbackの経路は維持します。公開WAVは`Content-Type: audio/wav`とし、codec指定はAPIMのバックエンド用ヘッダーに付与します。日本語の認識言語`ja-JP`は`azure-speech-v1.json`のバックエンドURLに明記します。
 

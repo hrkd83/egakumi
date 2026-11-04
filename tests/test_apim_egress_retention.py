@@ -113,7 +113,7 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "lock_and_verify_policies"), mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
-        generated = json.loads(lifecycle.PARAMETERS.read_text())["parameters"]["configuration"]["value"]
+        generated = json.loads(self.paths.parameters.read_text())["parameters"]["configuration"]["value"]
         self.assertIn("graph.microsoft.com", generated["network"]["firewall"]["apimAllowedFqdns"])
         self.assertEqual(generated["apiDefinitions"], [])
         self.assertEqual(self.config, original)

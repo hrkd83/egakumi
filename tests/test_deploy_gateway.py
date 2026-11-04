@@ -3,6 +3,7 @@ import copy
 from contextlib import ExitStack, contextmanager
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -12,7 +13,24 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_gateway as gateway
-from test_credential_broker_initial_deployment import fixture, DIGEST, ok
+from deployment.helpers.paths import local_paths
+from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
+
+
+def fixture():
+    """現行infraのgatewayFoundationと、配備済みbrokerの独立した合成出力。"""
+    config, state = broker_fixture()
+    stem, groups = config['resourceStem'], config['resourceGroupNames']
+    state['outputs']['gatewayFoundation'] = {
+        'resourceGroup': groups['svc'], 'identityResourceGroup': groups['id'],
+        'apimName': 'apim-' + stem, 'vaultName': 'kv-' + stem,
+        'schemaIdentity': copy.deepcopy(state['outputs']['credentialBroker']['schemaIdentity']),
+        'sqlServer': 'sql-' + stem + '.database.windows.net',
+        'sqlPrivateEndpointId': '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + groups['svc'] + '/providers/Microsoft.Network/privateEndpoints/pep-' + stem + '-sql',
+        'environmentName': 'cae-' + stem, 'environmentDomain': 'environment.example.com',
+        'registryName': 'acr' + stem.replace('-', ''),
+    }
+    return config, state
 
 
 class GatewayDeploymentTests(unittest.TestCase):
@@ -20,12 +38,14 @@ class GatewayDeploymentTests(unittest.TestCase):
     def isolated_cli(self, config, state):
         """実ファイル・Azureに書き込まず、公開入口の順序と失敗時の境界を検査する。"""
         with tempfile.TemporaryDirectory() as folder, ExitStack() as patches:
-            folder = Path(folder)
-            params, state_file = folder / 'params.json', folder / 'state.json'
+            folder = Path(folder).resolve()
+            workspace = local_paths(config, folder)
+            workspace.ensure()
+            params, state_file = workspace.params, workspace.state / 'latest.json'
             params.write_text('original-user-input')
             state_file.write_text(json.dumps(state))
             replacements = {
-                'load_configuration_source': {'apiDefinitions': []},
+                'load_configuration_source': {**config, 'apiDefinitions': []},
                 'resolve_publication_configuration': config,
                 'source_bundle': (b'public', 'source-hash'),
                 'reusable_image': None,
@@ -42,9 +62,11 @@ class GatewayDeploymentTests(unittest.TestCase):
             observed['publication_plan'] = patches.enter_context(
                 mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}))
             observed['transport'] = patches.enter_context(mock.patch.object(gateway, 'ArmTransport'))
+            patches.enter_context(mock.patch.object(gateway, 'REPOSITORY', folder))
+            patches.enter_context(mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True))
             patches.enter_context(mock.patch('sys.stdout', new=io.StringIO()))
             arguments = ['--config', str(params), '--state-file', str(state_file),
-                         '--output', str(folder / 'plan.json'), '--execute']
+                         '--output', str(workspace.state / 'gateway-plan.json'), '--execute']
             yield arguments, observed
             self.assertEqual(params.read_text(), 'original-user-input')
 
@@ -55,6 +77,23 @@ class GatewayDeploymentTests(unittest.TestCase):
         self.assertEqual(foundation['sqlServer'], 'sql-' + config['resourceStem'] + '.database.windows.net')
         self.assertEqual(foundation['schemaIdentity'], state['outputs']['credentialBroker']['schemaIdentity'])
         self.assertEqual(state, original)
+
+    def test_cli_refuses_public_or_other_environment_paths_before_building(self):
+        """引数で別環境を指定しても、計画・build・Azure要求へ進めない。"""
+        for option, relative in (
+            ('--config', 'params/test.local.json'),
+            ('--config', '.local/other/params.local.json'),
+            ('--state-file', '.local/other/state/latest.json'),
+            ('--output', '.local/other/state/gateway-plan.json'),
+        ):
+            config, state = fixture()
+            with self.subTest(option=option, path=relative), self.isolated_cli(config, state) as (arguments, observed):
+                arguments[arguments.index(option) + 1] = str(gateway.REPOSITORY / relative)
+                with self.assertRaisesRegex(ValueError, r'Runtime (?:files|input/output)'):
+                    gateway.main(arguments)
+                for name in ('resolve_publication_configuration', 'source_bundle', 'run_json',
+                             'build_image', 'deploy_release', 'protected_json', 'transport'):
+                    observed[name].assert_not_called()
 
     def test_new_core_state_has_no_precreated_broker_or_database(self):
         config, state = fixture()
@@ -70,6 +109,16 @@ class GatewayDeploymentTests(unittest.TestCase):
         state['subscriptionId'] = 'other'
         with self.assertRaisesRegex(ValueError, 'differs'):
             gateway.foundation_inputs(config, state)
+
+    def test_legacy_or_incomplete_outputs_are_not_used_to_reconstruct_foundation(self):
+        for replacement in (None, {}, {'schemaIdentity': {}}):
+            config, state = fixture()
+            if replacement is None:
+                del state['outputs']['gatewayFoundation']
+            else:
+                state['outputs']['gatewayFoundation'] = replacement
+            with self.subTest(replacement=replacement), self.assertRaises(ValueError):
+                gateway.foundation_inputs(config, state)
 
     def test_existing_broker_key_is_never_read_or_rotated(self):
         config, state = fixture()
@@ -217,11 +266,15 @@ class GatewayDeploymentTests(unittest.TestCase):
     def test_default_plan_is_offline_and_does_not_read_secrets_or_edit_parameters(self):
         config, state = fixture()
         with tempfile.TemporaryDirectory() as folder:
-            folder = Path(folder)
-            params, state_file, output = folder / 'params.json', folder / 'state.json', folder / 'plan.json'
+            folder = Path(folder).resolve()
+            workspace = local_paths(config, folder)
+            workspace.ensure()
+            params, state_file, output = workspace.params, workspace.state / 'latest.json', workspace.state / 'gateway-plan.json'
             params.write_text('original-user-input')
             state_file.write_text(json.dumps(state))
-            with mock.patch.object(gateway, 'load_configuration_source', return_value={'apiDefinitions': []}), \
+            with mock.patch.object(gateway, 'REPOSITORY', folder), \
+                    mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
+                    mock.patch.object(gateway, 'load_configuration_source', return_value={**config, 'apiDefinitions': []}), \
                     mock.patch.object(gateway, 'resolve_publication_configuration', return_value=config), \
                     mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}), \
                     mock.patch.object(gateway, 'source_bundle', return_value=(b'public', 'hash')), \

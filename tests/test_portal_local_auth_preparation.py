@@ -16,11 +16,13 @@ class LocalPortalPreparationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
-        self.secret = self.root / "entra-client-secret.txt"
+        self.root = Path(self.temporary.name).resolve() / "repository"
+        self.root.mkdir()
+        self.secret = Path(self.temporary.name) / "existing-client-secret.txt"
         self.secret.write_text('test.secret$with"special\\characters', encoding="utf-8")
         self.secret.chmod(0o600)
         self.configuration = {
+            "environmentName": "example",
             "portalAuthentication": {"credentialProviderName": "graph-delegated"},
             "credentialProviders": [{
                 "name": "graph-delegated",
@@ -44,6 +46,19 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual(0, result["azureWrites"])
         self.assertFalse((self.root / "apps").exists())
         self.assertFalse((self.root / "secrets").exists())
+        self.assertFalse((self.root / ".local").exists())
+        self.assertEqual(self.root / ".local/example/portal/runtime.env",
+                         Path(result["runtimeEnvironmentFile"]))
+        self.assertEqual(self.root / ".local/example/secrets/portal-local-sql-admin.env",
+                         Path(result["sqlAdminEnvironmentFile"]))
+
+    def test_plan_only_needs_the_environment_and_never_reads_values(self):
+        with patch.object(preparation, "_read_protected_file", side_effect=AssertionError("secret read")), \
+                patch.object(preparation, "read_environment", side_effect=AssertionError("settings read")):
+            result = preparation.prepare({"environmentName": "example"}, self.root,
+                                         execute=False, accept_sql_eula=False)
+        self.assertEqual("plan", result["mode"])
+        self.assertFalse((self.root / ".local").exists())
 
     def test_execute_requires_explicit_license_acceptance(self):
         with self.assertRaisesRegex(preparation.PreparationError, "EULA"):
@@ -63,6 +78,12 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertNotIn(self.secret.read_text(), json.dumps(result))
         self.assertGreaterEqual(len(runtime["BETTER_AUTH_SECRET"]), 32)
         self.assertFalse(result["containerStarted"])
+        self.assertFalse((self.root / "apps/portal/.env.local").exists())
+        self.assertFalse((self.root / "secrets").exists())
+        for key in ("runtimeEnvironmentFile", "sqlAdminEnvironmentFile"):
+            path = Path(result[key])
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            self.assertEqual(0o700, path.parent.stat().st_mode & 0o777)
 
     def test_repeated_execution_preserves_every_byte(self):
         first = self.prepare(execute=True, accept_sql_eula=True)
@@ -108,13 +129,34 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertEqual(previous, path.read_bytes())
 
     def test_incomplete_pair_is_not_repaired_or_overwritten(self):
-        target = self.root / "apps" / "portal" / ".env.local"
+        target = self.root / ".local/example/portal/runtime.env"
         target.parent.mkdir(parents=True)
         target.write_text("USER_SETTING=keep\n", encoding="utf-8")
         with self.assertRaisesRegex(preparation.PreparationError, "Only one"):
             self.prepare(execute=True, accept_sql_eula=True)
         self.assertEqual("USER_SETTING=keep\n", target.read_text())
         self.assertFalse((self.root / "secrets").exists())
+
+    def test_legacy_portal_settings_require_migration_without_reading(self):
+        target = self.root / "apps/portal/.env.local"
+        target.parent.mkdir(parents=True)
+        target.write_text("OWNER_SETTING=keep\n", encoding="utf-8")
+        for execute in (False, True):
+            with self.subTest(execute=execute), \
+                    patch.object(preparation, "read_environment", side_effect=AssertionError("legacy read")), \
+                    patch.object(preparation, "_read_protected_file", side_effect=AssertionError("secret read")):
+                with self.assertRaisesRegex(preparation.PreparationError, "migrate"):
+                    self.prepare(execute=execute, accept_sql_eula=True)
+        self.assertEqual("OWNER_SETTING=keep\n", target.read_text())
+        self.assertFalse((self.root / ".local").exists())
+
+    def test_private_output_links_are_refused_before_creation(self):
+        outside = Path(self.temporary.name) / "outside"
+        outside.mkdir()
+        (self.root / ".local").symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symbolic links"):
+            self.prepare(execute=True, accept_sql_eula=True)
+        self.assertEqual([], list(outside.iterdir()))
 
     def test_configuration_change_is_reported_without_rewriting_files(self):
         first = self.prepare(execute=True, accept_sql_eula=True)
@@ -134,10 +176,11 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertIn("\\$VALUE", path.read_text())
 
     def test_partial_creation_failure_cleans_only_new_files(self):
-        first, second = self.root / "first.env", self.root / "second.env"
+        first = self.root / ".local/example/portal/first.env"
+        second = first.with_name("second.env")
         with patch.object(preparation, "protect_new_file", side_effect=[None, OSError("no permission")]):
             with self.assertRaises(OSError):
-                preparation.write_new_pair({first: {"VALUE": "one"}, second: {"VALUE": "two"}})
+                preparation.write_new_pair({first: {"VALUE": "one"}, second: {"VALUE": "two"}}, self.root)
         self.assertFalse(first.exists())
         self.assertFalse(second.exists())
 

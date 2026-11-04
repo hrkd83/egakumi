@@ -14,6 +14,7 @@ from deployment import lifecycle
 from deployment.helpers import cleanup
 from deployment.helpers import prepare_secrets as secret_preparation
 from deployment.helpers.configuration import normalize_configuration
+from deployment.helpers.paths import local_paths
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
 
 
@@ -53,10 +54,11 @@ class LifecycleFixture:
         self.config = normalize_configuration(raw, base_directory=core / "config")
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        self.root = Path(self.directory.name).resolve()
+        self.paths = local_paths(self.config, self.root)
         # 正規化済み設定にも元repoの絶対パスが残るため、ROOTだけの差替では足りない。
         # 新しい鍵準備hookを誤って実行しても、実ユーザー鍵へ到達させない。
-        self.config["management"]["sshPublicKeyFile"] = str(self.root / "secrets/management-ssh.pub")
+        self.config["management"]["sshPublicKeyFile"] = str(self.paths.secrets / "management-ssh.pub")
         # 対話準備hookに将来分岐が増えても、実ユーザーの秘密ファイルを
         # 読み書きさせない。すべての秘密参照を同じ一時フォルダーへ閉じ込める。
         secret_fields = {"pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile", "clientSecretFile"}
@@ -69,17 +71,14 @@ class LifecycleFixture:
             elif isinstance(value, dict):
                 for key, item in value.items():
                     if key in secret_fields and isinstance(item, str):
-                        paths_seen.setdefault(item, str(self.root / "secrets" / (str(len(paths_seen)) + "-" + Path(item).name)))
+                        paths_seen.setdefault(item, str(self.paths.secrets / (str(len(paths_seen)) + "-" + Path(item).name)))
                         value[key] = paths_seen[item]
                     else:
                         isolate_secret_paths(item)
 
         isolate_secret_paths(self.config)
-        # ROOT も差し替えないと、prepare_grpc_secret が実 .state へ fixture の
-        # 資格情報を書いてしまう。hook が参照する全可変パスを同じ temp へ隔離する。
-        paths = mock.patch.multiple(lifecycle, ROOT=self.root,
-            PARAMETERS=self.root / "infra/main.parameters.json", STATE=self.root / ".state/latest.json",
-            CAPACITY=self.root / ".state/capacity.json")
+        # ROOTを差し替え、全可変パスを同じtemp内の環境別領域へ隔離する。
+        paths = mock.patch.object(lifecycle, "ROOT", self.root)
         paths.start()
         self.addCleanup(paths.stop)
         original_write = lifecycle.protected_json
@@ -97,6 +96,22 @@ class LifecycleFixture:
         process_guard = mock.patch.object(lifecycle.subprocess, "run", side_effect=AssertionError("No CLI process is permitted in lifecycle tests"))
         process_guard.start()
         self.addCleanup(process_guard.stop)
+        # 通常hook試験でも生成JSONの保護保存を通す。azd環境へのパス登録だけを
+        # process境界で受け、未知のCLI要求は実行せず失敗させる。
+        def environment_only(arguments, **kwargs):
+            expected = ["azd", "env", "set", "EGAKUMI_ARM_PARAMETERS_FILE",
+                        ".local/" + self.config["environmentName"] + "/generated/main.parameters.json",
+                        "--environment", self.config["environmentName"]]
+            self.assertEqual(arguments, expected, "Unexpected lifecycle CLI process")
+            return {}
+
+        self.real_run = lifecycle.run
+        run = mock.patch.object(lifecycle, "run", side_effect=environment_only)
+        self.arm_environment = run.start()
+        self.addCleanup(run.stop)
+        bridge = mock.patch.object(lifecycle, "check_parameter_bridge")
+        self.parameter_bridge = bridge.start()
+        self.addCleanup(bridge.stop)
         # 復元のHTTP分岐は専用テストで検査し、他のhook試験では追加Azure要求をさせない。
         api_center = mock.patch.object(lifecycle, "ensure_api_center_available",
                                        return_value={"status": "available-for-create"})
@@ -123,7 +138,7 @@ class LifecycleFixture:
         dns = mock.patch.object(lifecycle, "configure_public_dns", return_value={"status": "configured"})
         self.public_dns = dns.start()
         self.addCleanup(dns.stop)
-        env = mock.patch.dict(os.environ, {}, clear=True)
+        env = mock.patch.dict(os.environ, {"AZURE_ENV_NAME": self.config["environmentName"], "PYTHONDONTWRITEBYTECODE": "1"}, clear=True)
         env.start()
         self.addCleanup(env.stop)
 

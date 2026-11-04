@@ -13,6 +13,15 @@ from test_ssml_waf import GatewayExpression
 CORE = Path(__file__).resolve().parents[1]
 APIM_CONTAINERS = {'insights-logs-gatewaylogs', 'insights-logs-gatewayllmlogs',
                    'insights-logs-websocketconnectionlogs'}
+JAPAN_CONTAINERS = {
+    'insights-activity-logs', 'insights-logs-audit', 'insights-logs-vmprotectionalerts',
+    'insights-logs-applicationgatewayaccesslog', 'insights-logs-applicationgatewayfirewalllog',
+    'insights-logs-azfwnetworkrule', 'insights-logs-azfwapplicationrule',
+    'insights-logs-azfwidpssignature', 'insights-logs-azfwthreatintel',
+    'insights-logs-auditevent', *APIM_CONTAINERS,
+    'am-apprequests', 'am-appdependencies', 'am-appexceptions', 'am-apptraces',
+    'am-appevents', 'am-syslog', 'am-agwaccesslogs',
+}
 
 
 class AuditExpression(GatewayExpression):
@@ -82,9 +91,11 @@ class ApimAuditRetentionTests(unittest.TestCase):
     def test_production_protects_all_three_apim_categories_in_the_japan_collector(self):
         params = self.parameters()
         definitions = self.definitions(params)
-        self.assertEqual(len(definitions), 20)
+        self.assertEqual(len(definitions), 21)
         japan = {item['name'] for item in definitions if item['accountIndex'] == 0}
-        self.assertEqual(len(japan), 19)
+        self.assertEqual(japan, JAPAN_CONTAINERS)
+        self.assertEqual([item for item in definitions if item['accountIndex'] == 1],
+                         [{'accountIndex': 1, 'name': 'insights-logs-audit'}])
         self.assertTrue(APIM_CONTAINERS <= japan)
         self.assertTrue(APIM_CONTAINERS <= set(self.selected(params)))
         self.assertEqual(self.evaluate(self.policy['properties']['immutabilityPeriodSinceCreationInDays'], params), 2557)
@@ -93,7 +104,7 @@ class ApimAuditRetentionTests(unittest.TestCase):
     def test_test_environment_does_not_create_immutability_policies(self):
         self.assertEqual(self.selected(self.parameters('test')), [])
 
-    def test_existing_eighteen_locked_containers_only_add_the_two_new_policies(self):
+    def test_retained_container_policies_only_add_two_missing_apim_categories(self):
         params = self.parameters()
         definitions = self.definitions(params)
         added = APIM_CONTAINERS - {'insights-logs-gatewaylogs'}

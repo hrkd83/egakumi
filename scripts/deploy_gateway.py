@@ -10,12 +10,11 @@ import re
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit
 
 from deployment.helpers.configuration import (
     build_bicep_configuration, load_configuration_source, load_credential_provider_secrets,
 )
-from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
 )
@@ -38,7 +37,6 @@ from gateway_ingress import (
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
 MODULE = REPOSITORY / 'apps/gateway/deploy/main.bicep'
-BUILD_RECORD = REPOSITORY / '.state/credential-broker-build.json'
 
 
 def group_scope(config):
@@ -47,29 +45,14 @@ def group_scope(config):
 
 
 def foundation_inputs(config, state):
-    """構築済みの共通基盤を参照する。旧構築記録でもazd upのやり直しは不要。"""
+    """現在のinfraが保存した共通基盤出力だけを参照する。"""
     if any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):
         raise ValueError('Core deployment state differs from the selected configuration')
     output, stem = state['outputs'], config['resourceStem']
-    foundation = copy.deepcopy(output.get('gatewayFoundation') or {})
-    if not foundation:
-        # フォルダー移行前に作った既存環境を、そのまま同じIDで更新します。
-        broker = output.get('credentialBroker', {})
-        portal = output.get('portal', {})
-        host = urlsplit(broker.get('url', '')).hostname or ''
-        prefix = f'ca-{stem}-credential-broker.'
-        foundation = {
-            'resourceGroup': config['resourceGroupNames']['svc'],
-            'identityResourceGroup': config['resourceGroupNames']['id'],
-            'apimName': f'apim-{stem}', 'apimPrincipalId': broker.get('apimPrincipalId', ''),
-            'schemaIdentity': broker.get('schemaIdentity') or portal.get('schemaIdentity', {}),
-            'sqlServer': broker.get('sqlServer') or portal.get('sharedSqlServer', ''),
-            'sqlPrivateEndpointId': broker.get('privateEndpointId') or portal.get('sharedSqlPrivateEndpointId', ''),
-            'environmentName': broker.get('environmentName') or portal.get('environmentName', ''),
-            'environmentDomain': host[len(prefix):] if host.startswith(prefix) else '',
-            'registryName': broker.get('registryName') or portal.get('registryName', ''),
-            'vaultName': f'kv-{stem}',
-        }
+    foundation = output.get('gatewayFoundation')
+    if not isinstance(foundation, dict) or not foundation:
+        raise ValueError('Current infrastructure gatewayFoundation output is required; use the current Core deployment state')
+    foundation = copy.deepcopy(foundation)
     expected = {
         'resourceGroup': config['resourceGroupNames']['svc'],
         'identityResourceGroup': config['resourceGroupNames']['id'],
@@ -82,7 +65,8 @@ def foundation_inputs(config, state):
             raise ValueError('Core foundation differs from this environment: ' + name)
     identity = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}"
                 f'/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{stem}-credential-schema')
-    if str(foundation.get('schemaIdentity', {}).get('id', '')).lower() != identity.lower():
+    schema = foundation.get('schemaIdentity')
+    if not isinstance(schema, dict) or str(schema.get('id', '')).lower() != identity.lower():
         raise ValueError('Core schema identity differs from this environment')
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
@@ -220,13 +204,19 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
-    parser.add_argument('--state-file', type=Path, default=REPOSITORY / '.state/latest.json')
+    parser.add_argument('--state-file', type=Path)
     parser.add_argument('--deployment-name', help='Completed Core subscription deployment for CI or a missing local state')
     parser.add_argument('--image-digest', help='Use an existing credential-broker image by immutable sha256 digest')
-    parser.add_argument('--output', type=Path, default=REPOSITORY / '.state/gateway-plan.json')
+    parser.add_argument('--output', type=Path)
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     source = load_configuration_source(args.config)
+    workspace = local_paths(source, REPOSITORY)
+    workspace.checked(args.config)
+    workspace.check_selection(source)
+    args.state_file = workspace.checked(args.state_file or workspace.state / 'latest.json')
+    args.output = workspace.checked(args.output or workspace.state / 'gateway-plan.json')
+    build_record = workspace.state / 'credential-broker-build.json'
     if args.deployment_name:
         # 計画時も、このオプションを使った場合に限りCore配備を読み取ります。
         from deployment.helpers.configuration import load_configuration
@@ -248,7 +238,7 @@ def main(argv=None):
     active = broker_enabled(config)
     data, source_hash = source_bundle() if active and not args.image_digest else (None, None)
     image_state = build_state(state, foundation)
-    digest = args.image_digest or (reusable_image(config, image_state, source_hash, BUILD_RECORD) if active else '')
+    digest = args.image_digest or (reusable_image(config, image_state, source_hash, build_record) if active else '')
     values = {'configuration': build_bicep_configuration(config), 'foundation': foundation,
               'imageDigest': digest or '', 'deployApplication': False}
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
@@ -278,9 +268,9 @@ def main(argv=None):
         values['brokerKey'] = broker_secret(config, foundation, transport)
         if not digest:
             values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
-                record=lambda value: protected_json(BUILD_RECORD, value), prior_receipt=read_build_receipt(BUILD_RECORD))
+                record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
     result = deploy_release(config, state, values, templates, transport)
-    protected_json(REPOSITORY / '.state/gateway-deployment.json', result)
+    protected_json(workspace.state / 'gateway-deployment.json', result)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -19,7 +20,9 @@ class HostEncryptionRegistrationTests(unittest.TestCase):
         self.config = {
             "subscriptionId": "11111111-1111-4111-8111-111111111111",
             "management": {"encryptionAtHost": True},
+            "environmentName": "test",
         }
+        self.enterContext(mock.patch.dict(os.environ, {"PYTHONDONTWRITEBYTECODE": "1"}))
         # 依存の差し替え漏れがあっても、実Azure CLIを起動させない。
         guard = mock.patch.object(lifecycle.subprocess, "run", side_effect=AssertionError("No CLI process is permitted"))
         guard.start()
@@ -213,6 +216,7 @@ class HostEncryptionHookIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
                        "management": {"encryptionAtHost": True},
+            "environmentName": "test",
                        "services": {}}
         guard = mock.patch.object(lifecycle.subprocess, "run", side_effect=AssertionError("No CLI process is permitted"))
         guard.start()
@@ -256,7 +260,7 @@ class HostEncryptionHookIntegrationTests(unittest.TestCase):
     def test_feature_preparation_error_propagates_and_prevents_billable_preparation(self):
         # 実preprovisionを通し、機能未登録が有料の監視準備より先に停止することを確認する。
         with tempfile.TemporaryDirectory() as directory, \
-             mock.patch.object(lifecycle, "PARAMETERS", Path(directory) / "parameters.json"), \
+             mock.patch.object(lifecycle, "ROOT", Path(directory).resolve()), \
              mock.patch.object(lifecycle, "local_preflight"), \
              mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
              mock.patch.object(lifecycle, "prepare_grpc_secret", return_value={}), \

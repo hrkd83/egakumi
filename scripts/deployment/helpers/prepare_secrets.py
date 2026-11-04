@@ -26,7 +26,7 @@ if __package__ in (None, ""):
     __package__ = "deployment.helpers"
 
 from .configuration import ConfigurationError, DnsProviderMismatchError, _read_protected_file, load_configuration, load_dns_plugin_arguments, validate_azure_dns_identity
-from .paths import REPOSITORY
+from .paths import REPOSITORY, local_paths
 
 
 ROOT = REPOSITORY
@@ -57,14 +57,14 @@ def _checked_path(raw: str | Path) -> Path:
 
 
 def _new_target(path: Path, root: Path) -> Path:
-    """新規保存は、このcloneのsecrets配下だけに限定する。外部の既存参照は変更しない。"""
+    """新規保存は選択した環境のsecrets配下に限定する。既存の外部参照は変更しない。"""
     canonical_root = Path(root).resolve()
     try:
         relative = path.relative_to(canonical_root)
     except ValueError:
-        _fail("Missing secret files can only be created under this repository's secrets directory; provide an existing external file or change the configured path.")
+        _fail("Missing secret files can only be created under the selected environment's secrets directory; provide an existing protected external file or correct the configured path.")
     if len(relative.parts) < 2 or relative.parts[0] != "secrets" or ".." in relative.parts:
-        _fail("Missing secret files can only be created under this repository's secrets directory.")
+        _fail("Missing secret files can only be created under the selected environment's secrets directory.")
     return _checked_path(path)
 
 
@@ -309,7 +309,7 @@ def _dns_file_snapshot(path: Path) -> tuple:
 def _replace_dns(specification: dict, value: str, root: Path) -> None:
     """検証済み新DNS入力だけを原子的に置換し、対話中の並行更新は上書きしない。
 
-    repo内secretsに限定し、古いDNSは新しい一時ファイルの型・権限・事業者検査が
+    選択した環境のsecretsに限定し、古いDNSは新しい一時ファイルの型・権限・事業者検査が
     全て成功するまで保持します。同じ処理の並行実行は短時間の排他ファイルで止め、
     置換直前に元のinode・更新時刻・hashを再照合します。中止や不備は旧入力を残します。
     """
@@ -421,7 +421,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, type=Path, help="Organization params JSON; credential values must never be passed as arguments.")
     arguments = parser.parse_args(argv)
     try:
-        result = prepare_secrets(load_configuration(arguments.config), ROOT)
+        config = load_configuration(arguments.config)
+        workspace = local_paths(config, ROOT)
+        workspace.checked(arguments.config)
+        workspace.check_selection(config)
+        workspace.ensure()
+        result = prepare_secrets(config, workspace.root)
         print(f"Local secret inputs ready: {len(result['created'])} created, {len(result['reused'])} reused, {len(result['replaced'])} replaced. Values were not displayed; no Azure operations were performed.")
         return 0
     except (KeyboardInterrupt, EOFError):

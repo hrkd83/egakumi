@@ -3,10 +3,12 @@ from bicep_helpers import compile_bicep
 
 import copy
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from jsonschema import Draft202012Validator
 
@@ -73,10 +75,11 @@ class PortalSigningSecretTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory(prefix="portal-signing-key-")
         self.addCleanup(self.folder.cleanup)
-        self.root = Path(self.folder.name)
+        self.root = Path(self.folder.name).resolve()
+        self.enterContext(mock.patch.dict(os.environ, {"PYTHONDONTWRITEBYTECODE": "1"}))
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
                        "azureTenantId": "22222222-2222-4222-8222-222222222222",
-                       "resourceStem": "test-fixture"}
+                       "resourceStem": "test-fixture", "environmentName": "test"}
 
     def write_protected(self, path, value):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,7 +91,9 @@ class PortalSigningSecretTests(unittest.TestCase):
         again = prepare_secret(self.config, self.root, lambda *_: self.fail("Existing key was overwritten"))
         self.assertEqual(result, again)
         self.assertRegex(result["portalAuthenticationSecret"], r"^[a-f0-9]{128}$")
-        self.assertTrue(secret_path(self.config, self.root, "portal-auth").is_file())
+        expected = self.root / ".local/test/secrets/portal-auth-test-fixture.json"
+        self.assertEqual(secret_path(self.config, self.root, "portal-auth"), expected)
+        self.assertTrue(expected.is_file())
         self.assertFalse(secret_path(self.config, self.root, "credential-broker").exists())
         self.assertFalse((self.root / "params").exists())
 
