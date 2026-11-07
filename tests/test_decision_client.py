@@ -1,7 +1,9 @@
 """実サービスへ接続せず、Decision の型検査と1要求だけの安全な試験を確認する。"""
 import asyncio
 import copy
+from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
@@ -58,10 +60,12 @@ class DecisionTests(unittest.TestCase):
             value = response(); change(value)
             self.assertFalse(probe.inspect_decision(value)["shapeValid"])
 
-    def test_plan_does_not_read_token_or_send_requests(self):
-        with patch.object(sys, "argv", ["decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL,
-                                        "--token-file", "/not/read"]), patch.object(probe, "auth_headers", side_effect=AssertionError("No token read")), patch("builtins.print"):
-            self.assertEqual(probe.main(), 0)
+    def test_plan_does_not_read_credentials_or_send_requests(self):
+        for credential in ("--key-file", "--token-file"):
+            with self.subTest(credential=credential), patch.object(sys, "argv", [
+                    "decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL,
+                    credential, "/not/read"]), patch.object(probe, "auth_headers", side_effect=AssertionError("No credential read")), patch("builtins.print"):
+                self.assertEqual(probe.main(), 0)
 
     def test_evidence_writer_rejects_existing_files_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -79,6 +83,77 @@ class DecisionTests(unittest.TestCase):
                                             "--execute", "--token-file", "/not/read", "--output", str(target)]), patch.object(probe, "auth_headers", side_effect=AssertionError("No token read")):
                 with self.assertRaises(ValueError): probe.main()
             self.assertEqual(target.read_text(), "keep")
+
+
+class CliAuthenticationTests(unittest.TestCase):
+    def test_cli_sends_selected_key_or_bearer_once_and_keeps_evidence_private(self):
+        actual_probe = probe.probe
+        for option, content, header, expected in (
+            ("--key-file", "SYNTHETIC-SUBSCRIPTION-KEY", "api-key", "SYNTHETIC-SUBSCRIPTION-KEY"),
+            ("--token-file", '{"access_token":"<SYNTHETIC_BEARER_TOKEN>"}', "authorization", "Bearer <SYNTHETIC_BEARER_TOKEN>"),
+        ):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:
+                selected_credential = json.loads(content)["access_token"] if option == "--token-file" else content
+                credential = Path(directory) / "credential.txt"
+                credential.write_text(content); credential.chmod(0o600)
+                output = Path(directory) / "result.json"
+                requests = []
+                def handler(request):
+                    requests.append(request)
+                    self.assertEqual(request.headers[header], expected)
+                    other = "authorization" if header == "api-key" else "api-key"
+                    self.assertNotIn(other, request.headers)
+                    return httpx2.Response(200, json=response(), headers={"apim-request-id": "11111111-1111-4111-8111-111111111111"})
+                async def send(url, model, case, headers):
+                    return await actual_probe(url, model, case, headers, transport=httpx2.MockTransport(handler))
+                stdout = io.StringIO()
+                with patch.object(sys, "argv", ["decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL,
+                        "--execute", option, str(credential), "--output", str(output)]), patch.object(probe, "probe", side_effect=send), redirect_stdout(stdout):
+                    self.assertEqual(probe.main(), 0)
+                self.assertEqual(len(requests), 1)
+                self.assertTrue(json.loads(output.read_text())["responseChecksPassed"])
+                self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+                for value in (output.read_text(), stdout.getvalue()):
+                    self.assertNotIn("SYNTHETIC-SUBSCRIPTION-KEY", value)
+                    self.assertNotIn(selected_credential, value)
+                    self.assertNotIn("PRIVATE", value)
+
+    def test_cli_rejects_both_credential_options_before_reading_or_sending(self):
+        with patch.object(sys, "argv", ["decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL,
+                "--key-file", "/not/read-key", "--token-file", "/not/read-token"]), patch.object(probe, "auth_headers") as credentials, patch.object(probe, "probe") as send, redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                probe.main()
+            self.assertEqual(error.exception.code, 2)
+        credentials.assert_not_called(); send.assert_not_called()
+
+    def test_anonymous_cli_does_not_read_or_send_supplied_credentials(self):
+        actual_probe = probe.probe
+        def handler(request):
+            self.assertNotIn("api-key", request.headers)
+            self.assertNotIn("authorization", request.headers)
+            return httpx2.Response(401, json={"error": {"code": "AUTHORIZATION_DENIED"}},
+                                   headers={"apim-request-id": "11111111-1111-4111-8111-111111111111"})
+        async def send(url, model, case, headers):
+            return await actual_probe(url, model, case, headers, transport=httpx2.MockTransport(handler))
+        with tempfile.TemporaryDirectory() as directory, patch.object(sys, "argv", [
+                "decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL, "--case", "anonymous",
+                "--execute", "--key-file", "/not/read", "--output", str(Path(directory) / "result.json")]), patch.object(
+                    probe, "auth_headers", side_effect=AssertionError("No credential read")), patch.object(probe, "probe", side_effect=send), redirect_stdout(io.StringIO()):
+            self.assertEqual(probe.main(), 0)
+
+    def test_unprotected_or_invalid_key_file_stops_before_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            public = root / "public.txt"; public.write_text("SYNTHETIC-KEY"); public.chmod(0o644)
+            invalid = root / "invalid.txt"; invalid.write_text("SYNTHETIC KEY"); invalid.chmod(0o600)
+            linked = root / "linked.txt"; linked.symlink_to(invalid)
+            for index, credential in enumerate((public, invalid, linked)):
+                with self.subTest(credential=credential.name), patch.object(sys, "argv", [
+                        "decision", "--url", "https://gateway.invalid/decision", "--model", probe.MODEL, "--execute",
+                        "--key-file", str(credential), "--output", str(root / f"result-{index}.json")]), patch.object(probe, "probe") as send:
+                    with self.assertRaises(ValueError):
+                        probe.main()
+                    send.assert_not_called()
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):

@@ -136,6 +136,16 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
 
 結果は`.local/<environment>/state/cleanup-predown.json`と`.local/<environment>/state/cleanup-postdown.json`に保存されます。成功・未完了・保護による保持・確認不能を区別し、保持・残存があるものを完全消去済みとは扱いません。
 
+### CM内部アカウントの解放を確認できない場合
+
+CMの正規の撤去経路は、接続権限→接続→provider→APIM本体→削除履歴のpurgeです。この経路はup/downのhookに実装しています。[provider削除](https://learn.microsoft.com/rest/api/apimanagement/authorization-provider/delete?view=rest-apimanagement-2024-05-01)と[APIMのpurge](https://learn.microsoft.com/rest/api/apimanagement/deleted-services/purge?view=rest-apimanagement-2024-05-01)は公開APIですが、CMが背後に作る[credential store](https://learn.microsoft.com/azure/api-management/credentials-process-flow#credential-provider)の内部accountを直接削除・解放確認する公開操作は確認できていません。
+
+providerのDELETE成功・一覧不在・親APIMの404・削除履歴の404だけで、内部accountの解放や同名CMの再構築成功を判定しません。CM採用構成の`postdown`は、`status: resources-absent-with-unverified-credential-manager-release`を返します。公開資源・削除履歴の結果は`resourceCleanupStatus`に、内部accountの未確認は`credentialManager.internalAccountReleaseVerified: false`と`sameNameCredentialRecreationVerified: false`に分けます。終了コード0も、この内部解放の証明にはなりません。
+
+同名APIMの再構築で「同じAPIMサービス名を別アカウントが使用中」というCM作成エラーが出た場合は、未解決として記録します。Azure公式OSSにも[同一症状の記録](https://github.com/Azure/azure-service-operator/blob/b9dcbe48feaf1173f48ab28dd5edc48b514d3f4d/v2/internal/testcommon/samples_tester.go#L120)がありますが、そこに解放手順・原因確定・解放期限は示されていません。soft-deleteの保持期間や一般的なpurge後待機を、このエラーの解決保証に読み替えません。
+
+削除・配備の結果、エラーコード、発生時刻、相関IDをローカルの証跡から整理し、Microsoftサポートへサービス側の調査・解放方法を確認します。秘密値・トークンは共有せず、資材からの問い合わせ送信も行いません。未公開account IDを推測したDELETEや未定義の`deleteAll`指定は追加しません。同名再構築の実測は別の有料試験として扱い、`azd down`から自動的に環境を作り直しません。
+
 ### 削除待ち・再実行時に確認すること
 
 - APIMやアプリが削除中なら要求を重ねず、同じIDの消失を待つ。待機期限を超えたら同じ入力・stateを保持して原因と現在状態を確認する。
@@ -144,7 +154,9 @@ Locked WORMがある場合は変更前に停止します。Unlockedでも構成�
 - Log Analyticsのforce完全削除やAPI Centerのpurgeは通常処理に含めない。`apiCenterRetention`が`unverified`の場合も確認不能の理由を保持する。
 - モデル消失と利用枠・費用の反映は別に確認する。利用枠は次の`capacity`で再確認し、他環境の割当まで0にしない。
 
-### 一部のRGを削除した後、再実行がResourceGroupNotFoundで止まる場合
+### 一部の所有RGが残る、またはResourceGroupNotFoundで止まる場合
+
+部分構築の撤去でazd本体が空のRGを削除対象に含めない場合や、途中まで削除済みのRGがある場合は、`postdown`が`resource-groups-remain`で停止することがあります。先行回収の記録を確認し、以下の手順で残る所有RGだけを回収します。
 
 1. `.local/<environment>/state/cleanup-predown.json`の対象が一致し、`result.status`が`ready-for-azd-down`であることを確認する。モデル・APIM・アプリ／ジョブ・CAE・サブネット・管理VMの先行回収と保持確認が済んだ記録を使う。
 2. 同じSubscriptionで5RGの現存状態を読み取り、残るRGの所有と資源を照合する。削除中なら完了を待つ。

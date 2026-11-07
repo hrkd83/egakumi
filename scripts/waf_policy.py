@@ -2,6 +2,14 @@
 """Reconcile measured WAF exclusions on exact published paths. Default CLI mode only plans."""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import copy
 import json
@@ -10,12 +18,13 @@ import re
 import time
 
 from deployment.helpers.paths import REPOSITORY
-from deployment.helpers.portal_gateway import _etag, _ok, _writable, _writable_policy, gateway_id, NETWORK_API
+from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
+                                                NETWORK_API, portal_session_exclusions)
 
 
 MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
 CALLBACKS = {'gateway': ('/auth/connections/browser/identity-callback', ['942430', '942440', '942450']),
-             'portal': ('/api/auth/callback/microsoft', ['942430', '942440'])}
+             'portal': ('/api/auth/callback/microsoft', ['942430', '942440', '942450'])}
 
 
 def exclusion(selector, group, rules, variable='RequestArgValues'):
@@ -147,7 +156,7 @@ def canonical_gateway(body):
 
 def protocol_exclusions(config, profile):
     """Keep the same media and callback exceptions as the infrastructure definition."""
-    result = []
+    result = portal_session_exclusions() if profile['scope'] == 'portal' else []
     callback, rules = CALLBACKS[profile['scope']]
     if callback in profile['paths']:
         result.append(exclusion('code', 'REQUEST-942-APPLICATION-ATTACK-SQLI', rules))
@@ -286,7 +295,10 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         if configured_host and listener.get('hostName') != configured_host:
             raise ValueError('Data WAF listener has another public host')
         listener_policy = listener.get('firewallPolicy', {}).get('id')
-        if listener_policy and listener_policy.casefold() != base_id.casefold():
+        allowed_listener_policies = {base_id.casefold()}
+        if profile['scope'] == 'portal':
+            allowed_listener_policies.add((base_id + '-portal').casefold())
+        if listener_policy and listener_policy.casefold() not in allowed_listener_policies:
             raise ValueError('Data WAF listener uses another policy')
         sources, kept, existing_slot = [], [], None
         wanted = {path.casefold() for path in profile['paths']}
@@ -348,7 +360,16 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
                 progress('WAF: パス別ポリシーの反映を待っています。', flush=True)
                 notice = monotonic() + 45
             sleep(10)
-        raise ValueError('Data WAF update is pending; inspect its provisioning state before retrying')
+        # 期限直後の収束は同じ完全一致条件で一度だけ確認し、PUTは再送しません。
+        value = _ok(transport.request('GET', path), 'read data WAF final update')
+        state = value.get('properties', {}).get('provisioningState')
+        matched = (_writable_policy(value) if policy else canonical_gateway(value)) == expected_state
+        if state == 'Succeeded' and matched:
+            return
+        state_label = state if state in ('Succeeded', 'Updating', 'Creating', 'Failed', 'Canceled', 'Deleting') else 'Unknown'
+        mismatch = 'false' if matched else 'true'
+        outcome = 'failed' if state in ('Failed', 'Canceled', 'Deleting') else 'pending'
+        raise ValueError(f'Data WAF update is {outcome}; provisioningState={state_label}; configurationMismatch={mismatch}')
     gateway_changed = canonical_gateway(update) != canonical_gateway(source)
     gateway_headers = {'If-Match': _etag(response)} if gateway_changed else None
     for identifier, desired, headers in changes:

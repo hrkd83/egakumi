@@ -9,15 +9,21 @@ VM SKU、プロバイダー登録状況などを読む。ログイン先が一�
 本人同意など、別に確認すべき項目も結果のlimitsとして残す。
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 import argparse
 from datetime import datetime, timezone
 from importlib import metadata
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 
 from integration_client import private_write
 from deployment.helpers.configuration import entra_tenant_id, load_configuration_source

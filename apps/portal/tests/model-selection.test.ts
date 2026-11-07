@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getEmbeddingModels, getImageGenerationModels, getRealtimeModels, getSpeechModels, getTextGenerationModels } from "../lib/model-catalog.ts";
 import { modelSelectionScope, resolveInitialModel } from "../lib/model-selection.ts";
-import { resolveTextModelVariant } from "../lib/text-model-choices.ts";
+import { resolveTextModelVariant, resolveTextPanelInput } from "../lib/text-model-choices.ts";
 import { createPortalStore } from "../lib/portal-store.ts";
 
 test("初回は公開カタログの最新世代を選び、古い固定nanoや名前の辞書順で決めない", () => {
   const text = getTextGenerationModels().filter((model) => model.providerId === "openai");
-  const initial = resolveTextModelVariant(text, createPortalStore().getState().textInput);
+  const initial = resolveTextModelVariant(text, resolveTextPanelInput(text, undefined, createPortalStore().getState().textInput));
   assert.equal(initial?.id, "gpt-6.1-sol");
   assert.equal(initial?.operationId, "responses-create");
   assert.equal(resolveInitialModel([{ id: "z-latest" }, { id: "a-earlier" }])?.id, "z-latest");

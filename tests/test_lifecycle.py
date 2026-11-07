@@ -278,7 +278,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "configure_app_insights_cap"):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config, "monitoring", manage_policies=True,
-                                       retained_policy_ids=[], preserve_collection=False)
+                                       retained_policy_ids=[], preserve_collection=False,
+                                       diagnostic_setting_properties=mock.ANY)
         state = json.loads(state_path.read_text())
         self.assertEqual(state["resourceGroupNames"], self.config["resourceGroupNames"])
         self.assertNotIn("LOCAL_ONLY_FIXTURE", state_path.read_text())
@@ -308,7 +309,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
-                                       retained_policy_ids=[], preserve_collection=False)
+                                       retained_policy_ids=[], preserve_collection=False,
+                                       diagnostic_setting_properties=mock.ANY)
         params = json.loads(self.paths.parameters.read_text())['parameters']
         self.assertEqual(params['phase']['value'], 'core')
         self.assertFalse(transport.mutations())
@@ -334,7 +336,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'configure_app_insights_cap'), contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
-                                       retained_policy_ids=[policy], preserve_collection=False)
+                                       retained_policy_ids=[policy], preserve_collection=False,
+                                       diagnostic_setting_properties=mock.ANY)
         # 監視で保護を揃えた後のnative coreは、LockedへのPUTをしない。
         params = json.loads(self.paths.parameters.read_text())['parameters']
         self.assertFalse(params['manageAuditImmutabilityPolicies']['value'])

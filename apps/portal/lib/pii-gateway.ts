@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
 import { getModelGatewayEnvironment, type ModelGatewayEnvironment } from "./model-gateway.ts";
@@ -67,7 +68,7 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, 131_072, signal), value: unknown = JSON.parse(raw);
-    if (raw.includes(key) || JSON.stringify(value).includes(key)) throw new TypeError("Unexpected credential reflection");
+    if (containsModelCredential(value, key, raw)) throw new TypeError("Unexpected credential reflection");
     const result = piiResponseSchema.parse(value);
     if (result.language !== input.language) throw new TypeError("Unexpected language");
     return Response.json({ result, durationMs: Math.round(performance.now() - started) }, { headers: responseHeaders });

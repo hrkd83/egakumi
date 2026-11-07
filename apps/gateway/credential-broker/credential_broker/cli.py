@@ -1,7 +1,7 @@
 """Schema bootstrap and read-first CM reconciliation for the SQL broker.
 
 The migration job uses the separate SQL Entra administrator identity. Runtime
-connections use a contained Entra user and built-in SQL data roles. Neither
+connections use a contained Entra user with explicit object permissions. Neither
 command accepts a SQL password or emits OAuth tokens or user display names.
 """
 from __future__ import annotations
@@ -19,6 +19,20 @@ from .cm import connection_metadata_status
 
 
 SCHEMA = Path(__file__).resolve().parents[1] / "sql" / "001_initial.sql"
+
+# Runtime includes the web application and its reconciliation job. Schema and
+# pool initialization remain with the separate migration identity. In particular,
+# schema-version writes and direct connection insertion are not runtime grants;
+# AllocateConnection inserts the mapping through its same-owner stored procedure.
+RUNTIME_TABLE_PERMISSIONS = {
+    "SchemaVersions": "SELECT",
+    "Pools": "SELECT, UPDATE",
+    "Connections": "SELECT, UPDATE, DELETE",
+    "Transactions": "SELECT, INSERT, UPDATE, DELETE",
+    "Sessions": "SELECT, INSERT, UPDATE, DELETE",
+    "SubjectSecurity": "SELECT, INSERT, UPDATE",
+    "SessionRotationCandidates": "SELECT, INSERT, DELETE",
+}
 
 
 def _identifier(value):
@@ -46,6 +60,30 @@ def pool_inventory(profiles):
             providers.add(name)
             rows.append((profile, name, capacity))
     return rows
+
+
+def grant_runtime_access(store, *, runtime_user_name, runtime_sid):
+    """Atomically replace the dedicated runtime user's broad data-role grants."""
+    name = _identifier(runtime_user_name)
+    with store._db(transaction=True) as cursor:
+        # Recheck in this transaction, after schema initialization. A replacement
+        # principal must not receive grants merely because its name still matches.
+        cursor.execute("SELECT sid,type FROM sys.database_principals WHERE name=?", runtime_user_name)
+        existing = cursor.fetchone()
+        if existing is None or bytes(existing[0]) != runtime_sid or existing[1] != "E":
+            raise StoreConflict("Existing SQL runtime principal differs from the configured identity")
+        for table, permissions in RUNTIME_TABLE_PERMISSIONS.items():
+            cursor.execute("GRANT " + permissions + " ON OBJECT::broker." + _identifier(table) + " TO " + name)
+        cursor.execute("GRANT EXECUTE ON OBJECT::broker.AllocateConnection TO " + name)
+        # Grant the required objects before dropping the old memberships. The
+        # transaction keeps a repeated deployment from exposing a partial grant set.
+        for role in ("db_datareader", "db_datawriter"):
+            cursor.execute("SELECT IS_ROLEMEMBER(?,?)", role, runtime_user_name)
+            membership = cursor.fetchone()
+            if membership is None or membership[0] not in (0, 1):
+                raise StoreConflict("SQL runtime role membership is not known")
+            if membership[0] == 1:
+                cursor.execute("ALTER ROLE " + _identifier(role) + " DROP MEMBER " + name)
 
 
 def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_path=SCHEMA):
@@ -84,11 +122,7 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
             cursor.execute("CREATE USER " + name + " WITH SID=0x" + raw_sid.hex() + ", TYPE=E;")
         elif bytes(existing[0]) != raw_sid or existing[1] != "E":
             raise StoreConflict("Existing SQL runtime principal differs from the configured identity")
-        for role in ("db_datareader", "db_datawriter"):
-            cursor.execute("SELECT IS_ROLEMEMBER(?,?)", role, runtime_user_name)
-            if cursor.fetchone()[0] != 1:
-                cursor.execute("ALTER ROLE " + _identifier(role) + " ADD MEMBER " + name)
-        cursor.execute("GRANT EXECUTE ON OBJECT::broker.AllocateConnection TO " + name)
+    grant_runtime_access(store, runtime_user_name=runtime_user_name, runtime_sid=raw_sid)
     with store._db(transaction=True) as cursor:
         # Disable only new allocation into retired pools; existing user mappings
         # keep their provider and can still be used or reauthenticated.

@@ -35,7 +35,7 @@
       if (kind == &quot;pathModel&quot;) { model = context.Request.MatchedParameters.GetValueOrDefault((string)constraint[&quot;parameter&quot;], &quot;&quot;); }
       if (constraint?[&quot;model&quot;]?.Type == JTokenType.String) { model = (string)constraint[&quot;model&quot;]; }
       if (String.IsNullOrEmpty(model) || !System.Text.RegularExpressions.Regex.IsMatch(model, &quot;^[A-Za-z0-9_.-]{1,160}$&quot;)) { return &quot;&quot;; }
-      if ((kind == &quot;pathModel&quot; || kind == &quot;bodyModel&quot; || kind == &quot;statelessResponses&quot;) &amp;&amp; !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model)) { return &quot;&quot;; }
+      if ((kind == &quot;pathModel&quot; || kind == &quot;bodyModel&quot; || kind == &quot;textEmbeddings&quot; || kind == &quot;rerank&quot; || kind == &quot;statelessResponses&quot;) &amp;&amp; !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model)) { return &quot;&quot;; }
       return model;
     } catch { return &quot;&quot;; }
   }" />

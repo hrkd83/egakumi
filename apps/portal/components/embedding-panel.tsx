@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Plus, Square, Trash2 } from "lucide-react";
@@ -11,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-documentation-layout";
 import { usePortalStore } from "@/components/portal-store-provider";
 import { useModelSelection } from "@/components/use-model-selection";
+import { restoreModelSettings } from "@/lib/model-settings";
+import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 import { MAX_EMBEDDING_TEXT_CHARACTERS, embeddingInputSchema, type EmbeddingInput, type EmbeddingResult } from "@/lib/embedding-request";
 import { EMBEDDING_SAMPLE_TEXTS, buildEmbeddingRequest, defaultEmbeddingInput, getEmbeddingDefaultDimensions, getEmbeddingDimensionChoices, getEmbeddingEndpoint, getEmbeddingHeaders, getEmbeddingIntegrationExample, getEmbeddingRequestSchema, getEmbeddingResponseSchema } from "@/lib/embedding-integration";
 import { readEmbeddingResponse } from "@/lib/embedding-response";
@@ -51,9 +55,11 @@ const languageNames: Record<IntegrationLanguage, string> = { typescript: "TypeSc
 
 /** 編集した複数テキストを、本人が選んだ購読キーで比較する埋め込みガイドです。 */
 export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { models: EmbeddingModel[]; dictionary: Dictionary; locale: Locale; gatewayOrigin: string | null }) {
-  const { initialModel, rememberModel } = useModelSelection("embeddings", models);
+  const fieldId = useFieldIds();
+  const { scope, initialModel, rememberModel } = useModelSelection("embeddings", models);
+  const savedSettings = usePortalStore((state) => state.modelSettings.embeddings[scope]), rememberSettings = usePortalStore((state) => state.setModelSettings);
   const draft = usePortalStore((state) => state.modelDrafts.embeddingTexts), updateDrafts = usePortalStore((state) => state.updateModelDrafts);
-  const [store] = useState(() => createStore<PanelState>(() => ({ input: { ...(initialModel ? defaultEmbeddingInput(initialModel) : { modelId: "", dimensions: null, inputType: null, texts: [EMBEDDING_SAMPLE_TEXTS[0]] }), ...(draft !== null ? { texts: [...draft] } : {}) }, apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
+  const [store] = useState(() => createStore<PanelState>(() => ({ input: { ...restoreModelSettings("embeddings", initialModel ? defaultEmbeddingInput(initialModel) : { modelId: "", dimensions: null, inputType: null, texts: [EMBEDDING_SAMPLE_TEXTS[0]] }, savedSettings, (input) => { if (initialModel) buildEmbeddingRequest(initialModel, input); }), ...(draft !== null ? { texts: [...draft] } : {}) }, apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
   const state = useStore(store);
   const [choices, setChoices] = useState<{ apiId: string; status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ apiId: "", status: "loading", keys: [] });
   const [refresh, setRefresh] = useState(0);
@@ -69,7 +75,7 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
   let payload: Record<string, unknown> | null = null;
   try { if (model && parsed.success) payload = buildEmbeddingRequest(model, parsed.data); } catch { /* 不正なオプションは実行せず、同じ検証結果を画面で案内します。 */ }
 
-  useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
   useEffect(() => {
     if (!apiId) return;
     const controller = new AbortController();
@@ -78,7 +84,7 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
   }, [apiId, refresh]);
 
   /** オプションの選択とリクエスト例を同じ状態から更新します。 */
-  function updateInput(patch: Partial<EmbeddingInput>) { if (patch.texts !== undefined) updateDrafts({ embeddingTexts: patch.texts }); store.setState((current) => ({ input: { ...current.input, ...patch }, result: null, failure: null, cancelled: false })); }
+  function updateInput(patch: Partial<EmbeddingInput>) { if (patch.texts !== undefined) updateDrafts({ embeddingTexts: patch.texts }); const input = { ...store.getState().input, ...patch }; rememberSettings("embeddings", scope, input); store.setState({ input, result: null, failure: null, cancelled: false }); }
 
   /** キー候補を取得し直し、古いグループ所属や削除されたキーで実行しないようにします。 */
   function refreshKeys() { setChoices({ apiId, status: "loading", keys: [] }); setRefresh((value) => value + 1); }
@@ -109,25 +115,25 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
 
   return <ApiDocumentationLayout locale={locale} value={state.tab} onValueChange={(tab) => store.setState({ tab })} busy={state.loading}
     selection={<>
-      <div className="max-w-xl"><div className="space-y-2"><label htmlFor="embedding-model" className="block text-sm font-medium">{text.model}</label><Select value={model.id} disabled={state.loading} onValueChange={(value) => { const selected = models.find((item) => item.id === value); if (selected) { rememberModel({ id: selected.id }); store.setState({ input: { ...defaultEmbeddingInput(selected), texts: state.input.texts }, result: null, failure: null }); } }}><SelectTrigger id="embedding-model" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{models.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div></div>
+      <div className="max-w-xl"><div className="space-y-2"><label htmlFor={fieldId("embedding-model")} className="block text-sm font-medium">{text.model}</label><Select value={model.id} disabled={state.loading} onValueChange={(value) => { const selected = models.find((item) => item.id === value); if (selected) { rememberModel({ id: selected.id }); updateInput({ ...defaultEmbeddingInput(selected), texts: state.input.texts }); } }}><SelectTrigger id={fieldId("embedding-model")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{models.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent></Select></div></div>
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
       <div className="space-y-2 rounded-lg border border-border bg-white p-3">
-        <div className="flex items-center justify-between gap-3"><label htmlFor="embedding-api-key" className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
-        <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.apiId !== apiId || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id="embedding-api-key" className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
+        <div className="flex items-center justify-between gap-3"><label htmlFor={fieldId("embedding-api-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button></div>
+        <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.apiId !== apiId || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={fieldId("embedding-api-key")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
         <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
         {(choices.apiId !== apiId || choices.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
         {choices.apiId === apiId && choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
         {choices.apiId === apiId && choices.status === "ready" && !choices.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
       </div>
       <div className="grid items-start gap-4 sm:grid-cols-2">
-        <div className="space-y-2"><label htmlFor="embedding-dimensions" className="block text-sm font-medium">{embedding.dimensions}</label><Select value={state.input.dimensions === null ? "default" : String(state.input.dimensions)} disabled={state.loading} onValueChange={(value) => updateInput({ dimensions: value === "default" ? null : Number(value) })}><SelectTrigger id="embedding-dimensions" aria-describedby="embedding-dimensions-help" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">{embedding.defaultDimensions} ({number.format(getEmbeddingDefaultDimensions(model))})</SelectItem>{getEmbeddingDimensionChoices(model).map((value) => <SelectItem key={value} value={String(value)}>{number.format(value)}</SelectItem>)}</SelectContent></Select></div>
-        {model.providerId === "cohere" && <div className="space-y-2"><label htmlFor="embedding-input-type" className="block text-sm font-medium">{embedding.inputType}</label><Select value={state.input.inputType ?? ""} disabled={state.loading} onValueChange={(inputType) => updateInput({ inputType })}><SelectTrigger id="embedding-input-type" className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{model.inputTypes.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>}
+        <div className="space-y-2"><label htmlFor={fieldId("embedding-dimensions")} className="block text-sm font-medium">{embedding.dimensions}</label><Select value={state.input.dimensions === null ? "default" : String(state.input.dimensions)} disabled={state.loading} onValueChange={(value) => updateInput({ dimensions: value === "default" ? null : Number(value) })}><SelectTrigger id={fieldId("embedding-dimensions")} aria-describedby={fieldId("embedding-dimensions-help")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="default">{embedding.defaultDimensions} ({number.format(getEmbeddingDefaultDimensions(model))})</SelectItem>{getEmbeddingDimensionChoices(model).map((value) => <SelectItem key={value} value={String(value)}>{number.format(value)}</SelectItem>)}</SelectContent></Select></div>
+        {model.providerId === "cohere" && <div className="space-y-2"><label htmlFor={fieldId("embedding-input-type")} className="block text-sm font-medium">{embedding.inputType}</label><Select value={state.input.inputType ?? ""} disabled={state.loading} onValueChange={(inputType) => updateInput({ inputType })}><SelectTrigger id={fieldId("embedding-input-type")} className="h-10 w-full bg-white text-sm"><SelectValue /></SelectTrigger><SelectContent>{model.inputTypes.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>}
       </div>
-      <p id="embedding-dimensions-help" className="text-sm leading-6 text-muted-foreground">{embedding.dimensionsHelp}</p>
+      <p id={fieldId("embedding-dimensions-help")} className="text-sm leading-6 text-muted-foreground">{embedding.dimensionsHelp}</p>
       {model.providerId === "cohere" && <p className="text-sm leading-6 text-muted-foreground">{embedding.inputTypeHelp}</p>}
-      <div className="space-y-3">{state.input.texts.map((value, index) => <div key={index} className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor={`embedding-text-${index}`} className="text-sm font-medium">{embedding.text} {index + 1}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || state.input.texts.length <= 1} aria-label={`${embedding.removeText} ${index + 1}`} onClick={() => updateInput({ texts: state.input.texts.filter((_, entry) => entry !== index) })}><Trash2 className="size-3.5" />{embedding.removeText}</Button></div><Textarea id={`embedding-text-${index}`} rows={3} maxLength={MAX_EMBEDDING_TEXT_CHARACTERS} required disabled={state.loading} value={value} placeholder={EMBEDDING_SAMPLE_TEXTS[index % EMBEDDING_SAMPLE_TEXTS.length]} onChange={(event) => updateInput({ texts: state.input.texts.map((text, entry) => entry === index ? event.target.value : text) })} className="bg-white text-sm leading-7" /></div>)}<div className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{embedding.textsHelp.replace("{count}", number.format(model.maxInputs))}</p><Button type="button" variant="outline" size="sm" disabled={state.loading || state.input.texts.length >= model.maxInputs} onClick={() => updateInput({ texts: [...state.input.texts, ""] })}><Plus className="size-3.5" />{embedding.addText}</Button></div></div>
+      <div className="space-y-3">{state.input.texts.map((value, index) => <div key={index} className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor={fieldId(`embedding-text-${index}`)} className="text-sm font-medium">{embedding.text} {index + 1}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || state.input.texts.length <= 1} aria-label={`${embedding.removeText} ${index + 1}`} onClick={() => updateInput({ texts: state.input.texts.filter((_, entry) => entry !== index) })}><Trash2 className="size-3.5" />{embedding.removeText}</Button></div><Textarea id={fieldId(`embedding-text-${index}`)} rows={3} maxLength={MAX_EMBEDDING_TEXT_CHARACTERS} required disabled={state.loading} value={value} placeholder={EMBEDDING_SAMPLE_TEXTS[index % EMBEDDING_SAMPLE_TEXTS.length]} onChange={(event) => updateInput({ texts: state.input.texts.map((text, entry) => entry === index ? event.target.value : text) })} className="bg-white text-sm leading-7" /></div>)}<div className="flex items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{embedding.textsHelp.replace("{count}", number.format(model.maxInputs))}</p><Button type="button" variant="outline" size="sm" disabled={state.loading || state.input.texts.length >= model.maxInputs} onClick={() => updateInput({ texts: [...state.input.texts, ""] })}><Plus className="size-3.5" />{embedding.addText}</Button></div></div>
       <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-lg text-sm leading-6 text-muted-foreground">{embedding.sampleNotice}</p><div className="flex items-center gap-2">{state.loading && <Button type="button" variant="outline" size="sm" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? embedding.running : embedding.execute}</Button></div></div>
       {!payload && <p role="alert" className="text-sm text-destructive">{text.errors.InvalidRequest}</p>}
     </form>

@@ -266,7 +266,8 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
                 or (current.get('rewriteRuleSet') and not _same_ref(current['rewriteRuleSet'], expected_rewrite))):
             raise ValueError('Gateway callback path has another backend, rewrite or path')
         current['firewallPolicy'] = {'id': policy_id}
-        current['paths'] = list(paths)
+        # Azureは同一ルール内の完全パスの順序を変えて返すことがある。同じ集合の検証後は
+        # 既存順を保ち、反映待機や再実行で不要な差分を作らない。ルール間の優先順は別に扱う。
         if rewrite:
             current['rewriteRuleSet'] = copy.deepcopy(rewrite)
         # 関係のない完全パスとの順序は保ち、実際に先取りするwildcardがある時だけ移す。

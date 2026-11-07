@@ -6,7 +6,10 @@
     設定や入力が壊れていれば拒否し、上限なしで継続することはありません。
   -->
   <!-- Include before any request transformation or backend authentication.
-       JSON byte length comes from the preserved message. Binary/multipart
+       JSON byte length comes from the preserved message. PII alone reserves
+       six times its compact-JSON budget for escaped wire representations;
+       its operation validates the compact budget after strict input parsing.
+       Binary/multipart
        contracts use explicit Content-Length plus operation validate-content.
        No response body is read, so streaming remains a direct relay. -->
   <!-- 入力上限・出力上限を確認します。result は拒否を既定として作り、すべての検査を通ったときだけ許可します。 -->
@@ -43,12 +46,13 @@
         return result.ToString(Newtonsoft.Json.Formatting.None);
       }
       var bytes = context.Request.Body == null ? new byte[0] : context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
-      if (bytes.Length &gt; (long)maxBytes) {
+      var kind = (string)constraint[&quot;kind&quot;];
+      var receivedMaxBytes = kind == &quot;pii&quot; ? 6L * (long)maxBytes : (long)maxBytes;
+      if (bytes.Length &gt; receivedMaxBytes) {
         result[&quot;status&quot;] = 413;
         result[&quot;code&quot;] = &quot;REQUEST_TOO_LARGE&quot;;
         return result.ToString(Newtonsoft.Json.Formatting.None);
       }
-      var kind = (string)constraint[&quot;kind&quot;];
       /* Embedding selects an allowed model but does not generate output tokens.
          The loader requires a token parameter for Chat; Responses always uses
          its explicit generation contract. Read-only external operations still
@@ -118,6 +122,68 @@
             var value = body[field.Name];
             if (value != null &amp;&amp; (value.Type != JTokenType.String || !((JArray)field.Value).Any(v =&gt; (string)v == (string)value))) { throw new Exception(); }
           }
+        }
+      }
+      if (kind == &quot;textEmbeddings&quot;) {
+        var openai = arrays?[&quot;input&quot;] != null;
+        var field = openai ? &quot;input&quot; : &quot;texts&quot;;
+        if (arrays?[field]?.Type != JTokenType.Integer || (long)arrays[field] != 16) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        var texts = body?[field] as JArray;
+        /* ECMAScript trim matches Portal validation; no per-text Portal cap,
+           no trimming or rewriting of the native request is introduced. */
+        var whitespace = &quot;\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff&quot;.ToCharArray();
+        var otherProviderFields = openai ? new string[] { &quot;texts&quot;, &quot;input_type&quot;, &quot;output_dimension&quot;, &quot;embedding_types&quot; } : new string[] { &quot;input&quot;, &quot;dimensions&quot;, &quot;encoding_format&quot; };
+        if (body == null || texts == null || texts.Count == 0 || texts.Count &gt; 16
+            || texts.Any(item =&gt; item.Type != JTokenType.String || ((string)item).Trim(whitespace).Length == 0)
+            || otherProviderFields.Any(name =&gt; body.Property(name) != null)) { throw new Exception(); }
+        if (!openai) {
+          var purpose = body[&quot;input_type&quot;];
+          var purposes = choices?[&quot;input_type&quot;] as JArray;
+          if (purpose?.Type != JTokenType.String || purposes == null || !purposes.Any(item =&gt; (string)item == (string)purpose)) { throw new Exception(); }
+        }
+        var models = constraint[&quot;allowedModels&quot;] as JArray;
+        var dimensions = constraint[&quot;embeddingDimensionsByModel&quot;] as JObject;
+        if (models == null || dimensions == null || models.Count != dimensions.Count) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        /* Unknown request models retain the existing model-authorization refusal.
+           Every approved alias must have its dimension contract; no fallback. */
+        var model = body[&quot;model&quot;];
+        if (model?.Type == JTokenType.String &amp;&amp; models.Any(item =&gt; (string)item == (string)model)) {
+          var bounds = dimensions[(string)model] as JObject;
+          var maximum = bounds?[&quot;maximum&quot;];
+          var defaultValue = bounds?[&quot;default&quot;];
+          var allowed = bounds?[&quot;allowed&quot;] as JArray;
+          if (maximum?.Type != JTokenType.Integer || (long)maximum &lt; 1 || (long)maximum &gt; 1000000
+              || defaultValue?.Type != JTokenType.Integer || (long)defaultValue &lt; 1 || (long)defaultValue &gt; (long)maximum
+              || (!openai &amp;&amp; allowed == null)
+              || (allowed != null &amp;&amp; (allowed.Count == 0 || allowed.Any(item =&gt; item.Type != JTokenType.Integer || (long)item &lt; 1 || (long)item &gt; (long)maximum)
+                  || !allowed.Any(item =&gt; (long)item == (long)defaultValue) || !allowed.Any(item =&gt; (long)item == (long)maximum)))) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+          var requested = body[openai ? &quot;dimensions&quot; : &quot;output_dimension&quot;];
+          if (requested != null &amp;&amp; (requested.Type != JTokenType.Integer || (long)requested &lt; 1 || (long)requested &gt; (long)maximum
+              || (allowed != null &amp;&amp; !allowed.Any(item =&gt; (long)item == (long)requested)))) { throw new Exception(); }
+        }
+      }
+      if (kind == &quot;rerank&quot;) {
+        var documentLimit = arrays?[&quot;documents&quot;];
+        var topLimit = integers?[&quot;top_n&quot;];
+        if (documentLimit?.Type != JTokenType.Integer || (long)documentLimit &lt; 1 || (long)documentLimit &gt; 10000
+            || topLimit?[&quot;minimum&quot;]?.Type != JTokenType.Integer || (long)topLimit[&quot;minimum&quot;] != 1
+            || topLimit?[&quot;maximum&quot;]?.Type != JTokenType.Integer || (long)topLimit[&quot;maximum&quot;] &lt; 1 || (long)topLimit[&quot;maximum&quot;] &gt; (long)documentLimit
+            || topLimit?[&quot;required&quot;]?.Type != JTokenType.Boolean || !(bool)topLimit[&quot;required&quot;]) {
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+        }
+        var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+        var documents = body?[&quot;documents&quot;] as JArray;
+        var query = body?[&quot;query&quot;];
+        var top = body?[&quot;top_n&quot;];
+        /* Match the Portal's ECMAScript trim whitespace exactly, including BOM.
+           Do not trim, clamp or rewrite the request sent to the model. */
+        var whitespace = &quot;\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff&quot;.ToCharArray();
+        if (query?.Type != JTokenType.String || ((string)query).Trim(whitespace).Length == 0
+            || documents == null || documents.Count == 0
+            || documents.Any(item =&gt; item.Type != JTokenType.String || ((string)item).Trim(whitespace).Length == 0)
+            || top?.Type != JTokenType.Integer || (long)top &lt; 1 || (long)top &gt; documents.Count) {
+          throw new Exception();
         }
       }
       result[&quot;allowed&quot;] = true;

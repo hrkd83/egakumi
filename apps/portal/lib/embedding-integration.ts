@@ -10,13 +10,14 @@ export const EMBEDDING_SAMPLE_TEXTS = [
 
 /** 画面で提示する出力次元です。nullはパラメーターを省略し、モデルの既定値を使います。 */
 export function getEmbeddingDimensionChoices(model: EmbeddingModel): number[] {
-  if (model.providerId === "cohere") return [256, 512, 1_024, 1_536];
-  return model.id === "text-embedding-3-large" ? [256, 512, 1_024, 1_536, 3_072] : [256, 512, 1_024, 1_536];
+  const { allowed, maximum, default: initial } = model.embeddingDimensions;
+  if (allowed) return [...allowed];
+  return [...new Set([256, 512, 1_024, 1_536, 3_072, maximum, initial].filter((value) => value <= maximum))].sort((left, right) => left - right);
 }
 
-/** 提供元の公式仕様に基づく、パラメーター省略時の次元数です。 */
+/** API正本がモデル別に宣言する、パラメーター省略時の次元数です。 */
 export function getEmbeddingDefaultDimensions(model: EmbeddingModel): number {
-  return model.id === "text-embedding-3-large" ? 3_072 : 1_536;
+  return model.embeddingDimensions.default;
 }
 
 /** モデル選択時に、別の提供元のオプションを持ち越さない初期値を作ります。 */
@@ -30,7 +31,7 @@ export function buildEmbeddingRequest(model: EmbeddingModel, input: EmbeddingInp
   if (model.id !== input.modelId) throw new TypeError("Invalid embedding model");
   const count = input.texts.length;
   if (count > model.maxInputs) throw new RangeError("The input count exceeds the API limit");
-  if (input.dimensions !== null && (!Number.isInteger(input.dimensions) || input.dimensions < 1 || input.dimensions > getEmbeddingDefaultDimensions(model))) throw new RangeError("Invalid embedding dimensions");
+  if (input.dimensions !== null && (!Number.isInteger(input.dimensions) || input.dimensions < 1 || input.dimensions > model.embeddingDimensions.maximum || (model.embeddingDimensions.allowed && !model.embeddingDimensions.allowed.includes(input.dimensions)))) throw new RangeError("Invalid embedding dimensions");
   const texts = [...input.texts];
   if (model.providerId === "cohere") {
     if (!input.inputType || !model.inputTypes.includes(input.inputType) || (input.dimensions !== null && !getEmbeddingDimensionChoices(model).includes(input.dimensions))) throw new TypeError("Invalid Cohere embedding options");
@@ -65,7 +66,7 @@ export function getEmbeddingRequestSchema(model: EmbeddingModel): Record<string,
     properties: {
       model: { const: model.id }, [cohere ? "texts" : "input"]: { type: "array", minItems: 1, maxItems: model.maxInputs, items: { type: "string", minLength: 1 } },
       ...(cohere ? { input_type: { enum: model.inputTypes }, embedding_types: { const: ["float"] }, output_dimension: { type: "integer", enum: getEmbeddingDimensionChoices(model) } }
-        : { encoding_format: { const: "float" }, dimensions: { type: "integer", minimum: 1, maximum: getEmbeddingDefaultDimensions(model) } }),
+        : { encoding_format: { const: "float" }, dimensions: { type: "integer", minimum: 1, maximum: model.embeddingDimensions.maximum } }),
     }, additionalProperties: true,
   };
 }

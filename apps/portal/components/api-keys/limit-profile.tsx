@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ChevronDown, LoaderCircle, RefreshCw, RotateCcw, Save, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import { limitDraftFromProfile, limitsFromDraft, loadApiKeyLimits, saveApiKeyLim
 export function ApiKeyLimitProfileEditor({ id, dictionary, disabled, onSavingChange }: {
   id: string; dictionary: Dictionary; disabled: boolean; onSavingChange: (saving: boolean) => void;
 }) {
+  const formId = useFieldIds();
   const text = dictionary.apiKeys.limits;
   const [expanded, setExpanded] = useState(false);
   const [profile, setProfile] = useState<ApiKeyLimitProfile | null>(null);
@@ -102,30 +105,30 @@ export function ApiKeyLimitProfileEditor({ id, dictionary, disabled, onSavingCha
 
   /** 入力中も上下限を表示し、数値の解釈は送信前のZod検証へ集約します。 */
   function numberField(name: "calls" | "seconds" | "tokensPerMinute" | "quotaTokens", label: string, maximum: number) {
-    const fieldId = `limit-${id}-${name}`;
+    const fieldId = formId(`limit-${id}-${name}`);
     const range = `1–${maximum.toLocaleString("en-US")}`;
     return <div className="min-w-0 flex-1"><label htmlFor={fieldId} className="mb-1.5 block text-xs text-muted-foreground">{label}</label>
       <Input id={fieldId} type="text" inputMode="numeric" pattern="[0-9]+" maxLength={10} autoComplete="off" required disabled={busy || !profile}
-        value={draft[name]} placeholder={range} aria-describedby={`limit-${id}-${name}-range`}
+        value={draft[name]} placeholder={range} aria-describedby={formId(`limit-${id}-${name}-range`)}
         onChange={(event) => change(name, event.target.value)} className="h-9 bg-white text-xs" />
-      <span id={`limit-${id}-${name}-range`} className="mt-1.5 block text-xs leading-4 text-muted-foreground tabular-nums">{range}</span>
+      <span id={formId(`limit-${id}-${name}-range`)} className="mt-1.5 block text-xs leading-4 text-muted-foreground tabular-nums">{range}</span>
     </div>;
   }
 
   return <section className="rounded-xl border border-border">
-    <button type="button" className="flex w-full items-start gap-3 p-4 text-left" aria-expanded={expanded} aria-controls={`limits-${id}`} disabled={disabled || saving}
+    <button type="button" className="flex w-full items-start gap-3 p-4 text-left" aria-expanded={expanded} aria-controls={formId(`limits-${id}`)} disabled={disabled || saving}
       onClick={toggle}>
       <SlidersHorizontal className="mt-0.5 size-4 shrink-0 text-primary" /><span className="flex-1"><span className="block text-xs font-semibold">{text.title}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{text.description}</span></span><ChevronDown className={`mt-0.5 size-4 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
     </button>
-    {expanded && <div id={`limits-${id}`} className="border-t border-border p-4">
+    {expanded && <div id={formId(`limits-${id}`)} className="border-t border-border p-4">
       {loading ? <p role="status" className="flex items-center gap-2 py-3 text-xs text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />{text.loading}</p>
         : !profile ? <div className="space-y-3"><p role="alert" className="text-xs leading-6 text-destructive">{errorMessage(dictionary, error ?? "ServiceUnavailable")}</p><Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => void reload()}><RefreshCw />{text.reload}</Button></div>
           : <form onSubmit={submit} className="space-y-4">
             <div className="flex items-center justify-between gap-3"><span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{allUnlimited ? text.allUnlimited : text.hasLimits}{dirty ? ` · ${text.unsaved}` : ""}</span><Button type="button" variant="ghost" size="sm" disabled={busy || allUnlimited} onClick={resetUnlimited}><RotateCcw />{text.reset}</Button></div>
             <fieldset disabled={busy} className="space-y-4">
-              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={`limit-${id}-requests`} className="text-xs font-medium">{text.requestRate}</h4>{mode("requestEnabled", `limit-${id}-requests`)}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.requestHelp}</p>{draft.requestEnabled && <div className="mt-3 flex flex-wrap gap-3">{numberField("calls", text.calls, 1_000_000)}{numberField("seconds", text.seconds, 300)}</div>}</div>
-              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={`limit-${id}-tpm`} className="text-xs font-medium">{text.tokenRate}</h4>{mode("tokenRateEnabled", `limit-${id}-tpm`)}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.tokenHelp}</p>{draft.tokenRateEnabled && <div className="mt-3">{numberField("tokensPerMinute", text.tokensPerMinute, 2_147_483_647)}</div>}</div>
-              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={`limit-${id}-quota`} className="text-xs font-medium">{text.tokenQuota}</h4>{mode("quotaEnabled", `limit-${id}-quota`)}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.quotaHelp}</p>{draft.quotaEnabled && <div className="mt-3 flex flex-wrap gap-3">{numberField("quotaTokens", text.totalTokens, 2_147_483_647)}<div className="min-w-36 flex-1"><label htmlFor={`limit-${id}-period`} className="mb-1.5 block text-xs text-muted-foreground">{text.period}</label><Select value={draft.quotaPeriod} disabled={busy} onValueChange={(value) => change("quotaPeriod", value as ApiKeyLimitDraft["quotaPeriod"])}><SelectTrigger id={`limit-${id}-period`} className="h-9 w-full bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{(["Hourly", "Daily", "Weekly", "Monthly", "Yearly"] as const).map((period) => <SelectItem key={period} value={period}>{text.periods[period]}</SelectItem>)}</SelectContent></Select></div></div>}<p className="mt-2 text-xs leading-5 text-muted-foreground">{text.resetTime}</p></div>
+              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={formId(`limit-${id}-requests`)} className="text-xs font-medium">{text.requestRate}</h4>{mode("requestEnabled", formId(`limit-${id}-requests`))}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.requestHelp}</p>{draft.requestEnabled && <div className="mt-3 flex flex-wrap gap-3">{numberField("calls", text.calls, 1_000_000)}{numberField("seconds", text.seconds, 300)}</div>}</div>
+              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={formId(`limit-${id}-tpm`)} className="text-xs font-medium">{text.tokenRate}</h4>{mode("tokenRateEnabled", formId(`limit-${id}-tpm`))}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.tokenHelp}</p>{draft.tokenRateEnabled && <div className="mt-3">{numberField("tokensPerMinute", text.tokensPerMinute, 2_147_483_647)}</div>}</div>
+              <div className="rounded-lg bg-muted/25 p-3"><div className="flex items-center justify-between gap-3"><h4 id={formId(`limit-${id}-quota`)} className="text-xs font-medium">{text.tokenQuota}</h4>{mode("quotaEnabled", formId(`limit-${id}-quota`))}</div><p className="mt-2 text-xs leading-5 text-muted-foreground">{text.quotaHelp}</p>{draft.quotaEnabled && <div className="mt-3 flex flex-wrap gap-3">{numberField("quotaTokens", text.totalTokens, 2_147_483_647)}<div className="min-w-36 flex-1"><label htmlFor={formId(`limit-${id}-period`)} className="mb-1.5 block text-xs text-muted-foreground">{text.period}</label><Select value={draft.quotaPeriod} disabled={busy} onValueChange={(value) => change("quotaPeriod", value as ApiKeyLimitDraft["quotaPeriod"])}><SelectTrigger id={formId(`limit-${id}-period`)} className="h-9 w-full bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{(["Hourly", "Daily", "Weekly", "Monthly", "Yearly"] as const).map((period) => <SelectItem key={period} value={period}>{text.periods[period]}</SelectItem>)}</SelectContent></Select></div></div>}<p className="mt-2 text-xs leading-5 text-muted-foreground">{text.resetTime}</p></div>
             </fieldset>
             <p className="text-xs leading-6 text-muted-foreground">{text.scopeNotice}</p>
             <p className="rounded-lg bg-primary/4 p-3 text-xs leading-6 text-muted-foreground">{text.activationNotice}</p>

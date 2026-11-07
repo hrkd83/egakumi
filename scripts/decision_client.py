@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """Microsoft Decision API の短い正常・拒否試験を、明示した場合だけ各1回送る。
 
-既定は通信しない計画表示です。--execute のときだけ保護 token を読み、
+既定は通信しない計画表示です。--execute のときだけ保護した購読キーまたはBearerを読み、
 指定した HTTPS API へ1要求を送ります。redirect、自動再試行、モデルの
-自動切替は行いません。証跡には本文・質問・回答・token を保存しません。
+自動切替は行いません。証跡には本文・質問・回答・資格情報を保存しません。
 HTTP の拒否だけで backend 未実行や監査記録の存在を合格とせず、別照合を
 pending として残します。この API は OpenAI /decisions とは別の仕様です。
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import argparse
 import asyncio
@@ -15,7 +23,6 @@ from datetime import datetime, timezone
 import json
 import logging
 import math
-import os
 from pathlib import Path
 import time
 import uuid
@@ -198,7 +205,9 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--case", choices=CASES, default="normal")
     parser.add_argument("--execute", action="store_true")
-    parser.add_argument("--token-file")
+    credential = parser.add_mutually_exclusive_group()
+    credential.add_argument("--key-file", help="Owner-only subscription-key file sent in api-key (standard Gateway authentication)")
+    credential.add_argument("--token-file", help="Owner-only bearer file for an explicitly selected Bearer-authenticated endpoint")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     endpoint(args.url)
@@ -209,14 +218,14 @@ def main():
         return 0
     if not args.output or args.output.exists() or args.output.is_symlink():
         raise ValueError("A new evidence output is required before sending")
-    if args.case != "anonymous" and not args.token_file:
-        raise ValueError("An explicitly approved protected token is required")
+    if args.case != "anonymous" and not (args.key_file or args.token_file):
+        raise ValueError("An explicitly selected protected credential file is required")
     with open_new(args.output) as evidence:
         # 権限不足や出力先の競合を推論前に検出します。中断時も未完了の印を
         # 残し、保存に失敗したことを理由に同じ推論を再実行しないようにします。
         evidence.write(json.dumps({"case": args.case, "status": "not-completed", "succeeded": False}) + "\n")
         evidence.flush()
-        headers = {} if args.case == "anonymous" else auth_headers(args.token_file)
+        headers = {} if args.case == "anonymous" else auth_headers(args.token_file, args.key_file)
         result = asyncio.run(probe(args.url, args.model, args.case, headers))
         evidence.seek(0)
         json.dump(result, evidence, ensure_ascii=False, indent=2, allow_nan=False)

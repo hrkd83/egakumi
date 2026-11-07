@@ -30,6 +30,7 @@ ARM_PARAMETER_DEFAULTS = {
     "existingApimHostnameConfigurations": {},
     "existingPortalApp": False,
     "existingWorkspaceDataCollectionRuleResourceId": "",
+    "diagnosticSettingProperties": {},
 }
 
 

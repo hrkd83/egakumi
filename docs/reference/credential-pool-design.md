@@ -88,7 +88,7 @@ Graphの通常の権限不足と、条件付きアクセスの追加認証要求
 
 | リソース | 名前・配置 |
 | --- | --- |
-| Broker Container App | `ca-<stem>-credential-broker` / `-svc` |
+| Broker Container App | `ca-<stem>-credentials` / `-svc`。最大17文字のstemでも32文字となり、Container Appの上限に収まる |
 | 共通SQL・credentials DB | `sql-<stem>`・`sqldb-<stem>-credentials` / `-svc` |
 | Broker・初期化用ID | `id-<stem>-credential-broker`・`id-<stem>-credential-schema` / `-id` |
 | SQL初期化・定期照合ジョブ | `caj-<stem>-schema`・`caj-<stem>-recon` / `-svc` |

@@ -6,7 +6,7 @@ import { buildSpeechRequest, defaultSpeechInput, getSpeechEndpoint, getSpeechHea
 import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, speechInputSchema } from "../lib/speech-request.ts";
 import { inspectSpeechWav, parseSpeechTranscript, readSpeechResponse, speechAudioBytes } from "../lib/speech-response.ts";
 import type { SpeechModel } from "../lib/model-types.ts";
-import { AZURE_SPEECH_VOICES, AZURE_SPEECH_VOICE_IDS } from "../lib/speech-voices.ts";
+import { AZURE_SPEECH_VOICES, AZURE_SPEECH_VOICE_IDS, AZURE_SPEECH_TTS_VOICES, AZURE_SPEECH_TTS_VOICE_IDS } from "../lib/speech-voices.ts";
 import { buildSpeechExecutionRequest } from "../lib/speech-client.ts";
 
 const tts: SpeechModel = { id: "azure-speech-tts", label: "Azure Speech TTS", providerId: "azure-ai-speech", provider: "Azure AI Speech", apiId: "azure-speech-v1", operationId: "tts", kind: "tts", path: "/models/azure-speech/v1/synthesize", maxRequestBytes: 8192, language: "ja-JP" };
@@ -41,7 +41,7 @@ test("音声入力は文章を受け付け、任意SSML・URL・キー実値は�
   for (const extra of [{ ssml: "<speak/>" }, { file: "audio.wav" }, { url: "https://other.invalid" }, { apiKey: secret }, { voice: 'x"><audio src="https://other.invalid"/>' }, { rate: "100%" }]) assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), ...extra }).success, false);
 });
 
-test("日本語の標準Neural音声7種を許可し、既定Nanamiと日英の表示名を揃える", () => {
+test("Voice Live共有の日本語7音声と既定Nanami・日英の表示名を維持する", () => {
   assert.deepEqual(AZURE_SPEECH_VOICE_IDS, [
     "ja-JP-NanamiNeural", "ja-JP-KeitaNeural", "ja-JP-AoiNeural", "ja-JP-DaichiNeural",
     "ja-JP-MayuNeural", "ja-JP-NaokiNeural", "ja-JP-ShioriNeural",
@@ -55,16 +55,34 @@ test("日本語の標準Neural音声7種を許可し、既定Nanamiと日英の�
     assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), voice }).success, false);
 });
 
-test("7種の声の選択をSSML・5言語の例・ブラウザーから上流への実送信へ反映する", async () => {
+test("REST TTSは代表12音声の識別子・localeを固定し、未知音声を拒否する", () => {
+  assert.equal(AZURE_SPEECH_TTS_VOICES.length, 12);
+  assert.equal(new Set(AZURE_SPEECH_TTS_VOICE_IDS).size, 12);
+  assert.deepEqual(AZURE_SPEECH_TTS_VOICE_IDS.slice(0, 7), AZURE_SPEECH_VOICE_IDS);
+  assert.deepEqual(AZURE_SPEECH_TTS_VOICES.slice(7).map((voice) => [voice.id, voice.locale]), [
+    ["en-US-JennyNeural", "en-US"], ["en-US-GuyNeural", "en-US"], ["zh-CN-XiaoyanNeural", "zh-CN"], ["ko-KR-SunHiNeural", "ko-KR"], ["es-ES-ElviraNeural", "es-ES"],
+  ]);
+  for (const voice of AZURE_SPEECH_TTS_VOICES) {
+    assert.ok(voice.id.startsWith(voice.locale + "-"));
+    assert.ok(voice.label.ja && voice.label.en);
+    assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), voice: voice.id }).success, true);
+  }
+  assert.equal(speechInputSchema.safeParse({ ...defaultSpeechInput(tts), voice: "en-US-unregistered" }).success, false);
+});
+
+test("代表12音声の選択とlocaleをSSML・5言語例・ブラウザーから上流への送信へ反映する", async () => {
   const text = "同じ文章で声を比較します & <テスト>";
-  for (const voice of AZURE_SPEECH_VOICE_IDS) {
+  for (const selected of AZURE_SPEECH_TTS_VOICES) {
+    const voice = selected.id;
     const input = { ...defaultSpeechInput(tts), voice, text };
     const xml = String(buildSpeechRequest(tts, input));
     assert.ok(xml.includes(`<voice name="${voice}">`));
+    assert.ok(xml.includes(`xml:lang="${selected.locale}"`));
     assert.ok(xml.includes("同じ文章で声を比較します &amp; &lt;テスト&gt;"));
     for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
       const code = getSpeechIntegrationExample(language, tts, input, gatewayOrigin);
       assert.ok(code.includes(voice), language);
+      assert.ok(code.includes(selected.locale), language);
       assert.ok(code.includes("同じ文章で声を比較します &amp; &lt;テスト&gt;"), language);
     }
     let calls = 0;
@@ -198,6 +216,32 @@ test("音声の読取り期限・取消を監視し、自動再試行しない",
   } finally { clearTimeout(keepAlive); }
 });
 
+test("両STTのJSONでUnicodeエスケープされた購読キーも画面へ返さない", async () => {
+  for (const model of [stt, openai]) {
+    const value = model === stt ? { RecognitionStatus: "Success", NBest: [{ Display: "synthetic transcript", Confidence: 0.9 }] } : { text: "synthetic transcript" };
+    const encoded = [...secret].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+    const raw = JSON.stringify({ ...value, metadata: { reflected: secret } }).replace(secret, encoded);
+    assert.equal(raw.includes(secret), false);
+    let calls = 0;
+    const response = await handleSpeech(request(model), dependencies({ fetch: async () => { calls++; return new Response(raw, { headers: { "content-type": "application/json" } }); } }));
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+    assert.equal(calls, 1);
+  }
+});
+
+test("両STTで引用符付きキーの値・プロパティ名への反射を拒否する", async () => {
+  const credential = 'synthetic-speech-"key"-\\-value';
+  for (const model of [stt, openai]) {
+    const value = model === stt ? { RecognitionStatus: "Success", NBest: [{ Display: "synthetic transcript", Confidence: 0.9 }] } : { text: "synthetic transcript" };
+    for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+      const raw = JSON.stringify({ ...value, ...reflected }); assert.equal(raw.includes(credential), false);
+      const response = await handleSpeech(request(model), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+      assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+    }
+  }
+});
+
 test("RIFF長・チャンク長・チャンネル・サンプルレート・PCM形式を検証する", () => {
   assert.equal(inspectSpeechWav(audio).audioDurationMs, 125);
   for (const [offset, value] of [[4, 10], [20, 3], [22, 2], [24, 48000], [32, 4], [34, 24], [40, audio.length]] as const) { const invalid = Buffer.from(audio); invalid.writeUInt32LE(value, offset); assert.throws(() => inspectSpeechWav(invalid)); }
@@ -212,6 +256,29 @@ test("大きなBase64を線形に検証し、不正なパディングや非WAV�
 test("AzureのNoMatchを認識状態付きの空文字として保持し、成功を捏造しない", () => {
   const result = parseSpeechTranscript({ RecognitionStatus: "NoMatch", NBest: null, Duration: 10 }, stt, 25); assert.equal(result.kind, "stt"); if (result.kind === "stt") { assert.equal(result.transcript, ""); assert.equal(result.rawResponse.RecognitionStatus, "NoMatch"); assert.equal(result.rawResponse.NBest, null); }
   assert.throws(() => parseSpeechTranscript({ RecognitionStatus: "Success" }, stt, 25)); assert.throws(() => parseSpeechTranscript({ error: { code: "bad" }, text: "ok" }, openai, 25));
+});
+
+test("AzureのSuccessに明示された空文字を無音として保持し、欠損とは区別する", async () => {
+  for (const raw of [{ RecognitionStatus: "Success", DisplayText: "" },
+    { RecognitionStatus: "Success", NBest: [{ Display: "", Confidence: 0 }] }]) {
+    let calls = 0;
+    const response = await handleSpeech(request(stt), dependencies({ fetch: async () => {
+      calls++;
+      return Response.json(raw);
+    } }));
+    assert.equal(response.status, 200);
+    const result = await readSpeechResponse(response);
+    assert.equal(result.kind, "stt");
+    if (result.kind === "stt") {
+      assert.equal(result.transcript, "");
+      assert.deepEqual(result.rawResponse, raw);
+    }
+    assert.equal(calls, 1);
+  }
+  for (const raw of [{ RecognitionStatus: "Success" },
+    { RecognitionStatus: "Success", NBest: [] }]) {
+    assert.throws(() => parseSpeechTranscript(raw, stt, 25));
+  }
 });
 
 test("ブラウザーの読取りも認可エラー・壊れた音声・中断を正しく扱う", async () => {

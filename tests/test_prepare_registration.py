@@ -68,12 +68,12 @@ class RegistrationTests(unittest.TestCase):
 
     def test_combined_name_length_is_checked_before_compiler(self):
         with mock.patch.object(registration, "bicep_executable") as executable:
-            for product, environment in (("p" * 17, "test"), ("p" * 24, "test")):
-                with self.subTest(product=product), self.assertRaisesRegex(ValueError, "21 characters"):
+            for product, environment in (("p" * 13, "test"), ("p" * 16, "test"), ("p" * 24, "test")):
+                with self.subTest(product=product), self.assertRaisesRegex(ValueError, "17 characters"):
                     registration.prepare_registration(SUBSCRIPTION, product, environment)
         executable.assert_not_called()
-        values = registration.registration_inputs(SUBSCRIPTION, "p" * 16, "test", "eastus")
-        self.assertEqual(values["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-" + "p" * 16)
+        values = registration.registration_inputs(SUBSCRIPTION, "p" * 12, "test", "eastus")
+        self.assertEqual(values["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-" + "p" * 12)
 
 
     def test_cli_uses_local_compiler_without_changing_environment_or_reading_config(self):

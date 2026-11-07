@@ -83,7 +83,7 @@ resource migration 'Microsoft.App/jobs@2025-01-01' = {
   }
 }
 resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
-  name: 'ca-${stem}-credential-broker'
+  name: 'ca-${stem}-credentials'
   location: location
   tags: resourceGroup().tags
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${runtimeIdentity.id}': {} } }
@@ -141,4 +141,4 @@ resource reconciliation 'Microsoft.App/jobs@2025-01-01' = if (deployApplication)
   }
 }
 output migrationJob string = migration.name
-output applicationName string = 'ca-${stem}-credential-broker'
+output applicationName string = 'ca-${stem}-credentials'

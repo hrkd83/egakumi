@@ -253,6 +253,36 @@ test("Responsesの未完了処理や失敗を通常の生成成功として返�
   assert.equal((await partial.json()).rawResponse.incomplete_details.reason, "max_output_tokens");
 });
 
+test("ChatとResponsesの正常JSONへ反射された購読キーを復号後にも拒否する", async () => {
+  for (const model of [chatModel, responsesModel]) {
+    const value = model.operationId === "responses-create"
+      ? { model: model.id, status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "synthetic result" }] }] }
+      : { model: model.id, choices: [{ message: { content: "synthetic result" }, finish_reason: "stop" }] };
+    for (const escaped of [false, true]) {
+      let raw = JSON.stringify({ ...value, metadata: { reflected: secret } });
+      if (escaped) raw = raw.replace(secret, [...secret].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join(""));
+      assert.equal(raw.includes(secret), !escaped);
+      let calls = 0;
+      const response = await handleTextGeneration(request({ ...defaultInput, modelId: model.id, operationId: model.operationId }), dependencies({ readModels: () => [model], fetch: async () => { calls++; return new Response(raw, { headers: { "content-type": "application/json" } }); } }));
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+      assert.equal(calls, 1);
+    }
+  }
+});
+
+test("両JSON方式で引用符付きキーの値・プロパティ名への反射も拒否する", async () => {
+  const credential = 'synthetic-text-"key"-\\-value';
+  for (const model of [chatModel, responsesModel]) {
+    const value = model.operationId === "responses-create" ? { model: model.id, status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "synthetic result" }] }] } : { model: model.id, choices: [{ message: { content: "synthetic result" }, finish_reason: "stop" }] };
+    for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+      const raw = JSON.stringify({ ...value, ...reflected }); assert.equal(raw.includes(credential), false);
+      const response = await handleTextGeneration(request({ ...defaultInput, modelId: model.id, operationId: model.operationId }), dependencies({ readModels: () => [model], resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+      assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+    }
+  }
+});
+
 test("上流応答のサイズと処理時間を制限し、再試行しない", async () => {
   const huge = await handleTextGeneration(request(), dependencies({ fetch: async () => new Response("a".repeat(MODEL_MAX_UPSTREAM_JSON_BYTES + 1), { headers: { "Content-Type": "application/json" } }) }));
   assert.equal(huge.status, 502);
@@ -334,4 +364,56 @@ test("キー未選択・台帳ID改変・認可失敗・確認障害では共通
     assert.deepEqual(await result.json(), { error: { code: status < 500 ? "ApiKeyUnavailable" : "ApiKeyAccessUnavailable" } });
   }
   assert.equal(calls, 0);
+});
+
+test("出力上限で完成できなかった既知の400応答を通信失敗と区別する", async () => {
+  for (const stream of [false, true]) {
+    let calls = 0;
+    const result = await handleTextGeneration(request({ ...defaultInput, maxOutputTokens: 1, stream }), dependencies({
+      readModels: () => [chatModel],
+      fetch: async (_url, options) => {
+        calls++;
+        assert.equal(JSON.parse(String(options?.body)).max_completion_tokens, 1);
+        return Response.json({ error: {
+          message: "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+          type: "invalid_request_error", code: null, param: null,
+        } }, { status: 400, headers: { "apim-request-id": "11111111-1111-4111-8111-111111111111" } });
+      },
+    }));
+    assert.equal(calls, 1);
+    assert.equal(result.status, 400);
+    assert.equal(result.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await result.clone().json(), { error: { code: "OutputLimitReached" }, requestId: "11111111-1111-4111-8111-111111111111" });
+    await assert.rejects(readModelResponse(result, chatModel), (error: unknown) => error instanceof Error && error.message === "OutputLimitReached");
+  }
+});
+
+test("出力上限に似た任意の上流エラーや資格情報を公開応答へ転記しない", async () => {
+  const message = "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.";
+  for (const error of [
+    { message: "Private provider error mentioning model output limit", type: "invalid_request_error" },
+    { message, type: "server_error" },
+    { message, type: "invalid_request_error", details: secret },
+  ]) {
+    const result = await handleTextGeneration(request(), dependencies({ fetch: async () => Response.json({ error }, { status: 400 }) }));
+    assert.equal(result.status, 502);
+    assert.deepEqual(await result.json(), { error: { code: "GenerationFailed" } });
+  }
+});
+
+test("不正・過大・JSON以外の400本文は制限して読み、固定の失敗だけを返す", async () => {
+  for (const [body, mediaType] of [["{", "application/json"], ["x".repeat(8_193), "application/json"], ["private upstream HTML", "text/html"]]) {
+    let cancelled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(body));
+        if (body === "{") controller.close();
+      },
+      cancel() { cancelled++; },
+    });
+    const result = await handleTextGeneration(request(), dependencies({ fetch: async () => new Response(stream, { status: 400, headers: { "content-type": mediaType } }) }));
+    assert.equal(result.status, 502);
+    assert.deepEqual(await result.json(), { error: { code: "GenerationFailed" } });
+    assert.equal(cancelled, body === "{" ? 0 : 1);
+  }
 });

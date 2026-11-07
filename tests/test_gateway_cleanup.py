@@ -15,7 +15,7 @@ class GatewayCleanupTests(unittest.TestCase):
                            "environmentName": "cae-test-fixture"}
         self.state = {"outputs": {"gatewayFoundation": self.foundation}}
         self.ids = [self.base + "jobs/caj-test-fixture-recon", self.base + "jobs/caj-test-fixture-schema",
-                    self.base + "containerApps/ca-test-fixture-credential-broker"]
+                    self.base + "containerApps/ca-test-fixture-credentials"]
         self.resources = {resource_id: {"id": resource_id, "name": resource_id.rsplit('/', 1)[-1],
                           "type": "Microsoft.App/" + resource_id.split("/")[-2],
                           "location": "Japan East", "tags": {"product": "fixture", "environment": "test"},
@@ -36,7 +36,7 @@ class GatewayCleanupTests(unittest.TestCase):
         self.assertEqual(transport.mutations(), [])
 
     def test_previous_broker_deployment_record_remains_usable(self):
-        state = {"outputs": {"credentialBroker": {"applicationName": "ca-test-fixture-credential-broker",
+        state = {"outputs": {"credentialBroker": {"applicationName": "ca-test-fixture-credentials",
                                                    "resourceGroup": "rg-test-fixture-svc"}}}
         transport = FakeTransport(self.resources)
         self.assertEqual(cleanup._credential_apps_preflight(self.config, state, transport), self.ids)

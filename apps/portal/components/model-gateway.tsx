@@ -38,8 +38,14 @@ function groupProviders(category: ModelCategory, textModels: TextGenerationModel
       groups.set(group.id, group);
     }
   }
-  // OpenAIを先頭へ置き、ほかの提供元は公開定義の順序を保ちます。
-  return [...groups.values()].sort((left, right) => Number(right.id === "openai") - Number(left.id === "openai"));
+  // 音声の表示はAzure AI Speechを先頭にし、ほかの機能は既存の提供順を保ちます。
+  const preferredProvider = category.id === "speech" ? "azure-ai-speech" : "openai";
+  const ordered = [...groups.values()].sort((left, right) => Number(right.id === preferredProvider) - Number(left.id === preferredProvider));
+  if (category.id === "speech") {
+    const operationOrder = ["stt", "tts"];
+    for (const group of ordered) group.operations.sort((left, right) => operationOrder.indexOf(left.operationId) - operationOrder.indexOf(right.operationId));
+  }
+  return ordered;
 }
 
 /** 用途と提供元・音声シリーズから、使い方ガイド・API仕様の専用ページへ案内します。 */
@@ -65,7 +71,7 @@ export function ModelGateway({ categories, models, realtimeModels, dictionary, l
 
       <Tabs value={category.id} onValueChange={(value) => { if (categories.some((item) => item.id === value)) setCategory(value as ModelCategoryId); }} className="gap-0">
         <div className="mb-7 border-b border-border pb-1">
-          <TabsList variant="line" aria-label="Model Gateway" className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-2 p-0">
+          <TabsList variant="line" aria-label="Model Gateway" className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-2 p-0 group-data-horizontal/tabs:h-auto">
             {categories.map((item) => { const Icon = categoryIcons[item.id]; return <TabsTrigger key={item.id} value={item.id} className="h-11 flex-none gap-2 px-2 text-sm data-active:text-primary after:bg-primary"><Icon className="size-4" />{text.categories[item.id]}</TabsTrigger>; })}
           </TabsList>
         </div>

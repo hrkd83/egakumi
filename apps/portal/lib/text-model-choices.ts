@@ -43,3 +43,19 @@ export function updateTextModelSelection(input: TextGenerationInput, next: TextG
     maxOutputTokens: next.maxOutputTokens ?? undefined,
   };
 }
+
+/** 提供元ごとに保持するモデル・API方式・出力上限です。比較用の文章とStreamは含めません。 */
+export type TextModelDraft = Pick<TextGenerationInput, "modelId" | "operationId" | "maxOutputTokens">;
+
+/** モデル固有の設定だけを保存し、共有文章・Streamや実行結果を混在させません。 */
+export function textModelDraft(input: TextGenerationInput): TextModelDraft {
+  return { modelId: input.modelId, operationId: input.operationId, maxOutputTokens: input.maxOutputTokens };
+}
+
+/** 保存済みの提供元設定と、比較用に共有する文章・Streamから整合する入力を作ります。 */
+export function resolveTextPanelInput(models: readonly TextGenerationModel[], draft: TextModelDraft | undefined, shared: Pick<TextGenerationInput, "message" | "stream">): TextGenerationInput {
+  const selected = resolveTextModelVariant(models, draft ?? { modelId: "", operationId: "responses-create" });
+  if (!selected) return { ...shared, modelId: "", operationId: "responses-create" };
+  if (draft?.modelId === selected.id && draft.operationId === selected.operationId) return { ...shared, ...draft };
+  return updateTextModelSelection({ ...shared, modelId: "", operationId: "responses-create" }, selected);
+}

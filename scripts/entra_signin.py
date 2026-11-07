@@ -11,14 +11,20 @@ Azure資源の配備やモデル推論は行わない。
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
-import os
 from pathlib import Path
 import stat
-import sys
 import tempfile
 import time
 from urllib.parse import parse_qsl, urlsplit

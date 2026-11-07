@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
@@ -35,6 +37,7 @@ function companyError(text: CompanyAdministrationText, code: string): string {
 
 /** 基盤管理グループのメンバーが、発行フォームで使用する会社マスタを管理します。 */
 export function CompanyAdministrationDashboard({ text, locale }: { text: CompanyAdministrationText; locale: Locale }) {
+  const formId = useFieldIds();
   const [store] = useState(createCompanyScreenStore);
   const state = useStore(store);
   const listController = useRef<AbortController | null>(null);
@@ -125,8 +128,8 @@ export function CompanyAdministrationDashboard({ text, locale }: { text: Company
     {editor && <Dialog open onOpenChange={(open) => { if (!open) closeEditor(); }}><DialogContent showCloseButton={false} className="max-h-[90dvh] gap-0 overflow-y-auto p-0 sm:max-w-xl" onEscapeKeyDown={(event) => { if (editor.busy) event.preventDefault(); }} onInteractOutside={(event) => { if (editor.busy) event.preventDefault(); }}>
       <DialogHeader className="border-b border-border p-6 pr-12"><DialogTitle>{editor.company ? text.editTitle : text.createTitle}</DialogTitle><DialogDescription className="text-sm leading-6">{text.nameHelp}</DialogDescription></DialogHeader>
       <Button variant="ghost" size="icon-sm" className="absolute right-3 top-3" aria-label={text.close} disabled={editor.busy} onClick={closeEditor}><X /></Button>
-      <form onSubmit={save}><div className="space-y-5 p-6"><div><label htmlFor="company-name" className="mb-2 block text-sm font-medium">{text.name}</label><Input id="company-name" required autoComplete="organization" maxLength={160} value={editor.name} disabled={editor.busy} placeholder={text.namePlaceholder} onChange={(event) => changeEditor({ name: event.target.value })} /></div>
-        {editor.company && <div><label htmlFor="company-availability" className="mb-2 block text-sm font-medium">{text.availability}</label><Select value={editor.isActive ? "active" : "inactive"} disabled={editor.busy} onValueChange={(value) => changeEditor({ isActive: value === "active" })}><SelectTrigger id="company-availability" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">{text.available}</SelectItem><SelectItem value="inactive">{text.unavailable}</SelectItem></SelectContent></Select><p className="mt-3 text-xs leading-6 text-muted-foreground">{text.archiveHelp}</p></div>}
+      <form onSubmit={save}><div className="space-y-5 p-6"><div><label htmlFor={formId("company-name")} className="mb-2 block text-sm font-medium">{text.name}</label><Input id={formId("company-name")} required autoComplete="organization" maxLength={160} value={editor.name} disabled={editor.busy} placeholder={text.namePlaceholder} onChange={(event) => changeEditor({ name: event.target.value })} /></div>
+        {editor.company && <div><label htmlFor={formId("company-availability")} className="mb-2 block text-sm font-medium">{text.availability}</label><Select value={editor.isActive ? "active" : "inactive"} disabled={editor.busy} onValueChange={(value) => changeEditor({ isActive: value === "active" })}><SelectTrigger id={formId("company-availability")} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">{text.available}</SelectItem><SelectItem value="inactive">{text.unavailable}</SelectItem></SelectContent></Select><p className="mt-3 text-xs leading-6 text-muted-foreground">{text.archiveHelp}</p></div>}
         {editor.error && <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-sm leading-6 text-destructive">{companyError(text, editor.error)}</p>}</div>
         <DialogFooter className="mx-0 mb-0 px-6 py-4"><Button type="button" variant="outline" disabled={editor.busy} onClick={closeEditor}>{text.cancel}</Button><Button type="submit" disabled={editor.busy || !editor.name.trim()}>{editor.busy && <LoaderCircle className="animate-spin" />}{editor.busy ? text.saving : text.save}</Button></DialogFooter>
       </form></DialogContent></Dialog>}

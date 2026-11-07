@@ -28,6 +28,7 @@ from uuid import UUID
 from .configuration import API_NAME, load_configuration
 from .grpc_lifecycle import apim_name_matches
 from .credential_pools import resource_names
+from .portal_resources import resource_names as portal_resource_names
 
 
 class CleanupError(RuntimeError):
@@ -1049,8 +1050,9 @@ def _delete_portal_before_network(configuration: dict, targets: dict, transport:
                     or _portal_jobs_preflight(configuration, targets, transport)):
                 _error('cleanup-pending', '共用CAEに属するアプリまたはジョブが再出現しています。', targets['environmentId'])
         resource = current[kind]
-        already_deleting = (resource is not None
-            and str(resource.get("properties", {}).get("provisioningState", "")).casefold() == "deleting")
+        provisioning_state = str(resource.get("properties", {}).get("provisioningState", "")).casefold() if resource is not None else ""
+        already_deleting = (resource is not None and
+            (provisioning_state == "deleting" or kind == "environment" and provisioning_state == "scheduledfordelete"))
         if resource is not None:
             if not already_deleting:
                 _request(transport, "DELETE", targets[kind + "Id"], API["containerApps"])
@@ -1180,9 +1182,10 @@ def _credential_apps_preflight(configuration, state, transport):
     service_group = configuration["resourceGroupNames"]["svc"]
     prefix = f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{service_group}/providers/Microsoft.App/"
     environment = prefix + "managedEnvironments/cae-" + stem
+    names = resource_names(configuration)
     # Gatewayの配備成否や保存出力に依存せず、対象は同じ環境の固定名に限定します。
     if record is not None and (not isinstance(record, Mapping)
-            or record and (record.get("applicationName") != "ca-" + stem + "-credential-broker"
+            or record and (record.get("applicationName") != names['application']
             or record.get("resourceGroup") != service_group)):
         _error("credential-state-mismatch", "認証窓口の配備記録が今回の環境と一致しません。")
     if foundation is not None and (not isinstance(foundation, Mapping)
@@ -1190,7 +1193,6 @@ def _credential_apps_preflight(configuration, state, transport):
             or foundation.get("apimName") != "apim-" + stem
             or foundation.get("environmentName") != "cae-" + stem)):
         _error("credential-state-mismatch", "Gatewayの共通基盤が今回の環境と一致しません。")
-    names = resource_names(configuration)
     targets = [("jobs", names['reconcileJob']), ("jobs", names['schemaJob']),
                ("containerApps", names['application'])]
     result = []
@@ -1208,8 +1210,7 @@ def _portal_jobs_preflight(configuration, targets, transport):
     """PortalのSQL初期化・所有グループ照合ジョブを、共用CAEより先に解放する。"""
     prefix = _rg_id(configuration, 'svc') + '/providers/Microsoft.App/jobs/'
     result = []
-    for suffix in ('portal-schema', 'portal-groups'):
-        name = 'caj-' + configuration['resourceStem'] + '-' + suffix
+    for name in portal_resource_names(configuration).values():
         resource_id = prefix + name
         resource = _expect_read(_request(transport, 'GET', resource_id, API['containerApps']), resource_id)
         if resource is None:
@@ -1342,14 +1343,19 @@ def pre_down(config_path: str | Path, state: Mapping[str, Any], transport: Trans
             _error("diagnostic-owner-mismatch", "Activity診断設定が別の監査Storageを参照しているため削除しません。", diagnostic_id)
         _request(transport, "DELETE", diagnostic_id, API["diagnostics"])
         _wait_absent(transport, diagnostic_id, API["diagnostics"], max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
-    return {"phase": "predown", "status": "ready-for-azd-down", "policies": policy_results,
-            "modelDeployments": models,
-            "apiManagement": apim,
-            "credentialApplications": credential_apps,
-            "portalJobs": portal_jobs,
-            "portal": portal,
-            "management": management,
-            "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}
+    result = {"phase": "predown", "status": "ready-for-azd-down", "policies": policy_results,
+              "modelDeployments": models,
+              "apiManagement": apim,
+              "credentialApplications": credential_apps,
+              "portalJobs": portal_jobs,
+              "portal": portal,
+              "management": management,
+              "activityDiagnostic": {"resourceId": diagnostic_id, "status": "absent", "httpStatus": 404}}
+    credential_manager = _credential_manager_release(configuration)
+    if credential_manager is not None:
+        credential_manager["apimServiceDeletionVerified"] = apim.get("apimDeletionVerified") is True
+        result["credentialManager"] = credential_manager
+    return result
 
 
 def _tombstone(configuration: dict, current: dict, key: str) -> str:
@@ -1435,6 +1441,23 @@ def _api_center_retention(configuration: dict, state: Mapping[str, Any], transpo
     return {**result, "listReadVerified": True}
 
 
+def _credential_manager_release(configuration: dict) -> dict | None:
+    """公開資源の消失から、観測できない内部storeの解放を推定しない。
+
+    provider削除・親APIM削除・墓標purgeは正式な公開操作だが、内部accountの
+    解放確認APIではない。設定件数も実在件数や解放済み件数として扱わない。
+    """
+    from .credential_pools import physical_providers
+    count = len(physical_providers(configuration))
+    if not count:
+        return None
+    return {"status": "unverified", "configuredProviderCount": count,
+            "internalAccountReleaseVerified": False,
+            "sameNameCredentialRecreationVerified": False,
+            "reasonCode": "no-public-internal-account-release-contract",
+            "nextAction": "microsoft-support-if-same-name-account-conflict"}
+
+
 def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Transport, *,
               max_checks: int = 30, wait_seconds: float = 2,
               sleep: Callable[[float], None] = time.sleep) -> dict:
@@ -1509,6 +1532,14 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
     status = ("complete-with-unverified-api-center-retention" if api_center_retention["status"] == "unverified"
               else "complete-with-protected-retention" if retained else "complete-with-api-center-retention"
               if api_center_retention["status"] == "retained-soft-delete" else "complete")
-    return {"phase": "postdown", "status": status, "resourceGroups": group_results,
-            "applicationInfrastructure": infrastructure_results,
-            "softDeletedServices": service_results, "apiCenterRetention": api_center_retention}
+    result = {"phase": "postdown", "status": status, "resourceGroups": group_results,
+              "applicationInfrastructure": infrastructure_results,
+              "softDeletedServices": service_results, "apiCenterRetention": api_center_retention}
+    credential_manager = _credential_manager_release(configuration)
+    if credential_manager is not None:
+        apim = next((item for item in service_results if item["kind"] == "apim"), {})
+        credential_manager["apimSoftDeleteAbsenceVerified"] = apim.get("status") == "absent"
+        # RGと墓標の確認結果を保持し、内部accountの未確認をcompleteへ吸収しない。
+        result.update(status="resources-absent-with-unverified-credential-manager-release",
+                      resourceCleanupStatus=status, credentialManager=credential_manager)
+    return result

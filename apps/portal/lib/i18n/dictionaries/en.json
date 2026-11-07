@@ -391,6 +391,7 @@
       "RateLimitExceeded": "The usage limit was reached. Wait a moment and try again.",
       "GatewayTimeout": "The response timed out. Wait a moment and try again.",
       "GenerationFailed": "Couldn't get a response. Wait a moment or try another model.",
+      "OutputLimitReached": "The output limit was reached before the response could finish. Increase the maximum output tokens and try again.",
       "AuthenticationUnavailable": "Couldn't verify your sign-in session. Wait a moment and try again.",
       "RequestCancelled": "The request was cancelled."
     }

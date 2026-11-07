@@ -9,6 +9,7 @@ import { imageGenerationExecutionSchema, MAX_IMAGE_RESPONSE_BYTES, type ImageGen
 import { parseImageGenerationResult } from "./image-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { ImageGenerationModel } from "./model-types.ts";
+import { containsModelCredential } from "./model-credential.ts";
 
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
 const paths = { "image-generate": "/models/openai-images/v1/generations", "flux2-generate": "/models/blackforestlabs/v1/flux-2/generations" };
@@ -89,9 +90,9 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
     }
     if (upstream.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json" || Number(upstream.headers.get("content-length") ?? 0) > MAX_IMAGE_RESPONSE_BYTES) { void upstream.body?.cancel().catch(() => undefined); return failure("GenerationFailed", 502, details); }
     const raw = await readBody(upstream.body, MAX_IMAGE_RESPONSE_BYTES, signal);
-    // 想定外の上流がキーを正常応答へ反射しても、ブラウザーへの転送を止めます。
-    if (raw.includes(key)) return failure("GenerationFailed", 502, details);
     const value: unknown = JSON.parse(raw);
+    // 想定外の上流がキーを正常応答へ反射しても、ブラウザーへの転送を止めます。
+    if (containsModelCredential(value, key, raw)) return failure("GenerationFailed", 502, details);
     return Response.json(parseImageGenerationResult(value, model.id, Math.round(performance.now() - started), requestId), { headers });
   } catch {
     const details = requestId ? { requestId } : {};

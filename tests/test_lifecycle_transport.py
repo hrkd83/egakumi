@@ -197,5 +197,48 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
         sleep.assert_not_called()
 
 
+class ApplicationInsightsFailureDiagnosticsTests(unittest.TestCase):
+    def command(self):
+        return ["/fixture/pwsh", "-NoLogo", "-NoProfile", "-File",
+                str(lifecycle.ROOT / "scripts/deployment/helpers/set-app-insights-cap.ps1")]
+
+    def test_known_daily_cap_failure_preserves_safe_stage_and_suppresses_external_output(self):
+        arguments = self.command()
+        safe = {"status": "failed", "stage": "readback", "code": "ApplicationInsightsDailyCapFailed"}
+        completed = lifecycle.subprocess.CompletedProcess(arguments, 1, json.dumps(safe), "PRIVATE_CAP_STDERR_FIXTURE")
+        with mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+            with self.assertRaises(lifecycle.DeploymentError) as raised:
+                lifecycle.run(arguments, payload={"accessToken": "<PRIVATE_CAP_TOKEN_FIXTURE>"})
+        message = str(raised.exception)
+        self.assertIn("ApplicationInsightsDailyCapFailed", message)
+        self.assertIn("stage=readback", message)
+        self.assertNotIn("corresponding deployment", message)
+        self.assertNotIn("PRIVATE_CAP", message)
+        process.assert_called_once()
+
+    def test_unverified_daily_cap_failure_uses_generic_error_without_external_values(self):
+        safe = {"status": "failed", "stage": "readback", "code": "ApplicationInsightsDailyCapFailed"}
+        arguments = self.command()
+        other_helper = [*arguments[:-1], str(lifecycle.ROOT / "scripts/other-helper.ps1")]
+        attempts = [
+            (arguments, json.dumps({**safe, "stage": []})),
+            (arguments, json.dumps({**safe, "accessToken": "<PRIVATE_CAP_TOKEN_FIXTURE>"})),
+            (arguments, " " * 4097 + json.dumps(safe)),
+            (other_helper, json.dumps(safe)),
+        ]
+        for command, stdout in attempts:
+            with self.subTest(helper=command[-1].split("/")[-1], stdout_bytes=len(stdout)):
+                completed = lifecycle.subprocess.CompletedProcess(command, 1, stdout, "PRIVATE_CAP_STDERR_FIXTURE")
+                with mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    with self.assertRaises(lifecycle.DeploymentError) as raised:
+                        lifecycle.run(command)
+                message = str(raised.exception)
+                self.assertIn("operation failed", message)
+                self.assertNotIn("ApplicationInsightsDailyCapFailed", message)
+                self.assertNotIn("stage=", message)
+                self.assertNotIn("PRIVATE_CAP", message)
+                process.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

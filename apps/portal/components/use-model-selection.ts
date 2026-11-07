@@ -9,6 +9,7 @@ export function useModelSelection<T extends { id: string; providerId: string }>(
   const savedSelection = usePortalStore((state) => state.modelSelections[scope]);
   const rememberSelection = usePortalStore((state) => state.rememberModelSelection);
   return {
+    scope,
     initialModel: resolveInitialModel(models, savedSelection),
     savedSelection,
     rememberModel: (selection: ModelSelection) => rememberSelection(scope, selection),

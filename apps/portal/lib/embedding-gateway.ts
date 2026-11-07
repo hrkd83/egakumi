@@ -8,6 +8,7 @@ import { embeddingExecutionSchema, type EmbeddingInput } from "./embedding-reque
 import { parseEmbeddingResult, readEmbeddingBody } from "./embedding-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { EmbeddingModel } from "./model-types.ts";
+import { containsModelCredential } from "./model-credential.ts";
 
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
 const paths = { embeddings: "/models/openai-embeddings/v1/embeddings", "cohere-embeddings": "/models/cohere/v1/embed" } as const;
@@ -78,8 +79,9 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, 1_048_576, signal);
-    if (raw.includes(key)) throw new Error("Unexpected credential reflection");
-    const result = parseEmbeddingResult(JSON.parse(raw), model, input, Math.round(performance.now() - started), identifier);
+    const value: unknown = JSON.parse(raw);
+    if (containsModelCredential(value, key, raw)) throw new Error("Unexpected credential reflection");
+    const result = parseEmbeddingResult(value, model, input, Math.round(performance.now() - started), identifier);
     return Response.json(result, { headers });
   } catch {
     const details = identifier ? { requestId: identifier } : {};

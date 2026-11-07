@@ -10,14 +10,20 @@ Azureログイン、Azure通信、Entraアプリ登録、リソース作成、�
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import json
-import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import uuid
 
@@ -47,12 +53,11 @@ def registration_inputs(
         if not isinstance(value, str) or len(value) > limit or not NAME.fullmatch(value):
             raise ValueError(f"{label} must use lowercase letters, digits and single internal hyphens (maximum {limit} characters)")
     # 実構築と同じ名前を必ず使います。長い入力を切り詰めて別名を作るのではなく、
-    # 最も短い Key Vault/Storage の制約に収まる製品名・環境名を事前に選んでもらいます。
+    # Broker CA の ca-<stem>-credentials が32文字以内になる入力を事前に選んでもらいます。
+    # このstem上限ならKey Vaultとハイフンを除くStorage名の制約も満たします。
     stem = f"{environment_name}-{product_name}"
-    if len(stem) > 21:
-        raise ValueError("environment-name and product-name combined as environment-product must fit within 21 characters for Key Vault; shorten either name")
-    if len(stem.replace("-", "")) > 20:
-        raise ValueError("environment-name and product-name without hyphens must fit within 20 characters for audit Storage; shorten either name")
+    if len(stem) > 17:
+        raise ValueError("environment-name and product-name combined as environment-product must fit within 17 characters for the credentials Container App; shorten either name")
     if not isinstance(api_center_location, str) or not REGION.fullmatch(api_center_location):
         raise ValueError("api-center-location must be an Azure region code")
     if (not isinstance(public_host_name, str) or len(public_host_name) > 253

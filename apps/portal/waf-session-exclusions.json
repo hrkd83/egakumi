@@ -1,0 +1,19 @@
+[
+  {
+    "matchVariable": "RequestCookieValues",
+    "selectorMatchOperator": "Equals",
+    "selector": "__Secure-egakumi.portal.session_token",
+    "exclusionManagedRuleSets": [
+      {
+        "ruleSetType": "OWASP",
+        "ruleSetVersion": "3.2",
+        "ruleGroups": [
+          {
+            "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+            "rules": [{ "ruleId": "942450" }]
+          }
+        ]
+      }
+    ]
+  }
+]

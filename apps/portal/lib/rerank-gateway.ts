@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
 import { getRerankModels } from "./model-catalog.ts";
@@ -79,7 +80,7 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, 1_048_576, signal);
     const value: unknown = JSON.parse(raw);
-    if (raw.includes(key) || JSON.stringify(value).includes(key)) throw new TypeError("Unexpected credential reflection");
+    if (containsModelCredential(value, key, raw)) throw new TypeError("Unexpected credential reflection");
     return Response.json(parseRerankResult(value, model, input, Math.round(performance.now() - started), identifier), { headers: responseHeaders });
   } catch {
     const details = identifier ? { requestId: identifier } : {};

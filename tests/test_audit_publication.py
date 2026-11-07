@@ -9,7 +9,9 @@ import xml.etree.ElementTree as ET
 import test_contract_rate_publication as rate_fixture
 from arm_helpers import PolicyExpression
 from arm_helpers import DiscoveryExpression
-from configuration_fixtures import connection_fixture
+from configuration_fixtures import connection_fixture, configuration
+from deployment.helpers.diagnostics import canonical_settings
+from bicep_helpers import compile_bicep
 
 CORE=Path(__file__).resolve().parents[1]
 class AuditPublicationTests(unittest.TestCase):
@@ -166,9 +168,16 @@ class AuditPublicationTests(unittest.TestCase):
     for phase in ('request','response'): self.assertEqual(actual[direction][phase]['body']['bytes'],0)
   for resource in ('globalDiagnostic','mcpDiagnostics'):
    self.assertEqual(self.template['resources'][resource]['properties']['largeLanguageModel'],{'logs':'disabled'})
-  source=(CORE/'infra/modules/services.bicep').read_text()
-  self.assertIn("category: 'GatewayLlmLogs', enabled: true",source)
-  self.assertIn("logAnalyticsDestinationType: 'Dedicated'",source)
+  config=configuration.build_bicep_configuration(configuration.normalize_configuration(
+   connection_fixture(),base_directory=CORE/'config'))
+  properties=canonical_settings(config,'core')['apim-logs']['properties']
+  self.assertIn({'category':'GatewayLlmLogs','enabled':True},properties['logs'])
+  self.assertEqual(properties['logAnalyticsDestinationType'],'Dedicated')
+  services=compile_bicep('infra/modules/services.bicep')
+  diagnostic=next(item for item in services['resources']
+   if item.get('type')=='Microsoft.Insights/diagnosticSettings' and item.get('name')=='core-audit'
+    and "names').apim" in item.get('scope',''))
+  self.assertEqual(diagnostic['properties'],"[parameters('diagnosticSettingProperties')['apim-logs']]")
  def test_only_explicit_api_registration_writes_api_contracts(self):
   main=(CORE/'infra/main.bicep').read_text(); publisher=(CORE/'apps/gateway/deploy/api_publication.py').read_text()
   self.assertNotIn('api-publication.bicep',main)

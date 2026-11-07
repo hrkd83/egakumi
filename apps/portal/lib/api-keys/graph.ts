@@ -26,7 +26,7 @@ export type GraphApiKeyOptions = ApiKeyHttpOptions & { now?: () => number; readP
 const tokenSchema = z.object({ access_token: z.string().min(1), expires_in: z.number().int().min(60).max(86_400), token_type: z.string().regex(/^bearer$/i) });
 const membershipSchema = z.object({ value: z.array(z.uuid()).max(20) });
 const directoryGroupSchema = z.object({ id: z.uuid(), displayName: z.string().min(1).max(255), securityEnabled: z.boolean() });
-const directoryPageSchema = z.object({ value: z.array(directoryGroupSchema).max(100), "@odata.nextLink": z.string().max(16_384).optional() });
+const directoryPageSchema = z.object({ value: z.array(directoryGroupSchema).max(100), "@odata.nextLink": z.url().max(16_384).optional() });
 
 /**
  * Graphのアプリケーション権限で所属を確認します。トークンだけをメモリーに保持します。

@@ -12,7 +12,7 @@ Tool Gatewayは、既存のFoundryリソース（`AIServices`）をAPIMのマネ
 - `Content-Length`: ファイルサイズ。本文とともに上限を検査します。
 - `model`: `prebuilt-read`（文字認識）または`prebuilt-layout`（文字とレイアウト・表）。その他のクエリは受け付けません。
 
-Gatewayのファイル上限は**1 MiB（1,048,576 bytes）**、待機時間は**最大約60秒**、上流結果の受信上限は**4 MiB**です。これらは対話的なGateway利用のための境界であり、Document Intelligence自体の最大処理容量を示していません。ページを暗黙に一部だけ選択することはありません。
+Gatewayのファイル上限は**1 MiB（1,048,576 bytes）**、待機時間は**最大約60秒**、上流結果の受信上限と公開応答の上限はそれぞれ**4 MiB**です。公開応答は`requestId`を追加した後のUTF-8容量も検証します。これらは対話的なGateway利用のための境界であり、Document Intelligence自体の最大処理容量を示していません。ページを暗黙に一部だけ選択することはありません。
 
 ```bash
 curl 'https://<gateway-host>/tools/documents/v1/analyze?model=prebuilt-layout' \

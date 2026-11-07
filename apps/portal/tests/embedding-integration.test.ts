@@ -75,3 +75,17 @@ test("日本語と英語の文言は全項目が揃い、会社や利用者の�
   assert.deepEqual(Object.keys(ja), Object.keys(en));
   assert.ok(Object.values(ja).every(Boolean) && Object.values(en).every(Boolean));
 });
+
+/** 配備別名や既定値が変わっても、モデルIDをハードコードして別の上限へ戻しません。 */
+test("API正本由来の既定・最大次元を配備別名でも保持し、画面の選択肢と本文へ適用する", () => {
+  const alias = { ...small, id: "synthetic-embedding-alias", embeddingDimensions: { default: 512, maximum: 1024 } };
+  assert.equal(getEmbeddingDefaultDimensions(alias), 512);
+  assert.deepEqual(getEmbeddingDimensionChoices(alias), [256, 512, 1024]);
+  assert.equal(buildEmbeddingRequest(alias, { ...defaultEmbeddingInput(alias), dimensions: 1024 }).dimensions, 1024);
+  assert.throws(() => buildEmbeddingRequest(alias, { ...defaultEmbeddingInput(alias), dimensions: 1025 }));
+  const requestSchema = getEmbeddingRequestSchema(alias) as { properties: { dimensions: { maximum: number } } };
+  assert.equal(requestSchema.properties.dimensions.maximum, 1024);
+  const choices = getEmbeddingDimensionChoices(cohere);
+  choices.pop();
+  assert.deepEqual(getEmbeddingDimensionChoices(cohere), cohere.embeddingDimensions.allowed);
+});

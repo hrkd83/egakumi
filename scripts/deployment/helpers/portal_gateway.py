@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import copy
+import json
 import time
+
+from .paths import REPOSITORY
 
 
 NETWORK_API = "2024-05-01"
 CALLBACK_PATH = "/api/auth/callback/microsoft"
-CALLBACK_RULE_IDS = ["942430", "942440"]
+CALLBACK_RULE_IDS = ["942430", "942440", "942450"]
 
 
 def gateway_id(config):
@@ -136,12 +139,34 @@ def _writable_policy(body):
     return result
 
 
-def _callback_policy(source):
-    """現在の共通保護を複製し、認可コードの値と実測2規則だけを除外する。"""
+def portal_session_exclusions():
+    """HTTPSセッション値の実測1規則だけを、Bicepと同じ正本から読む。"""
+    return json.loads((REPOSITORY / "apps/portal/waf-session-exclusions.json").read_text(encoding="utf-8"))
+
+
+def _portal_policy(source):
+    """共通保護を保ち、Portal専用のセッション値除外を合成する。"""
     desired = _writable_policy(source)
     properties = desired.get("properties", {})
     if properties.get("policySettings", {}).get("state") != "Enabled":
-        raise ValueError("Portal callback requires the existing enabled WAF policy")
+        raise ValueError("Portal requires the existing enabled WAF policy")
+    managed = properties.get("managedRules", {})
+    sets = managed.get("managedRuleSets", [])
+    if len([item for item in sets if item.get("ruleSetType") == "OWASP" and item.get("ruleSetVersion") == "3.2"]) != 1:
+        raise ValueError("Portal session WAF requires the owned OWASP 3.2 rule set")
+    exclusions = managed.setdefault("exclusions", [])
+    if not isinstance(exclusions, list):
+        raise ValueError("Portal WAF exclusions are invalid")
+    for exclusion in portal_session_exclusions():
+        if exclusion not in exclusions:
+            exclusions.append(exclusion)
+    return desired
+
+
+def _callback_policy(source):
+    """Portalセッション保護に、callback認可コードの実測3規則だけを合成する。"""
+    desired = _portal_policy(source)
+    properties = desired["properties"]
     managed = properties.get("managedRules", {})
     sets = managed.get("managedRuleSets", [])
     selected = [item for item in sets if item.get("ruleSetType") in ("OWASP", "Microsoft_DefaultRuleSet")]
@@ -163,21 +188,29 @@ def _callback_policy(source):
     return desired
 
 
-def _callback_gateway(body, expected, policy_id):
-    """Portalのcallbackだけへポリシーを結び、API・他画面の経路は保持する。"""
+def _callback_gateway(body, expected, policy_id, *, portal_host=None):
+    """Portal HTTPSとcallbackへ専用policyを結び、Gateway側の経路は保持する。"""
     _probe(body, expected)
     updated = _writable(body)
     properties = updated["properties"]
+    if properties.get("sku", {}).get("name") != "WAF_v2":
+        raise ValueError("Portal WAF requires the owned WAF_v2 gateway")
     listeners = [item for item in properties.get("httpListeners", []) if item.get("name") == "portal-https"]
     routes = [item for item in properties.get("requestRoutingRules", []) if item.get("name") == "rule-portal-https"]
     if len(listeners) != 1 or len(routes) != 1:
         raise ValueError("Portal HTTPS listener or routing rule is missing")
+    listener = listeners[0].get("properties", {})
+    if listener.get("protocol") != "Https" or (portal_host and listener.get("hostName") != portal_host):
+        raise ValueError("Portal HTTPS listener uses another protocol or public host")
     base_policy = expected.rsplit("/applicationGateways/", 1)[0] + "/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-" + expected.rsplit("/", 1)[-1]
     if str(properties.get("firewallPolicy", {}).get("id", "")).casefold() != base_policy.casefold():
         raise ValueError("Portal callback WAF must use the owned common policy")
-    listener_policy = listeners[0].get("properties", {}).get("firewallPolicy", {}).get("id")
-    if listener_policy and listener_policy.casefold() != base_policy.casefold():
+    portal_policy = base_policy + "-portal"
+    listener_policy = listener.get("firewallPolicy", {}).get("id")
+    if listener_policy and listener_policy.casefold() not in {base_policy.casefold(), portal_policy.casefold()}:
         raise ValueError("Portal HTTPS listener uses another WAF policy")
+    if not listener_policy or listener_policy.casefold() != portal_policy.casefold():
+        listener["firewallPolicy"] = {"id": portal_policy}
     route = routes[0].get("properties", {})
     pool = {"id": expected + "/backendAddressPools/bepool-portal"}
     backend = {"id": expected + "/backendHttpSettingsCollection/behttp-portal"}
@@ -217,6 +250,10 @@ def _callback_gateway(body, expected, policy_id):
         if (current.get("paths") != [CALLBACK_PATH] or not same_ref(current.get("backendAddressPool"), pool)
                 or not same_ref(current.get("backendHttpSettings"), backend)):
             raise ValueError("Portal callback path has another backend or path")
+        current_policy = current.get("firewallPolicy", {}).get("id")
+        if current_policy and current_policy.casefold() not in {
+                base_policy.casefold(), portal_policy.casefold(), policy_id.casefold()}:
+            raise ValueError("Portal callback path uses another WAF policy")
         if not same_ref(current.get("firewallPolicy"), {"id": policy_id}):
             current["firewallPolicy"] = {"id": policy_id}
     else:
@@ -230,7 +267,9 @@ def _callback_gateway(body, expected, policy_id):
 
 
 def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
-    """実測したOAuth callback誤検知だけを調整し、認可や他経路のWAF検査は維持する。"""
+    """Portalのセッション値とcallbackを調整し、Gateway側のWAF検査は維持する。"""
+    if config.get("gateway", {}).get("existingWafPolicyId"):
+        raise ValueError("Portal WAF must not replace an enterprise-managed policy")
     expected = gateway_id(config)
     gateway_path = expected + "?api-version=" + NETWORK_API
     response = transport.request("GET", gateway_path)
@@ -239,23 +278,34 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
         raise ValueError("Portal gateway is not ready for callback routing")
     base_id = expected.rsplit("/applicationGateways/", 1)[0] + "/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-" + config["resourceStem"]
     policy_id = base_id + "-portal-auth"
-    update = _callback_gateway(gateway, expected, policy_id)
+    portal_policy_id = base_id + "-portal"
+    portal_host = config.get("portal", {}).get("publicHostName")
+    update = _callback_gateway(gateway, expected, policy_id, portal_host=portal_host)
     base = _ok(transport.request("GET", base_id + "?api-version=" + NETWORK_API), "read common WAF policy")
     if str(base.get("id", "")).casefold() != base_id.casefold():
         raise ValueError("Portal common WAF response identifies another policy")
-    desired = _callback_policy(base)
-    policy_path = policy_id + "?api-version=" + NETWORK_API
-    policy_response = transport.request("GET", policy_path)
-    exists = policy_response.get("statusCode") == 200
-    if not exists and policy_response.get("statusCode") != 404:
-        _ok(policy_response, "read callback WAF policy")
-    existing = _ok(policy_response, "read callback WAF policy") if exists else None
-    if exists and str(existing.get("id", "")).casefold() != policy_id.casefold():
-        raise ValueError("Portal callback WAF response identifies another policy")
-    changed_policy = not exists or _writable_policy(existing) != desired
+    if base.get("properties", {}).get("provisioningState") != "Succeeded":
+        raise ValueError("Portal common WAF policy is not ready")
+    changes = []
+    for identifier, desired in ((portal_policy_id, _portal_policy(base)), (policy_id, _callback_policy(base))):
+        policy_path = identifier + "?api-version=" + NETWORK_API
+        policy_response = transport.request("GET", policy_path)
+        exists = policy_response.get("statusCode") == 200
+        if not exists and policy_response.get("statusCode") != 404:
+            _ok(policy_response, "read Portal WAF policy")
+        existing = _ok(policy_response, "read Portal WAF policy") if exists else None
+        if exists and str(existing.get("id", "")).casefold() != identifier.casefold():
+            raise ValueError("Portal WAF response identifies another policy")
+        if exists and existing.get("properties", {}).get("provisioningState") != "Succeeded":
+            raise ValueError("Portal WAF policy is not ready")
+        if not exists or _writable_policy(existing) != desired:
+            headers = {"If-Match": _etag(policy_response)} if exists else {"If-None-Match": "*"}
+            changes.append((identifier, desired, headers))
+    changed_gateway = update != _writable(gateway)
+    gateway_headers = {"If-Match": _etag(response)} if changed_gateway else None
     deadline, notice = monotonic() + timeout, monotonic() + 45
-    if changed_policy:
-        headers = {"If-Match": _etag(policy_response)} if exists else {"If-None-Match": "*"}
+    for identifier, desired, headers in changes:
+        policy_path = identifier + "?api-version=" + NETWORK_API
         _ok(transport.request("PUT", policy_path, desired, headers=headers), "update callback WAF policy", (200, 201, 202), require_body=False)
         while monotonic() < deadline:
             observed = _ok(transport.request("GET", policy_path), "read callback WAF update")
@@ -267,13 +317,21 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
             sleep(10)
         else:
             raise ValueError("Portal callback WAF policy update is still pending")
-    changed_gateway = update != _writable(gateway)
     if changed_gateway:
-        _ok(transport.request("PUT", gateway_path, update, headers={"If-Match": _etag(response)}), "update callback route", (200, 201, 202), require_body=False)
+        # WAF policy updates can change the referencing gateway's ETag. Refresh
+        # it only after those writes, while refusing any concurrent body change.
+        fresh_response = transport.request("GET", gateway_path)
+        fresh_gateway = _ok(fresh_response, "read callback route before update")
+        _probe(fresh_gateway, expected)
+        if (fresh_gateway.get("properties", {}).get("provisioningState") != "Succeeded"
+                or _writable(fresh_gateway) != _writable(gateway)):
+            raise ValueError("Portal gateway changed before callback routing update")
+        gateway_headers = {"If-Match": _etag(fresh_response)}
+        _ok(transport.request("PUT", gateway_path, update, headers=gateway_headers), "update callback route", (200, 201, 202), require_body=False)
         while monotonic() < deadline:
             observed = _ok(transport.request("GET", gateway_path), "read callback route update")
             status = observed.get("properties", {}).get("provisioningState")
-            if status == "Succeeded" and _callback_gateway(observed, expected, policy_id) == _writable(observed):
+            if status == "Succeeded" and _callback_gateway(observed, expected, policy_id, portal_host=portal_host) == _writable(observed):
                 break
             if status in ("Failed", "Canceled", "Deleting"):
                 raise ValueError("Portal callback routing update did not succeed")
@@ -285,4 +343,6 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
             raise ValueError("Portal callback routing update is still pending")
     return {"resourceId": expected, "policyId": policy_id, "path": CALLBACK_PATH,
             "excludedArgument": "code", "excludedRuleIds": list(CALLBACK_RULE_IDS),
-            "policyUpdated": changed_policy, "gatewayUpdated": changed_gateway}
+            "sessionPolicyId": portal_policy_id,
+            "sessionPolicyUpdated": any(identifier == portal_policy_id for identifier, _, _ in changes),
+            "policyUpdated": any(identifier == policy_id for identifier, _, _ in changes), "gatewayUpdated": changed_gateway}

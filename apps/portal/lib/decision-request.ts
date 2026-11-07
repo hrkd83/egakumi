@@ -2,6 +2,30 @@ import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 import type { DecisionAnswer, DecisionInput, DecisionJson, DecisionModel, DecisionResult } from "./decision-types.ts";
 
+/**
+ * JSONの辞書を検証し、予約名を含む各キーをownデータプロパティとして保存します。
+ * @remarks プロトタイプ設定用の代入を使わず、受理した名前を黙って除去しません。
+ */
+function ownDataRecord<T>(valueSchema: z.ZodType<T>, keySchema: z.ZodType<string> = z.string()) {
+  return z.unknown().transform((input, context): Record<string, T> => {
+    if (input === null || typeof input !== "object" || Array.isArray(input) || Object.getPrototypeOf(input) !== Object.prototype) {
+      context.addIssue({ code: "custom", message: "Expected a JSON object" });
+      return z.NEVER;
+    }
+    const output: Record<string, T> = {};
+    for (const [key, value] of Object.entries(input)) {
+      const name = keySchema.safeParse(key);
+      const parsed = valueSchema.safeParse(value);
+      if (!name.success || !parsed.success) {
+        context.addIssue({ code: "custom", message: "Invalid dictionary entry", path: [key] });
+        continue;
+      }
+      Object.defineProperty(output, key, { value: parsed.data, enumerable: true, configurable: true, writable: true });
+    }
+    return output;
+  });
+}
+
 /** 入力JSONの深さを制限し、再帰の深い値やJSONでない値を検証時に拒否します。 */
 function isJson(value: unknown): value is DecisionJson {
   const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
@@ -21,15 +45,15 @@ const nonempty = z.string().min(1).refine((value) => value.trim().length > 0);
 const names = z.string().min(1);
 const question = z.discriminatedUnion("type", [
   z.object({ type: z.literal("noul"), instructions: nonempty }).strict(),
-  z.object({ type: z.literal("choice"), instructions: nonempty, criteria: z.record(names, nonempty).refine((value) => Object.keys(value).length >= 2) }).strict(),
+  z.object({ type: z.literal("choice"), instructions: nonempty, criteria: ownDataRecord(nonempty, names).refine((value) => Object.keys(value).length >= 2) }).strict(),
   z.object({ type: z.literal("score"), instructions: nonempty, criteria: z.array(nonempty).min(2) }).strict(),
 ]);
 
 /** 実行先や任意ヘッダーは入力に含めず、モデル名と型付き質問だけを受け取ります。 */
 export const decisionInputSchema = z.object({
   modelId: z.string().min(1).max(160),
-  state: z.record(z.string(), z.unknown()).refine(isJson).transform((value) => value as Record<string, DecisionJson>),
-  questions: z.record(names, question).refine((value) => Object.keys(value).length > 0),
+  state: ownDataRecord(z.unknown()).refine(isJson).transform((value) => value as Record<string, DecisionJson>),
+  questions: ownDataRecord(question, names).refine((value) => Object.keys(value).length > 0),
 }).strict();
 
 /** 実行要求にだけ台帳IDを付け、コード例に購読情報が混ざることを防ぎます。 */
@@ -38,7 +62,7 @@ export const decisionExecutionSchema = decisionInputSchema.extend({ apiKeyId: ap
 const probability = z.number().finite().min(0).max(1);
 const summarySchema = z.object({
   name: z.string().min(1), type: z.enum(["noul", "choice", "score"]), value: z.union([z.string(), z.number().finite()]),
-  probabilities: z.record(z.string(), probability).optional(), confidence: probability.optional(),
+  probabilities: ownDataRecord(probability).optional(), confidence: probability.optional(),
 });
 
 /** サーバーからブラウザーへ返す結果の形です。実データの意味は元の質問とも照合します。 */
@@ -46,7 +70,7 @@ export const decisionResultSchema = z.object({
   model: z.string().min(1), answers: z.array(summarySchema).min(1), durationMs: z.number().finite().nonnegative(),
   requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(),
   usage: z.object({ inputTokens: z.number().int().nonnegative().safe().optional(), outputTokens: z.number().int().nonnegative().safe().optional(), totalTokens: z.number().int().nonnegative().safe().optional() }).optional(),
-  rawResponse: z.record(z.string(), z.unknown()),
+  rawResponse: ownDataRecord(z.unknown()),
 }).strict();
 
 /** オブジェクトかを確認し、配列・nullを回答の辞書として読みません。 */
@@ -54,7 +78,7 @@ function record(value: unknown): value is Record<string, unknown> { return value
 
 /** 確率の選択肢が要求と一致し、合計が1であることを確認します。 */
 function readProbabilities(value: unknown, expected: string[]): Record<string, number> {
-  const parsed = z.record(z.string(), probability).parse(value);
+  const parsed = ownDataRecord(probability).parse(value);
   const keys = Object.keys(parsed);
   if (keys.length !== expected.length || expected.some((key) => !Object.hasOwn(parsed, key)) || Math.abs(Object.values(parsed).reduce((sum, item) => sum + item, 0) - 1) > 0.0001) throw new Error("Invalid decision distribution");
   return parsed;

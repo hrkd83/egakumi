@@ -1,0 +1,679 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Independent synthetic golden from the previous Bicep declarations; canonical changes require an intentional fixture review.",
+  "cases": [
+    {
+      "gatewaySku": "WAF_v2",
+      "firewallTier": "Premium",
+      "websocket": true,
+      "phase": "core",
+      "preserveCollection": false,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.keyvault/vaults/kv-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "AuditEvent",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.keyvault/vaults/kv-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.cognitiveservices/accounts/aif-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumius"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.cognitiveservices/accounts/aif-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-usage": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "AzureOpenAIRequestUsage",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "GatewayLogs",
+              "enabled": true
+            },
+            {
+              "category": "GatewayLlmLogs",
+              "enabled": true
+            },
+            {
+              "category": "WebSocketConnectionLogs",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/applicationgateways/agw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-agw": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "ApplicationGatewayFirewallLog",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/applicationgateways/agw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-agw-access": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "ApplicationGatewayAccessLog",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/applicationgateways/agw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-agw-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/azurefirewalls/afw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-fw": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "AZFWNetworkRule",
+              "enabled": true
+            },
+            {
+              "category": "AZFWApplicationRule",
+              "enabled": true
+            },
+            {
+              "category": "AZFWThreatIntel",
+              "enabled": true
+            },
+            {
+              "category": "AZFWIdpsSignature",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/azurefirewalls/afw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-fw-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.app/managedenvironments/cae-test-egakumi/providers/microsoft.insights/diagnosticsettings/portal-logs": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "ContainerAppConsoleLogs",
+              "enabled": true
+            },
+            {
+              "category": "ContainerAppSystemLogs",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-activity": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Administrative",
+              "enabled": true
+            },
+            {
+              "category": "ServiceHealth",
+              "enabled": true
+            },
+            {
+              "category": "ResourceHealth",
+              "enabled": true
+            },
+            {
+              "category": "Alert",
+              "enabled": true
+            },
+            {
+              "category": "Autoscale",
+              "enabled": true
+            },
+            {
+              "category": "Security",
+              "enabled": true
+            },
+            {
+              "category": "Recommendation",
+              "enabled": true
+            },
+            {
+              "category": "Policy",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "gatewaySku": "WAF_v2",
+      "firewallTier": "Premium",
+      "websocket": true,
+      "phase": "monitoring",
+      "preserveCollection": false,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "gatewaySku": "WAF_v2",
+      "firewallTier": "Premium",
+      "websocket": true,
+      "phase": "monitoring",
+      "preserveCollection": true,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "gatewaySku": "Standard_v2",
+      "firewallTier": "Standard",
+      "websocket": false,
+      "phase": "core",
+      "preserveCollection": false,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.keyvault/vaults/kv-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "AuditEvent",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.keyvault/vaults/kv-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.cognitiveservices/accounts/aif-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumius"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.cognitiveservices/accounts/aif-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-usage": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "AzureOpenAIRequestUsage",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "GatewayLogs",
+              "enabled": true
+            },
+            {
+              "category": "GatewayLlmLogs",
+              "enabled": true
+            }
+          ],
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/applicationgateways/agw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-agw": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "ApplicationGatewayAccessLog",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/applicationgateways/agw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-agw-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/azurefirewalls/afw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-fw": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "AZFWNetworkRule",
+              "enabled": true
+            },
+            {
+              "category": "AZFWApplicationRule",
+              "enabled": true
+            },
+            {
+              "category": "AZFWThreatIntel",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-nw/providers/microsoft.network/azurefirewalls/afw-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-fw-metrics": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "metrics": [
+            {
+              "category": "AllMetrics",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.app/managedenvironments/cae-test-egakumi/providers/microsoft.insights/diagnosticsettings/portal-logs": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logs": [
+            {
+              "category": "ContainerAppConsoleLogs",
+              "enabled": true
+            },
+            {
+              "category": "ContainerAppSystemLogs",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-activity": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Administrative",
+              "enabled": true
+            },
+            {
+              "category": "ServiceHealth",
+              "enabled": true
+            },
+            {
+              "category": "ResourceHealth",
+              "enabled": true
+            },
+            {
+              "category": "Alert",
+              "enabled": true
+            },
+            {
+              "category": "Autoscale",
+              "enabled": true
+            },
+            {
+              "category": "Security",
+              "enabled": true
+            },
+            {
+              "category": "Recommendation",
+              "enabled": true
+            },
+            {
+              "category": "Policy",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "gatewaySku": "Standard_v2",
+      "firewallTier": "Standard",
+      "websocket": false,
+      "phase": "monitoring",
+      "preserveCollection": false,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "gatewaySku": "Standard_v2",
+      "firewallTier": "Standard",
+      "websocket": false,
+      "phase": "monitoring",
+      "preserveCollection": true,
+      "expected": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumijp/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectjapan-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.storage/storageaccounts/sttestegakumius/blobservices/default/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-collectfoundry-blob": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "logs": [
+            {
+              "category": "StorageRead",
+              "enabled": true
+            },
+            {
+              "category": "StorageWrite",
+              "enabled": true
+            },
+            {
+              "category": "StorageDelete",
+              "enabled": true
+            }
+          ]
+        },
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-monitor/providers/microsoft.operationalinsights/workspaces/law-test-egakumi/providers/microsoft.insights/diagnosticsettings/diag-test-egakumi-law": {
+          "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
+          "logAnalyticsDestinationType": "Dedicated",
+          "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp",
+          "logs": [
+            {
+              "category": "Audit",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

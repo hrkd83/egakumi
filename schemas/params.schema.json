@@ -53,7 +53,7 @@
       "minLength": 1,
       "maxLength": 12,
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "リソース名とタグに使う任意の環境識別子です。例test/dev/prod。値によるSKU・保持期間などの切替はありません。Azure共通命名のため先頭英小文字、以降は英小文字・数字・内部ハイフン、最大12字。 命名順は種類-環境名-製品名。environmentName-productNameは合計21文字以内、ハイフン除去後は20文字以内にしてください。超過時は構築前にエラーになります。"
+      "description": "リソース名とタグに使う任意の環境識別子です。例test/dev/prod。値によるSKU・保持期間などの切替はありません。Azure共通命名のため先頭英小文字、以降は英小文字・数字・内部ハイフン、最大12字。 命名順は種類-環境名-製品名。environmentName-productNameは合計17文字以内にしてください。ca-<stem>-credentialsのContainer App上限32文字に合わせます。超過時は構築前にエラーになります。"
     },
     "schemaVersion": {
       "const": 1
@@ -263,7 +263,7 @@
       "minLength": 1,
       "maxLength": 24,
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "各リソース名に使う製品名です。 命名順は種類-環境名-製品名。environmentName-productNameは合計21文字以内、ハイフン除去後は20文字以内にしてください。超過時は構築前にエラーになります。",
+      "description": "各リソース名に使う製品名です。 命名順は種類-環境名-製品名。environmentName-productNameは合計17文字以内にしてください。ca-<stem>-credentialsのContainer App上限32文字に合わせます。超過時は構築前にエラーになります。",
       "examples": [
         "egakumi"
       ]
@@ -1161,6 +1161,8 @@
             "registeredOperation",
             "pathModel",
             "bodyModel",
+            "textEmbeddings",
+            "rerank",
             "statelessResponses",
             "hostedAgentPost",
             "a2aJsonRpc",
@@ -1323,6 +1325,41 @@
           "minimum": 10,
           "maximum": 60,
           "description": "Document分析のGateway待機時間。期限超過後に自動再送しません。"
+        },
+        "embeddingDimensionsByModel": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "default",
+              "maximum"
+            ],
+            "properties": {
+              "default": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "maximum": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "allowed": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                }
+              }
+            }
+          },
+          "description": "モデル別の既定埋め込み次元と上限。allowedを省略した場合は1からmaximumまでの整数。"
         }
       }
     },

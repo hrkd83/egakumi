@@ -154,8 +154,8 @@ CASES = [
     limit_case("missing-config", {}, {"kind": "statelessResponses"}),
     limit_case("invalid-responses-alias", {"max_tokens": 10},
                {"kind": "statelessResponses", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_tokens"}),
-    limit_case("byte-boundary", "あ" * 10, {"kind": "pii", "maxRequestBytes": 30}),
-    limit_case("multibyte-excess", "あ" * 10, {"kind": "pii", "maxRequestBytes": 29}),
+    limit_case("byte-boundary", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 30}),
+    limit_case("multibyte-excess", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 29}),
     {"id": "audit-accepted", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
      "gatewayAuditPhase": "accepted", "gatewayAuditCode": "GATEWAY_ALLOWED",
      "decision": {"allowed": True, "callerId": "subscription:subscription-a", "method": "subscriptionKey", "accessToken": "SENTINEL_ACCESS_TOKEN"},
@@ -220,6 +220,40 @@ for _name, _body in (("bounded-fields", {"documents": ["a", "b"], "top_n": 2, "q
     CASES.append(limit_case(_name, _body, {"kind": "bodyModel", "bodyFormat": "json", "maxRequestBytes": 1024,
          "integerLimits": {"top_n": {"minimum": 1, "maximum": 2, "required": True}},
          "arrayLimits": {"documents": 2}, "stringChoices": {"quality": ["low"]}}))
+
+RERANK_LIMITS = {"kind": "rerank", "bodyFormat": "json", "maxRequestBytes": 65536,
+                 "arrayLimits": {"documents": 8},
+                 "integerLimits": {"top_n": {"minimum": 1, "maximum": 3, "required": True}}}
+RERANK_BODY = {"model": "synthetic-ranker", "query": "synthetic query", "documents": ["synthetic document"], "top_n": 1}
+RERANK_REJECTIONS = {
+    "cross-field": {"top_n": 2}, "empty-documents": {"documents": []},
+    "too-many-documents": {"documents": ["document"] * 9},
+    "null-documents": {"documents": None}, "string-documents": {"documents": "document"},
+    "object-document": {"documents": [{"text": "document"}]},
+    "null-document": {"documents": [None]}, "number-document": {"documents": [1]},
+    "empty-document": {"documents": [""]}, "blank-document": {"documents": [" \t\n"]},
+    "bom-document": {"documents": ["\ufeff"]}, "empty-query": {"query": ""},
+    "blank-query": {"query": " \t\n"}, "unicode-blank-query": {"query": "\u00a0\u2003\u2028\u3000\ufeff"},
+    "null-query": {"query": None}, "number-query": {"query": 1}, "array-query": {"query": ["query"]},
+    "zero-top": {"top_n": 0}, "excess-top": {"documents": ["document"] * 8, "top_n": 4},
+    "float-top": {"top_n": 1.0}, "string-top": {"top_n": "1"}, "bool-top": {"top_n": True},
+}
+for _name, _patch in RERANK_REJECTIONS.items():
+    CASES.append(limit_case("rerank-" + _name, {**RERANK_BODY, **_patch}, RERANK_LIMITS))
+for _field in ("query", "documents", "top_n"):
+    CASES.append(limit_case("rerank-missing-" + _field,
+                           {k: v for k, v in RERANK_BODY.items() if k != _field}, RERANK_LIMITS))
+for _name, _patch in (("minimum", {}), ("maximum", {"documents": ["document"] * 8, "top_n": 3}),
+                       ("non-js-whitespace", {"query": "\u0085", "documents": ["\u0085"]}),
+                       ("preserve-surrounding-space", {"query": "  query  ", "documents": ["  document  "]})):
+    CASES.append(limit_case("rerank-" + _name, {**RERANK_BODY, **_patch}, RERANK_LIMITS))
+_rerank_json = json.dumps(RERANK_BODY, separators=(",", ":"))
+for _size in (65536, 65537):
+    CASES.append(limit_case("rerank-bytes-" + str(_size),
+                           _rerank_json + " " * (_size - len(_rerank_json.encode("utf-8"))), RERANK_LIMITS))
+for _field in ("arrayLimits", "integerLimits"):
+    CASES.append(limit_case("rerank-unconfigured-" + _field, RERANK_BODY,
+                           {k: v for k, v in RERANK_LIMITS.items() if k != _field}))
 
 
 class GatewayExpressionTests(unittest.TestCase):
@@ -325,6 +359,25 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             with self.subTest(case_id=case["id"]):
                 self.assertEqual(self.results[case["id"]]["bodyAfter"], case["body"])
                 self.assertTrue(self.results[case["id"]]["preserved"])
+
+    def test_rerank_rejects_invalid_types_blanks_and_cross_field_counts_before_upstream(self):
+        for suffix in (*RERANK_REJECTIONS, "missing-query", "missing-documents", "missing-top_n"):
+            with self.subTest(case=suffix):
+                self.assertEqual(self.decision("rerank-" + suffix),
+                                 {"allowed": False, "status": 400, "code": "INVALID_REQUEST"})
+
+    def test_rerank_accepts_its_count_and_wire_byte_boundaries_without_clamping(self):
+        for suffix in ("minimum", "maximum", "non-js-whitespace", "preserve-surrounding-space", "bytes-65536"):
+            with self.subTest(case=suffix):
+                self.assertEqual(self.decision("rerank-" + suffix),
+                                 {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+        self.assertEqual(self.decision("rerank-bytes-65537"),
+                         {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+
+    def test_rerank_missing_deployed_count_bounds_fail_closed(self):
+        for field in ("arrayLimits", "integerLimits"):
+            self.assertEqual(self.decision("rerank-unconfigured-" + field),
+                             {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
 
     def test_verified_caller_and_common_request_id_are_recorded(self):
         result = self.decision("audit-accepted")

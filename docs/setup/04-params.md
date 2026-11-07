@@ -336,7 +336,7 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | --- | --- | --- |
 | `C.defaultProfile` | `chat`または`response` | profile選択headerを省略した場合の入力profile。 |
 | `C.profiles` | profile定義の配列 | 各entryにprofileId、modalitiesと既存のkind・許可モデル・本文/出力上限を保持。 |
-| `C.kind` | 操作ごとの例 | registeredOperation/pathModel/bodyModel/statelessResponses/hostedAgentPost/a2aJsonRpc/realtimeCreate/realtimeHangup/pii。 |
+| `C.kind` | 操作ごとの例 | registeredOperation/pathModel/bodyModel/textEmbeddings/rerank/statelessResponses/hostedAgentPost/a2aJsonRpc/realtimeCreate/realtimeHangup/liveCreate/pii/documentAnalysis。 |
 | `C.bodyFormat` | HTTP書込はjson、GET等はnone | 本文形式。native protocolはnone。 |
 | `C.maxRequestBytes` | 操作例の主な値32768 | 本文byte上限。WAF上限と整合させる。 |
 | `C.contentTypes` | 必要な操作だけ設定 | 許可するmedia type。binary/multipart/textで必須。 |
@@ -354,12 +354,17 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | `C.integerLimits.<項目>.required` | 省略→false | 当該JSON項目の必須化。 |
 | `C.arrayLimits` | {}または操作例 | 配列件数上限。 |
 | `C.stringChoices` | {}または操作例 | 文字列の許可値。 |
+| `C.embeddingDimensionsByModel` | textEmbeddings例で指定 | 許可モデル別の既定次元`default`・上限`maximum`と、必要な場合の選択肢`allowed`。 |
 | `C.modelVersion` | PIIの固定評価版 | PII処理版。モデル配備版とは別。 |
 | `C.allowedLanguages` | PII例はja/en | PIIの許可言語。 |
 | `C.allowedWarningCodes` | [] | 許容PII warning。 |
 | `C.model` | Realtime例のモデル名 | Realtimeモデル。 |
 | `C.sessionTtlSeconds` | Realtime例は600 | セッション有効秒。 |
 | `C.publicCallPath` | Realtime公開パス例 | 通話制御APIの公開パス。 |
+
+`textEmbeddings`は登録済みのOpenAI `POST /embeddings`またはCohere `POST /embed`のテキスト埋め込み用です。`embeddingDimensionsByModel`は`allowedModels`と同じモデル名を過不足なく持ち、各モデルの`default`と`maximum`を指定します。`allowed`を省略した場合は1から`maximum`までの整数を許可し、指定する場合は重複なく`default`と`maximum`を含めます。Cohereでは`allowed`が必須です。ベクトル次元は生成の出力トークン上限とは別のため、出力トークンの設定は使用しません。
+
+`rerank`はFoundryのJSON `POST /rerank`用です。`arrayLimits.documents`と必須の`integerLimits.top_n`で上限を指定し、query・各文書は非空白の文字列、文書は1件以上、`top_n`は文書数以下としてGatewayでも検査します。本文を切り詰めたり返却件数を補正したりしません。出力トークンの設定やprofilesは使用しません。
 
 `openai-inference-v1`の入力profileは`X-Egakumi-Profile` headerで選びます。`chat-completions`は`chat`（default）・`vision`・`audio-chat`、`responses-create`は`response`（default）・`pdf`です。ヘッダーを省略した場合はdefaultを使い、選択したprofileのモデル・入力形式・本文サイズ・出力上限を照合します。
 

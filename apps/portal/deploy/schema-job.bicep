@@ -49,7 +49,7 @@ var variables = {
   PORTAL_API_KEY_APIM_CLIENT_ID: runtimeIdentity.clientId
 }
 resource migration 'Microsoft.App/jobs@2025-01-01' = {
-  name: 'caj-${stem}-portal-schema'
+  name: 'caj-${stem}-psql'
   location: location
   tags: tags
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${schemaIdentity.id}': {}, '${runtimeIdentity.id}': {} } }

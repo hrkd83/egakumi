@@ -53,7 +53,7 @@ export type TextGenerationResult = {
 export type ModelGatewayErrorCode =
   | "InvalidRequest" | "AuthenticationRequired" | "RequestNotAllowed"
   | "ModelUnavailable" | "GatewayNotConfigured" | "GatewayUnauthorized"
-  | "RateLimitExceeded" | "GatewayTimeout" | "GenerationFailed"
+  | "RateLimitExceeded" | "OutputLimitReached" | "GatewayTimeout" | "GenerationFailed"
   | "AuthenticationUnavailable" | "RequestCancelled"
   | "ApiKeyUnavailable" | "ApiKeyAccessUnavailable";
 

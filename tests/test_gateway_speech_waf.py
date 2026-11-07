@@ -121,6 +121,89 @@ class GatewaySpeechWafTests(unittest.TestCase):
         self.assertFalse(receipt['gatewayUpdated'])
         self.assertEqual([call['method'] for call in again.calls], ['GET', 'GET', 'GET'])
 
+    def test_azure_reordered_paths_finish_routing_poll_and_repeated_run_is_readonly(self):
+        source, base = desired_gateway(gateway(path_based=True)), policy()
+        mapping = api_mapping(source)
+        # The managed rule stays between unrelated rules; only its policy needs updating.
+        selected = mapping['pathRules'].pop(0)
+        mapping['pathRules'].append(selected)
+        following = copy.deepcopy(mapping['pathRules'][0])
+        following['name'] = 'following-api'
+        following['properties']['paths'] = ['/unrelated/exact']
+        mapping['pathRules'].append(following)
+        selected['properties']['firewallPolicy'] = {'id': BASE_ID + '-previous'}
+        before = copy.deepcopy(source)
+        observed = desired_gateway(source)
+        observed_rule = next(rule for rule in api_mapping(observed)['pathRules']
+                             if rule['name'] == SPEECH_RULE_NAME)
+        observed_rule['properties']['paths'].reverse()
+        updated_policy = ready_policy(_raw_body_policy(base))
+        transport = Transport([{'statusCode': 200, 'body': source}, {'statusCode': 200, 'body': base},
+            {'statusCode': 200, 'body': updated_policy}, {'statusCode': 202},
+            {'statusCode': 200, 'body': observed}])
+        receipt = configure_gateway_speech_waf(configuration(), transport, timeout=1,
+            sleep=lambda _: self.fail('Succeeded routing with the same paths must finish polling'))
+        self.assertTrue(receipt['gatewayUpdated'])
+        self.assertFalse(receipt['policyUpdated'])
+        self.assertEqual(source, before)
+        writes = [call for call in transport.calls if call['method'] == 'PUT']
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0]['headers'], {'If-Match': '"gateway-v2"'})
+        sent = writes[0]['body']
+        self.assertEqual([rule['name'] for rule in api_mapping(sent)['pathRules']],
+                         [rule['name'] for rule in mapping['pathRules']])
+        self.assertEqual(api_mapping(sent)['pathRules'][0], mapping['pathRules'][0])
+        self.assertEqual(api_mapping(sent)['pathRules'][2], mapping['pathRules'][2])
+        self.assertEqual(sent['properties']['rewriteRuleSets'], source['properties']['rewriteRuleSets'])
+        self.assertEqual(api_mapping(sent)['defaultRewriteRuleSet'], mapping['defaultRewriteRuleSet'])
+        self.assertEqual(api_mapping(sent)['pathRules'][1]['properties']['rewriteRuleSet'],
+                         selected['properties']['rewriteRuleSet'])
+        again = Transport([{'statusCode': 200, 'body': observed}, {'statusCode': 200, 'body': base},
+                           {'statusCode': 200, 'body': updated_policy}])
+        receipt = configure_gateway_speech_waf(configuration(), again)
+        self.assertFalse(receipt['policyUpdated'])
+        self.assertFalse(receipt['gatewayUpdated'])
+        self.assertEqual([call['method'] for call in again.calls], ['GET', 'GET', 'GET'])
+        self.assertEqual(observed_rule['properties']['paths'], list(reversed(PATHS)))
+
+    def test_existing_exact_rule_rejects_path_or_backend_drift(self):
+        for case in ('missing-path', 'extra-path', 'duplicate-path', 'pool', 'settings', 'rewrite'):
+            source = desired_gateway(gateway(path_based=True))
+            current = api_mapping(source)['pathRules'][0]['properties']
+            current['paths'].reverse()
+            if case == 'missing-path':
+                current['paths'].pop()
+            elif case == 'extra-path':
+                current['paths'].append('/unrelated/extra')
+            elif case == 'duplicate-path':
+                current['paths'].append(current['paths'][0])
+            else:
+                key = {'pool': 'backendAddressPool', 'settings': 'backendHttpSettings',
+                       'rewrite': 'rewriteRuleSet'}[case]
+                current[key] = {'id': '/other/' + case}
+            before = copy.deepcopy(source)
+            with self.subTest(case=case), self.assertRaisesRegex(ValueError, 'backend, rewrite or path'):
+                _path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
+                    paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime')
+            self.assertEqual(source, before)
+
+    def test_reordered_managed_paths_still_move_above_a_matching_wildcard(self):
+        source = desired_gateway(gateway(path_based=True))
+        mapping = api_mapping(source)
+        selected = mapping['pathRules'].pop(0)
+        selected['properties']['paths'].reverse()
+        mapping['pathRules'][0]['properties']['paths'] = ['/models/*']
+        mapping['pathRules'].append(selected)
+        before = copy.deepcopy(source)
+        result = _speech_path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
+            paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime')
+        rules = api_mapping(result)['pathRules']
+        self.assertEqual([rule['name'] for rule in rules], [SPEECH_RULE_NAME, 'existing-api'])
+        self.assertEqual(rules[0]['properties']['paths'], list(reversed(PATHS)))
+        self.assertEqual(rules[1], mapping['pathRules'][0])
+        self.assertEqual(result['properties']['rewriteRuleSets'], source['properties']['rewriteRuleSets'])
+        self.assertEqual(source, before)
+
     def test_arm_empty_skipped_rule_sets_finish_policy_polling_and_second_run_is_readonly(self):
         source, base = desired_gateway(gateway(path_based=True)), policy()
         for rule in base['properties']['customRules']:

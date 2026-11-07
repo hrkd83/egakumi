@@ -29,7 +29,7 @@ def fixture():
     stem, groups = config['resourceStem'], config['resourceGroupNames']
     identity = base + '/resourceGroups/' + groups['id'] + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/'
     broker = {
-        'applicationName': 'ca-' + stem + '-credential-broker', 'resourceGroup': groups['svc'],
+        'applicationName': 'ca-' + stem + '-credentials', 'resourceGroup': groups['svc'],
         'sqlServer': 'sql-' + stem + '.database.windows.net', 'database': 'sqldb-' + stem + '-credentials',
         'runtimeIdentity': {'id': identity + 'id-' + stem + '-credential-broker',
                             'principalId': '12345678-1234-4234-8234-123456789001',
@@ -67,7 +67,7 @@ class BuildTransport:
                 return ok({'id': target, 'location': 'japaneast',
                            'identity': {'principalId': '12345678-1234-4234-8234-123456789006'}})
             if target == self.targets['registryId']:
-                return ok({'id': target, 'properties': {'loginServer': self.targets['registryServer'], 'publicNetworkAccess': 'Disabled'}})
+                return ok({'id': target, 'properties': {'creationDate': '2026-01-01T00:00:00.1234567Z', 'loginServer': self.targets['registryServer'], 'publicNetworkAccess': 'Disabled'}})
             if target not in self.present:
                 return ok({'error': {'code': 'ResourceNotFound', 'message': 'The Resource was not found.'}}, code=404)
             if image.owned_build_command(target, self.targets['commandId']):
@@ -109,17 +109,18 @@ class InitialDeploymentTests(unittest.TestCase):
         config, state = fixture()
         targets = image.build_targets(config, state)
         receipt = {'status': 'built', 'commandId': targets['commandId'], 'imageDigest': DIGEST,
-                   'sourceSha256': 'a' * 64, 'temporaryResourcesRemoved': True}
+                   'sourceSha256': 'a' * 64, 'temporaryResourcesRemoved': True,
+                   'registryGeneration': {'resourceId': targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'}}
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'build.json'
             path.write_text(json.dumps(receipt))
-            self.assertEqual(image.reusable_image(config, state, 'a' * 64, path), DIGEST)
+            self.assertEqual(image.reusable_image(config, state, 'a' * 64, path, transport=BuildTransport(config, state, 'a' * 64)), DIGEST)
             for field, invalid in (('status', 'failed'), ('sourceSha256', 'b' * 64),
                                    ('commandId', targets['commandId'] + '-other'),
                                    ('imageDigest', 'latest'), ('temporaryResourcesRemoved', False)):
                 with self.subTest(field=field):
                     path.write_text(json.dumps({**receipt, field: invalid}))
-                    self.assertIsNone(image.reusable_image(config, state, 'a' * 64, path))
+                    self.assertIsNone(image.reusable_image(config, state, 'a' * 64, path, transport=BuildTransport(config, state, 'a' * 64)))
 
     def test_cleanup_targets_the_same_job_names_as_deployment(self):
         config, state = fixture()
@@ -158,6 +159,7 @@ class InitialDeploymentTests(unittest.TestCase):
             record=lambda value: records.append(copy.deepcopy(value)), progress=lambda *a, **k: None)
         self.assertEqual(digest, DIGEST)
         self.assertTrue(records[-1]['temporaryResourcesRemoved'])
+        self.assertEqual(records[-1]['registryGeneration'], {'resourceId': transport.targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'})
         self.assertEqual(transport.present, set())
         puts = [(path, body) for method, path, body in transport.calls if method == 'PUT']
         self.assertEqual(len(puts), 2)
@@ -193,6 +195,7 @@ class InitialDeploymentTests(unittest.TestCase):
             image.build_image(config, state, transport, data=b'public', source_hash='b' * 64,
                 record=lambda value: records.append(copy.deepcopy(value)), progress=lambda *a, **k: None)
         self.assertTrue(records[-1]['temporaryResourcesRemoved'])
+        self.assertEqual(records[-1]['registryGeneration'], {'resourceId': transport.targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'})
         self.assertEqual(transport.present, set())
 
     def test_cleanup_failure_is_not_reported_as_success(self):

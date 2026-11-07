@@ -14,6 +14,14 @@ https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-ho
 https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference-2026-04-10#realtimerequestsession
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 import argparse
 import asyncio
 import base64

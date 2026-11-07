@@ -68,6 +68,28 @@ test("本人が選んだ台帳キーを毎回照会し、公開固定APIへ購�
   assert.equal(data.answers.length, 3); assert.equal(data.requestId, "request_123"); assert.equal(JSON.stringify(data).includes(key), false); assert.equal(calls, 1);
 });
 
+test("BFFのJSON読取から上流・ブラウザー応答まで予約名を通常データとして往復する", async () => {
+  const edited = { modelId: model.id,
+    state: JSON.parse('{"__proto__":{"marker":"入力"},"items":[{"__proto__":{"marker":"配列"}}],"constructor":"通常名","prototype":"🙂"}'),
+    questions: JSON.parse('{"__proto__":{"type":"choice","instructions":"候補を選ぶ","criteria":{"__proto__":"候補1","constructor":"候補2"}}}'),
+  };
+  const native = JSON.parse('{"model":"Microsoft-Decision-1","__proto__":{"marker":"応答"},"answers":{"__proto__":{"type":"choice","choice":"__proto__","probabilities":{"__proto__":0.8,"constructor":0.2}}}}');
+  let calls = 0;
+  const response = await handleDecision(request(edited), dependencies({ fetch: async (_url, options) => {
+    calls++;
+    assert.deepEqual(JSON.parse(String(options?.body)), { model: model.id, state: edited.state, questions: edited.questions });
+    return Response.json(native);
+  } }));
+  assert.equal(response.status, 200);
+  const parsed = await readDecisionResponse(response);
+  assert.deepEqual(parsed.answers, [{ name: "__proto__", type: "choice", value: "__proto__", probabilities: native.answers.__proto__.probabilities }]);
+  assert.deepEqual(parsed.rawResponse, native);
+  assert.equal(Object.hasOwn(parsed.rawResponse, "__proto__"), true);
+  assert.equal(Object.hasOwn(parsed.answers[0].probabilities!, "__proto__"), true);
+  assert.equal(Object.hasOwn(Object.prototype, "marker"), false);
+  assert.equal(calls, 1);
+});
+
 test("権限を失ったキーや失敗したキー照会を別のキーで代替しない", async () => {
   let calls = 0;
   const context = dependencies({ fetch: async () => { calls++; throw new Error("not called"); } });
@@ -103,6 +125,15 @@ test("応答途中の停滞・ブラウザー切断を中止し、再送しな�
   const controller = new AbortController();
   const response = await handleDecision(request(input, {}, controller.signal), dependencies({ fetch: async (_url, options) => { controller.abort(); assert.equal(options?.signal?.aborted, true); throw new Error("cancelled"); } }));
   assert.equal(response.status, 499);
+});
+
+test("引用符付きキーが回答JSONの値や名前へ反射されても公開しない", async () => {
+  const credential = 'synthetic-decision-"key"-\\-value';
+  for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+    const raw = JSON.stringify({ ...body(), ...reflected }); assert.equal(raw.includes(credential), false);
+    const response = await handleDecision(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  }
 });
 
 test("ブラウザーの応答検証も未知のエラー・壊れた成功データを受け付けない", async () => {

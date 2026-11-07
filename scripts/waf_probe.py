@@ -8,8 +8,10 @@ is never sent to Portal, attack probes, connection/session operations or uploads
 
 Only request metadata and classifications are written. Bodies, response headers,
 response bodies, credentials and exception messages are never persisted. A
-``wafprobe<alphanumeric-run-and-case-hash>=1`` permits correlation with WAF logs
-even when query values are scrubbed. Its name contains synthetic identifiers only.
+`User-Agent` is ``egakumi-waf-probe/1.0 <correlation>``; its bounded alphanumeric
+correlation is the existing run/case identifier in the report. Access-log query
+values are not retained, so no extra correlation query is added. Correlate the
+exact User-Agent with AppGW access logs and join firewall logs by TransactionId.
 A 403 alone is ambiguous; confirm exclusions using AppGW firewall rule logs.
 
 Examples::
@@ -27,6 +29,14 @@ This finite corpus cannot enumerate every possible request. WebSocket probes
 cover the HTTP upgrade only, not frames (which AppGW WAF does not inspect).
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import argparse
 import ast
@@ -969,11 +979,15 @@ def validate_base_url(value: str) -> str:
     return value.rstrip("/")
 
 
-def request_url(base: str, case: Probe, correlation: str) -> str:
+def probe_user_agent(correlation: str) -> str:
     if len(correlation) > 56 or not re.fullmatch(r"[A-Za-z0-9]+", correlation):
         raise ValueError("correlation must be a bounded alphanumeric synthetic identifier")
+    return "egakumi-waf-probe/1.0 " + correlation
+
+
+def request_url(base: str, case: Probe) -> str:
     split = urlsplit(base + case.path)
-    query = parse_qsl(split.query, keep_blank_values=True) + list(case.query) + [("wafprobe" + correlation, "1")]
+    query = parse_qsl(split.query, keep_blank_values=True) + list(case.query)
     return urlunsplit((split.scheme, split.netloc, split.path, urlencode(query), ""))
 
 
@@ -1023,12 +1037,14 @@ def run_probe(case: Probe, base: str, run_id: str, timeout: float, limiter: Rate
     record["correlation"] = correlation
     if case.auth_mode == "invalid-model-canary" and not key:
         return {**record, "classification": "skipped_key_required", "functional_success": False}
-    headers = {"User-Agent": "egakumi-waf-probe/1.0", "Accept": "application/json, text/html;q=0.5", **dict(case.headers)}
+    headers = {"Accept": "application/json, text/html;q=0.5",
+        **{name: value for name, value in case.headers if name.casefold() != "user-agent"},
+        "User-Agent": probe_user_agent(correlation)}
     if case.auth_mode == "invalid-model-canary":
         if case.target != "gateway" or (case.method, case.path) not in CANARY_ROUTES or case.intent != "compatibility" or json.loads(case.body or b"{} ").get("model") != INVALID_MODEL:
             raise ValueError("credential canary safety boundary failed")
         headers["api-key"] = key
-    url = request_url(base, case, correlation)
+    url = request_url(base, case)
     limiter.wait()
     record["request_started_at"] = datetime.now(timezone.utc).isoformat()
     start = time.monotonic()

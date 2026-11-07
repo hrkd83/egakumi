@@ -21,7 +21,11 @@ export function buildRealtimeSessionEvent(model: RealtimeModel, input: RealtimeI
   if (model.family === "transcription") return { type: "session.update", session: { type: "transcription", audio: { input: { format: { type: "audio/pcm", rate: 24000 }, turn_detection: null, transcription: { model: model.modelId, language: "ja", delay: "medium" } } } } };
   // WebRTCのコーデックはSDPに任せ、WSSにだけヘッダーなしPCMを指定します。
   const format = model.transport === "websocket" ? { format: { type: "audio/pcm", rate: 24000 } } : {};
-  return { type: "session.update", session: { type: "realtime", output_modalities: ["audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, max_output_tokens: outputTokens, tools: [], audio: { input: { ...format, turn_detection: { ...voiceActivityDetection, create_response: true, interrupt_response: true } }, output: { ...format, voice } } } };
+  const transcriptionModel = model.inputTranscriptionModel;
+  if (transcriptionModel !== undefined && (typeof transcriptionModel !== "string" || !/^[a-zA-Z0-9._-]{1,120}$/.test(transcriptionModel) || transcriptionModel.startsWith("__"))) throw new Error("Invalid transcription model binding");
+  // 同じ入力音声の字幕だけを有効化します。別接続・外部ASR・音声応答方式の変更は行いません。
+  const transcription = transcriptionModel ? { transcription: { model: transcriptionModel } } : {};
+  return { type: "session.update", session: { type: "realtime", output_modalities: ["audio"], instructions: REALTIME_CONVERSATION_INSTRUCTIONS, max_output_tokens: outputTokens, tools: [], audio: { input: { ...format, ...transcription, turn_detection: { ...voiceActivityDetection, create_response: true, interrupt_response: true } }, output: { ...format, voice } } } };
 }
 
 /** 任意のオブジェクトを転送せず、既知の形式の非負数だけを利用量として公開します。 */
@@ -48,6 +52,7 @@ export class RealtimeProtocol {
   ready = false; terminal = false; responseActive = false; outputAudioBytes = 0; eventCount = 0;
   private committedItems = new Set<string>();
   private completedItems = new Set<string>();
+  private transcriptionIndexes = new Map<string, number>();
   private pendingTranscripts = new Map<string, { text: string; final: boolean }[]>();
   private pendingCharacters = 0;
   private outputCharacters = 0;
@@ -70,10 +75,14 @@ export class RealtimeProtocol {
     if (type === "response.created") { this.responseActive = true; this.outputCharacters = 0; }
     if (type === "input_audio_buffer.committed" && this.model.family === "transcription") {
       const item = this.itemId(event);
-      if (this.committedItems.has(item) || this.completedItems.has(item) || this.committedItems.size >= 100) throw new Error("Invalid committed item");
+      if (this.committedItems.has(item) || this.completedItems.has(item) || this.committedItems.size >= 100 || this.transcriptionIndexes.size >= 3000) throw new Error("Invalid committed item");
+      // 接続IDは公開せず、commit順の表示用番号で遅れて確定した字幕を対応付けます。
+      const segmentIndex = this.transcriptionIndexes.size;
+      this.transcriptionIndexes.set(item, segmentIndex);
       this.committedItems.add(item);
       for (const pending of this.pendingTranscripts.get(item) ?? []) {
-        events.push({ type: "transcript", role: "input", text: pending.text, final: pending.final });
+        if (this.completedItems.has(item)) throw new Error("Transcript after completion");
+        events.push({ type: "transcript", role: "input", text: pending.text, final: pending.final, segmentIndex });
         this.pendingCharacters -= pending.text.length;
         if (pending.final) this.completeTranscription(item, pending.text);
       }
@@ -105,7 +114,8 @@ export class RealtimeProtocol {
         if (final) this.completeTranscription(item, text);
       }
       if (output && this.model.family !== "live") { this.outputCharacters = final ? text.length : this.outputCharacters + text.length; if (this.outputCharacters > 16_000) throw new Error("Output transcript exceeds limit"); }
-      events.push({ type: "transcript", role: input ? "input" : "output", text, final });
+      events.push({ type: "transcript", role: input ? "input" : "output", text, final,
+        ...(this.model.family === "transcription" ? { segmentIndex: this.transcriptionIndexes.get(this.itemId(event))! } : {}) });
     }
     if (type === "response.done" && this.model.family !== "live" && this.model.family !== "transcription") {
       const response = event.response as Record<string, unknown> | undefined;

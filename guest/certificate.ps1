@@ -492,12 +492,10 @@ function Ensure-PoshAcme {
         if ($Action -ne 'Install') {throw 'Pinned certificate module must be installed by azd up'}
         Install-Module -Name Posh-ACME -RequiredVersion $script:ModuleVersion -Repository PSGallery -Scope AllUsers -Force -AllowClobber -Confirm:$false *> $null
     }
-    # Linux の Managed Run Command では HOME が設定されないことがあります。
-    # 固定版 4.34.0 は POSHACME_HOME を読む前に HOME から既定の保存先を組み立てるため、
-    # 専用保存先だけを指定しても、HOME が空だと Import-Module の途中で失敗します。
-    # 入口で作成・権限検査済みの領域を指定し、定期更新の systemd service と同じ実行環境にします。
-    # 実際の ACME 状態は、引き続き下記 POSHACME_HOME の acme ディレクトリへ保存します。
-    $env:HOME=$script:Root
+    # Posh-ACME は POSHACME_HOME を読む前に OS の HOME を参照します。
+    # 初回 bootstrap と更新 service が systemd の root login 環境を用意し、
+    # worker は HOME を変更せず、ACME 状態の保存先だけを専用化します。
+    if ([string]::IsNullOrEmpty($env:HOME) -or -not [IO.Path]::IsPathFullyQualified($env:HOME) -or -not [IO.Directory]::Exists($env:HOME)) {throw 'Certificate module requires the OS login environment'}
     $env:POSHACME_HOME=Join-Path $script:Root 'acme'
     New-PrivateDirectory $env:POSHACME_HOME
     Import-Module Posh-ACME -RequiredVersion $script:ModuleVersion -Force -ErrorAction Stop *> $null
@@ -762,7 +760,7 @@ function Save-AcmeState {
         foreach ($file in @(Get-ChildItem -LiteralPath $acmeStatePath -Recurse -File -Force)) {
             # Only the dedicated Posh-ACME state tree is backed up. Module code,
             # installation packages, temporary files and ordinary logs are not.
-            if ($file.Extension -notin @('.json','.key','.pem','.pfx','.csr','.txt','.xml')) {continue}
+            if ($file.Extension -notin @('.json','.key','.pem','.cer','.pfx','.csr','.txt','.xml')) {continue}
             $total+=$file.Length
             if ($total -gt 1048576) {throw 'ACME state exceeds supported size'}
             Assert-NoReparse $file.FullName
@@ -808,6 +806,76 @@ function Get-PlannedRotationThumbprint {
         $Action -ne 'Renew' -or $script:Config.mode -ne 'dnsPlugin') {throw 'Invalid planned certificate rotation request'}
     return $requested.ToUpperInvariant()
 }
+<#
+.SYNOPSIS
+未完了の同じ ACME 注文を、新しい注文に置き換えずに再開します。
+.DESCRIPTION
+注文・アカウント・SAN・鍵長・profile を固定し、fresh read の失敗は停止します。
+検証と finalize はそれぞれ一回だけ行い、反映待ちは上限付きの読み取りで待ちます。
+valid の公開証明書と保護 PFX が欠けた場合も Complete で同じ証明書を復元します。
+.OUTPUTS
+専用 ACME cache を更新。標準出力なし。
+#>
+function Resume-ExistingAcmeOrder($Order) {
+    # Only unfinished work is resumed here. Do not route it through a forced
+    # renewal, which replaces an existing ready order in Posh-ACME 4.34.0.
+    $name=[string]$Order.Name
+    $location=[string]$Order.location
+    $domains=(@($Order.MainDomain)+@($Order.SANs) | Where-Object {$_} | Sort-Object -Unique) -join ','
+    $keyLength=[string]$Order.KeyLength
+    $profile=if ($Order.PSObject.Properties['Profile']) {[string]$Order.Profile} else {''}
+    $account=Get-PAAccount
+    $accountLocation=[string]$account.location
+    $directory=[Uri]$script:Config.directoryUrl
+    $uri=$null
+    if (-not [Uri]::TryCreate($location,[UriKind]::Absolute,[ref]$uri) -or
+        $uri.Scheme -ne 'https' -or $uri.Host -ne $directory.Host -or -not $uri.IsDefaultPort -or
+        $uri.UserInfo -ne '' -or $uri.Query -ne '' -or $uri.Fragment -ne '' -or
+        $account.status -ne 'valid' -or $name -ne $script:Config.certificateName) {
+        throw 'Existing ACME order identity is invalid'
+    }
+    $challenged=$false;$finalized=$false
+    for ($attempt=0; $attempt -lt 32; $attempt++) {
+        $warnings=@()
+        $fresh=Get-PAOrder -Name $name -Refresh -WarningVariable warnings -WarningAction SilentlyContinue
+        if ($warnings.Count -gt 0 -or $null -eq $fresh) {throw 'Existing ACME order refresh failed'}
+        $freshDomains=(@($fresh.MainDomain)+@($fresh.SANs) | Where-Object {$_} | Sort-Object -Unique) -join ','
+        $freshProfile=if ($fresh.PSObject.Properties['Profile']) {[string]$fresh.Profile} else {''}
+        if ([string]$fresh.Name -cne $name -or [string]$fresh.location -cne $location -or
+            $freshDomains -cne $domains -or [string]$fresh.KeyLength -cne $keyLength -or
+            $freshProfile -cne $profile -or (Get-PAAccount).location -cne $accountLocation -or
+            (@($fresh.Plugin | Sort-Object -Unique) -join ',') -cne [string]$script:Config.dnsPlugin) {
+            throw 'Existing ACME order changed during resume'
+        }
+        $expiry=[DateTimeOffset]::MinValue
+        if (-not [DateTimeOffset]::TryParse([string]$fresh.expires,[ref]$expiry) -or
+            ($fresh.status -ne 'valid' -and $expiry -le [DateTimeOffset]::UtcNow)) {
+            throw 'Existing ACME order cannot be resumed after expiry'
+        }
+        if ($fresh.status -eq 'valid') {
+            if ([string]::IsNullOrWhiteSpace([string]$fresh.certificate)) {throw 'Existing ACME certificate was not confirmed'}
+            Complete-PAOrder -Order $fresh *> $null
+            return
+        }
+        if ($fresh.status -eq 'pending') {
+            if (-not $challenged) {
+                Submit-ChallengeValidation -Order $fresh *> $null
+                $challenged=$true
+            } elseif ($attempt -lt 31) {Start-Sleep -Seconds 2}
+        } elseif ($fresh.status -eq 'ready') {
+            if (-not $finalized) {
+                Submit-OrderFinalize -Order $fresh *> $null
+                $finalized=$true
+            } elseif ($attempt -lt 31) {Start-Sleep -Seconds 2}
+        } elseif ($fresh.status -eq 'processing') {
+            if ($attempt -lt 31) {Start-Sleep -Seconds 2}
+        } else {
+            throw 'Existing ACME order did not reach a resumable state'
+        }
+    }
+    throw 'Existing ACME order processing did not complete'
+}
+
 <#
 .SYNOPSIS
 モード・期限に応じて再利用、持込み、取得または更新を選びます。
@@ -914,7 +982,30 @@ function Ensure-Certificate {
             # 通常は実KV証明書が更新期限に入ったときだけ、計画更新は検査した旧leafが
             # 指定thumbprintと一致するときだけ、この一つの既存注文を更新します。
             Set-PAOrder -Name $name -Plugin $script:Config.dnsPlugin -PluginArgs $pluginArguments -PfxPassSecure (ConvertTo-SecureString $password -AsPlainText -Force) -DnsSleep ([int](Get-Setting 'dnsSleepSeconds' 60)) -ValidationTimeout ([int](Get-Setting 'validationTimeoutSeconds' 120)) *> $null
-            Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null
+            $status=[string]$order.status
+            $hasCompletedCertificate=$order.PSObject.Properties['CertExpires'] -and $order.CertExpires
+            $cacheFilesPresent=$null -ne $cached -and $cached.PfxFullChain -and [IO.File]::Exists([string]$cached.PfxFullChain)
+            $resume=$status -in @('pending','ready','processing') -or
+                ($status -eq 'valid' -and (-not $hasCompletedCertificate -or -not $cacheFilesPresent))
+            if ($resume) {
+                Resume-ExistingAcmeOrder $order
+                $recovered=Get-PACertificate -Name $name
+                if ($status -eq 'valid' -and -not (Test-CachedAcmeCertificate $recovered $password $cacheDays $rotationReference)) {
+                    # Complete can restore the same old certificate after a VM
+                    # restore. Only a leaf confirmed to be the current Vault leaf
+                    # may proceed to the ordinary new renewal below. A newer but
+                    # unusable cache never falls back to another ACME order.
+                    $sameCurrentLeaf=$false
+                    if ($null -ne $recovered -and $recovered.Thumbprint -and $null -ne $current -and $current.cer) {
+                        $currentLeaf=[Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String($current.cer))
+                        try {$sameCurrentLeaf=[string]$recovered.Thumbprint -ieq $currentLeaf.Thumbprint} finally {$currentLeaf.Dispose()}
+                    }
+                    if (-not $sameCurrentLeaf) {throw 'Recovered ACME certificate is not a usable replacement'}
+                    Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null
+                }
+            } else {
+                Submit-Renewal -Name $name -PluginArgs $pluginArguments -Force *> $null
+            }
         }
         $certificate=Get-PACertificate -Name $name
         if ($null -eq $certificate -or -not $certificate.PfxFullChain) {throw 'Certificate issuance was not confirmed'}
@@ -1053,8 +1144,10 @@ Type=oneshot
 User=root
 Group=root
 UMask=0077
-Environment=HOME=$($script:Root)
+SetLoginEnvironment=yes
 Environment=XDG_CACHE_HOME=$($script:Root)/cache
+Environment=XDG_CONFIG_HOME=$($script:Root)/config
+Environment=XDG_DATA_HOME=$($script:Root)/data
 ExecStart=/usr/bin/pwsh -NoLogo -NoProfile -NonInteractive -File $worker -Action Renew -ConfigFile $publicFile
 TimeoutStartSec=3600
 NoNewPrivileges=true
@@ -1090,6 +1183,7 @@ WantedBy=timers.target
 #>
 function Register-RenewalTask {
     $script:Stage='renewal-task-installation'
+    foreach ($directory in @('cache','config','data')) {New-PrivateDirectory (Join-Path $script:Root $directory)}
     $worker=Join-Path $script:Root 'certificate.ps1'
     Write-PrivateFile $worker ([IO.File]::ReadAllBytes($PSCommandPath))
     $publicFile=Join-Path $script:Root 'config.json'

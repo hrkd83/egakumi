@@ -5,7 +5,7 @@
       "additionalProperties": false,
       "required": ["text", "language"],
       "properties": {
-        "text": { "type": "string", "minLength": 1, "description": "Single nonblank text, at most 5,120 Unicode 8.0 text elements. Language validates text elements; the gateway also enforces its configured UTF-8 request-byte limit. No truncation or partial result is returned." },
+        "text": { "type": "string", "minLength": 1, "description": "Single nonblank text, at most 5,120 Unicode 8.0 text elements, validated by Language. The text/language object must fit 32,768 UTF-8 bytes when serialized as compact JSON after parsing; the received JSON is separately capped at 196,608 bytes before parsing. JSON escaping and syntax whitespace do not change the compact budget. The text value is not Unicode-normalized, trimmed or truncated. No partial result is returned." },
         "language": { "type": "string", "enum": ["ja", "en"] }
       }
     },

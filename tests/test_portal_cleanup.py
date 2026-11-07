@@ -172,7 +172,7 @@ class PortalCleanupTests(unittest.TestCase):
                     self.state["outputs"].pop("portal")
                 transport = self.transport()
                 jobs = []
-                for suffix in ('portal-schema', 'portal-groups'):
+                for suffix in ('psql', 'psync'):
                     name = 'caj-' + self.config['resourceStem'] + '-' + suffix
                     resource_id = self.base.svc_rg + '/providers/Microsoft.App/jobs/' + name
                     transport.resources[resource_id] = {'id': resource_id, 'name': name, 'type': 'Microsoft.App/jobs',
@@ -188,7 +188,7 @@ class PortalCleanupTests(unittest.TestCase):
 
     def test_foreign_portal_job_is_rejected_before_mutations(self):
         transport = self.transport()
-        name = 'caj-' + self.config['resourceStem'] + '-portal-groups'
+        name = 'caj-' + self.config['resourceStem'] + '-psync'
         resource_id = self.base.svc_rg + '/providers/Microsoft.App/jobs/' + name
         transport.resources[resource_id] = {'id': resource_id, 'name': name, 'type': 'Microsoft.App/jobs',
             'location': self.config['location'],
@@ -353,6 +353,52 @@ class PortalCleanupTests(unittest.TestCase):
         self.assertTrue(result["portal"]["environment"]["alreadyDeleting"])
         self.assertFalse(result["portal"]["environment"]["deleteRequested"])
         self.assertEqual(result["portal"]["environment"]["httpStatus"], 404)
+
+    def test_scheduled_environment_resume_waits404_without_resending_delete(self):
+        for state in ("ScheduledForDelete", "scheduledfordelete"):
+            with self.subTest(state=state):
+                transport = self.transport()
+                transport.resources.pop(self.application_id)
+                transport.resources[self.environment_id]["properties"]["provisioningState"] = state
+                transport.pending[self.environment_id] = 3
+                result = self.pre(transport)
+                self.assertFalse(transport.mutations())
+                self.assertTrue(result["portal"]["environment"]["alreadyDeleting"])
+                self.assertFalse(result["portal"]["environment"]["deleteRequested"])
+                self.assertEqual(result["portal"]["environment"]["httpStatus"], 404)
+                self.assertTrue(result["portal"]["crossResourceGroupSubnetReferenceRemoved"])
+
+    def test_scheduled_environment_still_present_is_pending_without_delete_or_subnet_release(self):
+        transport = self.transport(resource_delete_reads=100)
+        transport.resources.pop(self.application_id)
+        transport.resources[self.environment_id]["properties"]["provisioningState"] = "ScheduledForDelete"
+        transport.pending[self.environment_id] = 100
+        self.assert_error("cleanup-pending", transport)
+        self.assertFalse(transport.mutations())
+        self.assertFalse(any(c["id"] == self.subnet_id for c in transport.calls))
+
+    def test_scheduled_environment_resume_keeps_owner_and_subnet_guards(self):
+        for bad_owner in (True, False):
+            with self.subTest(bad_owner=bad_owner):
+                transport = self.transport()
+                transport.resources.pop(self.application_id)
+                environment = transport.resources[self.environment_id]
+                environment["properties"]["provisioningState"] = "ScheduledForDelete"
+                if bad_owner:
+                    environment["tags"]["environment"] = "foreign-fixture"
+                else:
+                    environment["properties"]["vnetConfiguration"]["infrastructureSubnetId"] = self.subnet_id + "-foreign"
+                self.assert_error("portal-owner-mismatch" if bad_owner else "portal-binding-mismatch", transport)
+                self.assertFalse(transport.mutations())
+
+    def test_environment_only_scheduled_state_does_not_skip_owned_container_app_delete(self):
+        # ScheduledForDelete is an environment enum; never broaden the CA no-delete condition.
+        transport = self.transport(resource_delete_reads=0)
+        transport.resources[self.application_id]["properties"]["provisioningState"] = "ScheduledForDelete"
+        result = self.pre(transport)
+        self.assertTrue(result["portal"]["application"]["deleteRequested"])
+        self.assertFalse(result["portal"]["application"]["alreadyDeleting"])
+        self.assertEqual([c["id"] for c in transport.mutations()], [self.application_id, self.environment_id])
 
     def test_pending_app_does_not_delete_environment_or_report_ready(self):
         transport = self.transport(resource_delete_reads=100)

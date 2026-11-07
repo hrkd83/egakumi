@@ -36,9 +36,9 @@ class ApplicationTeardownTests(CleanupFixture, unittest.TestCase):
         prefix = self.svc_rg + "/providers/Microsoft.App/"
         self.environment_id = prefix + "managedEnvironments/cae-" + stem
         self.portal_id = prefix + "containerApps/ca-" + stem + "-portal"
-        self.broker_id = prefix + "containerApps/ca-" + stem + "-credential-broker"
+        self.broker_id = prefix + "containerApps/ca-" + stem + "-credentials"
         self.job_ids = [prefix + "jobs/caj-" + stem + suffix
-                        for suffix in ("-portal-schema", "-portal-groups", "-schema", "-recon")]
+                        for suffix in ("-psql", "-psync", "-schema", "-recon")]
         self.child_ids = [self.portal_id, self.broker_id, *self.job_ids]
         self.subnet_id = (cleanup._rg_id(self.configuration, "nw")
                           + "/providers/Microsoft.Network/virtualNetworks/vnet-" + stem

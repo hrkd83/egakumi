@@ -120,6 +120,19 @@
         <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;code&quot;])" />
         <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;status&quot;])" />
         <include-fragment fragment-id="core-gateway-telemetry" />
+        <!-- PIIの操作ポリシーより先に拒否する場合も、同じ公開エラー契約を返します。
+             認可・byte上限・監査codeは変更せず、他のAPIの上限エラーも維持します。 -->
+        <choose id="core-pii-public-limit-error">
+          <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;] == &quot;pii&quot; &amp;&amp; (int)context.Variables[&quot;gatewayAuditStatus&quot;] == 413 &amp;&amp; (string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;REQUEST_TOO_LARGE&quot;)">
+            <return-response>
+              <set-status code="413" reason="Invalid PII input" />
+              <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+              <set-body>@{ return new JObject(new JProperty("error", new JObject(new JProperty("code", "PiiInputTooLarge"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None); }</set-body>
+            </return-response>
+          </when>
+        </choose>
         <return-response>
           <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request limit validation failed" />
           <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
@@ -139,7 +152,7 @@
           var target = context.Request.MatchedParameters.GetValueOrDefault((string)constraint[&quot;parameter&quot;], &quot;&quot;);
           return ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == target);
         }
-        if (kind == &quot;bodyModel&quot;) {
+        if (kind == &quot;bodyModel&quot; || kind == &quot;textEmbeddings&quot; || kind == &quot;rerank&quot;) {
           var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
           return body != null &amp;&amp; ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;]);
         }

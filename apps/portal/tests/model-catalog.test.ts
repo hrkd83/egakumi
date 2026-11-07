@@ -73,6 +73,7 @@ test("埋め込み一覧はOpenAIとCohereの正本だけを実行先とし、�
     assert.equal(model.maxRequestBytes, constraint.maxRequestBytes);
     assert.equal(model.maxInputs, constraint.arrayLimits[model.providerId === "openai" ? "input" : "texts"]);
     assert.deepEqual(model.inputTypes, constraint.stringChoices?.input_type ?? []);
+    assert.deepEqual(model.embeddingDimensions, constraint.embeddingDimensionsByModel[model.id]);
   }
 });
 

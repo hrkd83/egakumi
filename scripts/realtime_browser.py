@@ -13,6 +13,14 @@ importや画面起動だけでは上流を呼ばない。Connect後は実際の�
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import asyncio
 from dataclasses import dataclass, field

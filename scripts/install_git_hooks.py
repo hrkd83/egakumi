@@ -6,12 +6,18 @@
 """
 from __future__ import annotations
 
-import argparse
 import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+import argparse
 from pathlib import Path
 import stat
 import subprocess
-import sys
 
 
 HOOK_NAMES = ("pre-commit", "commit-msg", "pre-push")

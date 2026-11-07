@@ -19,7 +19,7 @@ var tags = union(configuration.tags, { product: configuration.productName, envir
 var profiles = configuration.credentialProfiles
 var brokerEnabled = !empty(profiles)
 var login = configuration.gateway.authentication.?credentialLogin ?? { providerNames: [] }
-var brokerUrl = 'https://ca-${stem}-credential-broker.${foundation.environmentDomain}'
+var brokerUrl = 'https://ca-${stem}-credentials.${foundation.environmentDomain}'
 var oidcSecrets = [for name in objectKeys(profiles): { env: profiles[name].clientSecretEnv, uri: 'https://${foundation.vaultName}${environment().suffixes.keyvaultDns}/secrets/core-credential-${name}', name: 'oidc-${name}' }]
 
 module runtime 'identity.bicep' = if (brokerEnabled) {

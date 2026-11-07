@@ -80,18 +80,24 @@ API定義・バックエンド・Productとアプリ本体を配備する。azd 
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import copy
 from datetime import datetime, timezone
 from http.client import IncompleteRead
 import json
-import os
 from pathlib import Path
 import re
 import shutil
 import ssl
 import subprocess
-import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
@@ -106,10 +112,11 @@ if __package__ in (None, ""):
 from .helpers.paths import REPOSITORY, configuration_path, local_paths, private_parent
 from .helpers.azd_parameters import ARM_PARAMETERS_ENV, arm_parameters_reference, complete_arm_parameters
 from .helpers.configuration import ConfigurationError, build_bicep_configuration, entra_tenant_id, load_configuration, load_secret_inputs
+from .helpers.diagnostics import DiagnosticPreservationError, canonical_settings, prepare_settings
 from .helpers.prepare_secrets import SecretPreparationError, prepare_secrets
 from .helpers.dns_selection import DnsSelectionError, select_dns_provider
 from .helpers.public_dns import configure_public_dns
-from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as read_workspace_privacy_link, ensure_workspace_link
+from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as read_workspace_privacy_link, ensure_workspace_link, resource_ids as log_privacy_resource_ids
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
 from .helpers.capacity import verify_capacity
@@ -151,6 +158,48 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _application_insights_failure(arguments: list[str], stdout: str) -> dict | None:
+    """既知の日次上限helperの固定失敗形式だけを受け取り、外部値を返さない。"""
+    expected = ["-NoLogo", "-NoProfile", "-File",
+                str(ROOT / "scripts/deployment/helpers/set-app-insights-cap.ps1")]
+    if (arguments[1:] != expected or Path(arguments[0]).name.lower() not in {"pwsh", "pwsh.exe"}
+            or not isinstance(stdout, str)):
+        return None
+    try:
+        if len(stdout.encode("utf-8")) > 4096:
+            return None
+        def unique_fields(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("Duplicate failure field")
+                result[key] = value
+            return result
+        failure = json.loads(stdout, object_pairs_hook=unique_fields)
+    except (ValueError, UnicodeError):
+        return None
+    allowed = {"status", "stage", "code", "requiredDependency"}
+    if (not isinstance(failure, dict) or not {"status", "stage", "code"}.issubset(failure)
+            or set(failure) - allowed or failure["status"] != "failed"
+            or failure["code"] != "ApplicationInsightsDailyCapFailed"
+            or not isinstance(failure["stage"], str)
+            or failure["stage"] not in {"dependencies", "input", "authentication", "configure", "readback"}):
+        return None
+    if "requiredDependency" in failure:
+        dependencies = {"Az.Accounts", "Az.ApplicationInsights", "Connect-AzAccount",
+                        "Disable-AzContextAutosave", "Get-AzContext", "Disconnect-AzAccount",
+                        "Invoke-AzRestMethod", "Set-AzApplicationInsightsDailyCap",
+                        "Connect-AzAccount.AccessToken", "Connect-AzAccount.Scope",
+                        "Set-AzApplicationInsightsDailyCap.ResourceGroupName",
+                        "Set-AzApplicationInsightsDailyCap.Name",
+                        "Set-AzApplicationInsightsDailyCap.SubscriptionId",
+                        "Set-AzApplicationInsightsDailyCap.DailyCapGB"}
+        if (failure["stage"] != "dependencies" or not isinstance(failure["requiredDependency"], str)
+                or failure["requiredDependency"] not in dependencies):
+            return None
+    return {"code": "ApplicationInsightsDailyCapFailed", "stage": failure["stage"]}
+
+
 def run(arguments: list[str], *, payload: dict | None = None, environment: dict | None = None) -> dict:
     """子プロセスのJSON出力を受け取る。失敗時に資格情報を含み得る生出力を表示しない。"""
     result = subprocess.run(arguments, cwd=ROOT, text=True, capture_output=True, env=environment,
@@ -163,6 +212,12 @@ def run(arguments: list[str], *, payload: dict | None = None, environment: dict 
                 dependency = None
             if dependency in ("Az.Accounts", "Az.ApplicationInsights"):
                 raise DeploymentError(f"Install the required PowerShell module: {dependency}")
+        failure = _application_insights_failure(arguments, result.stdout)
+        if failure is not None:
+            raise DeploymentError(
+                f"Application Insights daily-cap helper failed: {failure['code']} "
+                f"(stage={failure['stage']}); external command output suppressed"
+            )
         raise DeploymentError(f"{Path(arguments[0]).name} operation failed; review the corresponding deployment in Azure (secret output suppressed)")
     try:
         return json.loads(result.stdout) if result.stdout.strip() else {}
@@ -231,7 +286,8 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                existing_apim_hostname_configurations: dict | None = None,
                existing_portal_app: bool = False,
                existing_apim_egress_fqdns: list[str] | None = None,
-               existing_workspace_privacy_dcr_id: str = "") -> dict:
+               existing_workspace_privacy_dcr_id: str = "",
+               diagnostic_setting_properties: dict | None = None) -> dict:
     """公開設定と必要時だけ秘密入力をまとめ、Bicep用パラメーター形式へ変換する。"""
     configuration = build_bicep_configuration(config)
     # API公開処理が追加した宛先は今回の生成入力だけへ引き継ぐ。元のparamsや
@@ -243,10 +299,15 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
             if host.casefold() not in known:
                 allowed.append(host)
                 known.add(host.casefold())
+    canonical_diagnostics = canonical_settings(configuration, phase, preserve_collection)
+    diagnostics = ({key: item["properties"] for key, item in canonical_diagnostics.items()}
+                   if diagnostic_setting_properties is None else copy.deepcopy(diagnostic_setting_properties))
+    if not isinstance(diagnostics, dict) or set(diagnostics) != set(canonical_diagnostics):
+        raise DeploymentError("Core diagnostic generated properties are incomplete")
     values = {"configuration": configuration, "phase": phase,
               "manageAuditImmutabilityPolicies": manage_policies,
               "retainedAuditImmutabilityPolicyIds": list(retained_policy_ids or []),
-              "preserveAuditCollection": preserve_collection, **(secrets or {}),
+              "preserveAuditCollection": preserve_collection, "diagnosticSettingProperties": diagnostics, **(secrets or {}),
               "existingNetworkSecurityGroupNames": list(existing_nsg_names or []),
               "existingRouteTableRoutes": copy.deepcopy(existing_route_table_routes or {}),
               "existingApimHostnameConfigurations": copy.deepcopy(existing_apim_hostname_configurations or {}),
@@ -727,6 +788,20 @@ def capacity_preflight(config: dict, transport: ArmTransport, previous_outputs: 
     return report
 
 
+def _registration_run(arguments: list[str], *, namespace: str, stage: str) -> dict:
+    """登録準備の失敗へ固定の操作文脈だけを加え、外部出力は持ち出さない。"""
+    try:
+        return run(arguments)
+    except (DeploymentError, OSError):
+        # この段階では課金資源の配備を開始していない。任意のstderrや応答から
+        # 原因を推測せず、確認すべきサインイン・登録権限・状態を案内する。
+        raise DeploymentError(
+            f"Registration preparation failed: {namespace} ({stage}). "
+            "Check Azure CLI sign-in, subscription registration permissions, and provider/feature registration state. "
+            "Core deployment was not started by this operation (external command output suppressed)."
+        ) from None
+
+
 def ensure_host_encryption(config: dict) -> None:
     """ホスト暗号化を使う場合だけ機能登録を待ち、Computeへ登録結果を反映する。
 
@@ -739,8 +814,9 @@ def ensure_host_encryption(config: dict) -> None:
     arguments = ["--namespace", "Microsoft.Compute", "--name", "EncryptionAtHost",
                  "--subscription", subscription, "-o", "json"]
 
-    def feature_state() -> str:
-        response = run(["az", "feature", "show", *arguments])
+    def feature_state(stage: str) -> str:
+        response = _registration_run(["az", "feature", "show", *arguments],
+                                     namespace="Microsoft.Compute/EncryptionAtHost", stage=stage)
         properties = response.get("properties") if isinstance(response, dict) else None
         state = properties.get("state") if isinstance(properties, dict) else None
         if not isinstance(state, str) or state not in {"Registered", "Registering", "NotRegistered", "Unregistered", "Unregistering"}:
@@ -748,7 +824,7 @@ def ensure_host_encryption(config: dict) -> None:
         return state
 
     deadline = time.monotonic() + 1800
-    state = feature_state()
+    state = feature_state("feature-show")
     if state != "Registered":
         print("Waiting for Microsoft.Compute/EncryptionAtHost registration before creating core resources.")
     requested = False
@@ -756,10 +832,11 @@ def ensure_host_encryption(config: dict) -> None:
         if time.monotonic() >= deadline:
             raise DeploymentError("EncryptionAtHost registration is still pending; retry after it completes; no core resources were deployed")
         if state in {"NotRegistered", "Unregistered"} and not requested:
-            run(["az", "feature", "register", *arguments])
+            _registration_run(["az", "feature", "register", *arguments],
+                              namespace="Microsoft.Compute/EncryptionAtHost", stage="feature-register")
             requested = True
         time.sleep(10)
-        state = feature_state()
+        state = feature_state("feature-poll")
 
     # Refresh even if the feature was already registered: a previous execution
     # may have stopped between feature registration and provider propagation.
@@ -767,9 +844,11 @@ def ensure_host_encryption(config: dict) -> None:
     provider_arguments = ["--namespace", "Microsoft.Compute", "--subscription", subscription, "-o", "json"]
     if time.monotonic() >= deadline:
         raise DeploymentError("EncryptionAtHost provider refresh timed out; no core resources were deployed")
-    run(["az", "provider", "register", *provider_arguments])
+    _registration_run(["az", "provider", "register", *provider_arguments],
+                      namespace="Microsoft.Compute", stage="provider-refresh-register")
     while True:
-        response = run(["az", "provider", "show", *provider_arguments])
+        response = _registration_run(["az", "provider", "show", *provider_arguments],
+                                     namespace="Microsoft.Compute", stage="provider-refresh-poll")
         state = response.get("registrationState") if isinstance(response, dict) else None
         if state == "Registered":
             return
@@ -789,19 +868,21 @@ def register_providers(config: dict) -> None:
     required = PROVIDERS
     pending = []
     for namespace in required:
-        response = run(["az", "provider", "show", "--namespace", namespace,
-                        "--subscription", config["subscriptionId"], "-o", "json"])
+        response = _registration_run(["az", "provider", "show", "--namespace", namespace,
+                        "--subscription", config["subscriptionId"], "-o", "json"],
+                        namespace=namespace, stage="provider-show")
         if response.get("registrationState") != "Registered":
-            run(["az", "provider", "register", "--namespace", namespace,
-                 "--subscription", config["subscriptionId"], "-o", "json"])
+            _registration_run(["az", "provider", "register", "--namespace", namespace,
+                 "--subscription", config["subscriptionId"], "-o", "json"],
+                 namespace=namespace, stage="provider-register")
             pending.append(namespace)
     # Provider登録の待機上限であり、環境の寿命や自動撤去を制御する時間ではない。
     deadline = time.monotonic() + 1800
     while pending:
-        pending = [namespace for namespace in pending if run([
+        pending = [namespace for namespace in pending if _registration_run([
             "az", "provider", "show", "--namespace", namespace,
             "--subscription", config["subscriptionId"], "-o", "json"
-        ]).get("registrationState") != "Registered"]
+        ], namespace=namespace, stage="provider-poll").get("registrationState") != "Registered"]
         if pending:
             if time.monotonic() >= deadline:
                 raise DeploymentError("Resource provider registration is still pending; no core resources were deployed")
@@ -809,12 +890,148 @@ def register_providers(config: dict) -> None:
     ensure_host_encryption(config)
 
 
+def prepare_diagnostic_settings(config: dict, transport: ArmTransport, phase: str, preserve_collection=False) -> dict:
+    """最初の監視PUTの前にも、Core全体の既存診断と転送の追加範囲を確認する。"""
+    try:
+        return prepare_settings(build_bicep_configuration(config), transport, phase, preserve_collection)
+    except DiagnosticPreservationError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def _monitoring_export_reapply_ready(config: dict, template: dict, deployment: dict, transport, phase_deadline: float) -> dict | None:
+    """既知のExport単独失敗と、現在の所有・設定一致を確認した場合だけ再適用を認める。"""
+    try:
+        same = lambda a, b: isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
+        ids = log_privacy_resource_ids(config)
+        scope = f"/subscriptions/{config['subscriptionId']}"
+        root_id = scope + f"/providers/Microsoft.Resources/deployments/{config['resourceStem']}-monitoring"
+        child = scope + f"/resourceGroups/{config['resourceGroupNames']['monitor']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-monitoring"
+        properties = deployment.get('properties', {})
+        error = properties.get('error', {})
+        details = error.get('details', []) if isinstance(error, dict) else []
+        if (not same(deployment.get('id'), root_id) or properties.get('provisioningState') != 'Failed'
+                or not isinstance(error, dict) or error.get('code') != 'DeploymentFailed'
+                or not isinstance(details, list) or len(details) != 1
+                or details[0].get('code') != 'ResourceDeploymentFailure'
+                or not same(details[0].get('target'), child) or details[0].get('details') not in (None, [])):
+            return None
+        nested = [item.get('properties', {}).get('template') for item in template.get('resources', [])
+                  if item.get('type', '').casefold() == 'microsoft.resources/deployments'
+                  and isinstance(item.get('properties', {}).get('template', {}).get('variables', {}).get('exportTables'), list)]
+        if len(nested) != 1:
+            return None
+        exports = [item for item in nested[0].get('resources', [])
+                   if item.get('type', '').casefold() == 'microsoft.operationalinsights/workspaces/dataexports']
+        if len(exports) != 1 or exports[0].get('properties', {}).get('tableNames') != "[variables('exportTables')]":
+            return None
+        variables = nested[0]['variables']; privacy = variables.get('privacy', {})
+        if isinstance(privacy, str):
+            reference = re.fullmatch(r"\[variables\('(\$fxv#[0-9]+)'\)\]", privacy)
+            privacy = variables.get(reference[1]) if reference else None
+        if not isinstance(privacy, dict):
+            return None
+        tables = [privacy.get('table') if name == "[variables('privacy').table]" else name
+                  for name in variables['exportTables']]
+        if (not 1 <= len(tables) <= 100 or any(not isinstance(name, str) or re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,99}', name) is None for name in tables)
+                or len(tables) != len(set(tables))):
+            return None
+        response = transport.request('GET', child + '/operations?api-version=2022-09-01')
+        if response.get('statusCode') != 200 or not isinstance(response.get('body'), dict):
+            return None
+        page = response['body']; operations = page.get('value')
+        if (page.get('nextLink') is not None or not isinstance(operations, list) or not 1 <= len(operations) <= 100
+                or any(not isinstance(item, dict) or not isinstance(item.get('properties'), dict)
+                       or item['properties'].get('provisioningState') not in ('Succeeded', 'Failed') for item in operations)):
+            return None
+        failed = [item['properties'] for item in operations if item['properties']['provisioningState'] == 'Failed']
+        if len(failed) != 1:
+            return None
+        operation = failed[0]; target = operation.get('targetResource', {})
+        message = operation.get('statusMessage', {})
+        if isinstance(message, str):
+            if len(message) > 4096:
+                return None
+            message = json.loads(message)
+        failure = message.get('error', message) if isinstance(message, dict) else {}
+        text = failure.get('message', '')
+        if (not isinstance(target, dict) or not same(target.get('id'), ids['export'])
+                or not same(target.get('resourceType'), 'Microsoft.OperationalInsights/workspaces/dataExports')
+                or failure.get('code') != 'InvalidParameter' or failure.get('details') not in (None, [])
+                or not isinstance(text, str) or len(text) > 4096
+                or '404 (Not Found)' not in text or 'The workspace could not be found' not in text):
+            return None
+        workspace = transport.request('GET', ids['workspace'] + '?api-version=2023-09-01')
+        body = workspace.get('body'); props = body.get('properties', {}) if isinstance(body, dict) else {}
+        tags = body.get('tags', {}) if isinstance(body, dict) else {}
+        if (workspace.get('statusCode') != 200 or not isinstance(body, dict)
+                or not same(body.get('id'), ids['workspace']) or body.get('name') != 'law-' + config['resourceStem']
+                or not same(body.get('type'), 'Microsoft.OperationalInsights/workspaces')
+                or not same_azure_location(body.get('location'), config['location'])
+                or tags.get('product') != config['productName'] or tags.get('environment') != config['environmentName']
+                or props.get('provisioningState') != 'Succeeded'
+                or not isinstance(props.get('customerId'), str) or re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', props['customerId']) is None):
+            return None
+        previous = local_paths(config, ROOT).state / 'latest.json'
+        if previous.exists():
+            prior = json.loads(previous.read_text())
+            if any(prior.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):
+                return None
+            known = prior.get('monitoring', {})
+            if known.get('workspaceCustomerId') and (not same(known.get('workspaceId'), ids['workspace'])
+                    or not same(known['workspaceCustomerId'], props['customerId'])):
+                return None
+        # 404だけをGETで待つ。300秒はsoft deadlineで、既存transportの処理中要求は
+        # これを超え得る。元フェーズ期限は再PUT直前にも呼出元で再確認する。
+        readiness_deadline = min(phase_deadline, time.monotonic() + 300)
+        for probe in range(20):
+            if time.monotonic() >= readiness_deadline:
+                return None
+            export = transport.request('GET', ids['export'] + '?api-version=2023-09-01')
+            if export.get('statusCode') != 404:
+                break
+            remaining = readiness_deadline - time.monotonic()
+            if probe == 19 or remaining <= 0:
+                return None
+            time.sleep(min(15, remaining))
+        body = export.get('body'); props = body.get('properties', {}) if isinstance(body, dict) else {}
+        names = props.get('tableNames', [])
+        if (export.get('statusCode') != 200 or not isinstance(body, dict) or not same(body.get('id'), ids['export'])
+                or props.get('enable') is not True or not same(props.get('destination', {}).get('resourceId'), ids['storage'])
+                or not isinstance(names, list) or any(not isinstance(name, str) for name in names)
+                or len(names) != len(set(names)) or set(names) != set(tables)):
+            return None
+        return {'failureKind': 'owned-export-workspace-404', 'operationCount': len(operations),
+                'workspaceOwnedSucceeded': True, 'currentExportExactDesired': True,
+                'exportReadinessProbes': probe + 1}
+    except (DeploymentError, ValueError, OSError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def _record_monitoring_reapply(config: dict, proof: dict) -> tuple[Path, dict]:
+    """再PUTの前に、最初の失敗と一回限りの意図を所有者限定ファイルへ同期保存する。"""
+    directory = private_parent(local_paths(config, ROOT).state / 'monitoring-reapply.json').parent
+    handle, name = tempfile.mkstemp(prefix='monitoring-reapply-', suffix='.json', dir=directory)
+    record = {**proof, 'status': 'reapply-intent', 'initialDeploymentState': 'Failed',
+              'maximumAdditionalPuts': 1, 'additionalPutAttempts': 1,
+              'observedAtUtc': datetime.now(timezone.utc).isoformat()}
+    with os.fdopen(handle, 'w') as stream:
+        os.fchmod(stream.fileno(), 0o600); json.dump(record, stream, indent=2); stream.write('\n')
+        stream.flush(); os.fsync(stream.fileno())
+    directory_fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+    return Path(name), record
+
+
 def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_collection=False,
-                 retained_policy_ids: list[str] | None = None) -> dict:
+                 retained_policy_ids: list[str] | None = None, diagnostic_setting_properties: dict | None = None) -> dict:
     """Bicepをコンパイルし、azdと同じ所有タグで対象フェーズをARM配備する。
 
     要求受付だけで成功にせず、Succeededまで状態を読む。失敗や待機超過では
-    別配備を自動追加せず、現在の配備状態を確認できるように停止する。
+    通常は自動追加せず停止する。監視Export単独の既知失敗が現在の実設定で解消済みの
+    場合だけ、最初の失敗を保存して同じ要求を一回再適用する。
     """
     template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/main.bicep"), "--stdout"])
     # 配備タグはARM属性で、az deployment sub createには--tagsがない。ARM経由で
@@ -828,8 +1045,10 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     existing_apim_hostnames = discover_existing_apim_hostnames(config, transport) if phase == "core" else {}
     existing_portal_app = discover_existing_portal_app(config, transport) if phase == "core" else False
     existing_workspace_privacy_dcr_id = read_workspace_privacy_link(config, transport)
+    if diagnostic_setting_properties is None:
+        diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, phase, preserve_collection)
 
-    response = transport.request("PUT", path, body={
+    request_body = {
         "location": config["location"],
         "tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME, "azd-layer-name": ""},
         "properties": {"mode": "Incremental", "template": template,
@@ -840,16 +1059,37 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
                                                 existing_route_table_routes=existing_routes,
                                                 existing_apim_hostname_configurations=existing_apim_hostnames,
                                                 existing_portal_app=existing_portal_app,
-                                                existing_workspace_privacy_dcr_id=existing_workspace_privacy_dcr_id)["parameters"]},
-    })
+                                                existing_workspace_privacy_dcr_id=existing_workspace_privacy_dcr_id,
+                                                diagnostic_setting_properties=diagnostic_setting_properties)["parameters"]},
+    }
+    response = transport.request("PUT", path, body=request_body)
     require_success(response, f"Start {phase} deployment", allowed=(200, 201, 202))
     deadline = time.monotonic() + 7200
+    reapply = None
     while True:
         deployment = require_success(transport.request("GET", path), f"Read {phase} deployment")
         status = deployment.get("properties", {}).get("provisioningState")
         if status == "Succeeded":
+            if reapply is not None:
+                protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
             return {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
+        if status == "Failed" and phase == "monitoring" and reapply is None and time.monotonic() < deadline:
+            proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline)
+            if proof is not None and time.monotonic() < deadline:
+                reapply = _record_monitoring_reapply(config, proof)
+                if time.monotonic() >= deadline:
+                    protected_json(reapply[0], {**reapply[1], 'status': 'deadline-expired-no-reapply', 'additionalPutAttempts': 0})
+                    raise DeploymentError('Monitoring recovery exceeded the original deadline; inspect its status before retrying')
+                print('Monitoring: confirmed Export configuration matches; reapplying the same deployment once. The first failure is retained.', flush=True)
+                try:
+                    require_success(transport.request('PUT', path, body=request_body), 'Reapply monitoring deployment', allowed=(200, 201, 202))
+                except DeploymentError:
+                    protected_json(reapply[0], {**reapply[1], 'status': 'reapply-request-failed-or-unconfirmed'})
+                    raise
+                continue
         if status in ("Failed", "Canceled", "Deleted"):
+            if reapply is not None:
+                protected_json(reapply[0], {**reapply[1], 'status': 'reapply-' + status.lower()})
             raise DeploymentError(f"The {phase} deployment {status}; inspect that deployment before continuing")
         if time.monotonic() >= deadline:
             raise DeploymentError(f"The {phase} deployment is still pending; inspect its status before retrying")
@@ -1121,8 +1361,10 @@ def _preprovision(config: dict) -> None:
         preserve_collection = preserve_collection or bool(diag.get("properties", {}).get("storageAccountId"))
     # 第4段階: コアの操作ログを受け取れるよう、監視・監査の保存先を先に作る。
     # 実際のResource IDを直ちに記録し、途中失敗でも撤去時に同じ対象を辿れるようにする。
+    monitoring_diagnostics = prepare_diagnostic_settings(config, transport, "monitoring", preserve_collection)
     outputs = deploy_phase(config, "monitoring", manage_policies=True,
-                           retained_policy_ids=retained_policy_ids, preserve_collection=preserve_collection)
+                           retained_policy_ids=retained_policy_ids, preserve_collection=preserve_collection,
+                           diagnostic_setting_properties=monitoring_diagnostics)
     _save_deployment_state(config, outputs)
     # Workspace作成とDCR作成を終えてから関連付け、次のCore PUTでもその実参照を保持します。
     workspace_privacy_dcr_id = ensure_workspace_link(config, transport)
@@ -1152,6 +1394,7 @@ def _preprovision(config: dict) -> None:
     existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)
     existing_portal_app = discover_existing_portal_app(config, transport)
     existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport)
+    core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
     write_arm_parameters(config, parameters(config, "core", secrets=secrets,
         manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
@@ -1160,7 +1403,8 @@ def _preprovision(config: dict) -> None:
         existing_apim_hostname_configurations=existing_apim_hostnames,
         existing_portal_app=existing_portal_app,
         existing_apim_egress_fqdns=existing_apim_egress_fqdns,
-        existing_workspace_privacy_dcr_id=workspace_privacy_dcr_id))
+        existing_workspace_privacy_dcr_id=workspace_privacy_dcr_id,
+        diagnostic_setting_properties=core_diagnostics))
     print("Monitoring destinations are prepared. Native azd provision will create the core resources.")
 
 
@@ -1266,12 +1510,14 @@ def main(argv=None) -> int:
             existing_routes = discover_existing_route_table_routes(config, transport)
             existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)
             existing_portal_app = discover_existing_portal_app(config, transport)
+            core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
             write_arm_parameters(config, parameters(config, "core", secrets={**secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json)},
                 existing_nsg_names=existing_nsg_names,
                 existing_route_table_routes=existing_routes,
                 existing_apim_hostname_configurations=existing_apim_hostnames,
-                existing_portal_app=existing_portal_app))
+                existing_portal_app=existing_portal_app,
+                diagnostic_setting_properties=core_diagnostics))
         elif args.command == "preprovision":
             preprovision(config)
         elif args.command == "postprovision":
@@ -1307,6 +1553,10 @@ def main(argv=None) -> int:
             if args.command == "postdown":
                 local_paths(config, ROOT).parameters.unlink(missing_ok=True)
                 remove_grpc_secret(config, ROOT)
+                if receipt["result"].get("credentialManager", {}).get("status") == "unverified":
+                    print("Credential Manager: 公開資源の撤去確認は終了しましたが、Microsoft内部アカウントの解放・"
+                          "同名CM再構築は未確認です。同名account競合が起きた場合は、削除・配備の記録を添えて"
+                          "Microsoftサポートへ確認してください。", file=sys.stderr)
         return 0
     except (ValueError, OSError, KeyError, DeploymentError, LogPrivacyError) as error:
         # 任意の辞書や外部コマンドのstderrを、そのまま利用者向け出力へ混ぜない。

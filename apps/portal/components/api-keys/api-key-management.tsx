@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { ArrowUpRight, Check, ClipboardCheck, KeyRound, LoaderCircle, Plus, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
@@ -20,6 +22,7 @@ import { errorMessage, formatKeyDate, KeyState } from "./presentation";
  * @remarks Zustandには表示条件のみを保存し、キーの秘密値はダイアログ内から外へ渡しません。
  */
 export function ApiKeyManagement({ dictionary, locale, isPlatformAdministrator = false }: { dictionary: Dictionary; locale: Locale; isPlatformAdministrator?: boolean }) {
+  const fieldId = useFieldIds();
   const text = dictionary.apiKeys;
   const [store] = useState(createApiKeyDisplayStore);
   const groupId = useStore(store, (state) => state.groupId);
@@ -98,8 +101,8 @@ export function ApiKeyManagement({ dictionary, locale, isPlatformAdministrator =
 
     {notice && <p role="status" className="mb-5 flex items-start gap-2 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-xs leading-6 text-primary"><Check className="mt-1 size-4 shrink-0" />{notice}</p>}
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-60 max-w-full flex-1 sm:max-w-md"><label htmlFor="key-owner-group" className="mb-2 block text-xs font-medium">{text.memberGroup}</label><Select value={groupId} onValueChange={(value) => { store.getState().selectGroup(value); store.setState({ notice: null }); }} disabled={loading || !overview?.groups.length}>
-        <SelectTrigger id="key-owner-group" className="h-11! w-full bg-white"><Users className="size-4 text-muted-foreground" /><SelectValue placeholder={text.selectGroup} /></SelectTrigger><SelectContent>{overview?.groups.map((item) => <SelectItem key={item.id} value={item.id}>{item.displayName}</SelectItem>)}</SelectContent>
+      <div className="min-w-60 max-w-full flex-1 sm:max-w-md"><label htmlFor={fieldId("key-owner-group")} className="mb-2 block text-xs font-medium">{text.memberGroup}</label><Select value={groupId} onValueChange={(value) => { store.getState().selectGroup(value); store.setState({ notice: null }); }} disabled={loading || !overview?.groups.length}>
+        <SelectTrigger id={fieldId("key-owner-group")} className="h-11! w-full bg-white"><Users className="size-4 text-muted-foreground" /><SelectValue placeholder={text.selectGroup} /></SelectTrigger><SelectContent>{overview?.groups.map((item) => <SelectItem key={item.id} value={item.id}>{item.displayName}</SelectItem>)}</SelectContent>
       </Select></div>
       <div className="flex gap-2"><Button variant="outline" className="h-10 bg-white px-4 text-xs" disabled={loading} onClick={refresh}><RefreshCw className={loading ? "animate-spin" : ""} />{text.refresh}</Button><Button className="h-10 px-4 text-xs" disabled={loading || !group?.products.some((product) => product.id === RELEASED_API_PRODUCT_ID)} onClick={() => { store.setState({ notice: null }); store.getState().setCreateOpen(true); }}><Plus />{text.issue}</Button></div>
     </div>

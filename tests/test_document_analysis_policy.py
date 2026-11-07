@@ -60,6 +60,18 @@ public static class DocumentPolicyFixture {
       } else {
         var response=new Response{StatusCode=(int?)item["status"]??200,Body=new Body{Data=Encoding.UTF8.GetBytes((string)item["body"]??"{}")}};
         response.Headers["Operation-Location"]=new[]{(string)item["location"]??""};
+        if(item["publicBytes"]!=null || item["nativeBytes"]!=null) {
+          var analysis=new JObject(new JProperty("apiVersion","2024-11-30"),new JProperty("modelId","prebuilt-layout"),new JProperty("content",""),new JProperty("pages",new JArray(new JObject(new JProperty("pageNumber",1)))));
+          var native=new JObject(new JProperty("status","succeeded"),new JProperty("analyzeResult",analysis));
+          var projected=new JObject(new JProperty("analyzeResult",analysis),new JProperty("requestId",context.RequestId.ToString()));
+          var budget=item["publicBytes"]??item["nativeBytes"];
+          var envelope=item["publicBytes"]!=null?projected:native;
+          int overhead=Encoding.UTF8.GetByteCount(envelope.ToString(Formatting.None));
+          analysis["content"]=new string('x',(int)budget-overhead);
+          // JObjectは子を複製するため、両envelopeへ更新した同じ解析値を設定します。
+          native["analyzeResult"]=analysis;
+          response.Body.Data=Encoding.UTF8.GetBytes(native.ToString(Formatting.None));
+        }
         context.Variables[mode=="url"?"documentStartResponse":"documentPollResponse"]=(bool?)item["nullResponse"]==true?null:response;
         results[(string)item["id"]]=mode=="url"?new JValue(PollUrl(context)):(JToken)JObject.Parse(Evaluate(context));
       }
@@ -107,6 +119,9 @@ class DocumentAnalysisPolicyTests(unittest.TestCase):
                 ('server-error', {'error':{'message':'SENTINEL_PRIVATE'}}, 500)]:
             cls.cases.append({'id':name,'mode':'result','body':json.dumps(body),'status':status})
         cls.cases.append({'id':'null-result','mode':'result','nullResponse':True})
+        for delta in (-1, 0, 1):
+            cls.cases.append({'id':f'public-bytes-{delta}', 'mode':'result', 'publicBytes':SETTINGS['maxResponseBytes']+delta})
+        cls.cases.append({'id':'native-oversize','mode':'result','nativeBytes':SETTINGS['maxResponseBytes']+1})
         source = CSHARP.replace('__INPUT__', expression(POLICY, './inbound/set-variable[@name="documentInputStatus"]', 'value'))
         source = source.replace('__URL__', expression(POLICY, './inbound/set-variable[@name="documentPollUrl"]', 'value'))
         source = source.replace('__EVALUATE__', expression(POLICY, './/set-variable[@name="documentPollEvaluation"]', 'value'))
@@ -158,6 +173,15 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertIsNone(tree.find('.//set-header[@name="Operation-Location"]'))
         self.assertIn('documentStartedAt',tree.find('.//retry').get('condition'))
         self.assertLessEqual(int(tree.find('.//retry').get('count')),50)
+
+    def test_response_budget_includes_the_final_public_envelope(self):
+        for delta in (-1, 0):
+            result = self.results[f'public-bytes-{delta}']
+            self.assertEqual(result['status'], 200)
+            self.assertEqual(len(result['result'].encode('utf-8')), SETTINGS['maxResponseBytes'] + delta)
+        for name in ('public-bytes-1', 'native-oversize'):
+            self.assertEqual(self.results[name]['status'], 502)
+            self.assertEqual(self.results[name]['result'], '')
 
 
 class DocumentAnalysisConfigurationTests(unittest.TestCase):

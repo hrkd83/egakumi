@@ -420,17 +420,18 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(raw, before)
 
 
-    def test_combined_names_fit_key_vault_and_storage_without_truncation(self):
+    def test_combined_names_fit_container_app_key_vault_and_storage_without_truncation(self):
         """個別の長さだけでなく、Azureへ送る連結名が上限に収まることを確かめる。"""
         raw = fixture()
-        raw["productName"], raw["environmentName"] = "p" * 16, "test"
+        raw["productName"], raw["environmentName"] = "p" * 12, "test"
         actual = self.normalize(raw)
-        self.assertEqual(actual["resourceStem"], "test-" + "p" * 16)
-        self.assertEqual(len("kv-" + actual["resourceStem"]), 24)
-        self.assertEqual(len("st" + actual["resourceStem"].replace("-", "") + "jp"), 24)
-        for product, environment in (("p" * 17, "test"), ("p" * 24, "test"), ("product-name", "environment")):
+        self.assertEqual(actual["resourceStem"], "test-" + "p" * 12)
+        self.assertEqual(len("ca-" + actual["resourceStem"] + "-credentials"), 32)
+        self.assertEqual(len("kv-" + actual["resourceStem"]), 20)
+        self.assertEqual(len("st" + actual["resourceStem"].replace("-", "") + "jp"), 20)
+        for product, environment in (("p" * 13, "test"), ("p" * 16, "test"), ("p" * 24, "test"), ("product-name", "environment")):
             raw["productName"], raw["environmentName"] = product, environment
-            with self.subTest(product=product, environment=environment), self.assertRaisesRegex(configuration.ConfigurationError, "21 characters"):
+            with self.subTest(product=product, environment=environment), self.assertRaisesRegex(configuration.ConfigurationError, "17 characters"):
                 self.normalize(raw)
 
     def test_image_version_must_be_fixed(self):
@@ -813,9 +814,9 @@ class ConfigurationTests(unittest.TestCase):
     def test_environment_name_does_not_select_configuration_defaults(self):
         raw = fixture()
         before = self.normalize(raw)
-        raw["environmentName"] = "sandbox-01"
+        raw["environmentName"] = "lab-01"
         actual = self.normalize(raw)
-        self.assertEqual(actual["resourceStem"], "sandbox-01-egakumi")
+        self.assertEqual(actual["resourceStem"], "lab-01-egakumi")
         for key in ("network", "gateway", "monitoring"):
             self.assertEqual(actual[key], before[key])
         self.assertEqual(actual["services"]["apimSkuName"], before["services"]["apimSkuName"])

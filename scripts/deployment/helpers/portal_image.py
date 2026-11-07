@@ -15,7 +15,7 @@ import uuid
 from .paths import REPOSITORY
 from . import image_build
 from .image_build import owned_build_command, read_build_receipt
-from .credential_image import checked
+from .credential_image import checked, checked_response
 
 COMPUTE_API = '2024-07-01'
 REGISTRY_API = '2023-07-01'
@@ -181,12 +181,15 @@ def render_build_script(config, targets, data, source_hash, build_tag, root=REPO
     return script
 
 
-def reusable_image(config, state, source_hash, path):
-    """同じ環境・ソースで登録と一時資源回収に成功したイメージを再利用する。"""
+def reusable_image(config, state, source_hash, path, *, transport=None):
+    """実行時に現在のACR世代まで確認できた成功イメージだけを再利用する。"""
     receipt = read_build_receipt(path)
-    if not receipt:
+    # 既定の計画はネットワーク0。旧形式の世代なしreceiptも成功へ読み替えない。
+    if transport is None or not receipt or not isinstance(receipt.get('registryGeneration'), dict):
         return None
-    return image_build.reusable_digest(receipt, source_hash, build_targets(config, state)['commandId'])
+    targets = build_targets(config, state)
+    generation = image_build.current_registry_generation(transport, targets)
+    return image_build.reusable_digest(receipt, source_hash, targets['commandId'], registry_generation=generation)
 
 
 def build_command_body(location, script):
@@ -235,6 +238,7 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     if (str(registry.get('id', '')).lower() != targets['registryId'].lower()
             or registry.get('properties', {}).get('loginServer') != targets['registryServer']):
         raise ValueError('Build registry differs from the configured registry')
+    registry_generation = image_build.registry_generation(registry, targets)
     # 前回の回収だけが失敗した場合も、同じ記録にある一時ロールだけを回収してから再開する。
     previous_role = (prior_receipt or {}).get('temporaryRoleId')
     role_prefix = targets['registryId'] + '/providers/Microsoft.Authorization/roleAssignments/'
@@ -267,7 +271,7 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     script = render_build_script(config, targets, data, source_hash, 'build-' + run_id)
     command_body = build_command_body(vm['location'], script)
     receipt = {'status': 'building', 'commandId': command_id, 'temporaryRoleId': role_id,
-               'sourceSha256': source_hash, 'imageDigest': None}
+               'sourceSha256': source_hash, 'imageDigest': None, 'registryGeneration': registry_generation}
     record(receipt)
     submitted, cleanup_errors, failure = False, [], None
     try:
@@ -279,10 +283,14 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
         progress('ポータル: 管理VMでイメージを作成し、非公開ACRへ登録します。', flush=True)
         # submitted is set before sending: a lost PUT response must not leave an untracked root command.
         submitted = True
-        checked(transport, 'PUT', command_path, command_body, label='Start portal image build')
+        started = transport.request('PUT', command_path, command_body)
         deadline, notice = monotonic() + timeout, monotonic() + 60
+        observed = image_build.reconcile_start_503(transport, command_path, command_body, started, receipt, record)
+        if observed is None:
+            checked_response(started, label='Start portal image build')
         while monotonic() < deadline:
-            body = checked(transport, 'GET', view_path, label='Read image build status')
+            body = observed if observed is not None else checked(transport, 'GET', view_path, label='Read image build status')
+            observed = None
             properties = body.get('properties', {})
             view = properties.get('instanceView', {})
             if view.get('executionState') in ('Succeeded', 'Failed', 'TimedOut', 'Canceled'):

@@ -802,7 +802,8 @@
         "tests/fixtures/external-api-definitions.json",
         "tests/test_api_protocols.py",
         "tests/test_configuration.py",
-        "tests/test_realtime_policy.py"
+        "tests/test_realtime_policy.py",
+        "apps/portal/lib/generated/model-api-definitions.json"
       ]
     },
     {
@@ -952,7 +953,8 @@
         "tests/test_api_protocols.py",
         "tests/test_operation_backend_publication.py",
         "tests/test_realtime_policy.py",
-        "tests/test_shared_mcp_configuration.py"
+        "tests/test_shared_mcp_configuration.py",
+        "apps/portal/lib/generated/model-api-definitions.json"
       ]
     },
     {
@@ -3518,6 +3520,23 @@
       "reason": "Evaluated Bicep managed-identity object property; not a literal identifier",
       "paths": [
         "apps/portal/deploy/application.bicep"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "echo.playground.azure-api.net",
+      "reason": "Azure API Management built-in Echo common backend; exact endpoint only, not a tenant-specific service. Restricted to default-sample recognition and its offline synthetic test.",
+      "paths": [
+        "scripts/deployment/helpers/apim_samples.py",
+        "tests/test_apim_sample_cleanup.py"
+      ]
+    },
+    {
+      "rule": "url-credentials",
+      "value": "https://fixture!@echo.playground.azure-api.net/api",
+      "reason": "Independent synthetic username-only URL tests rejection of userinfo on the recognized Echo backend. No real account, password or request.",
+      "paths": [
+        "tests/test_apim_sample_cleanup.py"
       ]
     }
   ],

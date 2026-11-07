@@ -36,7 +36,11 @@ def reconcile_unreleased_apis(apim_id, definitions, transport, *, sleep=time.sle
         for product in body["value"]:
             if not isinstance(product, dict) or not isinstance(product.get("id"), str):
                 raise ValueError("Released API product membership is invalid")
-        return any(product["id"].rstrip("/").casefold() == product_id.casefold() for product in body["value"])
+        # Azure は Product 自体の ID と、API 配下の所属 ID の両方を返します。
+        # 今回の API と公開製品の正確な別表現だけを受け入れます。
+        membership_ids = {product_id.casefold(),
+                          (apim_id + "/apis/" + api_name + "/products/" + RELEASED_PRODUCT_ID).casefold()}
+        return any(product["id"].rstrip("/").casefold() in membership_ids for product in body["value"])
 
     for api_name in selected_api_names(definitions, released=False):
         if not has_membership(api_name):

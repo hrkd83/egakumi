@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRightLeft, LoaderCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ export function ApiKeyOwnershipTransfer({ record, sourceName, dictionary, disabl
   record: ApiKeyRecord; sourceName: string; dictionary: Dictionary; disabled: boolean; onBusyChange: (busy: boolean) => void;
   onOpen: () => void; onTransferred: (record: ApiKeyRecord) => void;
 }) {
+  const formId = useFieldIds();
   const text = dictionary.apiKeys.transfer;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -76,11 +79,11 @@ export function ApiKeyOwnershipTransfer({ record, sourceName, dictionary, disabl
   return <section className="rounded-xl border border-border p-4">
     <div className="flex items-start justify-between gap-3"><div><h3 className="text-xs font-semibold">{text.title}</h3><p className="mt-1 text-xs leading-6 text-muted-foreground">{text.description}</p></div><Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { onOpen(); setOpen((value) => !value); }}><ArrowRightLeft />{open ? dictionary.apiKeys.cancel : text.open}</Button></div>
     {open && <div className="mt-4 space-y-4">
-      <form onSubmit={search} className="space-y-2"><label htmlFor={`owner-search-${record.id}`} className="block text-xs font-medium">{text.searchLabel}</label><div className="flex gap-2"><Input id={`owner-search-${record.id}`} value={query} minLength={2} maxLength={80} required autoComplete="off" disabled={busy} placeholder={text.searchPlaceholder} className="min-w-0 text-xs" onChange={(event) => { setQuery(event.target.value); setGroups(null); setNextCursor(null); setTargetId(""); setConfirmed(false); setError(null); }} /><Button type="submit" variant="outline" disabled={busy || query.trim().length < 2}>{searching ? <LoaderCircle className="animate-spin" /> : <Search />}{text.search}</Button></div><p className="text-xs leading-5 text-muted-foreground">{text.searchHelp}</p></form>
+      <form onSubmit={search} className="space-y-2"><label htmlFor={formId(`owner-search-${record.id}`)} className="block text-xs font-medium">{text.searchLabel}</label><div className="flex gap-2"><Input id={formId(`owner-search-${record.id}`)} value={query} minLength={2} maxLength={80} required autoComplete="off" disabled={busy} placeholder={text.searchPlaceholder} className="min-w-0 text-xs" onChange={(event) => { setQuery(event.target.value); setGroups(null); setNextCursor(null); setTargetId(""); setConfirmed(false); setError(null); }} /><Button type="submit" variant="outline" disabled={busy || query.trim().length < 2}>{searching ? <LoaderCircle className="animate-spin" /> : <Search />}{text.search}</Button></div><p className="text-xs leading-5 text-muted-foreground">{text.searchHelp}</p></form>
       {groups !== null && (groups.length === 0 ? <p role="status" className="text-xs text-muted-foreground">{nextCursor ? text.noPageTargets : text.noTargets}</p> : <div>
-        <label htmlFor={`owner-target-${record.id}`} className="mb-2 block text-xs font-medium">{text.target}</label>
+        <label htmlFor={formId(`owner-target-${record.id}`)} className="mb-2 block text-xs font-medium">{text.target}</label>
         <Select value={targetId} disabled={busy} onValueChange={(value) => { setTargetId(value); setConfirmed(false); setError(null); }}>
-          <SelectTrigger id={`owner-target-${record.id}`} className="w-full text-xs"><SelectValue placeholder={text.choose} /></SelectTrigger>
+          <SelectTrigger id={formId(`owner-target-${record.id}`)} className="w-full text-xs"><SelectValue placeholder={text.choose} /></SelectTrigger>
           <SelectContent>{[true, false].map((membership) => {
             const candidates = groups.filter((group) => group.isMember === membership);
             return candidates.length ? <SelectGroup key={String(membership)}><SelectLabel>{membership ? text.memberGroups : text.otherGroups}</SelectLabel>{candidates.map((group) => <SelectItem key={group.id} value={group.id}><span>{group.displayName}</span><span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${membership ? "bg-primary/8 text-primary" : "bg-amber-100 text-amber-900"}`}>{membership ? text.member : text.notMember}</span></SelectItem>)}</SelectGroup> : null;

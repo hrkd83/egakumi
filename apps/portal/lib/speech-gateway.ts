@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -97,9 +98,11 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
     const bytes = await readSpeechBody(upstream.body, maximum, signal);
     // WAVの付随チャンクやJSONの追加項目へ資格情報が反射されても、ブラウザーへ渡しません。
     if (Buffer.from(bytes).includes(Buffer.from(key))) return failure("GenerationFailed", 502, details);
+    const value: unknown = model.kind === "tts" ? null : JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (model.kind !== "tts" && containsModelCredential(value, key)) return failure("GenerationFailed", 502, details);
     const durationMs = Math.round(performance.now() - started);
     const result = model.kind === "tts" ? parseSpeechAudio(bytes, Buffer.from(bytes).toString("base64"), model, durationMs, requestId)
-      : parseSpeechTranscript(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)), model, durationMs, requestId);
+      : parseSpeechTranscript(value, model, durationMs, requestId);
     return Response.json(result, { headers: responseHeaders });
   } catch { const details = requestId ? { requestId } : {}; return request.signal.aborted ? failure("RequestCancelled", 499, details) : timeout.aborted ? failure("GatewayTimeout", 504, details) : failure("GenerationFailed", 502, details); }
 }

@@ -65,16 +65,23 @@ def render_build_script(config, targets, data, source_hash, build_tag, root=REPO
     return script
 
 
-def reusable_image(config, state, source_hash, path):
-    """同じ環境・ソースで登録と一時資源回収に成功したイメージを再利用する。"""
+def reusable_image(config, state, source_hash, path, *, transport=None):
+    """実行時に現在のACR世代まで確認できた成功イメージだけを再利用する。"""
     receipt = read_build_receipt(path)
-    if not receipt:
+    # 既定の計画はネットワーク0。旧形式の世代なしreceiptも成功へ読み替えない。
+    if transport is None or not receipt or not isinstance(receipt.get('registryGeneration'), dict):
         return None
-    return image_build.reusable_digest(receipt, source_hash, build_targets(config, state)['commandId'])
+    targets = build_targets(config, state)
+    generation = image_build.current_registry_generation(transport, targets)
+    return image_build.reusable_digest(receipt, source_hash, targets['commandId'], registry_generation=generation)
 
 
 def checked(transport, method, path, body=None, *, allowed=(200, 201, 202, 204), label):
-    response = transport.request(method, path, body)
+    return checked_response(transport.request(method, path, body), allowed=allowed, label=label)
+
+
+def checked_response(response, *, allowed=(200, 201, 202, 204), label):
+    """既に受けたARM応答を検証し、変更要求を再送しない。"""
     if response.get('statusCode') not in allowed:
         def codes(error, depth=0):
             if not isinstance(error, dict) or depth > 4:
@@ -130,6 +137,7 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     if (str(registry.get('id', '')).lower() != targets['registryId'].lower()
             or registry.get('properties', {}).get('loginServer') != targets['registryServer']):
         raise ValueError('Build registry differs from the configured registry')
+    registry_generation = image_build.registry_generation(registry, targets)
     run_id = uuid.uuid4().hex
     # A unique resource name prevents a recreated Run Command from reusing the VM agent's
     # previous execution state. The receipt still protects a running prior build on retry.
@@ -139,7 +147,7 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
     role_id = targets['registryId'] + '/providers/Microsoft.Authorization/roleAssignments/' + str(uuid.uuid4())
     role_path = role_id + '?api-version=' + ROLE_API
     receipt = {'status': 'building', 'commandId': command_id, 'temporaryRoleId': role_id,
-               'sourceSha256': source_hash, 'imageDigest': None}
+               'sourceSha256': source_hash, 'imageDigest': None, 'registryGeneration': registry_generation}
     record(receipt)
     submitted, cleanup_errors, failure = False, [], None
     try:
@@ -152,13 +160,18 @@ def build_image(config, state, transport, *, data, source_hash, record, sleep=ti
         progress('認証窓口: 管理VMでイメージを作成し、非公開ACRへ登録します。', flush=True)
         # submitted is set before sending: a lost PUT response must not leave an untracked root command.
         submitted = True
-        checked(transport, 'PUT', command_path, {'location': vm['location'], 'properties': {
+        command_body = {'location': vm['location'], 'properties': {
             'source': {'script': script}, 'asyncExecution': True, 'timeoutInSeconds': 2400,
             'treatFailureAsDeploymentFailure': True,
-        }}, label='Start credential image build')
+        }}
+        started = transport.request('PUT', command_path, command_body)
         deadline, notice = monotonic() + timeout, monotonic() + 60
+        observed = image_build.reconcile_start_503(transport, command_path, command_body, started, receipt, record)
+        if observed is None:
+            checked_response(started, label='Start credential image build')
         while monotonic() < deadline:
-            body = checked(transport, 'GET', view_path, label='Read image build status')
+            body = observed if observed is not None else checked(transport, 'GET', view_path, label='Read image build status')
+            observed = None
             properties = body.get('properties', {})
             view = properties.get('instanceView', {})
             if view.get('executionState') in ('Succeeded', 'Failed', 'TimedOut', 'Canceled'):

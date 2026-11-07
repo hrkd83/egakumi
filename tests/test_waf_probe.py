@@ -208,7 +208,7 @@ class WafProbeTests(unittest.TestCase):
                     self.assertTrue(dict(case.headers)["Cookie"].startswith("raw_guard="))
                     self.assertFalse(case.query)
                 if case.category == "raw-guard-query-null":
-                    url = probe.request_url("https://example.invalid", case, "rawguard123")
+                    url = probe.request_url("https://example.invalid", case)
                     self.assertIn("%00", url)
                     self.assertNotIn("\x00", url)
         self.assertEqual({case.category for case in guards if "/neighbor" in case.path}, {"raw-guard-neighbor-query", "raw-guard-neighbor-body"})
@@ -447,20 +447,63 @@ class WafProbeTests(unittest.TestCase):
         self.assertEqual(record["error_type"], "OSError")
         self.assertFalse(record["functional_success"])
 
-    def test_scrubbed_query_values_still_leave_unique_correlation_name(self):
-        case = next(case for case in self.cases if case.query)
-        query = parse_qs(urlsplit(probe.request_url("https://example.invalid", case, "run123case456")).query, keep_blank_values=True)
-        self.assertEqual(query["wafproberun123case456"], ["1"])
-        for name, value in case.query:
-            self.assertIn(value, query[name])
-        with self.assertRaises(ValueError):
-            probe.request_url("https://example.invalid", case, "contains secret and spaces")
-        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")):
-            record = probe.run_probe(case, "https://example.invalid", "20261031T235959Z-run-12345", 1, probe.RateLimiter(4), transport="curl")
-        self.assertRegex(record["correlation"], r"^[A-Za-z0-9]+$")
-        correlation_name = "wafprobe" + record["correlation"]
-        self.assertLessEqual(len(correlation_name), 64)
-        self.assertNotIn("-", correlation_name)
+    def test_correlation_is_in_the_user_agent_and_probe_queries_are_unchanged(self):
+        case = probe.Probe("correlation-fixture", "gateway", "POST", "/probe?existing=1&empty=", "test", "compatibility", "test",
+            b"synthetic", (), (("repeated", "first"), ("repeated", "second"), ("null", "\x00")))
+        expected_query = {"existing": ["1"], "empty": [""], "repeated": ["first", "second"], "null": ["\x00"]}
+        self.assertEqual(parse_qs(urlsplit(probe.request_url("https://example.invalid", case)).query, keep_blank_values=True), expected_query)
+        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")) as send:
+            record = probe.run_probe(case, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4), transport="curl")
+        url, method, headers, body, _ = send.call_args.args
+        self.assertEqual(parse_qs(urlsplit(url).query, keep_blank_values=True), expected_query)
+        self.assertEqual(headers["User-Agent"], "egakumi-waf-probe/1.0 " + record["correlation"])
+        self.assertRegex(record["correlation"], r"^[A-Za-z0-9]{1,56}$")
+        self.assertEqual((method, body), (case.method, case.body))
+        self.assertNotIn("headers", record)
+        self.assertNotIn(headers["User-Agent"], json.dumps(record))
+
+    def test_both_transports_send_the_same_exact_user_agent_and_no_marker_query(self):
+        case = probe.Probe("transport-correlation-fixture", "gateway", "GET", "/probe", "test", "compatibility", "test",
+            headers=(("User-Agent", "untrusted-case-value"),))
+        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")) as curl:
+            curl_record = probe.run_probe(case, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4), transport="curl")
+        with patch.object(probe, "build_opener") as opener:
+            response = opener.return_value.open.return_value
+            response.code, response.headers = 401, {}
+            response.read1.return_value = b"Unauthorized"
+            urllib_record = probe.run_probe(case, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4))
+        request = opener.return_value.open.call_args.args[0]
+        expected = "egakumi-waf-probe/1.0 " + curl_record["correlation"]
+        self.assertEqual(curl_record["correlation"], urllib_record["correlation"])
+        self.assertEqual(curl.call_args.args[2]["User-Agent"], expected)
+        self.assertEqual(request.get_header("User-agent"), expected)
+        self.assertEqual(request.full_url, "https://example.invalid/probe")
+        self.assertEqual(curl.call_args.args[0], request.full_url)
+
+    def test_user_agent_rejects_unbounded_or_non_alphanumeric_correlation(self):
+        self.assertEqual(probe.probe_user_agent("a" * 56), "egakumi-waf-probe/1.0 " + "a" * 56)
+        for value in ("", "a" * 57, "contains spaces", "line\r\nbreak", "non-ascii-\u3042"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                probe.probe_user_agent(value)
+
+    def test_user_agent_casefold_keeps_one_marker_and_other_headers_in_both_transports(self):
+        case = probe.Probe("mixed-case-user-agent-fixture", "gateway", "GET", "/probe", "test", "compatibility", "test",
+            headers=(("user-agent", "untrusted-lowercase"), ("UsEr-AgEnT", "untrusted-mixedcase"),
+                ("USER-AGENT", "untrusted-uppercase"), ("X-Synthetic", "preserved")))
+        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")) as curl:
+            record = probe.run_probe(case, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4), transport="curl")
+        with patch.object(probe, "build_opener") as opener:
+            response = opener.return_value.open.return_value
+            response.code, response.headers = 401, {}
+            response.read1.return_value = b"Unauthorized"
+            probe.run_probe(case, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4))
+        request = opener.return_value.open.call_args.args[0]
+        expected = "egakumi-waf-probe/1.0 " + record["correlation"]
+        for headers in (curl.call_args.args[2].items(), request.header_items()):
+            pairs = list(headers)
+            self.assertEqual([(name.casefold(), value) for name, value in pairs if name.casefold() == "user-agent"],
+                [("user-agent", expected)])
+            self.assertIn(("x-synthetic", "preserved"), [(name.casefold(), value) for name, value in pairs])
 
     def test_tls_and_redirect_boundaries(self):
         self.assertEqual(probe.validate_base_url("https://gateway.example.invalid/"), "https://gateway.example.invalid")

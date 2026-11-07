@@ -108,6 +108,52 @@ test("移管候補の満ページが全て対象外でも、次の100件ペー�
   assert.equal(urls.length, 2);
 });
 
+test("Graph継続ページは空の中間ページでも終端の所属・移管候補まで進む", async () => {
+  const last = group(clientId, "ORG_末尾候補");
+  const membership = directory((url) => {
+    const cursor = url.searchParams.get("$skiptoken");
+    if (cursor === "last") return Response.json({ value: [last] });
+    const next = new URL(url); next.searchParams.set("$skiptoken", cursor ? "last" : "empty");
+    return Response.json({ value: cursor ? [] : [group()], "@odata.nextLink": next.href });
+  });
+  const found = await membership.graph.listEligibleGroups(actor);
+  assert.deepEqual(new Set(found.map((value) => value.id)), new Set([groupId, clientId]));
+  assert.equal(membership.urls.length, 3);
+
+  const candidates = directory((url) => {
+    if (url.searchParams.has("$skiptoken")) return Response.json({ value: [last] });
+    const next = new URL(url); next.searchParams.set("$skiptoken", "last");
+    return Response.json({ value: [], "@odata.nextLink": next.href });
+  });
+  const first = await candidates.graph.listEligibleGroupPage(actor);
+  assert.deepEqual(first.groups, []);
+  assert.ok(first.nextCursor);
+  const second = await candidates.graph.listEligibleGroupPage(actor, { cursor: first.nextCursor });
+  assert.deepEqual(second.groups, [last]);
+  assert.equal(second.nextCursor, null);
+  assert.equal(candidates.urls.length, 2);
+});
+
+test("Graph継続ページの空・不正nextLinkでは既取得の所属を部分成功にしない", async () => {
+  for (const invalid of ["", null, "not-a-url", 42]) {
+    const { graph, urls } = directory((url) => {
+      if (url.searchParams.has("$skiptoken")) return Response.json({ value: [group(clientId)], "@odata.nextLink": invalid });
+      const next = new URL(url); next.searchParams.set("$skiptoken", "second");
+      return Response.json({ value: [group()], "@odata.nextLink": next.href });
+    });
+    await assert.rejects(graph.listEligibleGroups(actor), code("AuthorizationUnavailable"));
+    assert.equal(urls.length, 2);
+  }
+});
+
+test("Graph継続ページの空・不正nextLinkでは同じページの移管候補を返さない", async () => {
+  for (const invalid of ["", null, "not-a-url", 42]) {
+    const { graph, urls } = directory(() => Response.json({ value: [group()], "@odata.nextLink": invalid }));
+    await assert.rejects(graph.listEligibleGroupPage(actor), code("AuthorizationUnavailable"));
+    assert.equal(urls.length, 1);
+  }
+});
+
 test("Graphの別ホスト・別ユーザー・条件変更・循環ページへトークンを転送しない", async () => {
   const mutations = [
     (url: URL) => new URL(url.href.replace("graph.microsoft.com", "outside.invalid")),

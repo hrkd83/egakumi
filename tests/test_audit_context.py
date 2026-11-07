@@ -111,6 +111,10 @@ class AuditContextTests(unittest.TestCase):
   add('valid')
   settings=copy.deepcopy(SETTINGS); settings['llmOperationIds']=['chat-create']; settings['operationConstraints']['chat-create']={'kind':'bodyModel','allowedModels':['approved-model']}
   add('chat',settings=settings,operation='chat-create')
+  rerank=copy.deepcopy(SETTINGS); rerank['backendService']='foundryServices'
+  rerank['operationConstraints']={'rerank':{'kind':'rerank','allowedModels':['approved-model']}}
+  add('rerank',settings=rerank,operation='rerank')
+  add('rerank-unapproved',settings=rerank,operation='rerank',body=json.dumps({'model':'PRIVATE_UNAPPROVED_MODEL'}))
   for name,changed in [('person',{**CLAIMS,'idtyp':'user','scp':'Gateway.Invoke'}),
       ('wrong-client',{**CLAIMS,'azp':PARENT}),('wrong-principal',{**CLAIMS,'oid':PARENT}),
       ('wrong-role',{**CLAIMS,'roles':['Other.Role']}),('multiple-oid',{**CLAIMS,'oid':[PRINCIPAL,PRINCIPAL]})]: add(name,claims=changed)
@@ -191,6 +195,13 @@ class AuditContextTests(unittest.TestCase):
   self.assertNotIn('usage',self.results['valid'])
   self.assertNotIn('targetModel',self.results['unapproved-model'])
   self.assertEqual(self.results['no-metrics-source']['usageStatus'],'none')
+
+ def test_rerank_model_remains_auditable_without_llm_token_usage_or_unapproved_names(self):
+  self.assertEqual(self.results['rerank']['targetModel'],'approved-model')
+  self.assertEqual(self.results['rerank']['usageStatus'],'none')
+  self.assertTrue(self.results['rerank']['allReadsPreserved'])
+  self.assertNotIn('targetModel',self.results['rerank-unapproved'])
+  self.assertNotIn('PRIVATE',json.dumps(self.results['rerank-unapproved']))
 
  def test_http_model_reader_preserves_the_body_but_native_common_audit_never_reads_it(self):
   """分割後の実C#でモデル名・usage方式を保ち、nativeは読取0・秘密非記録を確かめる。"""

@@ -2,6 +2,14 @@
 """CM接続の調査一覧。削除はSQL台帳と整合性を確認するbrokerのreconcileで行う。"""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import json
 import re

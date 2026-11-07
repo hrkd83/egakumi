@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
-import { AZURE_SPEECH_VOICE_IDS } from "./speech-voices.ts";
+import { AZURE_SPEECH_TTS_VOICE_IDS } from "./speech-voices.ts";
 
 /** TTS本文の文字数上限です。SSML化後のバイト数もAPIごとに検査します。 */
 export const MAX_SPEECH_TEXT_CHARACTERS = 8_000;
@@ -10,7 +10,7 @@ export const MAX_SPEECH_UPLOAD_BYTES = 2 * 1_048_576;
 export const speechInputSchema = z.object({
   modelId: z.string().min(1).max(160),
   text: z.string().max(MAX_SPEECH_TEXT_CHARACTERS).refine((value) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/.test(value)),
-  voice: z.enum(AZURE_SPEECH_VOICE_IDS),
+  voice: z.enum(AZURE_SPEECH_TTS_VOICE_IDS),
   rate: z.enum(["-20%", "0%", "+20%"]),
 }).strict();
 

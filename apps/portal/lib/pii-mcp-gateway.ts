@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 import { z } from "zod";
 import { ApiKeyError } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -91,7 +92,7 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
     const safeResponse = { jsonrpc: "2.0" as const, id: 10, result: { content: rawTool.content.map((entry) => ({ type: "text" as const, text: entry.text })), ...(parsedStructured ? { structuredContent: parsedStructured } : {}), ...(rawTool.isError === false ? { isError: false as const } : {}) } };
     const output = piiMcpResultSchema.parse({ result, durationMs: Math.round(performance.now() - started), mcp: { protocolVersion: protocol, toolName: PII_MCP.toolName, response: safeResponse } });
     const serialized = JSON.stringify(output);
-    if (serialized.includes(key) || session && serialized.includes(session)) throw new PiiMcpTransportError();
+    if (containsModelCredential(output, key, serialized) || session && containsModelCredential(output, session, serialized)) throw new PiiMcpTransportError();
     return new Response(serialized, { headers: { ...headers, "Content-Type": "application/json" } });
   } catch (error) {
     const details = requestId ? { requestId } : {};

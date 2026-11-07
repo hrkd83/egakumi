@@ -391,6 +391,7 @@
       "RateLimitExceeded": "利用上限に達しました。少し待ってから再度お試しください。",
       "GatewayTimeout": "応答が時間内に返りませんでした。少し待ってから再度お試しください。",
       "GenerationFailed": "応答を取得できませんでした。少し待つか、別のモデルをお試しください。",
+      "OutputLimitReached": "出力上限に達し、応答を完成できませんでした。最大出力トークン数を増やしてお試しください。",
       "AuthenticationUnavailable": "サインイン状態を確認できませんでした。少し待ってから再度お試しください。",
       "RequestCancelled": "リクエストを中止しました。"
     }

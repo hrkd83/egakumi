@@ -5,7 +5,7 @@ import { realtimeStreamEventSchema, type RealtimeStreamEvent } from "./realtime-
 /** 会話の終了時だけ返す、BFFの停止確認です。応答一件の完了とは区別します。 */
 export type RealtimeCompletion = Extract<RealtimeStreamEvent, { type: "complete" }>;
 /** 画面内だけで保持する会話字幕です。接続IDや認証情報は含めません。 */
-export type RealtimeTurn = { id: number; role: "input" | "output"; text: string; final: boolean; pendingFinal?: boolean };
+export type RealtimeTurn = { id: number; role: "input" | "output"; text: string; final: boolean; pendingFinal?: boolean; segmentIndex?: number; discardedSegmentThrough?: number };
 const maximumFrameCharacters = 400_000;
 
 /** 任意の通信エラー本文を公開せず、固定の失敗へ揃えます。 */
@@ -72,9 +72,34 @@ export class RealtimeMicrophoneQueue {
   clear(): void { this.frames = []; this.minimumCaptureAt = null; }
 }
 
+/** 表示上限で切る際に、UTF-16のサロゲートペアの片側だけを残しません。 */
+function transcriptTail(text: string, maximum: number): string {
+  const tail = text.slice(-maximum);
+  return /^[\uDC00-\uDFFF]/.test(tail) ? tail.slice(1) : tail;
+}
+
 /** 発話ごとの字幕を更新し、長時間の会話でも表示履歴を無制限に保持しません。 */
 export function appendRealtimeTranscript(turns: readonly RealtimeTurn[], event: Extract<RealtimeStreamEvent, { type: "transcript" }>): RealtimeTurn[] {
-  const result = turns.filter((turn) => turn.text.trim().length > 0).map((turn) => ({ ...turn }));
+  const result = turns.filter((turn) => event.segmentIndex !== undefined ? turn.text.length > 0 : turn.text.trim().length > 0).map((turn) => ({ ...turn }));
+  if (event.segmentIndex !== undefined) {
+    if (event.role !== "input" || !Number.isInteger(event.segmentIndex) || event.segmentIndex < 0 || event.segmentIndex > 2999) throw invalid();
+    let discardedThrough = Math.max(-1, ...result.map((turn) => turn.discardedSegmentThrough ?? -1));
+    if (event.segmentIndex <= discardedThrough) return result;
+    const current = result.find((turn) => turn.segmentIndex === event.segmentIndex);
+    if (current) {
+      if (event.final) { if (event.text.length) current.text = transcriptTail(event.text, 16_000); current.final = true; }
+      else if (!current.final) current.text = transcriptTail(current.text + event.text, 16_000);
+    } else if (event.text.length) result.push({ id: Math.max(0, ...result.map((turn) => turn.id)) + 1, role: "input", text: transcriptTail(event.text, 16_000), final: event.final, segmentIndex: event.segmentIndex });
+    result.sort((left, right) => (left.segmentIndex ?? -1) - (right.segmentIndex ?? -1));
+    let characters = result.reduce((total, turn) => total + turn.text.length, 0);
+    while (result.length > 100 || characters > 64_000) {
+      const removed = result.shift()!; characters -= removed.text.length;
+      discardedThrough = Math.max(discardedThrough, removed.segmentIndex ?? -1);
+    }
+    // 廃棄済みの古い区間は、遅い確定通知で表示履歴へ復活させません。
+    if (result.length && discardedThrough >= 0) result[0].discardedSegmentThrough = discardedThrough;
+    return result;
+  }
   let active = result.findLastIndex((turn) => turn.role === event.role && !turn.final);
   if (!event.text.trim()) {
     // 無音の確定通知では行を作りません。空のfinalは進行中の字幕だけを確定し、本文を消しません。
@@ -91,6 +116,19 @@ export function appendRealtimeTranscript(turns: readonly RealtimeTurn[], event: 
   let characters = result.reduce((total, turn) => total + turn.text.length, 0);
   while (result.length > 100 || characters > 64_000) { characters -= result[0].text.length; result.shift(); }
   return result;
+}
+
+/**
+ * 文字起こしの区間データを維持したまま、表示用の一つの段落へ連結します。
+ * @remarks 区間の境界でも元の空白と文字をそのまま保持します。単語途中の区切りを推測せず、空白の挿入・本文の補完・重複除去は行いません。
+ */
+export function joinRealtimeTranscriptionParagraph(turns: readonly RealtimeTurn[]): string {
+  let paragraph = "";
+  for (const turn of turns.filter((item) => item.role === "input").toSorted((left, right) => (left.segmentIndex ?? left.id) - (right.segmentIndex ?? right.id))) {
+    if (!turn.text.length) continue;
+    paragraph += turn.text;
+  }
+  return paragraph.trim() ? transcriptTail(paragraph, 64_000) : "";
 }
 
 /** 本人に束縛した停止参照だけを使い、制御接続を失った場合の停止を再確認します。 */
