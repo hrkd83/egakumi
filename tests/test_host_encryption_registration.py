@@ -237,7 +237,7 @@ class HostEncryptionHookIntegrationTests(unittest.TestCase):
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
                        "management": {"encryptionAtHost": True},
             "environmentName": "test",
-                       "services": {}}
+                       "services": {"apimInstanceId": "abc123"}}
         guard = mock.patch.object(lifecycle.subprocess, "run", side_effect=AssertionError("No CLI process is permitted"))
         guard.start()
         self.addCleanup(guard.stop)

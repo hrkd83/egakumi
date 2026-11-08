@@ -16,6 +16,7 @@ import re
 from urllib.parse import urlsplit
 
 from deployment.helpers.configuration import load_configuration
+from deployment.helpers.apim_naming import apim_name
 from deployment.helpers.credential_pools import physical_providers
 from deployment.lifecycle import ArmTransport, require_success
 
@@ -29,7 +30,7 @@ def inventory(configuration, transport, *, now=None, execute=False):
         raise ValueError("Credential login is not configured")
     base = (f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/"
             f"{configuration['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/"
-            f"service/apim-{configuration['resourceStem']}")
+            f"service/{apim_name(configuration)}")
     result = []
     for provider in physical_providers(configuration):
         if provider["sourceName"] not in names:

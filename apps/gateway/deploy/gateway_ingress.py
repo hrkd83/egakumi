@@ -9,6 +9,7 @@ import time
 
 from deployment.helpers.portal_gateway import _etag, _writable, _writable_policy
 from deployment.helpers.paths import REPOSITORY
+from deployment.helpers.apim_naming import apim_name
 
 
 NETWORK_API = '2024-05-01'
@@ -215,7 +216,7 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
     backend = expected + '/backendHttpSettingsCollection/behttp-apim'
     _one(properties.get('backendAddressPools', []), 'bepool-apim', 'APIM backend pool')
     settings = _one(properties.get('backendHttpSettingsCollection', []), 'behttp-apim', 'APIM HTTP settings')['properties']
-    if settings.get('hostName') != 'apim-' + config['resourceStem'] + '.azure-api.net':
+    if settings.get('hostName') != apim_name(config) + '.azure-api.net':
         raise ValueError('Gateway callback backend host identifies another APIM')
     mapping_id = expected + '/urlPathMaps/pathmap-protocols'
     if route.get('ruleType') == 'Basic':

@@ -102,7 +102,7 @@ export DEPLOY_PORTAL_FQDN='<Portalの公開FQDN。httpsやパスを含めない>
 | 通知・証明書の連絡先 | APIM発行者、Azure Monitor通知、ACME連絡先を決める |
 | 利用範囲 | 通常のGateway・Portal一括構築か、企業接続を挟む段階構築かを決める。採用するモデル・APIと、利用者向けの購読キー・本人接続、下流向けのMIの役割を確認する |
 
-資源名は`apim-<environment>-<product>`等の固定規則で導出します。世界で一意の名前が必要な資源では、既存利用と競合しない意味のある製品名・環境名を組織内で選びます。ランダムな末尾やAPIMだけの別名を自動追加しません。
+APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。次節の準備コマンドが、英小文字・数字からなる6文字の`services.apimInstanceId`を生成します。共通部分`<environment>-<product>`が17文字以内ならAPIM名は最大29文字です。他の資源名は製品名・環境名から導出するため、組織内で既存利用と競合しない値を選びます。
 
 ここで決めた非秘密の値は、次節で用意する環境別の`evidence/`内の設定表へ控え、[4. params](04-params.md)にも同じ値を記入します。シェル変数はターミナルを閉じると消えるため、別の日や別ターミナルで続ける場合は自社の設定表から再設定します。secretの値をこの変数群へ追加しません。
 
@@ -122,6 +122,10 @@ export DEPLOY_PARAMS_FILE="$DEPLOY_LOCAL_DIRECTORY/params.local.json"
 export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 ```
 
+初回の準備コマンドは`services.apimInstanceId`をparamsへ保存します。同じコマンドで再開した場合は既存の値を保持します。構築・更新・撤去には同じ識別子を使い、手作業で変更しません。撤去後の新規構築は[運用手順](../operations.md#撤去後に新しく構築する)で新しい識別子を用意します。
+
+第2章へ進む前に、作成されたparamsの`productName`・`environmentName`・`apiCenterLocation`・`gateway.publicHostName`を、この章で決めた値へ揃えます。Entraへ登録するCM戻り先は、このparamsから計算します。その他の項目は、第2・3章の結果を受け取ってから第4章で設定します。
+
 | 保存先 | 用途 |
 | --- | --- |
 | `.local/<environment>/params.local.json` | 導入先のID・公開名・IP・グループ等の実設定 |
@@ -139,7 +143,7 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 ## 次へ進む前の確認
 
 - cloneしたルートに`azure.yaml`、`infra/`、`params/`、`config/`がある。
-- 環境別の`.local/<environment>/`を準備し、実paramsと証跡の保存先を確認した。
+- 環境別の`.local/<environment>/`を準備し、paramsに保存されたAPIM識別子と、Entraの戻り先計算に使う製品名・環境名・公開名を確認した。
 - 上記ツールとPowerShellの依存検査が成功する。
 - Azure／Entra／DNSの担当・権限、公開名とIP計画が決まっている。
 - 選択したモデルの料金・地域提供・クォータと、組織の購入条件を確認する担当がいる。

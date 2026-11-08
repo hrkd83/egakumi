@@ -14,7 +14,7 @@ import re
 import uuid
 from urllib.parse import urlsplit
 
-from .store import SqlStore, StoreError, StoreConflict, _name
+from .store import SqlStore, StoreError, StoreConflict, StoreUnavailable, _name
 from .cm import connection_metadata_status
 
 
@@ -138,6 +138,19 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
                 cursor.execute("UPDATE broker.Pools SET Capacity=?,Enabled=1 WHERE ProfileName=? AND ProviderName=?", capacity, profile, provider)
     store.ensure_ready()
     return {"status": "ready", "schemaVersion": 2, "poolCount": len(pools)}
+
+
+def observe_schema_before_migration(store):
+    """同じ配備用接続でDDL前のメタデータだけを記録し、不明を空DBとしない。"""
+    with store._db() as cursor:
+        cursor.execute("SELECT CASE WHEN HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DEFINITION')=1 "
+                       "THEN (SELECT COUNT(*) FROM sys.tables WHERE is_ms_shipped=0) ELSE NULL END, "
+                       "CASE WHEN OBJECT_ID(N'broker.SchemaVersions',N'U') IS NULL THEN 0 ELSE 1 END")
+        row = cursor.fetchone()
+    if (row is None or len(row) != 2 or type(row[0]) is not int or row[0] < 0
+            or type(row[1]) is not int or row[1] not in (0, 1)):
+        raise StoreUnavailable("Initial schema metadata could not be verified")
+    return {"stage": "before-migration", "userTableCount": row[0], "migrationTablePresent": bool(row[1])}
 
 
 def _inventory(arm, path):
@@ -269,6 +282,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     store = SqlStore.from_environment()
     if args.command == "migrate":
+        print(json.dumps(observe_schema_before_migration(store)), flush=True)
         result = migrate(store, runtime_client_id=os.environ["SQL_RUNTIME_CLIENT_ID"],
                          runtime_user_name=os.environ["SQL_RUNTIME_USER_NAME"],
                          profiles=json.loads(os.environ["BROKER_PROFILES_JSON"]))

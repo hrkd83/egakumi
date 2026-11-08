@@ -1,7 +1,4 @@
-"""Entra登録に渡す予定名と戻り先URLのローカル計算を検証する。
-
-Subscriptionと製品・環境名からBicepの名前計算を行い、資源やマネージドIDを先行作成しなくても登録準備できることを確かめる。
-"""
+"""保存済みAPIM識別子を使ったEntra登録用URIのローカル計算を検証する。"""
 import contextlib
 import importlib.util
 import io
@@ -9,103 +6,135 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
-
 
 CORE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("prepare_registration", CORE / "scripts/prepare_registration.py")
 registration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registration)
-# 製品・環境の同じ入力は、Subscriptionを変えても同じ公開名になります。
-SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
+INPUT = {"productName": "egakumi", "environmentName": "test", "apiCenterLocation": "eastus",
+         "services": {"apimInstanceId": "k7m2q9"}, "gateway": {"publicHostName": "gateway.example.com"}}
 EXPECTED = {
     "resourceStem": "test-egakumi",
-    "apimName": "apim-test-egakumi",
+    "apimName": "apim-test-egakumi-k7m2q9",
     "apiCenterName": "apic-test-egakumi",
     "gatewayOrigin": "https://gateway.example.com",
-    "credentialManagerRedirectUri": "https://authorization-manager.consent.azure-apim.net/redirect/apim/apim-test-egakumi",
+    "credentialManagerRedirectUri": "https://authorization-manager.consent.azure-apim.net/redirect/apim/apim-test-egakumi-k7m2q9",
     "apiCenterPortalRedirectUri": "https://apic-test-egakumi.portal.eastus.azure-apicenter.ms",
 }
 
 
+def compiled_result():
+    return subprocess.CompletedProcess([], 0, json.dumps({"parametersJson": json.dumps({"parameters": {"registration": {"value": EXPECTED}}})}), "")
+
+
 class RegistrationTests(unittest.TestCase):
-    """Entra登録に渡す予定名と戻り先URLのローカル計算を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
-    def test_real_official_bicep_preserves_existing_registered_redirects(self):
+    def test_real_official_bicep_matches_saved_identifier_and_registered_redirect(self):
         try:
             registration.bicep_executable()
         except ValueError as error:
             self.skipTest(str(error))
-        self.assertEqual(registration.prepare_registration(SUBSCRIPTION, "egakumi", "test"), EXPECTED)
+        self.assertEqual(registration.prepare_registration(INPUT), EXPECTED)
 
-    def test_invalid_inputs_fail_before_any_process_or_config_read(self):
-        cases = [
-            ("00000000-0000-0000-0000-000000000000", "egakumi", "test", "eastus"),
-            (SUBSCRIPTION.replace("-", ""), "egakumi", "test", "eastus"),
-            (SUBSCRIPTION, "Egakumi", "test", "eastus"),
-            (SUBSCRIPTION, "1egakumi", "test", "eastus"),
-            (SUBSCRIPTION, "egakumi--bad", "test", "eastus"),
-            (SUBSCRIPTION, "x" * 25, "test", "eastus"),
-            (SUBSCRIPTION, "egakumi", "x" * 13, "eastus"),
-            (SUBSCRIPTION, "egakumi", "test", "East US"),
-        ]
-        with mock.patch.object(registration.subprocess, "run") as run, mock.patch.object(registration, "bicep_executable") as executable:
-            for values in cases:
-                with self.subTest(values=values), self.assertRaises(ValueError):
-                    registration.prepare_registration(*values)
+    def test_invalid_naming_inputs_fail_before_compiler_or_secret_read(self):
+        cases = []
+        for key, value in (("productName", "Upper"), ("productName", "1sample"),
+                           ("environmentName", "test--bad"), ("apiCenterLocation", "East US")):
+            cases.append({**INPUT, key: value})
+        for value in (None, "", "ABC123", "12345", "1234567", "ab-c12"):
+            cases.append({**INPUT, "services": {"apimInstanceId": value}})
+        for value in ("https://gateway.example.com", "gateway", "Gateway.example.com", "gateway.example.com\n"):
+            cases.append({**INPUT, "gateway": {"publicHostName": value}})
+        with mock.patch.object(registration.subprocess, "run") as run, mock.patch.object(registration, "bicep_executable") as executable, \
+             mock.patch.object(Path, "read_text", side_effect=AssertionError("No files may be read")):
+            for config in cases:
+                with self.subTest(config=config), self.assertRaises(ValueError):
+                    registration.prepare_registration(config)
         run.assert_not_called()
         executable.assert_not_called()
 
-    def test_inputs_use_only_meaningful_environment_product_names(self):
-        values = registration.registration_inputs(SUBSCRIPTION.upper(), "egakumi", "test", "eastus")
+    def test_minimal_naming_inputs_do_not_require_entra_or_subscription_validation(self):
+        config = {**INPUT, "subscriptionId": "<AZURE_SUBSCRIPTION_ID>", "credentialProviders": [{"clientSecretFile": "/unread/secret"}],
+                  "configFile": "/unread/config"}
+        with mock.patch.object(Path, "read_text", side_effect=AssertionError("No referenced files may be read")):
+            values = registration.registration_inputs(config)
         self.assertEqual(values["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-egakumi")
+        self.assertEqual(values["WORKFORCE_REGISTRATION_APIM_INSTANCE_ID"], "k7m2q9")
         self.assertNotIn("WORKFORCE_REGISTRATION_SUBSCRIPTION_SCOPE", values)
-        self.assertNotIn("WORKFORCE_REGISTRATION_APIM_NAME", values)
-
-    def test_names_are_independent_of_subscription_and_have_no_random_suffix(self):
-        other = "22222222-2222-4222-8222-222222222222"
-        self.assertEqual(registration.prepare_registration(other, "egakumi", "test"), EXPECTED)
+        self.assertEqual(registration.registration_inputs(INPUT), values)
 
     def test_combined_name_length_is_checked_before_compiler(self):
         with mock.patch.object(registration, "bicep_executable") as executable:
-            for product, environment in (("p" * 13, "test"), ("p" * 16, "test"), ("p" * 24, "test")):
-                with self.subTest(product=product), self.assertRaisesRegex(ValueError, "17 characters"):
-                    registration.prepare_registration(SUBSCRIPTION, product, environment)
+            with self.assertRaisesRegex(ValueError, "17 characters"):
+                registration.prepare_registration({**INPUT, "productName": "p" * 13})
         executable.assert_not_called()
-        values = registration.registration_inputs(SUBSCRIPTION, "p" * 12, "test", "eastus")
+        values = registration.registration_inputs({**INPUT, "productName": "p" * 12})
         self.assertEqual(values["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-" + "p" * 12)
 
+    def test_cli_reads_only_explicit_protected_parameters_and_keeps_environment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            path = root / ".local/test/params.local.json"
+            path.parent.mkdir(parents=True, mode=0o700)
+            (root / ".local").chmod(0o700)
+            path.write_text(json.dumps({**INPUT, "configFile": "unread-config.json", "credentialProviders": [{"clientSecretFile": "unread-secret"}]}))
+            path.chmod(0o600)
+            with mock.patch.object(registration, "ROOT", root), \
+                 mock.patch.dict(os.environ, {"PRIVATE_SENTINEL": "DO_NOT_PRINT", "WORKFORCE_REGISTRATION_RESOURCE_STEM": "old-value"}), \
+                 mock.patch.object(registration, "bicep_executable", return_value="/mock/bicep"), \
+                 mock.patch.object(registration.subprocess, "run", return_value=compiled_result()) as run:
+                before = dict(os.environ)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    status = registration.main(["--config", str(path)])
+                self.assertEqual(dict(os.environ), before)
+            self.assertEqual(status, 0)
+            self.assertEqual(json.loads(output.getvalue()), EXPECTED)
+            self.assertNotIn("DO_NOT_PRINT", output.getvalue())
+        self.assertEqual(run.call_args.args[0][0:2], ["/mock/bicep", "build-params"])
+        self.assertIn("--no-restore", run.call_args.args[0])
+        self.assertEqual(run.call_args.kwargs["env"]["WORKFORCE_REGISTRATION_APIM_INSTANCE_ID"], "k7m2q9")
 
-    def test_cli_uses_local_compiler_without_changing_environment_or_reading_config(self):
-        compiled = {"parametersJson": json.dumps({"parameters": {"registration": {"value": EXPECTED}}})}
-        result = subprocess.CompletedProcess([], 0, json.dumps(compiled), "")
-        with mock.patch.dict(os.environ, {"PRIVATE_SENTINEL": "DO_NOT_PRINT", "WORKFORCE_REGISTRATION_RESOURCE_STEM": "untrusted-old-value"}), \
-             mock.patch.object(registration, "bicep_executable", return_value="/mock/bicep"), \
-             mock.patch.object(registration.subprocess, "run", return_value=result) as run, \
-             mock.patch.object(Path, "read_text", side_effect=AssertionError("No configuration or secret file may be read")):
-            before = dict(os.environ)
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                status = registration.main(["--subscription-id", SUBSCRIPTION, "--product-name", "egakumi",
-                                            "--environment-name", "test", "--public-host-name", "gateway.example.com"])
-            self.assertEqual(dict(os.environ), before)
-        self.assertEqual(status, 0)
-        self.assertEqual(json.loads(output.getvalue()), EXPECTED)
-        self.assertNotIn("DO_NOT_PRINT", output.getvalue())
-        command = run.call_args.args[0]
-        self.assertEqual(command[0:2], ["/mock/bicep", "build-params"])
-        self.assertIn("--no-restore", command)
-        self.assertEqual(run.call_args.kwargs["env"]["WORKFORCE_REGISTRATION_RESOURCE_STEM"], "test-egakumi")
-        self.assertEqual(run.call_args.kwargs["env"]["WORKFORCE_REGISTRATION_PUBLIC_HOST_NAME"], "gateway.example.com")
+    def test_local_parameters_require_private_canonical_environment_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            path = root / ".local/test/params.local.json"
+            path.parent.mkdir(parents=True, mode=0o700)
+            (root / ".local").chmod(0o700)
+            path.write_text(json.dumps(INPUT))
+            path.chmod(0o600)
+            self.assertEqual(registration.load_registration_configuration(path, root), INPUT)
+            for mode in (0o644, 0o666):
+                path.chmod(mode)
+                with self.subTest(mode=mode), self.assertRaises(ValueError):
+                    registration.load_registration_configuration(path, root)
+            path.chmod(0o600)
+            path.write_text(json.dumps({**INPUT, "environmentName": "other"}))
+            with self.assertRaises(ValueError):
+                registration.load_registration_configuration(path, root)
+            path.unlink()
+            (root / "outside.json").write_text(json.dumps(INPUT))
+            path.symlink_to(root / "outside.json")
+            with self.assertRaises(ValueError):
+                registration.load_registration_configuration(path, root)
+            with self.assertRaises(ValueError):
+                registration.load_registration_configuration(root / "outside.json", root)
 
-    def test_cli_failures_do_not_echo_environment_or_private_process_output(self):
+    def test_cli_failures_do_not_echo_parameters_or_private_process_output(self):
         for result in (subprocess.CompletedProcess([], 1, "PRIVATE_STDOUT", "PRIVATE_STDERR"), subprocess.CompletedProcess([], 0, "PRIVATE_STDOUT", "")):
-            with self.subTest(code=result.returncode), mock.patch.object(registration, "bicep_executable", return_value="/mock/bicep"), mock.patch.object(registration.subprocess, "run", return_value=result):
-                with self.assertRaises(ValueError) as error:
-                    registration.prepare_registration(SUBSCRIPTION, "egakumi", "test")
-                self.assertNotIn("PRIVATE", str(error.exception))
+            with self.subTest(code=result.returncode), mock.patch.object(registration, "bicep_executable", return_value="/mock/bicep"), \
+                 mock.patch.object(registration.subprocess, "run", return_value=result), self.assertRaises(ValueError) as caught:
+                registration.prepare_registration(INPUT)
+            self.assertNotIn("PRIVATE", str(caught.exception))
+        with mock.patch.object(registration, "load_registration_configuration", side_effect=ValueError("PRIVATE_INPUT")):
+            error = io.StringIO()
+            with contextlib.redirect_stderr(error):
+                self.assertEqual(registration.main(["--config", ".local/test/params.local.json"]), 1)
+            self.assertNotIn("PRIVATE_INPUT", error.getvalue())
 
-    def test_missing_explicit_compiler_fails_clearly_without_fallback(self):
+    def test_missing_explicit_compiler_fails_without_fallback(self):
         with mock.patch.dict(os.environ, {"BICEP_CLI": "/missing/bicep"}), mock.patch.object(registration.shutil, "which", return_value=None) as which:
             with self.assertRaisesRegex(ValueError, "BICEP_CLI"):
                 registration.bicep_executable()

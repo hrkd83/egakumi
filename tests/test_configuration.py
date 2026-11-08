@@ -38,6 +38,36 @@ class PublicSampleTests(unittest.TestCase):
         raw["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
         return parameters, options, configuration.normalize_configuration(raw, base_directory=manifest.parent)
 
+    def test_apim_identifier_is_required_parameter_owned_and_never_regenerated(self):
+        for value in (None, "", "ABC123", "abc12", "abc1234", "abc-12", 123456):
+            raw = fixture()
+            if value is None:
+                raw["services"].pop("apimInstanceId", None)
+            else:
+                raw["services"]["apimInstanceId"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(configuration.ConfigurationError, r"services\.apimInstanceId"):
+                configuration.normalize_configuration(raw)
+        raw = fixture()
+        raw["services"]["apimInstanceId"] = "m8q3r2"
+        self.assertEqual(configuration.normalize_configuration(raw)["services"]["apimInstanceId"], "m8q3r2")
+        self.assertEqual(raw["services"]["apimInstanceId"], "m8q3r2")
+        self.assertIn("apimInstanceId", configuration.PARAMETER_SECTION_KEYS["services"])
+        self.assertIn(("services", "apimInstanceId"), configuration.PARAMETER_OWNED_PATHS)
+
+    def test_schema_and_public_examples_require_synthetic_apim_identifier(self):
+        for filename in ("params.schema.json", "configuration.schema.json"):
+            service = json.loads((CORE / "schemas" / filename).read_text())["properties"]["services"]
+            with self.subTest(schema=filename):
+                self.assertIn("apimInstanceId", service["required"])
+                self.assertEqual(service["properties"]["apimInstanceId"]["pattern"], "^[a-z0-9]{6}$")
+                self.assertNotIn("default", service["properties"]["apimInstanceId"])
+        for name in ("test", "production"):
+            parameters, options, actual = self.sample(name)
+            with self.subTest(profile=name):
+                self.assertEqual(parameters["services"]["apimInstanceId"], "k7m2q9")
+                self.assertEqual(actual["services"]["apimInstanceId"], "k7m2q9")
+                self.assertNotIn("apimInstanceId", options["services"])
+
     def test_required_org_inputs_are_separate_from_standard_options(self):
         for name in ("test", "production"):
             with self.subTest(name=name):

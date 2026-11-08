@@ -12,10 +12,11 @@ from gateway_ingress import (
     gateway_id, _callback_gateway, _callback_policy, _writable, _writable_policy,
 )
 from test_portal_gateway import Transport
+from deployment.helpers.apim_naming import apim_name
 
 
 CONFIG = {'subscriptionId': '11111111-1111-4111-8111-111111111111', 'resourceStem': 'test-fixture',
-          'resourceGroupNames': {'nw': 'rg-test-fixture-nw'},
+          'resourceGroupNames': {'nw': 'rg-test-fixture-nw'}, 'services': {'apimInstanceId': 'abc123'},
           'gateway': {'publicHostName': 'gateway.example.test', 'grpc': {'enabled': True}}}
 GATEWAY_ID = gateway_id(CONFIG)
 BASE_ID = GATEWAY_ID.rsplit('/applicationGateways/', 1)[0] + '/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-test-fixture'
@@ -31,7 +32,7 @@ def gateway(*, path_based=False):
         'httpListeners': [{'name': 'listener-https', 'properties': {'protocol': 'Https', 'hostName': 'gateway.example.test',
                             'sslCertificate': {'id': GATEWAY_ID + '/sslCertificates/gateway-tls'}}}],
         'backendAddressPools': [{'name': 'bepool-apim', 'properties': {'backendAddresses': [{'ipAddress': '10.0.1.4'}]}}],
-        'backendHttpSettingsCollection': [{'name': 'behttp-apim', 'properties': {'hostName': 'apim-test-fixture.azure-api.net',
+        'backendHttpSettingsCollection': [{'name': 'behttp-apim', 'properties': {'hostName': apim_name(CONFIG) + '.azure-api.net',
                       'protocol': 'Http', 'port': 80, 'requestTimeout': 600}}],
         'rewriteRuleSets': [{'name': 'trusted-l7-ingress', 'properties': {'rewriteRules': [
             {'name': 'replace-untrusted-edge-proof', 'actionSet': {'requestHeaderConfigurations': [

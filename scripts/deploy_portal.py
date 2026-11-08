@@ -21,6 +21,7 @@ from urllib.request import Request, build_opener
 
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import REPOSITORY, local_paths
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.portal_authentication import prepare_secret
 from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
@@ -29,8 +30,9 @@ from deployment.helpers.portal_api_keys import prepare_api_key_groups, available
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
-from deployment.lifecycle import ArmTransport, DeploymentError, NoRedirect, protected_json
+from deployment.lifecycle import ArmTransport, DeploymentError, NoRedirect, protected_json, state_from_outputs
 from waf_policy import reconcile as configure_data_waf
+from standard_apis import infrastructure_api_definitions
 
 APP_API = '2025-01-01'
 ARM_API = '2022-09-01'
@@ -52,10 +54,13 @@ def deployment_inputs(config, state, image_digest=None):
     """現在のinfraが保存した基盤出力から、今回の環境だけを参照する。"""
     if image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', image_digest):
         raise ValueError('Use an immutable sha256 image digest')
-    if any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):
+    if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
+            or state.get('apimInstanceId') != apim_instance_id(config)):
         raise ValueError('Core deployment state differs from the selected configuration')
     stem = config['resourceStem']
     outputs = state.get('outputs', {})
+    if outputs.get('names', {}).get('apim') != apim_name(config):
+        raise ValueError('Core APIM name differs from the selected construction instance')
     portal = outputs.get('portal', {})
     svc = group_scope(config) + '/providers/'
     identities = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
@@ -87,7 +92,7 @@ def deployment_inputs(config, state, image_digest=None):
         'stem': stem, 'location': config['location'],
         'tags': {**config.get('tags', {}), 'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']},
         'environmentName': expected['environmentName'], 'registryName': expected['registryName'],
-        'apimName': 'apim-' + stem,
+        'apimName': apim_name(config),
         'apiKeyGroups': config.get('portalApiKeys', {}).get('groups', []),
         'apiKeyPlatformGroupId': config.get('portalApiKeys', {}).get('platformGroupId', ''),
         'apiKeyGroupNamePattern': config.get('portalApiKeys', {}).get('groupNamePattern', ''),
@@ -279,7 +284,7 @@ def deploy_release(config, values, template, transport):
     print('ポータル: 公開URLから起動状態を確認します。', flush=True)
     verify_public(values['publicOrigin'])
     apim_id = group_scope(config) + '/providers/Microsoft.ApiManagement/service/' + values['apimName']
-    profiles = activate_profile_settings(apim_id, transport)
+    profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']))
     return {'probe': gateway_probe, 'callbackWaf': callback_waf, 'dataWaf': data_waf, 'subscriptionProfiles': profiles}
 
 
@@ -301,8 +306,8 @@ def main(argv=None):
             '--subscription', config['subscriptionId'], '-o', 'json'])
         if result.get('properties', {}).get('provisioningState') != 'Succeeded':
             raise ValueError('Select a successfully completed Core deployment')
-        state = {**{key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')},
-            'outputs': {key: value['value'] for key, value in result.get('properties', {}).get('outputs', {}).items()}}
+        state = state_from_outputs(config,
+            {key: value['value'] for key, value in result.get('properties', {}).get('outputs', {}).items()})
     else:
         state = json.loads(Path(args.state_file).read_text(encoding='utf-8'))
     values = deployment_inputs(config, state, args.image_digest)

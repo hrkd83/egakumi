@@ -9,9 +9,9 @@ class GatewayCleanupTests(unittest.TestCase):
     def setUp(self):
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111", "productName": "fixture",
                        "environmentName": "test", "resourceStem": "test-fixture", "location": "japaneast",
-                       "resourceGroupNames": {"svc": "rg-test-fixture-svc"}}
+                       "resourceGroupNames": {"svc": "rg-test-fixture-svc"}, "services": {"apimInstanceId": "abc123"}}
         self.base = "/subscriptions/" + self.config["subscriptionId"] + "/resourceGroups/rg-test-fixture-svc/providers/Microsoft.App/"
-        self.foundation = {"resourceGroup": "rg-test-fixture-svc", "apimName": "apim-test-fixture",
+        self.foundation = {"resourceGroup": "rg-test-fixture-svc", "apimName": "apim-test-fixture-abc123",
                            "environmentName": "cae-test-fixture"}
         self.state = {"outputs": {"gatewayFoundation": self.foundation}}
         self.ids = [self.base + "jobs/caj-test-fixture-recon", self.base + "jobs/caj-test-fixture-schema",

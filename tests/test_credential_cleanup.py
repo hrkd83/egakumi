@@ -466,7 +466,7 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
     def test_only_configured_providers_on_exact_owned_apim_are_targeted(self):
         transport = self.credential_transport()
         provider_id = next(iter(transport.provider_headers))
-        foreign_provider = provider_id.replace("apim-test-egakumi", "apim-other-test-abc123")
+        foreign_provider = provider_id.replace("apim-test-egakumi-abc123", "apim-other-test-abc123")
         unconfigured = provider_id.rsplit("/", 1)[0] + "/not-configured"
         transport.resources.update({foreign_provider: {"id": foreign_provider}, unconfigured: {"id": unconfigured}})
         self.pre(transport)

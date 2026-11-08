@@ -4,6 +4,8 @@ from __future__ import annotations
 import copy
 import re
 
+from .apim_naming import apim_name
+
 
 API = "2021-05-01-preview"
 WRITABLE = {"workspaceId", "storageAccountId", "eventHubAuthorizationRuleId", "eventHubName",
@@ -172,7 +174,7 @@ def canonical_settings(config, phase, preserve_collection=False):
     for key, provider, name, version, region in (
         ("vault", "Microsoft.KeyVault/vaults", "kv-" + stem, "2023-07-01", location),
         ("foundry", "Microsoft.CognitiveServices/accounts", "aif-" + stem, "2025-06-01", config["foundryLocation"]),
-        ("apim", "Microsoft.ApiManagement/service", "apim-" + stem, "2024-05-01", location)):
+        ("apim", "Microsoft.ApiManagement/service", apim_name(config), "2024-05-01", location)):
         parent = resource("svc", provider, name)
         categories = ["AuditEvent"] if key == "vault" else ["Audit"] if key == "foundry" else ["GatewayLogs", "GatewayLlmLogs"]
         if key == "apim" and any(api.get("apiType", "http") == "websocket" for api in config.get("infrastructureApiDefinitions", config["apiDefinitions"])):

@@ -1,8 +1,8 @@
-"""公開する Azure 資源名が、環境名・製品名だけから決まることを確認する。
+"""Azure 資源の基本名と、保存済み構築識別子を加えたAPIM名を確認する。
 
 実際に配布する Bicep を公式コンパイラーで ARM に変換し、Core 本体と各
 モジュールの既定値を照合する。Azure への接続や資源の作成は行わない。
-名前の切り詰めや接尾辞の再導入は、Entra に事前登録する URI と実資源の
+名前の切り詰めや実行ごとの識別子変更は、Entra に事前登録する URI と実資源の
 不整合を招くため、設定検査とは別に生成結果の契約も確認する。
 """
 from bicep_helpers import compile_bicep
@@ -33,11 +33,13 @@ class ResourceNamingTests(unittest.TestCase):
     def test_service_names_and_owned_groups_use_environment_product(self):
         self.assertEqual(self.variables["stem"],
                          "[format('{0}-{1}', variables('environmentName'), variables('product'))]")
-        self.assertEqual(self.variables["serviceNames"], {
+        expected_names = {
             key: "[format('" + prefix + "-{0}', variables('stem'))]"
             for key, prefix in (("keyVault", "kv"), ("foundry", "aif"),
-                                ("project", "proj"), ("apim", "apim"), ("apiCenter", "apic"))
-        })
+                                ("project", "proj"), ("apiCenter", "apic"))
+        }
+        expected_names["apim"] = "[format('apim-{0}-{1}', variables('stem'), parameters('configuration').services.apimInstanceId)]"
+        self.assertEqual(self.variables["serviceNames"], expected_names)
         groups = [item for item in self.template["resources"]
                   if item["type"] == "Microsoft.Resources/resourceGroups"]
         self.assertEqual({item["name"] for item in groups}, {

@@ -5,12 +5,13 @@
 
 using none
 
-// main.bicep と同じ「環境名-製品名」を使います。Subscription 由来の接尾辞や
-// APIM だけの回避名を加えず、Azure 作成前に戻り先を確定できます。
+// main.bicep と同じ「環境名-製品名」と保存済みAPIM識別子を使います。
+// Azure 作成前に戻り先を確定し、通常の更新では同じ名前を維持します。
 var stem = readEnvironmentVariable('WORKFORCE_REGISTRATION_RESOURCE_STEM')
+var apimInstanceId = readEnvironmentVariable('WORKFORCE_REGISTRATION_APIM_INSTANCE_ID')
 var apiCenterLocation = readEnvironmentVariable('WORKFORCE_REGISTRATION_API_CENTER_LOCATION')
 var publicHostName = readEnvironmentVariable('WORKFORCE_REGISTRATION_PUBLIC_HOST_NAME')
-var apimName = 'apim-${stem}'
+var apimName = 'apim-${stem}-${apimInstanceId}'
 var apiCenterName = 'apic-${stem}'
 
 // 出力先へ返すのは公開名と redirect URI だけです。実リソースの作成や Entra 登録は行いません。

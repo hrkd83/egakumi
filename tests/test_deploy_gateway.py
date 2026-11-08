@@ -14,16 +14,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_gateway as gateway
 from deployment.helpers.paths import local_paths
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
 
 
 def fixture():
     """現行infraのgatewayFoundationと、配備済みbrokerの独立した合成出力。"""
     config, state = broker_fixture()
+    state['apimInstanceId'] = apim_instance_id(config)
     stem, groups = config['resourceStem'], config['resourceGroupNames']
     state['outputs']['gatewayFoundation'] = {
         'resourceGroup': groups['svc'], 'identityResourceGroup': groups['id'],
-        'apimName': 'apim-' + stem, 'vaultName': 'kv-' + stem,
+        'apimName': apim_name(config), 'vaultName': 'kv-' + stem,
         'schemaIdentity': copy.deepcopy(state['outputs']['credentialBroker']['schemaIdentity']),
         'sqlServer': 'sql-' + stem + '.database.windows.net',
         'sqlPrivateEndpointId': '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + groups['svc'] + '/providers/Microsoft.Network/privateEndpoints/pep-' + stem + '-sql',
@@ -77,6 +79,20 @@ class GatewayDeploymentTests(unittest.TestCase):
         self.assertEqual(foundation['sqlServer'], 'sql-' + config['resourceStem'] + '.database.windows.net')
         self.assertEqual(foundation['schemaIdentity'], state['outputs']['credentialBroker']['schemaIdentity'])
         self.assertEqual(state, original)
+
+    def test_other_or_missing_apim_instance_stops_before_build_or_deployment(self):
+        for value in (None, 'def456'):
+            config, state = fixture()
+            config['publishApis'] = True
+            if value is None:
+                del state['apimInstanceId']
+            else:
+                state['apimInstanceId'] = value
+            with self.subTest(value=value), self.isolated_cli(config, state) as (arguments, observed):
+                with self.assertRaisesRegex(ValueError, 'state differs'):
+                    gateway.main(arguments)
+                for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release'):
+                    observed[boundary].assert_not_called()
 
     def test_cli_refuses_public_or_other_environment_paths_before_building(self):
         """引数で別環境を指定しても、計画・build・Azure要求へ進めない。"""

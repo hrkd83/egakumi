@@ -6,8 +6,8 @@ paramsのconfigFileを基準に標準設定を読み、企業固有の入力を�
 ネットワーク、認証、モデル、証明書などの組合せをローカルで検査する。
 公開設定の出力には秘密の内容を含めない。秘密ファイルを開く処理は
 load_secret_inputsに分け、Bicepへ渡す直前にだけ呼び出す。
-Azureへの通信、資源作成、課金操作は行わない。資源名は環境名・製品名から
-Bicepと同じ規則で決め、ランダムな接尾辞や名前の自動変更は行わない。
+Azureへの通信、資源作成、課金操作は行わない。資源名は環境名・製品名と
+保存済みのAPIM識別子からBicepと同じ規則で決め、実行時に変更しない。
 """
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ if __package__ in (None, ""):
     __package__ = "deployment.helpers"
 
 from .catalog_descriptions import with_catalog_descriptions
+from .apim_naming import apim_instance_id
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
 
 
@@ -84,7 +85,7 @@ PARAMETER_FIREWALL_IP_KEYS = {
 PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
     "network": PARAMETER_NETWORK_IP_KEYS | {"firewall", "ntpFqdns"},
-    "services": {"publisherName", "publisherEmail"},
+    "services": {"publisherName", "publisherEmail", "apimInstanceId"},
     "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "grpc", "rateLimits"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
     "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
@@ -1060,7 +1061,11 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("tags", "keys and values must be strings")
     c["tags"] = {**tags, "product": c["productName"], "environment": c["environmentName"]}
     c["network"] = _network(c.get("network"))
-    s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimSkuName", "apimCapacity", "apiCenterSkuName", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "enableApiCenterIntegration", "catalogEnvironmentKind", "catalogLifecycleStage", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
+    s = _object(c.get("services"), "services", {"publisherName", "publisherEmail", "apimInstanceId", "apimSkuName", "apimCapacity", "apiCenterSkuName", "vaultSkuName", "vaultRetentionDays", "vaultPurgeProtection", "modelDeployments", "projectDisplayName", "projectDescription", "enableApiCenterIntegration", "catalogEnvironmentKind", "catalogLifecycleStage", "grantApimSecretAccess", "speechEnabled", "grantApimFoundryModelsAccess"})
+    try:
+        apim_instance_id(c)
+    except ValueError:
+        _fail("services.apimInstanceId", "must contain exactly 6 lowercase letters or digits; prepare the local deployment identifier explicitly")
     _string(s.get("publisherName"), "services.publisherName")
     if not EMAIL.fullmatch(_string(s.get("publisherEmail"), "services.publisherEmail")):
         _fail("services.publisherEmail", "must be an email address")

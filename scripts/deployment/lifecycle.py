@@ -119,6 +119,8 @@ from .helpers.public_dns import configure_public_dns
 from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as read_workspace_privacy_link, ensure_workspace_link, resource_ids as log_privacy_resource_ids
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
+from .helpers.apim_naming import apim_instance_id
+from .helpers.apim_generations import assert_current_instance, verify_state as verify_apim_state
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
@@ -1093,17 +1095,30 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         time.sleep(10)
 
 
+def _assert_current_apim_instance(config: dict) -> None:
+    try:
+        assert_current_instance(config, local_paths(config, ROOT))
+    except ValueError as error:
+        raise DeploymentError(str(error)) from None
+
+
 def state_from_outputs(config: dict, outputs: dict) -> dict:
     """実際のBicep出力から、再実行と撤去に使う所有RG・サービスIDの記録を作る。"""
-    return {
+    state = {
         "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),
         "resourceStem": config["resourceStem"], "resourceGroupNames": config["resourceGroupNames"],
+        "apimInstanceId": apim_instance_id(config),
         "storage": outputs.get("auditStorage", {}), "monitoring": outputs.get("monitoring", {}),
         "serviceResourceIds": outputs.get("cleanup", {}).get("serviceResourceIds", {}),
         "serviceLocations": {"keyVault": config["location"], "foundry": config["foundryLocation"], "apim": config["location"]},
         "outputs": outputs,
     }
+    try:
+        verify_apim_state(config, state)
+    except ValueError as error:
+        raise DeploymentError(str(error)) from None
+    return state
 
 
 def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | None:
@@ -1120,6 +1135,10 @@ def _read_application_infrastructure_checkpoint(config: dict) -> list[dict] | No
             for key in ("subscriptionId", "azureTenantId", "resourceStem"))
             or previous.get("resourceGroupNames") != config["resourceGroupNames"]):
         raise DeploymentError("Existing application infrastructure checkpoint belongs to a different Core environment")
+    try:
+        verify_apim_state(config, previous)
+    except ValueError as error:
+        raise DeploymentError(str(error)) from None
     if "applicationInfrastructure" not in previous:
         return None
     from .helpers.cleanup import CleanupError, _application_infrastructure
@@ -1312,6 +1331,7 @@ def _preprovision(config: dict) -> None:
     """
     # 第1段階: ローカルで失敗を検出する。ファイルや依存関係の不足で
     # 有料リソースを作ってから停止することを避ける。
+    _assert_current_apim_instance(config)
     _read_application_infrastructure_checkpoint(config)
     local_preflight(config)
     secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
@@ -1490,6 +1510,7 @@ def main(argv=None) -> int:
         elif args.command == "preup":
             if config["publishApis"] is not True:
                 raise DeploymentError("azd up requires publishApis=true to deploy Gateway and Portal. Use azd provision for foundation-only deployment.")
+            _assert_current_apim_instance(config)
             _read_application_infrastructure_checkpoint(config)
             local_preflight(config, configuration_source=source)
             secret_inputs = load_secret_inputs(config)
@@ -1541,6 +1562,7 @@ def main(argv=None) -> int:
 
                 options = {"checkpoint": checkpoint} if args.command == "predown" else {}
                 receipt = {"subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
+                           "apimInstanceId": apim_instance_id(config),
                            "resourceStem": config["resourceStem"], "result": operation(source, state, ArmTransport(config), **options),
                            "observedAtUtc": datetime.now(timezone.utc).isoformat()}
                 protected_json(receipt_path, receipt)

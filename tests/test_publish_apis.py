@@ -57,6 +57,7 @@ class PublicationTests(unittest.TestCase):
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
             "azureTenantId": "22222222-2222-4222-8222-222222222222", "resourceStem": "test-fixture",
             "productName": "fixture", "environmentName": "test", "location": "japaneast", "foundryLocation": "eastus2",
+            "services": {"apimInstanceId": "abc123"},
             "resourceGroupNames": {layer: "rg-test-fixture-" + layer for layer in publish.LAYERS},
             "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True}, "realtimeControlEnabled": True,
                 "authentication": {"subscriptionKeyHeader": "api-key"}},
@@ -70,7 +71,7 @@ class PublicationTests(unittest.TestCase):
                 operations=[{"name": "invoke", "method": "POST", "urlTemplate": "/invoke"}],
                 authorization={"mode": "subscriptionKey",
                     "operationConstraints": {"invoke": {"kind": "registeredOperation", "maxRequestBytes": 32768}}})
-        names = {"apim": "apim-test-fixture", "keyVault": "kv-test-fixture",
+        names = {"apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
             "foundry": "aif-test-fixture", "project": "proj-test-fixture", "apiCenter": "apic-test-fixture"}
         svc = publish._scope(self.config, "svc")
         ids = {key: svc + "/providers/" + value + "/" + names[key] for key, value in {
@@ -78,7 +79,7 @@ class PublicationTests(unittest.TestCase):
         identity_id = publish._scope(self.config, "id") + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test-fixture-certificate"
         client_id = "33333333-3333-4333-8333-333333333333"
         self.state = {**{key: self.config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem", "resourceGroupNames")},
-            "serviceResourceIds": ids, "outputs": {"names": names, "resourceGroups": self.config["resourceGroupNames"],
+            "apimInstanceId": "abc123", "serviceResourceIds": ids, "outputs": {"names": names, "resourceGroups": self.config["resourceGroupNames"],
                 "cleanup": {"serviceResourceIds": ids}, "services": ids,
                 "endpoints": {"public": "https://fixture.example.com", "foundry": "https://aif-test-fixture.services.ai.azure.com"},
                 "certificateIdentity": {"id": identity_id, "clientId": client_id}, "grpc": {"enabled": True},
@@ -174,9 +175,23 @@ class PublicationTests(unittest.TestCase):
 
     def test_standard_service_names_share_the_environment_product_stem(self):
         self.assertEqual(self.plan["parameters"]["names"]["value"], {
-            "apim": "apim-test-fixture", "keyVault": "kv-test-fixture",
+            "apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
             "foundry": "aif-test-fixture", "project": "proj-test-fixture",
             "apiCenter": "apic-test-fixture"})
+
+    def test_other_or_missing_instance_state_and_same_environment_old_apim_are_rejected(self):
+        for value in (None, 'def456'):
+            with self.subTest(instance=value):
+                state = copy.deepcopy(self.state)
+                if value is None:
+                    del state['apimInstanceId']
+                else:
+                    state['apimInstanceId'] = value
+                with self.assertRaisesRegex(ValueError, 'construction instance'):
+                    publish.prepare_plan(self.config, state)
+        for name in ('apim-test-fixture', 'apim-test-fixture-def456'):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'naming policy'):
+                publish.prepare_plan(self.config, self.renamed_apim_state(name))
 
     def test_open_product_membership_is_rejected_before_any_change(self):
         api_id=self.plan["publishedApiIds"][0]
@@ -768,7 +783,7 @@ class PublicationTests(unittest.TestCase):
         for name in self.plan["commonAuthentication"]:
             template = copy.deepcopy(self.template)
             template["resources"].append({"type": "Microsoft.ApiManagement/service/namedValues",
-                "name": "apim-test-fixture/" + name, "properties": {"displayName": name, "secret": False, "value": "other"}})
+                "name": "apim-test-fixture-abc123/" + name, "properties": {"displayName": name, "secret": False, "value": "other"}})
             transport = Transport(copy.deepcopy(self.inventory))
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, "authentication NamedValues"):
                 publish.execute_plan(self.config, self.state, self.plan, template, transport)
@@ -811,7 +826,7 @@ class PublicationTests(unittest.TestCase):
         config = copy.deepcopy(self.config)
         model = {"name": "gpt-6.1-sol", "modelName": "gpt-6.1-sol", "modelVersion": "1",
                  "modelFormat": "OpenAI", "skuName": "GlobalStandard", "capacity": 1}
-        config["services"] = {"speechEnabled": True, "grantApimFoundryModelsAccess": True, "modelDeployments": [model]}
+        config["services"] = {**config["services"], "speechEnabled": True, "grantApimFoundryModelsAccess": True, "modelDeployments": [model]}
         plan = publish.prepare_plan(config, self.state)
         for failure in (None, "model", "role", "localAuth"):
             inventory = copy.deepcopy(self.inventory)
@@ -903,7 +918,7 @@ class PublicationTests(unittest.TestCase):
     def test_formal_cohere_deployment_name_with_dot_and_uppercase_is_accepted(self):
         config = copy.deepcopy(self.config)
         name = "Cohere-rerank-v4.0-fast"
-        config["services"] = {"modelDeployments": [{"name": name, "modelName": name,
+        config["services"] = {**config["services"], "modelDeployments": [{"name": name, "modelName": name,
             "modelVersion": "1", "modelFormat": "Cohere", "skuName": "GlobalStandard", "capacity": 1}]}
         plan = publish.prepare_plan(config, self.state)
         inventory = copy.deepcopy(self.inventory)

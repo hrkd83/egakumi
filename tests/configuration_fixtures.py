@@ -22,6 +22,7 @@ def fixture():
         "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
     # Most unit cases exercise unrelated validation using no model deployment.
     # PublicSampleTests separately verifies the complete published catalogue.
+    value["services"]["apimInstanceId"] = "abc123"
     value["services"]["modelDeployments"] = []
     # Generic unit cases opt out of application publication independently of shipped defaults.
     value["publishApis"] = False
