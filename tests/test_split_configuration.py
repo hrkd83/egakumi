@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from schema_helpers import local_schema_validator
+from configuration_fixtures import fixture
 
 CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
@@ -22,6 +23,13 @@ NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "
 FIREWALL_IP_KEYS = ("dnsServers", "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
                     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
                     "apimAdditionalApplicationRules", "managementAdditionalApplicationRules")
+
+
+def adopt_azure_dns_references(document):
+    """公開例の置換必須IDを、共有の独立した合成DNS参照へ置き換える。"""
+    dns = fixture()["certificate"]
+    for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+        document["certificate"][key] = dns[key]
 
 
 class SplitConfigurationTests(unittest.TestCase):
@@ -71,14 +79,17 @@ class SplitConfigurationTests(unittest.TestCase):
 
     def test_references_resolve_from_the_enterprise_parameters_directory(self):
         # 鍵や資格情報の保存先も企業入力です。標準configへコピーしません。
+        dns = {key: value for key, value in fixture()["certificate"].items()
+               if key in ("plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId")}
         result = self.sources(
-            {"certificate": {"mode": "prepared"}},
+            {"certificate": {"mode": "dnsPlugin"}},
             {"management": {"sshPublicKeyFile": "key.pub"},
-             "certificate": {"preparedPfxFile": "tls.pfx", "preparedPfxPasswordFile": "tls.txt", "pluginArgumentsFile": "dns.json"},
+             "certificate": dns,
              "credentialProviders": [{"clientSecretFile": "oauth.txt"}]},
         )
-        for key, filename in (("preparedPfxFile", "tls.pfx"), ("preparedPfxPasswordFile", "tls.txt"), ("pluginArgumentsFile", "dns.json")):
-            self.assertEqual(result["certificate"][key], str(self.parameters.parent / filename))
+        # AzureのリソースIDは端末上のファイルパスへ変換しない。
+        self.assertEqual(result["certificate"]["azureDnsManagedIdentityResourceId"], dns["azureDnsManagedIdentityResourceId"])
+        self.assertEqual(result["certificate"]["azureDnsSubscriptionId"], dns["azureDnsSubscriptionId"])
         self.assertEqual(result["management"]["sshPublicKeyFile"], str(self.parameters.parent / "key.pub"))
         self.assertEqual(result["credentialProviders"][0]["clientSecretFile"], str(self.parameters.parent / "oauth.txt"))
 
@@ -133,6 +144,7 @@ class SplitConfigurationTests(unittest.TestCase):
             raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
             raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
             raw["entraTenantId"] = raw["azureTenantId"]
+            adopt_azure_dns_references(raw)
             self.write(self.parameters, raw)
             with self.subTest(name=name):
                 loaded = load_configuration(self.parameters)
@@ -150,6 +162,7 @@ class SplitConfigurationTests(unittest.TestCase):
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
         raw["entraTenantId"] = raw["azureTenantId"]
+        adopt_azure_dns_references(raw)
         raw["services"].pop("projectDisplayName")
         raw["services"].pop("projectDescription")
         normalized = normalize_configuration(raw)
@@ -186,6 +199,7 @@ class SplitConfigurationTests(unittest.TestCase):
         options = json.loads((CORE / "config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(parameters)
         parameters.pop("configFile")
         for key in ("addressSpaces", "subnetPrefixes"):
             missing = copy.deepcopy(parameters); del missing["network"][key]
@@ -204,6 +218,7 @@ class SplitConfigurationTests(unittest.TestCase):
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         parameters.pop("configFile")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(parameters)
         parameters["network"]["clientAddressPrefixes"] = []
         result = normalize_configuration(self.sources(options, parameters))
         for key in ("clientAddressPrefixes", "operatorAddressPrefixes", "dnsServers", "managementAdditionalSecurityRules"):
@@ -261,6 +276,7 @@ class SplitConfigurationTests(unittest.TestCase):
         raw = load_configuration_source(CORE / "params/test.example.json")
         for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
             raw[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(raw)
         for key in ("location", "foundryLocation", "apiCenterLocation"):
             missing = copy.deepcopy(raw)
             del missing[key]
@@ -310,6 +326,7 @@ class SplitSchemaTests(unittest.TestCase):
                 if kind == "params":
                     for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                         value[key] = "11111111-1111-4111-8111-111111111111"
+                    adopt_azure_dns_references(value)
                 schema = json.loads((path.parent / value["$schema"]).read_text())
                 with self.subTest(name=name, kind=kind):
                     jsonschema.Draft202012Validator.check_schema(schema)
@@ -317,6 +334,7 @@ class SplitSchemaTests(unittest.TestCase):
             merged = load_configuration_source(CORE / f"params/{name}.example.json")
             for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                 merged[key] = "11111111-1111-4111-8111-111111111111"
+            adopt_azure_dns_references(merged)
             schema = json.loads((CORE / "schemas/configuration.schema.json").read_text())
             with self.subTest(name=name, kind="merged"):
                 local_schema_validator(schema).validate(merged)
@@ -327,6 +345,7 @@ class SplitSchemaTests(unittest.TestCase):
         schema = json.loads((CORE / "schemas/params.schema.json").read_text())
         sample = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): sample[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(sample)
         for key in ("network", "addressSpaces", "subnetPrefixes"):
             invalid = copy.deepcopy(sample)
             if key == "network": del invalid[key]
@@ -363,6 +382,7 @@ class SplitSchemaTests(unittest.TestCase):
         sample = json.loads((CORE / "params/test.example.json").read_text())
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             sample[key] = "11111111-1111-4111-8111-111111111111"
+        adopt_azure_dns_references(sample)
         for region in ("location", "foundryLocation", "apiCenterLocation"):
             missing = copy.deepcopy(sample)
             del missing[region]

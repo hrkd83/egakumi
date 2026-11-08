@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 from arm_helpers import ArmExpression
+from configuration_fixtures import fixture
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -45,6 +46,9 @@ def public_documents(name="test"):
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
     parameters["entraTenantId"] = parameters["azureTenantId"]
+    dns = fixture()["certificate"]
+    for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+        parameters["certificate"][key] = dns[key]
     options["services"]["modelDeployments"] = []
     parameters["certificate"].pop("domainNames", None)
     return options, parameters

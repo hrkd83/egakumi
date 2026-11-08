@@ -88,7 +88,7 @@ PARAMETER_SECTION_KEYS = {
     "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "grpc", "rateLimits"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
     "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
-    "certificate": {"contactEmail", "pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
+    "certificate": {"contactEmail", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
     "authorization": {"projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"},
 }
 
@@ -1263,8 +1263,8 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["monitoring"] = mon
     portal = _object(c.get("portal"), "portal", {"publicHostName"})
     portal_host = _host(portal.get("publicHostName"), "portal.publicHostName")
-    cert = _object(c.get("certificate"), "certificate", {"mode", "certificateName", "contactEmail", "directory", "plugin", "pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile", "renewBeforeDays", "checkEveryHours", "moduleVersion", "dnsSleepSeconds", "validationTimeoutSeconds", "minimumValidDays", "domainNames", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"})
-    mode = _choice(cert.get("mode"), "certificate.mode", ("prepared", "dnsPlugin"))
+    cert = _object(c.get("certificate"), "certificate", {"mode", "certificateName", "contactEmail", "directory", "plugin", "renewBeforeDays", "checkEveryHours", "moduleVersion", "dnsSleepSeconds", "validationTimeoutSeconds", "minimumValidDays", "domainNames", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"})
+    validate_supported_certificate(cert)
     # 指定がなければGatewayとPortalの実ホスト名をSANへ入れます。ワイルドカードを使う場合は
     # paramsへ明示します。*.example.comは直下の一階層だけで、apexや深い階層を含みません。
     domain_names = _strings(cert.setdefault("domainNames", [g["publicHostName"], portal_host]),
@@ -1291,43 +1291,15 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     if cert.setdefault("moduleVersion", "4.34.0") != "4.34.0":
         _fail("certificate.moduleVersion", "the certificate worker currently supports pinned Posh-ACME 4.34.0")
     _choice(cert.setdefault("directory", "production"), "certificate.directory", ("production", "staging"))
-    if mode == "prepared":
-        for key in ("preparedPfxFile", "preparedPfxPasswordFile"):
-            cert[key] = _secret_path(cert.get(key), "certificate." + key, base)
-        if any(key in cert for key in ("plugin", "pluginArgumentsFile", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId")):
-            _fail("certificate", "prepared mode does not use DNS plugin credentials")
-    else:
-        if any(key in cert for key in ("preparedPfxFile", "preparedPfxPasswordFile")):
-            _fail("certificate", "DNS plugin mode obtains the certificate; omit prepared PFX paths")
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]+", _string(cert.get("plugin"), "certificate.plugin", maximum=80)):
-            _fail("certificate.plugin", "must be a Posh-ACME DNS plugin identifier")
-        if cert["plugin"].lower() == "azure":
-            cert["plugin"] = "Azure"
-        if cert["plugin"] == "Azure":
-            # The preup dialog fills missing references. Secret preparation
-            # requires both before any SSH generation or Azure requests.
-            validate_azure_dns_identity(cert, require_complete=False)
-        # Azure uses public identity references. A legacy credential file is
-        # never opened or forwarded, even if its path remains in params.
-        if cert["plugin"] != "Azure" or "pluginArgumentsFile" in cert:
-            cert["pluginArgumentsFile"] = _secret_path(cert.get("pluginArgumentsFile"), "certificate.pluginArgumentsFile", base)
-        if not EMAIL.fullmatch(_string(cert.get("contactEmail"), "certificate.contactEmail")):
-            _fail("certificate.contactEmail", "must be an ACME account email address")
-        # 公開サンプルで案内する3方式は、固定版Posh-ACMEのAPI接続先を補います。
-        # Azureは一般公開AzureCloudのユーザー割り当てMI、Route53は明示キー方式が対象です。
-        # 他のプラグイン・主権クラウド等の追加宛先は、管理者が明示して許可します。
-        provider_hosts = {
-            "Cloudflare": ["api.cloudflare.com"],
-            "Route53": ["route53.amazonaws.com"],
-            "Azure": ["management.azure.com"],
-        }.get(cert["plugin"], [])
-        allowed = c["network"]["firewall"].setdefault("managementAllowedFqdns", [])
-        if not provider_hosts and not allowed:
-            _fail("network.firewall.managementAllowedFqdns", "must explicitly include the selected DNS provider's API endpoints")
-        ca_host = "acme-v02.api.letsencrypt.org" if cert["directory"] == "production" else "acme-staging-v02.api.letsencrypt.org"
-        for host in [ca_host, *provider_hosts, g["publicHostName"], "cdn.oneget.org", "cdn.powershellgallery.com", "*.powershellgallery.com", "go.microsoft.com", "aka.ms"]:
-            if host not in allowed:
-                allowed.append(host)
+    if not EMAIL.fullmatch(_string(cert.get("contactEmail"), "certificate.contactEmail")):
+        _fail("certificate.contactEmail", "must be an ACME account email address")
+    # Azure Public DNS is the only supported issuance backend. Other DNS
+    # plugin converters remain internal and cannot widen this deployment path.
+    allowed = c["network"]["firewall"].setdefault("managementAllowedFqdns", [])
+    ca_host = "acme-v02.api.letsencrypt.org" if cert["directory"] == "production" else "acme-staging-v02.api.letsencrypt.org"
+    for host in [ca_host, "management.azure.com", g["publicHostName"], "cdn.oneget.org", "cdn.powershellgallery.com", "*.powershellgallery.com", "go.microsoft.com", "aka.ms"]:
+        if host not in allowed:
+            allowed.append(host)
     c["certificate"] = cert
     auth = _object(c.get("authorization", {}), "authorization", {"projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"})
     for key in ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"):
@@ -1458,7 +1430,6 @@ def _file_reference_fields(raw: dict):
     """設定でファイル入力と定めた欄だけを列挙する。URLやAzureのIDは含めない。"""
     for section, keys in (
         ("management", ("sshPublicKeyFile",)),
-        ("certificate", ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile")),
     ):
         settings = raw.get(section)
         if isinstance(settings, dict):
@@ -1608,8 +1579,6 @@ def build_bicep_configuration(configuration: dict) -> dict:
     result.pop("$schema", None)
     result.pop("$comment", None)
     result["management"].pop("sshPublicKeyFile", None)
-    for key in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile"):
-        result["certificate"].pop(key, None)
     for provider in result["credentialProviders"]:
         provider.pop("clientSecretFile", None)
     from .credential_pools import physical_providers, logical_profiles
@@ -1674,6 +1643,17 @@ def load_ssh_public_key(raw_path: str) -> str:
     except (ValueError, UnicodeError):
         _fail(label, "must contain a valid RSA (2048 bits or more) or Ed25519 OpenSSH public key")
     return " ".join(fields)
+
+
+def validate_supported_certificate(certificate: dict) -> None:
+    """構築入口はAzure Public DNSによるDNS-01発行だけを受け付ける。"""
+    if not isinstance(certificate, dict) or certificate.get("mode") != "dnsPlugin":
+        _fail("certificate.mode", "DNS-01 issuance requires dnsPlugin mode")
+    if certificate.get("plugin") != "Azure":
+        _fail("certificate.plugin", "Azure Public DNS is required; prepare its public authoritative zone before azd up")
+    if any(key in certificate for key in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile")):
+        _fail("certificate", "use the Azure DNS subscription and managed identity references")
+    validate_azure_dns_identity(certificate)
 
 
 def validate_azure_dns_identity(certificate: dict, *, require_complete: bool = True) -> None:
@@ -1824,28 +1804,18 @@ def load_credential_provider_secrets(configuration: dict) -> dict:
 def load_secret_inputs(configuration: dict) -> dict:
     """構築直前に必要な秘密・SSH公開鍵を読み、メモリー内のsecure入力として返す。
 
-    返り値にはDNS資格情報やPFXの秘密が含まれるため、ログ・標準出力・状態記録へ
+    返り値には接続用の秘密が含まれるため、ログ・標準出力・状態記録へ
     そのまま保存してはいけない。公開設定のrenderとは別の呼出しにしている。
     """
     # ここから先だけが秘密ファイルを開く段階。返り値をJSON renderや状態記録へ
     # 直接出さず、構築hookからsecureパラメーターとして渡す。
+    validate_supported_certificate(configuration["certificate"])
     public_key = load_ssh_public_key(configuration["management"]["sshPublicKeyFile"])
     secrets: dict[str, Any] = {"sshPublicKey": public_key,
         "credentialProviderSecrets": load_credential_provider_secrets(configuration)}
-    cert = configuration["certificate"]
-    if cert["mode"] == "prepared":
-        pfx = _read_protected_file(cert["preparedPfxFile"], "certificate.preparedPfxFile", binary=True)
-        if not pfx:
-            _fail("certificate.preparedPfxFile", "must not be empty")
-        secrets["preparedPfxBase64"] = base64.b64encode(pfx).decode("ascii")
-        secrets["preparedPfxPassword"] = _read_protected_file(cert["preparedPfxPasswordFile"], "certificate.preparedPfxPasswordFile")
-    elif cert["plugin"] == "Azure":
-        validate_azure_dns_identity(cert)
-        # Tokens are acquired on the VM for each run; no saved SP or token is
-        # accepted as Azure DNS input.
-        secrets["dnsPluginArgumentsJson"] = ""
-    else:
-        secrets["dnsPluginArgumentsJson"] = load_dns_plugin_arguments(cert)
+    # Azure DNS authenticates on the VM through its assigned identity. No
+    # DNS credential file or caller-supplied PFX is read or forwarded.
+    secrets["dnsPluginArgumentsJson"] = ""
     return secrets
 
 

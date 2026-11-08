@@ -31,6 +31,10 @@ class PublicSampleTests(unittest.TestCase):
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
         raw["entraTenantId"] = raw["azureTenantId"]
+        raw["certificate"]["azureDnsSubscriptionId"] = raw["subscriptionId"]
+        raw["certificate"]["azureDnsManagedIdentityResourceId"] = (
+            "/subscriptions/" + raw["subscriptionId"] +
+            "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
         raw["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
         return parameters, options, configuration.normalize_configuration(raw, base_directory=manifest.parent)
 
@@ -215,9 +219,7 @@ class PortableFileReferenceTests(unittest.TestCase):
             destination.mkdir(parents=True)
             value = {
                 "management": {"sshPublicKeyFile": "../secrets/management-ssh.pub"},
-                "certificate": {"pluginArgumentsFile": "../secrets/dns.json",
-                                "preparedPfxFile": "../secrets/cert.pfx",
-                                "preparedPfxPasswordFile": "../secrets/cert-password.txt"},
+                "certificate": {"mode": "dnsPlugin", "plugin": "Azure"},
                 "credentialProviders": [{"clientSecretFile": "../secrets/cm.txt"}],
                 "apiDefinitions": [{"backendUrl": "https://provider.example.com/api"}],
                 "resourceId": "/subscriptions/public-id/resourceGroups/example",
@@ -313,6 +315,10 @@ class ConfigurationTests(unittest.TestCase):
             self.normalize(raw)
         raw["subscriptionId"], raw["azureTenantId"] = fixture()["subscriptionId"], fixture()["azureTenantId"]
         raw["entraTenantId"] = raw["azureTenantId"]
+        raw["certificate"]["azureDnsSubscriptionId"] = raw["subscriptionId"]
+        raw["certificate"]["azureDnsManagedIdentityResourceId"] = (
+            "/subscriptions/" + raw["subscriptionId"] +
+            "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
         raw["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
         self.assertEqual(raw["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
         self.assertEqual(raw["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
@@ -508,14 +514,12 @@ class ConfigurationTests(unittest.TestCase):
             target = Path(directory)
             files = {
                 "public-key": ssh_fixture_key(), "provider": "SENTINEL-OAUTH-SECRET",
-                "dns": json.dumps({"CFToken": {"type": "secureString", "value": "SENTINEL-DNS-TOKEN"}}),
             }
             for name, text in files.items():
                 (target / name).write_text(text)
                 (target / name).chmod(0o600)
             raw = connection_fixture()
             raw["management"]["sshPublicKeyFile"] = str(target / "public-key")
-            raw["certificate"]["pluginArgumentsFile"] = str(target / "dns")
             raw["credentialProviders"][0]["clientSecretFile"] = str(target / "provider")
             normalized = self.normalize(raw)
             secrets = configuration.load_secret_inputs(normalized)
@@ -645,39 +649,35 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "duplicate"):
             self.normalize(raw)
 
-    def test_cloudflare_and_ca_egress_derived(self):
-        actual = self.normalize()
-        allowed = actual["network"]["firewall"]["managementAllowedFqdns"]
-        self.assertIn("api.cloudflare.com", allowed)
+    def test_azure_dns_and_ca_egress_derived(self):
+        allowed = self.normalize()["network"]["firewall"]["managementAllowedFqdns"]
+        self.assertIn("management.azure.com", allowed)
         self.assertIn("acme-v02.api.letsencrypt.org", allowed)
-        self.assertIn(fixture()["gateway"]["publicHostName"], allowed)
+        self.assertNotIn("api.cloudflare.com", allowed)
+        self.assertNotIn("route53.amazonaws.com", allowed)
 
-    def test_standard_dns_provider_api_egress_is_added_without_duplicates(self):
-        providers = {
-            "Cloudflare": ["api.cloudflare.com"],
-            "Route53": ["route53.amazonaws.com"],
-            "Azure": ["management.azure.com"],
-        }
-        for plugin, hosts in providers.items():
-            for initial in ([], ["approved.example.com", hosts[0]]):
-                with self.subTest(plugin=plugin, configured_hosts=bool(initial)):
+    def test_azure_dns_api_egress_is_added_without_duplicates(self):
+        for initial in ([], ["approved.example.com", "management.azure.com"]):
+            with self.subTest(configured_hosts=bool(initial)):
+                raw = fixture()
+                raw["network"]["firewall"]["managementAllowedFqdns"] = initial
+                allowed = self.normalize(raw)["network"]["firewall"]["managementAllowedFqdns"]
+                for hostname in [*initial, "management.azure.com"]:
+                    self.assertEqual(allowed.count(hostname), 1)
+                self.assertIn("acme-v02.api.letsencrypt.org", allowed)
+
+    def test_other_dns_plugins_are_unsupported_even_with_explicit_egress(self):
+        for plugin in ("Cloudflare", "Route53", "UnlistedProvider", "azure"):
+            for allow in ([], ["dns-api.example.com"]):
+                with self.subTest(plugin=plugin, explicit_egress=bool(allow)):
                     raw = fixture()
                     raw["certificate"]["plugin"] = plugin
-                    # 追加指定なしでも必要hostを補い、企業側の許可や指定済みhostは残します。
-                    raw["network"]["firewall"]["managementAllowedFqdns"] = initial
-                    allowed = self.normalize(raw)["network"]["firewall"]["managementAllowedFqdns"]
-                    for hostname in [*initial, *hosts]:
-                        self.assertEqual(allowed.count(hostname), 1)
-                    self.assertIn("acme-v02.api.letsencrypt.org", allowed)
-
-    def test_other_dns_plugin_requires_explicit_provider_egress(self):
-        raw = fixture()
-        raw["certificate"]["plugin"] = "UnlistedProvider"
-        with self.assertRaisesRegex(configuration.ConfigurationError, "provider"):
-            self.normalize(raw)
-        raw["network"]["firewall"]["managementAllowedFqdns"] = ["dns-api.example.com"]
-        allowed = self.normalize(raw)["network"]["firewall"]["managementAllowedFqdns"]
-        self.assertIn("dns-api.example.com", allowed)
+                    raw["network"]["firewall"]["managementAllowedFqdns"] = allow
+                    with self.assertRaisesRegex(configuration.ConfigurationError, "Azure Public DNS"):
+                        self.normalize(raw)
+                    with mock.patch.object(configuration, "load_ssh_public_key", side_effect=AssertionError("no secret reads")):
+                        with self.assertRaises(configuration.ConfigurationError):
+                            configuration.load_secret_inputs(raw)
 
     def test_empty_api_set_is_reserved_for_standard_publication_without_expanding_during_validation(self):
         for publish in (False, True):
@@ -756,32 +756,30 @@ class ConfigurationTests(unittest.TestCase):
                 self.normalize(raw)
 
 
-    def test_prepared_certificate_mode_uses_only_protected_paths(self):
-        raw = fixture()
-        raw["certificate"] = {"mode": "prepared", "preparedPfxFile": "../secrets/server.pfx", "preparedPfxPasswordFile": "../secrets/pfx-password.txt"}
-        actual = self.normalize(raw)
-        self.assertTrue(Path(actual["certificate"]["preparedPfxFile"]).is_absolute())
-        self.assertNotIn("preparedPfxFile", configuration.build_bicep_configuration(actual)["certificate"])
+    def test_prepared_certificate_import_is_rejected_before_secret_reads(self):
+        for include_files in (False, True):
+            raw = fixture()
+            raw["certificate"] = {"mode": "prepared"}
+            if include_files:
+                raw["certificate"].update(preparedPfxFile="../secrets/server.pfx", preparedPfxPasswordFile="../secrets/pfx-password.txt")
+            with mock.patch.object(configuration, "_read_protected_file", side_effect=AssertionError("must not read supplied PFX")):
+                with self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
+                with self.assertRaisesRegex(configuration.ConfigurationError, "DNS-01 issuance requires dnsPlugin mode"):
+                    configuration.load_secret_inputs(raw)
 
-    def test_read_typed_dns_secret_only_in_memory(self):
+    def test_azure_secret_inputs_do_not_read_or_forward_dns_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory)
-            public_key = target / "public-key.pub"
+            public_key = Path(directory) / "public-key.pub"
             public_key.write_text(ssh_fixture_key() + "\n")
-            plugin = target / "plugin.json"
-            plugin.write_text(json.dumps({"CFToken": {"type": "secureString", "value": "fixture-only-token"}, "CFAccountId": "fixture-account"}))
-            plugin.chmod(0o600)
             raw = fixture()
             raw["management"]["sshPublicKeyFile"] = str(public_key)
-            raw["certificate"]["pluginArgumentsFile"] = str(plugin)
             normalized = self.normalize(raw)
-            secrets = configuration.load_secret_inputs(normalized)
-            self.assertEqual(secrets["dnsPluginArgumentsJson"],
-                             configuration.load_dns_plugin_arguments(normalized["certificate"]))
-            args = json.loads(secrets["dnsPluginArgumentsJson"])
-            self.assertEqual(args["CFToken"]["type"], "secureString")
-            self.assertEqual(args["CFAccountId"], {"type": "string", "value": "fixture-account"})
-            self.assertNotIn("fixture-only-token", json.dumps(configuration.build_bicep_configuration(normalized)))
+            with mock.patch.object(configuration, "load_dns_plugin_arguments", side_effect=AssertionError("Azure uses managed identity")):
+                secrets = configuration.load_secret_inputs(normalized)
+            self.assertEqual(secrets["dnsPluginArgumentsJson"], "")
+            self.assertNotIn("preparedPfxBase64", secrets)
+            self.assertNotIn("preparedPfxPassword", secrets)
+            self.assertNotIn("pluginArgumentsFile", configuration.build_bicep_configuration(normalized)["certificate"])
 
     def test_plain_cloudflare_token_is_rejected_without_value_in_error(self):
         with tempfile.TemporaryDirectory() as directory:

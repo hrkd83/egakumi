@@ -16,12 +16,6 @@ param sshPublicKey string = ''
 @description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
 @secure()
 param dnsPluginArgumentsJson string = ''
-@description('外部で準備した PFX の Base64 データ。prepared モードだけで使用します。')
-@secure()
-param preparedPfxBase64 string = ''
-@description('外部 PFX を開くためのパスワード。証明書ファイルと同様に機密扱いです。')
-@secure()
-param preparedPfxPassword string = ''
 @description('接続プロバイダー名をキーにした OAuth client secret。公開設定から分離して渡します。')
 @secure()
 param credentialProviderSecrets object = {}
@@ -379,8 +373,6 @@ module certificate 'modules/certificate.bicep' = if (deployCore) {
       realtimeTicketEnabled: realtimeEnabled
     }
     dnsPluginArgumentsJson: dnsPluginArgumentsJson
-    preparedPfxBase64: preparedPfxBase64
-    preparedPfxPassword: preparedPfxPassword
     l7IngressSecret: l7IngressSecret
     realtimeTicketKey: realtimeTicketKey
   }

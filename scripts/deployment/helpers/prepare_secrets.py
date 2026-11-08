@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """新規clone後に、証明書のDNS検証とEntra連携で使う秘密ファイルを用意する。
 
-利用者はJSONを手書きせず、選んだDNS事業者の資格情報を端末へ入力する。
-値は画面へ表示せず、Git管理外のsecretsへ所有者だけが読める形で保存する。
-有効な既存ファイルは検査して再利用する。DNS事業者を変更した場合だけ、
-新しい入力の検証後にDNS資格情報を置換する。鍵生成・Azureへの通信はしない。
+公開構築はAzure Public DNSと専用マネージドIDによる証明書発行に限定する。
+DNS用の秘密入力や証明書方式の選択は行わず、必要なEntraアプリのsecretを
+非表示入力し、Git管理外のsecretsへ所有者だけが読める形で保存する。
+有効な既存ファイルは検査して再利用する。鍵生成・Azureへの通信はしない。
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     __package__ = "deployment.helpers"
 
-from .configuration import ConfigurationError, DnsProviderMismatchError, _read_protected_file, load_configuration, load_dns_plugin_arguments, validate_azure_dns_identity
+from .configuration import ConfigurationError, DnsProviderMismatchError, _read_protected_file, load_configuration, load_dns_plugin_arguments, validate_azure_dns_identity, validate_supported_certificate
 from .paths import REPOSITORY, local_paths
 
 
@@ -359,8 +359,8 @@ def _replace_dns(specification: dict, value: str, root: Path) -> None:
                 pass
 
 
-def prepare_secrets(config: dict, root: Path = ROOT) -> dict:
-    """既存入力を検査し、不足分とDNS事業者変更分だけを案内して対話入力する。"""
+def _prepare_secret_files(config: dict, root: Path = ROOT) -> dict:
+    """保持する下位処理。公開構築はAzure限定のprepare_secretsから呼ぶ。"""
     certificate = config.get("certificate", {})
     if certificate.get("mode") == "dnsPlugin" and certificate.get("plugin") == "Azure":
         validate_azure_dns_identity(certificate)
@@ -414,6 +414,17 @@ def prepare_secrets(config: dict, root: Path = ROOT) -> dict:
     return result
 
 
+def _validate_supported_certificate(config: dict) -> None:
+    """公開構築の対象外入力は、秘密読取・入力・ファイル作成より前に拒否する。"""
+    validate_supported_certificate(config.get("certificate", {}))
+
+
+def prepare_secrets(config: dict, root: Path = ROOT) -> dict:
+    """Azure DNSの公開構築に必要なEntra秘密入力だけを準備する。"""
+    _validate_supported_certificate(config)
+    return _prepare_secret_files(config, root)
+
+
 class SafeArguments(argparse.ArgumentParser):
     """誤って引数へ貼った秘密を、argparseのエラーにも表示させない。"""
     def error(self, message):
@@ -428,6 +439,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         config = load_configuration(arguments.config)
+        _validate_supported_certificate(config)
         workspace = local_paths(config, ROOT)
         workspace.checked(arguments.config)
         workspace.check_selection(config)

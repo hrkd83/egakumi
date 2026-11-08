@@ -99,11 +99,12 @@
   },
   "certificate": {
     "contactEmail": "replace-with-your-email@example.com",
-    "pluginArgumentsFile": "../secrets/dns-plugin-arguments.json",
     "domainNames": [
       "*.example.com"
     ],
-    "plugin": "Cloudflare"
+    "plugin": "Azure",
+    "azureDnsSubscriptionId": "00000000-0000-0000-0000-000000000000",
+    "azureDnsManagedIdentityResourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-dns-example/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-example"
   },
   "authorization": {
     "projectAdministrators": [],

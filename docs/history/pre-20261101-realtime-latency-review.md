@@ -34,7 +34,7 @@
 | Azure DNSの準備入力と送信先を変更 | `certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`を入力し、旧SP資格情報は使わない。管理VMのAzure DNS用自動追加FQDNは`management.azure.com`になる | 旧Azure DNS入力のまま再構築する場合は新しいID参照と権限が必要。これは証明書のDNS-01用で、VNetの名前解決先を変更するものではない |
 | 音声・ネットワークの受入 | [動作テスト仕様書](../testing/integration-tests.md) に従い、採用構成の音声と経路を確認する | WebRTCの制御とmediaを分けて測定する |
 
-Azure DNSの新しいIDが利用できなければ、証明書の取得・更新が成立しない。証明書の有効期限や入口への反映条件を満たせない場合には、新規接続の可用性に影響し得るため、[新しいAzure DNS準備手順](../setup/03a-azure-dns-managed-identity.md)と[証明書運用](../operations.md#dns資格情報を更新する)で確認する。これを、通常の音声転送へ追加される遅延とは分ける。変更のないCloudflare／Route53方式や、音声用のAPI認証へDNS用MIの変更を広げて解釈しない。
+Azure DNSの新しいIDが利用できなければ、証明書の取得・更新が成立しない。証明書の有効期限や入口への反映条件を満たせない場合には、新規接続の可用性に影響し得るため、[新しいAzure DNS準備手順](../setup/03a-azure-dns-managed-identity.md)と[証明書運用](../operations.md#dns用マネージドidと権限を更新する)で確認する。これを、通常の音声転送へ追加される遅延とは分ける。現在の公開構築手順はAzure Public DNSとDNS用UAMIに対応する。DNS用MIの変更を音声APIの認証へ広げて解釈しない。
 
 保存済みの2026年10月19日・21日起点の音声結果は、当時の測定として引き続き利用できる。最新コミットで再構築して通話性能を測り直した結果には読み替えない。
 

@@ -186,18 +186,18 @@ class CoveragePreparationTests(unittest.TestCase):
 
 
     def test_cli_saves_relative_paths_and_reload_keeps_source_references(self):
-        """生成先が別の深さでもDNS・公開鍵の参照は同じで、秘密読出しや鍵生成はしない。"""
+        """生成先が別の深さでもSSH・CM参照とDNS用IDを保持し、秘密を読まない。"""
         from deployment.helpers.configuration import load_configuration
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             source, output = root / "params/base.json", root / "generated/deep/coverage.local.json"
             source.parent.mkdir()
             (root / "secrets").mkdir()
-            credential = root / "secrets/dns.json"
+            credential = root / "secrets/entra-client-secret.txt"
             credential.write_text("SENTINEL-PRIVATE-CONTENT")
             base = copy.deepcopy(self.base)
             base["management"]["sshPublicKeyFile"] = "../secrets/management-ssh.pub"
-            base["certificate"]["pluginArgumentsFile"] = "../secrets/dns.json"
+            base["credentialProviders"][0]["clientSecretFile"] = "../secrets/entra-client-secret.txt"
             source.write_text(json.dumps(base))
             bindings = root / "bindings.json"
             bindings.write_text(json.dumps(self.bindings))
@@ -208,11 +208,16 @@ class CoveragePreparationTests(unittest.TestCase):
             self.assertEqual(actual.returncode, 0, actual.stdout + actual.stderr)
             saved = json.loads(output.read_text())
             self.assertEqual(saved["management"]["sshPublicKeyFile"], "../../secrets/management-ssh.pub")
-            self.assertEqual(saved["certificate"]["pluginArgumentsFile"], "../../secrets/dns.json")
+            self.assertEqual(saved["credentialProviders"][0]["clientSecretFile"], "../../secrets/entra-client-secret.txt")
+            self.assertNotIn("pluginArgumentsFile", saved["certificate"])
             loaded = load_configuration(output)
             self.assertEqual(loaded["management"]["sshPublicKeyFile"], str(root / "secrets/management-ssh.pub"))
-            self.assertEqual(loaded["certificate"]["pluginArgumentsFile"], str(credential))
+            self.assertEqual(loaded["credentialProviders"][0]["clientSecretFile"], str(credential))
+            for field in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+                self.assertEqual(saved["certificate"][field], base["certificate"][field])
+                self.assertEqual(loaded["certificate"][field], base["certificate"][field])
             self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(credential.read_text(), "SENTINEL-PRIVATE-CONTENT")
             self.assertNotIn("SENTINEL-PRIVATE-CONTENT", actual.stdout + actual.stderr + output.read_text())
             self.assertFalse((root / "secrets/management-ssh").exists())
             self.assertFalse((root / "secrets/management-ssh.pub").exists())

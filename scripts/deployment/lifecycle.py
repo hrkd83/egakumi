@@ -706,12 +706,9 @@ def local_preflight(config: dict, *, check_power_shell: bool = True, configurati
     # 既に準備済みなら秘密を表示せず再利用し、azdの次のhookで再入力させません。
     try:
         if configuration_source is not None:
-            # azd upの最初にだけ選択し、paramsへ保存してFWの自動宛先も再計算します。
-            # 同じdictを使い続ける後続処理も、選択後の設定へ必ず揃えます。
-            selected = select_dns_provider(configuration_source, config)
-            if selected is not config:
-                config.clear()
-                config.update(selected)
+            # Azure Public DNSの前提を案内します。事業者やIDは構築前のparamsで
+            # 確定済みであり、azd upでは選択・入力・params更新を行いません。
+            select_dns_provider(configuration_source, config)
         prepare_secrets(config, local_paths(config, ROOT).root)
     except (KeyboardInterrupt, EOFError):
         raise DeploymentError("Secret input was cancelled; no Azure resources were changed.") from None

@@ -28,7 +28,7 @@ python3 scripts/deployment/lifecycle.py validate
 
 全体構築には`publishApis:true`が必要です。test・productionの公開例はtrueですが、既存のlocal paramsは自動変更しません。falseのまま`azd up`を実行すると、`preup`の冒頭で課金資源の作成前に停止します。基盤だけを準備する場合は、同じ入力で`azd provision`を使います。
 
-第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章のCore client secretと、第3章のDNS資格情報は、必要な方式だけ安全な管理場所から入力できる状態にします。標準のDNS／Entra入力では、JSONへsecretを書き込んだり、secretファイルを手作業で作成したりしません。既存PFXを使う`prepared`方式だけは、第5章の例外手順で同じ環境の`secrets/`へ保護PFX／パスワードファイルを事前準備します。
+第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章のCore client secretを安全な保管先から非表示入力できる状態にし、第3章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
 
 ## 6-2. Azure CLIとazdの両方へログインする
 
@@ -83,29 +83,28 @@ echo "終了コード: $?"
 初回は次の順に案内されます。
 
 1. **端末の検査**：ツール・PowerShell依存と、params／環境の整合を確認。
-2. **DNS事業者の選択**：Cloudflare／Route53／Azure Public DNSを選択。Enterはparamsの現在値を維持し、選んだ非秘密のplugin名をparamsへ保存する。Azureでは不足するDNS側Subscription IDと事前作成済みUAMIのリソースIDも入力し、非秘密の参照としてparamsへ保存する。事業者を変更したらFirewallの宛先も読み直す。
-3. **秘密入力の案内**：必要な値・対象アプリ・取得元・保存先を短く表示。「Enterで入力欄へ進む」で進み、設定したAPIに必要なCM用Core client secret、Cloudflare／Route53のDNS資格情報を非表示入力する。Azure DNS用の秘密入力はない。
-4. **端末の保護保存**：必要な秘密入力だけを保存する。既定ではCloudflare／Route53のDNS資格情報は`.local/<environment>/secrets/dns-plugin-arguments.json`、CM用Core client secretは`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。Azure DNSの資格情報ファイルは作成しない。
+2. **Azure DNS用IDの確認**：paramsへ事前設定したDNS側Subscription IDとUAMIリソースIDを検査する。不足・不正な参照があれば構築前に停止する。
+3. **秘密入力の案内**：対象アプリ・取得元・保存先を表示し、設定したAPIに必要なCM用Core client secretを非表示入力する。DNS用の秘密入力はない。
+4. **端末の保護保存**：CM用Core client secretは既定で`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
 基盤とGatewayの構築が終わると、最後のPortal工程でAPIキー所有グループの設定を入力します。未設定の`groupNamePattern`・基盤管理グループのObject ID・承認製品と購読数上限を、同じparamsへ保存します。この入力の完了まで`azd up`の完了にはなりません。非対話で初期構築する場合は、`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定してください。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
 
-既存の保護入力が正常なら再利用します。DNS事業者を変更した場合は、古い事業者の資格情報を流用せず、新しい入力を検査して置き換えます。同じ事業者での資格情報の失効・有効期限は、形式検査だけでは検出できません。更新方法は[資格情報の更新](../operations.md#dns資格情報を更新する)を参照してください。
+既存の保護入力とAzure DNS用の公開IDが正常なら再利用します。形式検査だけでsecretの有効性やDNS権限を確認したとは扱いません。DNS用ID・権限の変更は[運用手順](../operations.md#dns用マネージドidと権限を更新する)を参照してください。
 
 ### 入力が保存される場所
 
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
-| DNS資格情報（Cloudflare／Route53） | paramsが指すGit管理外の保護ファイル | 管理VMがCore Key Vaultの`<certificateName>-dns-plugin-args`へ登録。証明書の定期更新時に利用 |
-| DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新。DNS資格情報ファイルや`<certificateName>-dns-plugin-args`は作成・利用しない |
+| DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新 |
 | CM用Core client secret | paramsが指すGit管理外の保護ファイル | APIMのOAuth providerへsecure入力 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | PortalのAPIキー所有設定 | 同じparamsの`portalApiKeys` | PortalのSQL初期化へ渡す非秘密のグループID・製品承認 |
 | azdへの一時配備入力 | `.local/<environment>/generated/main.parameters.json`へ保護保存 | 基盤の後処理で回収。再試行には元のparams・secret・stateを使う |
 
-DNS-01方式では、証明書とACMEの更新状態をDNS事業者によらずKey Vaultへ保管します。Azure DNSではDNS資格情報secretが存在しなくても正常です。
+証明書とACMEの更新状態はKey Vaultへ保管します。Azure DNSはUAMIで認証します。
 
 秘密値はparams／config、チャット、Gitへ入力しません。入力した秘密値はKey Vaultだけへ保存される構成ではなく、再実行のために端末の環境別領域にも残ることを理解して管理します。証跡は同じ環境の`evidence/`へ保存し、`.local/`・`.azure/`を公開用のZIP・画像・ログへ含めません。環境名・Tenant／Subscription・stateの対応を実行前に照合し、同じcheckoutの別環境を同時に構築・更新・撤去しません。
 
@@ -143,7 +142,7 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 2. **実行した配備で更新された**`.local/<environment>/state/latest.json`で、Subscription／resourceGroups／実出力を確認する。古いstateを配備成功の証拠にしない。
 3. Azure Portalで5RG、APIM／Foundry／AppGW等の作成状態、選択したモデルの配備成功を確認する。
 4. `.local/<environment>/state/latest.json`の`outputs.gateway.publicIpId`・`outputs.gateway.publicIp`を、PortalのそのPublic IPと照合する。
-5. Azure Public DNSでは、`.local/<environment>/state/public-dns.json`でGateway・PortalのAエイリアスが**対象環境のAppGW Public IPリソース**へ接続されたことを確認する。その他のDNS事業者では第3章の手順で両ホストを設定する。CloudflareはDNS-onlyを使用する。
+5. `.local/<environment>/state/public-dns.json`でAzure Public DNSのGateway・Portal用Aエイリアスが**対象環境のAppGW Public IPリソース**へ接続されたことを確認する。
 6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。native gRPCを使う場合はconfigで選択した追加TCPポートでも確認する。
 7. 実行した配備で更新された`.local/<environment>/state/gateway-deployment.json`の`status: deployed`と、`.local/<environment>/state/portal-deployment.json`の`status: deployed`・`publicHealthVerified: true`を確認する。過去の成功結果が残っているだけの場合と区別する。
 8. 正規の購読キーと必要な本人セッションでGatewayの実応答を確認し、PortalのMicrosoftサインインと管理画面も確認する。初期構築後に同じ配備コマンドを重ねて実行する必要はない。
@@ -189,7 +188,7 @@ Gatewayに失敗するとPortalへ進まず、Portalに失敗した場合もup�
 - up全体の正常終了、実行したGateway・Portal配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
 - 選んだAPIの実応答とPortalのMicrosoftサインインを、配備成功とは別に確認した。
 - 通知先を使う場合は初回確認と実受信を確認した。
-- 管理VMの証明書更新設定と、定期更新のDNS認証を確認した。AzureはUAMIの関連付け・DNS側RBAC権限、Cloudflare／Route53はKey VaultのDNS資格情報を確認する。
+- 管理VMの証明書更新設定と、DNS用UAMIの関連付け・DNS側RBAC権限を確認した。
 - params／config・`.azure/`・`.local/<environment>/state/`・端末のsecretとSSH鍵を、安全に保持した。
 
 企業接続が必要なら[7. ハブ＆スポーク対応（任意）](07-hub-spoke.md)へ進みます。構築済みGateway・Portalの変更は[個別配備](../../README.md#8-gatewayを配備する)を使い、運用時は[プラットフォームの仕様](../reference/platform.md)も確認します。構築テストが終わったら[撤去手順](../operations.md#撤去する)へ進み、5RG・モデル・利用枠と削除履歴を確認します。

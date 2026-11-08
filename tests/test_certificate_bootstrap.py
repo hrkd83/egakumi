@@ -18,9 +18,7 @@ CORE = Path(__file__).resolve().parents[1]
 INPUTS = {
     "Action": "Install",
     "PublicConfigJson": '{"hostname":"fixture.invalid"}',
-    "DnsPluginArgumentsJson": '{"CFToken":{"value":"private DNS fixture\nwith trailing line\n"}}',
-    "PreparedPfxBase64": "PRIVATE_PFX_FIXTURE==",
-    "PreparedPfxPassword": "PRIVATE_PASSWORD_FIXTURE $(touch SHOULD_NOT_EXIST)\n",
+    "DnsPluginArgumentsJson": '{"CFToken":{"value":"private DNS fixture $(touch SHOULD_NOT_EXIST)\nwith trailing line\n"}}',
     "L7IngressSecret": "a" * 128,
     "RealtimeTicketKey": "b" * 128,
 }
@@ -190,6 +188,47 @@ class CertificateBootstrapTests(unittest.TestCase):
         self.assertTrue(any(record["command"] == "apt-get" for record in records))
         self.assertEqual(sum(record["worker"] for record in records), 1)
         self.assertEqual(records[-1]["command"], "rm")
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required for worker entry validation")
+    def test_worker_entry_rejects_unsupported_providers_before_state_or_secret_access(self):
+        """実入口のOS条件だけを代替し、未対応方式が副作用へ届かないことを確認する。"""
+        source = (CORE / "guest/certificate.ps1").read_text()
+        platform_gate = "if (-not $IsLinux -or (Get-UnixIdentity) -ne 0) {throw 'Run certificate maintenance as root on Linux'}"
+        self.assertEqual(source.count(platform_gate), 1)
+        source = source.replace(platform_gate, "# Controlled offline platform gate")
+        entry = "# 入口処理：入力検証 → 専用領域の準備 → 排他 → 証明書 → 共有鍵 → 定期更新登録。"
+        self.assertEqual(source.count(entry), 1)
+        source = source.replace(entry, """
+function New-PrivateDirectory { Write-Output 'UNEXPECTED_STATE_ACCESS'; throw 'Controlled side-effect boundary' }
+function Invoke-Json { Write-Output 'UNEXPECTED_SECRET_ACCESS'; throw 'Controlled side-effect boundary' }
+""" + entry)
+        configuration = {
+            "mode": "dnsPlugin", "dnsPlugin": "Azure", "hostname": "gateway.example.invalid",
+            "hostnames": ["gateway.example.invalid"], "requiredHostnames": ["gateway.example.invalid"],
+            "keyVaultName": "kv-fixture", "certificateName": "tls-public",
+            "accountEmail": "operator@example.invalid",
+            "directoryUrl": "https://acme-v02.api.letsencrypt.org/directory",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            worker = Path(temporary) / "worker.ps1"
+            worker.write_text(source)
+            for mode, plugin in (("prepared", "Azure"), ("dnsPlugin", "Cloudflare"),
+                                 ("dnsPlugin", "Route53"), ("dnsPlugin", "Manual"),
+                                 ("dnsPlugin", "Other"), ("dnsPlugin", "azure"),
+                                 ("other", "Azure"), ("dnsPlugin", "Azure")):
+                with self.subTest(mode=mode, plugin=plugin):
+                    selected = {**configuration, "mode": mode, "dnsPlugin": plugin}
+                    result = subprocess.run(
+                        [shutil.which("pwsh"), "-NoLogo", "-NoProfile", "-NonInteractive",
+                         "-File", str(worker), "-PublicConfigJson", json.dumps(selected)],
+                        capture_output=True, text=True, check=False, timeout=20,
+                    )
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertNotIn("UNEXPECTED_SECRET_ACCESS", result.stdout + result.stderr)
+                    self.assertEqual("UNEXPECTED_STATE_ACCESS" in result.stdout,
+                                     mode == "dnsPlugin" and plugin == "Azure")
+                    if plugin != "Azure" or mode != "dnsPlugin":
+                        self.assertIn("failed at configuration", result.stdout)
 
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required for the module environment fixture")
     def test_pinned_module_import_keeps_os_home_and_rejects_missing_home(self):

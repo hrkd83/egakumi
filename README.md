@@ -26,13 +26,13 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 
 ## 新規クローンから構築する
 
-1〜5で前提・設定を準備し、6の`azd up`で基盤・Gateway・Portalを構築して、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。公開DNSゾーンの新規作成やドメイン購入には、別途DNS事業者の費用が発生する場合があります。
+1〜5で前提・設定を準備し、6の`azd up`で基盤・Gateway・Portalを構築して、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。Azure Public DNSの公開ゾーン保持やドメイン購入の費用は、Coreとは別に確認します。
 
 | 順番 | 手順 | この段階で用意するもの |
 | --- | --- | --- |
 | 1 | [前提要件の準備](docs/setup/01-prerequisites.md) | GitHubからのクローン、管理端末のツール、Azure権限、命名・公開名・IP計画 |
 | 2 | [Entraアプリの準備](docs/setup/02-entra.md) | Portalと、採用する本人接続に必要なアプリ・権限・同意・secret |
-| 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Cloudflare／Amazon Route53／Azure Public DNSの権限と資格情報 |
+| 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Azure Public DNSの公開ゾーン・NS委任・DNS用マネージドID |
 | 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・利用APIを記入したローカルparams |
 | 5 | [configの調整・リファレンス](docs/setup/05-config.md) | テスト／本番の標準構成、SKU・モデル・保護機能の選択 |
 | 6 | [azd upでの構築](docs/setup/06-deploy.md) | 認証・事前確認・基盤・公開DNS反映・Gateway・Portalの連続配備 |

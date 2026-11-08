@@ -68,7 +68,7 @@ pwsh -NoProfile -File scripts/deployment/helpers/set-app-insights-cap.ps1 -Check
 | --- | --- |
 | Azure構築担当 | 対象SubscriptionのOwner相当のAzure RBAC。RG／設備、RBAC割当、RP登録、対象Key Vault／Foundry／APIMの削除・purgeを許可できること |
 | Entra担当 | アプリ登録・設定と、採用する委任権限のテナント全体同意を実施できること。開発者のEntra管理ロール保有は前提にしない |
-| DNS担当 | 公開ゾーンと、DNS-01のTXT更新に使う資格情報を準備できること。Gateway・PortalのAレコードを管理する担当も決める |
+| DNS担当 | Azure Public DNSの公開ゾーン・NS委任・DNS-01用UAMIと権限を準備できること。構築実行者のAレコード編集権限も確認する |
 | ネットワーク担当 | IP重複・外向き通信・組織のAzure Policy／閉域化要件を確認すること |
 
 AzureのOwner権限だけでEntraのアプリ作成・管理者同意ができるとは限りません。標準の初期配置はClaudeを含まず、Claudeの購入許可や規約同意を準備する必要はありません。ロックや監査保持の解除権限としてOwnerを扱いません。
@@ -125,14 +125,14 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 | 保存先 | 用途 |
 | --- | --- |
 | `.local/<environment>/params.local.json` | 導入先のID・公開名・IP・グループ等の実設定 |
-| `.local/<environment>/secrets/` | DNS・Entraの秘密、SSH鍵、採用時のPFX等 |
+| `.local/<environment>/secrets/` | Entraのsecret、SSH鍵等 |
 | `.local/<environment>/state/` | 容量検査、配備・ビルド・撤去の記録 |
 | `.local/<environment>/generated/` | azdへ渡す一時生成入力。`main.parameters.json`は秘密を含み得るため保護する |
 | `.local/<environment>/evidence/` | 設定表、試験結果、保存後の画面証跡 |
 | `.local/<environment>/portal/` | ローカルPortal開発を採用するときのサーバー専用設定 |
 | `.azure/` | azdが管理する環境選択・配備先等。手動の証跡置場にはしない |
 
-公開資材の`infra/main.bicepparam`が、環境別の生成JSONをazdへ渡します。構築前処理がazd環境へ保存する`EGAKUMI_ARM_PARAMETERS_FILE`は、`.local/<environment>/generated/main.parameters.json`という非秘密の相対パスだけです。client secret・DNS token・PFX等の秘密値はazdの`.env`へ設定せず、保護された生成JSONから配備パラメーターとして渡します。構築前にBicepが生成JSONを正しく読み取れることを、Azureへ変更を加える前に検査します。
+公開資材の`infra/main.bicepparam`が、環境別の生成JSONをazdへ渡します。構築前処理がazd環境へ保存する`EGAKUMI_ARM_PARAMETERS_FILE`は、`.local/<environment>/generated/main.parameters.json`という非秘密の相対パスだけです。client secret等の秘密値はazdの`.env`へ設定せず、保護された生成JSONから配備パラメーターとして渡します。構築前にBicepが生成JSONを正しく読み取れることを、Azureへ変更を加える前に検査します。
 
 同じ環境を再開するときは、このparamsと記録を保持し、別profileの公開例で上書きしません。環境名・params・azd環境・Tenant／Subscription・stateの対応を照合し、同じcheckoutで構築・更新・撤去を同時実行しません。`.gitignore`は通常の追加を避ける補助であり、強制追加やフォルダー全体の共有を許可するものではありません。
 

@@ -239,16 +239,17 @@ CMはMicrosoftのaccess/refresh tokenを保管・更新し、BrokerとSQLが確�
 
 ## 証明書の取得・更新
 
+証明書の取得・更新はAzure Public DNSと事前作成したDNS用UAMIを使用します。
+
 | `certificate.mode` | 動作と担当 |
 | --- | --- |
 | `dnsPlugin` | 管理VMのPowerShell 7でLet's Encrypt DNS-01を実行しKey Vaultへ格納。systemd timerが既定12時間ごとに確認し期限前更新 |
-| `prepared` | 保護PFXとパスワードを格納。更新は外部の証明書管理者が担当 |
 
 以下の`/var/lib/egakumi-certificates/`と`egakumi-certificate-`はworker実装の固定パス／prefixです。導入先の製品名や、管理端末のclone先を指定する値ではありません。
 
-管理VMは署名済みMicrosoft APTからPowerShell 7.6.7、Posh-ACME 4.34.0を導入します。状態は`/var/lib/egakumi-certificates/<KV>-<cert>`（ディレクトリ700・ファイル600）で保護し、VMのMIでVaultの最新版DNS資格情報を取得します。ACMEアカウント・証明書再利用状態もVaultへ保存し、VM再作成時に復元します。Vaultの完全削除後は再利用できません。
+管理VMは署名済みMicrosoft APTからPowerShell 7.6.7、Posh-ACME 4.34.0を導入します。状態は`/var/lib/egakumi-certificates/<KV>-<cert>`（ディレクトリ700・ファイル600）で保護し、DNS用UAMIでAzure Public DNSへ接続します。ACMEアカウント・証明書再利用状態もVaultへ保存し、VM再作成時に復元します。Vaultの完全削除後は再利用できません。
 
-Azure DNSではDNS資格情報secretを使いません。`azd up`でDNS側Subscription IDと事前作成したユーザー割り当てMIのリソースIDを対話入力し、paramsへ保存・再利用します。IaCは証明書取得前にそのIDを管理VMへ追加し、workerは毎回IMDSの`mi_res_id`でIDを指定してARMトークンを取得します。Key Vaultには従来のシステム割り当てMIを使います。DNS側の権限付与・ID作成は事前準備です。
+DNS側Subscription IDと事前作成したUAMIのリソースIDは、`azd up`前にparamsへ必須設定します。IaCは証明書取得前にそのIDを管理VMへ追加し、workerは毎回IMDSの`mi_res_id`でIDを指定してARMトークンを取得します。Key Vaultには従来のシステム割り当てMIを使います。DNS側の権限付与・ID作成は事前準備です。
 
 ```sh
 CERTIFICATE_VAULT_NAME='<対象Key Vaultの名前>'
@@ -259,9 +260,9 @@ systemctl status "${CERTIFICATE_UNIT}.timer"
 journalctl -u "${CERTIFICATE_UNIT}.service"
 ```
 
-必要なDNS検証では一時TXTを作り、検証後に**その検証値だけ**を回収します。CA側の有効な認証を再利用した更新では、新しいTXTを作らない場合もあります。恒久的な公開A・Entra所有確認TXT・無関係なTXTは削除しません。運用中はDNS権限・トークン期限を維持し、専用資格情報が不要になった時点で担当者が失効させます。
+必要なDNS検証では一時TXTを作り、検証後に**その検証値だけ**を回収します。CA側の有効な認証を再利用した更新では、新しいTXTを作らない場合もあります。恒久的な公開A・Entra所有確認TXT・無関係なTXTは削除しません。運用中はDNS用UAMIの存続・VMへの関連付け・DNS権限を維持します。不要になったIDやロールはDNS担当者が利用先を確認して回収します。
 
-期限前に運用上の理由で証明書を交換するときは、Key Vaultの現在の証明書バージョンのSHA-1 thumbprint（40桁の公開識別値）を確認し、管理VMで次を一度実行します。`dnsPlugin`専用で、正常な既存証明書・対応するPFX・同じSANのACME注文とアカウントが必要です。通常の`azd up`・定期更新の期限判定は変わりません。
+期限前に運用上の理由で証明書を交換するときは、Key Vaultの現在の証明書バージョンのSHA-1 thumbprint（40桁の公開識別値）を確認し、管理VMで次を一度実行します。正常な既存証明書と、そのACMEキャッシュ・同じSANの注文・アカウントが必要です。通常の`azd up`・定期更新の期限判定は変わりません。
 
 ```sh
 sudo /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive \

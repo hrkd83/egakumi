@@ -30,17 +30,9 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 Claudeはazdの構築対象外です。専用の配備・Marketplace確認・購入主体情報・規約同意フラグの処理はありません。`services.claude`やClaudeのモデル配備を構築用config・paramsへ指定すると、Azureへの変更前に入力検査で停止します。構築後にGUIで手動追加します。
 
-## 既存のPFX証明書を利用する場合
+## 公開証明書の設定
 
-標準のDNS-01自動取得ではなく、証明書担当者が用意したPFXを使う場合だけ、次をまとめて変更します。
-
-1. 選んだconfig正本の`certificate.mode`を`prepared`にする。
-2. paramsの`certificate`から`plugin`・`pluginArgumentsFile`・`azureDnsSubscriptionId`・`azureDnsManagedIdentityResourceId`を削除する。DNS用項目を残すと構造検査で停止する。
-3. paramsの`certificate.preparedPfxFile`と`certificate.preparedPfxPasswordFile`に、それぞれ保護したPFX／パスワードファイルへの相対パスを設定する。
-4. 証明書担当者がSAN・有効期限・秘密鍵・chainを満たすPFXと、そのパスワードファイルを同じ環境の`.local/<environment>/secrets/`へ保護保存する。この2ファイルは標準のDNS／Entra対話入力の自動生成対象ではない。
-5. 同じparamsで設定を検査する。この方式ではDNS事業者の選択・DNS資格情報の入力を行わず、証明書の更新は証明書管理者が担当する。Gateway・Portalの公開AレコードはDNS担当者が準備する。
-
-PFXとパスワードをGitへ登録しません。標準の`dnsPlugin`方式を使う導入では、この例外手順とPFXの準備は不要です。
+証明書はAzure Public DNSのDNS-01認証で自動発行・更新します。`certificate.mode`は`dnsPlugin`、paramsの`certificate.plugin`は`Azure`を使用します。DNS用UAMIと権限は[公開DNSの準備](03-public-dns.md)で確認します。
 
 ## configリファレンス
 
@@ -198,7 +190,7 @@ FoundryのApplication Insights接続は、`AppInsights` category専用の`Projec
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
-| `certificate.mode` | `"dnsPlugin"` | dnsPlugin=Linux管理VMで取得・更新、prepared=事前PFXを取込。 |
+| `certificate.mode` | `"dnsPlugin"` | Azure Public DNSとUAMIを使い、Linux管理VMでDNS-01による取得・更新を行う。dnsPlugin固定。 |
 | `certificate.certificateName` | `"tls-public"` | Key Vault内の証明書名。 |
 | `certificate.directory` | `"production"` | production/staging。staging証明書は公開ブラウザーで信頼されない。 |
 | `certificate.renewBeforeDays` | `30` | 期限の何日前から更新するか。 |

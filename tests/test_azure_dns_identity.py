@@ -60,18 +60,21 @@ class AzureDnsIdentityTests(unittest.TestCase):
         configuration.validate_azure_dns_identity({'azureDnsSubscriptionId': '22222222-2222-4222-8222-222222222222',
                                                    'azureDnsManagedIdentityResourceId': IDENTITY})
 
-    def test_azure_deployment_never_reads_old_sp_credentials(self):
+    def test_azure_deployment_rejects_old_sp_credentials_before_any_file_read(self):
         config = {'management': {'sshPublicKeyFile': 'fixture'}, 'credentialProviders': [], 'apiDefinitions': [],
                   'certificate': {'mode': 'dnsPlugin', 'plugin': 'Azure', 'pluginArgumentsFile': '/must/not/read',
                                   'azureDnsSubscriptionId': SUBSCRIPTION, 'azureDnsManagedIdentityResourceId': IDENTITY}}
-        with mock.patch.object(configuration, 'load_ssh_public_key', return_value='fixture-key'), \
-             mock.patch.object(configuration, '_read_protected_file', side_effect=AssertionError('legacy credentials read')):
-            result = configuration.load_secret_inputs(config)
-        self.assertEqual(result['dnsPluginArgumentsJson'], '')
+        with mock.patch.object(configuration, 'load_ssh_public_key', side_effect=AssertionError('SSH key read')) as ssh, \
+             mock.patch.object(configuration, '_read_protected_file', side_effect=AssertionError('legacy credentials read')) as secret:
+            with self.assertRaises(configuration.ConfigurationError):
+                configuration.load_secret_inputs(config)
+        ssh.assert_not_called()
+        secret.assert_not_called()
 
     def test_noninteractive_deployment_requires_both_references(self):
         config = {'management': {'sshPublicKeyFile': 'fixture'}, 'credentialProviders': [], 'apiDefinitions': [],
                   'certificate': {'mode': 'dnsPlugin', 'plugin': 'Azure'}}
-        with mock.patch.object(configuration, 'load_ssh_public_key', return_value='fixture-key'):
+        with mock.patch.object(configuration, 'load_ssh_public_key', side_effect=AssertionError('SSH key read')) as ssh:
             with self.assertRaises(configuration.ConfigurationError):
                 configuration.load_secret_inputs(config)
+        ssh.assert_not_called()

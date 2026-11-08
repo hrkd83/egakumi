@@ -17,8 +17,6 @@ ARM_PARAMETER_DEFAULTS = {
     "phase": "core",
     "sshPublicKey": "",
     "dnsPluginArgumentsJson": "",
-    "preparedPfxBase64": "",
-    "preparedPfxPassword": "",
     "credentialProviderSecrets": {},
     "l7IngressSecret": "",
     "realtimeTicketKey": "",

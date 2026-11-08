@@ -23,6 +23,8 @@ CORE = Path(__file__).resolve().parents[1]
 SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
 TENANT = "22222222-2222-4222-8222-222222222222"
 GATEWAY = "33333333-3333-4333-8333-333333333333"
+DNS_IDENTITY = ("/subscriptions/" + SUBSCRIPTION +
+                "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
 PUBLIC_HOST = "gateway.fresh-clone.example"
 PROTECTED_DIRECTORIES = ("secrets", ".state", ".tools", ".azure", "Archives")
 
@@ -129,11 +131,12 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["gateway"]["grpc"]["publicHostName"] = PUBLIC_HOST
         raw["certificate"]["domainNames"] = ["*.fresh-clone.example"]
         raw["certificate"]["contactEmail"] = "operator@fresh-clone.example"
+        raw["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION
+        raw["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
         raw["services"].update(publisherName="Fresh clone organization", publisherEmail="operator@fresh-clone.example")
         raw["monitoring"]["operatorEmailAddresses"] = ["operator@fresh-clone.example"]
         raw["configFile"] = "../../config/" + profile + ".json"
         raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
-        raw["certificate"]["pluginArgumentsFile"] = "./secrets/dns-plugin-arguments.json"
         raw["credentialProviders"][0]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         return raw
 
@@ -160,6 +163,9 @@ class FreshCloneReadinessTests(unittest.TestCase):
         self.assertEqual(public["azureTenantId"], TENANT)
         self.assertEqual(public["entraTenantId"], TENANT)
         self.assertEqual(public["gateway"]["publicHostName"], PUBLIC_HOST)
+        self.assertEqual(public["certificate"]["plugin"], "Azure")
+        self.assertEqual(public["certificate"]["azureDnsSubscriptionId"], SUBSCRIPTION)
+        self.assertEqual(public["certificate"]["azureDnsManagedIdentityResourceId"], DNS_IDENTITY)
         self.assertEqual(public["credentialProviders"][0]["name"], "graph-delegated")
         self.assertEqual(public["credentialProviders"][0]["clientId"], GATEWAY)
         self.assertEqual(public["credentialProviders"][0]["oauthTenantId"], TENANT)

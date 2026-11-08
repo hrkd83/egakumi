@@ -566,21 +566,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "preparedPfxPasswordFile": {
-          "type": "string",
-          "minLength": 1,
-          "description": "prepared方式のPFXパスワードを格納した保護ファイル参照。dnsPlugin方式では省略します。"
-        },
-        "pluginArgumentsFile": {
-          "type": "string",
-          "minLength": 1,
-          "description": "azd upが非表示入力から自動生成・再利用するDNS資格情報の内部保存先です。利用者によるJSON手組みは不要です。選択したDNS事業者の必須引数・型を確認し、事業者の変更時は新しい値を入力して検証後に置換します。中止・不正入力・同時変更・非対話の不足や不一致では既存ファイルを保持して停止します。相対パスはこの値を記述したJSONファイル基準。prepared方式では省略します。 Azure DNSではこのファイルを使用せず、事前作成したユーザー割り当てMIを使います。"
-        },
-        "preparedPfxFile": {
-          "type": "string",
-          "minLength": 1,
-          "description": "prepared方式で使う秘密鍵付きPFXの保護ファイル参照。dnsPlugin方式では省略します。"
-        },
         "contactEmail": {
           "type": "string",
           "format": "email",
@@ -599,21 +584,27 @@
           "description": "発行する証明書のDNS名。例: [\"*.example.com\"]。左端一階層のワイルドカード、または通常のホスト名を指定。省略時はGatewayの公開名。Gatewayの公開名を覆う必要があり、ワイルドカードはapex・深い階層を含みません。独立コンソールの証明書は別管理です。"
         },
         "plugin": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9]+$",
-          "description": "公開DNSのPosh-ACMEプラグイン識別子。azd upのpreupはCloudflare・Route53・Azure Public DNS（値Azure）を対話選択し、変更時に元のparamsへ保存します。Enterはparamsの現在値を保持、qは中止。現在値が標準3種以外の場合だけ「その他」を表示し、その値を保持します。非対話とpreprovisionは保存済みの値を使います。3種類だけのenum制限ではなく、その他の公式識別子はparamsへ事前設定し、公式の既存型付き保護JSON・追加接続先を別途準備します。prepared方式では省略します。"
+          "const": "Azure",
+          "description": "Azure Public DNSを使用します。構築前に権威ゾーン・NS委任・専用マネージドIDを準備します。"
         },
         "azureDnsSubscriptionId": {
           "type": "string",
           "format": "uuid",
-          "description": "Azure DNSゾーンがあるSubscription ID。Azure選択時にazd upで対話入力しparamsへ保存・再利用します。"
+          "description": "事前準備したAzure Public DNS権威ゾーンがあるSubscription ID。構築前にparamsへ記入します。"
         },
         "azureDnsManagedIdentityResourceId": {
           "type": "string",
           "pattern": "^/subscriptions/[^/]+/resource[Gg]roups/[^/]+/providers/Microsoft\\.ManagedIdentity/userAssignedIdentities/[^/]+$",
-          "description": "事前作成・DNS操作権限付与済みのユーザー割り当てMIの完全なリソースID。Azure選択時にazd upで対話入力・保存し、証明書取得前に管理VMへ紐づけます。Client IDやObject IDではありません。"
+          "description": "事前作成しDNS操作権限を付与したユーザー割り当てMIの完全なリソースID。構築前にparamsへ記入し、管理VMへ紐づけます。Client IDやObject IDではありません。"
         }
-      }
+      },
+      "description": "公開証明書はAzure Public DNSの権威ゾーンと専用マネージドIDを使い、DNS-01で発行・更新します。",
+      "required": [
+        "contactEmail",
+        "plugin",
+        "azureDnsSubscriptionId",
+        "azureDnsManagedIdentityResourceId"
+      ]
     },
     "network": {
       "type": "object",
