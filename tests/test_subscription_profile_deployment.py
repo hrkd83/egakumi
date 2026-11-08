@@ -47,18 +47,37 @@ def named(suffix):
     return APIM + '/namedValues/' + profiles.PREFIX + suffix
 
 
-def ready_inventory(enabled='false'):
-    return {
+TARGET_APIS = [{'name': 'fixture-model', 'apiType': 'http'}]
+PROFILE_INLINE = (ROOT / 'apps/gateway/apim/policies/subscription-profile.xml').read_text(encoding='utf-8').replace('<fragment>', '').replace('</fragment>', '')
+PROFILE_POLICY = '<policies><inbound>' + PROFILE_INLINE + '<include-fragment fragment-id="core-rate-limit" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+
+
+def policy_path(name, api_type):
+    scope = '/operations/onHandshake' if api_type == 'websocket' else ''
+    return APIM + '/apis/' + name + scope + '/policies/policy'
+
+
+def ready_inventory(enabled='false', definitions=None):
+    definitions = TARGET_APIS if definitions is None else definitions
+    inventory = {
         APIM + '/policyFragments/core-rate-limit': {'statusCode': 200, 'body': {'properties': {
-            'value': '<fragment><!-- core-subscription-profile-v1 --></fragment>'}}},
+            'value': '<fragment><!-- core-subscription-profile-v1: current --></fragment>'}}},
         named('secret'): {'statusCode': 200, 'body': {'properties': {
             'secret': True, 'keyVault': {'secretIdentifier': 'https://kv-fixture.vault.azure.net/secrets/' + profiles.SECRET_NAME,
                                       'lastStatus': {'code': 'Success'}}}}},
         named('enabled'): {'statusCode': 200, 'body': {'properties': {'value': enabled}}},
-        APIM + '/apis': {'statusCode': 200, 'body': {'value': [{'name': 'fixture-model'}]}},
-        APIM + '/apis/fixture-model/policies/policy': {'statusCode': 200, 'body': {'properties': {
-            'value': '<policies><!-- core-subscription-profile-v1 --><include-fragment fragment-id="core-rate-limit" /></policies>'}}},
+        APIM + '/apis': {'statusCode': 200, 'body': {'value': []}},
     }
+    for api in definitions:
+        name, api_type = api['name'], api.get('apiType', 'http')
+        inventory[APIM + '/apis']['body']['value'].append({
+            'name': name, 'id': APIM + '/apis/' + name, 'properties': {'type': api_type}})
+        inventory[policy_path(name, api_type)] = {'statusCode': 200, 'body': {'properties': {'value': PROFILE_POLICY}}}
+        if 'mcp' in api:
+            name = api['mcp']['name']
+            inventory[APIM + '/apis']['body']['value'].append({
+                'name': name, 'id': APIM + '/apis/' + name, 'properties': {'type': 'mcp'}})
+    return inventory
 
 
 class SubscriptionProfileSettingsTests(unittest.TestCase):
@@ -122,12 +141,12 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
         for label, inventory in cases:
             transport = ProfileTransport(inventory)
             with self.subTest(label=label), self.assertRaises(ValueError):
-                profiles.activate_profile_settings(APIM, transport, timeout=0)
+                profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
             self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
 
     def test_activation_updates_only_switch_and_requires_confirmation(self):
         transport = ProfileTransport(ready_inventory())
-        result = profiles.activate_profile_settings(APIM, transport, timeout=0)
+        result = profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
         self.assertEqual(result, {'enabled': True, 'cacheTtlSeconds': 30, 'runtimeVerified': False})
         writes = [call for call in transport.calls if call[0] == 'PUT']
         self.assertEqual(len(writes), 1)
@@ -135,12 +154,12 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
         self.assertEqual(writes[0][2]['properties']['value'], 'true')
         self.assertEqual(transport.calls[-1][0], 'GET')
         transport = ProfileTransport(ready_inventory('true'))
-        profiles.activate_profile_settings(APIM, transport, timeout=0)
+        profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
         self.assertTrue(all(call[0] == 'GET' for call in transport.calls))
         transport = ProfileTransport(ready_inventory())
         transport.keep_disabled = True
         with self.assertRaisesRegex(ValueError, 'not confirmed'):
-            profiles.activate_profile_settings(APIM, transport, timeout=0)
+            profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
 
     def test_partial_api_rollout_or_untrusted_continuation_never_enables_profiles(self):
         policy_path = APIM + '/apis/fixture-model/policies/policy'
@@ -158,8 +177,169 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
                 inventory[APIM + '/apis']['body']['nextLink'] = 'https://untrusted.example/apis'
             transport = ProfileTransport(inventory)
             with self.subTest(case=case), self.assertRaises(ValueError):
-                profiles.activate_profile_settings(APIM, transport, timeout=0)
+                profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
             self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_websocket_only_checks_handshake_policy_and_can_activate(self):
+        definitions = [{'name': 'fixture-stream', 'apiType': 'websocket'}]
+        transport = ProfileTransport(ready_inventory(definitions=definitions))
+        result = profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        self.assertTrue(result['enabled'])
+        policy_reads = [call[1].split('?')[0] for call in transport.calls if '/policies/' in call[1]]
+        self.assertEqual(policy_reads, [policy_path('fixture-stream', 'websocket')])
+
+    def test_omitted_http_type_is_accepted_but_explicit_invalid_and_non_http_omissions_are_not(self):
+        inventory = ready_inventory()
+        properties = inventory[APIM + '/apis']['body']['value'][0]['properties']
+        del properties['type']
+        properties.update(displayName='Synthetic HTTP API', serviceUrl='https://backend.example.com',
+                          path='tools/fixture', protocols=['http', 'https'])
+        transport = ProfileTransport(inventory)
+        result = profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
+        self.assertTrue(result['enabled'])
+        self.assertFalse(any(call[1].split('?')[0] == APIM + '/apis/fixture-model' for call in transport.calls))
+        for api_type in ('websocket', 'grpc', 'mcp'):
+            with self.subTest(api_type=api_type):
+                definitions = [{'name': 'fixture-api', 'apiType': api_type}]
+                broken = ready_inventory(definitions=definitions)
+                del broken[APIM + '/apis']['body']['value'][0]['properties']['type']
+                transport = ProfileTransport(broken)
+                with self.assertRaisesRegex(ValueError, 'metadata differs'):
+                    profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+        for value in (None, '', 'soap', 'websocket'):
+            with self.subTest(explicit_type=value):
+                broken = ready_inventory()
+                broken[APIM + '/apis']['body']['value'][0]['properties']['type'] = value
+                transport = ProfileTransport(broken)
+                with self.assertRaisesRegex(ValueError, 'metadata differs'):
+                    profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_mixed_api_scopes_are_all_checked_and_unmanaged_apis_are_untouched(self):
+        definitions = [*TARGET_APIS, {'name': 'fixture-stream', 'apiType': 'websocket'}]
+        inventory = ready_inventory(definitions=definitions)
+        for name, api_type in (('company-api', 'http'), ('company-stream', 'websocket')):
+            inventory[APIM + '/apis']['body']['value'].append({
+                'name': name, 'id': APIM + '/apis/' + name, 'properties': {'type': api_type}})
+            inventory[policy_path(name, api_type)] = {'statusCode': 200, 'body': {'properties': {'value': 'incomplete company XML'}}}
+        transport = ProfileTransport(inventory)
+        profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        policy_reads = [call[1].split('?')[0] for call in transport.calls if '/policies/' in call[1]]
+        self.assertEqual(policy_reads, [policy_path('fixture-model', 'http'), policy_path('fixture-stream', 'websocket')])
+
+    def test_correct_policy_on_the_wrong_scope_cannot_enable_profiles(self):
+        for api_type in ('http', 'websocket'):
+            with self.subTest(api_type=api_type):
+                definitions = [{'name': 'fixture-api', 'apiType': api_type}]
+                inventory = ready_inventory(definitions=definitions)
+                del inventory[policy_path('fixture-api', api_type)]
+                other_type = 'http' if api_type == 'websocket' else 'websocket'
+                inventory[policy_path('fixture-api', other_type)] = {
+                    'statusCode': 200, 'body': {'properties': {'value': PROFILE_POLICY}}}
+                transport = ProfileTransport(inventory)
+                with self.assertRaisesRegex(ValueError, 'incomplete'):
+                    profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_missing_or_mismatched_managed_api_metadata_never_enables_profiles(self):
+        definitions = [*TARGET_APIS, {'name': 'fixture-stream', 'apiType': 'websocket'}]
+        for case in ('missing-ws', 'wrong-type', 'missing-type', 'missing-id', 'foreign-id', 'duplicate'):
+            with self.subTest(case=case):
+                inventory = ready_inventory(definitions=definitions)
+                rows = inventory[APIM + '/apis']['body']['value']
+                if case == 'missing-ws':
+                    rows.pop()
+                elif case == 'wrong-type':
+                    rows[1]['properties']['type'] = 'http'
+                elif case == 'missing-type':
+                    rows[1]['properties'] = {}
+                elif case == 'missing-id':
+                    rows[1]['id'] = None
+                elif case == 'foreign-id':
+                    rows[1]['id'] += '-another'
+                else:
+                    rows.append(copy.deepcopy(rows[1]))
+                transport = ProfileTransport(inventory)
+                with self.assertRaises(ValueError):
+                    profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_handshake_requires_complete_inbound_profile_lookup_before_rate_limit(self):
+        definitions = [{'name': 'fixture-stream', 'apiType': 'websocket'}]
+        broken_policies = {
+            'truncated': PROFILE_POLICY[:-11],
+            'marker-only': '<policies><inbound><!-- core-subscription-profile-v1: current --><include-fragment fragment-id="core-rate-limit" /></inbound></policies>',
+            'missing-rate': PROFILE_POLICY.replace('<include-fragment fragment-id="core-rate-limit" />', ''),
+            'missing-lookup': PROFILE_POLICY.replace('send-request', 'other-request'),
+            'wrong-profile-key': PROFILE_POLICY.replace('{{core-subscription-profile-secret}}', '{{other-secret}}'),
+            'missing-profile-variable': PROFILE_POLICY.replace('name="gatewaySubscriptionProfile"', 'name="otherProfile"'),
+            'rate-first': '<policies><inbound><include-fragment fragment-id="core-rate-limit" />' + PROFILE_INLINE + '</inbound></policies>',
+            'wrong-section': '<policies><inbound /><outbound>' + PROFILE_INLINE + '<include-fragment fragment-id="core-rate-limit" /></outbound></policies>',
+        }
+        for case, xml in broken_policies.items():
+            with self.subTest(case=case):
+                inventory = ready_inventory(definitions=definitions)
+                inventory[policy_path('fixture-stream', 'websocket')]['body']['properties']['value'] = xml
+                transport = ProfileTransport(inventory)
+                with self.assertRaises(ValueError):
+                    profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_generated_mcp_uses_protected_rest_policy_and_native_mcp_proxy_needs_its_own(self):
+        definitions = [{'name': 'fixture-rest', 'apiType': 'http', 'mcp': {'name': 'fixture-tools'}},
+                       {'name': 'fixture-proxy', 'apiType': 'mcp'}]
+        inventory = ready_inventory(definitions=definitions)
+        transport = ProfileTransport(inventory)
+        profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        self.assertFalse(any('/fixture-tools/policies/' in call[1] for call in transport.calls))
+        for name in ('fixture-rest', 'fixture-proxy'):
+            with self.subTest(name=name):
+                broken = copy.deepcopy(inventory)
+                del broken[policy_path(name, 'http')]
+                transport = ProfileTransport(broken)
+                with self.assertRaises(ValueError):
+                    profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_default_projection_preserves_generated_mcp_identity_for_activation(self):
+        definitions = portal.infrastructure_api_definitions([])
+        targets = profiles._managed_apis(definitions)
+        generated = [api['mcp']['name'] for api in definitions if 'mcp' in api]
+        self.assertTrue(generated)
+        for name in generated:
+            self.assertEqual(targets[name.casefold()], (name, 'mcp', False))
+
+    def test_all_managed_pages_are_checked_before_activation(self):
+        definitions = [*TARGET_APIS, {'name': 'fixture-stream', 'apiType': 'websocket'}]
+        inventory = ready_inventory(definitions=definitions)
+        rows = inventory[APIM + '/apis']['body']['value']
+        next_page = 'https://management.azure.com' + APIM + '/apis?api-version=' + profiles.APIM_API + '&$skip=1'
+        inventory[APIM + '/apis']['body'] = {'value': rows[:1], 'nextLink': next_page}
+
+        class PagedTransport(ProfileTransport):
+            def request(self, method, path, body=None, headers=None):
+                if method == 'GET' and path == next_page:
+                    self.calls.append((method, path, copy.deepcopy(body), headers))
+                    return {'statusCode': 200, 'body': {'value': rows[1:]}}
+                return super().request(method, path, body, headers)
+
+        transport = PagedTransport(inventory)
+        profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        second = next(index for index, call in enumerate(transport.calls) if call[1] == next_page)
+        activated = next(index for index, call in enumerate(transport.calls) if call[0] == 'PUT')
+        self.assertLess(second, activated)
+
+    def test_malformed_fragment_is_not_accepted_from_its_marker_text(self):
+        for xml in ('<fragment><!-- core-subscription-profile-v1: current -->',
+                    '<policies><!-- core-subscription-profile-v1: current --></policies>'):
+            with self.subTest(xml=xml):
+                inventory = ready_inventory()
+                inventory[APIM + '/policyFragments/core-rate-limit']['body']['properties']['value'] = xml
+                transport = ProfileTransport(inventory)
+                with self.assertRaises(ValueError):
+                    profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
 
     def test_async_activation_waits_for_readback_without_resending_the_write(self):
         class DelayedActivation(ProfileTransport):
@@ -180,7 +360,7 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
         transport = DelayedActivation(ready_inventory())
         transport.put_status = 202
         with mock.patch.object(profiles.time, 'sleep') as pause:
-            result = profiles.activate_profile_settings(APIM, transport, timeout=30, sleep=pause, monotonic=lambda: 0)
+            result = profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=30, sleep=pause, monotonic=lambda: 0)
         self.assertTrue(result['enabled'])
         self.assertEqual(transport.confirmation_reads, 2)
         self.assertEqual(sum(call[0] == 'PUT' for call in transport.calls), 1)
@@ -197,7 +377,7 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
                 return super().request(method, path, body, headers)
         transport = PropagatingTransport(ready_inventory())
         with mock.patch.object(profiles.time, 'sleep') as pause:
-            result = profiles.activate_profile_settings(APIM, transport, sleep=pause, timeout=30, monotonic=lambda: 0)
+            result = profiles.activate_profile_settings(APIM, transport, TARGET_APIS, sleep=pause, timeout=30, monotonic=lambda: 0)
         self.assertTrue(result['enabled'])
         self.assertEqual(transport.secret_reads, 2)
         pause.assert_called_once_with(5)
@@ -351,6 +531,26 @@ class SubscriptionProfileBicepTests(unittest.TestCase):
         self.assertIn("'/api/health/ready'", path)
         self.assertIn("'/api/health'", path)
         self.assertTrue(path.startswith('[if(equals('))
+
+
+class SubscriptionProfileGatewayContractTests(unittest.TestCase):
+    def test_actual_compiled_gateway_policies_satisfy_the_activation_check(self):
+        from arm_helpers import PolicyExpression
+        from test_api_protocols import bound_external_coverage, configuration
+
+        template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        config = configuration.normalize_configuration(bound_external_coverage(), base_directory=ROOT / 'config')
+        parameters = {'apiDefinitions': config['apiDefinitions'], 'credentialLogin': {},
+            'publicHostName': config['gateway']['publicHostName'], 'entraTenantId': config['entraTenantId'],
+            'rateLimits': config['gateway']['rateLimits']}
+        protocols = set()
+        for index, api in enumerate(parameters['apiDefinitions']):
+            with self.subTest(name=api['name'], api_type=api['apiType']):
+                xml = PolicyExpression("[variables('policyValues')[copyIndex()]]", template['variables'],
+                    functions=template.get('functions', [])).evaluate(parameters, index)
+                profiles._profile_policy_ready(xml)
+                protocols.add(api['apiType'])
+        self.assertTrue({'http', 'websocket'}.issubset(protocols))
 
 
 if __name__ == '__main__':

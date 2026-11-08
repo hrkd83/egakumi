@@ -1,13 +1,19 @@
 """SQL runtime grants and read-only Credential Manager reconciliation."""
 import copy
 import ast
+import contextlib
+import io
+import json
+import os
 import re
 import uuid
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
-from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier, grant_runtime_access, RUNTIME_TABLE_PERMISSIONS
+from credential_broker import cli
+from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier, grant_runtime_access, RUNTIME_TABLE_PERMISSIONS, observe_schema_before_migration
 from credential_broker.store import StoreConflict, StoreUnavailable, SqlStore
 from _store_support import OWNER, TENANT, fixture, Connection
 
@@ -22,6 +28,48 @@ EXPECTED_RUNTIME_PERMISSIONS = {
     "SubjectSecurity": {"SELECT", "INSERT", "UPDATE"},
     "SessionRotationCandidates": {"SELECT", "INSERT", "DELETE"},
 }
+
+
+class SchemaObservationTests(unittest.TestCase):
+    def test_empty_and_existing_database_metadata_use_one_read_only_query(self):
+        for count, present in ((0, 0), (9, 1)):
+            store, cursor = fixture([("SELECT CASE WHEN HAS_PERMS_BY_NAME", {"tables": count, "present": present})])
+            with self.subTest(count=count):
+                self.assertEqual(observe_schema_before_migration(store), {
+                    "stage": "before-migration", "userTableCount": count, "migrationTablePresent": bool(present)})
+                self.assertEqual(len(cursor.calls), 1)
+                query = cursor.calls[0][0]
+                self.assertIn("sys.tables WHERE is_ms_shipped=0", query)
+                self.assertIn("broker.SchemaVersions", query)
+                self.assertIn("'VIEW DEFINITION'", query)
+
+    def test_missing_visibility_or_malformed_metadata_is_not_an_empty_database(self):
+        for row in ([], {"tables": None, "present": 0}, {"tables": -1, "present": 0},
+                    {"tables": "0", "present": 0}, {"tables": 0, "present": 2}):
+            store, _cursor = fixture([("SELECT CASE WHEN HAS_PERMS_BY_NAME", row)])
+            with self.subTest(row=row), self.assertRaises(StoreUnavailable):
+                observe_schema_before_migration(store)
+
+    def test_formal_migrate_entry_records_before_ddl_and_stops_on_observation_error(self):
+        observation = {"stage": "before-migration", "userTableCount": 0, "migrationTablePresent": False}
+        environment = {"SQL_RUNTIME_CLIENT_ID": TENANT, "SQL_RUNTIME_USER_NAME": "id-runtime", "BROKER_PROFILES_JSON": "{}"}
+        output = io.StringIO()
+        def migrate_after_observation(*args, **kwargs):
+            self.assertEqual(json.loads(output.getvalue()), observation)
+            return {"status": "ready"}
+        with mock.patch.dict(os.environ, environment), mock.patch.object(cli.SqlStore, "from_environment"), \
+             mock.patch.object(cli, "observe_schema_before_migration", return_value=observation), \
+             mock.patch.object(cli, "migrate", side_effect=migrate_after_observation) as migrate_call, \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(cli.main(["migrate"]), 0)
+        migrate_call.assert_called_once()
+        with mock.patch.object(cli.SqlStore, "from_environment"), \
+             mock.patch.object(cli, "observe_schema_before_migration", side_effect=StoreUnavailable("metadata unavailable")), \
+             mock.patch.object(cli, "migrate") as migrate_call, contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(StoreUnavailable):
+                cli.main(["migrate"])
+        migrate_call.assert_not_called()
+        self.assertEqual(output.getvalue(), "")
 
 
 def grant_replies(members=(0, 0)):

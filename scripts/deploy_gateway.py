@@ -22,6 +22,7 @@ from deployment.helpers.configuration import (
     build_bicep_configuration, load_configuration_source, load_credential_provider_secrets,
 )
 from deployment.helpers.paths import REPOSITORY, local_paths
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
 )
@@ -53,7 +54,8 @@ def group_scope(config):
 
 def foundation_inputs(config, state):
     """現在のinfraが保存した共通基盤出力だけを参照する。"""
-    if any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')):
+    if (any(state.get(key) != config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem'))
+            or state.get('apimInstanceId') != apim_instance_id(config)):
         raise ValueError('Core deployment state differs from the selected configuration')
     output, stem = state['outputs'], config['resourceStem']
     foundation = output.get('gatewayFoundation')
@@ -63,7 +65,7 @@ def foundation_inputs(config, state):
     expected = {
         'resourceGroup': config['resourceGroupNames']['svc'],
         'identityResourceGroup': config['resourceGroupNames']['id'],
-        'apimName': f'apim-{stem}', 'vaultName': f'kv-{stem}',
+        'apimName': apim_name(config), 'vaultName': f'kv-{stem}',
         'environmentName': f'cae-{stem}', 'registryName': 'acr' + stem.replace('-', ''),
         'sqlServer': f'sql-{stem}.database.windows.net',
     }

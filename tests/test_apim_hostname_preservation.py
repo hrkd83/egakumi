@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 from lifecycle_fixtures import LifecycleFixture, ScriptedTransport, lifecycle
+from deployment.helpers.apim_naming import apim_name
 
 
 class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
@@ -22,7 +23,7 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        self.name = "apim-" + self.config["resourceStem"]
+        self.name = apim_name(self.config)
         self.resource_id = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/"
                             f"{self.config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service/{self.name}")
         self.default = {"type": "Proxy", "hostName": self.name + ".azure-api.net",

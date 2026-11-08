@@ -20,6 +20,19 @@ from cleanup_fixtures import (
 
 
 class CleanupTests(CleanupFixture, unittest.TestCase):
+    def test_missing_or_other_apim_generation_rejects_state_before_read_or_delete(self):
+        for value in (None, "def456"):
+            with self.subTest(value=value):
+                original = self.state.pop("apimInstanceId")
+                if value is not None:
+                    self.state["apimInstanceId"] = value
+                try:
+                    transport = FakeTransport()
+                    self.assert_code("state-environment-mismatch", lambda: self.pre(transport))
+                    self.assertEqual(transport.calls, [])
+                finally:
+                    self.state["apimInstanceId"] = original
+
     def test_test_unlocked_policy_removal_has_exact_etag_and_distinct_zero_retention(self):
         transport = FakeTransport({resource_id: self.policy(resource_id) for resource_id in self.policy_ids})
         result = self.pre(transport)
@@ -369,7 +382,7 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         transport = self.model_transport(2)
         apim_id = self.state["serviceResourceIds"]["apim"]
         transport.resources[apim_id] = self.apim()
-        foreign_id = apim_id.replace("apim-test-egakumi", "apim-other-test-abc123")
+        foreign_id = apim_id.replace("apim-test-egakumi-abc123", "apim-other-test-abc123")
         transport.resources[foreign_id] = {"id": foreign_id}
         result = self.pre(transport)
         self.assertTrue(result["modelDeployments"]["modelDeletionVerified"])
@@ -452,7 +465,7 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
             with self.subTest(field=field):
                 original = self.state["serviceResourceIds"]["apim"]
                 self.state["serviceResourceIds"]["apim"] = original.replace(
-                    "rg-test-egakumi-svc" if field == "scope" else "apim-test-egakumi",
+                    "rg-test-egakumi-svc" if field == "scope" else "apim-test-egakumi-abc123",
                     "rg-other-svc" if field == "scope" else "apim-other-test-abc123")
                 transport = FakeTransport()
                 self.assert_code("invalid-state" if field == "scope" else "apim-owner-mismatch",
@@ -481,7 +494,7 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
         transport = FakeTransport(resources)
         result = self.post(transport)
         apim = next(item for item in result["softDeletedServices"] if item["kind"] == "apim")
-        self.assertTrue(apim["resourceId"].endswith("/apim-test-egakumi"))
+        self.assertTrue(apim["resourceId"].endswith("/apim-test-egakumi-abc123"))
         self.assertEqual(apim["status"], "absent")
         self.assertIn(unrelated_id, transport.resources)
         self.assertFalse(any(call["id"] == unrelated_id for call in transport.calls))

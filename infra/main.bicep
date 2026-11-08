@@ -89,7 +89,7 @@ var serviceNames = {
   keyVault: 'kv-${stem}'
   foundry: 'aif-${stem}'
   project: 'proj-${stem}'
-  apim: 'apim-${stem}'
+  apim: 'apim-${stem}-${configuration.services.apimInstanceId}'
   apiCenter: 'apic-${stem}'
 }
 

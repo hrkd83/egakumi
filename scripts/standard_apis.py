@@ -165,7 +165,7 @@ def infrastructure_api_definitions(definitions: list[dict]) -> list[dict]:
             'authorization': {'operationConstraints': constraints},
         }
         if 'mcp' in api:
-            projected['mcp'] = {'path': api['mcp']['path']}
+            projected['mcp'] = {key: api['mcp'][key] for key in ('name', 'path')}
         if 'mcpProxy' in api:
             projected['mcpProxy'] = {
                 'transport': api['mcpProxy']['transport'],

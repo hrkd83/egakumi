@@ -23,6 +23,7 @@ from urllib.parse import parse_qsl, urlsplit
 import uuid
 
 from deployment.helpers.configuration import API_NAME, entra_tenant_id
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.catalog_descriptions import with_catalog_descriptions
 from deployment.helpers.apim_authentication import (
     COMMON_NAMED_VALUES, MIGRATION_REQUIRED, common_authentication_settings,
@@ -79,6 +80,8 @@ def prepare_plan(config: dict, state: dict) -> dict:
         raise ValueError("Exactly the five selected core groups are required")
     for key in ("subscriptionId", "azureTenantId", "resourceStem"):
         _assert_same(state.get(key), config[key], "Deployment state")
+    if state.get("apimInstanceId") != apim_instance_id(config):
+        raise ValueError("Deployment state belongs to a different APIM construction instance")
     outputs = state.get("outputs", {})
     if outputs.get("resourceGroups") != expected_groups:
         raise ValueError("Core output groups differ from the selected environment")
@@ -86,7 +89,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
     # 全サービスで「種別-環境名-プロダクト名」を使う。配備出力を名前の
     # 根拠にせず、現在の設定から期待値を作って照合し、別名の資源を公開しない。
     stem = config["resourceStem"]
-    expected_names = {"apim": "apim-" + stem, "keyVault": "kv-" + stem,
+    expected_names = {"apim": apim_name(config), "keyVault": "kv-" + stem,
         "foundry": "aif-" + stem, "project": "proj-" + stem,
         "apiCenter": "apic-" + stem}
     if names != expected_names:

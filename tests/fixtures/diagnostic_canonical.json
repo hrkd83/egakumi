@@ -94,7 +94,7 @@
             }
           ]
         },
-        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi-abc123/providers/microsoft.insights/diagnosticsettings/core-audit": {
           "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
           "logAnalyticsDestinationType": "Dedicated",
           "logs": [
@@ -113,7 +113,7 @@
           ],
           "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
         },
-        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi-abc123/providers/microsoft.insights/diagnosticsettings/core-metrics": {
           "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
           "metrics": [
             {
@@ -440,7 +440,7 @@
             }
           ]
         },
-        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-audit": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi-abc123/providers/microsoft.insights/diagnosticsettings/core-audit": {
           "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
           "logAnalyticsDestinationType": "Dedicated",
           "logs": [
@@ -455,7 +455,7 @@
           ],
           "storageAccountId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.Storage/storageAccounts/sttestegakumijp"
         },
-        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi/providers/microsoft.insights/diagnosticsettings/core-metrics": {
+        "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourcegroups/rg-test-egakumi-svc/providers/microsoft.apimanagement/service/apim-test-egakumi-abc123/providers/microsoft.insights/diagnosticsettings/core-metrics": {
           "workspaceId": "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/rg-test-egakumi-monitor/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi",
           "metrics": [
             {

@@ -123,6 +123,7 @@ class CredentialFailureDiagnosticsTests(unittest.TestCase):
 class CredentialInventoryTests(unittest.TestCase):
     def config(self):
         return {"resourceStem":"test","subscriptionId":"11111111-1111-4111-8111-111111111111",
+                "services":{"apimInstanceId":"abc123"},
                 "resourceGroupNames":{"svc":"rg-test-svc"},"gateway":{"authentication":{"credentialLogin":{"providerNames":["graph-delegated"]}}},
                 "credentialProviders":[{"name":"graph-delegated","displayName":"Graph delegated","pool":{"count":2,"capacity":8000}}]}
 

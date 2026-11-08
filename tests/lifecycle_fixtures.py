@@ -133,7 +133,7 @@ class LifecycleFixture:
         # APIMの固定名確認は別の専用試験でARM応答を再現する。hook試験では
         # 実Azureを呼ばず、有料段階より前に呼び出される順序を検査する。
         apim_name = mock.patch.object(lifecycle, "verify_apim_name",
-            return_value={"status": "available-for-create", "name": "apim-" + self.config["resourceStem"]})
+            return_value={"status": "available-for-create", "name": "apim-" + self.config["resourceStem"] + "-abc123"})
         self.apim_name = apim_name.start()
         self.addCleanup(apim_name.stop)
         # 既存hookの単体試験はDNS選択を無操作にします。専用の結合ケース以外が
@@ -153,7 +153,7 @@ class LifecycleFixture:
         svc = self.config["resourceGroupNames"]["svc"]
         prefix = f"/subscriptions/{sub}/resourceGroups/{svc}/providers/"
         return {
-            "names": {"apiCenter": "apic-" + self.config["resourceStem"]},
+            "names": {"apiCenter": "apic-" + self.config["resourceStem"], "apim": "apim-" + self.config["resourceStem"] + "-abc123"},
             "resourceGroups": self.config["resourceGroupNames"],
             "monitoring": {"workspaceId": f"/subscriptions/{sub}/resourceGroups/{self.config['resourceGroupNames']['monitor']}/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi"},
             "auditStorage": {"immutabilityMode": "Disabled"},
@@ -161,7 +161,7 @@ class LifecycleFixture:
                 "serviceResourceIds": {
                     "keyVault": prefix + "Microsoft.KeyVault/vaults/kv-test-egakumi",
                     "foundry": prefix + "Microsoft.CognitiveServices/accounts/aif-test-egakumi",
-                    "apim": prefix + "Microsoft.ApiManagement/service/apim-test-egakumi",
+                    "apim": prefix + "Microsoft.ApiManagement/service/apim-test-egakumi-abc123",
                 },
             },
         }

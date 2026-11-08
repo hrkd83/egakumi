@@ -18,6 +18,8 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 
 Azure CLI・azdの認証先、`.local/`内の環境名、paramsのTenant／Subscription・環境名、stateの所有記録と対象5RGを照合します。不一致のまま続行せず、別環境のstateや秘密を流用しません。同じcheckoutで構築・更新・撤去を同時実行しません。秘密値はコマンド引数・通常ログへ入力しません。
 
+`services.apimInstanceId`は構築時の値を保持します。APIM名は`apim-<environment>-<product>-<apimInstanceId>`で、更新・途中再開・撤去では同じ完全な資源IDを照合します。
+
 | 記録 | 用途 |
 | --- | --- |
 | paramsと参照config | 構築・更新・撤去で使う入力の正本 |
@@ -128,6 +130,25 @@ Gateway／Portalの配備成功記録がなくても、固定IDと実資源の�
 Locked WORMがある場合は変更前に停止します。Unlockedでも構成の監査保持が有効なら解除しません。Key Vaultのpurge protectionは期限まで保持します。環境名だけで削除保護を切り替えません。外部DNSゾーン・DNS用ID・Entra登録・同意・企業ハブは撤去対象に広げません。
 
 結果は`.local/<environment>/state/cleanup-predown.json`と`.local/<environment>/state/cleanup-postdown.json`に保存されます。成功・未完了・保護による保持・確認不能を区別し、保持・残存があるものを完全消去済みとは扱いません。
+
+### 撤去後に新しく構築する
+
+同じ製品名・環境名で新しく構築するときは、次の順でAPIM識別子とEntraのCM戻り先を更新します。構築途中の再試行や、稼働中の環境更新では識別子を保持します。
+
+1. 同じ環境の`cleanup-postdown.json`で、旧APIMと関連する旧環境の稼働資源が撤去済みであることを確認する。保持資源・削除履歴・内部accountの未確認は、それぞれの記録で区別する。
+2. 第1章で選んだ`DEPLOY_PROFILE`を設定し、次のコマンドを実行する。コマンドは対応する撤去記録を検査してから、paramsの`services.apimInstanceId`を更新する。旧stateは`.local/<environment>/history/apim/<旧識別子>/state/`へ保管し、通常の`state/`は新しい構築用に空にする。paramsの他の設定とsecretは保持する。
+
+   ```sh
+   python3 -I -B scripts/prepare_local_environment.py \
+     --environment "$DEPLOY_ENVIRONMENT" --profile "$DEPLOY_PROFILE" \
+     --new-apim-instance
+   python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
+   ```
+
+3. [Entraの準備](setup/02-entra.md#paramsから登録用の戻り先を確認する)に従い、その環境のCM用Web戻り先1件を新しいURIへ置き換え、保存後に確認する。Gateway・Portalの公開名を継続する場合は、その2件の戻り先、アプリの権限・同意、有効なsecretを保持する。
+4. 同じparams・azd環境で[構築手順](setup/06-deploy.md)を進める。撤去済みの識別子のまま、新規構築を開始しない。
+
+APIMだけが新しい識別子を使います。環境名や他の資源の名前を変える手順ではありません。SQLデータを保持した環境のAPIM差替えは、購読・本人接続の移行を伴うため、この新規構築手順と分けて計画します。
 
 ### CM内部アカウントの解放を確認できない場合
 

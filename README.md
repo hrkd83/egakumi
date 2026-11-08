@@ -20,6 +20,8 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 
 初期構築は、前提・paramsを準備して`azd up`を実行します。`publishApis: true`が必要で、初回のPortalグループ設定は同じコマンドの中で対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
 
+APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。第1章の準備コマンドが6文字の英小文字・数字の識別子をローカルparamsへ生成し、第2章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
+
 共通基盤は`infra/`、Gatewayの配備資材は[apps/gateway/](apps/gateway/)にあります。API定義・ポリシーは`apps/gateway/apim/`、認証窓口のアプリ・SQLは`apps/gateway/credential-broker/`、配備用Bicepは`apps/gateway/deploy/`に分けています。
 
 業務APIの共通入口はAPIM購読キーで認可します。Graph等の本人OAuth接続を使うAPIは、キー検証に続いて[Credential Managerの共通接続機能](docs/setup/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/gateway/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。

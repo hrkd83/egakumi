@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from .apim_naming import apim_name
+
 
 class ApimPreflightError(RuntimeError):
     """APIの生応答や秘密値を含めず、固定名で続行できない理由を返す。"""
@@ -38,8 +40,7 @@ def verify_apim_name(config: dict, transport) -> dict:
     リージョン、製品・環境タグも照合する。削除済み資源の復元やpurgeはせず、
     競合があれば有料の監視・NW配備へ入る前に停止する。
     """
-    stem = config["resourceStem"]
-    name = "apim-" + stem
+    name = apim_name(config)
     resource_id = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/"
                    f"{config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service/{name}")
     api = "2024-05-01"

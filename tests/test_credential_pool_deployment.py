@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
 from deployment.helpers.credential_pools import physical_providers, logical_profiles, resource_names
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError
 from prepare_credential_pool_config import transform
 from broker_deployment import wait_for_schema
@@ -101,7 +102,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 foundation = {
                     'resourceGroup': config['resourceGroupNames']['svc'],
                     'identityResourceGroup': config['resourceGroupNames']['id'],
-                    'apimName': 'apim-' + stem,
+                    'apimName': apim_name(config),
                     'vaultName': 'kv-' + stem,
                     'sqlServer': 'sql-' + stem + '.database.windows.net',
                     'schemaIdentity': {'id': id_base + names['schemaIdentity']},
@@ -110,6 +111,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                     'registryName': 'acr' + stem.replace('-', ''),
                 }
                 state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
+                state['apimInstanceId'] = apim_instance_id(config)
                 state['outputs'] = {'gatewayFoundation': foundation}
                 original = copy.deepcopy(state)
                 inputs = foundation_inputs(config, state)

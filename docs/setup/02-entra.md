@@ -13,9 +13,21 @@
 | Portalへサインインする | 同じWebアプリにPortal用の戻り先を追加。別のアプリ登録は不要 |
 | Portalでグループ所有のAPIキーを管理する | 同じアプリにGraphアプリケーション権限を追加し、管理者同意を付与。APIキーの所有者はEntraグループとし、所属メンバーだけが管理できるようにする |
 
-この章ではEntraの事前設定を行います。既存アプリを更新する場合は、手順3でグループ所属照会用のアプリケーション権限を追加して管理者同意を付与し、手順4でPortalの戻り先を確認します。既存の委任権限と有効なclient secretはそのまま使えます。Portalのグループ所有APIキー管理は、この準備後に配備します。構築後のGraph接続・API疎通は、[CM共通接続手順](credential-manager-login.md)で確認します。
+この章ではEntraの事前設定を行います。既存アプリを更新する場合は、手順3で必要な権限と管理者同意を確認し、手順4で今回のCM・本人確認・Portalの戻り先を確認します。既存の権限と有効なclient secretはそのまま使えます。Portalのグループ所有APIキー管理は、この準備後に配備します。構築後のGraph接続・API疎通は、[CM共通接続手順](credential-manager-login.md)で確認します。
 
 Entraのアプリ登録・管理者同意はEntra担当者の権限で行います。Azure SubscriptionのOwnerはAzure RBACの権限です。画像は操作箇所の例です。表示名は用途に合わせ、ID・テナント・APIM名には自社の値を使います。
+
+## paramsから登録用の戻り先を確認する
+
+第1章で用意したparamsの`productName`・`environmentName`・`services.apimInstanceId`・`apiCenterLocation`・`gateway.publicHostName`を使います。`services.apimInstanceId`は準備コマンドが生成した値を保持してください。リポジトリルートで実行します。
+
+```sh
+python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
+```
+
+出力の`apimName`と`credentialManagerRedirectUri`を、以下のアプリ登録に使います。このコマンドはローカルで名前とURIを計算し、Azure資源やEntraアプリを作成しません。出力を保管する場合は同じ環境の`.local/<environment>/evidence/`へ保存します。
+
+撤去後に新しいAPIM識別子を用意した場合も、同じコマンドでURIを再計算します。共用アプリのWeb戻り先のうち、その環境の旧CM URIを新しいURIへ更新してください。Gateway・Portalの公開名が同じなら、それぞれの戻り先、有効なclient secret、権限と同意は保持できます。アプリの作り直しは不要です。
 
 ## AzureとEntraのテナントを決める
 
@@ -45,7 +57,7 @@ Azure Portal右上のアカウントメニューから、Microsoftサインイ�
 | サポートされているアカウントの種類 | 「この組織ディレクトリのみに含まれるアカウント」の単一テナント |
 | リダイレクトURI | 「Web」を選び、下記のCM標準URIを入力 |
 
-`<APIM_NAME>`を配置予定のAPIM名に置き換えます。
+`<APIM_NAME>`を上のコマンドが返した`apimName`に置き換えるか、`credentialManagerRedirectUri`をそのまま入力します。
 
 ```text
 https://authorization-manager.consent.azure-apim.net/redirect/apim/<APIM_NAME>

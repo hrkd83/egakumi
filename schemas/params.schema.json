@@ -280,11 +280,19 @@
           "type": "string",
           "format": "email",
           "minLength": 1
+        },
+        "apimInstanceId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{6}$",
+          "minLength": 6,
+          "maxLength": 6,
+          "description": "APIMの構築識別子です。初回のローカル入力準備で生成して保存し、通常の更新では変更しません。"
         }
       },
       "required": [
         "publisherName",
-        "publisherEmail"
+        "publisherEmail",
+        "apimInstanceId"
       ]
     },
     "gateway": {

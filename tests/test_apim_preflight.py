@@ -7,18 +7,17 @@ Azureの代わりに合成ARM応答を返す。所有している既存APIMは�
 from __future__ import annotations
 
 import copy
-import importlib.util
+import sys
 from pathlib import Path
 import unittest
 
 
 CORE = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("core_apim_preflight", CORE / "scripts/deployment/helpers/apim_preflight.py")
-apim_preflight = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(apim_preflight)
+sys.path.insert(0, str(CORE / "scripts"))
+from deployment.helpers import apim_preflight
 
 SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
-NAME = "apim-test-egakumi"
+NAME = "apim-test-egakumi-abc123"
 RESOURCE_ID = (f"/subscriptions/{SUBSCRIPTION}/resourceGroups/rg-test-egakumi-svc"
                f"/providers/Microsoft.ApiManagement/service/{NAME}")
 VERSION = "2024-05-01"
@@ -31,7 +30,7 @@ AVAILABILITY_PATH = (f"/subscriptions/{SUBSCRIPTION}/providers/Microsoft.ApiMana
 
 def configuration():
     """本物の個人IDを含まない、正規化済み設定の最小例を返す。"""
-    return {"resourceStem": "test-egakumi", "subscriptionId": SUBSCRIPTION,
+    return {"services": {"apimInstanceId": "abc123"}, "resourceStem": "test-egakumi", "subscriptionId": SUBSCRIPTION,
             "resourceGroupNames": {"svc": "rg-test-egakumi-svc"},
             "location": "japaneast", "productName": "egakumi", "environmentName": "test"}
 
@@ -81,6 +80,19 @@ class ApimPreflightTests(unittest.TestCase):
         # 公開APIの確認だけでMicrosoft内部のCM予約まで保証しない。
         self.assertIs(result["credentialManagerInternalReservationVerified"], False)
         return result, transport
+
+    def test_missing_or_invalid_instance_id_stops_before_any_arm_request(self):
+        for value in (None, "", "ABC123", "abc12", "abc1234", "abc-12", 123456):
+            with self.subTest(value=value):
+                config = configuration()
+                if value is None:
+                    del config["services"]["apimInstanceId"]
+                else:
+                    config["services"]["apimInstanceId"] = value
+                transport = FakeTransport([])
+                with self.assertRaisesRegex(ValueError, "apimInstanceId"):
+                    apim_preflight.verify_apim_name(config, transport)
+                self.assertEqual(transport.calls, [])
 
     def test_new_name_checks_service_tombstone_then_read_only_name_query(self):
         """本体も削除履歴も無く、名前照会が成功した時だけ新規構築へ進める。"""

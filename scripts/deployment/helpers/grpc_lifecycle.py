@@ -22,6 +22,7 @@ import stat
 import time
 from urllib.parse import parse_qsl, unquote, urlparse
 
+from .apim_naming import apim_name
 from .paths import local_paths
 
 
@@ -102,13 +103,13 @@ def _ok(response: dict, operation: str, allowed=(200,)) -> dict:
 
 
 def apim_name_matches(config: dict, name: str) -> bool:
-    """環境と製品から決めた APIM 名一つだけを認める。
+    """環境・製品・構築世代から決めた APIM 名一つだけを認める。
 
-    Bicep と同じ「apim-環境名-プロダクト名」を組み立て、文字列全体を照合する。
-    接頭辞だけの一致や、以前のランダム末尾・競合回避用の別名は受け付けない。
+    Bicep と同じ確定名を組み立て、文字列全体を照合する。
+    接頭辞だけの一致や、別の構築世代の名前は受け付けない。
     呼出側ではこの名前に加え、Subscription と svc RG の完全 ID も照合する。
     """
-    expected = "apim-" + config["resourceStem"]
+    expected = apim_name(config)
     return isinstance(name, str) and name.casefold() == expected.casefold()
 
 

@@ -26,6 +26,8 @@ python3 scripts/deployment/lifecycle.py validate
 
 `valid: true`、導出された5RG、公開APIの設定状態を確認します。`WORKFORCE_CONFIG`はup/downが読むparamsの入口です。個人用・過去試験用の`.local/<environment>/state/`内の合成設定や、他人のID・URLを含む設定を使いません。
 
+paramsの`services.apimInstanceId`は第1章で保存した値を使います。第2章で算出したCM戻り先がEntraに保存されていることを確認してください。`azd up`や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
+
 全体構築には`publishApis:true`が必要です。test・productionの公開例はtrueですが、既存のlocal paramsは自動変更しません。falseのまま`azd up`を実行すると、`preup`の冒頭で課金資源の作成前に停止します。基盤だけを準備する場合は、同じ入力で`azd provision`を使います。
 
 第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章のCore client secretを安全な保管先から非表示入力できる状態にし、第3章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。

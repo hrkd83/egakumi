@@ -1,7 +1,7 @@
 import { Kysely } from "kysely";
 import { getAuthDatabase } from "../lib/auth-database.ts";
 import { getSqlEnvironment } from "../lib/auth-environment.ts";
-import { migrateAuth, sqlFailure } from "./auth-migrations.ts";
+import { migrateAuth, observeAuthSchemaBeforeMigration, sqlFailure } from "./auth-migrations.ts";
 import { grantRuntimeAccess, parseRuntimeIdentity } from "./auth-runtime-grants.ts";
 import { configureApiKeyGroups, readApiKeyGroupConfiguration } from "./api-key-group-config.ts";
 import { configureApiKeyAdministration, readApiKeyAdministrationConfiguration } from "./api-key-administration-config.ts";
@@ -21,6 +21,7 @@ async function main() {
   }
   const database = new Kysely<Record<string, unknown>>(getAuthDatabase());
   try {
+    console.log(JSON.stringify(await observeAuthSchemaBeforeMigration(database)));
     const files = await migrateAuth(database);
     if (keyGroups) await configureApiKeyGroups(database, keyGroups.tenantId, keyGroups.groups);
     if (administration) await configureApiKeyAdministration(database, administration);

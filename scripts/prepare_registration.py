@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Azure資源を作る前に、Entra登録に必要な名前と戻り先URIを計算する。
 
-対象サブスクリプション、プロダクト名、環境名、API Centerリージョン、
-Gatewayの公開FQDNを入力し、基盤の予定名と戻り先をJSONで返す。
+保護されたローカルparamsのプロダクト名、環境名、保存済みAPIM識別子、
+API Centerリージョン、Gatewayの公開FQDNから、予定名と戻り先をJSONで返す。
 クライアントの名前・戻り先は独立リポジトリの設定で管理する。
 名前の計算は実構築と同じBicepの式をローカル実行して行い、Python独自の
 計算で異なる名前になることを避ける。Bicep CLIは事前に必要である。
@@ -24,49 +24,75 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import stat
 import tempfile
-import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from deployment.helpers.apim_naming import apim_instance_id, apim_name
+from deployment.helpers.paths import LocalPaths, private_output
+
 NAME = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 REGION = re.compile(r"[a-z][a-z0-9]+")
 
 
-def registration_inputs(
-    subscription_id: str,
-    product_name: str,
-    environment_name: str,
-    api_center_location: str,
-    public_host_name: str = "gateway.example.com",
-) -> dict:
-    """命名に必要な公開入力を検査し、Bicepへ渡す環境変数の辞書を作る。"""
-    if not isinstance(subscription_id, str):
-        raise ValueError("subscription-id must be a non-zero canonical GUID")
+def load_registration_configuration(path: Path | str, repository: Path | None = None) -> dict:
+    """明示された保護paramsだけを読み、参照先configや秘密ファイルを開かない。"""
+    root = ROOT if repository is None else Path(repository).resolve()
+    target = Path(path).expanduser()
+    target = private_output(target if target.is_absolute() else root / target, root)
     try:
-        parsed = uuid.UUID(subscription_id)
-    except (ValueError, AttributeError):
-        raise ValueError("subscription-id must be a non-zero canonical GUID") from None
-    if not parsed.int or str(parsed) != subscription_id.lower():
-        raise ValueError("subscription-id must be a non-zero canonical GUID")
-    for label, value, limit in (("product-name", product_name, 24), ("environment-name", environment_name, 12)):
+        relative = target.relative_to(root)
+    except ValueError:
+        raise ValueError("Use .local/<environment>/params.local.json for registration preparation") from None
+    if (len(relative.parts) != 3 or relative.parts[0] != ".local"
+            or relative.parts[2] != "params.local.json"):
+        raise ValueError("Use .local/<environment>/params.local.json for registration preparation")
+    paths = LocalPaths(root, relative.parts[1])
+    paths.checked(target)
+    if not target.is_file() or (os.name != "nt" and stat.S_IMODE(target.stat().st_mode) != 0o600):
+        raise ValueError("Registration parameters require a regular owner-only file (chmod 600)")
+    for directory in (paths.root, root / ".local"):
+        if os.name != "nt" and stat.S_IMODE(directory.stat().st_mode) != 0o700:
+            raise ValueError("Registration parameter directories require owner-only permissions (chmod 700)")
+    try:
+        document = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("Registration parameters could not be read") from None
+    if not isinstance(document, dict) or document.get("environmentName") != paths.environment:
+        raise ValueError("Registration parameters must match their local environment directory")
+    return document
+
+
+def registration_inputs(config: dict) -> dict:
+    """命名に必要な項目だけを検査する。Entra登録前の全構成検証は不要。"""
+    if not isinstance(config, dict):
+        raise ValueError("Registration preparation requires a configuration object")
+    product_name = config.get("productName")
+    environment_name = config.get("environmentName")
+    for label, value, limit in (("productName", product_name, 24), ("environmentName", environment_name, 12)):
         if not isinstance(value, str) or len(value) > limit or not NAME.fullmatch(value):
             raise ValueError(f"{label} must use lowercase letters, digits and single internal hyphens (maximum {limit} characters)")
-    # 実構築と同じ名前を必ず使います。長い入力を切り詰めて別名を作るのではなく、
-    # Broker CA の ca-<stem>-credentials が32文字以内になる入力を事前に選んでもらいます。
-    # このstem上限ならKey Vaultとハイフンを除くStorage名の制約も満たします。
     stem = f"{environment_name}-{product_name}"
     if len(stem) > 17:
-        raise ValueError("environment-name and product-name combined as environment-product must fit within 17 characters for the credentials Container App; shorten either name")
+        raise ValueError("environmentName-productName must fit within 17 characters for the credentials Container App; shorten either name")
+    identifier = apim_instance_id(config)
+    # 同じ保存済み入力から求めることを命名ヘルパーとも照合する。
+    apim_name({"resourceStem": stem, "services": {"apimInstanceId": identifier}})
+    api_center_location = config.get("apiCenterLocation")
     if not isinstance(api_center_location, str) or not REGION.fullmatch(api_center_location):
-        raise ValueError("api-center-location must be an Azure region code")
+        raise ValueError("apiCenterLocation must be an Azure region code")
+    gateway = config.get("gateway")
+    public_host_name = gateway.get("publicHostName") if isinstance(gateway, dict) else None
     if (not isinstance(public_host_name, str) or len(public_host_name) > 253
             or len(public_host_name.split('.')) < 2
             or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part)
                    for part in public_host_name.split('.'))):
-        raise ValueError("public-host-name must be the approved lowercase public DNS hostname")
+        raise ValueError("gateway.publicHostName must be the approved lowercase public DNS hostname")
     return {
         "WORKFORCE_REGISTRATION_RESOURCE_STEM": stem,
+        "WORKFORCE_REGISTRATION_APIM_INSTANCE_ID": identifier,
         "WORKFORCE_REGISTRATION_API_CENTER_LOCATION": api_center_location,
         "WORKFORCE_REGISTRATION_PUBLIC_HOST_NAME": public_host_name,
     }
@@ -83,16 +109,9 @@ def bicep_executable() -> str:
     raise ValueError("Install the Bicep CLI or set BICEP_CLI to its installed executable; no Azure login is needed")
 
 
-def prepare_registration(
-    subscription_id: str,
-    product_name: str,
-    environment_name: str,
-    api_center_location: str = "eastus",
-    public_host_name: str = "gateway.example.com",
-) -> dict:
-    """実構築と同じBicep式をローカル実行し、確定した名前・リダイレクトURIを返す。"""
-    public_inputs = registration_inputs(subscription_id, product_name, environment_name,
-                                        api_center_location, public_host_name)
+def prepare_registration(config: dict) -> dict:
+    """保存済み命名入力をBicepで計算し、登録用の名前とURIを返す。"""
+    public_inputs = registration_inputs(config)
     executable = bicep_executable()
     environment = {**os.environ, **public_inputs}
     # 単独配布の.NET版CLIは、実行時に書込可能な展開先を必要とする場合がある。
@@ -122,21 +141,15 @@ def prepare_registration(
 def main(argv=None) -> int:
     """登録前の公開入力を受け取り、用途を分けた戻り先をJSON表示する。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--subscription-id", required=True)
-    parser.add_argument("--product-name", required=True)
-    parser.add_argument("--environment-name", required=True)
-    parser.add_argument("--api-center-location", default="eastus")
-    parser.add_argument("--public-host-name", default="gateway.example.com",
-                        help="API Gatewayの公開FQDN。例: gateway.example.com")
+    parser.add_argument("--config", required=True,
+                        help=".local/<environment>/params.local.json")
     args = parser.parse_args(argv)
     try:
-        names = prepare_registration(args.subscription_id, args.product_name,
-                                     args.environment_name, args.api_center_location,
-                                     args.public_host_name)
+        names = prepare_registration(load_registration_configuration(args.config))
         print(json.dumps(names, ensure_ascii=False, indent=2))
         return 0
-    except ValueError as error:
-        print("Registration preparation failed: " + str(error), file=sys.stderr)
+    except (ValueError, OSError):
+        print("Registration preparation failed: check the protected local parameters, naming inputs and Bicep CLI; no Azure access was performed.", file=sys.stderr)
         return 1
 
 

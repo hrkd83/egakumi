@@ -259,13 +259,14 @@ class CleanupFixture:
         self.workspace_id = self.monitor_rg + "/providers/Microsoft.OperationalInsights/workspaces/law-test-egakumi"
         self.state = {
             "subscriptionId": sub, "azureTenantId": self.configuration["azureTenantId"], "resourceStem": "test-egakumi",
+            "apimInstanceId": "abc123",
             "resourceGroupNames": groups,
             "storage": {"collectJapan": {"id": accounts[0]}, "collectFoundry": {"id": accounts[1]}, "immutabilityPolicyIds": self.policy_ids},
             "monitoring": {"workspaceId": self.workspace_id},
             "serviceResourceIds": {
                 "keyVault": self.svc_rg + "/providers/Microsoft.KeyVault/vaults/kv-test-egakumi",
                 "foundry": self.svc_rg + "/providers/Microsoft.CognitiveServices/accounts/aif-test-egakumi",
-                "apim": self.svc_rg + "/providers/Microsoft.ApiManagement/service/apim-test-egakumi",
+                "apim": self.svc_rg + "/providers/Microsoft.ApiManagement/service/apim-test-egakumi-abc123",
             },
             "serviceLocations": {"keyVault": "japaneast", "foundry": "eastus2", "apim": "japaneast"},
             "outputs": {"names": {"apiCenter": "apic-test-egakumi"}},

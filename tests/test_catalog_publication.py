@@ -9,6 +9,7 @@ from test_catalog_descriptions import public_contract
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment.helpers.catalog_descriptions import describe_api
 from catalog_publication import finalize_descriptions
+from deployment.helpers.apim_naming import apim_name
 
 
 class MetadataTransport:
@@ -46,7 +47,7 @@ class CatalogPublicationTests(unittest.TestCase):
         self.api = self.config["apiDefinitions"][0]
         self.api.update(apiType="grpc", path="", productId="tool-users",
                         grpc={"definition": 'syntax = "proto3"; package fixture.v1; service Probe { rpc Echo (X) returns (X); }'})
-        name = "apim-" + self.config["resourceStem"]
+        name = apim_name(self.config)
         self.apim_id = (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/"
                         f"{self.config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service/{name}")
         self.api_id = self.apim_id + "/apis/" + self.api["name"]

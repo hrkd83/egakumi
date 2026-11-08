@@ -27,6 +27,7 @@ from uuid import UUID
 
 from .configuration import API_NAME, load_configuration
 from .grpc_lifecycle import apim_name_matches
+from .apim_naming import apim_instance_id, apim_name
 from .credential_pools import resource_names
 from .portal_resources import resource_names as portal_resource_names
 
@@ -131,6 +132,8 @@ def _validate_state(configuration: dict, state: Mapping[str, Any]) -> dict:
     for key in ("subscriptionId", "azureTenantId", "resourceStem"):
         if not _same(state.get(key), configuration[key]):
             _error("state-environment-mismatch", "配備記録が対象の環境・テナント・サブスクリプションと一致しません。")
+    if state.get("apimInstanceId") != apim_instance_id(configuration):
+        _error("state-environment-mismatch", "配備記録のAPIM構築識別子が今回の設定と一致しません。")
     if state.get("resourceGroupNames") != configuration["resourceGroupNames"]:
         _error("state-environment-mismatch", "配備記録の5つのResource Groupが対象環境と一致しません。")
 
@@ -1190,7 +1193,7 @@ def _credential_apps_preflight(configuration, state, transport):
         _error("credential-state-mismatch", "認証窓口の配備記録が今回の環境と一致しません。")
     if foundation is not None and (not isinstance(foundation, Mapping)
             or foundation and (foundation.get("resourceGroup") != service_group
-            or foundation.get("apimName") != "apim-" + stem
+            or foundation.get("apimName") != apim_name(configuration)
             or foundation.get("environmentName") != "cae-" + stem)):
         _error("credential-state-mismatch", "Gatewayの共通基盤が今回の環境と一致しません。")
     targets = [("jobs", names['reconcileJob']), ("jobs", names['schemaJob']),

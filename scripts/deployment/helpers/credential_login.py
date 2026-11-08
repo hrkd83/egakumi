@@ -6,6 +6,7 @@ import json
 from xml.sax.saxutils import escape
 
 from .paths import REPOSITORY
+from .apim_naming import apim_name
 from .credential_pools import physical_providers, logical_profiles
 
 API_ID = "credential-manager-login"
@@ -41,12 +42,11 @@ def settings(configuration: dict) -> dict | None:
                  for provider in physical_providers(configuration) if provider["sourceName"] in names]
     profiles = [{"name": name, "tenantId": profile["tenantId"]}
                 for name, profile in logical_profiles(configuration).items()]
-    stem = configuration["resourceStem"]
     group = configuration["resourceGroupNames"]["svc"]
     return {**login, "publicOrigin": "https://" + configuration["gateway"]["publicHostName"],
             "azureTenantId": configuration["azureTenantId"],
             "keyHeader": configuration["gateway"]["authentication"]["subscriptionKeyHeader"],
-            "apimResourceId": f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{group}/providers/Microsoft.ApiManagement/service/apim-{stem}",
+            "apimResourceId": f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{group}/providers/Microsoft.ApiManagement/service/{apim_name(configuration)}",
             "profiles": profiles, "providers": providers}
 
 

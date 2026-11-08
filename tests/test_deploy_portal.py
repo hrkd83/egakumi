@@ -21,6 +21,7 @@ def fixture():
         'subscriptionId': '11111111-1111-4111-8111-111111111111',
         'azureTenantId': '22222222-2222-4222-8222-222222222222',
         'resourceStem': 'test-sample', 'location': 'japaneast',
+        'services': {'apimInstanceId': 'abc123'},
         'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw'},
         'network': {'subnetPrefixes': {'aca': '10.20.0.0/26'}},
         'tags': {}, 'productName': 'sample', 'environmentName': 'test',
@@ -29,10 +30,13 @@ def fixture():
                                   'oauthTenantId': '44444444-4444-4444-8444-444444444444'}],
         'portal': {'publicHostName': 'portal.example.com'},
         'gateway': {'publicHostName': 'gateway.example.com'},
+        'apiDefinitions': [],
     }
     identities = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/rg-test-sample-id/providers/Microsoft.ManagedIdentity/userAssignedIdentities/'
     state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
+    state['apimInstanceId'] = 'abc123'
     state['outputs'] = {
+        'names': {'apim': 'apim-test-sample-abc123'},
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
@@ -87,8 +91,22 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(values['acaPrefix'], '10.20.0.0/26')
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
-        self.assertEqual(values['apimName'], 'apim-test-sample')
+        self.assertEqual(values['apimName'], 'apim-test-sample-abc123')
         self.assertEqual(state, original)
+
+    def test_other_or_missing_apim_instance_and_old_name_cannot_target_portal(self):
+        for change in ('missing-id', 'other-id', 'old-name', 'other-name'):
+            with self.subTest(change=change):
+                config, state = fixture()
+                if change == 'missing-id':
+                    del state['apimInstanceId']
+                elif change == 'other-id':
+                    state['apimInstanceId'] = 'def456'
+                else:
+                    state['outputs']['names']['apim'] = ('apim-test-sample'
+                        if change == 'old-name' else 'apim-test-sample-def456')
+                with self.assertRaisesRegex(ValueError, 'state differs|APIM name differs'):
+                    portal.deployment_inputs(config, state)
 
     def test_gateway_origin_uses_the_selected_public_domain_without_a_shared_key(self):
         for host in ('gateway.test.example.com', 'gateway.production.example.com'):

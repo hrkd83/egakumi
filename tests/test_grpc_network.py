@@ -51,13 +51,14 @@ class GrpcBootstrapTests(unittest.TestCase):
         self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
             "azureTenantId": "22222222-2222-4222-8222-222222222222", "resourceStem": "test-fixture",
             "location": "japaneast", "environmentName": "test",
+            "services": {"apimInstanceId": "abc123"},
             "resourceGroupNames": {"svc": "rg-test-fixture-svc"},
             "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True,
                 "publicHostName": "fixture.example.com", "publicPort": 8443, "backendPort": 443}},
             "certificate": {"certificateName": "gateway-tls"}, "apiDefinitions": []}
         self.client_id = "33333333-3333-4333-8333-333333333333"
         scope = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/rg-test-fixture-svc/providers/"
-        self.apim_id = scope + "Microsoft.ApiManagement/service/apim-test-fixture"
+        self.apim_id = scope + "Microsoft.ApiManagement/service/apim-test-fixture-abc123"
         self.vault_id = scope + "Microsoft.KeyVault/vaults/kv-test-fixture"
         self.vault = "kv-test-fixture"
         self.secret_uri = f"https://{self.vault}.vault.azure.net/secrets/gateway-tls"
@@ -68,7 +69,7 @@ class GrpcBootstrapTests(unittest.TestCase):
             "cleanup": {"serviceResourceIds": {"apim": self.apim_id, "keyVault": self.vault_id}}}
         self.desired = {"type": "Proxy", "hostName": "fixture.example.com", "keyVaultId": self.secret_uri,
             "identityClientId": None, "defaultSslBinding": True, "negotiateClientCertificate": False}
-        self.other = {"type": "Proxy", "hostName": "apim-test-fixture.azure-api.net", "defaultSslBinding": True}
+        self.other = {"type": "Proxy", "hostName": self.apim_id.rsplit("/", 1)[-1] + ".azure-api.net", "defaultSslBinding": True}
 
     def resource(self, domains=None, **properties):
         return {"etag": '"fixture-etag"', "properties": {"virtualNetworkType": "Internal",
@@ -91,9 +92,10 @@ class GrpcBootstrapTests(unittest.TestCase):
 
     def test_apim_name_matches_owned_service_case_insensitively(self):
         """所有するサービス名だけを認め、別名・パス・クエリーは拒否する。"""
-        self.assertTrue(grpc.apim_name_matches(self.config, "APIM-TEST-FIXTURE"))
-        for candidate in ("apim-unrelated-service", "apim-test-fixture/apis/other",
-                          "apim-test-fixture?x=1", None):
+        self.assertTrue(grpc.apim_name_matches(self.config, "APIM-TEST-FIXTURE-ABC123"))
+        for candidate in ("apim-unrelated-service", "apim-test-fixture", "apim-test-fixture-def456",
+                          "apim-test-fixture-abc123/apis/other",
+                          "apim-test-fixture-abc123?x=1", None):
             with self.subTest(candidate=candidate):
                 self.assertFalse(grpc.apim_name_matches(self.config, candidate))
 
@@ -320,7 +322,7 @@ class GrpcBootstrapTests(unittest.TestCase):
         self.assertEqual([call["method"] for call in transport.calls], ["GET"])
 
     def test_async_redirect_other_host_or_service_never_followed(self):
-        for destination in ("https://evil.example.com/operation", "https://management.azure.com" + self.apim_id.replace("apim-test-fixture", "apim-other-fixture") + "/operationresults/x"):
+        for destination in ("https://evil.example.com/operation", "https://management.azure.com" + self.apim_id.replace("apim-test-fixture-abc123", "apim-other-fixture") + "/operationresults/x"):
             transport = Transport([])
             with self.assertRaisesRegex(ValueError, "outside this service"):
                 grpc._poll_operation(ok(code=202, headers={"Location": destination}), self.apim_id, transport,
