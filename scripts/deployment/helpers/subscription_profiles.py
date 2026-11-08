@@ -6,6 +6,8 @@ from urllib.parse import parse_qsl, quote, urlsplit
 from .credential_image import checked
 
 APIM_API = '2024-05-01'
+# Native MCPを含むAPI一覧は、API公開と同じ管理API版で照合します。
+API_INVENTORY_VERSION = '2025-09-01-preview'
 PREFIX = 'core-subscription-profile-'
 SECRET_NAME = PREFIX + 'key'
 DEFAULTS = {'enabled': 'false', 'url': 'https://profile.invalid', 'secret': 'profile-not-configured'}
@@ -98,7 +100,7 @@ def _profile_policy_ready(value):
 def verify_inline_profiles(apim_id, transport, api_definitions):
     """設定由来の全APIを、HTTP等のAPI scopeとWSのonHandshake scopeで検証する。"""
     expected = _managed_apis(api_definitions)
-    url = apim_id + '/apis?api-version=' + APIM_API
+    url = apim_id + '/apis?api-version=' + API_INVENTORY_VERSION
     seen, pages = set(), set()
     for _ in range(100):
         if url in pages:
@@ -136,7 +138,8 @@ def verify_inline_profiles(apim_id, transport, api_definitions):
             if (parsed is None or parsed.scheme != 'https' or parsed.hostname != 'management.azure.com'
                     or parsed.port not in (None, 443) or parsed.username is not None or parsed.password is not None
                     or parsed.fragment or parsed.path.casefold() != (apim_id + '/apis').casefold()
-                    or [value for key, value in parse_qsl(parsed.query) if key == 'api-version'] != [APIM_API]):
+                    or [value for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                        if key == 'api-version'] != [API_INVENTORY_VERSION]):
                 raise ValueError
         except ValueError:
             raise ValueError('Unexpected API inventory continuation') from None

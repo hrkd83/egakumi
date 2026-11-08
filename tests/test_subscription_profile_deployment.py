@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -21,7 +22,7 @@ APIM = '/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-te
 
 
 class ProfileTransport:
-    """実Azureへ接続せず、未作成・既存・読取拒否・競合を再現します。"""
+    """実Azureへ接続せず、API版ごとのMCP一覧差と未作成・競合を再現します。"""
     def __init__(self, inventory=None):
         self.inventory = copy.deepcopy(inventory or {})
         self.calls = []
@@ -32,7 +33,17 @@ class ProfileTransport:
         self.calls.append((method, path, copy.deepcopy(body), headers))
         key = path.split('?', 1)[0]
         if method == 'GET':
-            return copy.deepcopy(self.inventory.get(key, {'statusCode': 404}))
+            response = copy.deepcopy(self.inventory.get(path, self.inventory.get(key, {'statusCode': 404})))
+            if urlsplit(path).path.casefold() == (APIM + '/apis').casefold():
+                version = parse_qs(urlsplit(path).query, keep_blank_values=True).get('api-version')
+                if version not in (['2024-05-01'], ['2025-09-01-preview']):
+                    return {'statusCode': 400}
+                rows = response.get('body', {}).get('value')
+                if version == ['2024-05-01'] and isinstance(rows, list):
+                    # 安定版一覧はnative MCPを返さず、HTTP/WS等の既存APIは返す。
+                    response['body']['value'] = [row for row in rows
+                        if not isinstance(row, dict) or row.get('properties', {}).get('type') != 'mcp']
+            return response
         if method != 'PUT':
             raise AssertionError('Unexpected method in profile deployment')
         if self.put_status in (200, 201, 202):
@@ -310,11 +321,76 @@ class SubscriptionProfileSettingsTests(unittest.TestCase):
         for name in generated:
             self.assertEqual(targets[name.casefold()], (name, 'mcp', False))
 
+    def test_preview_inventory_includes_generated_mcp_and_keeps_stable_handshake_policy_reads(self):
+        definitions = [
+            {'name': 'fixture-rest', 'apiType': 'http', 'mcp': {'name': 'fixture-tools'}},
+            {'name': 'fixture-stream', 'apiType': 'websocket'},
+        ]
+        transport = ProfileTransport(ready_inventory(definitions=definitions))
+        stable = transport.request('GET', APIM + '/apis?api-version=2024-05-01')
+        preview = transport.request('GET', APIM + '/apis?api-version=2025-09-01-preview')
+        self.assertEqual([row['name'] for row in stable['body']['value']], ['fixture-rest', 'fixture-stream'])
+        self.assertEqual([row['name'] for row in preview['body']['value']], ['fixture-rest', 'fixture-tools', 'fixture-stream'])
+        transport.calls.clear()
+        result = profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        self.assertTrue(result['enabled'])
+        inventory_reads = [path for method, path, *_ in transport.calls
+                           if method == 'GET' and urlsplit(path).path == APIM + '/apis']
+        self.assertEqual(inventory_reads, [APIM + '/apis?api-version=2025-09-01-preview'])
+        policy_reads = [path for method, path, *_ in transport.calls if '/policies/' in path]
+        self.assertEqual(policy_reads, [
+            policy_path('fixture-rest', 'http') + '?api-version=2024-05-01&format=rawxml',
+            policy_path('fixture-stream', 'websocket') + '?api-version=2024-05-01&format=rawxml',
+        ])
+        ordinary_requests = [path for _, path, *_ in transport.calls if urlsplit(path).path != APIM + '/apis']
+        self.assertTrue(all(parse_qs(urlsplit(path).query)['api-version'] == ['2024-05-01']
+                            for path in ordinary_requests))
+
+    def test_missing_mcp_in_preview_inventory_still_prevents_activation(self):
+        definitions = [{'name': 'fixture-rest', 'mcp': {'name': 'fixture-tools'}}]
+        inventory = ready_inventory(definitions=definitions)
+        inventory[APIM + '/apis']['body']['value'].pop()
+        transport = ProfileTransport(inventory)
+        with self.assertRaisesRegex(ValueError, 'Core API inventory is incomplete'):
+            profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_later_preview_page_mcp_is_required_before_activation(self):
+        definitions = [
+            {'name': 'fixture-rest', 'apiType': 'http', 'mcp': {'name': 'fixture-tools'}},
+            {'name': 'fixture-stream', 'apiType': 'websocket'},
+        ]
+        inventory = ready_inventory(definitions=definitions)
+        rows = inventory[APIM + '/apis']['body']['value']
+        next_page = 'https://management.azure.com' + APIM + '/apis?api-version=2025-09-01-preview&$skip=2'
+        inventory[APIM + '/apis']['body'] = {'value': [rows[0], rows[2]], 'nextLink': next_page}
+        inventory[next_page] = {'statusCode': 200, 'body': {'value': [rows[1]]}}
+        transport = ProfileTransport(inventory)
+        self.assertTrue(profiles.activate_profile_settings(APIM, transport, definitions, timeout=0)['enabled'])
+        second = next(i for i, call in enumerate(transport.calls) if call[1] == next_page)
+        activated = next(i for i, call in enumerate(transport.calls) if call[0] == 'PUT')
+        self.assertLess(second, activated)
+        self.assertIn(policy_path('fixture-stream', 'websocket') + '?api-version=2024-05-01&format=rawxml',
+                      [call[1] for call in transport.calls])
+
+    def test_inventory_continuation_rejects_stable_or_duplicate_version_before_activation(self):
+        for query in ('api-version=2024-05-01',
+                      'api-version=2025-09-01-preview&api-version=',
+                      'api-version=2025-09-01-preview&api-version=2025-09-01-preview'):
+            with self.subTest(query=query):
+                inventory = ready_inventory()
+                next_page = 'https://management.azure.com' + APIM + '/apis?' + query + '&$skip=1'
+                inventory[APIM + '/apis']['body']['nextLink'] = next_page
+                transport = ProfileTransport(inventory)
+                with self.assertRaisesRegex(ValueError, 'Unexpected API inventory continuation'):
+                    profiles.activate_profile_settings(APIM, transport, TARGET_APIS, timeout=0)
+                self.assertFalse(any(call[0] == 'PUT' or call[1] == next_page for call in transport.calls))
+
     def test_all_managed_pages_are_checked_before_activation(self):
         definitions = [*TARGET_APIS, {'name': 'fixture-stream', 'apiType': 'websocket'}]
         inventory = ready_inventory(definitions=definitions)
         rows = inventory[APIM + '/apis']['body']['value']
-        next_page = 'https://management.azure.com' + APIM + '/apis?api-version=' + profiles.APIM_API + '&$skip=1'
+        next_page = 'https://management.azure.com' + APIM + '/apis?api-version=' + profiles.API_INVENTORY_VERSION + '&$skip=1'
         inventory[APIM + '/apis']['body'] = {'value': rows[:1], 'nextLink': next_page}
 
         class PagedTransport(ProfileTransport):
