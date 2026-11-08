@@ -82,7 +82,8 @@ def _same(left: Any, right: Any) -> bool:
 
 
 def _request(transport: Transport, method: str, resource_id: str, api: str,
-             *, headers: dict | None = None, path: str | None = None) -> dict:
+             *, headers: dict | None = None, path: str | None = None,
+             allow_apim_service_locked: bool = False) -> dict:
     """指定API版でARM要求し、想定外の状態や結果を撤去エラーへ変換する。"""
     try:
         response = transport.request(method, path or f"{resource_id}?api-version={api}",
@@ -93,9 +94,16 @@ def _request(transport: Transport, method: str, resource_id: str, api: str,
     if not isinstance(response, Mapping) or isinstance(response.get("statusCode"), bool) or not isinstance(response.get("statusCode"), int):
         _error("invalid-response", "撤去操作のHTTP結果を確認できません。", resource_id)
     status = response["statusCode"]
+    body = response.get("body")
+    # 親APIMの既知の一時ロックだけを、所有再確認付きの有限待機へ渡す。
+    # 任意の409や子providerの競合を再試行へ広げず、外部エラー本文も返さない。
+    if (allow_apim_service_locked and method == "DELETE" and api == API["apim"]
+        and status == 409 and isinstance(body, Mapping)
+        and isinstance(body.get("error"), Mapping)
+        and body["error"].get("code") == "ServiceLocked"):
+        return {"statusCode": 409, "body": {}, "headers": {}}
     if status not in (200, 201, 202, 204, 404):
         _error("azure-request-failed", f"撤去操作がHTTP {status}で失敗しました。削除済みとは判定していません。", resource_id)
-    body = response.get("body")
     if body is not None and not isinstance(body, Mapping):
         _error("invalid-response", "撤去操作の応答形式を確認できません。", resource_id)
     return {"statusCode": status, "body": dict(body or {}), "headers": response.get("headers") or {}}
@@ -479,6 +487,24 @@ def _delete_credential_entity(entity: dict, transport: Transport, *, refresh: bo
     """
     resource_id, etag = entity["id"], entity["etag"]
     concurrency = {}
+    if entity["kind"] == "provider":
+        # 中断したdownを再開すると、既に一覧から消えたproviderの個別GETだけが
+        # 200を返す場合がある。再DELETEでサービスの遷移を繰り返さない。
+        apim_id = resource_id.rsplit("/", 2)[0]
+        listed = _credential_child_inventory(apim_id, "authorizationProviders", transport)
+        if resource_id.casefold() not in {item.casefold() for item in listed}:
+            read = _request(transport, "GET", resource_id, API["apim"])
+            resource = _expect_read(read, resource_id)
+            if resource is None:
+                return {"resourceId": resource_id, "status": "absent", "httpStatus": 404,
+                        "deletionVerified": True, "deleteRequested": False}
+            identity = _credential_provider_identity(resource_id, resource)
+            if any(key not in identity or identity[key] != value for key, value in entity["identity"].items()):
+                _error("credential-provider-metadata-changed", "一覧から消えたOAuth providerの公開識別情報が変わったためAPIMを削除しません。", resource_id)
+            return {"resourceId": resource_id, "status": "list-absent-individual-get-unresolved",
+                    "httpStatus": 200, "individualGetStatus": 200, "deletionVerified": False,
+                    "listAbsenceVerified": True, "identityRevalidated": True,
+                    "parentDeletionRequired": True, "deleteRequested": False}
     if refresh or etag is None:
         response = _request(transport, "GET", resource_id, API["apim"])
         resource = _expect_read(response, resource_id)
@@ -1070,6 +1096,23 @@ def _delete_portal_before_network(configuration: dict, targets: dict, transport:
     return result
 
 
+def _apim_deleting(configuration: dict, resource_id: str, service: Mapping) -> bool:
+    """初回と再試行の両方でAPIMの所有を照合し、削除中かだけを返す。"""
+    tags = service.get("tags") or {}
+    location = str(service.get("location", "")).replace(" ", "").lower()
+    if (not _same(service.get("id"), resource_id)
+        or not _same(service.get("name"), resource_id.rsplit("/", 1)[-1])
+        or str(service.get("type", "")).lower() != "microsoft.apimanagement/service"
+        or location != configuration["location"].lower()
+        or not isinstance(tags, Mapping)
+        or tags.get("product") != configuration["productName"]
+        or tags.get("environment") != configuration["environmentName"]):
+        _error("apim-owner-mismatch", "APIMのID・種類・region・所有タグを確認できないため削除しません。", resource_id)
+    properties = service.get("properties")
+    return (isinstance(properties, Mapping)
+            and str(properties.get("provisioningState", "")).lower() == "deleting")
+
+
 def _delete_apim_before_network(configuration: dict, current: dict, transport: Transport, *,
                                 max_checks: int, wait_seconds: float,
                                 sleep: Callable[[float], None]) -> dict:
@@ -1106,33 +1149,43 @@ def _delete_apim_before_network(configuration: dict, current: dict, transport: T
             result["credentialProviders"] = [{"resourceId": provider_id, "status": "parent-absent",
                 "deletionVerified": False, "parentDeletionVerified": True, "deleteRequested": False} for provider_id in provider_ids]
         return result
-    tags = service.get("tags") or {}
-    # ARMはregionをjapaneastでもJapan Eastでも返す。表示上の空白だけを
-    # 取り除いて比較し、別region・別ID・別環境の同名資源は受け入れない。
-    location = str(service.get("location", "")).replace(" ", "").lower()
-    if (not _same(service.get("id"), resource_id)
-        or not _same(service.get("name"), resource_id.rsplit("/", 1)[-1])
-        or str(service.get("type", "")).lower() != "microsoft.apimanagement/service"
-        or location != configuration["location"].lower()
-        or not isinstance(tags, Mapping)
-        or tags.get("product") != configuration["productName"]
-        or tags.get("environment") != configuration["environmentName"]):
-        _error("apim-owner-mismatch", "APIMのID・種類・region・所有タグを確認できないため削除しません。", resource_id)
-    properties = service.get("properties")
-    already_deleting = (isinstance(properties, Mapping)
-                        and str(properties.get("provisioningState", "")).lower() == "deleting")
+    already_deleting = _apim_deleting(configuration, resource_id, service)
     # 所有照合はDeletingでも省略しない。明確に削除中と読めた場合だけ再DELETEを
     # 避ける。Creating/Failedや状態未返却の部分構築は、通常どおり削除を要求する。
     provider_results = []
     if not already_deleting:
         provider_results = _delete_credential_providers(provider_ids, transport, max_checks=max_checks,
             wait_seconds=wait_seconds, sleep=sleep)
-        _request(transport, "DELETE", resource_id, API["apim"])
-    _wait_absent(transport, resource_id, API["apim"], max_checks=max_checks,
-                 wait_seconds=wait_seconds, sleep=sleep)
+    pending_delete, delete_requested, locked = already_deleting, False, 0
+    # ServiceLockedはDELETEが拒否された場合だけ再試行する。CM掃除は繰り返さず、
+    # 既存のGET回数・待機間隔の枠内で所有を再確認する。受付後やDeleting後はGETのみ。
+    for attempt in range(max_checks):
+        was_locked = False
+        if not pending_delete:
+            response = _request(transport, "DELETE", resource_id, API["apim"],
+                                allow_apim_service_locked=True)
+            delete_requested = True
+            was_locked = response["statusCode"] == 409
+            if was_locked:
+                locked += 1
+                sleep(wait_seconds)
+            else:
+                pending_delete = True
+        service = _expect_read(_request(transport, "GET", resource_id, API["apim"]), resource_id)
+        if service is None:
+            break
+        pending_delete = _apim_deleting(configuration, resource_id, service) or pending_delete
+        if not was_locked and attempt + 1 < max_checks:
+            sleep(wait_seconds)
+    else:
+        if not pending_delete:
+            _error("apim-service-locked", "APIMのServiceLockedが待機期限内に解消しません。現在状態を確認して再開してください。", resource_id)
+        _error("cleanup-pending", "APIMの削除完了を待機期限内に確認できません。現在状態を確認して再開してください。", resource_id)
     result = {"resourceId": resource_id, "status": "absent", "httpStatus": 404,
-              "apimDeletionVerified": True, "deleteRequested": not already_deleting,
+              "apimDeletionVerified": True, "deleteRequested": delete_requested,
               "alreadyDeleting": already_deleting}
+    if locked:
+        result["serviceLockedResponses"] = locked
     result["resourceInventory"] = _wait_resource_inventory_absent(configuration, resource_id, transport,
         max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
     for provider in provider_results:

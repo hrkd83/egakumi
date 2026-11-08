@@ -114,6 +114,8 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 azd down --environment "$DEPLOY_ENVIRONMENT"
 ```
 
+azd本体でKey Vault・Foundryの完全削除を確認された場合は`N`を選びます。続くCoreの`postdown`が対象IDと保護設定を照合します。
+
 Coreの`postdown`は`--purge`の有無にかかわらず、対象のKey Vault・Foundry・APIMの論理削除記録を照合して、保護設定が許すものを完全削除します。Key Vaultのpurge protectionや監査WORMを解除する指定ではありません。
 
 azd本体の撤去も`infra/main.bicepparam`を評価するため、`predown`は同じ環境の`generated/main.parameters.json`へ秘密なしの撤去用入力を再生成します。azd環境の`EGAKUMI_ARM_PARAMETERS_FILE`にはその相対パスだけを保持し、秘密値を`.env`へ追加しません。生成入力はazd本体の撤去が終わるまで保持し、`postdown`で回収します。再試行に必要な元のparams・secret・stateは消しません。
@@ -163,6 +165,7 @@ providerのDELETE成功・一覧不在・親APIMの404・削除履歴の404だ�
 ### 削除待ち・再実行時に確認すること
 
 - APIMやアプリが削除中なら要求を重ねず、同じIDの消失を待つ。待機期限を超えたら同じ入力・stateを保持して原因と現在状態を確認する。
+- APIM本体の削除が`ServiceLocked`で拒否された場合は、所有情報を再確認し、約30分の待機枠内で再試行する。CMの削除処理は繰り返さず、APIMの削除受付後はGETで完了を確認する。他の409や412は自動再試行せず停止する。
 - CMの個別削除と親APIMの削除を分ける。一覧消失を用いる限定条件でもprovider自身のGET404とは記録せず、`deletionVerified`・`listAbsenceVerified`・`parentDeletionVerified`を区別する。
 - ACA管理RGだけが残る場合はAzureの削除完了を確認し、同じparamsで`python3 scripts/deployment/lifecycle.py postdown --config "$DEPLOY_PARAMS_FILE"`を再実行する。
 - Log Analyticsのforce完全削除やAPI Centerのpurgeは通常処理に含めない。`apiCenterRetention`が`unverified`の場合も確認不能の理由を保持する。

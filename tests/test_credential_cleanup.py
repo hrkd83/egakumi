@@ -23,7 +23,31 @@ from cleanup_fixtures import (
 )
 
 
+class ApimLockedTransport:
+    """親DELETEの拒否と、その後の状態変化だけを合成する。"""
+    def __init__(self, original, apim_id, failures, after_refusal=None):
+        self.original, self.apim_id = original, apim_id
+        self.failures, self.after_refusal = list(failures), after_refusal
+
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+    def request(self, method, path, *, body=None, headers=None):
+        resource_id = urlsplit(path).path
+        if method == "DELETE" and resource_id == self.apim_id and self.failures:
+            status, error = self.failures.pop(0)
+            self.calls.append({"method": method, "id": resource_id, "path": path, "headers": headers, "body": body})
+            if self.after_refusal:
+                self.after_refusal(self.original)
+            return {"statusCode": status, "body": {"error": error}, "headers": {}}
+        return self.original.request(method, path, body=body, headers=headers)
+
+
 class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
+    def listed_provider_page(self, transport, provider_id):
+        """削除前の一覧と、削除後の一覧の応答を別々に再現する。"""
+        return {"statusCode": 200, "body": {"value": [copy.deepcopy(transport.resources[provider_id])]}, "headers": {}}
+
     def test_api_center_404_permission_and_provider_errors_do_not_block_other_purges(self):
         collection = self.svc_rg + "/providers/Microsoft.ApiCenter/deletedServices"
         for status in (404, 403, 502):
@@ -329,13 +353,14 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
         unrelated.update(id=collection + "/another-provider", name="another-provider")
         transport.resources[unrelated["id"]] = unrelated
         transport.cm_collection_pages[collection] = [
+            self.listed_provider_page(transport, provider_id),
             {"statusCode": 200, "body": {"value": [unrelated], "nextLink":
                 "https://management.azure.com" + collection + "?api-version=2024-05-01&$skiptoken=1"}, "headers": {}},
             {"statusCode": 200, "body": {"value": [], "nextLink": ""}, "headers": {}},
         ]
         result = self.pre(transport)
         self.assertTrue(result["apiManagement"]["credentialProviders"][0]["parentDeletionVerified"])
-        self.assertEqual(sum(c["id"] == collection for c in transport.calls), 2)
+        self.assertEqual(sum(c["id"] == collection for c in transport.calls), 3)
         self.assertNotIn(unrelated["id"], [c["id"] for c in transport.mutations()])
         self.assertFalse(any(c["id"] == unrelated["id"] for c in transport.calls))
 
@@ -344,6 +369,7 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
         collection = provider_id.rsplit("/", 1)[0]
         target = copy.deepcopy(transport.resources[provider_id])
         transport.cm_collection_pages[collection] = [
+            self.listed_provider_page(transport, provider_id),
             {"statusCode": 200, "body": {"value": [], "nextLink": collection +
                 "?api-version=2024-05-01&$skiptoken=1"}, "headers": {}},
             {"statusCode": 200, "body": {"value": [target], "nextLink": ""}, "headers": {}},
@@ -358,12 +384,13 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
         unrelated.update(id=collection + "/another-provider", name="another-provider")
         target = copy.deepcopy(transport.resources[provider_id])
         transport.cm_collection_pages[collection] = [
+            self.listed_provider_page(transport, provider_id),
             {"statusCode": 200, "body": {"value": [unrelated], "nextLink":
                 "https://management.azure.com" + collection + "?api-version=2024-05-01&$skipToken=opaque"}, "headers": {}},
             {"statusCode": 200, "body": {"value": [target], "nextLink": ""}, "headers": {}},
         ]
         self.assert_code("cleanup-pending", lambda: self.pre(transport))
-        self.assertEqual(sum(c["id"] == collection for c in transport.calls), 2)
+        self.assertEqual(sum(c["id"] == collection for c in transport.calls), 3)
         self.assertEqual([c["id"] for c in transport.mutations()], [provider_id])
 
     def test_provider_list_unknown_or_malformed_never_becomes_absence(self):
@@ -377,7 +404,7 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
                 if scenario == "bad-value": body["value"] = {}
                 if scenario == "bad-next": body["nextLink"] = " "
                 if scenario == "late-403": body["nextLink"] = collection + "?api-version=2024-05-01&$skiptoken=1"
-                transport.cm_collection_pages[collection] = [{"statusCode": status, "body": body, "headers": {}}]
+                transport.cm_collection_pages[collection] = [self.listed_provider_page(transport, provider_id), {"statusCode": status, "body": body, "headers": {}}]
                 if scenario == "late-403":
                     transport.cm_collection_pages[collection].append({"statusCode": 403, "body": {}, "headers": {}})
                 expected = "azure-request-failed" if scenario in ("403", "late-403") else "read-incomplete" if scenario == "202" else "credential-child-list-unverified"
@@ -410,7 +437,7 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
                     elif scenario == "filter": next_link += "&$filter=name%20eq%20%27unrelated%27"
                     elif scenario == "duplicate-skiptoken": next_link += "&$skiptoken=2"
                     body["nextLink"] = next_link; expected = "credential-child-list-unverified"
-                transport.cm_collection_pages[collection] = [{"statusCode": 200, "body": body, "headers": {}}]
+                transport.cm_collection_pages[collection] = [self.listed_provider_page(transport, provider_id), {"statusCode": 200, "body": body, "headers": {}}]
                 self.assert_code(expected, lambda: self.pre(transport))
                 self.assertEqual([c["id"] for c in transport.mutations()], [provider_id])
                 self.assertFalse(any("outside.invalid" in c["path"] or "private:credential" in c["path"] for c in transport.calls))
@@ -428,13 +455,13 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
                 expected = "credential-provider-owner-mismatch" if field in ("id", "name", "type") else "credential-provider-metadata-changed"
                 self.assert_code(expected, lambda: self.pre(transport))
                 self.assertEqual([c["id"] for c in transport.mutations()], [provider_id])
-                self.assertFalse(any(c["id"] == provider_id.rsplit("/", 1)[0] for c in transport.calls))
+                self.assertEqual(sum(c["id"] == provider_id.rsplit("/", 1)[0] for c in transport.calls), 1)
 
     def test_provider_delete_202_has_no_list_fallback_or_parent_delete(self):
         transport, provider_id = self.provider_get_inconsistency_transport(status=202, children=False)
         self.assert_code("credential-provider-delete-unverified", lambda: self.pre(transport))
         self.assertEqual([c["id"] for c in transport.mutations()], [provider_id])
-        self.assertFalse(any(c["id"] == provider_id.rsplit("/", 1)[0] for c in transport.calls))
+        self.assertEqual(sum(c["id"] == provider_id.rsplit("/", 1)[0] for c in transport.calls), 1)
 
     def test_provider_list_absence_does_not_hide_parent_failure_or_timeout(self):
         for failure in ("500", "pending"):
@@ -468,7 +495,9 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
         provider_id = next(iter(transport.provider_headers))
         foreign_provider = provider_id.replace("apim-test-egakumi-abc123", "apim-other-test-abc123")
         unconfigured = provider_id.rsplit("/", 1)[0] + "/not-configured"
-        transport.resources.update({foreign_provider: {"id": foreign_provider}, unconfigured: {"id": unconfigured}})
+        unconfigured_value = copy.deepcopy(transport.resources[provider_id])
+        unconfigured_value.update(id=unconfigured, name="not-configured")
+        transport.resources.update({foreign_provider: {"id": foreign_provider}, unconfigured: unconfigured_value})
         self.pre(transport)
         self.assertFalse(any(call["id"] in (foreign_provider, unconfigured) for call in transport.calls))
         transport = self.credential_transport()
@@ -733,6 +762,138 @@ class CredentialCleanupTests(CleanupFixture, unittest.TestCase):
         self.assertFalse(any(call["id"] == policies[0] for call in transport.calls))
         self.assertEqual([call["id"] for call in transport.mutations()],
                          [policies[1], authorization_id, provider_id, self.state["serviceResourceIds"]["apim"]])
+
+    def test_resume_skips_already_unlisted_provider_while_preserving_unresolved_get_proof(self):
+        transport, provider_id = self.provider_get_inconsistency_transport(children=False)
+        apim_id = self.state["serviceResourceIds"]["apim"]
+        transport.forced["DELETE", apim_id] = 500
+        self.assert_code("azure-request-failed", lambda: self.pre(transport))
+        self.assertIn(provider_id, transport.deleted_provider_gets)
+        transport.forced.clear()
+        transport.calls.clear()
+        result = self.pre(transport)
+        provider = result["apiManagement"]["credentialProviders"][0]
+        self.assertEqual([c["id"] for c in transport.mutations()], [apim_id])
+        self.assertEqual(provider["status"], "list-absent-individual-get-unresolved")
+        self.assertEqual(provider["individualGetStatus"], 200)
+        self.assertFalse(provider["deletionVerified"])
+        self.assertFalse(provider["deleteRequested"])
+        self.assertTrue(provider["identityRevalidated"])
+        self.assertTrue(provider["listAbsenceVerified"])
+        self.assertTrue(provider["parentDeletionRequired"])
+        self.assertTrue(provider["parentDeletionVerified"])
+        self.assertNotIn("deleteHttpStatus", provider)
+        self.assertNotIn("identityRevalidatedAfterDelete", provider)
+        self.assertNotIn("PRIVATE_SENTINEL", json.dumps(result))
+
+    def test_unlisted_provider_fresh_identity_change_or_unverified_list_blocks_parent(self):
+        for scenario in ("identity-change", "bad-list", "foreign-list-entry"):
+            with self.subTest(scenario=scenario):
+                transport, provider_id = self.provider_get_inconsistency_transport(children=False)
+                transport.deleted_provider_gets[provider_id] = transport.resources.pop(provider_id)
+                collection = provider_id.rsplit("/", 1)[0]
+                if scenario == "identity-change":
+                    reads = []
+                    def change_on_second_get(resource):
+                        reads.append(True)
+                        if len(reads) > 1:
+                            resource["properties"]["identityProvider"] = "other"
+                    transport.after_delete_mutation = change_on_second_get
+                    expected = "credential-provider-metadata-changed"
+                elif scenario == "bad-list":
+                    transport.cm_collection_pages[collection] = [{"statusCode": 200, "body": {}, "headers": {}}]
+                    expected = "credential-child-list-unverified"
+                else:
+                    foreign = copy.deepcopy(transport.deleted_provider_gets[provider_id])
+                    foreign["id"] = foreign["id"].replace("rg-test-egakumi-svc", "rg-other")
+                    transport.cm_collection_extras[collection] = [foreign]
+                    expected = "credential-child-owner-mismatch"
+                self.assert_code(expected, lambda: self.pre(transport))
+                self.assertFalse(transport.mutations())
+
+    def test_apim_service_locked_retries_only_parent_after_wait_and_fresh_owned_get(self):
+        original = self.credential_transport()
+        apim_id = self.state["serviceResourceIds"]["apim"]
+        provider_id = next(iter(original.provider_headers))
+        transport = ApimLockedTransport(original, apim_id,
+            [(409, {"code": "ServiceLocked", "message": "PRIVATE_SENTINEL"})])
+        waits = []
+        result = self.pre(transport, sleep=waits.append)
+        apim = result["apiManagement"]
+        self.assertTrue(apim["apimDeletionVerified"])
+        self.assertEqual(apim["serviceLockedResponses"], 1)
+        self.assertEqual(waits, [0])
+        self.assertEqual(sum(c["method"] == "DELETE" and c["id"] == provider_id for c in transport.calls), 1)
+        deletes = [i for i, c in enumerate(transport.calls) if c["method"] == "DELETE" and c["id"] == apim_id]
+        self.assertEqual(len(deletes), 2)
+        self.assertTrue(any(c["method"] == "GET" and c["id"] == apim_id
+                            for c in transport.calls[deletes[0] + 1:deletes[1]]))
+        self.assertNotIn("PRIVATE_SENTINEL", json.dumps(result))
+
+    def test_apim_service_locked_budget_exhaustion_is_failure_without_handoff(self):
+        original = self.credential_transport()
+        apim_id = self.state["serviceResourceIds"]["apim"]
+        transport = ApimLockedTransport(original, apim_id,
+            [(409, {"code": "ServiceLocked"})] * 3)
+        waits = []
+        self.assert_code("apim-service-locked", lambda: self.pre(transport, sleep=waits.append))
+        self.assertEqual(sum(c["method"] == "DELETE" and c["id"] == apim_id for c in transport.calls), 2)
+        self.assertEqual(sum(c["method"] == "GET" and c["id"] == apim_id for c in transport.calls), 3)
+        self.assertEqual(waits, [0, 0])
+        self.assertIn(apim_id, transport.resources)
+        self.assertFalse(any(c["id"] == self.diag_id for c in transport.calls))
+
+    def test_apim_service_locked_fresh_deleting_or_404_never_resends_delete(self):
+        for state in ("Deleting", "absent"):
+            with self.subTest(state=state):
+                original = self.credential_transport()
+                apim_id = self.state["serviceResourceIds"]["apim"]
+                def transition(current):
+                    if state == "absent":
+                        current.resources.pop(apim_id)
+                    else:
+                        current.resources[apim_id]["properties"] = {"provisioningState": "Deleting"}
+                        current.pending_delete.add(apim_id)
+                        current.delayed_reads[apim_id] = 1
+                transport = ApimLockedTransport(original, apim_id,
+                    [(409, {"code": "ServiceLocked"})], transition)
+                result = self.pre(transport)
+                self.assertTrue(result["apiManagement"]["apimDeletionVerified"])
+                self.assertEqual(sum(c["method"] == "DELETE" and c["id"] == apim_id for c in transport.calls), 1)
+
+    def test_apim_service_locked_fresh_owner_change_stops_before_second_delete(self):
+        for field in ("id", "name", "type", "location", "product", "environment"):
+            with self.subTest(field=field):
+                original = self.credential_transport()
+                apim_id = self.state["serviceResourceIds"]["apim"]
+                def change_owner(current):
+                    resource = current.resources[apim_id]
+                    if field in ("product", "environment"):
+                        resource["tags"][field] = "other"
+                    else:
+                        resource[field] += "-other"
+                transport = ApimLockedTransport(original, apim_id,
+                    [(409, {"code": "ServiceLocked"})], change_owner)
+                self.assert_code("apim-owner-mismatch", lambda: self.pre(transport))
+                self.assertEqual(sum(c["method"] == "DELETE" and c["id"] == apim_id for c in transport.calls), 1)
+
+    def test_other_apim_conflicts_and_child_service_locked_are_never_retried(self):
+        for status, error in ((409, {"code": "Conflict"}), (412, {"code": "ServiceLocked"}),
+                              (409, {}), (409, "ServiceLocked"), (409, {"code": "servicelocked"})):
+            with self.subTest(status=status, error=error):
+                original = self.credential_transport()
+                apim_id = self.state["serviceResourceIds"]["apim"]
+                transport = ApimLockedTransport(original, apim_id, [(status, error)])
+                waits = []
+                self.assert_code("azure-request-failed", lambda: self.pre(transport, sleep=waits.append))
+                self.assertFalse(waits)
+                self.assertEqual(sum(c["method"] == "DELETE" and c["id"] == apim_id for c in transport.calls), 1)
+        original = self.credential_transport()
+        provider_id = next(iter(original.provider_headers))
+        transport = ApimLockedTransport(original, provider_id, [(409, {"code": "ServiceLocked"})])
+        self.assert_code("azure-request-failed", lambda: self.pre(transport))
+        self.assertFalse(any(c["method"] == "DELETE" and c["id"] == self.state["serviceResourceIds"]["apim"]
+                             for c in transport.calls))
 
 
 if __name__ == "__main__":

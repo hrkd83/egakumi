@@ -128,7 +128,7 @@ echo "終了コード: $?"
 
 `apiDefinitions: []`は標準APIを使う指定です。接続先は作成済み基盤の出力からメモリー内で解決し、paramsの配列は書き換えません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
-Azure Public DNS以外でAレコードを手動管理する場合は、`postprovision`で対象環境のAppGW Public IPが分かった時点で、第3章の手順に従ってGateway・Portalの両ホストを設定します。Portal工程は公開URLのヘルス確認を行うため、その工程までに名前解決が必要です。反映が間に合わず停止した場合は、DNSを確認してPortalの個別コマンドから再試行します。
+`postprovision`は、第3章で準備したAzure Public DNSゾーンのGateway・Portal用Aエイリアスを、対象環境のAppGW Public IPリソースへ接続します。Portal工程は公開URLのヘルス確認を行うため、その工程までに両ホストの名前解決が必要です。反映が間に合わず停止した場合は、Azure Public DNSと名前解決を確認してPortalの個別コマンドから再試行します。
 
 API Centerの同名削除履歴が残る場合は、5RG作成後に対象環境のsvc RG内の同名1件だけを所有照合して復元し、Bicepを再適用します。確認不能なら停止します。個別に別名の資源を追加しません。
 
