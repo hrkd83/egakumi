@@ -174,6 +174,128 @@ test("ストリーム中のタイムアウトと要求の中止は上流の読�
   assert.equal(requestCancelled, true);
 });
 
+const reflectionKey = "synthetic-sse-reflection-secret";
+
+/** 実際のハンドラーへ独立した合成キーだけを渡し、外部通信は既存fixtureで置き換えます。 */
+async function reflectionGeneration(body: ReadableStream<Uint8Array>, model = chatModel, credential = reflectionKey): Promise<Response> {
+  return generate(body, { modelId: model.id, operationId: model.operationId, resolveSubscriptionKey: async () => credential });
+}
+
+test("引用符付きキーもJSONの値・名前・Unicodeescape・delta連結から漏らさない", async () => {
+  const credential = 'synthetic-stream-"key"-\\-value';
+  for (const model of [chatModel, responsesModel]) {
+    const delta = (text: string) => model.operationId === "chat-completions" ? chat(text) : responseEvent("response.output_text.delta", { delta: text });
+    const plain = delta("safe result");
+    const reflected = plain.replace('"safe result"', JSON.stringify(credential));
+    const metadata = plain.replace('"safe result"', `"safe result","${JSON.stringify(credential).slice(1, -1)}":"marker"`);
+    const encoded = [...credential].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+    for (const raw of [reflected, metadata, reflected.replace(JSON.stringify(credential).slice(1, -1), encoded), delta(credential.slice(0, 19)) + delta(credential.slice(19))]) {
+      const output = await (await reflectionGeneration(fragment(raw, 3), model, credential)).text();
+      assert.match(output, /GenerationFailed/); assert.doesNotMatch(output, /safe result|marker/);
+      assert.equal(output.includes(credential.slice(0, 12)), false);
+    }
+  }
+});
+
+test("ChatとResponsesの単一イベントに反射されたキーを復号してから中継前に拒否する", async () => {
+  for (const model of [chatModel, responsesModel]) {
+    for (const escaped of [false, true]) {
+      const event = model.operationId === "chat-completions"
+        ? chat("safe text").replace('"delta":', `"metadata":{"reflected":"${reflectionKey}"},"delta":`)
+        : responseEvent("response.output_text.delta", { delta: "safe text", metadata: { reflected: reflectionKey } });
+      const raw = escaped ? event.replace(reflectionKey, [...reflectionKey].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("")) : event;
+      const response = await reflectionGeneration(fragment(raw, 3), model);
+      const output = await response.text();
+      assert.match(output, /GenerationFailed/);
+      assert.doesNotMatch(output, /safe text|reflected/);
+      assert.equal(output.includes(reflectionKey), false);
+    }
+  }
+});
+
+test("キーの最初の接頭辞イベントも、後続deltaで安全性が確定するまで送信しない", async () => {
+  let upstream: ReadableStreamDefaultController<Uint8Array>;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({ start(controller) { upstream = controller; }, cancel() { cancelled = true; } });
+  const response = await reflectionGeneration(body);
+  const reader = response.body!.getReader();
+  const pending = reader.read();
+  try {
+    upstream!.enqueue(encoder.encode(chat(reflectionKey.slice(0, 12))));
+    assert.equal(await Promise.race([pending.then(() => "sent"), new Promise<string>((resolve) => setTimeout(() => resolve("held"), 20))]), "held");
+    upstream!.enqueue(encoder.encode(chat(reflectionKey.slice(12))));
+    const first = await pending;
+    const output = new TextDecoder().decode(first.value);
+    assert.match(output, /GenerationFailed/);
+    assert.equal(output.includes(reflectionKey.slice(0, 12)), false);
+    assert.equal((await reader.read()).done, true);
+    assert.equal(cancelled, true);
+  } finally { await reader.cancel(); }
+});
+
+test("Responsesの多数delta・別channel・textとrefusal間の連結でもキーを返さない", async () => {
+  const split = reflectionKey.slice(0, 12), rest = reflectionKey.slice(12);
+  const sequences = [
+    [...reflectionKey].map((delta) => responseEvent("response.output_text.delta", { delta })).join(""),
+    responseEvent("response.output_text.delta", { output_index: 0, delta: split })
+      + responseEvent("response.output_text.delta", { output_index: 1, delta: "safe other channel" })
+      + responseEvent("response.output_text.delta", { output_index: 0, delta: rest }),
+    responseEvent("response.output_text.delta", { delta: split }) + responseEvent("response.refusal.delta", { delta: rest }),
+  ];
+  for (const raw of sequences) {
+    const output = await (await reflectionGeneration(fragment(raw, 2), responsesModel)).text();
+    assert.match(output, /GenerationFailed/);
+    assert.equal(output.includes(split), false);
+    assert.equal(output.includes(reflectionKey), false);
+  }
+});
+
+test("接頭辞が後続で不一致になれば保留イベントを改変せず解放する", async () => {
+  const raw = chat("日本語🙂 " + reflectionKey.slice(0, 8)) + chat(" harmless suffix", "stop") + "data: [DONE]\n\n";
+  const output = await (await reflectionGeneration(fragment(raw, 3))).text();
+  assert.equal(output, raw);
+  const result = await readModelResponse(new Response(output, { headers: { "content-type": "text/event-stream" } }), chatModel);
+  assert.equal(result.text, "日本語🙂 " + reflectionKey.slice(0, 8) + " harmless suffix");
+});
+
+test("正常なcompleted・incomplete・refusal終端では短い未完成接頭辞とusageを保持する", async () => {
+  const text = "safe " + reflectionKey.slice(0, 4);
+  for (const scenario of [{ terminal: "completed", refusal: false }, { terminal: "incomplete", refusal: false }, { terminal: "completed", refusal: true }]) {
+    const deltaType = scenario.refusal ? "response.refusal.delta" : "response.output_text.delta";
+    const part = scenario.refusal ? { type: "refusal", refusal: text } : { type: "output_text", text };
+    const raw = responseEvent(deltaType, { delta: text }) + responseEvent(`response.${scenario.terminal}`, { response: { model: responsesModel.id, status: scenario.terminal, output: [{ type: "message", content: [part] }], usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 } } });
+    const response = await reflectionGeneration(fragment(raw), responsesModel);
+    const result = await readModelResponse(response, responsesModel);
+    assert.equal(result.text, text); assert.equal(result.finishReason, scenario.terminal);
+    assert.deepEqual(result.usage, { inputTokens: 5, outputTokens: 3, totalTokens: 8 });
+  }
+});
+
+test("壊れた終端や未知の終了理由では保留した接頭辞を解放しない", async () => {
+  const prefix = reflectionKey.slice(0, 12);
+  const cases = [
+    { model: responsesModel, raw: responseEvent("response.output_text.delta", { delta: prefix }) + responseEvent("response.completed", { response: { model: responsesModel.id, status: "incomplete", output: [] } }) },
+    { model: responsesModel, raw: responseEvent("response.output_text.delta", { delta: prefix }) + responseEvent("response.unknown_terminal", {}) },
+    { model: chatModel, raw: chat(prefix) + chat("", "unknown") + "data: [DONE]\n\n" },
+  ];
+  for (const item of cases) {
+    const output = await (await reflectionGeneration(fragment(item.raw), item.model)).text();
+    assert.match(output, /GenerationFailed/); assert.equal(output.includes(prefix), false);
+  }
+});
+
+test("接頭辞を待つ間のイベント保留量とchannel数も有限に制限する", async () => {
+  const prefix = reflectionKey.slice(0, 4);
+  const envelope = (padding: string) => `data: ${JSON.stringify({ object: "chat.completion.chunk", model: chatModel.id, choices: [], padding })}\n\n`;
+  const large = envelope("x".repeat(MODEL_MAX_EVENT_BYTES - encoder.encode(envelope("")).byteLength));
+  assert.equal(encoder.encode(large).byteLength, MODEL_MAX_EVENT_BYTES);
+  const buffered = await (await reflectionGeneration(fragment(chat(prefix) + large, 1_048_576))).text();
+  assert.match(buffered, /GenerationFailed/); assert.equal(buffered.includes(prefix), false);
+  const channels = Array.from({ length: 65 }, (_, output_index) => responseEvent("response.output_text.delta", { output_index, delta: reflectionKey[0] })).join("");
+  const exceeded = await (await reflectionGeneration(fragment(channels), responsesModel)).text();
+  assert.match(exceeded, /GenerationFailed/); assert.doesNotMatch(exceeded, /response.output_text.delta/);
+});
+
 test("一イベントのサイズ上限を越えたSSEを破棄する", async () => {
   const result = await generate(fragment(chat("a".repeat(MODEL_MAX_EVENT_BYTES)), 1_048_576));
   const text = await result.text();

@@ -86,8 +86,11 @@
                 else if (current == &quot;succeeded&quot;) {
                   var analysis = body[&quot;analyzeResult&quot;] as JObject;
                   if (analysis != null &amp;&amp; (string)analysis[&quot;apiVersion&quot;] == (string)settings[&quot;apiVersion&quot;] &amp;&amp; (string)analysis[&quot;modelId&quot;] == (string)context.Variables[&quot;documentModel&quot;] &amp;&amp; analysis[&quot;content&quot;]?.Type == JTokenType.String &amp;&amp; analysis[&quot;pages&quot;] is JArray) {
-                    state = &quot;succeeded&quot;; status = 200;
-                    result = new JObject(new JProperty(&quot;analyzeResult&quot;, analysis), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+                    var projected = new JObject(new JProperty(&quot;analyzeResult&quot;, analysis), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+                    /* 公開envelopeで追加したrequestIdも応答予算に含めます。 */
+                    if (System.Text.Encoding.UTF8.GetByteCount(projected) &lt;= (int)settings[&quot;maxResponseBytes&quot;]) {
+                      state = &quot;succeeded&quot;; status = 200; result = projected;
+                    }
                   }
                 }
               }

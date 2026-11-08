@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Clipboard, ClipboardCheck, Eye, EyeOff, LoaderCircle, Pause, Play, Trash2, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ export { CreateKeyDialog } from "./create-key-dialog";
  * @remarks このコンポーネントを閉じる・タブを隠す・ページを離れると破棄します。キーは親やZustandへ渡しません。
  */
 function SecretKeys({ id, dictionary, onHide }: { id: string; dictionary: Dictionary; onHide: () => void }) {
+  const formId = useFieldIds();
   const text = dictionary.apiKeys;
   const [secrets, setSecrets] = useState<ApiKeySecrets | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +54,7 @@ function SecretKeys({ id, dictionary, onHide }: { id: string; dictionary: Dictio
 
   return <div className="space-y-4 rounded-xl border border-primary/15 bg-primary/3 p-4">
     <div className="flex items-center justify-between gap-3"><p className="text-xs leading-5 text-muted-foreground">{text.keyNotice}</p><Button size="sm" variant="ghost" onClick={onHide}><EyeOff />{text.hideKeys}</Button></div>
-    {error ? <p role="alert" className="text-xs leading-6 text-destructive">{errorMessage(dictionary, error)}</p> : !secrets ? <p role="status" className="flex items-center gap-2 text-xs"><LoaderCircle className="size-4 animate-spin" />{text.working}</p> : (["primaryKey", "secondaryKey"] as const).map((field) => <div key={field}><label htmlFor={`secret-${field}`} className="mb-2 block text-xs font-medium">{text[field]}</label><div className="flex gap-2"><Input id={`secret-${field}`} type="text" readOnly autoComplete="off" spellCheck={false} value={secrets[field]} className="min-w-0 bg-white font-mono text-xs" /><Button size="icon" variant="outline" aria-label={`${text[field]} · ${text.copy}`} onClick={() => void copy(field)}>{copied === field ? <Check /> : <Clipboard />}</Button></div></div>)}
+    {error ? <p role="alert" className="text-xs leading-6 text-destructive">{errorMessage(dictionary, error)}</p> : !secrets ? <p role="status" className="flex items-center gap-2 text-xs"><LoaderCircle className="size-4 animate-spin" />{text.working}</p> : (["primaryKey", "secondaryKey"] as const).map((field) => <div key={field}><label htmlFor={formId(`secret-${field}`)} className="mb-2 block text-xs font-medium">{text[field]}</label><div className="flex gap-2"><Input id={formId(`secret-${field}`)} type="text" readOnly autoComplete="off" spellCheck={false} value={secrets[field]} className="min-w-0 bg-white font-mono text-xs" /><Button size="icon" variant="outline" aria-label={`${text[field]} · ${text.copy}`} onClick={() => void copy(field)}>{copied === field ? <Check /> : <Clipboard />}</Button></div></div>)}
     {copied && <p role="status" className="text-xs text-primary">{text.copied}</p>}
     {copyFailed && <p role="alert" className="text-xs leading-6 text-destructive">{text.copyFailed}</p>}
   </div>;
@@ -62,6 +65,7 @@ export function KeyDetailDialog({ record, group, dictionary, locale, onClose, on
   record: ApiKeyRecord; group: ApiKeyGroup; dictionary: Dictionary; locale: Locale;
   onClose: () => void; onChanged: (record: ApiKeyRecord) => void; onTransferred: (record: ApiKeyRecord) => void;
 }) {
+  const formId = useFieldIds();
   const text = dictionary.apiKeys;
   const [showSecrets, setShowSecrets] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -109,7 +113,7 @@ export function KeyDetailDialog({ record, group, dictionary, locale, onClose, on
         [text.group, group.displayName], [text.product, group.products.find((item) => item.id === record.productId)?.displayName ?? record.productId],
         [text.createdAt, formatKeyDate(record.createdAt, locale, "—")], [text.lastReviewed, formatKeyDate(record.lastReviewedAt, locale, text.notReviewed)],
       ].map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1.5 break-words text-xs font-medium">{value}</dd></div>)}<div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">{text.subscriptionId}</dt><dd className="mt-1.5 break-all font-mono text-xs text-muted-foreground">{record.apimSubscriptionId}</dd></div></dl>
-      <section aria-labelledby="key-usage-metadata"><h3 id="key-usage-metadata" className="mb-3 text-sm font-semibold">{text.createForm.metadataTitle}</h3><dl className="grid gap-x-6 gap-y-4 rounded-xl border border-border p-4 sm:grid-cols-2">{[
+      <section aria-labelledby={formId("key-usage-metadata")}><h3 id={formId("key-usage-metadata")} className="mb-3 text-sm font-semibold">{text.createForm.metadataTitle}</h3><dl className="grid gap-x-6 gap-y-4 rounded-xl border border-border p-4 sm:grid-cols-2">{[
         [text.createForm.clientType, record.clientType ? text.createForm.clientTypes[record.clientType] : null],
         [text.createForm.companyName, record.companyName], [text.createForm.systemName, record.systemName],
         [text.createForm.teamName, record.teamName], [text.createForm.contactEmail, record.contactEmail],
@@ -122,7 +126,7 @@ export function KeyDetailDialog({ record, group, dictionary, locale, onClose, on
         <div className="flex items-start justify-between gap-4"><div><h3 className="text-xs font-semibold">{record.state === "active" ? text.suspend : text.resume}</h3><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{text.suspendNotice}</p></div><Button variant="outline" className="text-xs" disabled={dialogBusy || deleteOpen} onClick={() => void act(record.state === "active" ? "suspend" : "resume")}>{busy === "suspend" || busy === "resume" ? <LoaderCircle className="animate-spin" /> : record.state === "active" ? <Pause /> : <Play />}{record.state === "active" ? text.suspend : text.resume}</Button></div>
         <div className="flex items-start justify-between gap-4"><div><h3 className="text-xs font-semibold">{text.review}</h3><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{text.reviewNotice}</p></div><Button variant="outline" className="text-xs" disabled={dialogBusy || deleteOpen} onClick={() => void act("review")}>{busy === "review" ? <LoaderCircle className="animate-spin" /> : <ClipboardCheck />}{text.review}</Button></div>
       </div> : <p role="status" className="rounded-xl bg-muted/40 p-4 text-xs leading-6 text-muted-foreground">{text.processingNotice}</p>}
-      {deleteOpen && <section className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/3 p-4"><h3 className="text-sm font-semibold text-destructive">{text.deleteTitle}</h3><p className="text-xs leading-6 text-muted-foreground">{text.deleteNotice}</p><label htmlFor="delete-purpose" className="block text-xs font-medium">{text.deleteConfirm}：<span className="select-all">{record.displayName}</span></label><Input id="delete-purpose" autoComplete="off" value={deleteName} disabled={dialogBusy} onChange={(event) => setDeleteName(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="outline" disabled={dialogBusy} onClick={() => { setDeleteOpen(false); setDeleteName(""); }}>{text.cancel}</Button><Button variant="destructive" disabled={dialogBusy || deleteName !== record.displayName} onClick={() => void act("delete")}>{busy === "delete" ? <LoaderCircle className="animate-spin" /> : <Trash2 />}{text.deleteFinal}</Button></div></section>}
+      {deleteOpen && <section className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/3 p-4"><h3 className="text-sm font-semibold text-destructive">{text.deleteTitle}</h3><p className="text-xs leading-6 text-muted-foreground">{text.deleteNotice}</p><label htmlFor={formId("delete-purpose")} className="block text-xs font-medium">{text.deleteConfirm}：<span className="select-all">{record.displayName}</span></label><Input id={formId("delete-purpose")} autoComplete="off" value={deleteName} disabled={dialogBusy} onChange={(event) => setDeleteName(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="outline" disabled={dialogBusy} onClick={() => { setDeleteOpen(false); setDeleteName(""); }}>{text.cancel}</Button><Button variant="destructive" disabled={dialogBusy || deleteName !== record.displayName} onClick={() => void act("delete")}>{busy === "delete" ? <LoaderCircle className="animate-spin" /> : <Trash2 />}{text.deleteFinal}</Button></div></section>}
       {error && <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-xs leading-6 text-destructive">{errorMessage(dictionary, error)}</p>}
       <DialogFooter className="-mx-6 -mb-6 items-center p-4 sm:justify-between"><Button variant="destructive" className="text-xs" disabled={dialogBusy || !deletable || deleteOpen} onClick={() => { hideSecrets(); setDeleteOpen(true); }}><Trash2 />{text.delete}</Button><Button variant="outline" disabled={dialogBusy} onClick={onClose}>{busy ? text.working : text.close}</Button></DialogFooter>
     </DialogContent>

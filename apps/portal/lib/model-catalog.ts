@@ -26,8 +26,18 @@ const profileSchema = z.object({
   outputTokenParameter: outputTokenParameterSchema.optional(),
   ...operationLimits,
 });
+/** 次元の既定値・上限・列挙をAPI正本から読み、モデル名による推測をしません。 */
+const embeddingDimensionsSchema = z.object({
+  default: z.number().int().positive(),
+  maximum: z.number().int().positive(),
+  allowed: z.array(z.number().int().positive()).min(1).optional(),
+}).strict().refine((value) => value.default <= value.maximum && (!value.allowed ||
+  (new Set(value.allowed).size === value.allowed.length && value.allowed.includes(value.default) &&
+   value.allowed.includes(value.maximum) && value.allowed.every((item) => item <= value.maximum))));
+
 const constraintSchema = z.object({
   kind: z.string().optional(),
+  embeddingDimensionsByModel: z.record(z.string(), embeddingDimensionsSchema).optional(),
   bodyFormat: z.string().optional(),
   contentTypes: z.array(z.string()).optional(),
   allowedModels: z.array(z.string()).optional(),
@@ -181,11 +191,14 @@ export function getEmbeddingModels(): EmbeddingModel[] {
     const operation = definition?.operations.find((item) => item.name === operationId);
     const constraint = definition?.authorization.operationConstraints[operationId];
     const maxInputs = constraint?.arrayLimits?.[providerId === "openai" ? "input" : "texts"];
-    if (!definition || !operation || !constraint?.maxRequestBytes || !maxInputs) throw new Error("Embedding API definition is incomplete");
+    if (!definition || !operation || !constraint?.maxRequestBytes || !maxInputs || constraint.kind !== "textEmbeddings" || !constraint.embeddingDimensionsByModel) throw new Error("Embedding API definition is incomplete");
     for (const id of constraint.allowedModels ?? []) {
+      const embeddingDimensions = constraint.embeddingDimensionsByModel[id];
+      if (!embeddingDimensions || (providerId === "cohere" && !embeddingDimensions.allowed)) throw new Error("Embedding dimension contract is missing");
       models.push({ id, label: id, providerId, provider, apiId, operationId,
         path: `/${definition.path}${operation.urlTemplate}`, maxRequestBytes: constraint.maxRequestBytes,
-        maxInputs, inputTypes: constraint.stringChoices?.input_type ?? [] });
+        maxInputs, inputTypes: constraint.stringChoices?.input_type ?? [],
+        embeddingDimensions: { ...embeddingDimensions, ...(embeddingDimensions.allowed ? { allowed: [...embeddingDimensions.allowed] } : {}) } });
     }
   }
   return models;
@@ -299,6 +312,10 @@ export function getSpeechModels(): SpeechModel[] {
  */
 export function getRealtimeModels(): RealtimeModel[] {
   const models: RealtimeModel[] = [];
+  // 既存の配備済み登録を使い、文字起こしモデル名を会話用コードへ埋め込みません。
+  const transcriptionModels = definitions.find((item) => item.name === "openai-transcription-ws-v1")?.websocket?.session?.models;
+  if (!transcriptionModels || transcriptionModels.length !== 1 || !/^[a-zA-Z0-9._-]{1,120}$/.test(transcriptionModels[0]) || transcriptionModels[0].startsWith("__")) throw new Error("Realtime transcription model binding is incomplete");
+  const inputTranscriptionModel = transcriptionModels[0];
   const registrations = [
     ["openai-realtime-control-v1", "realtime-create", "realtime", "webrtc"],
     ["openai-realtime-ws-v1", "invoke", "realtime", "websocket"],
@@ -330,6 +347,7 @@ export function getRealtimeModels(): RealtimeModel[] {
       id: `${apiId}:${modelId}`, label: modelId, modelId, family, transport, apiId, operationId,
       providerId: family === "voice-live" ? "azure-ai-speech" : "openai", provider: family === "voice-live" ? "Azure AI Speech" : "OpenAI",
       path: `/${definition.path}${operation.urlTemplate}`, voice: family === "voice-live" ? "ja-JP-NanamiNeural" : "marin",
+      ...(family === "realtime" ? { inputTranscriptionModel } : {}),
       maxRequestBytes: constraint.maxRequestBytes, maxOutputTokens, outputTokenLimitKind: constraint.outputTokenLimitKinds?.[modelId] ?? "configured",
       ...(capability?.numericMaxOutputTokens ? { numericMaxOutputTokens: capability.numericMaxOutputTokens } : {}),
       ...(capability?.supportsMaximumOutput !== undefined ? { supportsMaximumOutput: capability.supportsMaximumOutput } : {}),

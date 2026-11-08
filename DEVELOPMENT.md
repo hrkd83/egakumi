@@ -106,8 +106,8 @@ Python 3.11以上と [端末の準備条件](docs/setup/01-prerequisites.md) を
 # リポジトリのルートで実行します。
 python3 -m venv .venv
 .venv/bin/python -m pip install -r scripts/integration-requirements.txt -r apps/gateway/credential-broker/requirements.txt
-.venv/bin/python -m unittest discover -s tests -v
-PYTHONPATH=apps/gateway/credential-broker .venv/bin/python -m unittest discover -s apps/gateway/credential-broker/tests -v
+.venv/bin/python -B -m unittest discover -s tests -v
+PYTHONPATH=apps/gateway/credential-broker .venv/bin/python -B -m unittest discover -s apps/gateway/credential-broker/tests -v
 ```
 
 Windowsでは仮想環境の `Scripts/python.exe` を使い、環境変数は利用するシェルの書式で指定します。
@@ -127,9 +127,9 @@ PowerShellを使う試験は `WORKFORCE_PWSH`、インストール済み `pwsh`�
 ```sh
 mkdir -p "$DEPLOY_LOCAL_DIRECTORY/generated"
 az bicep build --file infra/main.bicep --outfile "$DEPLOY_LOCAL_DIRECTORY/generated/main.compiled.json"
-export WORKFORCE_PWSH="$(.venv/bin/python -c 'from scripts.deployment.helpers.powershell_runtime import locate_powershell; print(locate_powershell())')"
+export WORKFORCE_PWSH="$(.venv/bin/python -B -c 'from scripts.deployment.helpers.powershell_runtime import locate_powershell; print(locate_powershell())')"
 "$WORKFORCE_PWSH" -NoProfile -File tests/certificate-offline.ps1
-.venv/bin/python tests/cap-offline.py
+.venv/bin/python -B tests/cap-offline.py
 ```
 
 証明書とcapのオフライン試験は合成入力・偽モジュールを使います。実際のDNS、ACME、Azureへ接続しません。生XMLの追加Razor検査には、公式の `System.Web.Razor.dll` を `WORKFORCE_RAZOR_DLL` で指定します。
@@ -235,7 +235,7 @@ RealtimeとVoice Live、Speech単体のSTT／TTSは固定モデル・voice・API
 
 `tests/browser/realtime.html`は`realtime_browser.py`が読み込むWebRTC／Voice Liveの回帰試験用画面です。Portalの実装とは独立して接続・中断・異常系を確認するため、試験資材として管理します。ローカル専用relayからだけ配信され、PortalのイメージやAzureへの配備資材には含まれません。
 
-DecisionのCLIは既定で計画表示だけです。実行はhelpの`--execute`等に従い、短い合成入力を使います。匿名・不正キーと、利用範囲外の有効キーを分け、数値・相関・usageだけを記録します。
+DecisionのCLIは既定で計画表示だけです。標準Gatewayの実行には`--execute --key-file <保護した購読キーファイル> --output <新規の保護結果ファイル>`を指定し、短い合成入力を使います。Bearer認証を明示した接続先の診断には`--token-file`を選び、`--key-file`と併用しません。匿名・不正キーと、利用範囲外の有効キーを分け、数値・相関・usageだけを記録します。
 
 ## 固定依存と配布物
 

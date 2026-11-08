@@ -52,7 +52,7 @@ $Action='Install';$DnsPluginArgumentsJson='legacy-secret-must-not-be-used'
 try {
     Ensure-Certificate
     Check ($script:Issued.Count -eq 1) 'Initial issuance did not run'
-    $script:FixtureOrder=[pscustomobject]@{MainDomain='gateway.example.invalid';SANs=@();status='valid'}
+    $script:FixtureOrder=[pscustomobject]@{MainDomain='gateway.example.invalid';SANs=@();status='valid';CertExpires=[DateTimeOffset]::UtcNow.AddDays(90).ToString('o')}
     $Action='Renew'
     Ensure-Certificate
     Check ($script:Renewed.Count -eq 1) 'Renewal did not run'

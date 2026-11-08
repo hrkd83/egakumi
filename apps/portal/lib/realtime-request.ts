@@ -43,7 +43,7 @@ const errorCodeSchema = z.enum(["InvalidRequest", "AuthenticationRequired", "Req
 export const realtimeStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("status"), stage: z.enum(["connecting", "connected", "sending", "receiving", "stopping"]), elapsedMs: z.number().nonnegative(), maximumDurationMs: z.number().int().positive().max(REALTIME_MAX_DURATION_MS).optional() }).strict(),
   z.object({ type: z.literal("event"), eventType: z.string().regex(/^[a-zA-Z0-9_.-]{1,100}$/), elapsedMs: z.number().nonnegative() }).strict(),
-  z.object({ type: z.literal("transcript"), role: z.enum(["input", "output"]), text: z.string().max(16_000), final: z.boolean() }).strict(),
+  z.object({ type: z.literal("transcript"), role: z.enum(["input", "output"]), text: z.string().max(16_000), final: z.boolean(), segmentIndex: z.number().int().min(0).max(2999).optional() }).strict().refine((event) => event.segmentIndex === undefined || event.role === "input"),
   z.object({ type: z.literal("usage"), values: usageSchema }).strict(),
   z.object({ type: z.literal("audio"), delta: z.string().max(350_000), sampleRate: z.literal(24000) }).strict(),
   z.object({ type: z.literal("answer"), sdp: z.string().min(20).max(120_000), handle: z.string().max(16_000).optional() }).strict(),

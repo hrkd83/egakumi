@@ -124,6 +124,26 @@ test("tools/callのタイムアウトは再送せず取消通知を出して終�
   } finally { clearTimeout(keepAlive); }
 });
 
+test("引用符付きの購読キーと内部sessionも、復号済みPII結果へ反射させない", async () => {
+  const credential = 'synthetic-mcp-"key"-\\-value', internalSession = 'synthetic-mcp-"session"-\\-value';
+  for (const reflected of [credential, internalSession]) {
+    const setup = dependencies({ resolveSubscriptionKey: async () => credential }, internalSession);
+    let calls = 0;
+    const response = await handlePiiMcp(request(), { ...setup.deps, fetch: async (url, options) => {
+      if (options?.method === "POST") {
+        const message = JSON.parse(String(options.body));
+        if (message.method === "tools/call") {
+          calls++;
+          return Response.json({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: JSON.stringify({ ...result, redactedText: reflected }) }] } });
+        }
+      }
+      return setup.fallback(url, options);
+    } });
+    assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+    assert.equal(calls, 1); assert.equal(setup.messages.at(-1)?.method, "DELETE");
+  }
+});
+
 test("MCP例は正しい呼び出し封筒と3種のクライアントを提供する", () => {
   assert.deepEqual(buildPiiMcpCall(PII_SAMPLE).params.arguments, PII_SAMPLE);
   assert.equal(Number.isInteger(buildPiiMcpCall(PII_SAMPLE).id), true);

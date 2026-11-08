@@ -2,6 +2,14 @@
 """Portal専用のDB・SQL初期化・コンテナーを配備する。既定は計画、--executeで実行。"""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import json
 from pathlib import Path
@@ -14,6 +22,7 @@ from urllib.request import Request, build_opener
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.portal_authentication import prepare_secret
+from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
@@ -192,7 +201,7 @@ def deploy_template(config, values, template, transport, *, timeout=1800, sleep=
 def wait_schema(config, execution, transport, *, timeout=900, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     if not re.fullmatch(r'[A-Za-z0-9-]+', str(execution or '')):
         raise ValueError('Portal SQL execution was not identified')
-    target = group_scope(config) + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-portal-schema/executions/' + execution
+    target = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob'] + '/executions/' + execution
     deadline, notice = monotonic() + timeout, monotonic() + 45
     while monotonic() < deadline:
         body = checked(transport, 'GET', target + '?api-version=' + APP_API, allowed=(200, 404), label='Read Portal SQL initialization')
@@ -254,7 +263,7 @@ def deploy_release(config, values, template, transport):
     # 初回の署名鍵は作成済み。2段階目は同じ値の新規バージョンも作成しません。
     values['signingSecret'] = ''
     values['profileSecret'] = ''
-    job = group_scope(config) + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-portal-schema'
+    job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
     started = checked(transport, 'POST', job + '/start?api-version=' + APP_API, label='Start Portal SQL initialization')
     wait_schema(config, started.get('name'), transport)
     print('ポータル: App Gatewayのポータル用ヘルス監視を確認します。', flush=True)
@@ -302,11 +311,13 @@ def main(argv=None):
         values = deployment_inputs(config, state, args.image_digest)
     data, source_hash = (None, None) if args.image_digest else source_bundle()
     build_record = workspace.state / 'portal-build.json'
+    transport = ArmTransport(config) if args.execute else None
     if not args.image_digest:
-        values['imageDigest'] = reusable_image(config, state, source_hash, build_record)
+        values['imageDigest'] = reusable_image(config, state, source_hash, build_record, transport=transport)
     plan = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'application': 'ca-' + config['resourceStem'] + '-portal', 'database': 'sqldb-' + config['resourceStem'] + '-portal',
         'imageBuild': values['imageDigest'] is None,
+        'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
         'steps': ['build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-health-probe', 'configure-portal-auth-callback-waf', 'update-application', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
@@ -315,7 +326,6 @@ def main(argv=None):
         print(json.dumps(plan, ensure_ascii=False))
         return 0
     template = run_json(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'apps/portal/deploy/main.bicep'), '--stdout'])
-    transport = ArmTransport(config)
     verify_foundation(config, values, transport)
     if values['imageDigest'] is None:
         values['imageDigest'] = build_image(config, state, transport, data=data, source_hash=source_hash,

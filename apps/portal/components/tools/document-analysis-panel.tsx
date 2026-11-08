@@ -1,5 +1,8 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
+
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createStore } from "zustand/vanilla";
@@ -33,13 +36,14 @@ function Code({ title, code, dictionary }: { title: string; code: string; dictio
 
 /** ガイド・仕様・実ファイルでの解析を同じ契約で確認する文書解析ページです。 */
 export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { locale: Locale; dictionary: Dictionary; gatewayOrigin: string | null }) {
+  const formId = useFieldIds();
   const [store] = useState(() => createStore<DocumentState>(() => ({ model: "prebuilt-read", apiKeyId: "", file: null, language: "curl", tab: "request", loading: false, cancelled: false, result: null, failure: null })));
   const state = useStore(store); const text = getDocumentAnalysisDictionary(locale); const common = dictionary.modelGateway; const guide = common.integration;
   const [choices, setChoices] = useState<{ status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ status: "loading", keys: [] });
   const [refresh, setRefresh] = useState(0); const request = useRef<AbortController | null>(null);
   const selectedKey = choices.status === "ready" ? choices.keys.find((key) => key.id === state.apiKeyId) : undefined;
   const origin = gatewayOrigin ?? "https://gateway.example.com";
-  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => () => deactivatePanelRequest(request, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
   useEffect(() => {
     const controller = new AbortController();
     void loadModelKeyChoices(DOCUMENT_ANALYSIS_API_ID, controller.signal).then((keys) => { if (!controller.signal.aborted) setChoices({ status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setChoices({ status: "error", keys: [] }); });
@@ -70,18 +74,18 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   }
 
   const settings = <form onSubmit={execute} className="space-y-5">
-    <div className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor="document-api-key" className="text-sm font-medium">{text.apiKey}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || choices.status === "loading"} onClick={() => { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }}>{guide.refreshKeys}</Button></div>
-      <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => update({ apiKeyId })}><SelectTrigger id="document-api-key" className="w-full min-w-0"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
+    <div className="space-y-2"><div className="flex items-center justify-between gap-3"><label htmlFor={formId("document-api-key")} className="text-sm font-medium">{text.apiKey}</label><Button type="button" size="sm" variant="ghost" disabled={state.loading || choices.status === "loading"} onClick={() => { setChoices({ status: "loading", keys: [] }); setRefresh((value) => value + 1); }}>{guide.refreshKeys}</Button></div>
+      <Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => update({ apiKeyId })}><SelectTrigger id={formId("document-api-key")} className="w-full min-w-0"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block truncate">{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></SelectItem>)}</SelectContent></Select>
       <p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
       {choices.status === "loading" && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
       {choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
       {choices.status === "ready" && !choices.keys.length && <p className="text-sm leading-6">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
     </div>
-    <div className="space-y-3"><label htmlFor="document-file" className="block text-sm font-medium">{text.file}</label><Input id="document-file" type="file" accept={DOCUMENT_MEDIA_TYPES.join(",")} disabled={state.loading} aria-describedby="document-file-help" onChange={(event) => {
+    <div className="space-y-3"><label htmlFor={formId("document-file")} className="block text-sm font-medium">{text.file}</label><Input id={formId("document-file")} type="file" accept={DOCUMENT_MEDIA_TYPES.join(",")} disabled={state.loading} aria-describedby={formId("document-file-help")} onChange={(event) => {
       const file = event.target.files?.[0] ?? null;
       if (file && (file.size === 0 || file.size > MAX_DOCUMENT_BYTES || !DOCUMENT_MEDIA_TYPES.some((type) => type === file.type))) update({ file: null, failure: { error: { code: file.size > MAX_DOCUMENT_BYTES ? "DocumentTooLarge" : "UnsupportedDocument" } } });
       else update({ file });
-    }} /><p id="document-file-help" className="text-sm leading-7 text-muted-foreground">{text.fileHelp}</p>{state.file && <p className="break-words text-sm">{state.file.name} · {(state.file.size / 1024).toFixed(1)} KiB</p>}</div>
+    }} /><p id={formId("document-file-help")} className="text-sm leading-7 text-muted-foreground">{text.fileHelp}</p>{state.file && <p className="break-words text-sm">{state.file.name} · {(state.file.size / 1024).toFixed(1)} KiB</p>}</div>
     <p className="text-sm leading-7 text-muted-foreground">{text.privacy}</p>
     <div className="flex flex-wrap gap-3">{state.loading && <Button type="button" variant="outline" onClick={() => { request.current?.abort(); request.current = null; store.setState({ loading: false, cancelled: true }); }}><Square className="size-4" />{common.cancel}</Button>}<Button type="submit" disabled={state.loading || !state.file || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? text.running : text.execute}</Button></div>
   </form>;
@@ -101,7 +105,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   </div>;
 
   return <ApiDocumentationLayout locale={locale} value={state.tab} onValueChange={(tab) => store.setState({ tab })} busy={state.loading}
-    selection={<div className="max-w-xl space-y-2"><label htmlFor="document-model" className="block text-sm font-medium">{text.model}</label><Select value={state.model} disabled={state.loading} onValueChange={(model) => { if (DOCUMENT_MODELS.includes(model as DocumentAnalysisModel)) update({ model: model as DocumentAnalysisModel }); }}><SelectTrigger id="document-model" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="prebuilt-read">{text.read}</SelectItem><SelectItem value="prebuilt-layout">{text.layout}</SelectItem></SelectContent></Select><p className="text-sm leading-7 text-muted-foreground">{state.model === "prebuilt-read" ? text.readHelp : text.layoutHelp}</p></div>}
+    selection={<div className="max-w-xl space-y-2"><label htmlFor={formId("document-model")} className="block text-sm font-medium">{text.model}</label><Select value={state.model} disabled={state.loading} onValueChange={(model) => { if (DOCUMENT_MODELS.includes(model as DocumentAnalysisModel)) update({ model: model as DocumentAnalysisModel }); }}><SelectTrigger id={formId("document-model")} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="prebuilt-read">{text.read}</SelectItem><SelectItem value="prebuilt-layout">{text.layout}</SelectItem></SelectContent></Select><p className="text-sm leading-7 text-muted-foreground">{state.model === "prebuilt-read" ? text.readHelp : text.layoutHelp}</p></div>}
     settings={settings} response={response}
     request={<div className="space-y-6"><p className="text-[15px] leading-8 text-muted-foreground">{text.intro}</p><div className="rounded-xl border border-border px-5 py-4"><span className="mr-3 font-bold text-primary">POST</span><code className="break-all text-sm">{getDocumentAnalysisEndpoint(origin, state.model)}</code></div><p className="text-sm leading-7 text-muted-foreground">{text.async}</p><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">{guide.code}</h2><Select value={state.language} onValueChange={(language) => { if (INTEGRATION_LANGUAGES.includes(language as IntegrationLanguage)) store.setState({ language: language as IntegrationLanguage }); }}><SelectTrigger aria-label={guide.language} className="w-48"><SelectValue /></SelectTrigger><SelectContent>{INTEGRATION_LANGUAGES.map((language) => <SelectItem key={language} value={language}>{languageLabels[language]}</SelectItem>)}</SelectContent></Select></div><p className="text-sm leading-7 text-muted-foreground">{guide.keySetup}</p><Code title={languageLabels[state.language]} code={getDocumentAnalysisExample(state.language, origin, state.model)} dictionary={dictionary} /><p className="text-sm leading-7 text-muted-foreground">{text.limits}</p><p className="text-sm leading-7 text-muted-foreground">{text.timeoutNote}</p><a href="https://learn.microsoft.com/en-us/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0%20(2024-11-30)" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline underline-offset-4">{text.docs}</a>{!gatewayOrigin && <p className="text-sm text-amber-700">{guide.notConfigured}</p>}</div>}
     schema={<div className="space-y-6"><p className="text-sm leading-7 text-muted-foreground">{text.limits}</p><ApiSchemaReference locale={locale} title={guide.requestSchema} schema={getDocumentAnalysisRequestSchema(locale)} /><ApiSchemaReference locale={locale} title={guide.responseSchema} schema={getDocumentAnalysisResponseSchema(locale)} /></div>}

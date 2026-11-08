@@ -8,7 +8,7 @@ const maximumEvents = MODEL_MAX_STREAM_EVENTS;
 const errorCodes = new Set<ModelGatewayErrorCode>([
   "InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable",
   "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout",
-  "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable",
+  "GenerationFailed", "OutputLimitReached", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable",
 ]);
 
 /** 応答の読取り失敗を、画面で翻訳可能な公開エラーに統一します。 */

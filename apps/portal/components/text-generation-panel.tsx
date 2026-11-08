@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useFieldIds } from "@/lib/use-field-ids";
+
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,11 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-documentation-layout";
 import { usePortalStore } from "@/components/portal-store-provider";
-import { useModelSelection } from "@/components/use-model-selection";
+import { useStore } from "zustand";
+import { modelSelectionScope } from "@/lib/model-selection";
+import { createTextPanelStore, getTextPanelView } from "@/lib/text-panel-state";
+import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 import { getMinimumTextOutputTokens, MAX_TEXT_MESSAGE_CHARACTERS, textGenerationInputSchema } from "@/lib/model-request";
 import { ModelResponseError, readModelResponse } from "@/lib/model-response";
 import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
-import { chooseTextModelVariant, groupTextModels, resolveTextModelVariant, updateTextModelSelection } from "@/lib/text-model-choices";
+import { chooseTextModelVariant, groupTextModels, resolveTextModelVariant, updateTextModelSelection, resolveTextPanelInput, textModelDraft } from "@/lib/text-model-choices";
 import {
   SAMPLE_TEXT_PROMPT, INTEGRATION_LANGUAGES, buildTextGenerationRequest,
   getIntegrationExample, getTextGenerationEndpoint, getTextGenerationHeaders,
@@ -59,26 +64,30 @@ function formatReceivedBody(raw: Record<string, unknown>, stream: boolean): stri
 
 /** 編集したメッセージでAPIを試し、同じ入力の組み込み例と実行結果を提供します。 */
 export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin }: { models: TextGenerationModel[]; dictionary: Dictionary; locale: Locale; gatewayOrigin: string | null }) {
+  const fieldId = useFieldIds();
   const text = dictionary.modelGateway;
   const guide = text.integration;
-  const { rememberModel } = useModelSelection("text", models);
-  const input = usePortalStore((state) => state.textInput);
-  const updateInput = usePortalStore((state) => state.updateTextInput);
-  const apiKeyId = usePortalStore((state) => state.modelApiKeyId);
-  const selectApiKey = usePortalStore((state) => state.setModelApiKeyId);
+  const scope = modelSelectionScope("text", models[0]?.providerId ?? "");
+  const sharedInput = usePortalStore((state) => state.textInput);
+  const draft = usePortalStore((state) => state.textModelDrafts[scope]);
+  const saveDraft = usePortalStore((state) => state.setTextModelDraft);
+  const updateSharedInput = usePortalStore((state) => state.updateTextInput);
+  const input = useMemo(() => resolveTextPanelInput(models, draft, sharedInput), [models, draft, sharedInput]);
+  const [store] = useState(createTextPanelStore);
+  const resetGeneration = useStore(store, (state) => state.resetGeneration);
+  const apiKeyId = useStore(store, (state) => state.modelApiKeyId);
+  const selectApiKey = useStore(store, (state) => state.setModelApiKeyId);
   const language = usePortalStore((state) => state.integrationLanguage);
   const setLanguage = usePortalStore((state) => state.setIntegrationLanguage);
   const [activeTab, setActiveTab] = useState<"request" | "schema" | "response">("request");
-  const status = usePortalStore((state) => state.generationStatus);
-  const result = usePortalStore((state) => state.generationResult);
-  const failure = usePortalStore((state) => state.generationFailure);
-  const begin = usePortalStore((state) => state.beginGeneration);
-  const updateResult = usePortalStore((state) => state.updateGeneration);
-  const complete = usePortalStore((state) => state.completeGeneration);
-  const fail = usePortalStore((state) => state.failGeneration);
-  const cancel = usePortalStore((state) => state.cancelGeneration);
+  const generation = useStore(store);
+  const { generationStatus: status, generationResult: result, generationFailure: failure, generationCancelled: cancelled } = getTextPanelView(generation, input);
+  const begin = useStore(store, (state) => state.beginGeneration);
+  const updateResult = useStore(store, (state) => state.updateGeneration);
+  const complete = useStore(store, (state) => state.completeGeneration);
+  const fail = useStore(store, (state) => state.failGeneration);
+  const cancel = useStore(store, (state) => state.cancelGeneration);
   const requestRef = useRef<AbortController | null>(null);
-  const [cancelled, setCancelled] = useState(false);
   const [keyChoices, setKeyChoices] = useState<KeyChoiceState>({ apiId: "", status: "loading", keys: [] });
   const [keyRefresh, setKeyRefresh] = useState(0);
   const modelChoices = groupTextModels(models);
@@ -93,7 +102,9 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   const number = new Intl.NumberFormat(locale);
 
-  useEffect(() => () => { if (requestRef.current) { requestRef.current.abort(); cancel(); } }, [cancel]);
+  useEffect(() => { store.getState().reconcileInput(input); }, [store, input]);
+
+  useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => { if (pending) store.getState().cancelGeneration(); }), [store]);
 
   useEffect(() => {
     if (!apiId) return;
@@ -106,6 +117,13 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     return () => controller.abort();
   }, [apiId, keyRefresh]);
 
+  /** 共有する比較入力と提供元固有の設定を、別の正本へ保存します。 */
+  function updateInput(patch: Partial<typeof input>) {
+    if (patch.message !== undefined || patch.stream !== undefined) updateSharedInput({ ...(patch.message !== undefined ? { message: patch.message } : {}), ...(patch.stream !== undefined ? { stream: patch.stream } : {}) });
+    if ("modelId" in patch || "operationId" in patch || "maxOutputTokens" in patch) saveDraft(scope, textModelDraft({ ...input, ...patch }));
+    resetGeneration();
+  }
+
   /** 古い一覧で実行させず、現在の所属と利用可否を改めて取得します。 */
   function refreshKeys() {
     setKeyChoices({ apiId, status: "loading", keys: [] });
@@ -115,22 +133,20 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   /** モデル・方式の変更で古い結果を消し、実行先が変わる場合はキーの利用可否も選び直します。 */
   function selectModel(next: TextGenerationModel) {
     if (model?.apiId !== next.apiId) selectApiKey("");
-    rememberModel({ id: next.id, operationId: next.operationId });
     updateInput(updateTextModelSelection(input, next));
-    setCancelled(false);
   }
 
   /** 表示と同じメッセージ・設定を送り、接続先とキーはサーバーで解決します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (requestRef.current || !model) return;
+    store.getState().reconcileInput(input);
     if (!parsed.success || !valid) { fail({ error: { code: "InvalidRequest" } }); return; }
     if (!selectedKey) { fail({ error: { code: "ApiKeyUnavailable" } }); return; }
     const controller = new AbortController();
     requestRef.current = controller;
-    setCancelled(false);
     setActiveTab("response");
-    begin();
+    begin(input);
     try {
       const response = await fetch("/api/models/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal: controller.signal });
       const received = await readModelResponse(response, model, { onStreamUpdate: (partial) => { if (!controller.signal.aborted) updateResult(partial); } });
@@ -141,7 +157,7 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
   }
 
   /** 受信を中止します。すでに送信したモデル処理の取り消しは保証しません。 */
-  function cancelRequest() { requestRef.current?.abort(); requestRef.current = null; cancel(); setCancelled(true); }
+  function cancelRequest() { requestRef.current?.abort(); requestRef.current = null; cancel(); }
 
   if (!model) return null;
   const endpoint = getTextGenerationEndpoint(model, origin);
@@ -156,52 +172,52 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     selection={<>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <label htmlFor="integration-model" className="block text-sm font-medium">{text.model}</label>
+          <label htmlFor={fieldId("integration-model")} className="block text-sm font-medium">{text.model}</label>
           <Select value={model.id} disabled={loading} onValueChange={(modelId) => { const choice = modelChoices.find((item) => item.id === modelId); if (choice) selectModel(chooseTextModelVariant(choice, model.operationId)); }}>
-            <SelectTrigger id="integration-model" className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger id={fieldId("integration-model")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>{modelChoices.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <label htmlFor="integration-api-method" className="block text-sm font-medium">{guide.apiMethod}</label>
+          <label htmlFor={fieldId("integration-api-method")} className="block text-sm font-medium">{guide.apiMethod}</label>
           <Select value={model.operationId} disabled={loading || modelChoice?.variants.length === 1} onValueChange={(operationId) => { const next = modelChoice?.variants.find((item) => item.operationId === operationId); if (next) selectModel(next); }}>
-            <SelectTrigger id="integration-api-method" aria-describedby="integration-api-method-help" className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger id={fieldId("integration-api-method")} aria-describedby={fieldId("integration-api-method-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>{modelChoice?.variants.map((item) => <SelectItem key={item.operationId} value={item.operationId}>{item.operationId === "responses-create" ? "Responses" : "Chat Completions"}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       </div>
-      <p id="integration-api-method-help" className="text-sm leading-6 text-muted-foreground">{guide.apiMethodHelp}</p>
+      <p id={fieldId("integration-api-method-help")} className="text-sm leading-6 text-muted-foreground">{guide.apiMethodHelp}</p>
     </>}
     settings={
       <form onSubmit={execute} className="space-y-5">
       <div className="space-y-2 rounded-lg border border-border bg-white p-3">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="integration-api-key" className="text-sm font-medium">{guide.apiKey}</label>
+          <label htmlFor={fieldId("integration-api-key")} className="text-sm font-medium">{guide.apiKey}</label>
           <Button type="button" variant="ghost" size="sm" disabled={loading || keyChoices.status === "loading"} onClick={refreshKeys} className="h-7 text-sm">{guide.refreshKeys}</Button>
         </div>
         <Select value={selectedKey?.id ?? ""} disabled={loading || !choicesReady || !keyChoices.keys.length} onValueChange={selectApiKey}>
-          <SelectTrigger id="integration-api-key" aria-describedby="integration-api-key-help" className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
+          <SelectTrigger id={fieldId("integration-api-key")} aria-describedby={fieldId("integration-api-key-help")} className="h-10 w-full min-w-0 bg-white text-sm"><SelectValue placeholder={guide.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
           <SelectContent>{keyChoices.keys.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate text-left" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}><span>{key.displayName}</span><span className="text-sm text-muted-foreground">{" · "}{[key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></span></SelectItem>)}</SelectContent>
         </Select>
-        <p id="integration-api-key-help" className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
+        <p id={fieldId("integration-api-key-help")} className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>
         {(keyChoices.apiId !== apiId || keyChoices.status === "loading") && <p role="status" className="text-sm text-muted-foreground">{guide.loadingKeys}</p>}
         {keyChoices.apiId === apiId && keyChoices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
         {choicesReady && !keyChoices.keys.length && <p role="status" className="text-sm leading-6 text-muted-foreground">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{guide.manageKeys}</Link></p>}
       </div>
       <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
         <div className="space-y-2">
-          <label htmlFor="integration-tokens" className="block text-sm font-medium">{text.outputTokens}</label>
-          {model.maxOutputTokens === null ? <p className="text-sm leading-6 text-muted-foreground">{model.outputTokenLimitKind === "dynamic" ? text.tokenLimitAutomatic : text.tokenLimitUnverified}</p> : <><Input id="integration-tokens" type="number" required min={getMinimumTextOutputTokens(model)} max={model.maxOutputTokens} step={1} disabled={loading} value={typeof input.maxOutputTokens === "number" && Number.isFinite(input.maxOutputTokens) ? input.maxOutputTokens : ""} onChange={(event) => updateInput({ maxOutputTokens: event.target.valueAsNumber })} className="h-10 bg-white text-sm" /><p className="text-sm text-muted-foreground">{text.tokenLimit.replace("{minimum}", number.format(getMinimumTextOutputTokens(model))).replace("{count}", number.format(model.maxOutputTokens))}</p></>}
+          <label htmlFor={fieldId("integration-tokens")} className="block text-sm font-medium">{text.outputTokens}</label>
+          {model.maxOutputTokens === null ? <p className="text-sm leading-6 text-muted-foreground">{model.outputTokenLimitKind === "dynamic" ? text.tokenLimitAutomatic : text.tokenLimitUnverified}</p> : <><Input id={fieldId("integration-tokens")} type="number" required min={getMinimumTextOutputTokens(model)} max={model.maxOutputTokens} step={1} disabled={loading} value={typeof input.maxOutputTokens === "number" && Number.isFinite(input.maxOutputTokens) ? input.maxOutputTokens : ""} onChange={(event) => updateInput({ maxOutputTokens: event.target.valueAsNumber })} className="h-10 bg-white text-sm" /><p className="text-sm text-muted-foreground">{text.tokenLimit.replace("{minimum}", number.format(getMinimumTextOutputTokens(model))).replace("{count}", number.format(model.maxOutputTokens))}</p></>}
         </div>
         <div className="space-y-2">
           <span className="block text-sm font-medium">{guide.stream}</span>
-          <button type="button" role="switch" aria-checked={input.stream} aria-label={guide.stream} aria-describedby="integration-stream-help" disabled={loading} onClick={() => updateInput({ stream: !input.stream })} className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm disabled:opacity-50">
+          <button type="button" role="switch" aria-checked={input.stream} aria-label={guide.stream} aria-describedby={fieldId("integration-stream-help")} disabled={loading} onClick={() => updateInput({ stream: !input.stream })} className="flex h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm disabled:opacity-50">
             <span className={`relative h-5 w-9 rounded-full transition-colors ${input.stream ? "bg-primary" : "bg-slate-300"}`} aria-hidden="true"><span className={`absolute left-0 top-0.5 size-4 rounded-full bg-white shadow-sm transition-transform ${input.stream ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span><span className="font-mono">{String(input.stream)}</span>
           </button>
         </div>
       </div>
-      <p id="integration-stream-help" className="text-sm leading-6 text-muted-foreground">{guide.streamHelp}</p>
-      <div className="space-y-2"><label htmlFor="integration-message" className="block text-sm font-medium">{text.prompt}</label><Textarea id="integration-message" required rows={4} maxLength={MAX_TEXT_MESSAGE_CHARACTERS} disabled={loading} value={input.message} onChange={(event) => updateInput({ message: event.target.value })} placeholder={SAMPLE_TEXT_PROMPT} className="bg-white text-sm leading-7" /></div>
+      <p id={fieldId("integration-stream-help")} className="text-sm leading-6 text-muted-foreground">{guide.streamHelp}</p>
+      <div className="space-y-2"><label htmlFor={fieldId("integration-message")} className="block text-sm font-medium">{text.prompt}</label><Textarea id={fieldId("integration-message")} required rows={4} maxLength={MAX_TEXT_MESSAGE_CHARACTERS} disabled={loading} value={input.message} onChange={(event) => updateInput({ message: event.target.value })} placeholder={SAMPLE_TEXT_PROMPT} className="bg-white text-sm leading-7" /></div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-lg text-sm leading-6 text-muted-foreground">{guide.fixedNotice}</p>
         <div className="flex items-center gap-2">{loading && <Button type="button" variant="outline" size="sm" onClick={cancelRequest}><Square className="size-3" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={loading || !valid || !selectedKey} className="gap-2">{loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{loading ? guide.running : guide.run}</Button></div>
@@ -228,7 +244,6 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
     </div>}
     response={<div className="space-y-6" aria-busy={loading}>
       <p className="text-sm leading-6 text-muted-foreground">{guide.requestNotice}</p>
-        {cancelled && result && <p role="status" className="text-sm leading-6 text-muted-foreground">{text.cancelNotice}</p>}
         {failure && <div role="alert" className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/4 p-4 text-sm leading-6 text-destructive"><p>{text.errors[failure.error.code]}</p>{failure.retryAfterSeconds !== undefined && <p>{text.retryAfter.replace("{count}", number.format(failure.retryAfterSeconds))}</p>}{failure.requestId && <p className="break-all text-sm">{text.requestId}: {failure.requestId}</p>}</div>}
         {result ? <>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground"><span className="font-mono">{contentType}</span><span>{result.model}</span><span>{(result.durationMs / 1000).toFixed(1)} s</span>{result.usage && <><span>{text.inputTokens}: {number.format(result.usage.inputTokens)} {text.tokens}</span><span>{text.outputTokenUsage}: {number.format(result.usage.outputTokens)} {text.tokens}</span></>}</div>

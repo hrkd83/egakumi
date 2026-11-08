@@ -75,6 +75,26 @@ class HostEncryptionRegistrationTests(unittest.TestCase):
         self.assertEqual(calls, [self.feature("show"), self.provider("register"), self.provider("show")])
         sleep.assert_not_called()
 
+    def test_compute_refresh_cli_failure_reports_stage_without_external_output(self):
+        external = "SENSITIVE-REGISTRATION-ERROR-FIXTURE"
+        with mock.patch.object(lifecycle, "run", side_effect=[
+                {"properties": {"state": "Registered"}}, lifecycle.DeploymentError(external)]) as run, \
+             mock.patch.object(lifecycle.time, "monotonic", return_value=0), \
+             mock.patch.object(lifecycle.time, "sleep") as sleep:
+            with self.assertRaises(lifecycle.DeploymentError) as raised:
+                lifecycle.ensure_host_encryption(self.config)
+        message = str(raised.exception)
+        self.assertIn("Microsoft.Compute", message)
+        self.assertIn("provider-refresh-register", message)
+        self.assertIn("sign-in", message)
+        self.assertIn("registration permissions", message)
+        self.assertIn("registration state", message)
+        self.assertNotIn(external, message)
+        self.assertNotIn("corresponding deployment", message)
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [self.feature("show"), self.provider("register")])
+        sleep.assert_not_called()
+
     def test_retry_after_interrupted_compute_refresh_does_not_treat_registered_feature_as_ready(self):
         with mock.patch.object(lifecycle, "run", side_effect=[
                 {"properties": {"state": "Registered"}}, lifecycle.DeploymentError("CLI operation failed")]) as run, \
@@ -246,6 +266,29 @@ class HostEncryptionHookIntegrationTests(unittest.TestCase):
             lifecycle.register_providers(self.config)
         feature.assert_called_once_with(self.config)
         self.assertEqual(events[-2:], [("show", "Microsoft.Network"), ("feature-preparation", "Microsoft.Compute")])
+
+    def test_required_provider_cli_failure_reports_stage_without_external_output(self):
+        external = "SENSITIVE-REGISTRATION-ERROR-FIXTURE"
+        with mock.patch.object(lifecycle, "run", side_effect=[
+                {"registrationState": "NotRegistered"}, lifecycle.DeploymentError(external)]) as run, \
+             mock.patch.object(lifecycle, "ensure_host_encryption") as feature, \
+             mock.patch.object(lifecycle.time, "sleep") as sleep:
+            with self.assertRaises(lifecycle.DeploymentError) as raised:
+                lifecycle.register_providers(self.config)
+        message = str(raised.exception)
+        self.assertIn("Microsoft.Network", message)
+        self.assertIn("provider-register", message)
+        self.assertIn("sign-in", message)
+        self.assertIn("registration permissions", message)
+        self.assertIn("registration state", message)
+        self.assertNotIn(external, message)
+        self.assertNotIn("corresponding deployment", message)
+        self.assertEqual([call.args[0][:3] for call in run.call_args_list],
+                         [["az", "provider", "show"], ["az", "provider", "register"]])
+        self.assertTrue(all(call.args[0][call.args[0].index("--namespace") + 1] == "Microsoft.Network"
+                            for call in run.call_args_list))
+        feature.assert_not_called()
+        sleep.assert_not_called()
 
     def test_provider_timeout_prevents_feature_preparation(self):
         with mock.patch.object(lifecycle, "run", return_value={"registrationState": "Registering"}), \

@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Locale } from "@/lib/i18n/config";
 
 /** ガイドを入口とし、仕様の参照と実際の試行を分ける共通ドキュメント枠です。 */
-export function ApiDocumentationLayout({ locale, value, onValueChange, selection, settings, request, schema, response, busy = false, executable = true }: {
+export function ApiDocumentationLayout({ locale, value, onValueChange, selection, settings, request, schema, response, responseActions, busy = false, executable = true }: {
   locale: Locale;
   value: "request" | "schema" | "response";
   onValueChange: (value: "request" | "schema" | "response") => void;
@@ -16,6 +16,7 @@ export function ApiDocumentationLayout({ locale, value, onValueChange, selection
   request: ReactNode;
   schema: ReactNode;
   response: ReactNode;
+  responseActions?: ReactNode;
   busy?: boolean;
   executable?: boolean;
 }) {
@@ -23,7 +24,7 @@ export function ApiDocumentationLayout({ locale, value, onValueChange, selection
   return <div className="api-documentation space-y-7">
     {selection && <div className="rounded-xl border border-border bg-white p-5 sm:p-6">{selection}</div>}
     <Tabs value={value} onValueChange={(next) => { if (next === "request" || next === "schema" || next === "response") onValueChange(next); }} className="gap-7">
-      <TabsList variant="line" className="h-auto w-full justify-start gap-5 border-b border-border p-0">
+      <TabsList variant="line" className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-2 border-b border-border p-0 sm:gap-x-5">
         <TabsTrigger value="request" disabled={busy} className="h-12 gap-2 px-1 text-sm"><BookOpen className="size-4" />{ja ? "使い方ガイド" : "Guide"}</TabsTrigger>
         <TabsTrigger value="schema" disabled={busy} className="h-12 gap-2 px-1 text-sm"><Braces className="size-4" />{ja ? "API仕様" : "API reference"}</TabsTrigger>
         {executable && <TabsTrigger value="response" className="h-12 gap-2 px-1 text-sm"><Play className="size-4" />{ja ? "試す" : "Try it"}</TabsTrigger>}
@@ -42,7 +43,7 @@ export function ApiDocumentationLayout({ locale, value, onValueChange, selection
       <TabsContent value="response" className="m-0">
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
           <section className="min-w-0 rounded-xl border border-border bg-white p-5 sm:p-6"><h2 className="mb-5 text-lg font-semibold">{ja ? "リクエスト設定" : "Request settings"}</h2>{settings}</section>
-          <section className="min-w-0 space-y-5 rounded-xl border border-border bg-white p-5 sm:p-6"><h2 className="text-lg font-semibold">{ja ? "実行結果" : "Result"}</h2>{response}</section>
+          <section className="min-w-0 space-y-5 rounded-xl border border-border bg-white p-5 sm:p-6"><div className="flex min-w-0 flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{ja ? "実行結果" : "Result"}</h2>{responseActions}</div>{response}</section>
         </div>
       </TabsContent>
     </Tabs>

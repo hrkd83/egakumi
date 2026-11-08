@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
 import { getDecisionModels } from "./model-catalog.ts";
@@ -82,7 +83,7 @@ export async function handleDecision(request: Request, dependencies: DecisionGat
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readEmbeddingBody(response.body, 1_048_576, signal);
     const value = JSON.parse(raw);
-    if (raw.includes(key) || JSON.stringify(value).includes(key)) throw new Error("Credential reflection");
+    if (containsModelCredential(value, key, raw)) throw new Error("Credential reflection");
     const result = parseDecisionResult(value, model, input, Math.round(performance.now() - started), requestId);
     return Response.json(result, { headers: responseHeaders });
   } catch {

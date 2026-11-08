@@ -171,6 +171,24 @@ class PiiPolicyTests(unittest.TestCase):
             {"id": "retry-private", "mode": "retry", "status": 429, "retryAfter": "SENTINEL_PRIVATE_DIAGNOSTIC"},
             {"id": "retry-success", "mode": "retry", "status": 200, "retryAfter": "30"},
         ]
+        # 操作を単独で評価しても、解析前の受信上限を独立して守ります。
+        small = '{"text":"synthetic","language":"en"}'
+        for size in (196608, 196609):
+            cls.cases.append({"id": "operation-wire-" + str(size), "input": small + " " * (size - len(small.encode()))})
+        cls.cases.append({"id": "operation-wire-over-malformed", "input": "{" + " " * 196608})
+        # 本番API定義のモデル版・空のwarning allowlistでも同じ式を検査します。
+        adopted = json.loads((POLICIES.parent / "apis/pii-v1.json").read_text())["authorization"]["operationConstraints"]["pii_redact_text"]
+        for name, document in (
+            ("adopted-unknown-warning", response(entities=[], redactedText="synthetic harmless content",
+                warnings=[{"code": "UnregisteredWarning", "message": "SENTINEL_DIAGNOSTIC"}])),
+            ("adopted-truncated", response(warnings=[{"code": "DocumentTruncated", "message": "SENTINEL_RAW_PII"}])),
+            ("adopted-wrong-model", response()),
+        ):
+            document["results"]["modelVersion"] = "different-version" if name.endswith("wrong-model") else adopted["modelVersion"]
+            cls.cases.append({**response_case(name, document), "settings": adopted})
+        cls.cases += [response_case("entities-object", response(entities={})),
+                      response_case("warnings-object", response(warnings={})),
+                      response_case("untrusted-detected-count", response(detectedCount=-1))]
         # context.SubscriptionはAPIM標準のキー検証後の値です。
         # 不正・停止・範囲外のキーはSubscriptionが無い状態として検査します。
         auth = {"mode": "subscriptionKey"}
@@ -222,6 +240,11 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             self.assertEqual(self.results[name], {"status": 400}, name)
         self.assertEqual(self.results["too-many-bytes"], {"status": 413})
 
+    def test_operation_independently_caps_wire_bytes_before_parsing(self):
+        self.assertEqual(self.results["operation-wire-196608"]["status"], 200)
+        for name in ("operation-wire-196609", "operation-wire-over-malformed"):
+            self.assertEqual(self.results[name], {"status": 413})
+
     def test_success_is_rebuilt_from_safe_fields_only(self):
         body = self.results["success"]["body"]
         self.assertEqual(set(body), {"redactedText", "language", "detectedCount", "modelVersion", "warningCodes", "requestId"})
@@ -242,6 +265,29 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                 self.assertEqual(set(result["body"]), {"error", "requestId"})
                 self.assertEqual(set(result["body"]["error"]), {"code"})
                 self.assertNotIn("SENTINEL", json.dumps(result))
+
+    def test_adopted_model_and_warning_contract_never_accepts_truncation(self):
+        result = self.results["adopted-unknown-warning"]
+        self.assertEqual(result["status"], 200)
+        self.assertEqual(result["body"]["warningCodes"], [])
+        self.assertEqual(result["body"]["detectedCount"], 0)
+        self.assertNotIn("SENTINEL", json.dumps(result))
+        for name, status, code in (("adopted-truncated", 413, "PiiInputTooLarge"),
+                                   ("adopted-wrong-model", 502, "PiiInvalidUpstreamResult")):
+            value = self.results[name]
+            self.assertEqual(value["status"], status)
+            self.assertEqual(value["body"]["error"], {"code": code})
+            self.assertEqual(set(value["body"]), {"error", "requestId"})
+            self.assertNotIn("SENTINEL", json.dumps(value))
+
+    def test_entity_warning_shapes_and_detected_count_are_not_trusted(self):
+        for name in ("entities-object", "warnings-object"):
+            result = self.results[name]
+            self.assertEqual(result["status"], 502)
+            self.assertEqual(result["body"]["error"], {"code": "PiiInvalidUpstreamResult"})
+            self.assertNotIn("SENTINEL", json.dumps(result))
+        # 公開検出数は検証済みentities配列のCountから生成し、上流の同名追加欄を使いません。
+        self.assertEqual(self.results["untrusted-detected-count"]["body"]["detectedCount"], 1)
 
 
 

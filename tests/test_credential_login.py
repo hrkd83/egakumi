@@ -162,8 +162,9 @@ class CredentialExpressionTests(unittest.TestCase):
   cls.roots=CredentialPolicyTests.roots
   pwsh=os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
   if not pwsh:raise unittest.SkipTest("PowerShell Roslyn is required")
-  methods=[];switches=[];counts={}
+  methods=[];switches=[];counts={};retry_methods={}
   for filename,root in cls.roots.items():
+   parents={child:parent for parent in root.iter() for child in parent}
    for node in root.iter():
     expressions=[("attribute",v) for v in node.attrib.values() if v.startswith("@")]
     if node.text and node.text.strip().startswith("@"):
@@ -174,11 +175,36 @@ class CredentialExpressionTests(unittest.TestCase):
      if node.tag=="set-variable" and kind=="attribute" and value==node.get("value"):
       name=filename+":"+node.get("name");number=counts.get(name,0);counts[name]=number+1
       switches.append('case '+json.dumps(name+":"+str(number))+':output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
+     if filename in ("start","challenge"):
+      if node.tag=="set-variable" and node.get("name")==("credentialProxyRetryAfter" if filename=="start" else "gatewayConnectionChallengeRetryAfter"):
+       retry_methods[(filename,"seconds")]=method
+      if node.tag=="set-header" and node.get("name")=="Retry-After" and kind=="attribute":
+       retry_methods[(filename,"action")]=method
+      parent=parents.get(node)
+      if node.tag=="value" and parent is not None and parent.tag=="set-header" and parent.get("name")=="Retry-After":
+       retry_methods[(filename,"header")]=method
+  # 秒の検証から実header式までを同じcontextで動かし、固定値の代用品にしません。
+  for policy,variable in (("start","credentialProxyRetryAfter"),("challenge","gatewayConnectionChallengeRetryAfter")):
+   if not all((policy,part) in retry_methods for part in ("seconds","action","header")):
+    raise AssertionError("Rate error response must expose its actual Retry-After expressions")
+   switches.append('case "retry-'+policy+'":c.Variables['+json.dumps(variable)+']='+retry_methods[(policy,"seconds")]+'(c);var retryAction'+policy+'=(string)'+retry_methods[(policy,"action")]+'(c);output[(string)item["id"]]=new JObject(new JProperty("action",retryAction'+policy+'),new JProperty("header",retryAction'+policy+'=="override"?(string)'+retry_methods[(policy,"header")]+'(c):null));break;')
   cases=[]
   def add(name,expr,**values):cases.append({"id":name,"expression":expr,"subscription":"sub-a",**values})
   for operation in credential_login.OPERATIONS:
    for label,source,reason in (("missing","authorization","SubscriptionKeyNotFound"),("invalid","authorization","SubscriptionKeyInvalid"),("limited","rate-limit-by-key","RateLimitExceeded"),("backend","forward-request","BackendConnectionFailure"),("expression","set-variable","ExpressionValueEvaluationFailure")):
     add("proxy-error-"+operation+"-"+label,operation+":credentialProxyErrorStatus:0",lastError={"source":source,"reason":reason})
+  # 境界・欠落・注入を代表させ、正常429と他statusのheader有無を分けます。
+  for label,retry in (("minimum","1"),("maximum","300"),("missing",None),("invalid","2\r\nInjected: value")):
+   for policy in ("start","challenge"):
+    variables={"credentialProxyErrorStatus":429} if policy=="start" else {"gatewayAuditStatus":429,"gatewayConnectionChallengeResult":{"status":429}}
+    if policy=="start" and retry is not None:variables["credentialLoginStartRetryAfter"]=retry
+    response={"response":{"name":"gatewayConnectionChallengeResponse","status":429,"body":{},"headers":{} if retry is None else {"Retry-After":retry}}} if policy=="challenge" else {}
+    add("retry-"+policy+"-"+label,"retry-"+policy,variables=variables,**response)
+  for policy,statuses in (("start",(401,503)),("challenge",(403,409,503))):
+   for status in statuses:
+    variables={"credentialProxyErrorStatus":status,"credentialLoginStartRetryAfter":"300"} if policy=="start" else {"gatewayAuditStatus":status,"gatewayConnectionChallengeResult":{"status":status}}
+    response={"response":{"name":"gatewayConnectionChallengeResponse","status":429,"body":{},"headers":{"Retry-After":"300"}}} if policy=="challenge" else {}
+    add("retry-"+policy+"-status-"+str(status),"retry-"+policy,variables=variables,**response)
   decision={"allowed":True,"method":"subscriptionKey","callerId":"subscription:sub-a"}
   config={"enabled":True,"mode":"personal","providerName":"graph-delegated"}
   def preliminary(name,**changes):
@@ -257,6 +283,24 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
   for operation in credential_login.OPERATIONS:
    for label,expected in (("missing",401),("invalid",401),("limited",429),("backend",503),("expression",503)):
     self.assertEqual(self.results["proxy-error-"+operation+"-"+label],expected)
+
+ def test_start_rate_policy_captures_retry_seconds_without_changing_its_counter(self):
+  rate=self.roots["start"].find("inbound/rate-limit-by-key")
+  self.assertEqual(rate.get("retry-after-variable-name"),"credentialLoginStartRetryAfter")
+  self.assertEqual((rate.get("calls"),rate.get("renewal-period")),("10","60"))
+  self.assertEqual(rate.get("counter-key"),'@("credential-login-start:" + context.Subscription.Id)')
+
+ def test_rate_error_headers_use_bounded_canonical_retry_seconds(self):
+  for policy in ("start","challenge"):
+   for label,seconds in (("minimum","1"),("maximum","300"),("missing","60"),("invalid","60")):
+    with self.subTest(policy=policy,input=label):
+     self.assertEqual(self.results["retry-"+policy+"-"+label],{"action":"override","header":seconds})
+
+ def test_other_connection_errors_do_not_emit_retry_after(self):
+  for policy,statuses in (("start",(401,503)),("challenge",(403,409,503))):
+   for status in statuses:
+    with self.subTest(policy=policy,status=status):
+     self.assertEqual(self.results["retry-"+policy+"-status-"+str(status)],{"action":"delete","header":None})
 
  def test_authentication_challenge_only_returns_valid_gateway_urls_and_allowlisted_fields(self):
   value=json.loads(self.results["challenge-valid"])

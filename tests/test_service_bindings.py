@@ -133,7 +133,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
             "Microsoft.ContainerRegistry/registries",
         })
         self.assertEqual(hosts(self.templates["main"]), portal_hosts)
-        self.assertIn(("Microsoft.App/containerApps", "[format('ca-{0}-credential-broker', parameters('stem'))]"),
+        self.assertIn(("Microsoft.App/containerApps", "[format('ca-{0}-credentials', parameters('stem'))]"),
                       hosts(self.templates["gateway"]))
 
     def test_api_center_source_uses_workspace_relative_environment_and_waits_for_it(self):

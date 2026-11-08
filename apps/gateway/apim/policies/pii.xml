@@ -16,15 +16,21 @@
         var settings = JObject.Parse((string)context.Variables[&quot;piiSettings&quot;]);
         if (context.Request.Body == null) { return 400; }
         var bytes = context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
-        if (bytes.Length &gt; (int)settings[&quot;maxRequestBytes&quot;]) { return 413; }
+        /* Bound the received bytes before parsing. JSON Unicode escapes may
+           use six bytes for one ASCII character in the compact representation. */
+        if (bytes.Length &gt; 6L * (long)settings[&quot;maxRequestBytes&quot;]) { return 413; }
         if (context.Request.Url.Query.Count != 0 || !String.Equals(context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim(), &quot;application/json&quot;, StringComparison.OrdinalIgnoreCase)) { return 400; }
         var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
         if (body == null || body.Properties().Count() != 2 || body.Properties().Any(p =&gt; p.Name != &quot;text&quot; &amp;&amp; p.Name != &quot;language&quot;)) { return 400; }
         if (body[&quot;text&quot;]?.Type != JTokenType.String || String.IsNullOrWhiteSpace((string)body[&quot;text&quot;]) || body[&quot;language&quot;]?.Type != JTokenType.String) { return 400; }
         if (!((JArray)settings[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)body[&quot;language&quot;])) { return 400; }
+        /* Match the native MCP argument budget. Compact JSON removes syntax
+           whitespace and decodes JSON escapes, without normalizing, trimming
+           or truncating the text value passed to Language. */
+        if (System.Text.Encoding.UTF8.GetByteCount(body.ToString(Newtonsoft.Json.Formatting.None)) &gt; (long)settings[&quot;maxRequestBytes&quot;]) { return 413; }
         /* Exact TextElements_v8 limits belong to Language. StringInfo is not an
            allowed APIM policy type; UTF-16 Length must not reject valid emoji or
-           combining sequences. The independent UTF-8 request bound is above. */
+           combining sequences. The independent compact UTF-8 bound is above. */
         return 200;
       } catch { return 400; }
     }" />

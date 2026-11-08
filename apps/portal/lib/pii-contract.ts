@@ -35,9 +35,16 @@ export type PiiResult = z.infer<typeof piiResultSchema>;
 /** 日本語の架空データを初期入力とします。実在する個人情報の入力を要求しません。 */
 export const PII_SAMPLE: PiiInput = { language: "ja", text: "サンプル担当者は山田太郎です。連絡先はtaro.yamada@example.com、電話番号は090-1234-5678です。" };
 
-/** UTF-8の本文上限を、画面のプレビューとサーバーで共通に検査します。 */
+/** GatewayのJSON.NETと同じエスケープ表現で、値を変えずコンパクトJSONのバイト数を測ります。 */
+export function getPiiRequestBytes(input: PiiInput): number {
+  // JSON.NETはこの3文字を常にUnicode escapeへ直列化します。送信する文章は変更しません。
+  const compact = JSON.stringify(input).replace(/[\u0085\u2028\u2029]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return new TextEncoder().encode(compact).byteLength;
+}
+
+/** コンパクトJSONのUTF-8予算を、文字列を正規化せず画面とサーバーで共通に検査します。 */
 export function buildPiiRequest(input: PiiInput): PiiInput {
   const parsed = piiInputSchema.strip().parse(input);
-  if (new TextEncoder().encode(JSON.stringify(parsed)).byteLength > PII_API.maxRequestBytes) throw new RangeError("PII request too large");
+  if (getPiiRequestBytes(parsed) > PII_API.maxRequestBytes) throw new RangeError("PII request too large");
   return parsed;
 }

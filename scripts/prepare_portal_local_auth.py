@@ -2,11 +2,18 @@
 """Portalのローカル認証設定を準備する。既定は確認のみで、Azureは変更しない。"""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import csv
 import io
 import json
-import os
 from pathlib import Path
 import re
 import secrets

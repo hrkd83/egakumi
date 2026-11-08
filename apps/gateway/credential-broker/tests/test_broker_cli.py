@@ -1,22 +1,48 @@
 """SQL runtime grants and read-only Credential Manager reconciliation."""
 import copy
+import ast
+import re
+import uuid
 from pathlib import Path
 import tempfile
 import unittest
 
-from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier
-from credential_broker.store import StoreConflict
-from _store_support import OWNER, TENANT, fixture
+from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier, grant_runtime_access, RUNTIME_TABLE_PERMISSIONS
+from credential_broker.store import StoreConflict, StoreUnavailable, SqlStore
+from _store_support import OWNER, TENANT, fixture, Connection
+
+
+# Independent acceptance whitelist: no schema-version DML or future-table access.
+EXPECTED_RUNTIME_PERMISSIONS = {
+    "SchemaVersions": {"SELECT"},
+    "Pools": {"SELECT", "UPDATE"},
+    "Connections": {"SELECT", "UPDATE", "DELETE"},
+    "Transactions": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+    "Sessions": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+    "SubjectSecurity": {"SELECT", "INSERT", "UPDATE"},
+    "SessionRotationCandidates": {"SELECT", "INSERT", "DELETE"},
+}
+
+
+def grant_replies(members=(0, 0)):
+    replies = [("BEGIN TRANSACTION", None),
+               ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"})]
+    replies.extend(("GRANT " + permissions + " ON OBJECT::broker.[" + table + "]", None)
+                   for table, permissions in RUNTIME_TABLE_PERMISSIONS.items())
+    replies.append(("GRANT EXECUTE ON OBJECT::broker.AllocateConnection", None))
+    for role, member in zip(("db_datareader", "db_datawriter"), members):
+        replies.append(("SELECT IS_ROLEMEMBER", {"member": member}))
+        if member == 1:
+            replies.append(("ALTER ROLE [" + role + "] DROP MEMBER [id-runtime]", None))
+    return replies + [("COMMIT", None)]
 
 
 class MigrationTests(unittest.TestCase):
-    def test_migration_creates_client_id_bound_runtime_with_data_roles_and_proc_execute(self):
+    def test_migration_creates_client_id_bound_runtime_with_limited_objects_and_proc_execute(self):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 0}), ("SELECT schemafixture", None),
             ("SELECT secondfixture", None), ("SELECT sid,type", []), ("CREATE USER", None),
-            ("SELECT IS_ROLEMEMBER", {"member": 0}), ("ALTER ROLE [db_datareader]", None),
-            ("SELECT IS_ROLEMEMBER", {"member": 0}), ("ALTER ROLE [db_datawriter]", None),
-            ("GRANT EXECUTE ON OBJECT::broker.AllocateConnection", None),
+            *grant_replies(),
             ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", []), ("INSERT broker.Pools", None), ("COMMIT", None),
             ("SELECT MAX(Version)", {"version": 2}), ("SELECT TOP(0)", None)])
@@ -33,6 +59,9 @@ class MigrationTests(unittest.TestCase):
         self.assertNotIn("FROM EXTERNAL PROVIDER", sql)
         self.assertNotIn("db_owner", sql)
         self.assertNotIn("CREATE LOGIN", sql)
+        self.assertNotIn("ADD MEMBER", sql)
+        self.assertEqual({table: set(value.split(", ")) for table, value in RUNTIME_TABLE_PERMISSIONS.items()},
+                         EXPECTED_RUNTIME_PERMISSIONS)
         self.assertEqual(result["poolCount"], 1)
         self.assertEqual(result["schemaVersion"], 2)
 
@@ -52,8 +81,8 @@ class MigrationTests(unittest.TestCase):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}]),
             ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}),
-            ("SELECT IS_ROLEMEMBER", {"member": 1}), ("SELECT IS_ROLEMEMBER", {"member": 1}),
-            ("GRANT EXECUTE", None), ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
+            *grant_replies((1, 1)),
+            ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", [{"allocated": 0}]), ("UPDATE broker.Pools SET Capacity", None),
             ("COMMIT", None), ("SELECT MAX(Version)", {"version": 2}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
@@ -64,6 +93,149 @@ class MigrationTests(unittest.TestCase):
                 profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
         self.assertEqual(2, result["schemaVersion"])
         self.assertFalse(any("RAISE" in sql for sql, _ in cursor.calls))
+
+
+class GrantStateCursor:
+    """Transactional permission model; no SQL engine or credentials are used."""
+    def __init__(self, *, sid=None, kind="E", fail=None, unknown_role=None):
+        self.sid = uuid.UUID(TENANT).bytes_le if sid is None else sid
+        self.kind, self.fail, self.unknown_role = kind, fail, unknown_role
+        self.roles = {role: {"id-runtime", "id-other"} for role in ("db_datareader", "db_datawriter")}
+        self.permissions = {"id-runtime": set(), "id-other": {("OtherTable", "SELECT")}}
+        self.snapshot = None
+        self.calls, self.rows = [], []
+        self.commits = self.rollbacks = 0
+
+    def execute(self, query, *params):
+        self.calls.append((query, params))
+        self.rows = []
+        if self.fail and self.fail in query:
+            raise RuntimeError("synthetic operation failure")
+        if "BEGIN TRANSACTION" in query:
+            self.snapshot = copy.deepcopy((self.roles, self.permissions))
+        elif "ROLLBACK TRANSACTION" in query:
+            self.roles, self.permissions = self.snapshot
+            self.snapshot = None
+            self.rollbacks += 1
+        elif query == "COMMIT TRANSACTION;":
+            self.snapshot = None
+            self.commits += 1
+        elif query.startswith("SELECT sid,type"):
+            if params != ("id-runtime",):
+                raise AssertionError("Another principal was selected")
+            self.rows = [(self.sid, self.kind)]
+        elif query.startswith("SELECT IS_ROLEMEMBER"):
+            role, principal = params
+            self.rows = [(None if role == self.unknown_role else int(principal in self.roles[role]),)]
+        elif query.startswith("GRANT "):
+            match = re.fullmatch(r"GRANT ([A-Z, ]+) ON OBJECT::broker\.\[?([A-Za-z]+)\]? TO \[([A-Za-z-]+)\]", query)
+            if not match:
+                raise AssertionError("Unexpected permission statement")
+            permissions, table, principal = match.groups()
+            self.permissions[principal].update((table, value) for value in permissions.split(", "))
+        elif query.startswith("ALTER ROLE "):
+            match = re.fullmatch(r"ALTER ROLE \[(db_datareader|db_datawriter)\] DROP MEMBER \[([A-Za-z-]+)\]", query)
+            if not match:
+                raise AssertionError("Role addition or another role is forbidden")
+            role, principal = match.groups()
+            self.roles[role].remove(principal)
+        else:
+            raise AssertionError("Unexpected grant transaction operation")
+        return self
+
+    def fetchone(self):
+        return self.rows.pop(0) if self.rows else None
+
+    def close(self):
+        pass
+
+
+class RuntimeGrantTests(unittest.TestCase):
+    def run_grants(self, cursor):
+        grant_runtime_access(SqlStore(lambda: Connection(cursor)), runtime_user_name="id-runtime",
+                             runtime_sid=uuid.UUID(TENANT).bytes_le)
+
+    def test_existing_broad_memberships_become_exact_object_grants_for_only_this_principal(self):
+        cursor = GrantStateCursor()
+        self.run_grants(cursor)
+        expected = {(table, permission) for table, permissions in EXPECTED_RUNTIME_PERMISSIONS.items()
+                    for permission in permissions} | {("AllocateConnection", "EXECUTE")}
+        self.assertEqual(cursor.permissions["id-runtime"], expected)
+        self.assertEqual(sum(len(value) for value in EXPECTED_RUNTIME_PERMISSIONS.values()), 20)
+        for role in cursor.roles.values():
+            self.assertEqual(role, {"id-other"})
+        self.assertEqual(cursor.permissions["id-other"], {("OtherTable", "SELECT")})
+        self.assertNotIn(("SchemaVersions", "UPDATE"), expected)
+        self.assertNotIn(("Connections", "INSERT"), expected)
+        self.assertFalse(any("ADD MEMBER" in query or "WITH GRANT OPTION" in query
+                             for query, _ in cursor.calls))
+        self.assertEqual((cursor.commits, cursor.rollbacks), (1, 0))
+
+    def test_repeated_grants_preserve_the_same_permissions_without_readding_roles(self):
+        cursor = GrantStateCursor()
+        self.run_grants(cursor)
+        first = copy.deepcopy((cursor.roles, cursor.permissions))
+        self.run_grants(cursor)
+        self.assertEqual((cursor.roles, cursor.permissions), first)
+        self.assertEqual(sum("DROP MEMBER" in query for query, _ in cursor.calls), 2)
+        self.assertEqual((cursor.commits, cursor.rollbacks), (2, 0))
+
+    def test_principal_replacement_or_type_mismatch_rolls_back_before_grants(self):
+        for changes in ({"sid": uuid.UUID(OWNER).bytes_le}, {"kind": "S"}):
+            with self.subTest(changes=changes):
+                cursor = GrantStateCursor(**changes)
+                original = copy.deepcopy((cursor.roles, cursor.permissions))
+                with self.assertRaises(StoreConflict):
+                    self.run_grants(cursor)
+                self.assertEqual((cursor.roles, cursor.permissions), original)
+                self.assertFalse(any(query.startswith(("GRANT ", "ALTER ROLE ")) for query, _ in cursor.calls))
+                self.assertEqual((cursor.commits, cursor.rollbacks), (0, 1))
+
+    def test_failure_after_one_role_drop_restores_both_roles_and_all_permissions(self):
+        cursor = GrantStateCursor(fail="ALTER ROLE [db_datawriter] DROP MEMBER")
+        original = copy.deepcopy((cursor.roles, cursor.permissions))
+        with self.assertRaises(StoreUnavailable):
+            self.run_grants(cursor)
+        self.assertEqual((cursor.roles, cursor.permissions), original)
+        self.assertTrue(any("ALTER ROLE [db_datareader] DROP MEMBER" in query for query, _ in cursor.calls))
+        self.assertEqual((cursor.commits, cursor.rollbacks), (0, 1))
+
+    def test_unknown_membership_does_not_commit_a_partially_restricted_user(self):
+        cursor = GrantStateCursor(unknown_role="db_datawriter")
+        original = copy.deepcopy((cursor.roles, cursor.permissions))
+        with self.assertRaises(StoreConflict):
+            self.run_grants(cursor)
+        self.assertEqual((cursor.roles, cursor.permissions), original)
+        self.assertEqual((cursor.commits, cursor.rollbacks), (0, 1))
+
+    def test_whitelist_covers_runtime_sql_including_cleanup_alias_deletes(self):
+        source = Path(__file__).parents[1] / "credential_broker" / "store.py"
+        found = set()
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "execute" or not node.args:
+                continue
+            text = " ".join(item.value for item in ast.walk(node.args[0])
+                            if isinstance(item, ast.Constant) and isinstance(item.value, str))
+            patterns = {
+                "SELECT": r"\b(?:FROM|JOIN)\s+broker\.([A-Za-z]+)",
+                "INSERT": r"\bINSERT(?:\s+INTO)?\s+broker\.([A-Za-z]+)",
+                "UPDATE": r"\bUPDATE(?:\s+TOP\s*\([^)]*\))?\s+broker\.([A-Za-z]+)",
+                "DELETE": r"\bDELETE(?:\s+TOP\s*\([^)]*\))?\s+(?:FROM\s+)?broker\.([A-Za-z]+)",
+            }
+            for operation, pattern in patterns.items():
+                for table in re.findall(pattern, text, re.IGNORECASE):
+                    found.add((table, operation))
+            for table in re.findall(r"\bDELETE\s+[A-Za-z]+\s+FROM\s+broker\.([A-Za-z]+)", text, re.IGNORECASE):
+                found.add((table, "DELETE"))
+        allowed = {(table, permission) for table, permissions in EXPECTED_RUNTIME_PERMISSIONS.items()
+                   for permission in permissions}
+        self.assertTrue(found)
+        self.assertEqual(found - allowed, set())
+        self.assertEqual({table for table, _ in found}, set(EXPECTED_RUNTIME_PERMISSIONS))
+        self.assertNotIn(("SchemaVersions", "INSERT"), found)
+        self.assertNotIn(("Connections", "INSERT"), found)
+        self.assertIn(("Connections", "DELETE"), found)
+        self.assertIn(("SessionRotationCandidates", "DELETE"), found)
 
 
 class ReconcileTests(unittest.TestCase):

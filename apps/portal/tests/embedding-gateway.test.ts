@@ -131,6 +131,27 @@ test("Content-Lengthがない過大応答も中止する", async () => {
   assert.equal(result.status, 502);
 });
 
+test("JSONのUnicodeエスケープで隠れた購読キーも正常応答として返さない", async () => {
+  const encoded = [...key].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], metadata: { reflected: key } }).replace(key, encoded);
+  assert.equal(raw.includes(key), false);
+  let calls = 0;
+  const response = await handleEmbeddings(request(), dependencies({ fetch: async () => { calls++; return new Response(raw, { headers: { "content-type": "application/json" } }); } }));
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  assert.equal(calls, 1);
+});
+
+test("引用符やバックスラッシュを含むキーの値・プロパティ名への反射も拒否する", async () => {
+  const credential = 'synthetic-embedding-"key"-\\-value';
+  for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+    const raw = JSON.stringify({ model: small.id, data: [{ index: 0, embedding: [1, 2, 3] }], ...reflected });
+    assert.equal(raw.includes(credential), false);
+    const response = await handleEmbeddings(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  }
+});
+
 test("ヘッダー受信後に本文が停止しても期限で中止し、再試行しない", async () => {
   let cancelled = false;
   let calls = 0;

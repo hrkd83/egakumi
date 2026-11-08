@@ -14,6 +14,14 @@ https://github.com/modelcontextprotocol/python-sdk/blob/v2.3.0/examples/snippets
 
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import asyncio
 from datetime import datetime, timezone
@@ -22,7 +30,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 from pathlib import Path
 import re
 import stat

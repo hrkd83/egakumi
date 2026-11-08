@@ -112,6 +112,12 @@ class LifecycleFixture:
         bridge = mock.patch.object(lifecycle, "check_parameter_bridge")
         self.parameter_bridge = bridge.start()
         self.addCleanup(bridge.stop)
+        # 診断discoveryのHTTPは専用試験で実装を通す。他のhook試験には純粋な正本だけを渡す。
+        diagnostic = mock.patch.object(lifecycle, "prepare_diagnostic_settings", side_effect=lambda config, transport, phase, preserve_collection=False: {
+            key: item["properties"] for key, item in lifecycle.canonical_settings(
+                lifecycle.build_bicep_configuration(config), phase, preserve_collection).items()})
+        self.diagnostics = diagnostic.start()
+        self.addCleanup(diagnostic.stop)
         # 復元のHTTP分岐は専用テストで検査し、他のhook試験では追加Azure要求をさせない。
         api_center = mock.patch.object(lifecycle, "ensure_api_center_available",
                                        return_value={"status": "available-for-create"})

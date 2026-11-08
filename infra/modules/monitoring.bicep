@@ -4,6 +4,9 @@
 
 targetScope = 'resourceGroup'
 
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
+
 @minLength(1)
 @description('全リソース名の製品名部分。例は egakumi です。')
 param productName string
@@ -262,28 +265,16 @@ resource immutabilityPolicies 'Microsoft.Storage/storageAccounts/blobServices/co
 resource storageLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = [for (account, i) in auditAccounts: {
   name: 'diag-${resourceStem}-${account.key}-blob'
   scope: blobServices[i]
-  properties: {
-    workspaceId: workspace.id
-    logAnalyticsDestinationType: 'Dedicated'
-    logs: [
-      { category: 'StorageRead', enabled: true }
-      { category: 'StorageWrite', enabled: true }
-      { category: 'StorageDelete', enabled: true }
-    ]
-  }
+  properties: diagnosticSettingProperties['blob-${account.key}']
+  dependsOn: [workspace]
 }]
 
 // Workspace の管理・監査操作を監査 Storage に保存します。
 resource workspaceAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'diag-${resourceStem}-law'
   scope: workspace
-  properties: {
-    workspaceId: workspace.id
-    logAnalyticsDestinationType: 'Dedicated'
-    ...(enableAuditCollection ? { storageAccountId: accounts[0].id } : {})
-    logs: [{ category: 'Audit', enabled: true }]
-  }
-  dependsOn: [immutabilityPolicies]
+  properties: diagnosticSettingProperties['law']
+  dependsOn: [accounts, immutabilityPolicies]
 }
 
 // 検索用テーブルの記録を監査 Storage へ継続転送。先に保存先が用意できてから有効にします。

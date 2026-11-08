@@ -55,6 +55,7 @@ export type EmbeddingModel = {
   maxRequestBytes: number;
   maxInputs: number;
   inputTypes: string[];
+  embeddingDimensions: { default: number; maximum: number; allowed?: number[] };
 };
 
 /** 画像生成で選べる設定です。編集用操作は生成モデルの一覧へ含めません。 */
@@ -105,6 +106,8 @@ export type RealtimeModel = {
   path: string;
   modelId: string;
   voice: string;
+  /** 同じ会話音声の入力字幕に使う、カタログで束縛された文字起こしモデルです。 */
+  inputTranscriptionModel?: string;
   maxRequestBytes: number;
   maxOutputTokens: number | null;
   outputTokenLimitKind?: "documented" | "dynamic" | "unsupported" | "unverified" | "configured";

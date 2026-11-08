@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { TextGenerationModel } from "./model-types.ts";
 import { MODEL_MAX_RESPONSE_BYTES, MODEL_MAX_EVENT_BYTES, MODEL_MAX_STREAM_EVENTS } from "./model-request.ts";
+import { containsModelCredential } from "./model-credential.ts";
 
 const maximumStreamBytes = MODEL_MAX_RESPONSE_BYTES;
 const maximumEventBytes = MODEL_MAX_EVENT_BYTES;
@@ -31,12 +32,13 @@ const chatChunk = z.object({
   choices: z.array(z.object({
     index: tokenCount,
     delta: z.object({}).passthrough(),
-    finish_reason: z.string().max(100).nullable().optional(),
+    finish_reason: z.enum(["stop", "length", "content_filter", "tool_calls", "function_call"]).nullable().optional(),
   }).passthrough()),
   usage: z.object({ prompt_tokens: tokenCount, completion_tokens: tokenCount, total_tokens: tokenCount }).nullable().optional(),
 }).passthrough();
 const responseTerminal = z.object({
   model: z.string().min(1).max(200),
+  status: z.enum(["completed", "incomplete"]),
   output: z.array(z.object({ type: z.string() }).passthrough()),
 }).passthrough();
 
@@ -115,10 +117,86 @@ class StreamValidation {
     if (type === "response.failed" || type.endsWith(".error")) throw new Error("Model stream failed");
     this.seen = true;
     if (type === "response.completed" || type === "response.incomplete") {
-      responseTerminal.parse((value as Record<string, unknown>).response);
+      const response = responseTerminal.parse((value as Record<string, unknown>).response);
+      if (response.status !== type.slice("response.".length)) throw new Error("Mismatched response terminal");
       return { forward: true, terminal: true };
     }
     return { forward: true, terminal: false };
+  }
+}
+
+/**
+ * 購読キーの反射を、イベント単体と本文の連結後の両方で中継前に遮断します。
+ * @remarks キーの接頭辞に一致する末尾の長さだけを保持し、原イベントの保留も既存の単一イベント上限内に制限します。
+ */
+class StreamCredentialGuard {
+  private readonly credential: string;
+  private readonly prefix: number[];
+  private readonly tails = new Map<string, number>();
+  private pending: string[] = [];
+  private pendingBytes = 0;
+
+  constructor(credential: string) {
+    if (!/^[\x21-\x7e]{16,512}$/.test(credential)) throw new Error("Invalid stream credential");
+    this.credential = credential;
+    this.prefix = Array(credential.length).fill(0);
+    for (let index = 1, matched = 0; index < credential.length; index++) {
+      while (matched && credential[index] !== credential[matched]) matched = this.prefix[matched - 1];
+      if (credential[index] === credential[matched]) matched++;
+      this.prefix[index] = matched;
+    }
+  }
+
+  /** 連結された本文の末尾を線形時間で検査し、本文自体は蓄積しません。 */
+  private append(lane: string, text: string): void {
+    let matched = this.tails.get(lane) ?? 0;
+    for (const character of text) {
+      while (matched && character !== this.credential[matched]) matched = this.prefix[matched - 1];
+      if (character === this.credential[matched]) matched++;
+      if (matched === this.credential.length) throw new Error("Unexpected credential reflection");
+    }
+    if (matched) this.tails.set(lane, matched); else this.tails.delete(lane);
+    if (this.tails.size > 65) throw new Error("Stream credential channel limit");
+  }
+
+  /** 省略された座標は従来どおり先頭とし、壊れた座標は別の本文へ推測しません。 */
+  private coordinate(value: unknown): number {
+    if (value === undefined) return 0;
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Invalid stream coordinates");
+    return value;
+  }
+
+  /** 安全が確定した原イベントだけを順序どおり解放します。終端の妥当性は呼出側が先に検証します。 */
+  accept(frame: string, operation: TextGenerationModel["operationId"], terminal: boolean): string[] {
+    const event = eventFields(frame);
+    if (frame.includes(this.credential)) throw new Error("Unexpected credential reflection");
+    if (event && event.data !== "[DONE]") {
+      const value = JSON.parse(event.data) as Record<string, unknown>;
+      if (containsModelCredential(value, this.credential)) throw new Error("Unexpected credential reflection");
+      if (operation === "chat-completions") {
+        for (const choice of (value.choices as { index: number; delta: Record<string, unknown> }[])) {
+          if (!choice.delta) continue;
+          for (const field of ["content", "refusal"]) {
+            const text = choice.delta[field];
+            if (typeof text !== "string") continue;
+            this.append(`chat:${choice.index}:${field}`, text);
+            if (choice.index === 0) this.append("browser-text", text);
+          }
+        }
+      } else if (["response.output_text.delta", "response.refusal.delta"].includes(String(value.type)) && typeof value.delta === "string") {
+        const output = this.coordinate(value.output_index), content = this.coordinate(value.content_index);
+        this.append(`responses:${output}:${content}:${value.type}`, value.delta);
+        this.append("browser-text", value.delta);
+      }
+    }
+    this.pending.push(frame);
+    this.pendingBytes += encoder.encode(frame).byteLength;
+    if (this.pendingBytes > maximumEventBytes) throw new Error("Stream credential buffer limit");
+    if (this.tails.size && !terminal) return [];
+    const safe = this.pending;
+    this.pending = []; this.pendingBytes = 0;
+    if (terminal) this.tails.clear();
+    return safe;
   }
 }
 
@@ -139,6 +217,7 @@ export function relayModelStream(options: {
   timeoutSignal: AbortSignal;
   requestSignal: AbortSignal;
   abortUpstream: () => void;
+  credential: string;
   requestId?: string;
 }): ReadableStream<Uint8Array> {
   const reader = options.body.getReader();
@@ -147,6 +226,7 @@ export function relayModelStream(options: {
     async start(controller) {
       const frames = new EventFrames();
       const validation = new StreamValidation();
+      const credentials = new StreamCredentialGuard(options.credential);
       let bytes = 0;
       let terminal = false;
       let abortListener: (() => void) | undefined;
@@ -164,7 +244,9 @@ export function relayModelStream(options: {
           }
           for (const frame of frames.push(part.done ? undefined : part.value)) {
             const result = validation.accept(frame, options.operation);
-            if (result.forward) controller.enqueue(encoder.encode(frame));
+            if (result.forward) {
+              for (const safe of credentials.accept(frame, options.operation, result.terminal)) controller.enqueue(encoder.encode(safe));
+            }
             if (result.terminal) { terminal = true; break; }
           }
           if (part.done && !terminal) throw new Error("Model stream ended without terminal event");

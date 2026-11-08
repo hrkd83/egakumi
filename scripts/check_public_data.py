@@ -8,17 +8,23 @@ Python 3.11以上の標準ライブラリーだけを使う。検出値や入力
 
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import base64
 import hashlib
 import html
 import ipaddress
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import unicodedata
 from urllib.parse import unquote, urlsplit
 
@@ -184,7 +190,7 @@ class Guard:
         self.findings: set[tuple[str, str, int]] = set()
         self.locations: dict[str, str] = {}
         self.checked: set[tuple[str, str, str]] = set()
-        self.text_checked: set[tuple[str, str, int, bool]] = set()
+        self.text_checked: set[tuple[str, str, int, bool, int]] = set()
         self.blobs: dict[str, bytes] = {}
         self.files = 0
         self.commits = 0
@@ -231,9 +237,10 @@ class Guard:
         return host.lower().rstrip(".") in self.hosts or self.reserved_host(host)
 
     def scan_text(self, path: str, text: str, depth: int = 0,
-                  approved_asset: bool = False) -> None:
+                  approved_asset: bool = False,
+                  normalization_depth: int = 0) -> None:
         """本文と代表的なエンコードを上限付きで検査する。"""
-        identity = (path, hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest(), depth, approved_asset)
+        identity = (path, hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest(), depth, approved_asset, normalization_depth)
         if identity in self.text_checked:
             return
         self.text_checked.add(identity)
@@ -251,6 +258,13 @@ class Guard:
                             match.start())
         for match in EMAIL.finditer(text):
             value = match.group()
+            # OData relationship-binding member names are protocol annotations,
+            # not mailbox values. Keep the same text in JSON values and all
+            # other address-shaped member names subject to email inspection.
+            if (re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*@odata\.bind", value)
+                    and match.start() > 0 and text[match.start() - 1] == '"'
+                    and re.match(r'"\s*:', text[match.end():])):
+                continue
             if value not in self.emails and not self.reserved_host(value.split("@")[-1]):
                 self.record(path, "nonpublic-email", value, text, match.start())
         for match in URL.finditer(text):
@@ -325,15 +339,23 @@ class Guard:
                     and value.lower() not in self.constants):
                 self.record(path, "unquoted-sensitive-setting", value, text,
                             match.start())
-        if depth >= 3:
-            if BASE64.search(text) and not approved_asset:
-                self.record(path, "encoding-depth-review-required", "")
-            return
         normalized = unicodedata.normalize("NFKC", html.unescape(unquote(text)))
         normalized = re.sub(r"\\u([0-9a-fA-F]{4})",
                             lambda m: chr(int(m.group(1), 16)), normalized)
         if normalized != text:
-            self.scan_text(path, normalized, depth + 1, approved_asset)
+            # Whole-document URL/HTML/Unicode normalization is separate from
+            # decoding a Base64 container. A triple-encoded URL must not consume
+            # the Base64 budget for unrelated public identifiers in the file.
+            if normalization_depth >= 3:
+                if not approved_asset:
+                    self.record(path, "encoding-depth-review-required", "")
+            else:
+                self.scan_text(path, normalized, depth, approved_asset,
+                               normalization_depth + 1)
+        if depth >= 3:
+            if BASE64.search(text) and not approved_asset:
+                self.record(path, "encoding-depth-review-required", "")
+            return
         for match in BASE64.finditer(text):
             value = match.group()
             if re.fullmatch(r"[0-9a-fA-F]{32,128}", value):

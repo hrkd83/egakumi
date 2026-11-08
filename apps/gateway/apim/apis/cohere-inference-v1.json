@@ -30,7 +30,7 @@
     "mode": "subscriptionKey",
     "operationConstraints": {
       "cohere-embeddings": {
-        "kind": "bodyModel",
+        "kind": "textEmbeddings",
         "bodyFormat": "json",
         "maxRequestBytes": 262144,
         "allowedModels": [
@@ -47,10 +47,22 @@
             "classification",
             "clustering"
           ]
+        },
+        "embeddingDimensionsByModel": {
+          "embed-v-4-0": {
+            "default": 1536,
+            "maximum": 1536,
+            "allowed": [
+              256,
+              512,
+              1024,
+              1536
+            ]
+          }
         }
       },
       "rerank": {
-        "kind": "bodyModel",
+        "kind": "rerank",
         "maxRequestBytes": 65536,
         "bodyFormat": "json",
         "allowedModels": [

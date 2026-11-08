@@ -147,10 +147,19 @@ class LogPrivacyTemplateTests(unittest.TestCase):
         gateway = compile_bicep("infra/modules/application-gateway.bicep")
         resources = gateway["resources"]
         logs = next(value for value in resources if value.get("name") == "[format('diag-{0}-agw', parameters('resourceStem'))]")["properties"]
-        self.assertIn("storageAccountId", __import__("json").dumps(logs))
+        self.assertEqual(logs, "[parameters('diagnosticSettingProperties')['agw-logs']]")
         access = next(value for value in resources if value.get("name") == "[format('diag-{0}-agw-access', parameters('resourceStem'))]")["properties"]
-        self.assertNotIn("storageAccountId", access)
-        self.assertEqual(access["logs"], [{"category": "ApplicationGatewayAccessLog", "enabled": True}])
+        self.assertEqual(access, "[parameters('diagnosticSettingProperties')['agw-access']]")
+        from deployment.helpers.diagnostics import canonical_settings
+        from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
+        from configuration_fixtures import fixture
+        config = build_bicep_configuration(normalize_configuration(fixture()))
+        config["gateway"]["skuName"] = "WAF_v2"
+        canonical = canonical_settings(config, "core")
+        self.assertIn("storageAccountId", canonical["agw-logs"]["properties"])
+        self.assertEqual(canonical["agw-logs"]["properties"]["logs"], [{"category": "ApplicationGatewayFirewallLog", "enabled": True}])
+        self.assertNotIn("storageAccountId", canonical["agw-access"]["properties"])
+        self.assertEqual(canonical["agw-access"]["properties"]["logs"], [{"category": "ApplicationGatewayAccessLog", "enabled": True}])
 
 
 if __name__ == "__main__":

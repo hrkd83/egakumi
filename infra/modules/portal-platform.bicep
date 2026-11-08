@@ -1,13 +1,15 @@
 // Coreの共用実行基盤（CAE）とPortalのアプリ本体（CA）をサービスRGへ配置します。
 // VNet・DNS・通信規則はネットワークRGのモジュールが準備します。
 targetScope = 'resourceGroup'
+
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
 @description('hookがサービスRGのCAを照合した結果。初回だけ初期イメージで作成します。')
 param existingPortalApp bool = false
 param stem string
 param location string
 param tags object
 param subnetId string
-param workspaceId string
 param registryName string
 param pullIdentityId string
 
@@ -55,10 +57,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (!existingPortalApp) 
 resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: environment
   name: 'portal-logs'
-  properties: {
-    workspaceId: workspaceId
-    logs: [{ category: 'ContainerAppConsoleLogs', enabled: true }, { category: 'ContainerAppSystemLogs', enabled: true }]
-  }
+  properties: diagnosticSettingProperties['portal']
 }
 
 output staticIp string = environment.properties.staticIp

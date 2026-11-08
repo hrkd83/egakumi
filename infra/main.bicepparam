@@ -23,3 +23,5 @@ param existingRouteTableRoutes = input.parameters.?existingRouteTableRoutes.?val
 param existingApimHostnameConfigurations = input.parameters.?existingApimHostnameConfigurations.?value ?? {}
 param existingPortalApp = input.parameters.?existingPortalApp.?value ?? false
 param existingWorkspaceDataCollectionRuleResourceId = input.parameters.?existingWorkspaceDataCollectionRuleResourceId.?value ?? ''
+
+param diagnosticSettingProperties = input.parameters.?diagnosticSettingProperties.?value ?? {}

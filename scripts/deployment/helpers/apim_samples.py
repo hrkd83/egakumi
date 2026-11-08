@@ -56,7 +56,10 @@ def _default_echo(body):
         url = urlsplit(properties.get("serviceUrl", ""))
         return (properties.get("path") == "echo" and properties.get("apiRevision") in (None, "", "1")
                 and url.scheme in ("http", "https")
-                and url.hostname == "echoapi.cloudapp.net" and url.path.rstrip("/") == "/api"
+                and (url.hostname == "echoapi.cloudapp.net" or (
+                    url.hostname == "echo.playground.azure-api.net"
+                    and url.scheme == "https" and url.port in (None, 443)))
+                and url.path.rstrip("/") == "/api"
                 and url.port in (None, 80, 443) and not any((url.username, url.password, url.query, url.fragment)))
     except (TypeError, ValueError):
         return False
@@ -129,6 +132,10 @@ def cleanup_default_samples(apim_id, apis, transport, *, sleep=time.sleep, timeo
     if echo_removable:
         links = _items(transport, echo_id + "/products")
         eligible_ids = {value.casefold() for value in eligible_products}
+        # API-to-product lists can return association IDs instead of product IDs.
+        # Accept only exact aliases of the products already eligible in this APIM.
+        eligible_ids.update((echo_id + "/products/" + value.rsplit("/", 1)[-1]).casefold()
+                            for value in eligible_products)
         if any(str(item.get("id", "")).casefold() not in eligible_ids for item in links):
             echo_removable = False
             skip(echo_id, "api-used-by-retained-product")

@@ -19,14 +19,14 @@
             if (response == null || response.StatusCode != 200) { return &quot;&quot;; }
             try {
               var value = response.Body.As&lt;JObject&gt;();
-              if ((int?)value[&quot;schemaVersion&quot;] != 1 || (string)value[&quot;subscriptionId&quot;] != context.Subscription.Id) { return &quot;&quot;; }
+              if (value[&quot;schemaVersion&quot;] == null || value[&quot;schemaVersion&quot;].Type != JTokenType.Integer || (int?)value[&quot;schemaVersion&quot;] != 1 || (string)value[&quot;subscriptionId&quot;] != context.Subscription.Id) { return &quot;&quot;; }
               var rate = value[&quot;requestRate&quot;];
               var tpm = value[&quot;tokensPerMinute&quot;];
               var quota = value[&quot;tokenQuota&quot;];
               if (rate == null || tpm == null || quota == null) { return &quot;&quot;; }
-              if (rate.Type != JTokenType.Null &amp;&amp; (rate.Type != JTokenType.Object || (int?)rate[&quot;calls&quot;] == null || (int?)rate[&quot;calls&quot;] &lt; 1 || (int?)rate[&quot;calls&quot;] &gt; 1000000 || (int?)rate[&quot;renewalPeriodSeconds&quot;] == null || (int?)rate[&quot;renewalPeriodSeconds&quot;] &lt; 1 || (int?)rate[&quot;renewalPeriodSeconds&quot;] &gt; 300)) { return &quot;&quot;; }
+              if (rate.Type != JTokenType.Null &amp;&amp; (rate.Type != JTokenType.Object || rate[&quot;calls&quot;] == null || rate[&quot;calls&quot;].Type != JTokenType.Integer || (int?)rate[&quot;calls&quot;] &lt; 1 || (int?)rate[&quot;calls&quot;] &gt; 1000000 || rate[&quot;renewalPeriodSeconds&quot;] == null || rate[&quot;renewalPeriodSeconds&quot;].Type != JTokenType.Integer || (int?)rate[&quot;renewalPeriodSeconds&quot;] &lt; 1 || (int?)rate[&quot;renewalPeriodSeconds&quot;] &gt; 300)) { return &quot;&quot;; }
               if (tpm.Type != JTokenType.Null &amp;&amp; (tpm.Type != JTokenType.Integer || (int)tpm &lt; 1)) { return &quot;&quot;; }
-              if (quota.Type != JTokenType.Null &amp;&amp; (quota.Type != JTokenType.Object || (int?)quota[&quot;tokens&quot;] == null || (int?)quota[&quot;tokens&quot;] &lt; 1 || !new [] { &quot;Hourly&quot;, &quot;Daily&quot;, &quot;Weekly&quot;, &quot;Monthly&quot;, &quot;Yearly&quot; }.Contains((string)quota[&quot;period&quot;]))) { return &quot;&quot;; }
+              if (quota.Type != JTokenType.Null &amp;&amp; (quota.Type != JTokenType.Object || quota[&quot;tokens&quot;] == null || quota[&quot;tokens&quot;].Type != JTokenType.Integer || (int?)quota[&quot;tokens&quot;] &lt; 1 || !new [] { &quot;Hourly&quot;, &quot;Daily&quot;, &quot;Weekly&quot;, &quot;Monthly&quot;, &quot;Yearly&quot; }.Contains((string)quota[&quot;period&quot;]))) { return &quot;&quot;; }
               return value.ToString(Newtonsoft.Json.Formatting.None);
             } catch { return &quot;&quot;; }
           }" />

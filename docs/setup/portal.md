@@ -150,7 +150,7 @@ Graphへ正規表現を送るのではなく、取得した名前をサーバー
 処理は次の順で進みます。
 
 1. 管理VMに一時的な組み込み`AcrPush`を付与し、公開ソースだけを渡してイメージを作成します。非公開ACRの`portal`へ登録し、digestを取得します。一時ロールとRun Commandは回収します。
-2. 共通SQLサーバーへPortal専用DBを作成・更新し、`caj-<環境>-<製品>-portal-schema`を配備します。Portal実行IDへ、組み込みの`API Management Service Contributor`を対象APIM単体の範囲で割り当てます。
+2. 共通SQLサーバーへPortal専用DBを作成・更新し、`caj-<環境>-<製品>-psql`を配備します。Portal実行IDへ、組み込みの`API Management Service Contributor`を対象APIM単体の範囲で割り当てます。
 3. この手動ジョブを配備スクリプトが起動し、`sql/`のDDL、正本にあるグループ・製品承認、検証用購読の作成・台帳登録、実行用IDのSQL権限を設定します。SQL初期化に成功するまでアプリ本体は更新しません。
 4. 既存App Gatewayの`probe-portal`を、認証不要の`/api/health`からHTTP 200が返ることを確認する設定へ合わせます。Microsoft認証の戻り先には、後述の限定WAF設定も適用します。ほかのプローブ・API転送は変更しません。
 5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、認証用環境変数とKey Vault参照を渡します。
@@ -163,7 +163,7 @@ SQL初期化ジョブはスケジュール実行しません。テーブル初�
 
 このジョブには既存のスキーマ管理IDとPortal実行IDの2つを割り当てます。SQLはスキーマ管理ID、APIMのメタデータ確認・購読作成はPortal実行IDを明示的に使い、SQL用の`AZURE_CLIENT_ID`をAPIMへ流用しません。購読登録のための別ジョブやカスタムロールは追加しません。
 
-アプリ更新工程では`caj-<環境>-<製品>-portal-groups`も配備します。このジョブは15分ごとに、台帳にある所有グループのうち観測が古いものを最大100件照合します。Entra全体のメンバー名簿は複製しません。Portalと同じイメージ・実行IDとGraph資格情報を使い、購読の停止・削除・メール通知は行いません。総グループ数や通信状況によって全件の照合に複数回必要なため、各行の確認日時を参照します。
+アプリ更新工程では`caj-<環境>-<製品>-psync`も配備します。このジョブは15分ごとに、台帳にある所有グループのうち観測が古いものを最大100件照合します。Entra全体のメンバー名簿は複製しません。Portalと同じイメージ・実行IDとGraph資格情報を使い、購読の停止・削除・メール通知は行いません。総グループ数や通信状況によって全件の照合に複数回必要なため、各行の確認日時を参照します。
 
 別の構築記録を使う場合は`--state-file <path>`、Azureに記録された完了済みのコア構築出力を読む場合は`--deployment-name <構築名>`を指定します。作成済みのPortalイメージを使う場合は`--image-digest sha256:<digest>`を指定できます。
 
@@ -308,7 +308,9 @@ GatewayのGraph APIは`graph-profile-v1.json`の`$select`で、本人の表示�
 
 `/api/health`はログイン不要のプロセス稼働確認用APIです。応答に`Cache-Control: no-store`を付け、SQLへのアクセスや秘密情報の返却は行いません。
 
-Microsoftから返る認証コードには、WAFのSQL文字列検出で誤検知される文字列が含まれることがあります。現行資材の`wafpol-agw-<環境>-<製品>-portal-auth`は共通WAF設定を引き継ぎ、`/api/auth/callback/microsoft`の`code`引数の値だけを、規則`942430`・`942440`から除外します。この戻り先以外の画面・APIには適用せず、他の規則・他の引数は検査を継続します。認証コードはアプリ側でもstate・PKCE・Microsoftとのコード交換で検証します。
+Microsoftから返る認証コードには、WAFのSQL文字列検出で誤検知される文字列が含まれることがあります。現行資材の`wafpol-agw-<環境>-<製品>-portal-auth`は共通WAF設定を引き継ぎ、`/api/auth/callback/microsoft`の`code`引数の値だけを、規則`942430`・`942440`・`942450`から除外します。この戻り先以外の画面・APIには適用せず、他の規則・他の引数は検査を継続します。認証コードはアプリ側でもstate・PKCE・Microsoftとのコード交換で検証します。
+
+HTTPSのセッションCookie値にも不透明な文字列が含まれるため、Portal HTTPS listener専用の`wafpol-agw-<環境>-<製品>-portal`を使います。正本`apps/portal/waf-session-exclusions.json`に従い、`__Secure-egakumi.portal.session_token`の値を規則942450だけから除外します。URI別policyはlistener側のpolicyを継承しないため、上記callbackとPortalのデータ欄policyにも同じ除外を合成します。共通WAFの本文検査・サイズ制限・ログのマスク・customRulesを保ち、Gateway側のpolicyや他のCookie・規則は変更しません。
 
 ## 購読台帳からAPIMへの同期
 

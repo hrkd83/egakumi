@@ -139,7 +139,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         template = compile_bicep('apps/gateway/deploy/broker.bicep')
         jobs = [item for item in template['resources'] if item['type'].lower() == 'microsoft.app/jobs']
         self.assertEqual(len(jobs), 2)
-        for stem in ('dev-egakumi', 'staging-orion', 'stage-' + 'p' * 15):
+        for stem in ('dev-egakumi', 'staging-orion', 'stage-' + 'p' * 11):
             config = configured()
             config['resourceStem'] = stem
             names = resource_names(config)
@@ -149,6 +149,37 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertLessEqual(len(name), 32)
                 self.assertRegex(name, r'^[a-z][a-z0-9-]*[a-z0-9]$')
                 self.assertNotIn('--', name)
+
+    def test_broker_application_and_apim_url_match_with_the_longest_supported_stem(self):
+        """有効な最大長入力を短縮せず、ACA作成・出力・参照先・Pythonの名前を照合する。"""
+        broker = compile_bicep('apps/gateway/deploy/broker.bicep')
+        gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
+        settings, = [item for item in gateway['resources']
+                     if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]
+        for product, environment in (('sample', 'dev'), ('p' * 12, 'test')):
+            with self.subTest(product=product, environment=environment):
+                raw = raw_fixture()
+                raw['productName'], raw['environmentName'] = product, environment
+                config = normalize_configuration(raw)
+                stem = config['resourceStem']
+                expected = 'ca-' + stem + '-credentials'
+                parameters = {'stem': stem}
+                self.assertEqual(ArmExpression(app['name']).evaluate(parameters, 0), expected)
+                self.assertEqual(ArmExpression(broker['outputs']['applicationName']['value']).evaluate(parameters, 0), expected)
+                self.assertEqual(resource_names(config)['application'], expected)
+                self.assertLessEqual(len(expected), 32)
+                self.assertRegex(expected, r'^[a-z][a-z0-9-]*[a-z0-9]$')
+                self.assertNotIn('--', expected)
+                domain = 'environment.example.invalid'
+                url = ArmExpression(gateway['variables']['brokerUrl']).evaluate(
+                    {'foundation': {'environmentDomain': domain}, '__variables': {'stem': stem}}, 0)
+                self.assertEqual(url, 'https://' + expected + '.' + domain)
+                self.assertEqual(ArmExpression(settings['properties']['parameters']['credentialBrokerUrl']).evaluate(
+                    {'__variables': {'brokerEnabled': True, 'brokerUrl': url}}, 0)['value'], url)
+                if product == 'p' * 12:
+                    self.assertEqual(len(stem), 17)
+                    self.assertEqual(len(expected), 32)
 
 
 if __name__ == '__main__': unittest.main()

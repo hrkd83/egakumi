@@ -47,6 +47,8 @@ param existingApimHostnameConfigurations object = {}
 param existingPortalApp bool = false
 @description('監視先から読み取った取り込み変換DCRの実ID。再配備時の関連付けを保持する内部入力です。')
 param existingWorkspaceDataCollectionRuleResourceId string = ''
+@description('正式CLIが所有・既存宛先・分類・転送範囲を照合して生成するCore診断properties。内部入力です。')
+param diagnosticSettingProperties object
 
 // 名前は「種類-環境名-製品名」を基本に１か所で組み立てます。
 // 値の切り捨てやランダムな接尾辞は付けません。世界で一意な名前が競合するときは、
@@ -143,6 +145,7 @@ module monitoring 'modules/monitoring.bicep' = {
   name: '${stem}-monitoring'
   scope: monitorGroup
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     productName: product
     environmentName: environmentName
     resourceStem: stem
@@ -186,13 +189,11 @@ module firewallDiagnostics 'modules/firewall-diagnostics.bicep' = if (deployCore
   name: '${stem}-firewall-diagnostics'
   scope: nwGroup
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     firewallName: last(split(network!.outputs.firewallId, '/'))
     resourceStem: stem
-    firewallTier: configuration.network.?firewall.?sku ?? 'Premium'
-    workspaceId: monitoring.outputs.monitoring.workspaceId
-    auditStorageId: monitoring.outputs.storage.collectJapan.id
-    enableAuditCollection: true
   }
+  dependsOn: [monitoring]
 }
 
 // 固定ネットワークの完成後にサービス本体を作成。実 IP の確定後に追加規則を設定します。
@@ -200,6 +201,7 @@ module services 'modules/services.bicep' = if (deployCore) {
   name: '${stem}-services'
   scope: svcGroup
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     names: serviceNames
     location: location
     foundryLocation: configuration.foundryLocation
@@ -214,16 +216,12 @@ module services 'modules/services.bicep' = if (deployCore) {
     apimCapacity: servicesConfig.apimCapacity
     enableGrpc: grpcEnabled
     existingApimHostnameConfigurations: existingApimHostnameConfigurations
-    enableWebSocketLogs: length(filter(infrastructureApis, api => (api.?apiType ?? 'http') == 'websocket')) > 0
     vaultSkuName: servicesConfig.vaultSkuName
     vaultRetentionDays: servicesConfig.vaultRetentionDays
     vaultPurgeProtection: servicesConfig.vaultPurgeProtection
     // APIM の証明書等の管理処理だけに必要な trusted services 例外。
     // KV の一般公開は無効を維持し、通常のデータ通信は PE を使います。
     allowApimKeyVaultControlPlane: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
-    logAnalyticsWorkspaceId: monitoring.outputs.monitoring.workspaceId
-    regionalAuditStorageId: monitoring.outputs.storage.collectJapan.id
-    foundryAuditStorageId: monitoring.outputs.storage.collectFoundry.id
     applicationInsightsResourceId: monitoring.outputs.monitoring.appInsightsId
     applicationInsightsConnectionString: monitoring.outputs.monitoring.appInsightsConnectionString
     modelDeployments: servicesConfig.modelDeployments
@@ -432,14 +430,14 @@ module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
 module portal 'modules/portal-platform.bicep' = if (deployCore) {
   name: '${stem}-portal'
   scope: svcGroup
-  dependsOn: [portalNetwork]
+  dependsOn: [monitoring, portalNetwork]
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     existingPortalApp: existingPortalApp
     stem: stem
     location: location
     tags: tags
     subnetId: network!.outputs.subnetIds.aca
-    workspaceId: monitoring.outputs.monitoring.workspaceId
     registryName: portalRegistry!.outputs.name
     pullIdentityId: portalPullIdentity!.outputs.id
   }
@@ -485,6 +483,7 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
   name: '${stem}-gateway'
   scope: nwGroup
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     productName: product
     environmentName: environmentName
     resourceStem: stem
@@ -501,9 +500,6 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     publicHostName: gatewayConfig.publicHostName
     keyVaultCertificateSecretId: certificate!.outputs.certificateSecretUri
     certificateIdentityId: identity.outputs.id
-    workspaceId: monitoring.outputs.monitoring.workspaceId
-    auditStorageId: monitoring.outputs.storage.collectJapan.id
-    enableAuditCollection: true
     skuName: gatewayConfig.skuName
     autoscaleMinCapacity: gatewayConfig.autoscaleMinCapacity
     autoscaleMaxCapacity: gatewayConfig.autoscaleMaxCapacity
@@ -529,7 +525,7 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     grpcBackendPort: grpcConfig.backendPort
     l7IngressSecret: l7IngressSecret
   }
-  dependsOn: [portalNetworkBindings]
+  dependsOn: [monitoring, portalNetworkBindings]
 }
 
 // 各リソースが存在してからアラート・通知・監査閲覧権限を接続します。
@@ -562,11 +558,10 @@ module monitoringBindings 'modules/monitoring-bindings.bicep' = if (deployCore) 
 module subscriptionMonitoring 'modules/monitoring-subscription.bicep' = if (deployCore) {
   name: '${stem}-subscription-monitoring'
   params: {
+    diagnosticSettingProperties: diagnosticSettingProperties
     resourceStem: stem
-    workspaceId: monitoring.outputs.monitoring.workspaceId
-    auditStorageId: monitoring.outputs.storage.collectJapan.id
-    enableAuditCollection: true
   }
+  dependsOn: [monitoring]
 }
 
 // 以降は後続スクリプト用の参照情報です。秘密値や PFX は出力せず、名前・ID・URI と公開メタデータだけを返します。

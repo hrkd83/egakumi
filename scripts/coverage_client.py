@@ -10,6 +10,14 @@ runは明示された接続先へ要求を1回送り、応答の形・内容の�
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import asyncio
 import base64
@@ -19,7 +27,6 @@ import hashlib
 import io
 import json
 import math
-import os
 from pathlib import Path
 import re
 import struct

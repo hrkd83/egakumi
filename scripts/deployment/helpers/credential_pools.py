@@ -49,7 +49,7 @@ def resource_names(configuration: dict) -> dict:
     return {
         "sqlServer": f"sql-{stem}",
         "database": f"sqldb-{stem}-credentials",
-        "application": f"ca-{stem}-credential-broker",
+        "application": f"ca-{stem}-credentials",
         "schemaJob": f"caj-{stem}-schema",
         "reconcileJob": f"caj-{stem}-recon",
         "runtimeIdentity": f"id-{stem}-credential-broker",

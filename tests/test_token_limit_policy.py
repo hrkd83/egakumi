@@ -116,5 +116,107 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                     self.assertEqual(row["value"], row["period"])
 
 
+
+class SubscriptionProfileFetchExpressionTests(unittest.TestCase):
+    """取得した不正値を整数へ丸めず拒否し、正規の無制限と区別する。"""
+
+    POLICY = CORE / "apps/gateway/apim/policies/subscription-profile.xml"
+
+    @classmethod
+    def setUpClass(cls):
+        if not PWSH:
+            raise unittest.SkipTest("PowerShell with bundled Roslyn is required")
+        node = ET.parse(cls.POLICY).find('.//set-variable[@name="gatewayFetchedProfile"]')
+        body = expression_body(node.get("value"))
+        source = r'''
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+public static class ProfileFetchFixture {
+  public class Variables : Dictionary<string,object> {
+    public T GetValueOrDefault<T>(string key, T fallback) { return ContainsKey(key) ? (T)this[key] : fallback; }
+  }
+  public class Body { public string Text; public T As<T>() { return (T)(object)JObject.Parse(Text); } }
+  public interface IResponse { int StatusCode { get; } Body Body { get; } }
+  public class Response : IResponse { public int StatusCode { get; set; } public Body Body { get; set; } }
+  public class Named { public string Id = "<SUBSCRIPTION_ID>"; }
+  public class Context { public Variables Variables = new Variables(); public Named Subscription = new Named(); }
+  static object Fetch(Context context) { __BODY__ }
+  public static string Run(string input) {
+    var result = new JObject();
+    foreach (JObject row in JArray.Parse(input)) {
+      var context = new Context();
+      context.Variables["gatewayProfileResponse"] = row["status"].Type == JTokenType.Null ? null :
+        new Response { StatusCode = (int)row["status"], Body = new Body { Text = (string)row["body"] } };
+      result[(string)row["id"]] = (string)Fetch(context);
+    }
+    return result.ToString(Formatting.None);
+  }
+}
+'''.replace("__BODY__", body)
+        profile = {"schemaVersion": 1, "subscriptionId": "<SUBSCRIPTION_ID>",
+                   "requestRate": None, "tokensPerMinute": None, "tokenQuota": None}
+        cases = [{"id": "null-response", "status": None, "body": "{}"},
+                 {"id": "upstream-503", "status": 503, "body": "{}"},
+                 {"id": "broken-json", "status": 200, "body": "{broken"},
+                 {"id": "valid-unlimited", "status": 200, "body": json.dumps(profile)}]
+        for field in ("calls", "renewalPeriodSeconds", "tokens"):
+            for kind, value in (("fraction", 1.5), ("string", "2"), ("boolean", True)):
+                value_profile = dict(profile)
+                if field == "tokens":
+                    value_profile["tokenQuota"] = {"tokens": value, "period": "Hourly"}
+                else:
+                    value_profile["requestRate"] = {"calls": 2, "renewalPeriodSeconds": 60, field: value}
+                cases.append({"id": field + "-" + kind, "status": 200, "body": json.dumps(value_profile)})
+        for kind, value in (("fraction", 1.1), ("string", "1"), ("boolean", True)):
+            cases.append({"id": "schema-" + kind, "status": 200,
+                          "body": json.dumps({**profile, "schemaVersion": value})})
+        for name, calls, period, tokens in (("minimum", 1, 1, 1), ("maximum", 1_000_000, 300, 2_147_483_647)):
+            value_profile = {**profile, "requestRate": {"calls": calls, "renewalPeriodSeconds": period},
+                             "tokensPerMinute": tokens, "tokenQuota": {"tokens": tokens, "period": "Yearly"}}
+            cases.append({"id": "valid-" + name, "status": 200, "body": json.dumps(value_profile)})
+        with tempfile.TemporaryDirectory(prefix="core-profile-fetch-") as directory:
+            folder = Path(directory)
+            (folder / "fixture.cs").write_text(source, encoding="utf-8")
+            (folder / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+            runner = folder / "runner.ps1"
+            runner.write_text("""$ErrorActionPreference='Stop'
+$references=@(Get-ChildItem (Join-Path $PSHOME 'ref/*.dll') | ForEach-Object FullName)+@([Newtonsoft.Json.Linq.JObject].Assembly.Location)
+Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs')) -ReferencedAssemblies $references -CompilerOptions '/nowarn:1701,1702'
+[ProfileFetchFixture]::Run((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))
+""", encoding="utf-8")
+            result = subprocess.run([PWSH, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(runner)],
+                                    capture_output=True, text=True, timeout=60)
+            if result.returncode:
+                raise AssertionError("Actual profile-fetch XML expression failed: " + result.stderr)
+            cls.results = json.loads(result.stdout)
+
+    def test_upstream_failure_and_malformed_body_are_not_unlimited_profiles(self):
+        for name in ("null-response", "upstream-503", "broken-json", "schema-fraction", "schema-string", "schema-boolean"):
+            with self.subTest(case=name):
+                self.assertEqual(self.results[name], "")
+
+    def test_non_integer_numeric_fields_are_refused_before_caching(self):
+        # The fetch expression must return empty: its caller returns503 before cache-store.
+        for field in ("calls", "renewalPeriodSeconds", "tokens"):
+            for kind in ("fraction", "string", "boolean"):
+                with self.subTest(field=field, kind=kind):
+                    self.assertEqual(self.results[field + "-" + kind], "")
+
+    def test_valid_null_and_integer_boundaries_preserve_the_profile(self):
+        unlimited = json.loads(self.results["valid-unlimited"])
+        self.assertIsNone(unlimited["requestRate"])
+        self.assertIsNone(unlimited["tokensPerMinute"])
+        self.assertIsNone(unlimited["tokenQuota"])
+        for name, calls, period, tokens in (("minimum", 1, 1, 1), ("maximum", 1_000_000, 300, 2_147_483_647)):
+            with self.subTest(case=name):
+                profile = json.loads(self.results["valid-" + name])
+                self.assertEqual(profile["requestRate"], {"calls": calls, "renewalPeriodSeconds": period})
+                self.assertEqual(profile["tokensPerMinute"], tokens)
+                self.assertEqual(profile["tokenQuota"], {"tokens": tokens, "period": "Yearly"})
+
+
 if __name__ == "__main__":
     unittest.main()

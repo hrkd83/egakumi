@@ -110,3 +110,10 @@ test("Gatewayの文書固有エラーを固定コードへ対応させ、詳細�
     assert.equal(result.status, status); assert.deepEqual(await result.json(), { error: { code } });
   }
 });
+
+test("抽出本文へ引用符付きキーがJSONエスケープされても公開しない", async () => {
+  const credential = 'synthetic-document-"key"-\\-value';
+  const raw = JSON.stringify({ ...native, analyzeResult: { ...native.analyzeResult, content: credential } }); assert.equal(raw.includes(credential), false);
+  const response = await handleDocumentAnalysis(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+  assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "DocumentAnalysisFailed" } });
+});

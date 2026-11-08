@@ -6,6 +6,14 @@ CLIは単一ホストの診断用。本番は検証済み本人と共有保存�
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import hashlib
 import json

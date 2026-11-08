@@ -20,6 +20,10 @@ PIIから生成するMCPも、RESTと同じProductの購読キーで利用しま
 
 PIIの`tools/call`は、型・必須項目・対応言語・追加項目・要求サイズを入口で検証します。不正な引数は実行せず、HTTP 400とJSON-RPCの`error.code=-32602`で返します。引数自体や本文の個人情報はエラーへ転記しません。
 
+PIIに限り、`maxRequestBytes=32768`は、厳密な`text`・`language`の入力を解析後にコンパクトJSONへ再直列化したUTF-8 byte数の上限です。RESTの受信本文そのものを32,768 bytesで拒否する方式から変更し、JSONエスケープや構文上の空白による表現の差を許容します。解析前の受信本文にはその6倍、196,608 bytesの独立した上限を適用します。どちらのサイズ超過もHTTP 413・`error.code=PiiInputTooLarge`・`requestId`の固定形式と`Cache-Control: no-store`で返します。受信上限内のJSON・必須値・言語等の入力不正はHTTP 400・`PiiInvalidInput`です。MCPもJSON-RPC全体ではなく`params.arguments`の同じコンパクトJSON予算で判定し、超過時はREST実行前に上記の400／`-32602`で拒否します。文字列値をNFC/NFKC等で正規化したり、前後の空白を削除したり、切り詰めたりしません。Languageの5,120 Unicodeテキスト要素とは別の上限であり、他のAPIの`maxRequestBytes`は引き続き受信本文のbyte数です。
+
+上記のPII入力エラー形式はAPIMまで到達した要求に適用します。壊れたJSONはApplication GatewayのWAFで先にHTTP 403となる場合があり、この場合はAPIMの`requestId`がないため、WAFの診断記録で拒否を確認します。
+
 APIMのnative REST-backed MCPは、REST側の上流エラーを`content[].text`へ包み、HTTP 200・`isError:false`とする場合があります。クライアントはHTTP状態、JSON-RPCの`error`、`isError`だけで成功を確定せず、`structuredContent`または各`content[].text`のJSONが[PII成功スキーマ](../../apps/gateway/apim/schemas/pii.json)に一致することも検証してください。複数の結果が食い違う場合も失敗にします。Portalはこのスキーマ検証を行い、上流エラーをマスキング成功として表示しません。生成されたMCP応答ストリームを書き換える構成は採用していません。
 
 外部MCP proxyで個人の下流認証が必要なら、`credentialConnection.mode=personal`を指定し、CM共通窓口で取得した接続セッションを追加します。MCPのtransport・セッションID・再接続規則と、Gatewayの本人接続セッションは区別します。[CM共通接続手順](../setup/credential-manager-login.md)

@@ -183,7 +183,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         schema = self.module("portal-schema-job", "portal")["properties"]["template"]
         migration, = [item for item in schema["resources"] if item["type"] == "Microsoft.App/jobs"]
         self.assertNotIn("condition", migration)
-        self.assertEqual(migration["name"], "[format('caj-{0}-portal-schema', parameters('stem'))]")
+        self.assertEqual(migration["name"], "[format('caj-{0}-psql', parameters('stem'))]")
         config = migration["properties"]["configuration"]
         self.assertEqual(config["triggerType"], "Manual")
         self.assertEqual(config["replicaRetryLimit"], 0)
@@ -202,6 +202,20 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertEqual(image_access["properties"]["principalId"], "[parameters('schemaIdentity').principalId]")
         self.assertIn("Microsoft.ContainerRegistry/registries", image_access["scope"])
         self.assertIn("7f951dda-4ed3-4680-a7ca-43fe172d538d", schema["variables"]["acrPull"])
+
+    def test_portal_ingress_keeps_the_configured_long_request_budget(self):
+        gateway = self.module("gateway")
+        self.assertEqual(gateway["properties"]["parameters"]["backendRequestTimeoutSeconds"],
+                         {"value": "[variables('gatewayConfig').backendRequestTimeoutSeconds]"})
+        template = gateway["properties"]["template"]
+        app_gateway, = [item for item in template["resources"]
+                        if item["type"] == "Microsoft.Network/applicationGateways"]
+        properties = app_gateway["properties"]
+        # Both HTTP paths must preserve the configured budget. Health probes keep
+        # their shorter failure-detection timers and are not inference requests.
+        self.assertEqual(properties.count("'requestTimeout', parameters('backendRequestTimeoutSeconds')"), 2)
+        self.assertNotIn("'requestTimeout', 30", properties)
+        self.assertIn("'timeout', 10", properties)
 
     def test_gateway_egress_only_allows_selected_gateway_from_aca(self):
         module = self.module("portal-gateway-egress", "portal")
@@ -247,7 +261,7 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         self.assertEqual(module["condition"], "[parameters('deployApplication')]")
         resources = module["properties"]["template"]["resources"]
         job, = [item for item in resources if item["type"] == "Microsoft.App/jobs"]
-        self.assertEqual(job["name"], "[format('caj-{0}-portal-groups', parameters('stem'))]")
+        self.assertEqual(job["name"], "[format('caj-{0}-psync', parameters('stem'))]")
         config = job["properties"]["configuration"]
         self.assertEqual(config["triggerType"], "Schedule")
         self.assertEqual(config["scheduleTriggerConfig"], {

@@ -3,6 +3,7 @@ import { nextCookies } from "better-auth/next-js";
 import type { AuthEnvironment } from "./auth-environment";
 import { createIdentityGate, createMicrosoftProfileResolver, withoutOAuthTokens } from "./auth-identity.ts";
 import { portalAuthModels } from "./auth-schema.ts";
+import { portalAuthLogger } from "./auth-logger.ts";
 
 /**
  * Microsoftへの認証要求とSQL保存の方針を、実行環境の値から組み立てます。
@@ -13,6 +14,7 @@ import { portalAuthModels } from "./auth-schema.ts";
 export function createPortalAuthOptions(environment: AuthEnvironment, database: BetterAuthOptions["database"]) {
   return {
     appName: "egakumi AI Gateway",
+    logger: portalAuthLogger,
     baseURL: environment.baseURL,
     basePath: "/api/auth",
     secret: environment.secret,

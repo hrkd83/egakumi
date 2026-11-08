@@ -4,19 +4,13 @@
 
 targetScope = 'resourceGroup'
 
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
+
 @description('既存 Firewall の名前。親が作成した実リソース ID から受け取ります。')
 param firewallName string
 @description('製品名と環境名を連結した共通名。診断設定の名前に使います。')
 param resourceStem string
-@allowed(['Standard', 'Premium'])
-@description('Firewall の実構成と同じ SKU。Premium の場合だけ IDPS ログも収集します。')
-param firewallTier string
-@description('検索用 Log Analytics Workspace のリソース ID。')
-param workspaceId string
-@description('Firewall と同じリージョンの既存監査 Storage のリソース ID。')
-param auditStorageId string
-@description('保護済み監査保存先にもログを送るか。メトリクスは LAW のみに送ります。')
-param enableAuditCollection bool = false
 
 resource firewall 'Microsoft.Network/azureFirewalls@2025-01-01' existing = {
   name: firewallName
@@ -28,26 +22,14 @@ resource firewall 'Microsoft.Network/azureFirewalls@2025-01-01' existing = {
 resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: firewall
   name: 'diag-${resourceStem}-fw'
-  properties: {
-    workspaceId: workspaceId
-    logAnalyticsDestinationType: 'Dedicated'
-    ...(enableAuditCollection ? { storageAccountId: auditStorageId } : {})
-    logs: concat([
-      { category: 'AZFWNetworkRule', enabled: true }
-      { category: 'AZFWApplicationRule', enabled: true }
-      { category: 'AZFWThreatIntel', enabled: true }
-    ], firewallTier == 'Premium' ? [{ category: 'AZFWIdpsSignature', enabled: true }] : [])
-  }
+  properties: diagnosticSettingProperties['fw-logs']
 }
 
 // 数値メトリクスを通信ログと分け、監査 Storage への不要な二重保存を避けます。
 resource metrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: firewall
   name: 'diag-${resourceStem}-fw-metrics'
-  properties: {
-    workspaceId: workspaceId
-    metrics: [{ category: 'AllMetrics', enabled: true }]
-  }
+  properties: diagnosticSettingProperties['fw-metrics']
 }
 
 output diagnosticSettingIds object = { logs: logs.id, metrics: metrics.id }

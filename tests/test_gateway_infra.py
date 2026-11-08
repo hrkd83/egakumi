@@ -39,7 +39,7 @@ class GatewayInfrastructureTests(unittest.TestCase):
         self.assertNotIn("microsoft.sql/servers/databases", types)
         self.assertFalse(any("authorizationproviders" in item for item in types))
         self.assertFalse(any(item["type"].lower() == "microsoft.app/containerapps"
-                             and "credential-broker" in item["name"] for item in all_resources))
+                             and "-credentials" in item["name"] for item in all_resources))
         self.assertFalse(any(item["type"].lower() == "microsoft.managedidentity/userassignedidentities"
                              and "credential-broker" in item["name"] for item in all_resources))
         self.assertNotIn("credentialBrokerKey", core["parameters"])

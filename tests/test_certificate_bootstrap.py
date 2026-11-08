@@ -27,7 +27,7 @@ INPUTS = {
 
 
 STUB = r'''
-import base64, json, os, pathlib, shutil, stat, sys, tempfile
+import base64, json, os, pathlib, pwd, shutil, stat, subprocess, sys, tempfile
 name = pathlib.Path(sys.argv[0]).name
 arguments = sys.argv[1:]
 fixture = pathlib.Path(os.environ["BOOTSTRAP_FIXTURE"])
@@ -48,11 +48,41 @@ else:
 for value in expected.values():
     assert all(value not in argument for argument in arguments), "Private input leaked into argv"
 record = {"command": name, "worker": worker, "input_names": sorted(present), "arguments": arguments}
+if worker:
+    assert os.environ["HOME"] == pwd.getpwuid(os.getuid()).pw_dir, "Worker HOME is not the OS account home"
+    assert os.environ["HOME"] != str(work), "Private work path was used as HOME"
+    record["os_login_home"] = True
 if name == "install" and arguments[-1].endswith("egakumi-azure-cli.sources"):
     record["repository"] = pathlib.Path(arguments[-2]).read_text()
 with (fixture / "trace.jsonl").open("a") as stream:
     stream.write(json.dumps(record) + "\n")
-if name == "mktemp":
+if name == "systemd":
+    assert arguments == ["--version"]
+    print("systemd " + ("254" if os.environ.get("BOOTSTRAP_FAIL_STAGE") == "systemd-version" else "255"))
+elif name == "systemctl":
+    if arguments[:3] == ["show", "--property=LoadState", "--value"]:
+        print("loaded" if os.environ.get("BOOTSTRAP_FAIL_STAGE") == "unit-collision" else "not-found")
+        if os.environ.get("BOOTSTRAP_FAIL_STAGE") != "unit-collision":
+            sys.exit(1) # real systemctl show returns nonzero for an absent unit
+    else:
+        assert arguments[:1] == ["stop"] and len(arguments) == 2
+        assert arguments[1].startswith("egakumi-certificate-install-")
+elif name == "systemd-run":
+    for required in ("--system", "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec", "--uid=root", "--gid=root", "--property=SetLoginEnvironment=yes", "--property=UMask=0077", "--property=RuntimeMaxSec=3300", "--property=TimeoutStopSec=30", "--expand-environment=no"):
+        assert required in arguments, "Root login/timeout/collection contract missing"
+    assert not any(argument.startswith(("--setenv", "--property=Environment", "--property=PassEnvironment")) for argument in arguments)
+    if os.environ.get("BOOTSTRAP_FAIL_STAGE") == "systemd-start":
+        sys.exit(45)
+    command = arguments[arguments.index("/bin/bash"):]
+    launcher = pathlib.Path(command[1])
+    assert stat.S_IMODE(launcher.stat().st_mode) == 0o600
+    assert launcher.name == "launch-worker.sh" and launcher.parent == pathlib.Path(command[2])
+    # Model the service manager's clean account environment. The OS account's
+    # home is used, with no certificate-specific HOME or protected unit env.
+    environment = {key: os.environ[key] for key in ("PATH", "BOOTSTRAP_FIXTURE", "BOOTSTRAP_FAIL_STAGE")}
+    environment["HOME"] = pwd.getpwuid(os.getuid()).pw_dir
+    sys.exit(subprocess.run(command, env=environment, check=False).returncode)
+elif name == "mktemp":
     print(tempfile.mkdtemp(prefix="egakumi-certificate.", dir=fixture / "run"))
 elif name == "chmod":
     os.chmod(arguments[1], int(arguments[0], 8))
@@ -124,7 +154,7 @@ class CertificateBootstrapTests(unittest.TestCase):
             # Fixed Python interpreter avoids invoking another dependency stub.
             stub.write_text("#!" + shutil.which("python3") + "\n" + textwrap.dedent(STUB))
             stub.chmod(0o700)
-            for name in ("mktemp", "chmod", "dpkg", "apt-get", "curl", "pwsh", "base64", "rm", "gpg", "install", "az"):
+            for name in ("mktemp", "chmod", "dpkg", "apt-get", "curl", "pwsh", "base64", "rm", "gpg", "install", "az", "systemd", "systemd-run", "systemctl"):
                 (fixture / "bin" / name).symlink_to(stub)
             source = source.replace('[ "$EUID" = 0 ] || exit 1', ": # offline platform gate")
             source = source.replace('[ "${OSTYPE:-}" = linux-gnu ] || exit 1', ": # offline platform gate")
@@ -132,6 +162,7 @@ class CertificateBootstrapTests(unittest.TestCase):
             source = source.replace("< /proc/mounts", "< '" + str(fixture / "mounts") + "'")
             source = source.replace("/run/egakumi-certificate.XXXXXXXX", str(fixture / "run/egakumi-certificate.XXXXXXXX"))
             source = source.replace("/etc/apt/", str(fixture / "etc/apt") + "/")
+            source = source.replace("exec /usr/bin/pwsh", "exec " + str(fixture / "bin/pwsh"))
             source = source.replace("__CERTIFICATE_WORKER_BASE64__", base64.b64encode(b"# harmless worker fixture\n").decode())
             script = fixture / "bootstrap.sh"
             script.write_text(source)
@@ -158,6 +189,73 @@ class CertificateBootstrapTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(any(record["command"] == "apt-get" for record in records))
         self.assertEqual(sum(record["worker"] for record in records), 1)
+        self.assertEqual(records[-1]["command"], "rm")
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required for the module environment fixture")
+    def test_pinned_module_import_keeps_os_home_and_rejects_missing_home(self):
+        """実際の Ensure 関数を使い、モジュール・ネットワークだけを偽物へ限定する。"""
+        fixture_source = r'''param([string]$SourcePath,[string]$FixtureRoot,[switch]$MissingHome)
+$ErrorActionPreference='Stop'
+$tokens=$null;$parseErrors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($SourcePath,[ref]$tokens,[ref]$parseErrors)
+if($parseErrors.Count){throw 'Worker parse failed'}
+$definition=@($ast.EndBlock.Statements|Where-Object {$_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -eq 'Ensure-PoshAcme'})
+if($definition.Count -ne 1){throw 'Pinned module function missing'}
+. ([scriptblock]::Create($definition[0].Extent.Text))
+$script:Root=$FixtureRoot;$script:ModuleVersion='4.34.0';$Action='Renew'
+$script:Imports=0;$beforeHome=$env:HOME;$beforeModulePath=$env:PSModulePath
+function Get-Module {param([switch]$ListAvailable,[string]$Name);if($Name -ne 'Posh-ACME'){throw 'Unexpected module'};[pscustomobject]@{Version=[version]'4.34.0'}}
+function Install-Module {throw 'Unexpected module installation'}
+function New-PrivateDirectory([string]$Path){if($Path -cne (Join-Path $script:Root 'acme')){throw 'Unexpected ACME state path'}}
+function Import-Module {param([string]$Name,[version]$RequiredVersion,[switch]$Force,[string]$ErrorAction);if($Name -ne 'Posh-ACME' -or $RequiredVersion -ne [version]'4.34.0' -or $env:HOME -cne $beforeHome){throw 'Module import environment changed'};$script:Imports++}
+$blocked=$false
+try {Ensure-PoshAcme} catch {if($_.Exception.Message -cne 'Certificate module requires the OS login environment'){throw};$blocked=$true}
+if($MissingHome){if(-not $blocked -or $script:Imports -ne 0){throw 'Missing OS HOME did not close module import'}}
+else {if($blocked -or $script:Imports -ne 1 -or $env:POSHACME_HOME -cne (Join-Path $script:Root 'acme')){throw 'Module import contract failed'}}
+if($env:HOME -cne $beforeHome -or $env:PSModulePath -cne $beforeModulePath){throw 'Common environment was changed'}
+'OS_LOGIN_MODULE_FIXTURE_PASS'
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            script = fixture / "module-fixture.ps1"
+            script.write_text(fixture_source)
+            for missing in (False, True):
+                environment = dict(os.environ)
+                if missing:
+                    environment.pop("HOME", None)
+                command = [shutil.which("pwsh"), "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script), "-SourcePath", str(CORE / "guest/certificate.ps1"), "-FixtureRoot", str(fixture / "private-acme-state")]
+                if missing:
+                    command.append("-MissingHome")
+                result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=20, check=False)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.strip(), "OS_LOGIN_MODULE_FIXTURE_PASS")
+
+    def test_root_service_preserves_os_home_and_never_exposes_inputs_in_unit_environment(self):
+        result, records = self.run_fixture(already_installed=True, cli_installed=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        launcher, = [row for row in records if row["command"] == "systemd-run"]
+        worker, = [row for row in records if row["worker"]]
+        self.assertTrue(worker["os_login_home"])
+        self.assertEqual(launcher["input_names"], [])
+        self.assertFalse(any(argument.startswith(("--property=Environment=", "--property=PassEnvironment=", "--setenv")) for argument in launcher["arguments"]))
+
+    def test_unsupported_systemd_stops_before_install_or_worker(self):
+        result, records = self.run_fixture(fail_stage="systemd-version")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("certificate-runtime-environment", result.stdout)
+        self.assertFalse(any(row["command"] in ("apt-get", "systemd-run") or row["worker"] for row in records))
+
+    def test_existing_transient_unit_is_never_reused_or_stopped(self):
+        result, records = self.run_fixture(fail_stage="unit-collision", already_installed=True, cli_installed=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(row["command"] == "systemd-run" or row["worker"] for row in records))
+        self.assertFalse(any(row["command"] == "systemctl" and row["arguments"][0] == "stop" for row in records))
+
+    def test_transient_start_failure_stops_only_the_own_unit_and_removes_inputs(self):
+        result, records = self.run_fixture(fail_stage="systemd-start", already_installed=True, cli_installed=True)
+        self.assertEqual(result.returncode, 45, result.stdout + result.stderr)
+        self.assertFalse(any(row["worker"] for row in records))
+        self.assertEqual(sum(row["command"] == "systemctl" and row["arguments"][0] == "stop" for row in records), 1)
         self.assertEqual(records[-1]["command"], "rm")
 
     def test_installer_failure_cleans_private_inputs_without_exposing_them(self):

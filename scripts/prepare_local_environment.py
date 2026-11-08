@@ -2,9 +2,16 @@
 """公開例から.local/<environment>の保護された入力を作る。Azureへ接続しない。"""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import json
-import os
 from pathlib import Path
 import stat
 

@@ -11,6 +11,14 @@ APIをまだ含めず、fullは必要なbindingsを埋めて正式機能を揃�
 Azureへの接続、資源作成、API公開、推論は行わず、追加Azure費用は発生しない。
 """
 from __future__ import annotations
+
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 import argparse
 import copy
 import json

@@ -2,13 +2,20 @@
 """GatewayのDB・CM・Broker・APIを順に配備する。既定は計画のみ、--executeで実行。"""
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import copy
 import json
 from pathlib import Path
 import re
 import subprocess
-import sys
 import time
 
 from deployment.helpers.configuration import (
@@ -238,7 +245,8 @@ def main(argv=None):
     active = broker_enabled(config)
     data, source_hash = source_bundle() if active and not args.image_digest else (None, None)
     image_state = build_state(state, foundation)
-    digest = args.image_digest or (reusable_image(config, image_state, source_hash, build_record) if active else '')
+    transport = ArmTransport(config) if args.execute else None
+    digest = args.image_digest or (reusable_image(config, image_state, source_hash, build_record, transport=transport) if active else '')
     values = {'configuration': build_bicep_configuration(config), 'foundation': foundation,
               'imageDigest': digest or '', 'deployApplication': False}
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
@@ -247,6 +255,7 @@ def main(argv=None):
         'application': resource_names(config)['application'] if active else None,
         'database': resource_names(config)['database'] if active else None,
         'imageBuild': active and not digest,
+        'imageReuseVerificationPending': not args.execute and active and not args.image_digest,
         'steps': ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
                   'update-broker-and-apim-settings', 'publish-apis-products-subscriptions', 'reconcile-released-api-membership', 'remove-default-apim-samples']
                  + (['configure-gateway-identity-callback-waf'] if active else [])
@@ -262,7 +271,6 @@ def main(argv=None):
     templates = {'gateway': run_json(['az', 'bicep', 'build', '--file', str(MODULE), '--stdout']),
                  'apis': run_json(['az', 'bicep', 'build', '--file', str(api_publication.MODULE), '--stdout'])}
     values['credentialProviderSecrets'] = load_credential_provider_secrets(config)
-    transport = ArmTransport(config)
     verify_foundation(config, foundation, transport)
     if active:
         values['brokerKey'] = broker_secret(config, foundation, transport)

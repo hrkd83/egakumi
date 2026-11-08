@@ -7,6 +7,7 @@ from unittest import mock
 from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, configuration, fixture
+from deployment.helpers.diagnostics import canonical_settings
 import standard_apis
 
 
@@ -86,13 +87,24 @@ class ApiFoundationBicepTests(unittest.TestCase):
         cls.gateway = next(item for item in cls.main['resources']
                            if 'customMimePaths' in item.get('properties', {}).get('parameters', {}))
         cls.services = next(item for item in cls.main['resources']
-                            if 'enableWebSocketLogs' in item.get('properties', {}).get('parameters', {}))
+                            if 'modelDeployments' in item.get('properties', {}).get('parameters', {}))
 
     def value(self, expression, config):
         return PolicyExpression(expression, self.main['variables']).evaluate({'configuration': config})
 
     def paths(self, name, config):
         return self.value(self.gateway['properties']['parameters'][name]['value'], config)
+
+    def apim_logs(self, config):
+        # The CLI now generates the canonical properties; Bicep passes that
+        # object to the same APIM diagnostic instead of a WebSocket-only flag.
+        self.assertEqual(self.services['properties']['parameters']['diagnosticSettingProperties']['value'],
+                         "[parameters('diagnosticSettingProperties')]")
+        diagnostic = next(item for item in self.services['properties']['template']['resources']
+                          if item.get('type') == 'Microsoft.Insights/diagnosticSettings'
+                          and item.get('name') == 'core-audit' and "names').apim" in item.get('scope', ''))
+        self.assertEqual(diagnostic['properties'], "[parameters('diagnosticSettingProperties')['apim-logs']]")
+        return canonical_settings(config, 'core')['apim-logs']['properties']['logs']
 
     def test_standard_paths_and_websocket_logs_exist_while_public_array_stays_empty(self):
         config = configuration.build_bicep_configuration(foundation_configuration())
@@ -103,7 +115,7 @@ class ApiFoundationBicepTests(unittest.TestCase):
         self.assertEqual(self.paths('inlinePdfPaths', config), ['/models/openai/v1/responses'])
         self.assertEqual(self.paths('legacyMcpMessagePaths', config), [])
         self.assertTrue(self.value(self.main['variables']['realtimeEnabled'], config))
-        self.assertTrue(self.value(self.services['properties']['parameters']['enableWebSocketLogs']['value'], config))
+        self.assertIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
     def test_custom_media_routes_are_exact_and_do_not_inherit_standard_paths(self):
         config = configuration.build_bicep_configuration(foundation_configuration())
@@ -116,7 +128,7 @@ class ApiFoundationBicepTests(unittest.TestCase):
             self.assertEqual(self.paths(name, config), ['/company/models/v2/chat/completions'])
         for name in ('inlinePdfPaths', 'customMimePaths', 'legacyMcpMessagePaths'):
             self.assertEqual(self.paths(name, config), [])
-        self.assertFalse(self.value(self.services['properties']['parameters']['enableWebSocketLogs']['value'], config))
+        self.assertNotIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
     def test_existing_explicit_bicep_inputs_fall_back_without_internal_metadata(self):
         config = configuration.build_bicep_configuration(foundation_configuration())

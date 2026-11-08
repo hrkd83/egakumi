@@ -59,8 +59,10 @@ export function parseSpeechTranscript(value: unknown, model: SpeechModel, durati
     transcript = "";
     if (RecognitionStatus === "Success") {
       const response = z.object({ DisplayText: z.string().max(100_000).optional(), NBest: z.array(z.object({ Display: z.string().max(100_000) })).max(100).optional() }).parse(raw);
-      transcript = response.NBest?.[0]?.Display ?? response.DisplayText ?? "";
-      if (!transcript) throw new Error("Missing recognized speech");
+      const recognized = response.NBest?.[0]?.Display ?? response.DisplayText;
+      if (recognized === undefined) throw new Error("Missing recognized speech");
+      // 有効な無音で空文字が返る場合も、欠損した応答とは区別して保持します。
+      transcript = recognized;
     }
   } else transcript = z.object({ text: z.string().max(100_000) }).parse(raw).text;
   return speechResultSchema.parse({ kind: "stt", model: model.id, transcript, rawResponse: raw, durationMs, ...(requestId ? { requestId } : {}) });

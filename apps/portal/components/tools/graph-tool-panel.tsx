@@ -1,5 +1,8 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -38,6 +41,7 @@ const languages = { curl: "cURL", nextjs: "Next.js / TypeScript", fastapi: "Fast
  * @remarks 秘密情報はBFFが保持します。画面を閉じると通信を中止し、ポーリングでセッション期限を延長しません。
  */
 export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToolDictionary; locale: Locale; gatewayOrigin: string | null }) {
+  const formId = useFieldIds();
   const [store] = useState(createGraphToolStore);
   const state = useStore(store);
   const [view, setView] = useState<"request" | "schema" | "response">("request");
@@ -48,7 +52,7 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   const selectedKey = keys.status === "ready" ? keys.items.find((key) => key.id === state.apiKeyId) : undefined;
   const running = state.phase === "running";
 
-  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => () => deactivatePanelRequest(request, (pending) => { if (pending) store.getState().selectKey(store.getState().apiKeyId); }), [store]);
 
   useEffect(() => {
     if (view !== "response") return;
@@ -118,12 +122,12 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
   const settings = <div className="space-y-5">
     <section className="space-y-5">
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3"><label htmlFor="graph-api-key" className="text-xs font-medium">{text.key}</label><Button variant="ghost" size="sm" disabled={running || state.phase === "waiting" || keys.status === "loading"} className="h-7 text-xs" onClick={refreshKeys}>{text.refreshKeys}</Button></div>
+        <div className="flex items-center justify-between gap-3"><label htmlFor={formId("graph-api-key")} className="text-xs font-medium">{text.key}</label><Button variant="ghost" size="sm" disabled={running || state.phase === "waiting" || keys.status === "loading"} className="h-7 text-xs" onClick={refreshKeys}>{text.refreshKeys}</Button></div>
         <Select value={selectedKey?.id ?? ""} disabled={running || keys.status !== "ready" || !keys.items.length} onValueChange={selectKey}>
-          <SelectTrigger id="graph-api-key" className="h-10 w-full min-w-0 bg-white text-xs" aria-describedby="graph-api-key-help"><SelectValue placeholder={text.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
+          <SelectTrigger id={formId("graph-api-key")} className="h-10 w-full min-w-0 bg-white text-xs" aria-describedby={formId("graph-api-key-help")}><SelectValue placeholder={text.chooseKey} className="min-w-0 flex-1 overflow-hidden text-left" /></SelectTrigger>
           <SelectContent>{keys.items.map((key) => <SelectItem key={key.id} value={key.id}><span className="block min-w-0 truncate text-left" title={[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}>{key.displayName}<span className="text-muted-foreground"> · {[key.companyName, key.groupName].filter(Boolean).join(" · ")}</span></span></SelectItem>)}</SelectContent>
         </Select>
-        <p id="graph-api-key-help" className="text-xs leading-6 text-muted-foreground">{text.keyHelp}</p>
+        <p id={formId("graph-api-key-help")} className="text-xs leading-6 text-muted-foreground">{text.keyHelp}</p>
         {keys.status === "loading" && <p role="status" className="text-xs text-muted-foreground">{text.loadingKeys}</p>}
         {keys.status === "error" && <p role="alert" className="text-xs text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}
         {keys.status === "ready" && !keys.items.length && <p role="status" className="text-xs leading-6 text-muted-foreground">{text.noKeys} <Link href={`/${locale}/api-keys`} className="font-medium text-primary underline underline-offset-4">{text.manageKeys}</Link></p>}
@@ -155,7 +159,7 @@ export function GraphToolPanel({ text, locale, gatewayOrigin }: { text: GraphToo
         <section className="space-y-3"><h2 className="text-base font-semibold">{text.fixedRequest}</h2><div className="rounded-xl border border-border bg-muted/20 px-5 py-4 font-mono text-sm leading-7"><span className="mr-3 font-semibold text-primary">GET</span><code className="break-all">{gatewayOrigin ?? "https://gateway.example.com"}{GRAPH_TOOL_PATH}</code></div><p className="text-sm leading-7 text-muted-foreground">{text.fixedNote}</p><CodeBlock title={text.upstreamSelect} code={`GET https://graph.microsoft.com/v1.0${graphToolRequestContract.upstream}`} text={text} /><p className="text-sm leading-7 text-muted-foreground">{text.attributesNote}</p><p className="text-sm leading-7 text-muted-foreground">{text.permissionsNote} <a href="https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-4">{text.permissionsReference}</a></p></section>
         <p className="text-sm leading-7">{text.guideIntro}</p><ol className="list-decimal space-y-2 pl-5 text-sm leading-7 text-muted-foreground">{text.steps.map((step) => <li key={step}>{step}</li>)}</ol>
         <div className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-7 text-blue-950"><p>{text.lifetime}</p><p>{text.rotation}</p></div>
-        <div className="flex items-center justify-between gap-3"><label htmlFor="graph-language" className="text-xs font-semibold">{text.languages}</label><Select value={state.language} onValueChange={(value) => { if (value in languages) state.setLanguage(value as GraphToolViewState["language"]); }}><SelectTrigger id="graph-language" className="w-52 bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(languages).map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
+        <div className="flex items-center justify-between gap-3"><label htmlFor={formId("graph-language")} className="text-xs font-semibold">{text.languages}</label><Select value={state.language} onValueChange={(value) => { if (value in languages) state.setLanguage(value as GraphToolViewState["language"]); }}><SelectTrigger id={formId("graph-language")} className="w-52 bg-white text-xs"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(languages).map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
         <p className="text-xs leading-7 text-muted-foreground">{state.language === "curl" ? text.curlNote : state.language === "dify" ? text.difyNote : text.boundary}</p><CodeBlock key={state.language} code={getGraphToolExample(state.language, gatewayOrigin)} title={languages[state.language]} text={text} />
       </div>;
   const requestSchema = {

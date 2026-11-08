@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { crc32, deflateSync } from "node:zlib";
 import { ApiKeyError } from "../lib/api-keys/contracts.ts";
 import { getImageGenerationModels } from "../lib/model-catalog.ts";
 import { buildImageGenerationRequest, defaultImageInput, getImageGenerationEndpoint, getImageGenerationHeaders, getImageIntegrationExample, getImageRequestSchema, getImageResponseSchema, SAMPLE_IMAGE_PROMPT } from "../lib/image-integration.ts";
 import { handleImageGeneration, type ImageGenerationDependencies } from "../lib/image-gateway.ts";
 import { imageGenerationInputSchema, MAX_IMAGE_RESPONSE_BYTES } from "../lib/image-request.ts";
-import { imagePreviewSource, imageResponsePreview, parseImageGenerationResult, rasterBase64Mime, readImageResponse, safeImageUrl } from "../lib/image-response.ts";
+import { imageExternalUrl, imagePreviewSource, imageResponsePreview, parseImageGenerationResult, rasterBase64Mime, readImageResponse, safeImageUrl } from "../lib/image-response.ts";
 import { getImageGenerationDictionary } from "../lib/i18n/image-generation.ts";
 
 const models = getImageGenerationModels();
@@ -16,7 +17,28 @@ const gatewayOrigin = "https://gateway.example.invalid";
 const secret = "test-only-private-image-key";
 const apiKeyId = "portal-11111111-1111-4111-8111-111111111111";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
-const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=";
+/** 外部の画像やメタデータを埋め込まず、白い1画素のRGBA PNGを合成します。 */
+function syntheticPng(): string {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const payload = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(payload));
+    return Buffer.concat([length, payload, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8; // 各色8ビット。
+  header[9] = 6; // RGBA。
+  const pixels = Buffer.from([0, 255, 255, 255, 255]); // フィルターなし、白、不透明。
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header), chunk("IDAT", deflateSync(pixels)), chunk("IEND", Buffer.alloc(0)),
+  ]).toString("base64");
+}
+const png = syntheticPng();
 const jpeg = Buffer.from([255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 255, 217]).toString("base64");
 
 /** 実際のAPIと同じ入力制約を通し、外部通信と本人情報だけを固定します。 */
@@ -152,6 +174,27 @@ test("上流エラー・不正Content-Type・大きすぎる画像を成功扱�
   for (const body of [{ data: [] }, { data: [{ b64_json: Buffer.from("<svg>unsafe</svg>").toString("base64") }] }, { data: [{ b64_json: png }, { b64_json: png }] }, { data: [{ url: "http://127.0.0.1/test" }] }, { error: { code: "blocked" }, data: [{ b64_json: png }] }]) assert.equal((await handleImageGeneration(request(), dependencies({ fetch: async () => Response.json(body) }))).status, 502);
 });
 
+test("JSONのUnicodeエスケープで隠れた購読キーも画像の正常JSONへ含めない", async () => {
+  const encoded = [...secret].map((character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+  const raw = JSON.stringify({ data: [{ b64_json: png }], metadata: { reflected: secret } }).replace(secret, encoded);
+  assert.equal(raw.includes(secret), false);
+  let calls = 0;
+  const response = await handleImageGeneration(request(), dependencies({ fetch: async () => { calls++; return new Response(raw, { headers: { "content-type": "application/json" } }); } }));
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  assert.equal(calls, 1);
+});
+
+test("画像のraw JSONでも引用符付きキーの値・プロパティ名への反射を拒否する", async () => {
+  const credential = 'synthetic-image-"key"-\\-value';
+  for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+    const raw = JSON.stringify({ data: [{ b64_json: png }], ...reflected });
+    assert.equal(raw.includes(credential), false);
+    const response = await handleImageGeneration(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  }
+});
+
 test("画像読み取り中の期限切れ・キャンセルは再試行せず読取りを終了する", async () => {
   const keepAlive = setTimeout(() => undefined, 1000);
   try {
@@ -177,6 +220,12 @@ test("画像URLは自動取得せず、外部のHTTPS応答のみJSONとして�
   const url = "https://images.example.org/result.png?signature=temporary";
   const parsed = parseImageGenerationResult({ data: [{ url }] }, flux.id, 100);
   assert.deepEqual(parsed.images, [{ index: 0, kind: "url" }]); assert.equal(imagePreviewSource(parsed, parsed.images[0]), null);
+  assert.equal(imageExternalUrl(parsed, parsed.images[0]), url);
+  const raster = parseImageGenerationResult({ data: [{ b64_json: png }] }, openai.id, 100);
+  assert.equal(imageExternalUrl(raster, raster.images[0]), null);
+  parsed.rawResponse.data = [{ url: "https://127.0.0.1/private.png" }];
+  assert.equal(imageExternalUrl(parsed, parsed.images[0]), null);
+  parsed.rawResponse.data = [{ url }];
   let calls = 0;
   const response = await handleImageGeneration(request(defaultImageInput(flux)), dependencies({ fetch: async () => { calls++; return Response.json({ data: [{ url }] }); } }));
   assert.equal(response.status, 200); assert.equal(calls, 1);

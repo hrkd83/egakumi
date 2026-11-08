@@ -114,6 +114,55 @@ class DefaultSampleCleanupTests(unittest.TestCase):
                 self.assertFalse(t.mutations())
                 self.assertEqual(len(result["skipped"]), 3)
 
+    def test_current_azure_echo_host_with_canonical_or_nested_links_is_cleaned(self):
+        for nested in (False, True):
+            with self.subTest(nested=nested):
+                t = populated()
+                t.resources[ECHO]["properties"]["serviceUrl"] = "https://echo.playground.azure-api.net/api"
+                if nested:
+                    t.collections[ECHO + "/products"] = [entity(ECHO + "/products/" + name)
+                                                          for name in ("starter", "unlimited")]
+                result = self.cleanup(t)
+                self.assertEqual([urlsplit(call[1]).path for call in t.mutations()], [
+                    APIM + "/subscriptions/starter-sub", APIM + "/subscriptions/unlimited-sub",
+                    STARTER, UNLIMITED, ECHO])
+                self.assertEqual(result["skipped"], [])
+                self.assertTrue(all(call[3] == {"If-Match": '\"entity-version\"'} for call in t.mutations()))
+                for name in ("model-sub", "master", "all-api-sub"):
+                    self.assertIn(APIM + "/subscriptions/" + name, t.resources)
+                self.assertIn(APIM + "/apis/model-v1", t.resources)
+        for url in ("http://echo.playground.azure-api.net/api", "https://echo.playground.azure-api.net:8443/api",
+                    "https://echo.playground.azure-api.net.evil.invalid/api", "https://fixture!@echo.playground.azure-api.net/api",
+                    "https://echo.playground.azure-api.net/api?other=value", "https://echo.playground.azure-api.net/api#fragment",
+                    "https://echo.playground.azure-api.net/other"):
+            with self.subTest(url=url):
+                t = populated()
+                t.resources[ECHO]["properties"]["serviceUrl"] = url
+                self.cleanup(t)
+                self.assertFalse(t.mutations())
+
+    def test_nested_echo_product_ids_are_exact_owned_eligible_aliases(self):
+        t = populated()
+        t.collections[ECHO + "/products"] = [entity(ECHO + "/products/" + name)
+                                              for name in ("starter", "unlimited")]
+        self.assertEqual(self.cleanup(t)["deletedApiIds"], [ECHO])
+        foreign_apim = APIM.replace("apim-test-core", "apim-other")
+        for link in (foreign_apim + "/apis/echo-api/products/starter", APIM + "/apis/other-api/products/starter",
+                     ECHO + "/products/starter-other", ECHO + "/products/starter/child",
+                     ECHO + "/products/starter?extra=value", ECHO + "/products/model-users"):
+            with self.subTest(link=link):
+                t = populated()
+                t.collections[ECHO + "/products"] = [entity(ECHO + "/products/starter"),
+                                                      entity(ECHO + "/products/unlimited"), entity(link)]
+                result = self.cleanup(t)
+                self.assertEqual(result["deletedApiIds"], [])
+                self.assertIn(ECHO, t.resources)
+                self.assertIn(BUSINESS, t.resources)
+                self.assertIn(APIM + "/apis/model-v1", t.resources)
+                for name in ("model-sub", "master", "all-api-sub"):
+                    self.assertIn(APIM + "/subscriptions/" + name, t.resources)
+                self.assertTrue(all(urlsplit(call[1]).path != link for call in t.mutations()))
+
     def test_configured_api_and_products_are_preserved(self):
         t = populated()
         definitions = [{"name": "echo-api", "productId": "starter"}]

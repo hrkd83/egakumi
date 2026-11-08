@@ -1,0 +1,44 @@
+// Only a bounded append-blob initialization sequence is recoverable. Blob keys
+// are used inside the query and never projected into alert results.
+// The caller must query at least 15m + 5s of events (the alert uses PT30M).
+// Event-time maturity does not guarantee that all recovery logs were ingested.
+let AuditWriteFailures = (
+    Events:(TimeGenerated:datetime, _ResourceId:string, AccountName:string,
+        OperationName:string, StatusCode:string, StatusText:string, Uri:string),
+    EvaluationTime:datetime, Accounts:dynamic) {
+    let MatureEnd = EvaluationTime - 5s;
+    let MatureStart = MatureEnd - 15m;
+    let Writes = materialize(Events
+        | where TimeGenerated between (MatureStart .. EvaluationTime)
+        | where AccountName in~ (Accounts)
+        | where OperationName in ("PutBlob", "AppendBlock", "PutBlock", "PutBlockList")
+        | extend AccountKey = tolower(AccountName), BlobKey = tostring(split(Uri, "?")[0]),
+            Code = toint(StatusCode));
+    let Failures = materialize(Writes
+        | where Code >= 400
+        | extend InitializationCandidate = OperationName == "AppendBlock" and Code == 404
+            and StatusText == "BlobNotFound" and isnotempty(AccountKey) and isnotempty(BlobKey)
+        // Only initialization candidates wait 5s; other errors keep immediate evaluation.
+        | where (InitializationCandidate and TimeGenerated <= MatureEnd)
+            or (not(InitializationCandidate) and TimeGenerated > EvaluationTime - 15m));
+    let Created = Writes
+        | where OperationName == "PutBlob" and Code == 201
+        | where isnotempty(AccountKey) and isnotempty(BlobKey)
+        | project AccountKey, BlobKey, CreatedAt = TimeGenerated;
+    let Appended = Writes
+        | where OperationName == "AppendBlock" and Code == 201
+        | where isnotempty(AccountKey) and isnotempty(BlobKey)
+        | project AccountKey, BlobKey, AppendedAt = TimeGenerated;
+    let Recovered = Failures
+        | where InitializationCandidate
+        | project AccountKey, BlobKey, FailedAt = TimeGenerated, InitializationCandidate
+        | join kind=inner (Created) on AccountKey, BlobKey
+        | where CreatedAt between (FailedAt .. (FailedAt + 5s))
+        | join kind=inner (Appended) on AccountKey, BlobKey
+        | where AppendedAt between (CreatedAt .. (FailedAt + 5s))
+        | distinct AccountKey, BlobKey, FailedAt, InitializationCandidate;
+    Failures
+        | join kind=leftanti (Recovered)
+            on AccountKey, BlobKey, $left.TimeGenerated == $right.FailedAt, InitializationCandidate
+        | project TimeGenerated, _ResourceId, OperationName, StatusCode, StatusText
+};

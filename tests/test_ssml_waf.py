@@ -38,6 +38,15 @@ class GatewayExpression(ArmExpression):
         if tree[0] != "call":
             return super().evaluate(parameters, index, tree, bindings)
         _, name, arguments = tree
+        if name == "union":
+            values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
+            if isinstance(values[0], list):
+                result = []
+                for items in values:
+                    for item in items:
+                        if item not in result:
+                            result.append(item)
+                return result
         extra = {"variables", "and", "or", "not", "empty", "contains", "coalesce", "tryGet", "map", "filter",
                  "flatten", "shallowMerge", "resourceId", "true", "false", "length", "concat", "greater", "range"}
         if name not in extra:
@@ -303,7 +312,7 @@ class SsmlWafTests(unittest.TestCase):
                 self.assertNotIn("rewriteRuleSet", callback)
                 self.assertNotIn("defaultRewriteRuleSet", pathmap)
 
-    def test_portal_callback_excludes_only_code_value_from_two_observed_sql_rules(self):
+    def test_portal_callback_keeps_code_value_scoped_to_three_observed_sql_rules(self):
         parameters = self.parameters()
         policy = self.resource("[format('wafpol-agw-{0}-portal-auth', parameters('resourceStem'))]")
         base = self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")
@@ -312,6 +321,9 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(adjusted["customRules"], baseline["customRules"])
         self.assertEqual(adjusted["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
         exclusion = adjusted["managedRules"]["exclusions"].pop()
+        for session in json.loads((CORE / "apps/portal/waf-session-exclusions.json").read_text(encoding="utf-8")):
+            self.assertEqual(adjusted["managedRules"]["exclusions"].count(session), 1)
+            adjusted["managedRules"]["exclusions"].remove(session)
         self.assertEqual(adjusted, baseline)
         self.assertEqual(exclusion["matchVariable"], "RequestArgValues")
         self.assertEqual(exclusion["selectorMatchOperator"], "Equals")
@@ -320,7 +332,7 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(rules["ruleSetType"], "OWASP")
         self.assertEqual(rules["ruleSetVersion"], "3.2")
         self.assertEqual(rules["ruleGroups"], [{"ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                         "rules": [{"ruleId": "942430"}, {"ruleId": "942440"}]}])
+                         "rules": [{"ruleId": "942430"}, {"ruleId": "942440"}, {"ruleId": "942450"}]}])
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
         properties = self.value(gateway["properties"], parameters)
         pathmap = next(item for item in properties["urlPathMaps"] if item["name"] == "pathmap-portal-auth")["properties"]

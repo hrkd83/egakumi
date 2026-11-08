@@ -82,6 +82,15 @@ test("上流エラー本文を公開せず、429は安全な待機秒数だけ�
   assert.deepEqual(await limited.json(), { error: { code: "RateLimitExceeded" }, retryAfterSeconds: 12 });
 });
 
+test("復号済みの引用符付きキーを正常な順位JSONの値と名前から検出する", async () => {
+  const credential = 'synthetic-rerank-"key"-\\-value';
+  for (const reflected of [{ metadata: { reflected: credential } }, { [credential]: "marker" }]) {
+    const raw = JSON.stringify({ ...body, ...reflected }); assert.equal(raw.includes(credential), false);
+    const response = await handleRerank(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+    assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+  }
+});
+
 test("不正応答・重複順位・秘密反射・過大応答を成功として返さない", async () => {
   for (const value of [{ ...body, private: key }, { results: [{ index: 0, relevance_score: 0.8 }] }, { results: [{ index: 0, relevance_score: 0.8 }, { index: 0, relevance_score: 0.7 }, { index: 1, relevance_score: 0.1 }] }, { error: { message: key } }]) {
     const result = await handleRerank(request(), dependencies({ fetch: async () => Response.json(value) })); assert.equal(result.status, 502); assert.equal((await result.text()).includes(key), false);

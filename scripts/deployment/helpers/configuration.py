@@ -11,15 +11,21 @@ Bicepと同じ規則で決め、ランダムな接尾辞や名前の自動変更
 """
 from __future__ import annotations
 
+import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 import argparse
 import base64
 import copy
 import ipaddress
 import json
-import os
 import re
 import stat
-import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -437,8 +443,8 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     """Validate each JSON profile with the same limits as an ordinary operation."""
     p, op_name = q, operation["name"]
     backend, api_type, mode = api["backendService"], api["apiType"], api["authorization"]["mode"]
-    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds"})
-    kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis"))
+    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel"})
+    kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis"))
     # profileの上流URIは、登録時に検査した固定表としてBicepへ渡します。
     # 選択済みprofileのモデルと転送先を一体で扱います。
     if "backendUrlTemplate" in constraint:
@@ -447,10 +453,10 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         _backend_url_template(constraint["backendUrlTemplate"], q + ".backendUrlTemplate", set())
     if kind == "statelessResponses" and (operation["method"] != "POST" or operation["urlTemplate"] != "/responses" or backend != "foundryOpenAi"):
         _fail(q, "statelessResponses permits only resource Models POST /responses on foundryOpenAi")
-    if "backendUrlTemplate" in operation and not ((backend in ("external") and kind in ("registeredOperation", "bodyModel", "pathModel", "hostedAgentPost", "a2aJsonRpc")) or (backend == "foundryOpenAi" and kind == "pathModel") or (backend == "foundryServices" and kind in ("bodyModel", "hostedAgentPost"))):
+    if "backendUrlTemplate" in operation and not ((backend in ("external") and kind in ("registeredOperation", "bodyModel", "pathModel", "hostedAgentPost", "a2aJsonRpc")) or (backend == "foundryOpenAi" and kind == "pathModel") or (backend == "foundryServices" and kind in ("bodyModel", "textEmbeddings", "rerank", "hostedAgentPost"))):
         _fail(p + ".operations." + op_name + ".backendUrlTemplate", "requires an explicit external or Foundry model-provider contract")
     body_format = _choice(constraint.setdefault("bodyFormat", "none" if operation["method"] in ("GET", "HEAD", "DELETE", "OPTIONS") or api_type != "http" else "json"), q + ".bodyFormat", ("json", "binary", "multipart", "text", "none"))
-    if kind in ("bodyModel", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "liveCreate", "pii") and body_format != "json":
+    if kind in ("bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "liveCreate", "pii") and body_format != "json":
         _fail(q + ".bodyFormat", "this operation contract requires JSON")
     if api_type != "http" and (kind != "registeredOperation" or body_format != "none"):
         _fail(q, "native protocol authorization must not inspect or transform streamed bodies")
@@ -513,6 +519,54 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     if operation["method"] not in ("POST", "PUT", "PATCH"):
         constraint.setdefault("maxRequestBytes", 32768)
     _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 4194304)
+    if kind == "rerank":
+        if (backend != "foundryServices" or api_type != "http" or mode != "subscriptionKey"
+                or operation["method"] != "POST" or operation["urlTemplate"] != "/rerank"
+                or operation["templateParameters"]):
+            _fail(q, "rerank requires the registered Foundry JSON POST /rerank model contract")
+        documents = constraint["arrayLimits"].get("documents")
+        top_n = constraint["integerLimits"].get("top_n", {})
+        if (set(constraint["arrayLimits"]) != {"documents"}
+                or set(constraint["integerLimits"]) != {"top_n"}
+                or top_n.get("minimum") != 1 or top_n.get("required") is not True
+                or top_n.get("maximum", 0) > documents):
+            _fail(q, "rerank requires a document count bound and required top_n from one through that bound")
+        if any(name in constraint for name in ("maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "outputTokenParameter", "initialOutputTokens")):
+            _fail(q, "rerank has result counts, not generation output-token limits")
+    if kind == "textEmbeddings":
+        openai = backend == "foundryOpenAi" and operation["urlTemplate"] == "/embeddings" and "backendUrlTemplate" not in operation
+        cohere = backend == "foundryServices" and operation["urlTemplate"] == "/embed" and operation.get("backendUrlTemplate") == "/providers/cohere/v2/embed"
+        if (not (openai or cohere) or api_type != "http" or mode != "subscriptionKey"
+                or operation["method"] != "POST" or operation["templateParameters"]):
+            _fail(q, "textEmbeddings requires a registered text embedding provider POST contract")
+        text_field = "input" if openai else "texts"
+        if (set(constraint["arrayLimits"]) != ({"input"} if openai else {"texts", "embedding_types"})
+                or constraint["integerLimits"] or constraint["arrayLimits"].get(text_field) != 16
+                or (cohere and constraint["arrayLimits"].get("embedding_types") != 1)):
+            _fail(q, "textEmbeddings requires the registered text count and provider array bounds")
+        if (openai and constraint["stringChoices"]) or (cohere and constraint["stringChoices"] != {"input_type": ["search_document", "search_query", "classification", "clustering"]}):
+            _fail(q, "textEmbeddings requires the registered provider purpose choices")
+        dimensions = _object(constraint.get("embeddingDimensionsByModel"), q + ".embeddingDimensionsByModel")
+        allowed = _strings(constraint.get("allowedModels"), q + ".allowedModels", minimum=1)
+        if set(dimensions) != set(allowed):
+            _fail(q + ".embeddingDimensionsByModel", "must cover exactly the approved deployment aliases")
+        for name, bounds in dimensions.items():
+            path = q + ".embeddingDimensionsByModel." + name
+            _object(bounds, path, {"default", "maximum", "allowed"})
+            maximum = _integer(bounds.get("maximum"), path + ".maximum", 1, 1000000)
+            default = _integer(bounds.get("default"), path + ".default", 1, maximum)
+            if cohere and "allowed" not in bounds:
+                _fail(path + ".allowed", "Cohere requires explicit evaluated dimension choices")
+            if "allowed" in bounds:
+                values = _list(bounds["allowed"], path + ".allowed", minimum=1)
+                for value in values:
+                    _integer(value, path + ".allowed", 1, maximum)
+                if len(set(values)) != len(values) or default not in values or maximum not in values:
+                    _fail(path + ".allowed", "must contain distinct dimensions including the default and maximum")
+        if any(name in constraint for name in ("maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "outputTokenParameter", "initialOutputTokens")):
+            _fail(q, "textEmbeddings has vector dimensions, not generation output-token limits")
+    elif "embeddingDimensionsByModel" in constraint:
+        _fail(q + ".embeddingDimensionsByModel", "belongs only to the textEmbeddings contract")
     model_limits = constraint.get("maxOutputTokensByModel")
     if model_limits is not None:
         _object(model_limits, q + ".maxOutputTokensByModel")
@@ -547,7 +601,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         _fail(q, "Hosted Agent initial contract permits only a registered POST responses endpoint")
     if kind == "hostedAgentPost" and (api["backendAudience"] != "https://ai.azure.com"):
         _fail(q, "Hosted Agent requires the registered Agent backend audience contract")
-    if kind in ("pathModel", "bodyModel", "statelessResponses"):
+    if kind in ("pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses"):
         allowed = _strings(constraint.get("allowedModels"), q + ".allowedModels", minimum=1)
         if backend in ("foundryOpenAi", "foundryServices") and not set(allowed) <= deployed_models:
             _fail(q + ".allowedModels", "must reference explicitly configured model deployments")
@@ -992,13 +1046,12 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         c[key] = value
     # 名前は「種類-環境名-製品名」で一貫して派生させます。世界で一意な名前も
     # 勝手に切り詰めず、名前の最も厳しい制約を構築前にまとめて確認します。
-    # Key Vault は kv- を含め最大24文字、Storage は st + jp/us を含め最大24文字です。
+    # Broker CA の ca-<stem>-credentials が最大32文字のため、stem は17文字までです。
+    # この上限なら Key Vault は20文字以下、Storage は20文字以下に収まります。
     # 環境名test/dev/prodではSKU等を切り替えず、実際の動作はconfigで指定します。
     stem = f"{c['environmentName']}-{c['productName']}"
-    if len(stem) > 21:
-        _fail("productName/environmentName", "environmentName-productName must fit within 21 characters so kv-<environment>-<product> stays within the Key Vault 24-character limit; shorten the product or environment name")
-    if len(stem.replace("-", "")) > 20:
-        _fail("productName/environmentName", "environmentName and productName without hyphens must fit within 20 characters so audit Storage names stay within 24 characters; shorten the product or environment name")
+    if len(stem) > 17:
+        _fail("productName/environmentName", "environmentName-productName must fit within 17 characters so ca-<environment>-<product>-credentials stays within the Container App 32-character limit; shorten the product or environment name")
     c["resourceStem"] = stem
     c["resourceGroupNames"] = {kind: f"rg-{stem}-{kind}" for kind in RG_KINDS}
     c["certificateIdentityName"] = f"id-{stem}-certificate"

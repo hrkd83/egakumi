@@ -79,3 +79,10 @@ test("ブラウザーによる中止を上流にも伝える", async () => {
   const response = await handlePiiRedaction(request(input, {}, controller.signal), dependencies({ fetch: async (_url, options) => { controller.abort(); assert.equal(options?.signal?.aborted, true); throw new Error("cancelled"); } }));
   assert.equal(response.status, 499);
 });
+
+test("引用符付きキーがredactedTextへJSONエスケープされても拒否する", async () => {
+  const credential = 'synthetic-pii-"key"-\\-value';
+  const raw = JSON.stringify({ ...body, redactedText: credential }); assert.equal(raw.includes(credential), false);
+  const response = await handlePiiRedaction(request(), dependencies({ resolveSubscriptionKey: async () => credential, fetch: async () => new Response(raw, { headers: { "content-type": "application/json" } }) }));
+  assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error: { code: "GenerationFailed" } });
+});

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 import uuid
+from urllib.parse import quote
 
 
 SCANNER = Path(os.environ.get(
@@ -162,6 +163,33 @@ class PublicDataGuardTests(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.stage(content)
                 self.outcome(self.check("--staged"), 1, rule)
+
+    def test_odata_relationship_binding_keys_are_protocol_annotations(self) -> None:
+        self.stage(json.dumps({"owners@odata.bind": [], "members@odata.bind": []}))
+        self.outcome(self.check("--staged"), 0)
+        self.stage(json.dumps({"contact": "owners" + "@" + "odata.bind"}))
+        self.outcome(self.check("--staged"), 1, "nonpublic-email")
+
+    def test_odata_binding_syntax_does_not_exempt_other_email_member_names(self) -> None:
+        address = "owner-" + uuid.uuid4().hex + "@organization-" + uuid.uuid4().hex + ".com"
+        self.stage(json.dumps({address: []}))
+        self.outcome(self.check("--staged"), 1, "nonpublic-email")
+
+    def test_generated_catalog_approves_only_the_same_official_audience_constants(self) -> None:
+        policy = Path(__file__).resolve().parents[1] / "scripts/public-data-policy.json"
+        self.policy_data = json.loads(policy.read_text())
+        self.policy_data["public_author_names"] = ["Example developer"]
+        self.save_policy()
+        name = "apps/portal/lib/generated/model-api-definitions.json"
+        for host in ("ai.azure.com", "cognitiveservices.azure.com"):
+            self.stage(json.dumps({"backendAudience": "https://" + host}), name)
+            self.outcome(self.check("--staged"), 0)
+        for host in ("resource-" + uuid.uuid4().hex + ".cognitiveservices.azure.com",
+                     "organization-" + uuid.uuid4().hex + ".com"):
+            self.stage(json.dumps({"backendAudience": "https://" + host}), name)
+            self.outcome(self.check("--staged"), 1, "nonpublic-host")
+        self.stage(json.dumps({"backendAudience": "https://" + "ai.azure.com", "unapproved": self.identifier()}), name)
+        self.outcome(self.check("--staged"), 1, "unknown-uuid")
 
     def test_public_url_host_does_not_approve_every_email_on_that_host(self) -> None:
         host = "github.com"
@@ -508,6 +536,27 @@ class PublicDataGuardTests(unittest.TestCase):
         payload = self.identifier().encode()
         for _ in range(6):
             payload = base64.b64encode(payload)
+        self.stage(payload)
+        self.outcome(self.check("--staged"), 1, "encoding-depth-review-required")
+
+    def test_url_normalization_does_not_consume_the_base64_budget(self) -> None:
+        path = "../../../synthetic-traversal"
+        for _ in range(3):
+            path = quote(path, safe="")
+        self.stage("Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies\n" + path)
+        self.outcome(self.check("--staged"), 0)
+
+    def test_mixed_base64_and_url_encoding_still_reveals_identifiers(self) -> None:
+        payload = "".join("%" + format(ord(char), "02X") for char in self.identifier()).encode()
+        for _ in range(3):
+            payload = base64.b64encode(payload)
+        self.stage(payload)
+        self.outcome(self.check("--staged"), 1, "unknown-uuid")
+
+    def test_url_normalization_has_its_own_fail_closed_depth_bound(self) -> None:
+        payload = "".join("%" + format(ord(char), "02X") for char in self.identifier())
+        for _ in range(4):
+            payload = quote(payload, safe="")
         self.stage(payload)
         self.outcome(self.check("--staged"), 1, "encoding-depth-review-required")
 

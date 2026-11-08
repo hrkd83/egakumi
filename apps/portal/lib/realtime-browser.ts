@@ -95,7 +95,10 @@ export async function startRealtimeConversation(options: { model: RealtimeModel;
     if (setupTimer) clearTimeout(setupTimer); if (sessionTimer) clearTimeout(sessionTimer);
     signal.removeEventListener("abort", abort);
     releaseMedia();
-    if (error && !(error instanceof DOMException && error.name === "AbortError")) onEvent({ type: "error", error: { code: error instanceof ModelResponseError ? error.failure.error.code : "GenerationFailed" } });
+    if (error && !(error instanceof DOMException && error.name === "AbortError")) {
+      const code = error instanceof ModelResponseError ? error.failure.error.code : "GenerationFailed";
+      onEvent({ type: "error", error: { code: code === "OutputLimitReached" ? "GenerationFailed" : code } });
+    }
     onEvent({ type: "status", stage: "stopping", elapsedMs: elapsed() });
     if (!readySettled) { readySettled = true; rejectReady(error ?? new DOMException("Stopped", "AbortError")); }
     stopTask = (async () => {

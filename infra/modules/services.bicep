@@ -5,6 +5,9 @@
 
 targetScope = 'resourceGroup'
 
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
+
 @description('親モジュールで確定したサービス名の組。別モジュールでも同じ資源を参照するために使います。')
 param names object
 @description('このリソース群を配置する Azure リージョン。')
@@ -36,8 +39,6 @@ param apimCapacity int = 1
 param enableGrpc bool = false
 @description('azd が所有確認した実 APIM 名ごとの公開ドメイン設定。秘密証明書・観測した証明書情報や状態は含めず、利用者の公開 config では指定しません。')
 param existingApimHostnameConfigurations object = {}
-@description('WebSocket の接続診断ログも収集するか。内容本文の記録を有効にする指定ではありません。')
-param enableWebSocketLogs bool = false
 @allowed(['standard', 'premium'])
 @description('Key Vault の SKU。秘密情報・証明書の格納先の機能と料金に影響します。')
 param vaultSkuName string = 'standard'
@@ -49,12 +50,6 @@ param vaultRetentionDays int = 90
 param vaultPurgeProtection bool = true
 @description('APIM が証明書等を管理面から取得するため、Key Vault の trusted services 例外を有効にする内部指定。一般の公開アクセスは無効のままです。')
 param allowApimKeyVaultControlPlane bool = false
-@description('サービス診断ログの検索先となる Log Analytics Workspace ID。')
-param logAnalyticsWorkspaceId string
-@description('日本側サービスと同じリージョンの監査 Storage ID。空欄なら Storage への診断出力を付けません。')
-param regionalAuditStorageId string = ''
-@description('Foundry と同じリージョンの監査 Storage ID。日本側 Storage と取り違えないでください。')
-param foundryAuditStorageId string = ''
 @description('Foundry プロジェクトのテレメトリー送信先。接続設定だけで Agent は作成しません。')
 param applicationInsightsResourceId string = ''
 @secure()
@@ -213,37 +208,37 @@ resource workspace 'Microsoft.ApiCenter/services/workspaces@2024-03-01' = {
 resource vaultLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: vault
-  properties: union({ workspaceId: logAnalyticsWorkspaceId, logs: [{ category: 'AuditEvent', enabled: true }] }, empty(regionalAuditStorageId) ? {} : { storageAccountId: regionalAuditStorageId })
+  properties: diagnosticSettingProperties['vault-logs']
 }
 // Key Vault の性能値を Workspace に出力。監査操作ログとは別の診断設定です。
 resource vaultMetrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-metrics'
   scope: vault
-  properties: { workspaceId: logAnalyticsWorkspaceId, metrics: [{ category: 'AllMetrics', enabled: true }] }
+  properties: diagnosticSettingProperties['vault-metrics']
 }
 // Foundry の管理・監査ログを Foundry 側リージョンの Storage に送ります。
 resource foundryAudit 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: foundry
-  properties: union({ workspaceId: logAnalyticsWorkspaceId, logs: [{ category: 'Audit', enabled: true }] }, empty(foundryAuditStorageId) ? {} : { storageAccountId: foundryAuditStorageId })
+  properties: diagnosticSettingProperties['foundry-logs']
 }
 // モデルの利用量ログ。入力本文や生成本文を業務ログとして保存する設定ではありません。
 resource foundryUsage 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-usage'
   scope: foundry
-  properties: { workspaceId: logAnalyticsWorkspaceId, logs: [{ category: 'AzureOpenAIRequestUsage', enabled: true }] }
+  properties: diagnosticSettingProperties['foundry-usage']
 }
 // APIM の要求処理・必要に応じ WebSocket 接続の診断記録を保存します。
 resource apimLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-audit'
   scope: apim
-  properties: union({ workspaceId: logAnalyticsWorkspaceId, logAnalyticsDestinationType: 'Dedicated', logs: concat([{ category: 'GatewayLogs', enabled: true }, { category: 'GatewayLlmLogs', enabled: true }], enableWebSocketLogs ? [{ category: 'WebSocketConnectionLogs', enabled: true }] : []) }, empty(regionalAuditStorageId) ? {} : { storageAccountId: regionalAuditStorageId })
+  properties: diagnosticSettingProperties['apim-logs']
 }
 // APIM の性能・可用性の数値を監視先へ送ります。
 resource apimMetrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'core-metrics'
   scope: apim
-  properties: { workspaceId: logAnalyticsWorkspaceId, metrics: [{ category: 'AllMetrics', enabled: true }] }
+  properties: diagnosticSettingProperties['apim-metrics']
 }
 
 output serviceResourceIds object = { keyVault: vault.id, foundry: foundry.id, project: project.id, apim: apim.id, apiCenter: apiCenter.id }

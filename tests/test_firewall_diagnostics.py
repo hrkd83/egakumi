@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 import unittest
 
+from deployment.helpers import diagnostics
+from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
+from configuration_fixtures import fixture
+
 
 CORE = Path(__file__).resolve().parents[1]
 
@@ -23,42 +27,43 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         }
 
     def test_normal_logs_are_resource_specific_and_idps_is_premium_only(self):
-        """標準の3カテゴリにだけ、Premium 条件付き IDPS を追加する。"""
+        """分類正本を一元化し、実FW診断は検証済みpropertiesをそのまま使用する。"""
+        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        config["network"]["firewall"]["sku"] = "Premium"
+        definition = diagnostics.canonical_settings(config, "core")["fw-logs"]["properties"]
+        self.assertEqual([entry["category"] for entry in definition["logs"]],
+                         ["AZFWNetworkRule", "AZFWApplicationRule", "AZFWThreatIntel", "AZFWIdpsSignature"])
+        config["network"]["firewall"]["sku"] = "Standard"
+        standard = diagnostics.canonical_settings(config, "core")["fw-logs"]["properties"]
+        self.assertEqual(len(standard["logs"]), 3)
         template = self.templates["diagnostics"]
-        self.assertEqual(template["parameters"]["firewallTier"]["allowedValues"], ["Standard", "Premium"])
         self.assertEqual({item["type"] for item in template["resources"]}, {"Microsoft.Insights/diagnosticSettings"})
         logs, = [item for item in template["resources"] if "-metrics" not in item["name"]]
-        properties = logs["properties"]
-        for category in ("AZFWNetworkRule", "AZFWApplicationRule", "AZFWThreatIntel"):
-            self.assertIn("createObject('category', '" + category + "', 'enabled', true())", properties)
-        self.assertIn("if(equals(parameters('firewallTier'), 'Premium'), createArray(createObject('category', 'AZFWIdpsSignature', 'enabled', true())), createArray())", properties)
-        self.assertIn("'logAnalyticsDestinationType', 'Dedicated'", properties)
-        self.assertNotIn("FlowTrace", properties)
-        self.assertNotIn("FatFlow", properties)
+        self.assertEqual(logs["properties"], "[parameters('diagnosticSettingProperties')['fw-logs']]")
         self.assertEqual(logs["scope"], "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]")
+        self.assertNotIn("FlowTrace", json.dumps(definition))
+        self.assertNotIn("FatFlow", json.dumps(definition))
 
-    def test_audit_storage_is_conditional_and_metrics_use_only_workspace(self):
-        """監査対象ログだけを既存 Storage へ送り、メトリクスを長期保存に混ぜない。"""
-        template = self.templates["diagnostics"]
-        logs, = [item for item in template["resources"] if "-metrics" not in item["name"]]
-        metrics, = [item for item in template["resources"] if "-metrics" in item["name"]]
-        self.assertIn("if(parameters('enableAuditCollection'), createObject('storageAccountId', parameters('auditStorageId')), createObject())",
-                      logs["properties"])
-        self.assertEqual(metrics["properties"], {
-            "workspaceId": "[parameters('workspaceId')]",
-            "metrics": [{"category": "AllMetrics", "enabled": True}],
-        })
+    def test_audit_storage_is_canonical_only_for_logs_and_existing_metrics_sink_can_be_retained(self):
+        """既定メトリクスはLAWのみで、所有確認済みの既存追加sinkはmergeが保持する。"""
+        config = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
+        definitions = diagnostics.canonical_settings(config, "core")
+        logs, metrics = definitions["fw-logs"]["properties"], definitions["fw-metrics"]["properties"]
+        self.assertIn("storageAccountId", logs)
+        self.assertNotIn("storageAccountId", metrics)
+        before = {**metrics, "storageAccountId": logs["storageAccountId"]}
+        self.assertEqual(diagnostics.merge_properties(before, metrics), before)
+        metric_resource, = [item for item in self.templates["diagnostics"]["resources"] if "-metrics" in item["name"]]
+        self.assertEqual(metric_resource["properties"], "[parameters('diagnosticSettingProperties')['fw-metrics']]")
 
-    def test_main_connects_actual_firewall_and_existing_collect_japan_after_creation(self):
-        """実 FW の出力と保護済み監査保存先が揃ってからログ収集を構成する。"""
+    def test_main_connects_actual_firewall_and_monitoring_before_diagnostic_creation(self):
+        """宛先IDが内部入力でも、実FWと監視保存先の作成順を保持する。"""
         resources = self.templates["main"]["resources"]
         resources = resources.values() if isinstance(resources, dict) else resources
         module, = [item for item in resources if "-firewall-diagnostics" in item.get("name", "")]
         values = module["properties"]["parameters"]
-        self.assertTrue(values["enableAuditCollection"]["value"])
         self.assertIn(".outputs.firewallId.value", values["firewallName"]["value"])
-        self.assertIn(".outputs.storage.value.collectJapan.id", values["auditStorageId"]["value"])
-        self.assertIn(".outputs.monitoring.value.workspaceId", values["workspaceId"]["value"])
+        self.assertEqual(values["diagnosticSettingProperties"]["value"], "[parameters('diagnosticSettingProperties')]")
         self.assertEqual(module["condition"], "[variables('deployCore')]")
         dependencies = json.dumps(module["dependsOn"])
         self.assertIn("-network", dependencies)

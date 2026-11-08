@@ -169,10 +169,11 @@ class StoreContractTests(unittest.TestCase):
     def test_expired_transient_cleanup_is_bounded_and_preserves_connections_and_capacity(self):
         store, cursor = fixture([
             ("BEGIN TRANSACTION", None), ("DATEDIFF_BIG", {"Now": 1000}),
-            ("UPDATE TOP", 2), ("DELETE TOP (?) FROM broker.Sessions", 3),
+            ("UPDATE TOP", 2), ("DELETE TOP (?) FROM broker.SessionRotationCandidates", 5),
+            ("DELETE TOP (?) FROM broker.Sessions", 3),
             ("DELETE TOP (?) FROM broker.Transactions", 4), ("COMMIT", None)])
         result = store.purge_expired_state(batch_size=1000)
-        self.assertEqual(result, {"expiredProofs": 2, "deletedSessions": 3, "deletedTransactions": 4})
+        self.assertEqual(result, {"expiredProofs": 7, "deletedSessions": 3, "deletedTransactions": 4})
         statements = [sql for sql, _ in cursor.calls]
         clear = next(sql for sql in statements if sql.startswith("UPDATE"))
         self.assertIn("OidcFlow=NULL", clear)
@@ -181,6 +182,8 @@ class StoreContractTests(unittest.TestCase):
         self.assertIn("WHERE ExpiresAt<=?", final_delete)
         self.assertNotIn("SessionExpiresAt", final_delete)
         self.assertFalse(any("broker.Connections" in sql or "broker.Pools" in sql for sql in statements))
+        candidate_delete = next(params for sql, params in cursor.calls if sql.startswith("DELETE") and "broker.SessionRotationCandidates" in sql)
+        self.assertEqual((1000, 1000), candidate_delete)
         session_delete = next(params for sql, params in cursor.calls if sql.startswith("DELETE") and "broker.Sessions" in sql)
         self.assertEqual((1000, 1000 - 86400), session_delete)
         with self.assertRaises(ValueError): store.purge_expired_state(batch_size=10001)

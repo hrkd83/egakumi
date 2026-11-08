@@ -83,9 +83,9 @@ echo "終了コード: $?"
 初回は次の順に案内されます。
 
 1. **端末の検査**：ツール・PowerShell依存と、params／環境の整合を確認。
-2. **DNS事業者の選択**：Cloudflare／Route53／Azure Public DNSを選択。Enterはparamsの現在値を維持。変更時は非秘密のplugin名をparamsへ保存し、Firewallの宛先も読み直す。
-3. **秘密入力の案内**：必要な値・対象アプリ・取得元・保存先を短く表示。「Enterで入力欄へ進む」で進み、次の非表示欄へ値を入力。
-4. **端末の保護保存**：既定では`.local/<environment>/secrets/dns-plugin-arguments.json`・`.local/<environment>/secrets/entra-client-secret.txt`へ保存。POSIX権限600。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力。
+2. **DNS事業者の選択**：Cloudflare／Route53／Azure Public DNSを選択。Enterはparamsの現在値を維持し、選んだ非秘密のplugin名をparamsへ保存する。Azureでは不足するDNS側Subscription IDと事前作成済みUAMIのリソースIDも入力し、非秘密の参照としてparamsへ保存する。事業者を変更したらFirewallの宛先も読み直す。
+3. **秘密入力の案内**：必要な値・対象アプリ・取得元・保存先を短く表示。「Enterで入力欄へ進む」で進み、設定したAPIに必要なCM用Core client secret、Cloudflare／Route53のDNS資格情報を非表示入力する。Azure DNS用の秘密入力はない。
+4. **端末の保護保存**：必要な秘密入力だけを保存する。既定ではCloudflare／Route53のDNS資格情報は`.local/<environment>/secrets/dns-plugin-arguments.json`、CM用Core client secretは`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。Azure DNSの資格情報ファイルは作成しない。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
 基盤とGatewayの構築が終わると、最後のPortal工程でAPIキー所有グループの設定を入力します。未設定の`groupNamePattern`・基盤管理グループのObject ID・承認製品と購読数上限を、同じparamsへ保存します。この入力の完了まで`azd up`の完了にはなりません。非対話で初期構築する場合は、`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定してください。
@@ -98,13 +98,16 @@ echo "終了コード: $?"
 
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
-| DNS資格情報 | paramsが指すGit管理外の保護ファイル | 管理VMがCore Key Vaultの`<certificateName>-dns-plugin-args`へ登録。証明書の定期更新時に利用 |
+| DNS資格情報（Cloudflare／Route53） | paramsが指すGit管理外の保護ファイル | 管理VMがCore Key Vaultの`<certificateName>-dns-plugin-args`へ登録。証明書の定期更新時に利用 |
+| DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新。DNS資格情報ファイルや`<certificateName>-dns-plugin-args`は作成・利用しない |
 | CM用Core client secret | paramsが指すGit管理外の保護ファイル | APIMのOAuth providerへsecure入力 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | PortalのAPIキー所有設定 | 同じparamsの`portalApiKeys` | PortalのSQL初期化へ渡す非秘密のグループID・製品承認 |
 | azdへの一時配備入力 | `.local/<environment>/generated/main.parameters.json`へ保護保存 | 基盤の後処理で回収。再試行には元のparams・secret・stateを使う |
 
-秘密値はparams／config、チャット、Gitへ入力しません。入力直後にKey Vaultだけへ保存される構成ではなく、再実行のために端末の環境別領域にも残ることを理解して管理します。証跡は同じ環境の`evidence/`へ保存し、`.local/`・`.azure/`を公開用のZIP・画像・ログへ含めません。環境名・Tenant／Subscription・stateの対応を実行前に照合し、同じcheckoutの別環境を同時に構築・更新・撤去しません。
+DNS-01方式では、証明書とACMEの更新状態をDNS事業者によらずKey Vaultへ保管します。Azure DNSではDNS資格情報secretが存在しなくても正常です。
+
+秘密値はparams／config、チャット、Gitへ入力しません。入力した秘密値はKey Vaultだけへ保存される構成ではなく、再実行のために端末の環境別領域にも残ることを理解して管理します。証跡は同じ環境の`evidence/`へ保存し、`.local/`・`.azure/`を公開用のZIP・画像・ログへ含めません。環境名・Tenant／Subscription・stateの対応を実行前に照合し、同じcheckoutの別環境を同時に構築・更新・撤去しません。
 
 `preup`・`preprovision`は生成JSONを保護保存し、その相対パスだけをazd環境の`EGAKUMI_ARM_PARAMETERS_FILE`へ設定します。公開の`infra/main.bicepparam`をazdがhook後と配備直前に評価して、JSONの値を配備パラメーターへ渡します。秘密値を公開テンプレートへ埋め込んだり、azdの`.env`へ設定したりする必要はありません。通常はこの受渡しを手作業で設定しません。
 
@@ -186,7 +189,7 @@ Gatewayに失敗するとPortalへ進まず、Portalに失敗した場合もup�
 - up全体の正常終了、実行したGateway・Portal配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
 - 選んだAPIの実応答とPortalのMicrosoftサインインを、配備成功とは別に確認した。
 - 通知先を使う場合は初回確認と実受信を確認した。
-- 定期更新に使うKey VaultのDNS資格情報、管理VMの証明書更新設定を確認した。
+- 管理VMの証明書更新設定と、定期更新のDNS認証を確認した。AzureはUAMIの関連付け・DNS側RBAC権限、Cloudflare／Route53はKey VaultのDNS資格情報を確認する。
 - params／config・`.azure/`・`.local/<environment>/state/`・端末のsecretとSSH鍵を、安全に保持した。
 
 企業接続が必要なら[7. ハブ＆スポーク対応（任意）](07-hub-spoke.md)へ進みます。構築済みGateway・Portalの変更は[個別配備](../../README.md#8-gatewayを配備する)を使い、運用時は[プラットフォームの仕様](../reference/platform.md)も確認します。構築テストが終わったら[撤去手順](../operations.md#撤去する)へ進み、5RG・モデル・利用枠と削除履歴を確認します。

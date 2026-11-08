@@ -97,9 +97,11 @@ class TrialConfigurationTests(unittest.TestCase):
 
     def test_cli_creates_protected_file_once(self):
         with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory);output=path/'result.json'
-            with mock.patch.object(trial,'load_configuration_source',return_value=configured_base()):
-                args=['--base',str(path/'base.json'),'--output',str(output),'--cm-client-id',APP]
+            path=Path(directory).resolve();output=path/'.local/test/state/result.json'
+            with mock.patch.object(trial,'CORE',path), \
+                    mock.patch.dict(os.environ,{},clear=True), \
+                    mock.patch.object(trial,'load_configuration_source',return_value=configured_base()):
+                args=['--base',str(path/'.local/test/params.local.json'),'--output',str(output),'--cm-client-id',APP]
                 self.assertEqual(trial.main(args),0)
                 before=output.read_bytes()
                 self.assertEqual(trial.main(args),1)

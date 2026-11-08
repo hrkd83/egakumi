@@ -6,8 +6,15 @@ Azure へ接続・更新しない。既存の全体ポリシーへ手動統合�
 """
 from __future__ import annotations
 
-import argparse
 import os
+import sys
+
+# CLI自身と子のPythonが公開ソースの横へbytecodeを書かないようにします。
+if __name__ == "__main__":
+    sys.dont_write_bytecode = True
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+import argparse
 from pathlib import Path
 
 from deployment.helpers.apim_authentication import render_service_policy

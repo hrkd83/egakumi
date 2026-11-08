@@ -191,6 +191,8 @@ class PortalDeploymentTests(unittest.TestCase):
                     portal.deploy_release(config, values, {}, transport)
             else:
                 portal.deploy_release(config, values, {}, transport)
+        transport.request.assert_called_once_with('POST', portal.group_scope(config)
+            + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-psql/start?api-version=' + portal.APP_API, None)
         return phases
 
     def test_schema_failure_preserves_running_application(self):

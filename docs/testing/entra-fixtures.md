@@ -66,3 +66,63 @@
 U-Xは許可外テナントの試験を実施するときに、使用権限のある別テナントの検証アカウントを用意します。今回の4ユーザー作成に新規テナントやゲスト招待を含めず、認証用テナントへ招待したゲストを許可外テナントの本人認証の代わりにしません。非セキュリティグループ等の追加対照も、採用ケースに応じて専用に準備します。
 
 会社C-A/C-B、購読K-A/K-B/K-L/K-D、本人接続は、該当テストの正式な作成手順で用意します。試験後は今回所有した専用データだけを、事前に決めた保持・回収範囲に従って処置します。通常利用者の接続や既存G-ADMINの管理者、他の組織のデータへ回収を広げません。準備が済んだだけで、動作テストや構築・撤去を合格にはしません。
+
+### 5-1. KEY-02用の非セキュリティグループを追加する場合
+
+`KEY-02`の`securityEnabled=false`の対照は、前節のSecurityグループとは別に用意します。[Microsoft Graphの作成仕様](https://learn.microsoft.com/en-us/graph/api/group-post-groups?view=graph-rest-1.0)では、Entra管理センター／Azure Portalで作成したグループは初期値が`securityEnabled=true`です。GUIで種類をMicrosoft 365にしただけでは非Securityの確認になりません。以下はGraph APIを使う追加手順であり、GUIによる作成の合格として記録しません。
+
+1. 認証用テナントの管理者と、追加する専用グループ・Owner・Member・副作用・回収方針を確定します。Memberは既存のU-Bなど専用試験ユーザーだけにし、通常の組織グループを変更しません。すでに認証したAzure CLIの管理者委任権限を使い、Azure CLIのTenantと認証用テナントを照合します。権限不足の場合は停止し、Core共用アプリへGraphの書込権限を追加して回避しません。ライセンス割当・購入・試用開始も行いません。
+2. 保護済みの`.local/<environment>/`と保存先がシンボリックリンクでないこと、ディレクトリー700・ファイル600になることを確認します。リポジトリルートで次を設定し、要求・応答・エラーをこの小さな専用記録へ保存します。Bearer tokenを取得して表示したり、`--debug`で認証情報を記録したりしません。
+
+   ```sh
+   umask 077
+   : "${DEPLOY_ENVIRONMENT:?第1章で決めた環境名を設定してください}"
+   export FIXTURE_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}/evidence/non-security-fixture"
+   mkdir -p "$FIXTURE_DIRECTORY"
+   chmod 700 "$FIXTURE_DIRECTORY"
+   ```
+
+3. 同名・同じmailNicknameの既存グループと、この保存先の既存記録を確認します。記録がある場合は上書きして新規作成せず、その試行の成否を確認して再開します。新規作成する場合は、次の**独立した架空例**を`$FIXTURE_DIRECTORY/create-group.request.json`へ600で保存し、名前と2つのObject IDを確定した対象へ置き換えます。Microsoft 365のUnifiedグループをPrivate／Assignedで作成し、`securityEnabled:false`を明示します。通常のSecurityグループや、Graphで作成できない配布グループへ読み替えません。
+
+   ```json
+   {
+     "displayName": "ORG_TEST_NON_SECURITY",
+     "description": "Dedicated non-security group for KEY-02 rejection tests",
+     "mailNickname": "org-test-non-security",
+     "groupTypes": ["Unified"],
+     "mailEnabled": true,
+     "securityEnabled": false,
+     "visibility": "Private",
+     "resourceBehaviorOptions": [
+       "WelcomeEmailDisabled",
+       "ProvisionSiteOnDemand",
+       "HideGroupInOutlook"
+     ],
+     "owners@odata.bind": [
+       "https://graph.microsoft.com/v1.0/users/<FIXTURE_OWNER_OBJECT_ID>"
+     ],
+     "members@odata.bind": [
+       "https://graph.microsoft.com/v1.0/users/<U_B_OBJECT_ID>"
+     ]
+   }
+   ```
+
+   [作成時のオプション](https://learn.microsoft.com/en-us/graph/group-set-options)で歓迎メールを無効にし、SharePointサイトをオンデマンド作成にし、Outlookの一覧から隠します。Teamsは作成しません。`mailEnabled:true`は必要であり、テナントのサービスに応じてグループメールボックス等が準備される可能性はあります。Microsoft 365の機能利用権は作成者・テナントの契約に依存するため、この手順ではメールやサイトの利用を試験せず、テナントの制約で作成できなければ条件不足として記録します。[Microsoft 365グループの機能と契約](https://learn.microsoft.com/en-us/microsoft-365/admin/create-groups/office-365-groups)
+
+4. 作成内容を確認してから、[Azure CLIの`az rest`](https://learn.microsoft.com/en-us/cli/azure/reference-index#az-rest)で1回だけ送信します。CLIの既存ログインによる認証を使い、Coreアプリのclient secretは使いません。
+
+   ```sh
+   az rest --method post \
+     --resource https://graph.microsoft.com \
+     --url https://graph.microsoft.com/v1.0/groups \
+     --headers Content-Type=application/json \
+     --body "@$FIXTURE_DIRECTORY/create-group.request.json" \
+     --output json \
+     > "$FIXTURE_DIRECTORY/create-group.response.json" \
+     2> "$FIXTURE_DIRECTORY/create-group.stderr.txt"
+   ```
+
+   終了コードと作成応答のObject IDを確認して控えます。失敗・応答消失時は作成の成否を調べる前にPOSTを繰り返しません。作成済みならそのID・用途・所有者を照合して再利用し、同名の別物を更新しません。
+5. 作成応答だけで判定せず、`GET /groups/{id}?$select=id,displayName,mailNickname,groupTypes,mailEnabled,securityEnabled,visibility,resourceBehaviorOptions,resourceProvisioningOptions`で実ID・表示名・mailNickname・`groupTypes`・`mailEnabled`・`securityEnabled:false`・Private・作成時オプションを確認します。作成時オプションは通常GETの既定応答に含まれると仮定せず、`$select`で明示します。`GET /groups/{id}/owners`と[Member一覧](https://learn.microsoft.com/en-us/graph/api/group-list-members?view=graph-rest-1.0)で期待するObject IDだけが含まれることを確認し、ページングがあれば全ページを照合します。小さな読取結果も同じ保護領域へ保存します。保存後のGUI確認は補助であり、種類名だけで`securityEnabled:false`を代用しません。
+6. グループ名が現行の`groupNamePattern`に一致しなければ、それだけではSecurity条件の拒否を分離できません。隔離した設定分岐で、元の正規表現と既存の許可対象を控え、この専用名の完全一致だけを許可候補へ追加します。同じparamsを使う[Portalの正式な設定反映](../setup/06-deploy.md#gatewayとportalの個別更新再試行)後、名前一致／不一致とSecurity true／falseの組合せを比較します。名前が一致しても非Securityグループがキー所有・移管候補へ出ず、適格なSecurityグループは候補に出ることを実測します。終了後は元の正規表現を正式手順で反映し、元の候補と拒否条件へ戻ったことを確認します。
+7. 保持するか回収するかを事前の方針どおりに処理します。回収する場合は今回の作成記録・所有者・Member・実IDを再照合し、[グループ削除](https://learn.microsoft.com/en-us/graph/api/group-delete?view=graph-rest-1.0)の`DELETE /groups/{id}`でこの1件だけを削除します。現行グループのGET 404と、削除済み項目の状態を記録します。Microsoft 365グループの30日間の復元可能な論理削除保持と、稼働中グループの消失を区別し、既存G-A／G-B／G-H／G-N／G-ADMINや別グループを名前検索で一括削除しません。

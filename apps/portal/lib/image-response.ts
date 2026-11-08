@@ -54,6 +54,13 @@ export function imagePreviewSource(result: ImageGenerationResult, image: Generat
   return image.kind === "base64" && rasterBase64Mime(entry.b64_json) === image.mimeType ? `data:${image.mimeType};base64,${entry.b64_json}` : null;
 }
 
+/** 一時URLは再検証した外部リンクだけに使い、自動プレビューへ渡しません。 */
+export function imageExternalUrl(result: ImageGenerationResult, image: GeneratedImage): string | null {
+  const data = result.rawResponse.data;
+  if (image.kind !== "url" || !Array.isArray(data) || !record(data[image.index])) return null;
+  return safeImageUrl(data[image.index].url);
+}
+
 /** 大きなBase64文字列は表示用だけ省略し、コピー用の完全JSONは別に保持します。 */
 export function imageResponsePreview(raw: Record<string, unknown>): { text: string; truncated: boolean } {
   let truncated = false;

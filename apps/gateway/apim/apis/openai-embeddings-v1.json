@@ -21,7 +21,7 @@
     "mode": "subscriptionKey",
     "operationConstraints": {
       "embeddings": {
-        "kind": "bodyModel",
+        "kind": "textEmbeddings",
         "maxRequestBytes": 262144,
         "bodyFormat": "json",
         "allowedModels": [
@@ -30,6 +30,16 @@
         ],
         "arrayLimits": {
           "input": 16
+        },
+        "embeddingDimensionsByModel": {
+          "text-embedding-3-small": {
+            "default": 1536,
+            "maximum": 1536
+          },
+          "text-embedding-3-large": {
+            "default": 3072,
+            "maximum": 3072
+          }
         }
       }
     }

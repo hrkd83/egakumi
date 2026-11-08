@@ -629,7 +629,8 @@ class SqlStore:
         transaction expires and its row can then be removed independently of
         the continuing session. Expired session proof hashes remain for 24 hours
         only to bind reauthentication to the original user; they never authorize
-        an API call. Small batches bound lock and log growth.
+        an API call. Expired rotation candidates are removed even when their
+        session is still active. Small batches bound lock and log growth.
         """
         if type(batch_size) is not int or not 1 <= batch_size <= 10000:
             raise ValueError("Invalid transient cleanup batch size")
@@ -637,6 +638,8 @@ class SqlStore:
             now = self._now(cursor)
             cursor.execute("UPDATE TOP (?) broker.Transactions SET Phase='failed',OidcFlow=NULL,LaunchHash=NULL,CookieHash=NULL,OidcStateHash=NULL,CmStateHash=NULL,TicketHash=NULL,FailureCode='EXPIRED' WHERE ExpiresAt<=? AND Phase<>'complete' AND (Phase<>'failed' OR OidcFlow IS NOT NULL OR LaunchHash IS NOT NULL OR CookieHash IS NOT NULL OR OidcStateHash IS NOT NULL OR CmStateHash IS NOT NULL OR TicketHash IS NOT NULL)", batch_size, now)
             expired_proofs = cursor.rowcount
+            cursor.execute("DELETE TOP (?) FROM broker.SessionRotationCandidates WHERE ExpiresAt<=?", batch_size, now)
+            expired_proofs += cursor.rowcount
             cursor.execute("DELETE TOP (?) FROM broker.Sessions WHERE ExpiresAt<=?", batch_size, now - 86400)
             sessions = cursor.rowcount
             cursor.execute("DELETE TOP (?) FROM broker.Transactions WHERE ExpiresAt<=?", batch_size, now)

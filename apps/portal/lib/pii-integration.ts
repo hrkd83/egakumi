@@ -16,7 +16,7 @@ export function getPiiHeaders(): Record<string, string> {
 /** PII入力の公開契約です。文字要素の上限はサービス側で正確に検査します。 */
 export function getPiiRequestSchema(): Record<string, unknown> {
   return { type: "object", additionalProperties: false, required: ["text", "language"], properties: {
-    text: { type: "string", minLength: 1, description: "Single nonblank text. Up to 5,120 Unicode 8.0 text elements; the complete JSON body must be within 32,768 UTF-8 bytes. No truncation or partial result is returned." },
+    text: { type: "string", minLength: 1, description: "Single nonblank text, at most 5,120 Unicode 8.0 text elements, validated by Language. The text/language object must fit 32,768 UTF-8 bytes when serialized as compact JSON after parsing; the received JSON is separately capped at 196,608 bytes before parsing. JSON escaping and syntax whitespace do not change the compact budget. The text value is not Unicode-normalized, trimmed or truncated. No partial result is returned." },
     language: { type: "string", enum: [...PII_API.languages], description: "Language of the input text. Automatic detection is not enabled." },
   } };
 }

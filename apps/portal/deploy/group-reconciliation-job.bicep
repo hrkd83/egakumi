@@ -17,7 +17,7 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 
 resource reconciliation 'Microsoft.App/jobs@2025-01-01' = {
-  name: 'caj-${stem}-portal-groups'
+  name: 'caj-${stem}-psync'
   location: location
   tags: tags
   identity: { type: 'UserAssigned', userAssignedIdentities: { '${runtimeIdentity.id}': {} } }

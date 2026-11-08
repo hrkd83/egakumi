@@ -1,5 +1,7 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Building2, KeyRound, LoaderCircle, RefreshCw, Users, X } from "lucide-react";
@@ -36,6 +38,7 @@ export function CreateKeyDialog({ overview, initialGroupId, dictionary, locale, 
   overview: ApiKeyOverview; initialGroupId: string; dictionary: Dictionary; locale: Locale; isPlatformAdministrator?: boolean;
   onClose: () => void; onCreated: (record: ApiKeyRecord) => void;
 }) {
+  const formId = useFieldIds();
   const text = dictionary.apiKeys;
   const form = text.createForm;
   const [groupId, setGroupId] = useState(initialGroupId);
@@ -112,7 +115,7 @@ export function CreateKeyDialog({ overview, initialGroupId, dictionary, locale, 
 
   /** 補足とエラーを結び、支援技術にも同じ入力案内を渡します。 */
   function describedBy(field: Field, help = false) {
-    return [help ? `create-key-${field}-help` : null, fieldErrors[field] ? `create-key-${field}-error` : null].filter(Boolean).join(" ") || undefined;
+    return [help ? formId(`create-key-${field}-help`) : null, fieldErrors[field] ? formId(`create-key-${field}-error`) : null].filter(Boolean).join(" ") || undefined;
   }
 
   return <Dialog open onOpenChange={(open) => { if (!open && !submitting.current) onClose(); }}>
@@ -124,31 +127,31 @@ export function CreateKeyDialog({ overview, initialGroupId, dictionary, locale, 
       <Button variant="ghost" size="icon-sm" className="absolute right-4 top-5" aria-label={text.close} disabled={busy} onClick={onClose}><X /></Button>
       <form noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-7 overflow-y-auto overscroll-contain px-6 py-6 sm:px-8">
-          <section aria-labelledby="create-key-owner-title" className="space-y-4">
-            <h3 id="create-key-owner-title" className="flex items-center gap-2 text-sm font-semibold"><Users className="size-4 text-primary" />{form.ownerSection}</h3>
-            <FormField id="create-key-groupId" label={text.memberGroup} requirement={form.required} help={text.ownerHelp} error={fieldErrors.groupId}>
-              <Select value={groupId} disabled={busy} onValueChange={(value) => { setGroupId(value); edited("groupId"); }}><SelectTrigger id="create-key-groupId" className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.groupId)} aria-describedby={describedBy("groupId", true)}><SelectValue placeholder={text.selectGroup} /></SelectTrigger><SelectContent>{overview.groups.map((item) => <SelectItem key={item.id} value={item.id}>{item.displayName}</SelectItem>)}</SelectContent></Select>
+          <section aria-labelledby={formId("create-key-owner-title")} className="space-y-4">
+            <h3 id={formId("create-key-owner-title")} className="flex items-center gap-2 text-sm font-semibold"><Users className="size-4 text-primary" />{form.ownerSection}</h3>
+            <FormField id={formId("create-key-groupId")} label={text.memberGroup} requirement={form.required} help={text.ownerHelp} error={fieldErrors.groupId}>
+              <Select value={groupId} disabled={busy} onValueChange={(value) => { setGroupId(value); edited("groupId"); }}><SelectTrigger id={formId("create-key-groupId")} className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.groupId)} aria-describedby={describedBy("groupId", true)}><SelectValue placeholder={text.selectGroup} /></SelectTrigger><SelectContent>{overview.groups.map((item) => <SelectItem key={item.id} value={item.id}>{item.displayName}</SelectItem>)}</SelectContent></Select>
             </FormField>
             <div className="rounded-xl border border-primary/10 bg-primary/4 px-4 py-3"><p className="text-sm font-medium text-primary">{form.releasedAccess}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{form.releasedAccessHelp}</p></div>
             {limitReached && <p role="status" className="text-xs text-destructive">{text.capacityReached}</p>}
             {!product && <p role="status" className="text-xs leading-5 text-destructive">{form.noReleasedProduct}</p>}
           </section>
-          <section aria-labelledby="create-key-usage-title" className="space-y-4 border-t border-border pt-6">
-            <h3 id="create-key-usage-title" className="text-sm font-semibold">{form.usageSection}</h3>
+          <section aria-labelledby={formId("create-key-usage-title")} className="space-y-4 border-t border-border pt-6">
+            <h3 id={formId("create-key-usage-title")} className="text-sm font-semibold">{form.usageSection}</h3>
             <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
-              <FormField id="create-key-displayName" label={text.usage} requirement={form.required} help={text.usageHelp} error={fieldErrors.displayName} className="sm:col-span-2"><Input id="create-key-displayName" autoComplete="off" maxLength={80} value={displayName} disabled={busy} required placeholder={text.usagePlaceholder} onChange={(event) => { setDisplayName(event.target.value); edited("displayName"); }} aria-invalid={Boolean(fieldErrors.displayName)} aria-describedby={describedBy("displayName", true)} className="h-11" /></FormField>
-              <FormField id="create-key-clientType" label={form.clientType} requirement={form.required} help={form.clientTypeHelp} error={fieldErrors.clientType}><Select value={clientType} disabled={busy} onValueChange={(value) => { if (clientTypes.includes(value as typeof clientTypes[number])) { setClientType(value as CreateApiKeyInput["clientType"]); edited("clientType"); } }}><SelectTrigger id="create-key-clientType" className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.clientType)} aria-describedby={describedBy("clientType", true)}><SelectValue placeholder={form.selectClientType} /></SelectTrigger><SelectContent>{clientTypes.map((type) => <SelectItem key={type} value={type}>{form.clientTypes[type]}</SelectItem>)}</SelectContent></Select></FormField>
-              <FormField id="create-key-systemName" label={form.systemName} requirement={form.optional} error={fieldErrors.systemName}><Input id="create-key-systemName" autoComplete="off" maxLength={120} value={systemName} disabled={busy} placeholder={form.systemNamePlaceholder} onChange={(event) => { setSystemName(event.target.value); edited("systemName"); }} aria-invalid={Boolean(fieldErrors.systemName)} aria-describedby={describedBy("systemName")} className="h-11" /></FormField>
-              <FormField id="create-key-teamName" label={form.teamName} requirement={form.optional} error={fieldErrors.teamName} className="sm:col-span-2"><Input id="create-key-teamName" autoComplete="off" maxLength={120} value={teamName} disabled={busy} placeholder={form.teamNamePlaceholder} onChange={(event) => { setTeamName(event.target.value); edited("teamName"); }} aria-invalid={Boolean(fieldErrors.teamName)} aria-describedby={describedBy("teamName")} className="h-11" /></FormField>
+              <FormField id={formId("create-key-displayName")} label={text.usage} requirement={form.required} help={text.usageHelp} error={fieldErrors.displayName} className="sm:col-span-2"><Input id={formId("create-key-displayName")} autoComplete="off" maxLength={80} value={displayName} disabled={busy} required placeholder={text.usagePlaceholder} onChange={(event) => { setDisplayName(event.target.value); edited("displayName"); }} aria-invalid={Boolean(fieldErrors.displayName)} aria-describedby={describedBy("displayName", true)} className="h-11" /></FormField>
+              <FormField id={formId("create-key-clientType")} label={form.clientType} requirement={form.required} help={form.clientTypeHelp} error={fieldErrors.clientType}><Select value={clientType} disabled={busy} onValueChange={(value) => { if (clientTypes.includes(value as typeof clientTypes[number])) { setClientType(value as CreateApiKeyInput["clientType"]); edited("clientType"); } }}><SelectTrigger id={formId("create-key-clientType")} className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.clientType)} aria-describedby={describedBy("clientType", true)}><SelectValue placeholder={form.selectClientType} /></SelectTrigger><SelectContent>{clientTypes.map((type) => <SelectItem key={type} value={type}>{form.clientTypes[type]}</SelectItem>)}</SelectContent></Select></FormField>
+              <FormField id={formId("create-key-systemName")} label={form.systemName} requirement={form.optional} error={fieldErrors.systemName}><Input id={formId("create-key-systemName")} autoComplete="off" maxLength={120} value={systemName} disabled={busy} placeholder={form.systemNamePlaceholder} onChange={(event) => { setSystemName(event.target.value); edited("systemName"); }} aria-invalid={Boolean(fieldErrors.systemName)} aria-describedby={describedBy("systemName")} className="h-11" /></FormField>
+              <FormField id={formId("create-key-teamName")} label={form.teamName} requirement={form.optional} error={fieldErrors.teamName} className="sm:col-span-2"><Input id={formId("create-key-teamName")} autoComplete="off" maxLength={120} value={teamName} disabled={busy} placeholder={form.teamNamePlaceholder} onChange={(event) => { setTeamName(event.target.value); edited("teamName"); }} aria-invalid={Boolean(fieldErrors.teamName)} aria-describedby={describedBy("teamName")} className="h-11" /></FormField>
             </div>
           </section>
-          <section aria-labelledby="create-key-contact-title" className="space-y-4 border-t border-border pt-6">
-            <h3 id="create-key-contact-title" className="flex items-center gap-2 text-sm font-semibold"><Building2 className="size-4 text-primary" />{form.contactSection}</h3>
+          <section aria-labelledby={formId("create-key-contact-title")} className="space-y-4 border-t border-border pt-6">
+            <h3 id={formId("create-key-contact-title")} className="flex items-center gap-2 text-sm font-semibold"><Building2 className="size-4 text-primary" />{form.contactSection}</h3>
             <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
-              <FormField id="create-key-companyId" label={form.companyName} requirement={form.required} error={fieldErrors.companyId}>
-                <Select value={companyId} disabled={busy || companiesLoading || Boolean(companyError) || !companies.length} onValueChange={(value) => { setCompanyId(value); edited("companyId"); }}><SelectTrigger id="create-key-companyId" className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.companyId)} aria-describedby={describedBy("companyId")}><SelectValue placeholder={companiesLoading ? form.loadingCompanies : form.selectCompany} /></SelectTrigger><SelectContent>{companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>)}</SelectContent></Select>
+              <FormField id={formId("create-key-companyId")} label={form.companyName} requirement={form.required} error={fieldErrors.companyId}>
+                <Select value={companyId} disabled={busy || companiesLoading || Boolean(companyError) || !companies.length} onValueChange={(value) => { setCompanyId(value); edited("companyId"); }}><SelectTrigger id={formId("create-key-companyId")} className="h-11! w-full" aria-required aria-invalid={Boolean(fieldErrors.companyId)} aria-describedby={describedBy("companyId")}><SelectValue placeholder={companiesLoading ? form.loadingCompanies : form.selectCompany} /></SelectTrigger><SelectContent>{companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>)}</SelectContent></Select>
               </FormField>
-              <FormField id="create-key-contactEmail" label={form.contactEmail} requirement={form.required} help={form.contactEmailHelp} error={fieldErrors.contactEmail}><Input id="create-key-contactEmail" type="email" autoComplete="email" maxLength={254} value={contactEmail} disabled={busy} required placeholder={form.contactEmailPlaceholder} onChange={(event) => { setContactEmail(event.target.value); edited("contactEmail"); }} aria-invalid={Boolean(fieldErrors.contactEmail)} aria-describedby={describedBy("contactEmail", true)} className="h-11" /></FormField>
+              <FormField id={formId("create-key-contactEmail")} label={form.contactEmail} requirement={form.required} help={form.contactEmailHelp} error={fieldErrors.contactEmail}><Input id={formId("create-key-contactEmail")} type="email" autoComplete="email" maxLength={254} value={contactEmail} disabled={busy} required placeholder={form.contactEmailPlaceholder} onChange={(event) => { setContactEmail(event.target.value); edited("contactEmail"); }} aria-invalid={Boolean(fieldErrors.contactEmail)} aria-describedby={describedBy("contactEmail", true)} className="h-11" /></FormField>
             </div>
             {companiesLoading ? <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle className="size-3.5 animate-spin" />{form.loadingCompanies}</p>
               : companyError ? <div role="alert" className="rounded-xl border border-destructive/15 bg-destructive/3 p-3"><p className="text-xs leading-5 text-destructive">{form.companiesUnavailable}</p><Button type="button" variant="outline" size="sm" className="mt-2" disabled={busy} onClick={reloadCompanies}><RefreshCw />{form.reloadCompanies}</Button></div>

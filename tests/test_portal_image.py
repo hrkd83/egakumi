@@ -55,7 +55,7 @@ class BuildTransport:
             if target == self.targets['vmId']:
                 return response({'id': target, 'location': 'japaneast', 'identity': {'principalId': PRINCIPAL}})
             if target == self.targets['registryId']:
-                return response({'id': target, 'properties': {'loginServer': self.targets['registryServer']}})
+                return response({'id': target, 'properties': {'creationDate': '2026-01-01T00:00:00.1234567Z', 'loginServer': self.targets['registryServer']}})
             if target not in self.present:
                 return response({'error': {'code': 'ResourceNotFound'}}, 404)
             if image.owned_build_command(target, self.targets['commandId']):
@@ -391,21 +391,76 @@ class PortalImageTests(unittest.TestCase):
         config, state = fixture()
         targets = image.build_targets(config, state)
         receipt = {'status': 'built', 'sourceSha256': SOURCE_HASH, 'commandId': targets['commandId'] + '-0123456789ab',
-                   'imageDigest': DIGEST, 'temporaryResourcesRemoved': True}
+                   'imageDigest': DIGEST, 'temporaryResourcesRemoved': True,
+                   'registryGeneration': {'resourceId': targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'}}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'receipt.json'
             path.write_text(json.dumps(receipt))
-            self.assertEqual(image.reusable_image(config, state, SOURCE_HASH, path), DIGEST)
+            self.assertEqual(image.reusable_image(config, state, SOURCE_HASH, path, transport=BuildTransport()), DIGEST)
             for field, invalid in (('status', 'failed'), ('sourceSha256', 'other'), ('temporaryResourcesRemoved', False),
                                    ('imageDigest', 'latest'), ('commandId', targets['commandId'] + '-other-task')):
                 path.write_text(json.dumps({**receipt, field: invalid}))
-                self.assertIsNone(image.reusable_image(config, state, SOURCE_HASH, path))
+                self.assertIsNone(image.reusable_image(config, state, SOURCE_HASH, path, transport=BuildTransport()))
+
+
+    def test_recreated_or_absent_registry_and_unbound_receipt_cannot_reuse_old_digest(self):
+        from deployment.helpers import credential_image
+        config, state = fixture()
+        state['outputs']['credentialBroker'] = {'registryName': state['outputs']['portal']['registryName']}
+        for implementation in (image, credential_image):
+            targets = implementation.build_targets(config, state)
+            generation = {'resourceId': targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'}
+            receipt = {'status': 'built', 'sourceSha256': SOURCE_HASH, 'commandId': targets['commandId'],
+                       'imageDigest': DIGEST, 'temporaryResourcesRemoved': True, 'registryGeneration': generation}
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'receipt.json'
+                for name, status, created in (('same', 200, '2026-01-01T00:00:00.123456700+00:00'),
+                                               ('recreated', 200, '2026-01-02T00:00:00.1234567Z'),
+                                               ('absent', 404, None)):
+                    path.write_text(json.dumps(receipt))
+                    transport = mock.Mock()
+                    transport.request.return_value = response({'id': targets['registryId'], 'properties': {
+                        'loginServer': targets['registryServer'], 'creationDate': created}}, status)
+                    with self.subTest(implementation=implementation.__name__, registry=name):
+                        actual = implementation.reusable_image(config, state, SOURCE_HASH, path, transport=transport)
+                        self.assertEqual(actual, DIGEST if name == 'same' else None)
+                        transport.request.assert_called_once_with('GET', targets['registryId'] + '?api-version=2023-07-01')
+                path.write_text(json.dumps({key: value for key, value in receipt.items() if key != 'registryGeneration'}))
+                transport = mock.Mock()
+                self.assertIsNone(implementation.reusable_image(config, state, SOURCE_HASH, path, transport=transport))
+                transport.request.assert_not_called()
+                path.write_text(json.dumps(receipt))
+                self.assertIsNone(implementation.reusable_image(config, state, SOURCE_HASH, path))
+
+    def test_unreadable_or_malformed_current_registry_stops_without_reuse(self):
+        from deployment.helpers import credential_image
+        config, state = fixture()
+        state['outputs']['credentialBroker'] = {'registryName': state['outputs']['portal']['registryName']}
+        for implementation in (image, credential_image):
+            targets = implementation.build_targets(config, state)
+            generation = {'resourceId': targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'}
+            receipt = {'status': 'built', 'sourceSha256': SOURCE_HASH, 'commandId': targets['commandId'],
+                       'imageDigest': DIGEST, 'temporaryResourcesRemoved': True, 'registryGeneration': generation}
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / 'receipt.json'
+                path.write_text(json.dumps(receipt))
+                for status, body in ((403, {}), (503, {}), (200, {'id': targets['registryId'], 'properties': {
+                    'loginServer': targets['registryServer']}}), (200, {'id': targets['registryId'], 'properties': {
+                    'loginServer': targets['registryServer'], 'creationDate': 'not-a-date'}})):
+                    transport = mock.Mock()
+                    transport.request.return_value = response(body, status)
+                    with self.subTest(implementation=implementation.__name__, status=status, body=body):
+                        with self.assertRaises(ValueError):
+                            implementation.reusable_image(config, state, SOURCE_HASH, path, transport=transport)
+                        self.assertEqual(transport.request.call_count, 1)
+
 
     def test_success_uses_built_in_role_and_cleans_only_own_resources(self):
         transport, records = BuildTransport(), []
         self.assertEqual(build(transport, record=lambda item: records.append(copy.deepcopy(item))), DIGEST)
         self.assertFalse(transport.present)
         self.assertTrue(records[-1]['temporaryResourcesRemoved'])
+        self.assertEqual(records[-1]['registryGeneration'], {'resourceId': transport.targets['registryId'].casefold(), 'createdAt': '2026-01-01T00:00:00.1234567Z'})
         puts = [(path, body) for method, path, body in transport.calls if method == 'PUT']
         self.assertEqual(len(puts), 2)
         self.assertTrue(puts[0][1]['properties']['roleDefinitionId'].endswith('/' + image.ACR_PUSH))

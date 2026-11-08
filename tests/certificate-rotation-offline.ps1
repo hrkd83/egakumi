@@ -79,7 +79,7 @@ function Reset-Fixture {
     $script:DnsPluginArgumentsJson='';$script:PreparedPfxBase64='';$script:PreparedPfxPassword=''
     $script:RenewCalls=0;$script:NewCalls=0;$script:ImportCalls=0;$script:ReadCalls=0;$script:SaveCalls=0;$script:DependencyCalls=0
     $script:AccountExists=$true;$script:PasswordExists=$true;$script:FailImport=$false;$script:FailSecretRead=$false;$script:IssueSameLeaf=$false
-    $script:Order=[pscustomobject]@{MainDomain='*.example.invalid';SANs=@()}
+    $script:Order=[pscustomobject]@{MainDomain='*.example.invalid';SANs=@();status='valid';CertExpires=$script:Old.NotAfter.ToUniversalTime().ToString('o')}
     $script:CacheOverride='';$script:RotationOutcome=''
     Set-Current $script:Old;Set-Cache $script:Old
 }

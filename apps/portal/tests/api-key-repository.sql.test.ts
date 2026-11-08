@@ -75,6 +75,11 @@ test("ローカルSQLで発行上限・冪等性・テナント境界・監査�
 
   await repository.withLockedKey(actor, record.id, async (context) => {
     await context.updateState("deleting");
+  });
+  await assert.rejects(repository.reserve(actor, { ...input, idempotencyKey: randomUUID() }),
+    (error: unknown) => error instanceof ApiKeyError && error.code === "SubscriptionLimitReached",
+    "削除処理中の購読も発行枠を占有する");
+  await repository.withLockedKey(actor, record.id, async (context) => {
     await context.updateState("deleted");
     await context.audit("delete");
   });

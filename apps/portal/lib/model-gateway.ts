@@ -8,11 +8,13 @@ import { buildTextGenerationRequest, getTextGenerationHeaders } from "./model-in
 import { textGenerationExecutionSchema, MODEL_MAX_UPSTREAM_JSON_BYTES, MODEL_REQUEST_TIMEOUT_MS } from "./model-request.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { relayModelStream } from "./model-stream.ts";
+import { containsModelCredential } from "./model-credential.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure, TextGenerationInput, TextGenerationResult } from "./model-request.ts";
 import type { TextGenerationModel } from "./model-types.ts";
 
 const maximumInputBytes = 32_768;
 const maximumResponseBytes = MODEL_MAX_UPSTREAM_JSON_BYTES;
+const maximumErrorBytes = 8_192;
 const upstreamTimeoutMs = MODEL_REQUEST_TIMEOUT_MS;
 const apiPaths = {
   "chat-completions": "/models/openai/v1/chat/completions",
@@ -86,6 +88,17 @@ async function readLimitedBody(body: ReadableStream<Uint8Array> | null, maximum:
 /** 固定の失敗種別だけをJSON化し、秘密情報を含む上流本文は転送しません。 */
 function failure(code: ModelGatewayErrorCode, status: number, details: Omit<TextGenerationFailure, "error"> = {}): Response {
   return Response.json({ error: { code }, ...details } satisfies TextGenerationFailure, { status, headers: responseHeaders });
+}
+
+/** 出力を完成できなかった既知の上限応答だけを識別し、上流の任意の説明文は公開しません。 */
+function isOutputLimitFailure(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("error" in value)) return false;
+  const error = value.error;
+  if (!error || typeof error !== "object" || Array.isArray(error)) return false;
+  return "type" in error && error.type === "invalid_request_error"
+    && "message" in error && error.message === "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens."
+    && (!("code" in error) || error.code === null)
+    && (!("param" in error) || error.param === null);
 }
 
 /** ログの突合に使う識別子だけを、長さと文字種を検証して取り出します。 */
@@ -208,6 +221,14 @@ export async function handleTextGeneration(request: Request, dependencies: Model
     identifier = requestId(upstream.headers);
     const details = identifier ? { requestId: identifier } : {};
     if (!upstream.ok) {
+      if (upstream.status === 400 && upstream.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() === "application/json") {
+        const raw = await readLimitedBody(upstream.body, maximumErrorBytes, signal);
+        const error: unknown = JSON.parse(raw);
+        if (!containsModelCredential(error, subscriptionKey, raw) && isOutputLimitFailure(error)) {
+          return failure("OutputLimitReached", 400, details);
+        }
+        return failure("GenerationFailed", 502, details);
+      }
       await upstream.body?.cancel();
       if (upstream.status === 429) {
         const seconds = Number(upstream.headers.get("retry-after"));
@@ -223,7 +244,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
       }
       return new Response(relayModelStream({
         body: upstream.body, operation: model.operationId, signal, timeoutSignal: timeout,
-        requestSignal: request.signal, abortUpstream: () => upstreamAbort.abort(), requestId: identifier,
+        requestSignal: request.signal, abortUpstream: () => upstreamAbort.abort(), requestId: identifier, credential: subscriptionKey,
       }), { headers: {
         ...responseHeaders, "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform",
         ...(identifier ? { "apim-request-id": identifier } : {}),
@@ -233,7 +254,9 @@ export async function handleTextGeneration(request: Request, dependencies: Model
       await upstream.body?.cancel();
       return failure("GenerationFailed", 502, details);
     }
-    const data = JSON.parse(await readLimitedBody(upstream.body, maximumResponseBytes, signal));
+    const raw = await readLimitedBody(upstream.body, maximumResponseBytes, signal);
+    const data: unknown = JSON.parse(raw);
+    if (containsModelCredential(data, subscriptionKey, raw)) throw new Error("Unexpected credential reflection");
     const result = generationResult(data, model, Math.round(performance.now() - started), identifier);
     return Response.json(result, { headers: responseHeaders });
   } catch {

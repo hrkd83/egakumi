@@ -4,6 +4,9 @@
 
 targetScope = 'resourceGroup'
 
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
+
 @minLength(1)
 @description('全リソース名の製品名部分。例は egakumi です。')
 param productName string
@@ -49,12 +52,6 @@ param keyVaultCertificateSecretId string
 @minLength(1)
 @description('証明書参照用ユーザー割り当てマネージド ID のリソース ID。Entra アプリの ID ではありません。')
 param certificateIdentityId string
-@description('診断ログと監視クエリの送信先 Workspace のリソース ID。')
-param workspaceId string
-@description('長期監査ログの保存先 Storage のリソース ID。')
-param auditStorageId string
-@description('この段階で監査ログの転送も設定するか。保存先と保護が準備できてから有効にします。')
-param enableAuditCollection bool = false
 @allowed(['WAF_v2', 'Standard_v2'])
 @description('AppGW の SKU。WAF_v2 は HTTP WAF を提供し、gRPC の TCP リスナーには適用されません。')
 param skuName string = 'WAF_v2'
@@ -205,7 +202,21 @@ resource wafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPo
   properties: sharedWafProperties
 }
 
-// Microsoftが発行する不透明な認可コードだけを、実測したSQLi誤検知の2規則から除外します。
+// HTTPSのPortalセッション値だけを、確認したSQLi誤検知の1規則から除外します。
+// URI別policyはlistenerのpolicyを継承しないため、Portalの各policyにも同じ正本を合成します。
+var portalSessionExclusions = loadJsonContent('../../apps/portal/waf-session-exclusions.json')
+resource portalWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
+  name: 'wafpol-agw-${resourceStem}-portal'
+  location: location
+  tags: tags
+  properties: union(sharedWafProperties, {
+    managedRules: union(sharedWafProperties.managedRules, {
+      exclusions: union(wafExclusions, portalSessionExclusions)
+    })
+  })
+}
+
+// Microsoftが発行する不透明な認可コードだけを、実測したSQLi誤検知の3規則から除外します。
 // このポリシーはPortalの正規callback完全パスだけに関連付け、他の引数・規則は維持します。
 resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
   name: 'wafpol-agw-${resourceStem}-portal-auth'
@@ -213,7 +224,7 @@ resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplication
   tags: tags
   properties: union(sharedWafProperties, {
     managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [{
+      exclusions: union(wafExclusions, portalSessionExclusions, [{
         matchVariable: 'RequestArgValues'
         selectorMatchOperator: 'Equals'
         selector: 'code'
@@ -222,7 +233,7 @@ resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplication
           ruleSetVersion: '3.2'
           ruleGroups: [{
             ruleGroupName: 'REQUEST-942-APPLICATION-ATTACK-SQLI'
-            rules: [{ ruleId: '942430' }, { ruleId: '942440' }]
+            rules: [{ ruleId: '942430' }, { ruleId: '942440' }, { ruleId: '942450' }]
           }]
         }]
       }])
@@ -447,7 +458,7 @@ resource inlineMediaWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicatio
 // 同じURIを旧media規則と新data規則の両方へ登録せず、一つの完成したpolicyへ関連付けます。
 var callbackRuleIds = {
   gateway: ['942430', '942440', '942450']
-  portal: ['942430', '942440']
+  portal: ['942430', '942440', '942450']
 }
 var callbackPaths = {
   gateway: '/auth/connections/browser/identity-callback'
@@ -465,6 +476,7 @@ var dataPolicyProperties = [for profile in dataProfiles: union(sharedWafProperti
       }]
     }] : sharedWafProperties.managedRules.managedRuleSets
     exclusions: union(wafExclusions,
+      profile.scope == 'portal' ? portalSessionExclusions : [],
       profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlineImagePaths, path))) > 0 ? [inlineImageExclusion] : [],
       profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlinePdfPaths, path))) > 0 ? [inlinePdfExclusion] : [],
       profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlineAudioPaths, path))) > 0 ? [union(inlineAudioExclusion, { matchVariable: 'RequestArgValues' })] : [],
@@ -624,6 +636,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
         ...(listener.protocol == 'Https' ? {
           requireServerNameIndication: true
           sslCertificate: { id: '${gatewayId}/sslCertificates/gateway-tls' }
+          ...(createWafPolicy ? { firewallPolicy: { id: portalWafPolicy!.id } } : {})
         } : {})
       }
     }))
@@ -648,7 +661,8 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
         protocol: 'Https'
         port: 443
         cookieBasedAffinity: 'Disabled'
-        requestTimeout: 30
+        // Portal waits for the same Gateway calls, including non-streaming inference.
+        requestTimeout: backendRequestTimeoutSeconds
         hostName: portalBackendHost
         pickHostNameFromBackendAddress: false
         probe: { id: '${gatewayId}/probes/probe-portal' }
@@ -863,33 +877,21 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
 resource logs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: gateway
   name: 'diag-${resourceStem}-agw'
-  properties: {
-    workspaceId: workspaceId
-    ...(enableAuditCollection && skuName == 'WAF_v2' ? { storageAccountId: auditStorageId } : {})
-    logAnalyticsDestinationType: 'Dedicated'
-    logs: skuName == 'WAF_v2' ? [{ category: 'ApplicationGatewayFirewallLog', enabled: true }] : [{ category: 'ApplicationGatewayAccessLog', enabled: true }]
-  }
+  properties: diagnosticSettingProperties['agw-logs']
 }
 
 // AccessはLAWでqueryを除去してからexportします。WAFの同一Storage重複設定を作りません。
 resource accessLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (skuName == 'WAF_v2') {
   scope: gateway
   name: 'diag-${resourceStem}-agw-access'
-  properties: {
-    workspaceId: workspaceId
-    logAnalyticsDestinationType: 'Dedicated'
-    logs: [{ category: 'ApplicationGatewayAccessLog', enabled: true }]
-  }
+  properties: diagnosticSettingProperties['agw-access']
 }
 
 // AppGW の数値メトリックを Workspace へ出力します。
 resource metrics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   scope: gateway
   name: 'diag-${resourceStem}-agw-metrics'
-  properties: {
-    workspaceId: workspaceId
-    metrics: [{ category: 'AllMetrics', enabled: true }]
-  }
+  properties: diagnosticSettingProperties['agw-metrics']
 }
 
 output applicationGateway object = {

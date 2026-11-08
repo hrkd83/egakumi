@@ -1,4 +1,5 @@
 import "server-only";
+import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
@@ -91,7 +92,7 @@ export async function handleDocumentAnalysis(request: Request, dependencies: Doc
     if (Number(response.headers.get("content-length") ?? 0) > MAX_DOCUMENT_RESULT_BYTES) { await response.body?.cancel(); return failure("DocumentResultTooLarge", 502, details); }
     const rawBytes = await readDocumentBody(response.body, MAX_DOCUMENT_RESULT_BYTES, signal);
     const raw = new TextDecoder("utf-8", { fatal: true }).decode(rawBytes); const value: unknown = JSON.parse(raw);
-    if (raw.includes(key) || JSON.stringify(value).includes(key)) throw new Error("Credential reflection");
+    if (containsModelCredential(value, key, raw)) throw new Error("Credential reflection");
     const result = parseDocumentAnalysisResult(value, input.model, Math.max(0, Math.round(performance.now() - started)), requestId);
     const serialized = JSON.stringify(result);
     if (Buffer.byteLength(serialized) > MAX_DOCUMENT_RESULT_BYTES) return failure("DocumentResultTooLarge", 502, details);

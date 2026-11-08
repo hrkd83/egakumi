@@ -3,29 +3,16 @@
 
 targetScope = 'subscription'
 
+@description('正式CLIが実状態を照合して生成した、同名Core診断設定の書込properties。利用者入力ではありません。')
+param diagnosticSettingProperties object
+
 @description('製品名と環境名を連結した共通名。作成と更新で同じ値を使います。')
 param resourceStem string
-@description('診断ログと監視クエリの送信先 Workspace のリソース ID。')
-param workspaceId string
-@description('長期監査ログの保存先 Storage のリソース ID。')
-param auditStorageId string
-@description('この段階で監査ログの転送も設定するか。保存先と保護が準備できてから有効にします。')
-param enableAuditCollection bool = false
-
-var activityCategories = [
-  'Administrative', 'ServiceHealth', 'ResourceHealth', 'Alert'
-  'Autoscale', 'Security', 'Recommendation', 'Policy'
-]
-var activityLogs = [for category in activityCategories: { category: category, enabled: true }]
 
 // サブスクリプションの管理操作履歴を共通の検索先と監査保存先へ送ります。
 resource activityLog 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'diag-${resourceStem}-activity'
-  properties: {
-    workspaceId: workspaceId
-    ...(enableAuditCollection ? { storageAccountId: auditStorageId } : {})
-    logs: activityLogs
-  }
+  properties: diagnosticSettingProperties['activity']
 }
 
 output activityDiagnosticSettingId string = activityLog.id

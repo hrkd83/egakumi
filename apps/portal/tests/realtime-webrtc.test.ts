@@ -6,6 +6,7 @@ import { handleRealtimeStop, handleRealtimeWebRtc, validateRealtimeSdp, type Rea
 import { realtimeStreamEventSchema, type RealtimeStreamEvent } from "../lib/realtime-request.ts";
 import type { RealtimeModel } from "../lib/model-types.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS } from "../lib/realtime-protocol.ts";
+import { defaultRealtimeInput, getRealtimeIntegrationCode, getRealtimeRequestExample, getRealtimeRequestSchema } from "../lib/realtime-integration.ts";
 
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const apiKeyId = "portal-11111111-1111-4111-8111-111111111111"; const key = "test-only-private-realtime-key"; const handleSecret = "test-only-cleanup-secret-with-more-than-thirty-two-characters";
@@ -181,6 +182,48 @@ test("Liveは固定instructionsとmarinで開始し、契約にないhangup成�
   let calls = 0;
   const output = await events(await handleRealtimeWebRtc(request(live), dependencies({ timeoutMs: 20, fetch: async (_, init) => { calls++; const body = JSON.parse(init?.body as string); assert.equal(body.voice, "marin"); assert.equal(body.instructions, REALTIME_CONVERSATION_INSTRUCTIONS); assert.equal(body.model, undefined); return Response.json({ sessionId: "private-live-id", sdp }); } })));
   assert.equal(calls, 1); assert.ok(output.some((event) => event.type === "answer")); assert.equal((output.at(-1) as { stopStatus: string }).stopStatus, "transport-closed"); assert.ok(!JSON.stringify(output).includes("private-live-id"));
+});
+
+/** 別々に作るガイド・要求例と実BFFを比較し、ガイド自身だけを期待値にしません。 */
+test("Live RTCの五言語ガイドとJSON・部分schemaは実BFFの固定指示・音声・SDPと一致する", async () => {
+  const expected = { sdp, instructions: REALTIME_CONVERSATION_INSTRUCTIONS, voice: "marin" };
+  let captured: unknown; let calls = 0;
+  const output = await events(await handleRealtimeWebRtc(request(live, { voice: "marin" }), dependencies({ timeoutMs: 20,
+    fetch: async (url, init) => {
+      calls++; assert.equal(String(url), gatewayOrigin + live.path);
+      assert.equal(init?.method, "POST"); assert.equal(init?.redirect, "error");
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("Content-Type"), "application/json"); assert.equal(headers.get("api-key"), key);
+      captured = JSON.parse(String(init?.body));
+      return Response.json({ sessionId: "isolated-guide-live-id", sdp });
+    },
+  })));
+  assert.equal(calls, 1); assert.deepEqual(captured, expected);
+  assert.ok(output.some((event) => event.type === "answer"));
+  const input = { ...defaultRealtimeInput(live), voice: "marin" };
+  const example = JSON.parse(getRealtimeRequestExample(live, input));
+  assert.equal(example.method, "POST"); assert.equal(example.contentType, "application/json");
+  assert.equal(example.body.sdp, "<browser-generated audio-only SDP offer>");
+  assert.deepEqual({ ...example.body, sdp }, captured);
+  const schema = getRealtimeRequestSchema(live) as { required: string[]; properties: Record<string, { type?: string; enum?: string[]; maxLength?: number }> };
+  assert.ok(schema.required.includes("sdp")); assert.equal(schema.properties.instructions.type, "string");
+  assert.ok(REALTIME_CONVERSATION_INSTRUCTIONS.length <= schema.properties.instructions.maxLength!);
+  assert.ok(schema.properties.voice.enum!.includes(expected.voice));
+  const bodyPatterns = {
+    typescript: /body: ("(?:\\.|[^"\\])*")/,
+    python: /data=("(?:\\.|[^"\\])*")/,
+    php: /CURLOPT_POSTFIELDS => ("(?:\\.|[^"\\])*")/,
+    csharp: /new StringContent\(("(?:\\.|[^"\\])*")/,
+  };
+  for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
+    const code = getRealtimeIntegrationCode(live, input, gatewayOrigin, language);
+    assert.ok(code.includes(gatewayOrigin + live.path)); assert.ok(code.includes("GATEWAY_API_KEY")); assert.ok(!code.includes(key));
+    const match = language === "curl" ? /# offer\.json: ([^\n]+)/.exec(code) : bodyPatterns[language].exec(code);
+    assert.ok(match, language);
+    const body = JSON.parse(language === "curl" ? match[1] : JSON.parse(match[1]));
+    assert.equal(body.sdp, "<audio-only SDP offer>", language);
+    assert.deepEqual({ ...body, sdp }, captured, language);
+  }
 });
 
 for (const maxOutputTokens of [256, "model-max"] as const) test(`Voice Liveは専用WSSでSDPと選択音声・出力上限を交換する（${maxOutputTokens}）`, async () => {

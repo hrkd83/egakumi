@@ -17,7 +17,7 @@ class McpArgumentValidationTests(unittest.TestCase):
         expression=value[2:-1].replace('__AUTHORIZATION_BASE64__',base64.b64encode(json.dumps(api['authorization']).encode()).decode())
         def call(arguments):return {'jsonrpc':'2.0','id':17,'method':'tools/call','params':{'name':'pii_redact_text','arguments':arguments}}
         valid=call({'text':'hello','language':'en'})
-        cases=[valid,call({'text':1,'language':'en'}),call({'text':'SECRET_INPUT','language':'unknown'}),call({'text':'','language':'en'}),call({'text':'hello','language':'en','extra':'SECRET_INPUT'}),call({'language':'ja'}),call({'text':'x'*32768,'language':'en'}),{'jsonrpc':'2.0','id':1,'method':'tools/list'},call({'text':'😀'*5120,'language':'en'}),call({'text':'e\u0301'*5120,'language':'en'})]
+        cases=[valid,call({'text':1,'language':'en'}),call({'text':'SECRET_INPUT','language':'unknown'}),call({'text':'','language':'en'}),call({'text':'hello','language':'en','extra':'SECRET_INPUT'}),call({'language':'ja'}),call({'text':'x'*32768,'language':'en'}),{'jsonrpc':'2.0','id':1,'method':'tools/list'},call({'text':'😀'*5120,'language':'en'}),call({'text':'e\u0301'*5120,'language':'en'}),call({'text':'x'*32741,'language':'en'}),call({'text':'x'*32742,'language':'en'})]
         source=r'''
 using System;using System.Linq;using System.Text;using Newtonsoft.Json;using Newtonsoft.Json.Linq;
 public class Body {public string Data;public T As<T>(bool preserveContent=false){return (T)(object)JObject.Parse(Data);}}
@@ -37,8 +37,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             result=subprocess.run([PWSH,'-NoProfile','-File',str(p/'run.ps1')],text=True,capture_output=True,encoding='utf-8',timeout=60)
         self.assertEqual(result.returncode,0,result.stderr)
         results=json.loads(result.stdout)
-        for i in [0,7,8,9]:self.assertEqual(results[i],'')
-        for i in [1,2,3,4,5,6]:
+        for i in [0,7,8,9,10]:self.assertEqual(results[i],'')
+        for i in [1,2,3,4,5,6,11]:
             message=json.loads(results[i]);self.assertEqual(message,{'jsonrpc':'2.0','id':17,'error':{'code':-32602,'message':'Invalid tool arguments'}})
             self.assertNotIn('SECRET_INPUT',results[i])
 

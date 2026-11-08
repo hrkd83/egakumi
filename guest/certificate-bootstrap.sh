@@ -15,6 +15,8 @@ set +a
 umask 077
 stage='runtime-inspection'
 work=''
+worker_unit=''
+worker_started=false
 # Capture and unexport inputs using Bash builtins BEFORE any child process,
 # including identity/runtime inspection or mktemp. Bash arrays aren't exported.
 input_names=(Action PublicConfigJson DnsPluginArgumentsJson PreparedPfxBase64 PreparedPfxPassword L7IngressSecret RealtimeTicketKey)
@@ -29,6 +31,11 @@ finish() {
     trap - EXIT
     for input_name in "${input_names[@]}"; do unset "$input_name"; done
     unset saved_input
+    # Only this invocation's unique transient unit can be stopped. A failed
+    # launcher/signal must not leave a worker reading inputs after cleanup.
+    if [ "$worker_started" = true ] && [ "$status" -ne 0 ]; then
+        systemctl stop "$worker_unit" >/dev/null 2>&1 || true
+    fi
     if [ -n "$work" ]; then rm -rf -- "$work"; fi
     if [ "$status" -ne 0 ]; then
         printf 'Public gateway certificate setup failed at %s. Review dependency access.\n' "$stage"
@@ -49,6 +56,11 @@ done < /proc/mounts
 . /etc/os-release
 [ "$ID" = ubuntu ] && [ "$VERSION_ID" = 24.04 ] || exit 1
 [ "$(dpkg --print-architecture)" = amd64 ] || exit 1
+stage='certificate-runtime-environment'
+command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 || exit 1
+systemd_release=$(systemd --version 2>/dev/null)
+read -r systemd_label systemd_version systemd_details <<< "$systemd_release"
+[ "$systemd_label" = systemd ] && [[ "$systemd_version" =~ ^[0-9]+$ ]] && [ "$systemd_version" -ge 255 ] || exit 1
 work=$(mktemp -d /run/egakumi-certificate.XXXXXXXX)
 chmod 700 "$work"
 for ((input_index=0; input_index<${#input_names[@]}; input_index++)); do
@@ -126,10 +138,31 @@ fi
 stage='certificate-maintenance'
 printf '%s' '__CERTIFICATE_WORKER_BASE64__' | base64 --decode > "$work/certificate.ps1"
 chmod 600 "$work/certificate.ps1"
-# Restore the inputs only for the actual certificate worker, after all external
-# installation, inspection, decoding and chmod commands have completed.
+# A transient root service obtains the account's real login environment from
+# systemd. Do not repurpose HOME, pass secrets through unit Environment/argv, or
+# copy the protected input files outside the existing root-private /run tree.
+cat > "$work/launch-worker.sh" <<'CERTIFICATE_WORKER_LAUNCHER'
+#!/bin/bash
+set -euo pipefail
+set +x
+set +a
+umask 077
+work=$1
+[ "$EUID" = 0 ] || exit 1
+[[ "${HOME:-}" = /* ]] && [ -d "$HOME" ] || exit 1
+input_names=(Action PublicConfigJson DnsPluginArgumentsJson PreparedPfxBase64 PreparedPfxPassword L7IngressSecret RealtimeTicketKey)
 for input_name in "${input_names[@]}"; do
     IFS= read -r -d '' "$input_name" < "$work/input.$input_name" || true
     export "$input_name"
 done
-pwsh -NoLogo -NoProfile -NonInteractive -File "$work/certificate.ps1" -ReadProtectedEnvironment
+exec /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive -File "$work/certificate.ps1" -ReadProtectedEnvironment
+CERTIFICATE_WORKER_LAUNCHER
+chmod 600 "$work/launch-worker.sh"
+worker_unit="egakumi-certificate-install-${work##*/}.service"
+worker_load=$(systemctl show --property=LoadState --value "$worker_unit" 2>/dev/null || true)
+[ "$worker_load" = not-found ] || exit 1
+worker_started=true
+systemd-run --system --quiet --wait --pipe --collect --service-type=exec \
+    --uid=root --gid=root --property=SetLoginEnvironment=yes --property=UMask=0077 \
+    --property=RuntimeMaxSec=3300 --property=TimeoutStopSec=30 --expand-environment=no \
+    --unit="$worker_unit" /bin/bash "$work/launch-worker.sh" "$work"

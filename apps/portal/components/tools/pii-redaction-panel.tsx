@@ -1,5 +1,8 @@
 "use client";
 
+import { useFieldIds } from "@/lib/use-field-ids";
+import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Check, Copy, LoaderCircle, Play, Square } from "lucide-react";
@@ -15,7 +18,7 @@ import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-int
 import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 import { ModelResponseError } from "@/lib/model-response";
 import type { TextGenerationFailure } from "@/lib/model-request";
-import { PII_API, PII_SAMPLE, buildPiiRequest, type PiiInput, type PiiResult } from "@/lib/pii-contract";
+import { PII_API, PII_SAMPLE, buildPiiRequest, getPiiRequestBytes, type PiiInput, type PiiResult } from "@/lib/pii-contract";
 import { getPiiEndpoint, getPiiHeaders, getPiiIntegrationExample, getPiiRequestSchema, getPiiResponseSchema } from "@/lib/pii-integration";
 import { readPiiResponse } from "@/lib/pii-response";
 import { PII_MCP, getPiiMcpEndpoint, type PiiMcpResult } from "@/lib/pii-mcp-contract";
@@ -42,6 +45,7 @@ function CodeBlock({ code, title, dictionary }: { code: string; title: string; d
 
 /** PIIマスキングのガイド、固定契約、本人の購読を使った実行結果を提供します。 */
 export function PiiRedactionPanel({ dictionary, locale, gatewayOrigin, protocol = "rest" }: { dictionary: Dictionary; locale: Locale; gatewayOrigin: string | null; protocol?: "rest" | "mcp" }) {
+  const formId = useFieldIds();
   const [store] = useState(() => createStore<PanelState>(() => ({ input: { ...PII_SAMPLE }, apiKeyId: "", language: "json", tab: "request", loading: false, result: null, failure: null, cancelled: false })));
   const state = useStore(store), text = dictionary.modelGateway, guide = text.integration, isMcp = protocol === "mcp", pii = isMcp ? getPiiMcpDictionary(locale) : getPiiDictionary(locale);
   const apiId = isMcp ? PII_MCP.apiId : PII_API.apiId;
@@ -52,7 +56,7 @@ export function PiiRedactionPanel({ dictionary, locale, gatewayOrigin, protocol 
   let payload: PiiInput | null = null;
   try { payload = buildPiiRequest(state.input); } catch { /* 無効な入力はコード例と実送信の両方で拒否します。 */ }
 
-  useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => () => deactivatePanelRequest(requestRef, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
   useEffect(() => {
     const controller = new AbortController();
     void loadModelKeyChoices(apiId, controller.signal).then((keys) => { if (!controller.signal.aborted) setChoices({ status: "ready", keys }); }).catch(() => { if (!controller.signal.aborted) setChoices({ status: "error", keys: [] }); });
@@ -82,14 +86,14 @@ export function PiiRedactionPanel({ dictionary, locale, gatewayOrigin, protocol 
 
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   const code = payload ? state.language === "json" ? JSON.stringify(isMcp ? buildPiiMcpCall(payload) : payload, null, 2) : isMcp ? getPiiMcpIntegrationExample(state.language, payload, origin) : getPiiIntegrationExample(state.language, payload, origin) : pii.invalid;
-  const bytes = new TextEncoder().encode(JSON.stringify(state.input)).byteLength;
+  const bytes = getPiiRequestBytes(state.input);
   const runtimes = { typescript: guide.typescriptRuntime, python: guide.pythonRuntime, php: guide.phpRuntime, csharp: guide.csharpRuntime, curl: guide.curlRuntime };
 
   return <ApiDocumentationLayout locale={locale} value={state.tab} onValueChange={(tab) => store.setState({ tab })} busy={state.loading}
     settings={<form onSubmit={execute} className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-border p-3"><div className="flex items-center justify-between gap-3"><label htmlFor="pii-key" className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys}>{guide.refreshKeys}</Button></div><Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id="pii-key" className="w-full bg-white"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</SelectItem>)}</SelectContent></Select><p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>{choices.status === "loading" && <p role="status" className="text-sm">{guide.loadingKeys}</p>}{choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}{choices.status === "ready" && !choices.keys.length && <p role="status" className="text-sm">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline">{guide.manageKeys}</Link></p>}</div>
-      <div className="space-y-2"><label htmlFor="pii-language" className="text-sm font-medium">{pii.language}</label><Select value={state.input.language} disabled={state.loading} onValueChange={(value) => { if (value === "ja" || value === "en") updateInput({ language: value }); }}><SelectTrigger id="pii-language" className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ja">{pii.japanese}</SelectItem><SelectItem value="en">{pii.english}</SelectItem></SelectContent></Select></div>
-      <div className="space-y-2"><label htmlFor="pii-text" className="text-sm font-medium">{pii.text}</label><Textarea id="pii-text" rows={8} required maxLength={PII_API.maxRequestBytes} disabled={state.loading} value={state.input.text} onChange={(event) => updateInput({ text: event.target.value })} className="bg-white" /><p className="text-sm text-muted-foreground">{pii.bytes}: {new Intl.NumberFormat(locale).format(bytes)} / 32,768 bytes</p></div>
+      <div className="space-y-2 rounded-lg border border-border p-3"><div className="flex items-center justify-between gap-3"><label htmlFor={formId("pii-key")} className="text-sm font-medium">{guide.apiKey}</label><Button type="button" variant="ghost" size="sm" disabled={state.loading || choices.status === "loading"} onClick={refreshKeys}>{guide.refreshKeys}</Button></div><Select value={selectedKey?.id ?? ""} disabled={state.loading || choices.status !== "ready" || !choices.keys.length} onValueChange={(apiKeyId) => store.setState({ apiKeyId })}><SelectTrigger id={formId("pii-key")} className="w-full bg-white"><SelectValue placeholder={guide.chooseKey} /></SelectTrigger><SelectContent>{choices.keys.map((key) => <SelectItem key={key.id} value={key.id}>{[key.displayName, key.companyName, key.groupName].filter(Boolean).join(" · ")}</SelectItem>)}</SelectContent></Select><p className="text-sm leading-6 text-muted-foreground">{guide.apiKeyHelp}</p>{choices.status === "loading" && <p role="status" className="text-sm">{guide.loadingKeys}</p>}{choices.status === "error" && <p role="alert" className="text-sm text-destructive">{text.errors.ApiKeyAccessUnavailable}</p>}{choices.status === "ready" && !choices.keys.length && <p role="status" className="text-sm">{guide.noKeys} <Link href={`/${locale}/api-keys`} className="text-primary underline">{guide.manageKeys}</Link></p>}</div>
+      <div className="space-y-2"><label htmlFor={formId("pii-language")} className="text-sm font-medium">{pii.language}</label><Select value={state.input.language} disabled={state.loading} onValueChange={(value) => { if (value === "ja" || value === "en") updateInput({ language: value }); }}><SelectTrigger id={formId("pii-language")} className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ja">{pii.japanese}</SelectItem><SelectItem value="en">{pii.english}</SelectItem></SelectContent></Select></div>
+      <div className="space-y-2"><label htmlFor={formId("pii-text")} className="text-sm font-medium">{pii.text}</label><Textarea id={formId("pii-text")} rows={8} required maxLength={PII_API.maxRequestBytes} disabled={state.loading} value={state.input.text} onChange={(event) => updateInput({ text: event.target.value })} className="bg-white" /><p className="text-sm text-muted-foreground">{pii.bytes}: {new Intl.NumberFormat(locale).format(bytes)} / 32,768 bytes</p></div>
       <p className="text-sm leading-7 text-muted-foreground">{pii.limits}</p><p className="text-sm leading-7 text-muted-foreground">{pii.editable}</p>
       {!payload && <p role="alert" className="text-sm text-destructive">{pii.invalid}</p>}
       <div className="flex flex-wrap gap-2">{state.loading && <Button type="button" variant="outline" onClick={cancel}><Square className="size-4" />{text.cancel}</Button>}<Button type="submit" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? pii.running : pii.execute}</Button></div>

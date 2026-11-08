@@ -76,8 +76,13 @@ Check ([int][IO.File]::GetUnixFileMode((Join-Path $script:Root 'maintenance.lock
 $script:Root=Join-Path $fixture 'units'
 # systemdの定期更新は本番運用にも使う。環境を自動撤去するtimerとは用途が異なる。
 $unit=Get-RenewalUnitContent
-Check ($unit.service -match 'User=root' -and $unit.service -match 'UMask=0077') 'Renewal service identity/umask missing'
-Check ($unit.service -match 'pwsh .*-Action Renew' -and $unit.service -match 'StandardOutput=journal') 'Linux renewal worker/log target missing'
+Check ($unit.service -match 'User=root' -and $unit.service -match 'UMask=0077' -and $unit.service -match '(?m)^SetLoginEnvironment=yes$' -and $unit.service -notmatch '(?m)^Environment=HOME=') 'Renewal service identity/umask/OS login environment missing'
+Check ($unit.service -match 'pwsh .*-Action Renew' -and $unit.service -match 'StandardOutput=journal' -and
+    $unit.service -match ('(?m)^Environment=XDG_CACHE_HOME='+[regex]::Escape($script:Root+'/cache')+'$') -and
+    $unit.service -match ('(?m)^Environment=XDG_CONFIG_HOME='+[regex]::Escape($script:Root+'/config')+'$') -and
+    $unit.service -match ('(?m)^Environment=XDG_DATA_HOME='+[regex]::Escape($script:Root+'/data')+'$') -and
+    $unit.service -match '(?m)^ProtectHome=true$' -and $unit.service -match '(?m)^ProtectSystem=strict$' -and
+    $unit.service -match ('(?m)^ReadWritePaths='+[regex]::Escape($script:Root)+'$')) 'Renewal worker needs private writable XDG paths inside the protected service'
 Check ($unit.service -notmatch 'fixture-token|fixture-password') 'Renewal unit contains protected input'
 Check ($unit.timer -match 'OnUnitActiveSec=12h' -and $unit.timer -notmatch 'OnCalendar') 'Renewal periodic timer incorrect'
 $script:Config|Add-Member -NotePropertyName renewIntervalHours -NotePropertyValue 6

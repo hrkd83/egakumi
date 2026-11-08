@@ -214,11 +214,12 @@ resource metricAlerts 'Microsoft.Insights/metricAlerts@2018-03-01' = [for defini
 }]
 
 // 以下は KQL の監視クエリです。件数・利用量・状態を検索し、API の入力本文や生成本文を検索材料にはしません。
-var auditWriteQuery = 'StorageBlobLogs\n| where TimeGenerated > ago(15m)\n| where AccountName in~ ("${storage.collectJapan.name}", "${storage.collectFoundry.name}")\n| where OperationName in ("PutBlob", "AppendBlock", "PutBlock", "PutBlockList")\n| where toint(StatusCode) >= 400\n| project TimeGenerated, _ResourceId, OperationName, StatusCode, StatusText'
+var auditWriteQuery = '${loadTextContent('./audit-write-failures.kql')}\nAuditWriteFailures(StorageBlobLogs, now(), dynamic(["${storage.collectJapan.name}", "${storage.collectFoundry.name}"]))'
 var ingestionQuery = 'union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppEvents, AppMetrics, AppPageViews, AppBrowserTimings, AppAvailabilityResults\n| where TimeGenerated > ago(24h)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| where _IsBillable == "true"\n| summarize IngestedGB = sum(_BilledSize) / 1000000000.0'
 var failureRateQuery = 'AppRequests\n| where TimeGenerated > ago(15m)\n| where _ResourceId =~ "${monitoring.appInsightsId}"\n| summarize Requests=count(), Failures=countif(Success == false)\n| where Requests >= 100\n| extend FailureRate=100.0 * Failures / Requests'
 var queryDefinitions = [
-  { key: 'audit-write-failed', query: auditWriteQuery, range: 'PT15M', aggregation: 'Count', measure: '', threshold: 0, severity: 2 }
+  // The service accepts discrete query ranges; PT30M is the first covering 15m + 5s.
+  { key: 'audit-write-failed', query: auditWriteQuery, range: 'PT30M', aggregation: 'Count', measure: '', threshold: 0, severity: 2 }
   { key: 'appi-ingestion-high', query: ingestionQuery, range: 'P1D', aggregation: 'Maximum', measure: 'IngestedGB', threshold: appInsightsIngestionWarningGb, severity: 3 }
   { key: 'api-failure-rate', query: failureRateQuery, range: 'PT15M', aggregation: 'Maximum', measure: 'FailureRate', threshold: 5, severity: 2 }
 ]
