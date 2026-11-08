@@ -24,7 +24,7 @@ test("PHP Voice Live RTC uses the same verified Swoole transport as conversation
 test("PHP SDP creation serializes selected settings without changing the fixed control contract", () => {
   for (const [voice, maxOutputTokens] of [["ja-JP-NanamiNeural", 128], ["ja-JP-KeitaNeural", 256]] as const) {
     const code = php(voice, maxOutputTokens);
-    const match = code.match(/\$(?:socket->push|client->send)\(("(?:\\.|[^"\\])*")\)/);
+    const match = code.match(/\$request = json_decode\(("(?:\\.|[^"\\])*"), true, 32, JSON_THROW_ON_ERROR\)/);
     assert.ok(match);
     assert.deepEqual(JSON.parse(JSON.parse(match[1])), {
       type: "rtc.call.sdp.create", sdp_offer: "<browser-generated audio-only SDP offer>",
@@ -35,7 +35,7 @@ test("PHP SDP creation serializes selected settings without changing the fixed c
 
 test("PHP delivers a bounded SDP answer then retains the socket until owner stop or deadline", () => {
   const code = php();
-  assert.match(code, /function negotiateSdp\(Channel \$ownerStopped, callable \$deliverAnswer\): void/);
+  assert.match(code, /function negotiateSdp\(string \$sdpOffer, Channel \$ownerStopped, callable \$deliverAnswer\): void/);
   assert.match(code, /strlen\(\$frame->data\) > 262144/);
   assert.match(code, /strlen\(\$answer\) > 65536/);
   assert.ok(code.includes(String.raw`str_starts_with($answer, "v=0\r\n")`));
@@ -45,4 +45,18 @@ test("PHP delivers a bounded SDP answer then retains the socket until owner stop
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
   assert.match(code, /application owns browser audio tracks and RTCPeerConnection cleanup/);
+});
+
+test("PHP binds the authenticated browser offer and validates it before opening the control socket", () => {
+  const code = php();
+  assert.match(code, /strlen\(\$sdpOffer\) < 20/);
+  assert.match(code, /strlen\(\$sdpOffer\) > 65536/);
+  assert.ok(code.includes(String.raw`str_starts_with($sdpOffer, "v=0\r\n")`));
+  assert.ok(code.includes('$request["sdp_offer"] = $sdpOffer;'));
+  assert.ok(code.includes('$socket->push(json_encode($request, JSON_THROW_ON_ERROR))'));
+  const stages = ['strlen($sdpOffer)', '$request["sdp_offer"] = $sdpOffer;', '$key = getenv(', 'new Client(', '$socket->upgrade(', '$socket->push(json_encode($request'];
+  const positions = stages.map((text) => code.indexOf(text));
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+  assert.match(code, /pass the authenticated browser's audio-only SDP offer as \$sdpOffer/);
 });
