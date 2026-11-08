@@ -152,7 +152,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 
 ## 構築前チェックの責務
 
-`python3 scripts/deployment/lifecycle.py validate --config <params>` はローカルの設定検証です。`preup`／`preprovision` は、必要な依存、DNS資格情報、Azure登録・権限・容量、APIM名の利用可否を構築直前に確認します。詳細は [スクリプト一覧](scripts/README.md) を参照してください。
+`python3 scripts/deployment/lifecycle.py validate --config <params>` はローカルの設定検証です。`preup`／`preprovision` は、必要な依存、Azure DNS用ID、Azure登録・権限・容量、APIM名の利用可否を構築直前に確認します。詳細は [スクリプト一覧](scripts/README.md) を参照してください。
 
 イメージの配備先、ビルド結果、再利用するdigest・ソースhash・一時資源の回収記録はGatewayとPortalで共通の検査を使います。サービス固有の配布物allowlistと秘密・symlinkの拒否は、それぞれの配布境界で確認します。実資源の状態は変わるため、構築直前の確認はローカルテストとは別に必要です。
 
@@ -186,7 +186,7 @@ APIM全体ポリシーは[service.xml](apps/gateway/apim/policies/service.xml)�
 
 `gateway.authentication.credentialLogin`を設定すると、[CM共通接続窓口](docs/setup/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
 
-DNS事業者の選択は`scripts/deployment/helpers/dns_selection.py`、秘密の案内・非表示入力・保護保存は`scripts/deployment/helpers/prepare_secrets.py`が担当します。`preup`はローカル依存を検査してから選択結果を元のparamsへ保存し、再読み込みしてFirewallの接続先を計算します。`preprovision`は保存済みの値を使うため、同じupの中でDNS選択を重複させません。標準の公開例を直接書き換えず、導入先paramsを使います。秘密の値はparams/configへ書き込みません。
+証明書のDNS-01はAzure Public DNSと事前作成したUAMIを使用します。`scripts/deployment/helpers/dns_selection.py`は準備済みのAzure DNS設定を確認します。DNS側Subscription ID・UAMIリソースIDは構築前にparamsへ必須設定します。`prepare_secrets.py`はCM用Entra secretの案内・非表示入力・保護保存を担当します。`preup`はローカル依存と準備済み公開IDを検査して構築へ進みます。公開例を直接書き換えず導入先paramsを使い、秘密値はparams/configへ書き込みません。
 
 ## 設定生成と独立した回帰確認
 

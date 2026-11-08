@@ -16,6 +16,10 @@ def fixture():
     value["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     value["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
     value["entraTenantId"] = value["azureTenantId"]
+    value["certificate"]["azureDnsSubscriptionId"] = value["subscriptionId"]
+    value["certificate"]["azureDnsManagedIdentityResourceId"] = (
+        "/subscriptions/" + value["subscriptionId"] +
+        "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
     # Most unit cases exercise unrelated validation using no model deployment.
     # PublicSampleTests separately verifies the complete published catalogue.
     value["services"]["modelDeployments"] = []

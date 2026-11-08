@@ -39,7 +39,7 @@ test -f "$DEPLOY_PARAMS_FILE"
 1. `subscriptionId`・`azureTenantId`・`entraTenantId`・`productName`・`environmentName`・3つのリージョンを、第1章の確定値へ揃える。
 2. `network.addressSpaces`と全`network.subnetPrefixes`を自社のIP計画へ設定する。接続元CIDR、運用者CIDR、DNS・追加宛先も確認する。
 3. `gateway.publicHostName`と`gateway.grpc.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
-4. `certificate.plugin`を第3章で準備した事業者へ設定する。Azureはazd upでDNS側Subscription IDと事前作成済みUAMIのリソースIDを対話入力・保存する。その他の方式は秘密ファイル参照を使い、secretの値は記入しない。
+4. `certificate.plugin`は`Azure`とし、第3章で確認したDNS側Subscription IDとUAMIのリソースIDを`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`へ必ず記入する。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止する。
 5. Azure RBACの対象Object IDを設定する。CM providerの`clientId`を第2章で作成したEntraアプリのIDへ置き換え、本人接続の有効期間等を確認する。
 
 公開例にはGraph本人接続用の`credentialProviders`と`gateway.authentication.credentialLogin`を含めています。`azd up`は共通基盤を作成した後、Gateway、Portalの順に配備します。Gateway工程でCM provider・credentials DB・認証窓口とAPIを設定し、Portal工程で認証DB・管理画面と検証用購読を準備します。`apiDefinitions: []`なら標準19 API、配列に定義があれば指定したAPIを登録します。公開例の`publishApis`は`true`です。既存のlocal paramsは自動変更しません。
@@ -147,9 +147,8 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `monitoring.operatorEmailAddresses` | `["<OPERATOR_EMAIL>"]` | 監視通知先メール配列、1件以上。 |
 | `certificate.contactEmail` | `"<ACME_CONTACT_EMAIL>"` | ACME連絡先。 |
 | `certificate.domainNames` | `["<CERTIFICATE_SAN>"]` | 証明書のSAN。ワイルドカードは直下の一階層のみ。省略時はGatewayの公開名。 |
-| `certificate.azureDnsSubscriptionId` | Azure選択時に対話入力 | DNSゾーンがあるSubscription ID。保存後は再利用。非対話では事前設定。 |
-| `certificate.azureDnsManagedIdentityResourceId` | Azure選択時に対話入力 | DNS操作権限を事前付与したユーザー割り当てMIの完全なリソースID。管理VMへ紐づける。Client IDではない。 |
-| `certificate.pluginArgumentsFile` | `"./secrets/dns-plugin-arguments.json"` | azd upが対話入力から自動生成・再利用するDNS API資格情報の内部保存先。Azure DNSでは使用しない。DNS切替時は切替先の値を入力し、検査後に置換。中止・不正・競合時は旧ファイル保持。値をparams/config/Gitへ入れない。 |
+| `certificate.azureDnsSubscriptionId` | `"<DNS_SUBSCRIPTION_ID>"` | 構築前に必須設定。公開DNSゾーンがあるSubscription ID。 |
+| `certificate.azureDnsManagedIdentityResourceId` | `"<DNS_MANAGED_IDENTITY_RESOURCE_ID>"` | 構築前に必須設定。DNS操作権限を事前付与したUAMIの完全なリソースID。管理VMへ紐づける。Client IDではない。 |
 | `authorization.projectAdministrators` | `[]` | 初期Foundry Project管理者。 |
 | `authorization.projectDevelopers` | `[]` | 初期Project開発者。 |
 | `authorization.foundryReaders` | `[]` | FoundryのReader。 |
@@ -162,9 +161,9 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `gateway.rateLimits.subscriptionKey.overrides` | `[]` | 有効時の呼出主体別calls/renewalPeriodSeconds。区分内のcallerId重複不可。 |
 | `gateway.rateLimits.application.overrides` | `[]` | 追加アプリ区分は無効のまま保持する。共通上限はsubscriptionKeyへ設定する。 |
 | `monitoring.auditReaders` | `[]` | 監査コンテナーの読取主体。各要素principalId/principalType/collector/containerName。 |
-| `certificate.plugin` | `"Cloudflare"` | 公開DNSのPosh-ACMEプラグイン。azd upのpreupでCloudflare／Route53／Azure Public DNSを選び、変更時はこのparamsへ保存。Enterは現在値を保持、qは中止。「その他」は現在値が標準3種以外の場合だけ表示し、その値を保持。他の公式識別子はparamsへ事前指定。 |
-| `certificate.preparedPfxFile` | 省略→未使用（dnsPlugin方式） | prepared方式でのみ使用する保護PFXファイル。 |
-| `certificate.preparedPfxPasswordFile` | 省略→未使用（dnsPlugin方式） | prepared方式でのみ使用するPFXパスワードの保護ファイル。 |
+| `certificate.plugin` | `"Azure"` | Azure Public DNSのDNS-01認証に使用するPosh-ACMEプラグイン。 |
+
+証明書はAzure Public DNSによるDNS-01で自動発行・更新します。構築前に、公開DNSゾーンのSubscription IDとDNS用UAMIのリソースIDを設定してください。
 
 #### リージョンとタグ
 

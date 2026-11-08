@@ -20,6 +20,8 @@ from deployment.helpers.paths import private_parent
 SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
 TENANT = "99999999-9999-4999-8999-999999999999"
 CONNECTION = "44444444-4444-4444-8444-444444444444"
+DNS_IDENTITY = ("/subscriptions/" + SUBSCRIPTION +
+                "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
 
 
 class SplitCliTests(unittest.TestCase):
@@ -47,10 +49,11 @@ class SplitCliTests(unittest.TestCase):
         self.assertEqual(self.parameters["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
         self.assertNotIn("oauthTenantId", self.parameters["credentialProviders"][0])
         self.parameters["credentialProviders"][0]["clientId"] = CONNECTION
+        self.parameters["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION
+        self.parameters["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
         # 企業固有の参照はparamsだけに置きます。標準configの配置や合成先が
-        # 異なるフォルダーでも、同じ公開鍵・DNS入力先を参照し続けることを調べます。
+        # 異なるフォルダーでも、同じSSH・CM参照とDNS用IDを保持することを調べます。
         self.parameters["management"]["sshPublicKeyFile"] = "secrets/nonexistent-protected/management.pub"
-        self.parameters["certificate"]["pluginArgumentsFile"] = "secrets/nonexistent-protected/dns.json"
         self.parameters["credentialProviders"][0]["clientSecretFile"] = "secrets/nonexistent-protected/connection.txt"
         self.config = self.config_directory / "options.json"
         self.source = self.parameter_directory / "params.local.json"
@@ -70,9 +73,12 @@ class SplitCliTests(unittest.TestCase):
         """保存JSONは相対参照とし、paramsの宣言元を再読込後も保つ。"""
         expected = {
             ("management", "sshPublicKeyFile"): self.parameter_directory / "secrets/nonexistent-protected/management.pub",
-            ("certificate", "pluginArgumentsFile"): self.parameter_directory / "secrets/nonexistent-protected/dns.json",
         }
         reloaded = load_configuration(output)
+        self.assertNotIn("pluginArgumentsFile", compiled["certificate"])
+        for field in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+            self.assertEqual(compiled["certificate"][field], self.parameters["certificate"][field])
+            self.assertEqual(reloaded["certificate"][field], self.parameters["certificate"][field])
         for (section, key), original_target in expected.items():
             saved = compiled[section][key]
             self.assertFalse(Path(saved).is_absolute())
@@ -246,6 +252,8 @@ class SplitCliTests(unittest.TestCase):
         self.assertNotIn("$schema", rendered)
         self.assertNotIn("sshPublicKeyFile", rendered["management"])
         self.assertNotIn("pluginArgumentsFile", rendered["certificate"])
+        self.assertEqual(rendered["certificate"]["azureDnsSubscriptionId"], SUBSCRIPTION)
+        self.assertEqual(rendered["certificate"]["azureDnsManagedIdentityResourceId"], DNS_IDENTITY)
         self.assertNotIn("clientSecretFile", rendered["credentialProviders"][0])
         self.assertEqual(rendered["credentialProviders"][0]["clientId"], CONNECTION)
         self.assertEqual(rendered["credentialProviders"][0]["oauthTenantId"], TENANT)

@@ -639,12 +639,8 @@
       "type": "object",
       "properties": {
         "mode": {
-          "type": "string",
-          "enum": [
-            "prepared",
-            "dnsPlugin"
-          ],
-          "description": "preparedは事前取得済みPFX、dnsPluginは管理VMによるDNS検証で取得・更新します。"
+          "const": "dnsPlugin",
+          "description": "Azure Public DNSを使って証明書を自動発行・更新します。"
         },
         "directory": {
           "type": "string",
@@ -695,7 +691,8 @@
           "default": 7
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "公開証明書はAzure Public DNSの権威ゾーンと専用マネージドIDを使い、DNS-01で発行・更新します。"
     },
     "credentialBroker": {
       "type": "object",

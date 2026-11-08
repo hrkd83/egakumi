@@ -19,7 +19,7 @@ worker_unit=''
 worker_started=false
 # Capture and unexport inputs using Bash builtins BEFORE any child process,
 # including identity/runtime inspection or mktemp. Bash arrays aren't exported.
-input_names=(Action PublicConfigJson DnsPluginArgumentsJson PreparedPfxBase64 PreparedPfxPassword L7IngressSecret RealtimeTicketKey)
+input_names=(Action PublicConfigJson DnsPluginArgumentsJson L7IngressSecret RealtimeTicketKey)
 declare -a saved_input=()
 for input_name in "${input_names[@]}"; do
     saved_input+=("${!input_name-}")
@@ -150,7 +150,7 @@ umask 077
 work=$1
 [ "$EUID" = 0 ] || exit 1
 [[ "${HOME:-}" = /* ]] && [ -d "$HOME" ] || exit 1
-input_names=(Action PublicConfigJson DnsPluginArgumentsJson PreparedPfxBase64 PreparedPfxPassword L7IngressSecret RealtimeTicketKey)
+input_names=(Action PublicConfigJson DnsPluginArgumentsJson L7IngressSecret RealtimeTicketKey)
 for input_name in "${input_names[@]}"; do
     IFS= read -r -d '' "$input_name" < "$work/input.$input_name" || true
     export "$input_name"

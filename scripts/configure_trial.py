@@ -68,8 +68,7 @@ def build_trial_configuration(base: dict, *, base_directory: Path, output_direct
     result["publishApis"] = True
     # 出力フォルダーを変えても、宣言元のファイル参照は同じ場所を指すようにする。
     # ここでは参照文字列を解決するだけで、秘密ファイルの内容を開かない。
-    for group, fields in (("management", ("sshPublicKeyFile",)),
-                          ("certificate", ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile"))):
+    for group, fields in (("management", ("sshPublicKeyFile",)),):
         for key in fields:
             if key in result[group]:
                 path = Path(result[group][key]).expanduser()

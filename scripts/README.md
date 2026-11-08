@@ -40,7 +40,7 @@ scripts/
 | `prepare_local_environment.py` | 公開exampleから環境別paramsを作成し、config・secretの相対参照を変換 | 導入先の環境名とprofileの決定後。Azure操作なし |
 | `configuration.py` | 設定の読込・合成・入力検査、秘密ファイルの読込 | 各hook。手動の設定検査・API登録等でも共用 |
 | `catalog_descriptions.py` | API説明の組み立て | 設定の正規化から呼出し。API登録でも共用 |
-| `dns_selection.py` | 証明書検証用DNS事業者の選択とparams保存 | `preup` |
+| `dns_selection.py` | 準備済みAzure DNS用Subscription・UAMI参照の確認 | `preup` |
 | `prepare_secrets.py` | 必要な秘密情報の対話入力・保護保存・再利用 | `preup`・`preprovision` |
 | `ssh_keys.py` | 管理VM用SSH鍵の準備 | `preup`・`preprovision` |
 | `apim_preflight.py` | APIM名の利用可否確認 | `preprovision` |

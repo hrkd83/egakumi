@@ -2,7 +2,7 @@
 
 [03. 公開DNSの準備に戻る](03-public-dns.md) · [04. paramsを設定する](04-params.md)
 
-Azure Portalでユーザー割り当てマネージドIDを先に作成し、そのIDへ公開DNSの操作権限を付与します。その後の`azd up`でIDを対話入力すると、Coreがメンテナンス用の管理VMへ紐づけ、証明書の初回取得・定期更新に使用します。
+Azure Portalでユーザー割り当てマネージドIDを先に作成し、そのIDへ公開DNSの操作権限を付与します。IDの公開参照を構築前に環境別paramsへ設定すると、`azd up`がメンテナンス用の管理VMへ紐づけ、証明書の初回取得・定期更新に使用します。
 
 `<...>`は導入先で確認して入力する値です。画面中の黒帯は、アカウント、Subscription、RG、DNS名、リソースIDなどの固有情報をマスキングしたものです。画面の値を転記せず、自分の環境で値を確認してください。公開DNSの委任は[03. 公開DNS](03-public-dns.md)で済ませます。
 
@@ -16,7 +16,7 @@ Azure Portalでユーザー割り当てマネージドIDを先に作成し、そ
 | マネージドID名 | `<DNS_MANAGED_IDENTITY_NAME>` | 管理VMへ紐づけるユーザー割り当てID |
 | IDのリージョン | `<IDENTITY_LOCATION>` | IDの配置リージョン |
 | DNS側のSubscription | `<DNS_SUBSCRIPTION>` | 公開DNSゾーンを保持するSubscription |
-| DNS側のSubscription ID | `<DNS_SUBSCRIPTION_ID>` | 後で`azd up`へ入力するDNS側SubscriptionのGUID |
+| DNS側のSubscription ID | `<DNS_SUBSCRIPTION_ID>` | 構築前にparamsへ設定するDNS側SubscriptionのGUID |
 | DNS権限の対象RG | `<DNS_RESOURCE_GROUP>` | 公開DNSゾーンがあるRG。このRGのIAMからDNS操作ロールを付与 |
 | 対象の公開DNSゾーン | `<PUBLIC_DNS_ZONE>` | 上記RG内の公開DNSゾーン |
 | 付与するロール | `DNS Zone Contributor`（日本語表示: DNS ゾーンの共同作成者） | ゾーン探索と検証用TXTの作成・削除に使用 |
@@ -67,7 +67,7 @@ IDの置き場所と、DNS権限を付ける対象RGは別々に確認します�
 /subscriptions/<IDENTITY_SUBSCRIPTION_ID>/resourceGroups/<IDENTITY_RESOURCE_GROUP>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<DNS_MANAGED_IDENTITY_NAME>
 ```
 
-DNSゾーンを別Subscriptionに置いている場合、後で入力するDNS側Subscription IDはこの文字列から拾わず、**対象DNSゾーンの概要**で確認します。
+DNSゾーンを別Subscriptionに置いている場合、paramsへ設定するDNS側Subscription IDはこの文字列から拾わず、**対象DNSゾーンの概要**で確認します。
 
 ## 4. DNSゾーンがあるRGからロールを割り当てる
 
@@ -108,16 +108,16 @@ DNSゾーンを別Subscriptionに置いている場合、後で入力するDNS�
 
 ![DNS側RGへのロール割り当てが登録されたことを確認する](../images/azure-dns-managed-identity/10-dns-role-assigned.png)
 
-## 5. azd upで対話入力する
+## 5. 構築前にparamsへ設定する
 
-次の[params](04-params.md)・[config](05-config.md)を準備し、[構築手順](06-deploy.md)の`azd up`を実行します。公開DNS事業者に**3. Azure Public DNS**を選ぶと、初回は次の2項目を入力します。
+次の[params](04-params.md)で、環境別の`.local/<environment>/params.local.json`に次の2項目を設定します。その後に[config](05-config.md)・[構築手順](06-deploy.md)へ進みます。
 
-| 対話入力する項目 | 確認する値 |
+| paramsへ設定する項目 | 確認する値 |
 | --- | --- |
 | DNSゾーンがあるSubscription ID | `<DNS_SUBSCRIPTION_ID>` |
 | DNS更新用マネージドIDのリソースID | 手順3でコピーした`/subscriptions/.../userAssignedIdentities/<DNS_MANAGED_IDENTITY_NAME>`の全文 |
 
-入力値はparamsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`に保存され、次回は再利用します。初回に手でJSONを組み立てる必要はありません。入力を中止した場合や形式検査に失敗した場合は、途中の選択を保存しません。非対話で実行する場合はこの2項目を事前設定します。
+設定先は`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`です。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止します。
 
 Coreは証明書取得前に指定したIDを管理VMへ紐づけます。初回取得・定期更新ではそのIDでDNSのTXTを作成し、認証後に該当の検証値を回収します。Key Vaultへのアクセスには管理VMのシステム割り当てIDを使います。IDとDNS権限は外部の事前準備資源として維持し、Coreの`azd down`で削除する構成にはしません。
 

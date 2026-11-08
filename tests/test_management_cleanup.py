@@ -24,6 +24,14 @@ from cleanup_fixtures import (
 
 
 class ManagementCleanupTests(CleanupFixture, unittest.TestCase):
+    def management_transport(self, *, auto_nic=False, models=0):
+        """Azure DNS用の外部UAMIを付けた、現行構成の正常なVM応答を用意する。"""
+        transport = super().management_transport(auto_nic=auto_nic, models=models)
+        dns_identity = self.configuration["certificate"]["azureDnsManagedIdentityResourceId"]
+        transport.resources[transport.management_vm_id]["identity"].update(
+            type="SystemAssigned, UserAssigned", userAssignedIdentities={dns_identity: {}})
+        return transport
+
     def test_management_async_vm_delete_auto_removes_nic_without_duplicate_delete(self):
         transport = self.management_transport(auto_nic=True, models=1)
         vm_id, nic_id = transport.management_vm_id, transport.management_nic_id

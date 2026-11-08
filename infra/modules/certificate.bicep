@@ -1,5 +1,6 @@
 // Linux 管理 VM 上で公開ドメインの TLS 証明書を準備し、Key Vault に保存します。
-// DNS 認証の秘密情報と PFX は protectedParameters で渡し、通常の出力には含めません。
+// 内部通信の共有鍵は protectedParameters で渡し、通常の出力には含めません。
+// 証明書は Azure DNS とマネージド ID で発行し、外部 PFX の入力は受け付けません。
 // 初回は Run Command、運用中は VM 内の systemd timer が同じ処理を呼び出します。
 // 出力する証明書 URI はバージョンを固定せず、更新した証明書を AppGW が取り込めるようにします。
 
@@ -16,12 +17,6 @@ param config object
 @description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
 @secure()
 param dnsPluginArgumentsJson string = ''
-@description('外部で準備した PFX の Base64 データ。prepared モードだけで使用します。')
-@secure()
-param preparedPfxBase64 string = ''
-@description('外部 PFX を開くためのパスワード。証明書ファイルと同様に機密扱いです。')
-@secure()
-param preparedPfxPassword string = ''
 @description('AppGW の HTTP 書き換え経路を APIM が見分ける共有値。利用者の認証トークンとは別です。')
 @secure()
 param l7IngressSecret string = ''
@@ -53,8 +48,6 @@ resource configureCertificate 'Microsoft.Compute/virtualMachines/runCommands@202
     ]
     protectedParameters: [
       { name: 'DnsPluginArgumentsJson', value: dnsPluginArgumentsJson }
-      { name: 'PreparedPfxBase64', value: preparedPfxBase64 }
-      { name: 'PreparedPfxPassword', value: preparedPfxPassword }
       { name: 'L7IngressSecret', value: l7IngressSecret }
       { name: 'RealtimeTicketKey', value: realtimeTicketKey }
     ]

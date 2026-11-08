@@ -23,7 +23,7 @@
 | 対象 | 変更・維持する内容 |
 | --- | --- |
 | APIM用 `rt-<environment>-<product>-apim` | 集約出口を使う場合、`default-egress`の`0.0.0.0/0`を承認済みハブFWのprivate IPへ変更。AGWサブネット宛の復路はローカルFW、`ApiManagement`宛は`Internet`を維持。外部ツール・Entra・サービス依存先への許可も集約側で確保 |
-| 管理VM用 `rt-<environment>-<product>-vm` | 必要なら`default-egress`を集約出口へ変更。認証・監視・OS更新・DNS事業者API・証明書更新・管理接続の許可を先に準備 |
+| 管理VM用 `rt-<environment>-<product>-vm` | 必要なら`default-egress`を集約出口へ変更。認証・監視・OS更新・Azure DNS管理API・証明書更新・管理接続の許可を先に準備 |
 | AGW用 `rt-<environment>-<product>-agw` | APIM VIPの`/32`宛のローカルFW経由を維持。通常のAppGW v2へFW／NVA向けデフォルトルートを一律追加しない |
 | PEサブネット | RTを一律追加せず、Foundry・Key Vault PEへのprivate接続と実PE IP群のNSG許可を維持 |
 | `AzureFirewallSubnet` | 利用者NSG・上記RTを関連付けない。集約出口を使ってもローカルFWはAGW↔APIMの受信検査に使用 |

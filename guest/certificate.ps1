@@ -12,8 +12,8 @@ DNS ゾーン全体や通常の公開 A レコードを削除する処理では�
 AppGW / APIM がバージョンを固定しない secret URI で更新後の証明書を参照します。
 
 実行には Linux の root、Key Vault へのプライベート通信、VM のマネージド ID の権限、
-CA・DNS API・初回の依存ライブラリ取得先への許可が必要です。既存 PFX を使う prepared
-モードでは CA への再注文をせず、運用担当が期限前に差し替える必要があります。
+CA・Azure DNS API・初回の依存ライブラリ取得先への許可が必要です。
+公開の実行入口は Azure DNS とマネージド ID による DNS-01 発行・更新だけを受け付けます。
 .PARAMETER Action
 Install は初回設定と timer の登録、Renew は登録済み設定を使った継続保守です。
 .PARAMETER PublicConfigJson
@@ -25,10 +25,6 @@ gateway.example.com とportal.example.comをカバーし、example.com自体は�
 Renew が使う root 専用の設定ファイル。Install から保存したものを読みます。
 .PARAMETER DnsPluginArgumentsJson
 DNS API 資格情報を含む引数 JSON。ログに出さず、対象 Key Vault の secret に保存します。
-.PARAMETER PreparedPfxBase64
-prepared モードで取り込む秘密鍵付き PFX。通常のデプロイ出力へ返しません。
-.PARAMETER PreparedPfxPassword
-準備済み PFX の復号パスワード。処理終了時に参照を破棄します。
 .PARAMETER L7IngressSecret
 AppGW の HTTP 経路を APIM が識別するための共有値。利用者認証とは別の境界です。
 .PARAMETER RealtimeTicketKey
@@ -52,8 +48,6 @@ param(
     [string]$PublicConfigJson='',
     [string]$ConfigFile='',
     [string]$DnsPluginArgumentsJson='',
-    [string]$PreparedPfxBase64='',
-    [string]$PreparedPfxPassword='',
     [string]$L7IngressSecret='',
     [string]$RealtimeTicketKey='',
     [string]$RotateFromThumbprint='',
@@ -87,6 +81,20 @@ $script:RotationOutcome=''
 function Get-Setting([string]$Name,$Default) {
     if ($script:Config.PSObject.Properties.Name -contains $Name) {return $script:Config.$Name}
     return $Default
+}
+<#
+.SYNOPSIS
+公開された証明書実行方式だけを、状態領域や外部 API を使う前に受け付けます。
+.DESCRIPTION
+DNS プラグインの内部変換関数とは分け、直接の worker 起動でも Azure DNS 以外や
+外部証明書の持込みへ迂回させません。対応方式を推測して補完しません。
+.OUTPUTS
+出力なし。未対応の設定は例外で停止します。
+#>
+function Assert-SupportedCertificateProvider {
+    if ($script:Config.mode -cne 'dnsPlugin' -or $script:Config.dnsPlugin -cne 'Azure') {
+        throw 'Only Azure DNS certificate issuance and renewal are supported'
+    }
 }
 <#
 .SYNOPSIS
@@ -284,7 +292,7 @@ Linux では protectedParameters も環境変数で届きます。コマンド�
 function Read-ManagedInput {
     # Managed Run Command Linux named parameters arrive in environment values,
     # including protectedParameters. Never copy them into command-line arguments.
-    foreach ($name in @('Action','PublicConfigJson','DnsPluginArgumentsJson','PreparedPfxBase64','PreparedPfxPassword','L7IngressSecret','RealtimeTicketKey','RotateFromThumbprint')) {
+    foreach ($name in @('Action','PublicConfigJson','DnsPluginArgumentsJson','L7IngressSecret','RealtimeTicketKey','RotateFromThumbprint')) {
         $value=[Environment]::GetEnvironmentVariable($name)
         [Environment]::SetEnvironmentVariable($name,$null)
         if ($null -ne $value) {Set-Variable -Name $name -Value $value -Scope Script}
@@ -547,7 +555,7 @@ function Get-CertificateDnsNames($Leaf) {
 実証明書のSAN集合と、全公開ホストへの適用可否を確認します。
 .DESCRIPTION
 設定変更前の証明書を期限だけで再利用せず、発行対象の集合が一致することも要求します。
-prepared PFX、Key Vaultの再利用、ACMEキャッシュ、更新後の取り込みで同じ検査を使います。
+Key Vaultの再利用、ACMEキャッシュ、更新後の取り込みで同じ検査を使います。
 .OUTPUTS
 設定されたSAN集合と全requiredHostnamesを満たす場合true。壊れたSAN形式は例外。
 #>
@@ -795,7 +803,7 @@ function Save-AcmeState {
 一回限りの計画更新要求を検査し、比較用thumbprintを返します。
 .DESCRIPTION
 期限判定やシステム時刻を変更する機能ではありません。DNS自動管理の既存証明書を
-運用者が明示的に交換するときだけ指定します。Install・prepared・不正な値は停止します。
+運用者が明示的に交換するときだけ指定します。Install・未対応方式・不正な値は停止します。
 .OUTPUTS
 未指定なら空文字、指定時は正規化した公開thumbprint。
 #>
@@ -907,12 +915,6 @@ function Ensure-Certificate {
             }
             $rotationReference=@{thumbprint=$leaf.Thumbprint;notBeforeUtc=$leaf.NotBefore.ToUniversalTime();notAfterUtc=$leaf.NotAfter.ToUniversalTime()}
         } finally {$leaf.Dispose()}
-    }
-    if ($script:Config.mode -eq 'prepared') {
-        if ($Action -eq 'Install' -and $PreparedPfxBase64) {Import-Pfx ([Convert]::FromBase64String($PreparedPfxBase64)) $PreparedPfxPassword; $current=Get-CurrentCertificate}
-        if (-not (Test-ReusableCertificate $current ([int](Get-Setting 'minimumValidDays' 7)))) {throw 'Externally managed certificate must be replaced'}
-        if ($Action -eq 'Renew' -and -not (Test-ReusableCertificate $current $renewDays)) {throw 'Externally managed certificate is approaching expiry'}
-        return
     }
     Ensure-PoshAcme
     Restore-AcmeState
@@ -1218,8 +1220,9 @@ try {
         $PublicConfigJson=[IO.File]::ReadAllText($ConfigFile)
     }
     $script:Config=$PublicConfigJson | ConvertFrom-Json
+    Assert-SupportedCertificateProvider
     [void](Get-PlannedRotationThumbprint)
-    if ($script:Config.mode -notin @('prepared','dnsPlugin') -or $script:Config.keyVaultName -notmatch '^[a-zA-Z][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$' -or $script:Config.certificateName -notmatch '^[a-zA-Z0-9-]{1,80}$') {throw 'Invalid public certificate configuration'}
+    if ($script:Config.keyVaultName -notmatch '^[a-zA-Z][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$' -or $script:Config.certificateName -notmatch '^[a-zA-Z0-9-]{1,80}$') {throw 'Invalid public certificate configuration'}
     $domains=@(Get-CertificateHostnames 'hostnames')
     foreach ($required in @(Get-CertificateHostnames 'requiredHostnames')) {
         $covered=$false
@@ -1228,10 +1231,8 @@ try {
     }
     if ([int](Get-Setting 'renewBeforeDays' 30) -lt 1 -or [int](Get-Setting 'renewBeforeDays' 30) -gt 60 -or [int](Get-Setting 'renewIntervalHours' 12) -lt 1 -or [int](Get-Setting 'renewIntervalHours' 12) -gt 24) {throw 'Invalid certificate renewal interval'}
     if ([int](Get-Setting 'minimumValidDays' 7) -lt 1 -or [int](Get-Setting 'minimumValidDays' 7) -gt [int](Get-Setting 'renewBeforeDays' 30) -or (Get-Setting 'moduleVersion' '4.34.0') -ne $script:ModuleVersion) {throw 'Invalid certificate validation settings'}
-    if ($script:Config.mode -eq 'dnsPlugin') {
-        if ($script:Config.dnsPlugin -notmatch '^[A-Za-z][A-Za-z0-9-]*$' -or $script:Config.dnsPlugin -eq 'Manual' -or $script:Config.directoryUrl -notin @('https://acme-v02.api.letsencrypt.org/directory','https://acme-staging-v02.api.letsencrypt.org/directory')) {throw 'Unsupported automated ACME configuration'}
-        if ($script:Config.accountEmail -notmatch '^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$' -or [int](Get-Setting 'dnsSleepSeconds' 60) -lt 0 -or [int](Get-Setting 'validationTimeoutSeconds' 120) -lt 1) {throw 'Invalid DNS validation settings'}
-    }
+    if ($script:Config.directoryUrl -notin @('https://acme-v02.api.letsencrypt.org/directory','https://acme-staging-v02.api.letsencrypt.org/directory')) {throw 'Unsupported automated ACME configuration'}
+    if ($script:Config.accountEmail -notmatch '^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$' -or [int](Get-Setting 'dnsSleepSeconds' 60) -lt 0 -or [int](Get-Setting 'validationTimeoutSeconds' 120) -lt 1) {throw 'Invalid DNS validation settings'}
     New-PrivateDirectory '/var/lib/egakumi-certificates'
     $script:Root=Join-Path '/var/lib/egakumi-certificates' ($script:Config.keyVaultName+'-'+$script:Config.certificateName)
     New-PrivateDirectory $script:Root
@@ -1255,6 +1256,6 @@ try {
     Write-MaintenanceEvent $false $script:Stage
     exit 1
 } finally {
-    $DnsPluginArgumentsJson=$null; $PreparedPfxBase64=$null; $PreparedPfxPassword=$null; $L7IngressSecret=$null; $RealtimeTicketKey=$null; $RotateFromThumbprint=''; $script:Token=$null
+    $DnsPluginArgumentsJson=$null; $L7IngressSecret=$null; $RealtimeTicketKey=$null; $RotateFromThumbprint=''; $script:Token=$null
     if ($null -ne $script:LockStream) {$script:LockStream.Dispose()}
 }

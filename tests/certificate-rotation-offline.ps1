@@ -76,7 +76,7 @@ function Set-Cache($Leaf) {Write-PrivateFile $script:CachePath (Export-FixturePf
 function Reset-Fixture {
     $script:Config=[pscustomobject]@{hostname='gateway.example.invalid';hostnames=@('*.example.invalid');requiredHostnames=@('gateway.example.invalid','portal.example.invalid');mode='dnsPlugin';dnsPlugin='Cloudflare';keyVaultName='kv-fixture';certificateName='tls-public';accountEmail='operator@example.invalid';directoryUrl='https://acme.invalid/directory';renewBeforeDays=30;minimumValidDays=7}
     $script:Action='Renew';$script:RotateFromThumbprint=$script:Old.Thumbprint.ToLowerInvariant()
-    $script:DnsPluginArgumentsJson='';$script:PreparedPfxBase64='';$script:PreparedPfxPassword=''
+    $script:DnsPluginArgumentsJson=''
     $script:RenewCalls=0;$script:NewCalls=0;$script:ImportCalls=0;$script:ReadCalls=0;$script:SaveCalls=0;$script:DependencyCalls=0
     $script:AccountExists=$true;$script:PasswordExists=$true;$script:FailImport=$false;$script:FailSecretRead=$false;$script:IssueSameLeaf=$false
     $script:Order=[pscustomobject]@{MainDomain='*.example.invalid';SANs=@();status='valid';CertExpires=$script:Old.NotAfter.ToUniversalTime().ToString('o')}

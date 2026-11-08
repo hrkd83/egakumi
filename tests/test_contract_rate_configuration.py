@@ -156,6 +156,9 @@ class ContractRateConfigurationTests(unittest.TestCase):
                     self.assertEqual(set(settings), {"overrides"})
                 merged = configuration.load_configuration_source(manifest)
                 for key in ("azureTenantId", "entraTenantId", "subscriptionId"): merged[key] = "11111111-1111-4111-8111-111111111111"
+                dns = fixture()["certificate"]
+                for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
+                    merged["certificate"][key] = dns[key]
                 local_schema_validator(schemas["configuration.schema.json"]).validate(merged)
                 self.assertEqual(configuration.normalize_configuration(merged)["gateway"]["rateLimits"], DEFAULT)
 

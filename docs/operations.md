@@ -85,18 +85,11 @@ python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 手動追加したAPI／モデルも、所有APIM・Foundry・RGを削除する`azd down`では撤去対象です。個別登録コマンドが更新しないことと、環境全体の撤去範囲を混同しません。
 
-## DNS資格情報を更新する
+## DNS用マネージドIDと権限を更新する
 
-Azure DNSは事前作成したユーザー割り当てマネージドIDを使います。変更する場合は新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`azureDnsSubscriptionId`を更新して、同じ環境へ反映します。管理VMへの関連付け・証明書更新を確認してから旧権限を回収します。外部で作成したDNS用IDはCoreの撤去対象に含めません。
+Azure Public DNSは事前作成したUAMIを使います。IDを変更する場合は、新しいIDへDNS権限を付与し、paramsの`certificate.azureDnsManagedIdentityResourceId`と、必要なら`certificate.azureDnsSubscriptionId`を更新して同じ環境へ反映します。管理VMへの関連付け・実際の証明書更新を確認してから旧権限を回収します。外部で作成したDNS用ID・公開ゾーンはCoreの撤去対象に含めません。
 
-Cloudflare／Route53等の資格情報ファイル方式では、同じ事業者の正常な保護ファイルを再利用します。`azd up`だけで新しい値の入力を必ず要求する仕様ではありません。
-
-1. 必要なゾーン・権限範囲の新資格情報を発行し、旧資格情報を有効に保つ。
-2. paramsの`certificate.pluginArgumentsFile`を、同じ環境の`secrets/`配下の未作成の新しい保護ファイルへの相対パス（例：`./secrets/dns-plugin-arguments-next.json`）へ変更する。JSONを手入力で作成しない。
-3. 同じparamsで`azd up`を実行し、同じDNS事業者を選んで新資格情報を非表示入力する。基盤・Gateway・Portalの通常更新も実行される。
-4. Key Vaultの新version、DNS操作・証明書更新と公開証明書の反映を確認してから旧資格情報を失効させる。
-
-事業者・証明書方式を切り替える場合は [DNS事前準備](setup/03-public-dns.md)と [configの証明書設定](setup/05-config.md)を確認します。保持した資格情報を先に削除して更新を開始しません。
+IDや権限の変更前に[DNS事前準備](setup/03-public-dns.md)を確認してください。
 
 ## ログ・監視・本人接続を確認する
 

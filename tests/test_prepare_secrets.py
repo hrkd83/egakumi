@@ -30,7 +30,8 @@ UUID_THREE = "33333333-3333-4333-8333-333333333333"
 IDENTITY = f"/subscriptions/{UUID_ONE}/resourceGroups/rg-dns/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-dns"
 
 
-class PrepareSecretsTests(unittest.TestCase):
+class RetainedSecretHelperTests(unittest.TestCase):
+    """公開対応と区別し、保持する下位の多事業者処理と秘密保護を確認する。"""
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="core-prepare-secrets-", dir="/tmp")
         self.addCleanup(self.directory.cleanup)
@@ -64,7 +65,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=answers) as prompt, \
                 mock.patch("builtins.input", return_value=""), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            result = prepare_secrets.prepare_secrets(config or self.config, self.root)
+            result = prepare_secrets._prepare_secret_files(config or self.config, self.root)
         return result, prompt
 
     def assert_safe_output_and_no_staging(self):
@@ -94,7 +95,7 @@ class PrepareSecretsTests(unittest.TestCase):
         before = [(path.read_bytes(), path.stat().st_ino, path.stat().st_mtime_ns) for path in (self.dns, self.entra)]
         with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=False), \
                 mock.patch.object(prepare_secrets.getpass, "getpass") as prompt:
-            result = prepare_secrets.prepare_secrets(self.config, self.root)
+            result = prepare_secrets._prepare_secret_files(self.config, self.root)
         self.assertEqual(result, {"created": [], "reused": [str(self.entra), str(self.dns)], "replaced": []})
         prompt.assert_not_called()
         self.assertEqual(before, [(path.read_bytes(), path.stat().st_ino, path.stat().st_mtime_ns) for path in (self.dns, self.entra)])
@@ -145,14 +146,14 @@ class PrepareSecretsTests(unittest.TestCase):
 
     def test_no_required_inputs_is_noop_even_without_terminal(self):
         with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=False):
-            self.assertEqual(prepare_secrets.prepare_secrets({}, self.root), {"created": [], "reused": [], "replaced": []})
+            self.assertEqual(prepare_secrets._prepare_secret_files({}, self.root), {"created": [], "reused": [], "replaced": []})
         self.assertFalse(self.dns.parent.exists())
 
     def test_missing_inputs_reject_non_tty_before_creating_any_directory(self):
         with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=False), \
                 mock.patch.object(prepare_secrets.getpass, "getpass") as prompt:
             with self.assertRaisesRegex(ValueError, "interactive terminal"):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         prompt.assert_not_called()
         self.assertFalse(self.dns.parent.exists())
 
@@ -164,7 +165,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=unavailable), \
                 mock.patch("builtins.input", return_value=""):
             with self.assertRaisesRegex(ValueError, "hidden terminal"):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         self.assertFalse(self.dns.exists())
 
     def test_empty_or_multiline_inputs_do_not_create_files(self):
@@ -179,7 +180,7 @@ class PrepareSecretsTests(unittest.TestCase):
         self.protected(self.dns, "not valid json")
         with mock.patch.object(prepare_secrets.getpass, "getpass") as prompt:
             with self.assertRaises(ValueError):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         prompt.assert_not_called()
         self.assertEqual(self.dns.read_text(), "not valid json")
         self.assertFalse(self.entra.exists())
@@ -331,7 +332,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch("builtins.input", side_effect=confirmation), \
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=hidden_input), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            prepare_secrets.prepare_secrets(self.config, self.root)
+            prepare_secrets._prepare_secret_files(self.config, self.root)
         self.assertEqual(events, ["confirmation", "entra", "dns"])
         self.assert_safe_output_and_no_staging()
 
@@ -344,7 +345,7 @@ class PrepareSecretsTests(unittest.TestCase):
                     mock.patch.object(prepare_secrets.os, "link") as publication, \
                     contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
                 with self.assertRaisesRegex(ValueError, "中止"):
-                    prepare_secrets.prepare_secrets(self.config, self.root)
+                    prepare_secrets._prepare_secret_files(self.config, self.root)
             hidden.assert_not_called()
             publication.assert_not_called()
             self.assertFalse(self.dns.parent.exists())
@@ -355,7 +356,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             with self.assertRaisesRegex(ValueError, "確認欄") as error:
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         hidden.assert_not_called()
         self.assertNotIn(TOKEN, str(error.exception))
         self.assertFalse(self.dns.parent.exists())
@@ -368,7 +369,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch("builtins.input") as confirmation, \
                 mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            prepare_secrets.prepare_secrets(self.config, self.root)
+            prepare_secrets._prepare_secret_files(self.config, self.root)
         confirmation.assert_not_called()
         hidden.assert_not_called()
         self.assertIn("秘密情報は準備済みです", self.output.getvalue())
@@ -424,7 +425,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch("builtins.input", side_effect=ready), \
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=[CLIENT_SECRET, TOKEN]), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            prepare_secrets.prepare_secrets(self.config, self.root)
+            prepare_secrets._prepare_secret_files(self.config, self.root)
         self.assertEqual(events, ["ready"])
         self.assert_safe_output_and_no_staging()
 
@@ -452,7 +453,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch("builtins.input") as confirmation, \
                 mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
-            prepare_secrets.prepare_secrets(self.config, self.root)
+            prepare_secrets._prepare_secret_files(self.config, self.root)
         confirmation.assert_not_called()
         hidden.assert_not_called()
         guide = self.output.getvalue()
@@ -513,7 +514,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch("builtins.input") as ready, \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             with self.assertRaisesRegex(ValueError, "interactive terminal"):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         prompt.assert_not_called(); ready.assert_not_called()
         self.assertEqual(self.dns.read_bytes(), before)
         self.assert_safe_output_and_no_staging()
@@ -525,7 +526,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             with self.assertRaisesRegex(ValueError, "中止"):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         hidden.assert_not_called()
         self.assertEqual(self.dns.read_bytes(), before)
         self.assert_safe_output_and_no_staging()
@@ -562,7 +563,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 mock.patch.object(prepare_secrets.getpass, "getpass", side_effect=race), \
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             with self.assertRaisesRegex(ValueError, "changed during input"):
-                prepare_secrets.prepare_secrets(self.config, self.root)
+                prepare_secrets._prepare_secret_files(self.config, self.root)
         self.assertEqual(self.dns.read_text(), competing)
         self.assertFalse(list(self.root.rglob("*.replace-lock")))
         self.assert_safe_output_and_no_staging()
@@ -629,7 +630,8 @@ class PrepareSecretsTests(unittest.TestCase):
 
     def test_cli_success_prints_counts_only_and_loads_without_ssh(self):
         config = json.loads(json.dumps(self.config))
-        config['certificate']['pluginArgumentsFile'] = str(self.root / '.local/test/secrets/dns-plugin-arguments.json')
+        config["certificate"].update(plugin="Azure", azureDnsSubscriptionId=UUID_ONE, azureDnsManagedIdentityResourceId=IDENTITY)
+        config["certificate"].pop("pluginArgumentsFile", None)
         config['credentialProviders'][0]['clientSecretFile'] = str(self.root / '.local/test/secrets/entra-client-secret.txt')
         with mock.patch.object(prepare_secrets, "ROOT", self.root), \
                 mock.patch.dict(os.environ, {}, clear=True), \
@@ -640,7 +642,7 @@ class PrepareSecretsTests(unittest.TestCase):
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             self.assertEqual(prepare_secrets.main(["--config", ".local/test/params.local.json"]), 0)
         load.assert_called_once_with(Path(".local/test/params.local.json"))
-        self.assertIn("2 created, 0 reused", self.output.getvalue())
+        self.assertIn("1 created, 0 reused", self.output.getvalue())
         self.assertNotIn(TOKEN, self.output.getvalue() + self.errors.getvalue())
         self.assertNotIn(CLIENT_SECRET, self.output.getvalue() + self.errors.getvalue())
         self.assertFalse((self.root / ".local/test/secrets/management-ssh").exists())
@@ -655,7 +657,8 @@ class PrepareSecretsTests(unittest.TestCase):
 
     def test_cli_write_encoding_error_does_not_disclose_its_secret_arguments(self):
         config = json.loads(json.dumps(self.config))
-        config['certificate']['pluginArgumentsFile'] = str(self.root / '.local/test/secrets/dns-plugin-arguments.json')
+        config["certificate"].update(plugin="Azure", azureDnsSubscriptionId=UUID_ONE, azureDnsManagedIdentityResourceId=IDENTITY)
+        config["certificate"].pop("pluginArgumentsFile", None)
         config['credentialProviders'][0]['clientSecretFile'] = str(self.root / '.local/test/secrets/entra-client-secret.txt')
         real_fdopen = os.fdopen
         private_error = UnicodeEncodeError("utf-8", CLIENT_SECRET, 0, len(CLIENT_SECRET), CLIENT_SECRET)
@@ -682,6 +685,8 @@ class PrepareSecretsTests(unittest.TestCase):
         self.assertEqual(list(self.root.rglob(".secret-input-*")), [])
 
     def test_cli_interruption_is_safe_and_actionable(self):
+        self.config["certificate"].update(plugin="Azure", azureDnsSubscriptionId=UUID_ONE, azureDnsManagedIdentityResourceId=IDENTITY)
+        self.config["certificate"].pop("pluginArgumentsFile", None)
         with mock.patch.object(prepare_secrets, "ROOT", self.root), \
                 mock.patch.dict(os.environ, {}, clear=True), \
                 mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config), \
@@ -689,6 +694,90 @@ class PrepareSecretsTests(unittest.TestCase):
                 contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.errors):
             self.assertEqual(prepare_secrets.main(["--config", ".local/test/params.local.json"]), 1)
         self.assertIn("interrupted", self.errors.getvalue())
+
+
+class AzurePublicSecretPreparationTests(unittest.TestCase):
+    """公開入口はAzure DNSだけを受け付け、DNS秘密を読まない。"""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="azure-public-secret-", dir="/tmp")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        self.entra = self.root / "secrets/entra-client-secret.txt"
+        self.config = {
+            "certificate": {"mode": "dnsPlugin", "plugin": "Azure",
+                            "azureDnsSubscriptionId": UUID_ONE,
+                            "azureDnsManagedIdentityResourceId": IDENTITY},
+            "credentialProviders": [{"name": "provider", "clientSecretFile": str(self.entra)}],
+        }
+        self.output = io.StringIO()
+
+    def test_azure_flow_collects_only_entra_and_does_not_read_dns_credentials(self):
+        with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=True), \
+                mock.patch.object(prepare_secrets.getpass, "getpass", return_value=CLIENT_SECRET) as hidden, \
+                mock.patch("builtins.input", return_value="") as ready, \
+                mock.patch.object(prepare_secrets, "load_dns_plugin_arguments", side_effect=AssertionError("No DNS secret read")), \
+                contextlib.redirect_stdout(self.output):
+            result = prepare_secrets.prepare_secrets(self.config, self.root)
+        self.assertEqual(result, {"created": [str(self.entra)], "reused": [], "replaced": []})
+        self.assertEqual(hidden.call_count, 1)
+        self.assertEqual(ready.call_count, 1)
+        self.assertEqual(self.entra.read_text(), CLIENT_SECRET + "\n")
+        self.assertNotIn(CLIENT_SECRET, self.output.getvalue())
+        for label in ("Cloudflare", "Route53", "PFX", "DNS API token"):
+            self.assertNotIn(label, self.output.getvalue())
+
+    def test_existing_azure_entra_secret_is_reused_without_any_input(self):
+        self.entra.parent.mkdir(mode=0o700)
+        self.entra.write_text(CLIENT_SECRET)
+        self.entra.chmod(0o600)
+        before = self.entra.read_bytes(), self.entra.stat().st_ino, self.entra.stat().st_mtime_ns
+        with mock.patch.object(prepare_secrets.sys.stdin, "isatty", return_value=False), \
+                mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
+                mock.patch("builtins.input") as ready, contextlib.redirect_stdout(self.output):
+            result = prepare_secrets.prepare_secrets(self.config, self.root)
+        self.assertEqual(result, {"created": [], "reused": [str(self.entra)], "replaced": []})
+        self.assertEqual(before, (self.entra.read_bytes(), self.entra.stat().st_ino, self.entra.stat().st_mtime_ns))
+        hidden.assert_not_called()
+        ready.assert_not_called()
+
+    def test_unsupported_certificate_modes_and_providers_stop_before_secret_processing(self):
+        unsupported = [{"mode": "prepared"}, {}, *({"mode": "dnsPlugin", "plugin": provider}
+                        for provider in ("Cloudflare", "Route53", "OtherProvider")),
+                       *({**self.config["certificate"], field: "/must/not/read/input"}
+                         for field in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile"))]
+        for certificate in unsupported:
+            with self.subTest(certificate=certificate), \
+                    mock.patch.object(prepare_secrets, "_prepare_secret_files") as lower, \
+                    mock.patch.object(prepare_secrets.getpass, "getpass") as hidden, \
+                    mock.patch("builtins.input") as ready:
+                with self.assertRaises(ConfigurationError):
+                    prepare_secrets.prepare_secrets({**self.config, "certificate": certificate}, self.root)
+                lower.assert_not_called()
+                hidden.assert_not_called()
+                ready.assert_not_called()
+                self.assertFalse(self.entra.parent.exists())
+
+    def test_missing_azure_identity_stops_before_input_or_writes(self):
+        del self.config["certificate"]["azureDnsManagedIdentityResourceId"]
+        with mock.patch.object(prepare_secrets, "_prepare_secret_files") as lower, \
+                mock.patch.object(prepare_secrets.getpass, "getpass") as hidden:
+            with self.assertRaises(ConfigurationError):
+                prepare_secrets.prepare_secrets(self.config, self.root)
+        lower.assert_not_called()
+        hidden.assert_not_called()
+        self.assertFalse(self.entra.parent.exists())
+
+    def test_cli_unsupported_inputs_stop_before_workspace_creation(self):
+        self.config["certificate"] = {"mode": "dnsPlugin", "plugin": "Cloudflare"}
+        with mock.patch.object(prepare_secrets, "load_configuration", return_value=self.config), \
+                mock.patch.object(prepare_secrets, "local_paths") as paths, \
+                mock.patch.object(prepare_secrets, "prepare_secrets") as preparation, \
+                contextlib.redirect_stderr(self.output):
+            self.assertEqual(prepare_secrets.main(["--config", "params.json"]), 1)
+        paths.assert_not_called()
+        preparation.assert_not_called()
+        self.assertIn("Azure Public DNS", self.output.getvalue())
 
 
 if __name__ == "__main__":

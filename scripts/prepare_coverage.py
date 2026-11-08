@@ -153,7 +153,6 @@ def prepare(base, overlay, bindings, *, base_directory, phase="full", overlay_di
     result["publishApis"] = False
     # 出力先が変わっても、元設定の秘密ファイル参照が同じ場所を指すよう絶対化する。
     path_fields = [(result.get("management", {}), "sshPublicKeyFile")]
-    path_fields += [(result.get("certificate", {}), key) for key in ("pluginArgumentsFile", "preparedPfxFile", "preparedPfxPasswordFile")]
     path_fields += [(provider, "clientSecretFile") for provider in result.get("credentialProviders", [])]
     for parent, key in path_fields:
         if parent.get(key): parent[key] = str((Path(base_directory) / Path(parent[key]).expanduser()).resolve())

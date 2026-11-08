@@ -1183,12 +1183,8 @@
       "type": "object",
       "properties": {
         "mode": {
-          "type": "string",
-          "enum": [
-            "prepared",
-            "dnsPlugin"
-          ],
-          "description": "preparedは事前取得済みPFX、dnsPluginは管理VMによるDNS検証で取得・更新します。"
+          "const": "dnsPlugin",
+          "description": "Azure Public DNSを使って証明書を自動発行・更新します。"
         },
         "directory": {
           "type": "string",
@@ -1214,21 +1210,8 @@
           "minLength": 1
         },
         "plugin": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9]+$"
-        },
-        "pluginArgumentsFile": {
-          "type": "string",
-          "minLength": 1,
-          "description": "azd upが対話入力から自動生成・再利用するDNS資格情報の内部保存先です。標準値のままでよく、利用者によるファイル作成やJSON手組みは不要です。相対パスはこの値を記述したJSONファイルの場所から解決します。 Azure DNSではこのファイルを使用せず、事前作成したユーザー割り当てMIを使います。"
-        },
-        "preparedPfxFile": {
-          "type": "string",
-          "minLength": 1
-        },
-        "preparedPfxPasswordFile": {
-          "type": "string",
-          "minLength": 1
+          "const": "Azure",
+          "description": "Azure Public DNSを使用します。構築前に権威ゾーン・NS委任・専用マネージドIDを準備します。"
         },
         "renewBeforeDays": {
           "type": "integer",
@@ -1275,18 +1258,23 @@
         "azureDnsSubscriptionId": {
           "type": "string",
           "format": "uuid",
-          "description": "Azure DNSゾーンがあるSubscription ID。Azure選択時にazd upで対話入力しparamsへ保存・再利用します。"
+          "description": "事前準備したAzure Public DNS権威ゾーンがあるSubscription ID。構築前にparamsへ記入します。"
         },
         "azureDnsManagedIdentityResourceId": {
           "type": "string",
           "pattern": "^/subscriptions/[^/]+/resource[Gg]roups/[^/]+/providers/Microsoft\\.ManagedIdentity/userAssignedIdentities/[^/]+$",
-          "description": "事前作成・DNS操作権限付与済みのユーザー割り当てMIの完全なリソースID。Azure選択時にazd upで対話入力・保存し、証明書取得前に管理VMへ紐づけます。Client IDやObject IDではありません。"
+          "description": "事前作成しDNS操作権限を付与したユーザー割り当てMIの完全なリソースID。構築前にparamsへ記入し、管理VMへ紐づけます。Client IDやObject IDではありません。"
         }
       },
       "required": [
-        "mode"
+        "mode",
+        "contactEmail",
+        "plugin",
+        "azureDnsSubscriptionId",
+        "azureDnsManagedIdentityResourceId"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "公開証明書はAzure Public DNSの権威ゾーンと専用マネージドIDを使い、DNS-01で発行・更新します。"
     },
     "authorization": {
       "type": "object",
