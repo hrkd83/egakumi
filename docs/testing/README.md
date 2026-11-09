@@ -6,6 +6,7 @@
 | --- | --- |
 | [構築テスト](construction-tests.md) | 入力検証、新規構築・再配備・構成変更、証明書、SQL初期化、API公開、撤去 |
 | [動作テスト](integration-tests.md) | 構築後の接続・認証・認可、Gateway・Portal、モデル・Tool、監査・運用 |
+| [運用テスト](operations-tests.md) | 運営・改修・FIXに必要な通常保守。secret・証明書等を含む業務単位のシナリオ |
 
 ローカル試験の実行方法と共通ルールは[開発手順](../../DEVELOPMENT.md#テストの実行方法)を参照してください。
 

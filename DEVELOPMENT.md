@@ -10,6 +10,7 @@
 | 本書 | 開発・コーディング・テストの共通ルール、ローカル実行方法、開発用の補助手順 |
 | [動作テスト仕様書](docs/testing/integration-tests.md) | 構築後の動作テストの対象・手順・受入条件・判定・証跡 |
 | [構築テスト仕様書](docs/testing/construction-tests.md) | 構築資材のテストの対象・手順・受入条件・判定・証跡 |
+| [運用テスト仕様書](docs/testing/operations-tests.md) | 通常保守・改修の手順と、実反映・終了処理の確認 |
 
 公開する受入条件と架空値による結果例は各テスト仕様書を正本とし、本書には再掲しません。実環境の結果・対象・証跡は環境別のGit管理外領域`.local/<environment>/`で管理します。動作テストと資材改修・再試験の完了後に、確定した資材で再構築して構築テストを別試行で行います。具体的な実施順・開始条件は各仕様書を参照してください。
 
@@ -83,7 +84,7 @@ protocol中継の回帰試験は[tests/fixtures/external-api-definitions.json](t
 
 試験対象は実施revisionの`config/`、`params/`、`apps/gateway/apim/apis/`から決めます。モデル名・版・件数を共通手順へ複写しません。試験実行と不具合修正・配備を区別し、ローカル成功を実環境での受入完了に読み替えません。
 
-実環境の試験では以下を共通ルールとします。各試験の対象・具体的な受入条件・実行順は2つの仕様書に従います。
+実環境の試験では以下を共通ルールとします。各試験の対象・具体的な受入条件・実行順は各仕様書に従います。
 
 - 試行開始前に、対象の仕様書・結果票を環境別のGit管理外領域`.local/<environment>/`へ保存します。対象環境・入力参照・相関ID・実測値を含む記録はその環境内で管理し、配備記録は同じ環境の`state/`、試験結果と生証跡は`evidence/`へ分けます。別環境・別試行の結果は分けます。
 - 項目ごとの実施直後に、非公開側の仕様書・詳細記録へ判定・確認済み条件・未確認条件・証跡を記録します。公開側へは、元環境に結び付かない一般化した修正内容・架空値での再現条件だけを反映します。
@@ -168,7 +169,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 | 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
 | 7 | [Gateway配備資材](apps/gateway/)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
-| 9 | [tests](tests)・[Portalテスト](apps/portal/tests/) | ローカルで検査する契約と回帰テスト。実環境の受入条件は冒頭の2仕様書を参照 |
+| 9 | [tests](tests)・[Portalテスト](apps/portal/tests/) | ローカルで検査する契約と回帰テスト。実環境の受入条件は冒頭の各仕様書を参照 |
 
 Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshellのコメントから役割・順序・保証範囲を追えます。秘密値や運用中の証明書をコメント・公開例へ転記しません。
 

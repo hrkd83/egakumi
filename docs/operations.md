@@ -2,7 +2,7 @@
 
 [README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
 
-本書は、現行Egakumi Coreの共通基盤・Gateway・Portalを更新し、障害から再開し、撤去するための手順です。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。受入条件は [動作テスト仕様書](testing/integration-tests.md)で確認し、実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
+本書は、現行Egakumi Coreの個別配備・途中再開・撤去の共通手順です。業務ごとの操作は[通常運用・改修の手順](operations/README.md)、受入条件と実施順は[運用テスト](testing/operations-tests.md)から確認します。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
 ## 対象環境と記録を確認する
 
@@ -36,13 +36,13 @@ Gitからクローンし直しても`.azure/`・`.local/`は復元されませ�
 
 | 変更対象 | 実行する入口 |
 | --- | --- |
-| 共通基盤からGateway・Portalまで | `azd up --environment "$DEPLOY_ENVIRONMENT"`。`publishApis:true`が必要 |
-| 共通基盤のみ | `azd provision --environment "$DEPLOY_ENVIRONMENT"`。アプリ本体の配備は続けて実行しない |
+| 共通基盤の設定 | 変更対象と復旧方法を個別に確定し、対象限定の操作で更新する。[共通確認](operations/common.md)で資材と実設定を整合させる |
+| Foundryのモデル | [モデル運用](operations/foundry.md)に従い、Foundryの画面で配備・容量・版を変更する |
 | Gatewayのみ | `python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | Portalのみ | `python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`で反映 |
 | 両アプリを順に更新 | `python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE"`で計画を確認し、`--execute`でGateway→Portalを実行 |
 
-アプリの個別更新では、基盤の`azd up`を内部で再実行しません。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。`deploy_applications.py`はこのオプションに対応しません。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
+`azd up`・`azd provision`は初期構築の入口です。構築後の運用では実行せず、上表の入口を使います。初期構築途中での再試行は[構築手順](setup/06-deploy.md)で扱います。アプリの個別更新は基盤の`azd up`を内部で再実行しません。共通基盤・Gateway・Portalを並行して更新せず、各処理の終了を確認します。個別コマンドの通常の計画生成はローカル処理です。`deploy_gateway.py`・`deploy_portal.py`の`--deployment-name`を指定すると、計画時にも指定した成功済みCore配備のoutputsをAzureから読み取ります。`deploy_applications.py`はこのオプションに対応しません。これはアプリ配備用の選択肢であり、撤去用stateを復元するコマンドではありません。
 
 Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化・起動確認の後に、API・Product・ポリシー・WAFを反映します。Portalはイメージ作成・DB／権限・SQL初期化を経て同じContainer Appを更新し、公開`/api/health`を確認します。イメージは管理VMで作成し、Core内の非公開ACRへ登録します。確認済みのソースとdigestが一致する場合は既存のビルド結果を再利用します。
 
@@ -111,8 +111,10 @@ Brokerの本人対応・セッションはAzure SQL、下流OAuth tokenはCMが�
 
 ```sh
 export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
-azd down --environment "$DEPLOY_ENVIRONMENT"
+AZD_NON_INTERACTIVE=false azd down --environment "$DEPLOY_ENVIRONMENT"
 ```
+
+上の指定はこのコマンドだけ対話を有効にします。表示された所有RGの削除確認には対象を照合して`Y`を入力します。`predown`はその確認より先に削除を始めるため、実行前の対象照合は省略しません。非対話の既定回答で停止した場合も、作成済みの先行回収記録を保持して同じ入力から再開します。
 
 azd本体でKey Vault・Foundryの完全削除を確認された場合は`N`を選びます。続くCoreの`postdown`が対象IDと保護設定を照合します。
 
@@ -168,6 +170,7 @@ providerのDELETE成功・一覧不在・親APIMの404・削除履歴の404だ�
 - APIM本体の削除が`ServiceLocked`で拒否された場合は、所有情報を再確認し、約30分の待機枠内で再試行する。CMの削除処理は繰り返さず、APIMの削除受付後はGETで完了を確認する。他の409や412は自動再試行せず停止する。
 - CMの個別削除と親APIMの削除を分ける。一覧消失を用いる限定条件でもprovider自身のGET404とは記録せず、`deletionVerified`・`listAbsenceVerified`・`parentDeletionVerified`を区別する。
 - ACA管理RGだけが残る場合はAzureの削除完了を確認し、同じparamsで`python3 scripts/deployment/lifecycle.py postdown --config "$DEPLOY_PARAMS_FILE"`を再実行する。
+- Key Vaultの完全削除が非同期で受け付けられた場合は、Azureが返す待機間隔に従って操作状態を読み、最後に対象の削除履歴の404も確認する。既定の待機枠は15分で、要求をその場で再送しない。上限・失敗で止まったら同じ入力と記録を保持し、操作と削除履歴の現在状態を確認してから再開する。この待機の改善はローカル検証済みで、実環境での再確認は別工程とする。
 - Log Analyticsのforce完全削除やAPI Centerのpurgeは通常処理に含めない。`apiCenterRetention`が`unverified`の場合も確認不能の理由を保持する。
 - モデル消失と利用枠・費用の反映は別に確認する。利用枠は次の`capacity`で再確認し、他環境の割当まで0にしない。
 

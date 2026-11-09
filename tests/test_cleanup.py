@@ -288,7 +288,7 @@ class CleanupTests(CleanupFixture, unittest.TestCase):
     def test_successful_delete_without_get_404_is_pending_not_complete(self):
         transport = FakeTransport(self.tombstones())
         transport.keep_after_delete.add(next(iter(transport.resources)))
-        self.assert_code("cleanup-pending", lambda: self.post(transport))
+        self.assert_code("cleanup-pending", lambda: self.post(transport, purge_timeout_seconds=1))
 
     def test_repeating_postdown_is_idempotent_with_only_gets(self):
         transport = FakeTransport(self.tombstones())

@@ -22,7 +22,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlsplit
 from uuid import UUID
 
 from .configuration import API_NAME, load_configuration
@@ -208,6 +208,107 @@ def _options(max_checks: int, wait_seconds: float) -> None:
         or isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float))
         or not math.isfinite(wait_seconds) or not 0 <= wait_seconds <= 60):
         _error("invalid-options", "撤去確認の回数・間隔が不正です。")
+
+
+def _purge_header(response: dict, name: str, tombstone_id: str) -> str | None:
+    """操作URLや署名を表示せず、重複のないHTTPヘッダーだけを読む。"""
+    headers = response.get("headers", {})
+    if not isinstance(headers, Mapping):
+        _error("invalid-purge-response", "完全削除の応答ヘッダーを確認できません。", tombstone_id)
+    values = [value for key, value in headers.items() if isinstance(key, str) and key.casefold() == name]
+    if not values:
+        return None
+    if len(values) != 1 or not isinstance(values[0], str) or not values[0]:
+        _error("invalid-purge-response", "完全削除の応答ヘッダーが不正です。", tombstone_id)
+    return values[0]
+
+
+def _purge_target(response: dict, tombstone_id: str) -> tuple[str | None, bool]:
+    """同じサブスクリプション・Key Vault・リージョンの操作URLだけをメモリー内で追跡する。"""
+    asynchronous = _purge_header(response, "azure-asyncoperation", tombstone_id)
+    target = asynchronous if asynchronous is not None else _purge_header(response, "location", tombstone_id)
+    if target is None:
+        return None, False
+    try:
+        if (len(target) > 8192 or any(ord(char) <= 32 or ord(char) == 127 for char in target)
+            or "#" in target or "\\" in target):
+            raise ValueError()
+        parsed = urlsplit(target)
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        query = dict(pairs)
+        # purgeの対象IDは呼出前に所有照合済み。別リージョンや任意資源のURLへ広げない。
+        prefix = "/".join(tombstone_id.split("/")[:7])
+        # Key VaultのoperationResultsにはサービス署名が付く。値は保存・表示しない。
+        allowed_query = {"api-version", "t", "c", "s", "h"}
+        if (parsed.scheme != "https" or parsed.netloc.lower() not in ("management.azure.com", "management.azure.com:443")
+            or not re.fullmatch(re.escape(prefix) + r"/(?:operationResults|operationStatuses|operations)/[A-Za-z0-9_-]{1,2048}", parsed.path, re.IGNORECASE)
+            or len(query) != len(pairs) or set(query) - allowed_query or query.get("api-version") != API["keyVault"]):
+            raise ValueError()
+    except (ValueError, TypeError):
+        _error("invalid-purge-operation", "完全削除の完了確認URLが今回の所有範囲・API契約と一致しません。", tombstone_id)
+    return target, asynchronous is not None
+
+
+def _purge_delay(response: dict, tombstone_id: str, default: float) -> float:
+    """ARMのRetry-After秒数を短縮せず、未対応の指示では停止する。"""
+    value = _purge_header(response, "retry-after", tombstone_id)
+    if value is None:
+        return default
+    digits = value.strip(" \t")
+    if not re.fullmatch(r"[0-9]+", digits):
+        _error("invalid-purge-retry-after", "完全削除の待機間隔を確認できません。", tombstone_id)
+    digits = digits.lstrip("0") or "0"
+    # 巨大な整数を変換せず、有限の待機予算より長い指示として扱う。
+    return max(default, float(int(digits))) if len(digits) <= 4 else math.inf
+
+
+def _wait_purge(transport: Transport, tombstone_id: str, response: dict, *,
+                timeout_seconds: float, sleep: Callable[[float], None],
+                monotonic: Callable[[], float]) -> None:
+    """Key Vaultのpurge要求は再送せず、操作完了と最後の正確な墓標404を有限に確認する。
+
+    ARM async契約: https://learn.microsoft.com/azure/azure-resource-manager/management/async-operations
+    操作結果が失効した404も、墓標404の代わりには使わない。署名付きURLを例外や結果へ含めない。
+    """
+    target, asynchronous = _purge_target(response, tombstone_id)
+    deadline = monotonic() + timeout_seconds
+    delay = _purge_delay(response, tombstone_id, 5 if target or response["statusCode"] == 202 else 0)
+    # 壁時計とは別に読取回数も制限する。遅いHTTP要求の終了後に次の要求を始めない。
+    for _ in range(180):
+        if delay >= deadline - monotonic():
+            break
+        remaining_delay = delay
+        while remaining_delay > 0:
+            remaining_budget = deadline - monotonic()
+            if remaining_budget <= 0:
+                break
+            interval = min(remaining_delay, 60, remaining_budget)
+            sleep(interval)
+            remaining_delay -= interval
+        if monotonic() >= deadline:
+            break
+        observed = _request(transport, "GET", tombstone_id, API["keyVault"], path=target)
+        if target is not None:
+            status = observed["body"].get("status")
+            if status in ("Failed", "Canceled", "Cancelled"):
+                _error("purge-operation-failed", "完全削除の非同期操作が正常終了しませんでした。", tombstone_id)
+            if observed["statusCode"] == 404 or status == "Succeeded" or (
+                not asynchronous and observed["statusCode"] in (200, 204) and status is None
+            ):
+                target = None
+                delay = _purge_delay(observed, tombstone_id, 0)
+                continue
+            if (observed["statusCode"] not in (200, 202) or
+                (asynchronous and (not isinstance(status, str) or not status))):
+                _error("invalid-purge-response", "完全削除の非同期状態を確認できません。", tombstone_id)
+        else:
+            deleted = _expect_read(observed, tombstone_id)
+            if deleted is None:
+                return
+            if not _same(deleted.get("id"), tombstone_id):
+                _error("tombstone-mismatch", "完全削除の確認対象が今回の墓標と一致しません。", tombstone_id)
+        delay = _purge_delay(observed, tombstone_id, 5)
+    _error("cleanup-pending", "完全削除の確認が待機上限に達しました。要求は再送していません。操作と墓標の現在状態を確認してください。", tombstone_id)
 
 
 def _model_page_path(value: Any, collection_id: str) -> str:
@@ -1516,13 +1617,20 @@ def _credential_manager_release(configuration: dict) -> dict | None:
 
 def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Transport, *,
               max_checks: int = 30, wait_seconds: float = 2,
-              sleep: Callable[[float], None] = time.sleep) -> dict:
+              sleep: Callable[[float], None] = time.sleep,
+              purge_timeout_seconds: float = 900,
+              monotonic: Callable[[], float] = time.monotonic) -> dict:
     """所有5RGの消滅確認後、今回の論理削除データだけを照合して完全削除する。
 
     Key Vaultのpurge保護が有効なら解除せず残す。削除済み一覧を一括消去せず、
-    元の配備記録と一致するサービスだけを対象にする。
+    元の配備記録と一致するサービスだけを対象にする。Key Vaultの非同期purgeは
+    既定15分を新規照会の期限とし、進行中のHTTPはTransportの期限に従う。
+    APIM・Foundryの削除確認は既存の回数・間隔を維持する。
     """
     _options(max_checks, wait_seconds)
+    if (isinstance(purge_timeout_seconds, bool) or not isinstance(purge_timeout_seconds, (int, float))
+        or not math.isfinite(purge_timeout_seconds) or not 0 < purge_timeout_seconds <= 1800):
+        _error("invalid-options", "完全削除の待機上限が不正です。")
     configuration = load_configuration(config_path)
     current = _validate_state(configuration, state)
     application_infrastructure = _application_infrastructure(configuration, state.get('applicationInfrastructure', []))
@@ -1570,8 +1678,13 @@ def post_down(config_path: str | Path, state: Mapping[str, Any], transport: Tran
             service_results.append({"kind": key, "resourceId": tombstone_id, "status": "retained-protection", "scheduledPurgeDate": properties.get("scheduledPurgeDate")})
             continue
         purge_id = tombstone_id + "/purge" if key == "keyVault" else tombstone_id
-        _request(transport, "POST" if key == "keyVault" else "DELETE", purge_id, API[key])
-        _wait_absent(transport, tombstone_id, API[key], max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep)
+        response = _request(transport, "POST" if key == "keyVault" else "DELETE", purge_id, API[key])
+        if key == "keyVault":
+            _wait_purge(transport, tombstone_id, response, timeout_seconds=purge_timeout_seconds,
+                        sleep=sleep, monotonic=monotonic)
+        else:
+            _wait_absent(transport, tombstone_id, API[key], max_checks=max_checks,
+                         wait_seconds=wait_seconds, sleep=sleep)
         service_results.append({"kind": key, "resourceId": tombstone_id, "status": "absent", "httpStatus": 404})
 
     # RG消滅後は、そのRGの削除履歴一覧自体が読めない場合があります。

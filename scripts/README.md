@@ -2,6 +2,8 @@
 
 このフォルダーには、基盤構築だけでなく、事前準備、API登録、疎通試験、認証、監査ログ確認のスクリプトが含まれます。すべてが`azd up`から実行されるわけではありません。各CLIの直接実行ではPython bytecodeの保存を抑止し、子のPythonにも継承するため、手順の通常コマンドでソース隣へ`__pycache__`を作りません。開発用の`python -m`・`python -c`は`-B`または`PYTHONDONTWRITEBYTECODE=1`を指定します。ユニットテスト本体はリポジトリ直下の`tests/`にあります。
 
+構築後の通常保守は[`operations/`](operations/README.md)を入口にします。既存の配備・WAF処理を再利用し、モデル、Entra secret、証明書、APIキー、監視の計画・対象限定反映と保護記録を揃えています。
+
 ## 基盤の構築・更新・撤去
 
 `azure.yaml`の基盤構築・撤去hookは、[deployment/lifecycle.py](deployment/lifecycle.py)を呼びます。`postup`は[deploy_applications.py](deploy_applications.py)を呼び、完成した基盤の同じparams・stateを使ってGateway→Portalを配備します。そこから使う補助処理は、入口と同じ階層にある`helpers/`へまとめています。
@@ -32,6 +34,7 @@ scripts/
 ├── deploy_applications.py         # postup: Gateway→Portalの順序制御
 ├── deploy_gateway.py              # Gatewayの計画・配備
 ├── deploy_portal.py               # Portalの計画・配備
+├── operations/                    # 構築後の通常保守の入口
 └── その他の手動コマンド・試験クライアント
 ```
 
