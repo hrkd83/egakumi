@@ -29,7 +29,7 @@
 
 新規実装と変更箇所に以下を適用します。既存の公開名・API契約・設定・保存データとの互換性を保ち、規約のための一括整形や改名は機能変更と分けます。書式の例外が必要な場合は、周辺コードとの整合と理由を変更説明へ残します。Portal固有のルールは [apps/portal/AGENTS.md](apps/portal/AGENTS.md)も参照してください。
 
-Coreの資源名は`<環境>-<製品>`を共通部分とし、APIMだけにparamsの`services.apimInstanceId`を末尾へ付けます。APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。識別子は初回準備で生成する英小文字・数字6文字で、構築・更新・途中再開・撤去では保持します。撤去後の新規構築では[運用手順](docs/operations.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算は`prepare_registration.py`とBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)を確認します。
+Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。WAFポリシーは用途が分かる`wafpol-g-<用途>-<ID>`／`wafpol-p-<用途>-<ID>`とし、同じparamsの`services.apimInstanceId`を末尾へ使います。識別子は初回準備で生成する英小文字・数字6文字で、構築・更新・途中再開・撤去では保持します。撤去後の新規構築では[運用手順](docs/operations.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算はPythonの共通ヘルパーとBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)と[WAFの用途別構成](docs/testing/waf-compatibility.md#用途別のポリシー構成)を確認します。
 
 ### Python
 

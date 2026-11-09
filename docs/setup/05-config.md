@@ -118,7 +118,7 @@ Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもA
 
 native gRPC用のTCP入口を有効化した場合、その経路は通常のHTTPS本文WAF検査の対象外です。他APIの迂回防止は実機試験で確認します。
 
-Audio ChatはOpenAI標準の`messages[].content[].input_audio.data`に音声Base64を渡します。資材が作るWAFは、登録済み`audio-chat`入力profileを持つ`chat-completions`の正規POSTパスだけに専用ポリシーを適用し、この欄に対するOWASP 3.2の942450のみを除外します。ほかのSQLi規則・本文検査・サイズ上限・APIMの認証とモデル許可は維持します。共有URLでは`X-Egakumi-Profile: audio-chat`を要求し、通常Chatの許可から音声入力へ広がらないようAPIM側でprofileも検査します。企業管理の既存WAFを指定した場合は資材で書き換えず、管理者が同じ範囲の調整を判断してください。
+WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/gateway/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
 
 
 APIMのTLS証明書と入口／RealtimeのKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。

@@ -10,13 +10,14 @@ import time
 from deployment.helpers.portal_gateway import _etag, _writable, _writable_policy
 from deployment.helpers.paths import REPOSITORY
 from deployment.helpers.apim_naming import apim_name
+from deployment.helpers.waf_names import policy_id as waf_policy_id
 
 
 NETWORK_API = '2024-05-01'
 CALLBACK_PATH = '/auth/connections/browser/identity-callback'
 CALLBACK_RULE_IDS = ['942430', '942440', '942450']
 CALLBACK_RULE_NAME = 'credential-identity-callback'
-SPEECH_RULE_NAME = 'custom-content-type'
+SPEECH_RULE_NAME = 'speech'
 SPEECH_RULE_ID = '920420'
 DOCUMENT_PATH = '/tools/documents/v1/analyze'
 DOCUMENT_RULE_NAME = 'document-analysis-upload'
@@ -193,7 +194,7 @@ def _raw_body_policy(source):
     return desired
 
 
-def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, policy_suffix):
+def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, policy_key):
     """APIの転送先・他のパス・L7入口証明を保持し、指定した完全パスだけを追加する。"""
     if (str(source.get('id', '')).casefold() != expected.casefold()
             or source.get('name') != expected.rsplit('/', 1)[-1]
@@ -201,7 +202,9 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
         raise ValueError('Gateway callback response identifies another resource')
     updated = _writable(source)
     properties = updated['properties']
-    base_id = policy_id.removesuffix(policy_suffix)
+    base_id = waf_policy_id(config, 'g-base')
+    if policy_id.casefold() != waf_policy_id(config, policy_key).casefold():
+        raise ValueError('Gateway callback WAF target is not the owned purpose policy')
     if not _same_ref(properties.get('firewallPolicy'), base_id):
         raise ValueError('Gateway callback WAF must use the owned common policy; configure external WAF separately')
     listener = _one(properties.get('httpListeners', []), 'listener-https', 'API HTTPS listener')['properties']
@@ -266,6 +269,9 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
                 or not _same_ref(current.get('backendHttpSettings'), backend)
                 or (current.get('rewriteRuleSet') and not _same_ref(current['rewriteRuleSet'], expected_rewrite))):
             raise ValueError('Gateway callback path has another backend, rewrite or path')
+        current_policy = current.get('firewallPolicy', {}).get('id')
+        if current_policy and str(current_policy).casefold() not in {base_id.casefold(), policy_id.casefold()}:
+            raise ValueError('Gateway callback path uses another WAF policy')
         current['firewallPolicy'] = {'id': policy_id}
         # Azureは同一ルール内の完全パスの順序を変えて返すことがある。同じ集合の検証後は
         # 既存順を保ち、反映待機や再実行で不要な差分を作らない。ルール間の優先順は別に扱う。
@@ -289,53 +295,14 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
 def _callback_gateway(config, source, expected, policy_id):
     """本人確認callbackだけを、共通の完全パス更新処理へ渡す。"""
     return _path_gateway(config, source, expected, policy_id, paths=[CALLBACK_PATH],
-                         rule_name=CALLBACK_RULE_NAME, policy_suffix='-gateway-auth')
+                         rule_name=CALLBACK_RULE_NAME, policy_key='g-auth')
 
 
-def _speech_path_gateway(config, source, expected, policy_id, *, paths, rule_name, policy_suffix):
-    """Split only owned Speech paths from a mixed MIME policy and preserve peers."""
-    original = copy.deepcopy(source)
-    mappings = original.get('properties', {}).get('urlPathMaps', [])
-    mapping = next((item['properties'] for item in mappings if item.get('name') == 'pathmap-protocols'), None)
-    position = None
-    if mapping:
-        kept = []
-        base_id = policy_id.removesuffix(policy_suffix)
-        for index, rule in enumerate(mapping.get('pathRules', [])):
-            props = rule['properties']
-            overlap = set(props.get('paths', [])) & set(paths)
-            if rule.get('name') == rule_name:
-                position = index
-            if overlap and rule.get('name') in (SPEECH_RULE_NAME, 'speech-raw-body') and rule.get('name') != rule_name:
-                if (not _same_ref(props.get('backendAddressPool'), expected + '/backendAddressPools/bepool-apim')
-                        or not _same_ref(props.get('backendHttpSettings'), expected + '/backendHttpSettingsCollection/behttp-apim')
-                        or str(props.get('firewallPolicy', {}).get('id', '')).casefold() not in
-                        {(base_id + suffix).casefold() for suffix in ('-custom-mime', '-speech-raw-body')}
-                        or (props.get('rewriteRuleSet') and props['rewriteRuleSet'] != mapping.get('defaultRewriteRuleSet'))):
-                    raise ValueError('Speech raw path has another backend, policy or rewrite')
-                remaining = [path for path in props['paths'] if path not in paths]
-                if remaining:
-                    props['paths'] = remaining
-                    kept.append(rule)
-            else:
-                kept.append(rule)
-        mapping['pathRules'] = kept
-    updated = _path_gateway(config, original, expected, policy_id, paths=paths,
-                            rule_name=rule_name, policy_suffix=policy_suffix)
-    # A valid existing exact rule does not need to move above unrelated exact rules.
-    if position is not None and mapping and not any('*' in pattern and any(
-            fnmatch.fnmatchcase(path.casefold(), pattern.casefold()) for path in paths)
-            for item in mapping['pathRules'][:position] for pattern in item['properties'].get('paths', [])):
-        rules = next(item['properties']['pathRules'] for item in updated['properties']['urlPathMaps'] if item['name'] == 'pathmap-protocols')
-        selected = next(item for item in rules if item['name'] == rule_name)
-        rules.remove(selected)
-        rules.insert(position, selected)
-    return updated
-
-
-def _configure_gateway_path_waf(config, transport, *, paths, rule_name, policy_suffix, policy_builder, speech_raw=False,
+def _configure_gateway_path_waf(config, transport, *, paths, rule_name, policy_key, policy_builder,
                                 timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     """ETagで並行変更を検出し、専用WAFと完全パスの関連付けが反映されるまで待つ。"""
+    if config.get('gateway', {}).get('existingWafPolicyId'):
+        raise ValueError('Gateway WAF must not replace an external WAF policy')
     expected = gateway_id(config)
     path = expected + '?api-version=' + NETWORK_API
     response = transport.request('GET', path)
@@ -350,24 +317,10 @@ def _configure_gateway_path_waf(config, transport, *, paths, rule_name, policy_s
                 'policyUpdated': False, 'gatewayUpdated': False}
     if properties.get('sku', {}).get('name') != 'WAF_v2':
         raise ValueError('Gateway callback requires the expected WAF_v2 configuration')
-    route_builder = _path_gateway
-    if speech_raw:
-        mime_paths = []
-        for api in config.get('apiDefinitions', []):
-            for operation in api.get('operations', []):
-                constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
-                if operation.get('method') == 'POST' and set(constraint.get('contentTypes', [])) & {'application/ssml+xml', 'audio/wav'}:
-                    mime_paths.append('/' + api.get('path', '') + operation.get('urlTemplate', ''))
-        live_mime_paths = [path for mapping in properties.get('urlPathMaps', []) if mapping.get('name') == 'pathmap-protocols'
-                           for rule in mapping['properties'].get('pathRules', []) if rule.get('name') == SPEECH_RULE_NAME
-                           for path in rule['properties'].get('paths', [])]
-        if (set(mime_paths) | set(live_mime_paths)) - set(paths):
-            rule_name, policy_suffix = 'speech-raw-body', '-speech-raw-body'
-        route_builder = _speech_path_gateway
-    base_id = expected.rsplit('/applicationGateways/', 1)[0] + '/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-' + config['resourceStem']
-    policy_id = base_id + policy_suffix
-    desired_gateway = route_builder(config, source, expected, policy_id, paths=paths,
-                                    rule_name=rule_name, policy_suffix=policy_suffix)
+    base_id = waf_policy_id(config, 'g-base')
+    policy_id = waf_policy_id(config, policy_key)
+    desired_gateway = _path_gateway(config, source, expected, policy_id, paths=paths,
+                                    rule_name=rule_name, policy_key=policy_key)
     base = _ok(transport.request('GET', base_id + '?api-version=' + NETWORK_API), 'read common WAF policy')
     if str(base.get('id', '')).casefold() != base_id.casefold():
         raise ValueError('Gateway common WAF response identifies another policy')
@@ -405,8 +358,8 @@ def _configure_gateway_path_waf(config, transport, *, paths, rule_name, policy_s
         while monotonic() < deadline:
             current = _ok(transport.request('GET', path), 'read routing update')
             status = current.get('properties', {}).get('provisioningState')
-            if status == 'Succeeded' and route_builder(config, current, expected, policy_id, paths=paths,
-                    rule_name=rule_name, policy_suffix=policy_suffix) == _writable(current):
+            if status == 'Succeeded' and _path_gateway(config, current, expected, policy_id, paths=paths,
+                    rule_name=rule_name, policy_key=policy_key) == _writable(current):
                 break
             if status in ('Failed', 'Canceled', 'Deleting'):
                 raise ValueError('Gateway callback routing update did not succeed')
@@ -423,20 +376,20 @@ def _configure_gateway_path_waf(config, transport, *, paths, rule_name, policy_s
 def configure_gateway_identity_callback_waf(config, transport, **options):
     """認可コードを受ける本人確認callbackへ、実測した3規則だけの除外を設定する。"""
     receipt = _configure_gateway_path_waf(config, transport, paths=[CALLBACK_PATH],
-        rule_name=CALLBACK_RULE_NAME, policy_suffix='-gateway-auth', policy_builder=_callback_policy, **options)
+        rule_name=CALLBACK_RULE_NAME, policy_key='g-auth', policy_builder=_callback_policy, **options)
     if receipt['required']:
         receipt.update({'path': CALLBACK_PATH, 'excludedArgument': 'code', 'excludedRuleIds': list(CALLBACK_RULE_IDS)})
     return receipt
 
 
 def configure_gateway_speech_waf(config, transport, **options):
-    """既存のcustom-mimeポリシーを再利用し、公開するSpeechの完全パスへ関連付ける。"""
+    """Speech専用ポリシーを、公開するSpeechの完全パスへ関連付ける。"""
     paths = speech_content_type_paths(config)
     if not paths:
         return {'resourceId': gateway_id(config), 'required': False, 'reason': 'Speech API is not published',
                 'policyUpdated': False, 'gatewayUpdated': False, 'paths': []}
     receipt = _configure_gateway_path_waf(config, transport, paths=paths, rule_name=SPEECH_RULE_NAME,
-        policy_suffix='-custom-mime', policy_builder=_raw_body_policy, speech_raw=True, **options)
+        policy_key='g-speech', policy_builder=_raw_body_policy, **options)
     if receipt['required']:
         receipt.update({'disabledRuleIds': [SPEECH_RULE_ID, '930110'], 'retainedRuleIds': ['920470', '930100'],
                         'rawBodyTraversalAdjustment': True})
@@ -484,7 +437,7 @@ def configure_gateway_document_waf(config, transport, **options):
         return {'resourceId': gateway_id(config), 'required': False, 'reason': 'Document API is not published',
                 'policyUpdated': False, 'gatewayUpdated': False, 'paths': []}
     receipt = _configure_gateway_path_waf(config, transport, paths=[DOCUMENT_PATH],
-        rule_name=DOCUMENT_RULE_NAME, policy_suffix='-document-upload',
+        rule_name=DOCUMENT_RULE_NAME, policy_key='g-document-upload',
         policy_builder=lambda source: _document_policy(source, maximum), **options)
     if receipt['required']:
         receipt.update({'maxRequestBytes': maximum, 'excludedRuleIds': [],

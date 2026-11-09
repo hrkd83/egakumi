@@ -1,5 +1,6 @@
 """Data exclusions retain Prevention and remain confined to finite published paths."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,8 +11,11 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from waf_policy import exclusion, load_manifest, selected_profiles, published_paths, desired_policy, reconcile, canonical_gateway
+from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
+                        desired_policy, reconcile, canonical_gateway, RESERVED_POLICY_KEYS)
 from deployment.helpers.portal_gateway import portal_session_exclusions
+from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
+                                           policy_id as waf_policy_id, policy_name)
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 
 CHAT = '/models/openai/v1/chat/completions'
@@ -27,7 +31,7 @@ def configuration():
 
 
 def manifest():
-    return {'version': 1, 'profiles': [{'name': 'chat-text', 'scope': 'gateway', 'paths': [CHAT],
+    return {'version': 1, 'profiles': [{'name': 'g-chat-completions', 'scope': 'gateway', 'paths': [CHAT],
         'exclusions': [exclusion('messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])]}]}
 
 
@@ -74,12 +78,153 @@ class ArmMemory:
 
 
 class DataWafTests(unittest.TestCase):
+    def test_manifest_keys_match_their_gateway_or_portal_scope(self):
+        for name, scope in [('p-generate', 'gateway'), ('g-chat-completions', 'portal'),
+                            ('chat-text', 'gateway'), ('g--chat', 'gateway')]:
+            value = manifest()
+            value['profiles'][0].update(name=name, scope=scope)
+            with self.subTest(name=name, scope=scope), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / 'manifest.json'
+                path.write_text(json.dumps(value), encoding='utf-8')
+                with self.assertRaises(ValueError):
+                    load_manifest(path)
+
+    def test_data_profiles_cannot_overwrite_any_reserved_protocol_policy(self):
+        for name in RESERVED_POLICY_KEYS:
+            value = manifest()
+            value['profiles'][0].update(name=name, scope='gateway' if name.startswith('g-') else 'portal')
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / 'manifest.json'
+                path.write_text(json.dumps(value), encoding='utf-8')
+                with self.assertRaises(ValueError):
+                    load_manifest(path)
+                with self.assertRaises(ValueError):
+                    reconcile(configuration(), None, manifest=value)
+
+    def test_data_profiles_reject_unlisted_policy_keys(self):
+        for name in ('g-unlisted', 'p-unlisted'):
+            value = manifest()
+            value['profiles'][0].update(name=name, scope='gateway' if name.startswith('g-') else 'portal')
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    selected_profiles(configuration(), manifest=value)
+                with self.assertRaises(ValueError):
+                    reconcile(configuration(), None, manifest=value)
+                with self.assertRaises(ValueError):
+                    policy_name(CONFIG, name)
+
+    def test_standard_profile_merges_keep_the_approved_full_exclusion_unions(self):
+        profiles = {item['name']: item for item in load_manifest()['profiles']}
+        self.assertEqual(set(profiles), {
+            'g-chat-completions', 'g-responses', 'g-embeddings', 'g-rerank', 'g-decision',
+            'g-images', 'g-transcribe', 'g-realtime', 'g-live', 'g-pii-redact',
+            'p-generate', 'p-embeddings', 'p-rerank', 'p-decision', 'p-images',
+            'p-speech', 'p-realtime', 'p-document-upload', 'p-pii-redact'})
+        self.assertEqual(set(profiles), DATA_POLICY_KEYS)
+        self.assertEqual(POLICY_KEYS, DATA_POLICY_KEYS | RESERVED_POLICY_KEYS)
+        self.assertEqual(len(POLICY_KEYS), 25)
+        # Golden tuples include variable/operator/selector and OWASP type/version/group/ID.
+        # They were captured from the approved unions of the previous separate profiles.
+        expected = {
+            'g-embeddings': (2, 90, '1a49ab9b9cd891c6219af00946ebc644702ed869b80834dd32757964ece32ab0'),
+            'g-images': (6, 48, '200b43a7b5bb1ee91534d6e089cc0dc66042ff2164a5476c31aeca7b0f8a1dca'),
+            'g-pii-redact': (2, 90, '3067508805f9dc859ddc93dbea1df3f305557caee8b5d7c0ab501546cb013798'),
+            'p-pii-redact': (2, 45, '19799e83b1e4ee13e438d30009ce38529c6309c493cc33934bd5ca4e78d24664'),
+        }
+        for name, (path_count, tuple_count, digest) in expected.items():
+            profile = profiles[name]
+            entries = profile['exclusions']
+            tuples = sorted((e['matchVariable'], e['selectorMatchOperator'], e['selector'],
+                             rule_set['ruleSetType'], rule_set['ruleSetVersion'],
+                             group['ruleGroupName'], rule['ruleId'])
+                            for e in entries for rule_set in e['exclusionManagedRuleSets']
+                            for group in rule_set['ruleGroups'] for rule in group['rules'])
+            with self.subTest(profile=name):
+                self.assertEqual(len(profile['paths']), path_count)
+                self.assertEqual(len(tuples), tuple_count)
+                self.assertEqual(len(tuples), len(set(tuples)))
+                actual = hashlib.sha256(json.dumps(tuples, separators=(',', ':')).encode()).hexdigest()
+                self.assertEqual(actual, digest)
+        self.assertEqual(set(profiles['g-embeddings']['paths']),
+                         {'/models/cohere/v1/embed', '/models/openai-embeddings/v1/embeddings'})
+        self.assertEqual(set(profiles['g-pii-redact']['paths']),
+                         {'/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'})
+        self.assertEqual(set(profiles['p-pii-redact']['paths']),
+                         {'/api/tools/pii', '/api/tools/pii-mcp'})
+
+    def test_standard_media_exceptions_are_explicit_and_do_not_follow_config_modalities(self):
+        profiles = {item['name']: item for item in load_manifest()['profiles']}
+        for name, selector in [('g-chat-completions', 'messages.content.image_url.url'),
+                               ('g-responses', 'input.content.file_data')]:
+            profile = profiles[name]
+            expected = exclusion(selector, 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170'])
+            if name == 'g-chat-completions':
+                expected['exclusionManagedRuleSets'][0]['ruleGroups'].append({
+                    'ruleGroupName': 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+                    'rules': [{'ruleId': '942340'}, {'ruleId': '942450'}]})
+            with self.subTest(profile=name):
+                self.assertEqual([e for e in profile['exclusions'] if e['selector'] == selector], [expected])
+                without_media = copy.deepcopy(profile)
+                without_media['exclusions'].remove(expected)
+                result = desired_policy(policy(), without_media, configuration())
+                self.assertNotIn(expected, result['properties']['managedRules']['exclusions'])
+        self.assertFalse(any(e['selector'] == 'messages.content.input_audio.data'
+                             for p in profiles.values() for e in p['exclusions']))
+
+    def test_chat_observed_rule_update_changes_only_two_fields_and_one_owned_policy(self):
+        current = next(p for p in load_manifest()['profiles'] if p['name'] == 'g-chat-completions')
+        previous = copy.deepcopy(current)
+        additions = {
+            ('RequestArgValues', 'Equals', 'messages.content.image_url.url'): {'942340', '942450'},
+            ('RequestArgKeys', 'StartsWith', 'tools.function.parameters.'): {'942200', '942260', '942480'},
+        }
+        for entry in previous['exclusions']:
+            remove = additions.get((entry['matchVariable'], entry['selectorMatchOperator'], entry['selector']), set())
+            rule_set = entry['exclusionManagedRuleSets'][0]
+            for group in rule_set['ruleGroups']:
+                group['rules'] = [rule for rule in group['rules'] if rule['ruleId'] not in remove]
+            rule_set['ruleGroups'] = [group for group in rule_set['ruleGroups'] if group['rules']]
+
+        config, transport = configuration(), ArmMemory()
+        reconcile(config, transport, scopes=('gateway',), manifest={'version': 1, 'profiles': [previous]})
+        before = copy.deepcopy(transport.resources)
+        transport.calls.clear()
+        result = reconcile(config, transport, scopes=('gateway',), manifest={'version': 1, 'profiles': [current]})
+        identifier = waf_policy_id(config, 'g-chat-completions')
+        self.assertEqual((result['policyUpdates'], result['gatewayUpdated'], result['azureWrites']), (1, False, 1))
+        writes = [call for call in transport.calls if call[0] == 'PUT']
+        self.assertEqual([(call[1], call[3]) for call in writes], [(identifier, {'If-Match': '"updated"'})])
+        self.assertEqual(set(transport.resources), set(before))
+        for resource_id in before:
+            if resource_id != identifier:
+                self.assertEqual(transport.resources[resource_id], before[resource_id])
+
+        def tuples(properties):
+            return {(entry['matchVariable'], entry['selectorMatchOperator'], entry['selector'],
+                     rule_set['ruleSetType'], rule_set['ruleSetVersion'], group['ruleGroupName'], rule['ruleId'])
+                    for entry in properties['managedRules']['exclusions']
+                    for rule_set in entry.get('exclusionManagedRuleSets', [])
+                    for group in rule_set['ruleGroups'] for rule in group['rules']}
+
+        old, new = before[identifier]['properties'], transport.resources[identifier]['properties']
+        expected = {(*scope, 'OWASP', '3.2', 'REQUEST-942-APPLICATION-ATTACK-SQLI', rule_id)
+                    for scope, rule_ids in additions.items() for rule_id in rule_ids}
+        self.assertEqual(tuples(new) - tuples(old), expected)
+        self.assertFalse(tuples(old) - tuples(new))
+        for name in ('policySettings', 'customRules'):
+            self.assertEqual(new[name], old[name])
+        self.assertEqual(new['managedRules']['managedRuleSets'], old['managedRules']['managedRuleSets'])
+        transport.calls.clear()
+        self.assertEqual(reconcile(config, transport, scopes=('gateway',),
+                                   manifest={'version': 1, 'profiles': [current]})['azureWrites'], 0)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
     def test_manifest_rejects_wildcard_duplicate_scope_and_unscoped_rules(self):
         for change in ('path', 'duplicate', 'global', 'aggregate', 'selector'):
             value = manifest()
             item = value['profiles'][0]
             if change == 'path': item['paths'] = ['/models/*']
-            elif change == 'duplicate': value['profiles'].append({**copy.deepcopy(item), 'name': 'another'})
+            elif change == 'duplicate': value['profiles'].append({**copy.deepcopy(item), 'name': 'g-responses'})
             elif change == 'global': item['exclusions'][0].pop('exclusionManagedRuleSets')
             elif change == 'aggregate': item['exclusions'][0]['exclusionManagedRuleSets'][0]['ruleGroups'][0]['rules'] = [{'ruleId': '949110'}]
             else: item['exclusions'][0]['selector'] = ''
@@ -137,7 +282,7 @@ class DataWafTests(unittest.TestCase):
         config['gateway']['existingWafPolicyId'] = '/external/policy'
         self.assertEqual(reconcile(config, None, manifest=manifest())['status'], 'external-policy-skipped')
 
-    def test_basic_route_preserves_backend_rewrite_and_other_host_with_media_exclusions(self):
+    def test_basic_route_preserves_backend_rewrite_and_other_host_with_manifest_exclusions(self):
         transport = ArmMemory()
         before = copy.deepcopy(transport.resources[GATEWAY_ID])
         result = reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
@@ -146,16 +291,16 @@ class DataWafTests(unittest.TestCase):
         mapping = api_mapping(updated)
         self.assertEqual(mapping['defaultRewriteRuleSet'], REWRITE)
         self.assertEqual(mapping['pathRules'][0]['properties'], {
-            'paths': [CHAT], 'firewallPolicy': {'id': BASE_ID + '-data-chat-text'},
+            'paths': [CHAT], 'firewallPolicy': {'id': waf_policy_id(CONFIG, 'g-chat-completions')},
             'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE})
         self.assertEqual(updated['properties']['urlPathMaps'][0], before['properties']['urlPathMaps'][0])
         for key in ('httpListeners', 'rewriteRuleSets', 'backendAddressPools', 'backendHttpSettingsCollection'):
             self.assertEqual(updated['properties'][key], before['properties'][key])
-        configured = transport.resources[BASE_ID + '-data-chat-text']['properties']
+        configured = transport.resources[waf_policy_id(CONFIG, 'g-chat-completions')]['properties']
         self.assertEqual(configured['policySettings'], policy()['properties']['policySettings'])
         self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
         selectors = {item['selector'] for item in configured['managedRules']['exclusions']}
-        self.assertTrue({'messages.content', 'messages.content.image_url.url', 'messages.content.input_audio.data', 'Existing'} <= selectors)
+        self.assertEqual(selectors, {'messages.content', 'Existing'})
         writes = [item for item in transport.calls if item[0] == 'PUT']
         self.assertEqual(writes[0][3], {'If-None-Match': '*'})
         self.assertEqual(writes[1][3], {'If-Match': '"gateway-v1"'})
@@ -164,25 +309,24 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(again['azureWrites'], 0)
         self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
 
-    def test_splits_existing_media_path_rule_without_duplicate_path_or_lost_neighbor(self):
+    def test_splits_existing_data_path_rule_without_duplicate_path_or_lost_neighbor(self):
         source = gateway(path_based=True)
-        media_id = BASE_ID + '-inline-media'
+        media_id = waf_policy_id(CONFIG, 'g-chat-completions')
         media = copy.deepcopy(policy())
-        media.update(id=media_id, name='media')
-        media['properties']['managedRules']['exclusions'].append(
-            exclusion('messages.content.image_url.url', 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170']))
-        media['properties']['managedRules']['exclusions'].append(
-            exclusion('messages.content.input_audio.data', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942450'], 'RequestArgNames'))
-        api_mapping(source)['pathRules'].append({'name': 'old-media', 'properties': {
+        media.update(id=media_id, name=policy_name(CONFIG, 'g-chat-completions'))
+        media['properties']['managedRules']['exclusions'].append(manifest()['profiles'][0]['exclusions'][0])
+        api_mapping(source)['pathRules'].append({'name': 'shared-data', 'properties': {
             'paths': [CHAT, '/other-model/chat/completions'], 'firewallPolicy': {'id': media_id},
             'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE}})
         transport = ArmMemory(source, {media_id: media})
-        reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
+        value = manifest()
+        value['profiles'][0]['name'] = 'g-responses'
+        reconcile(configuration(), transport, scopes=('gateway',), manifest=value)
         rules = api_mapping(transport.resources[GATEWAY_ID])['pathRules']
         self.assertEqual(sum(CHAT in item['properties']['paths'] for item in rules), 1)
-        old = next(item for item in rules if item['name'] == 'old-media')
+        old = next(item for item in rules if item['name'] == 'shared-data')
         self.assertEqual(old['properties']['paths'], ['/other-model/chat/completions'])
-        self.assertEqual(reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())['azureWrites'], 0)
+        self.assertEqual(reconcile(configuration(), transport, scopes=('gateway',), manifest=value)['azureWrites'], 0)
 
     def test_prevention_and_body_inspection_cannot_be_relaxed(self):
         for key, value in [('mode', 'Detection'), ('state', 'Disabled'), ('requestBodyCheck', False)]:
@@ -222,7 +366,7 @@ class DataWafTests(unittest.TestCase):
     def test_partial_profile_then_full_manifest_preserves_existing_path_order(self):
         config, value = configuration(), manifest()
         other = copy.deepcopy(value['profiles'][0])
-        other.update(name='second-text', paths=['/models/openai/v1/responses'])
+        other.update(name='g-responses', paths=['/models/openai/v1/responses'])
         config['apiDefinitions'][0]['operations'].append(
             {'name': 'responses', 'method': 'POST', 'urlTemplate': '/responses'})
         config['apiDefinitions'][0]['authorization']['operationConstraints']['responses'] = {'kind': 'statelessResponses'}
@@ -237,11 +381,38 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(transport.resources[GATEWAY_ID], before)
         self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
 
+    def test_existing_exact_profile_moves_before_covering_wildcard_only_once(self):
+        seed = ArmMemory()
+        reconcile(configuration(), seed, scopes=('gateway',), manifest=manifest())
+        source = copy.deepcopy(seed.resources[GATEWAY_ID])
+        mapping = api_mapping(source)
+        exact = mapping['pathRules'].pop(0)
+        def route(name, paths):
+            return {'name': name, 'properties': {
+                'paths': paths, 'firewallPolicy': {'id': BASE_ID},
+                'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE}}
+        unrelated = route('unrelated', ['/other/*'])
+        covering = route('covering', ['/MODELS/*'])
+        trailing = route('trailing', ['/last/*'])
+        mapping['pathRules'] = [unrelated, covering, exact, trailing]
+        identifier = waf_policy_id(CONFIG, 'g-chat-completions')
+        transport = ArmMemory(source, {identifier: seed.resources[identifier]})
+        result = reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
+        self.assertEqual(result['azureWrites'], 1)
+        self.assertEqual(result['policyUpdates'], 0)
+        self.assertTrue(result['gatewayUpdated'])
+        rules = api_mapping(transport.resources[GATEWAY_ID])['pathRules']
+        self.assertEqual(rules, [unrelated, exact, covering, trailing])
+        transport.calls.clear()
+        again = reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
+        self.assertEqual(again['azureWrites'], 0)
+        self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
 
     def _deadline_case(self, target_kind, final_state='Succeeded', mismatch=False):
         seed = ArmMemory()
         reconcile(configuration(), seed, scopes=('gateway',), manifest=manifest())
-        policy_id = BASE_ID + '-data-chat-text'
+        policy_id = waf_policy_id(CONFIG, 'g-chat-completions')
         source = copy.deepcopy(seed.resources[GATEWAY_ID])
         existing = copy.deepcopy(seed.resources[policy_id])
         target = policy_id if target_kind == 'policy' else GATEWAY_ID
@@ -249,7 +420,7 @@ class DataWafTests(unittest.TestCase):
             existing['properties']['managedRules']['exclusions'] = []
         else:
             mapping = api_mapping(source)
-            mapping['pathRules'] = [item for item in mapping['pathRules'] if item['name'] != 'waf-data-chat-text']
+            mapping['pathRules'] = [item for item in mapping['pathRules'] if item['name'] != 'waf-data-g-chat-completions']
         clock = [0]
 
         class AtDeadline(ArmMemory):
@@ -329,13 +500,109 @@ class DataWafTests(unittest.TestCase):
             reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
         self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
 
+    def test_policy_ownership_requires_an_exact_current_id(self):
+        other_config = copy.deepcopy(CONFIG)
+        other_config['services']['apimInstanceId'] = 'def456'
+        external = [BASE_ID.replace('wafpol-g-base-', 'wafpol-g-unlisted-'),
+                    BASE_ID.replace('wafpol-g-base-', 'wafpol-p-unlisted-'),
+                    waf_policy_id(CONFIG, 'p-base'), waf_policy_id(other_config, 'g-chat-completions')]
+        for identifier in external:
+            source = gateway(path_based=True)
+            api_mapping(source)['pathRules'].insert(0, {'name': 'unowned', 'properties': {
+                'paths': [CHAT], 'firewallPolicy': {'id': identifier},
+                'backendAddressPool': POOL, 'backendHttpSettings': BACKEND}})
+            transport = ArmMemory(source)
+            with self.subTest(identifier=identifier), self.assertRaisesRegex(ValueError, 'external'):
+                reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
+            self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
+    def test_owned_source_protection_differences_stop_before_writes(self):
+        identifier = waf_policy_id(CONFIG, 'g-chat-completions')
+        for change in ('settings', 'custom', 'overrides'):
+            source = gateway(path_based=True)
+            api_mapping(source)['pathRules'].insert(0, {'name': 'media', 'properties': {
+                'paths': [CHAT], 'firewallPolicy': {'id': identifier},
+                'backendAddressPool': POOL, 'backendHttpSettings': BACKEND}})
+            current = policy()
+            current.update(id=identifier, name=policy_name(CONFIG, 'g-chat-completions'))
+            properties = current['properties']
+            if change == 'settings':
+                properties['policySettings']['requestBodyCheck'] = False
+            elif change == 'custom':
+                properties['customRules'] = []
+            else:
+                properties['managedRules']['managedRuleSets'][0]['ruleGroupOverrides'] = [{
+                    'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT',
+                    'rules': [{'ruleId': '920420', 'state': 'Disabled'}]}]
+            transport = ArmMemory(source, {identifier: current})
+            value = manifest()
+            value['profiles'][0]['name'] = 'g-responses'
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'differs|differ'):
+                reconcile(configuration(), transport, scopes=('gateway',), manifest=value)
+            self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
+    def test_existing_field_alias_is_rejected_without_any_write(self):
+        identifier = waf_policy_id(CONFIG, 'g-chat-completions')
+        source = gateway(path_based=True)
+        api_mapping(source)['pathRules'].insert(0, {'name': 'existing-data', 'properties': {
+            'paths': [CHAT], 'firewallPolicy': {'id': identifier},
+            'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE}})
+        current = policy()
+        current.update(id=identifier, name=policy_name(CONFIG, 'g-chat-completions'))
+        current['properties']['managedRules']['exclusions'].append(exclusion(
+            'messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'], 'RequestArgNames'))
+        transport = ArmMemory(source, {identifier: current})
+        value = manifest()
+        value['profiles'][0]['name'] = 'g-responses'
+        with self.assertRaisesRegex(ValueError, 'Represent the existing path-specific WAF exclusion'):
+            reconcile(configuration(), transport, scopes=('gateway',), manifest=value)
+        self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
+    def test_gateway_and_portal_merged_paths_each_use_one_policy_and_remain_idempotent(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        for name, scope in [('g-embeddings', 'gateway'), ('p-pii-redact', 'portal')]:
+            config, source = configuration(), gateway()
+            profile = profiles[name]
+            config['apiDefinitions'] = [{'path': path.rsplit('/', 1)[0].lstrip('/'), 'operations': [{
+                'name': 'operation', 'method': 'POST', 'urlTemplate': '/' + path.rsplit('/', 1)[1]}]}
+                for path in profile['paths']]
+            if scope == 'portal':
+                config['portal'] = {'publicHostName': 'portal.example.test'}
+                properties = source['properties']
+                properties['httpListeners'].append({'name': 'portal-https', 'properties': {
+                    'protocol': 'Https', 'hostName': 'portal.example.test',
+                    'firewallPolicy': {'id': waf_policy_id(CONFIG, 'p-base')}}})
+                properties['requestRoutingRules'][1]['properties']['httpListener'] = {
+                    'id': GATEWAY_ID + '/httpListeners/portal-https'}
+                mapping = properties['urlPathMaps'][0]['properties']
+                pool = {'id': GATEWAY_ID + '/backendAddressPools/bepool-portal'}
+                backend = {'id': GATEWAY_ID + '/backendHttpSettingsCollection/behttp-portal'}
+                mapping.update(defaultBackendAddressPool=pool, defaultBackendHttpSettings=backend)
+                mapping['pathRules'][0]['properties'].update(backendAddressPool=pool, backendHttpSettings=backend)
+            transport = ArmMemory(source)
+            value = {'version': 1, 'profiles': [profile]}
+            with self.subTest(profile=name):
+                first = reconcile(config, transport, scopes=(scope,), manifest=value)
+                self.assertEqual(first['policyUpdates'], 1)
+                identifier = waf_policy_id(config, name)
+                self.assertEqual(transport.resources[identifier]['name'], policy_name(config, name))
+                maps = transport.resources[GATEWAY_ID]['properties']['urlPathMaps']
+                rules = [rule for item in maps for rule in item['properties']['pathRules']
+                         if rule['name'] == 'waf-data-' + name]
+                self.assertEqual(len(rules), 1)
+                self.assertEqual(rules[0]['properties']['paths'], profile['paths'])
+                self.assertEqual(rules[0]['properties']['firewallPolicy'], {'id': identifier})
+                transport.calls.clear()
+                self.assertEqual(reconcile(config, transport, scopes=(scope,), manifest=value)['azureWrites'], 0)
+                self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
     def test_portal_profile_keeps_gateway_and_auth_callback_routing(self):
         config, source = configuration(), gateway()
         config['portal'] = {'publicHostName': 'portal.example.test'}
         properties = source['properties']
         properties['httpListeners'].append({'name': 'portal-https', 'properties': {
             'protocol': 'Https', 'hostName': 'portal.example.test',
-            'firewallPolicy': {'id': BASE_ID + '-portal'}}})
+            'firewallPolicy': {'id': waf_policy_id(CONFIG, 'p-base')}}})
         properties['requestRoutingRules'][1]['properties']['httpListener'] = {'id': GATEWAY_ID + '/httpListeners/portal-https'}
         mapping = properties['urlPathMaps'][0]['properties']
         pool = {'id': GATEWAY_ID + '/backendAddressPools/bepool-portal'}
@@ -344,7 +611,7 @@ class DataWafTests(unittest.TestCase):
         mapping['pathRules'][0]['properties'].update(backendAddressPool=pool, backendHttpSettings=backend)
         before = copy.deepcopy(source)
         value = manifest()
-        value['profiles'][0].update(name='portal-text', scope='portal', paths=['/api/models/text'])
+        value['profiles'][0].update(name='p-generate', scope='portal', paths=['/api/models/text'])
         transport = ArmMemory(source)
         reconcile(config, transport, scopes=('portal',), manifest=value)
         updated = transport.resources[GATEWAY_ID]
@@ -354,18 +621,19 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(current['pathRules'][0]['properties']['backendAddressPool'], pool)
         self.assertEqual(updated['properties']['httpListeners'], before['properties']['httpListeners'])
         self.assertEqual(transport.resources[BASE_ID], policy())
-        exclusions = transport.resources[BASE_ID + '-data-portal-text']['properties']['managedRules']['exclusions']
+        exclusions = transport.resources[waf_policy_id(CONFIG, 'p-generate')]['properties']['managedRules']['exclusions']
         self.assertTrue(all(item in exclusions for item in portal_session_exclusions()))
         self.assertEqual(reconcile(config, transport, scopes=('portal',), manifest=value)['azureWrites'], 0)
 
-    def test_flux_edit_binary_payload_exclusion_is_exact_field_and_three_measured_rules(self):
+    def test_images_share_only_the_approved_prompt_and_binary_payload_exclusions(self):
         profiles = load_manifest()['profiles']
         path = '/models/blackforestlabs/v1/flux-2/edits'
         selected = [profile for profile in profiles if path in profile['paths']]
         self.assertEqual(len(selected), 1)
         profile = selected[0]
         self.assertEqual(profile['scope'], 'gateway')
-        self.assertEqual(profile['paths'], [path])
+        self.assertEqual(profile['name'], 'g-images')
+        self.assertEqual(len(profile['paths']), 6)
         image = [item for item in profile['exclusions'] if item['selector'] == 'input_image']
         self.assertEqual(image, [exclusion('input_image', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
                                           ['942340', '942390', '942450'])])
@@ -450,7 +718,7 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
 
-    def test_chat_function_schema_keys_keep_only_five_exact_sql_rules(self):
+    def test_chat_function_schema_keys_keep_only_eight_exact_sql_rules(self):
         current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
         profiles = [profile for profile in current['profiles'] if CHAT in profile['paths']]
         self.assertEqual(len(profiles), 1)
@@ -460,7 +728,8 @@ class DataWafTests(unittest.TestCase):
                    if item['matchVariable'] == 'RequestArgKeys' and item['selector'] == 'tools.function.parameters.']
         self.assertEqual(len(entries), 1)
         expected = exclusion('tools.function.parameters.', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-                             ['942100', '942130', '942180', '942330', '942390'], 'RequestArgKeys')
+                             ['942100', '942130', '942180', '942200', '942260', '942330', '942390', '942480'],
+                             'RequestArgKeys')
         expected['selectorMatchOperator'] = 'StartsWith'
         self.assertEqual(entries, [expected])
         self.assertFalse(any(item['matchVariable'] == 'RequestArgKeys' and item['selector'].startswith('tools.function.parameters')
@@ -513,7 +782,7 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
 
-    def test_compiled_manifest_retains_media_protection_and_uses_one_rule_per_exact_path(self):
+    def test_compiled_manifest_retains_declared_protection_and_uses_one_rule_per_exact_path(self):
         from bicep_helpers import bicep_executable
         from test_ssml_waf import GatewayExpression
 
@@ -538,8 +807,10 @@ class DataWafTests(unittest.TestCase):
                 return super().evaluate(parameters, index, tree, bindings)
 
         sample = manifest()
+        sample['profiles'][0]['exclusions'].append(exclusion(
+            'messages.content.image_url.url', 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170']))
         sample['profiles'][0]['paths'].append('/unpublished')
-        sample['profiles'].append({**copy.deepcopy(sample['profiles'][0]), 'name': 'portal-text',
+        sample['profiles'].append({**copy.deepcopy(sample['profiles'][0]), 'name': 'p-generate',
                                    'scope': 'portal', 'paths': ['/api/models/text']})
         with tempfile.TemporaryDirectory() as folder:
             folder = Path(folder)
@@ -558,8 +829,8 @@ class DataWafTests(unittest.TestCase):
             template = json.loads(built.stdout)
         variables = copy.deepcopy(template['variables'])
         parameters = {key: copy.deepcopy(item.get('defaultValue', 'fixture')) for key, item in template['parameters'].items()}
-        parameters.update(resourceStem='test-fixture', location='japaneast', publishedApiPaths=[CHAT],
-                          inlineImagePaths=[CHAT], inlineAudioPaths=[CHAT], grpcEnabled=True,
+        parameters.update(resourceStem='test-fixture', wafPolicyIdentifier='abc123', location='japaneast', publishedApiPaths=[CHAT],
+                          grpcEnabled=True,
                           wafCustomRules=[{'name': 'retain-custom', 'priority': 1, 'action': 'Block'}],
                           wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}])
         evaluate = lambda item, index=0: CompiledExpression('[true()]', variables).resolve(item, parameters, index)
@@ -573,7 +844,6 @@ class DataWafTests(unittest.TestCase):
         properties = CompiledExpression("[true()]", variables).resolve(resource['properties'], parameters)
         mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
         self.assertEqual(sum(CHAT in item['properties']['paths'] for item in mapping['pathRules']), 1)
-        self.assertFalse(any(item['name'] == 'inline-media-data' for item in mapping['pathRules']))
         configured = variables['dataPolicyProperties'][0]
         self.assertEqual(configured['policySettings']['mode'], 'Prevention')
         self.assertTrue(configured['policySettings']['requestBodyCheck'])

@@ -17,7 +17,7 @@
 
 ファイル参照は**そのJSONのあるフォルダを基準に解決**します。準備コマンドで作成したparamsは、configを`../../config/test.json`または`../../config/production.json`、秘密ファイルを`./secrets/...`で参照します。`params/`内の公開exampleは配布用の架空値の正本として保持し、実値を直接書き込みません。秘密値はJSONへ記載しません。
 
-`services.apimInstanceId`は第1章の準備コマンドがparamsへ保存した6文字の識別子です。EntraのCM戻り先・構築・更新・撤去で同じ値を使います。`azd up`はこの値を生成し直しません。撤去後に新しく構築するときは、[新しい識別子の準備](../operations.md#撤去後に新しく構築する)と第2章のCM戻り先更新を先に行います。
+`services.apimInstanceId`は第1章の準備コマンドがparamsへ保存した6文字の識別子です。APIM名と用途別WAFポリシー名に共通利用し、EntraのCM戻り先・構築・更新・撤去で同じ値を使います。`azd up`はこの値を生成し直しません。撤去後に新しく構築するときは、[新しい識別子の準備](../operations.md#撤去後に新しく構築する)と第2章のCM戻り先更新を先に行います。
 
 ## 4-2. 環境別paramsを確認する
 
@@ -138,7 +138,7 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `subscriptionId` | `"<SUBSCRIPTION_ID>"` | 構築先Subscription ID。公開例のゼロGUIDを企業の実値へ置換。 |
 | `azureTenantId` | `"<AZURE_TENANT_ID>"` | Azureリソースの構築先Tenant ID。Subscription・Key Vault・Azure RBAC・管理APIに使用。 |
 | `entraTenantId` | `"<ENTRA_TENANT_ID>"`（省略可） | OAuth接続の既定認証先。省略時はazureTenantId。 |
-| `services.apimInstanceId` | 準備コマンドが生成 | APIM名の末尾に使う英小文字・数字6文字。構築・更新・途中再開・撤去で保持。configには記載しない。 |
+| `services.apimInstanceId` | 準備コマンドが生成 | APIM名と用途別WAFポリシー名の末尾に使う英小文字・数字6文字。構築・更新・途中再開・撤去で保持。configには記載しない。 |
 | `services.publisherName` | `"<APIM_PUBLISHER_NAME>"` | APIMの発行者表示名。 |
 | `services.publisherEmail` | `"<APIM_PUBLISHER_EMAIL>"` | APIMの発行者メール。導入先の実値へ変更。 |
 | `gateway.publicHostName` | `"<GATEWAY_FQDN>"` | API専用の公開FQDN。公開DNSと証明書に一致させる。 |

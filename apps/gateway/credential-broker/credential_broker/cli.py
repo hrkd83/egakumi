@@ -11,14 +11,18 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 import uuid
 from urllib.parse import urlsplit
 
 from .store import SqlStore, StoreError, StoreConflict, StoreUnavailable, _name
-from .cm import connection_metadata_status
+from .cm import connection_metadata_status, delete_authorization
 
 
 SCHEMA = Path(__file__).resolve().parents[1] / "sql" / "001_initial.sql"
+CLEANUP_BATCH_SIZE = 100
+CLEANUP_IDLE_SECONDS = 60 * 24 * 60 * 60
+CLEANUP_BUDGET_SECONDS = 300
 
 # Runtime includes the web application and its reconciliation job. Schema and
 # pool initialization remain with the separate migration identity. In particular,
@@ -105,7 +109,7 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
         if cursor.fetchone()[0]:
             cursor.execute("SELECT Version FROM broker.SchemaVersions")
             applied = {int(row[0]) for row in cursor.fetchall()}
-        if any(version > 2 for version in applied):
+        if any(version > 3 for version in applied):
             raise StoreConflict("Database schema is newer than this application")
         for path in migrations:
             if int(path.name[:3]) in applied:
@@ -137,7 +141,7 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
                     raise StoreConflict("New pool capacity is below its existing allocation")
                 cursor.execute("UPDATE broker.Pools SET Capacity=?,Enabled=1 WHERE ProfileName=? AND ProviderName=?", capacity, profile, provider)
     store.ensure_ready()
-    return {"status": "ready", "schemaVersion": 2, "poolCount": len(pools)}
+    return {"status": "ready", "schemaVersion": 3, "poolCount": len(pools)}
 
 
 def observe_schema_before_migration(store):
@@ -198,8 +202,58 @@ def _inventory(arm, path):
     return None
 
 
+def _cleanup_connections(store, pools, apim_resource_id, delete_connection):
+    """Lease one SQL-selected connection at a time within one bounded batch."""
+    result = {"attempted": 0, "requested": 0, "deleted": 0, "pending": 0,
+              "conflicts": 0, "failed": 0, "budgetExhausted": False}
+    deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
+    candidates = store.cleanup_candidates(pools, batch_size=CLEANUP_BATCH_SIZE,
+                                          idle_seconds=CLEANUP_IDLE_SECONDS)
+    lease_owner = uuid.uuid4().hex
+    for candidate in candidates:
+        # The limit applies equally to idle cleanup and explicit disconnect
+        # retries. A running HTTP attempt may finish after this deadline; no new
+        # attempt starts then. Each individual request has a finite timeout.
+        if result["attempted"] >= CLEANUP_BATCH_SIZE or time.monotonic() >= deadline:
+            result["budgetExhausted"] = True
+            break
+        result["attempted"] += 1
+        try:
+            profile, provider = _name(candidate["profileName"]), _name(candidate["providerName"])
+            connection = _name(candidate["connectionId"])
+            if (profile, provider) not in pools:
+                raise StoreConflict("Cleanup pool is not configured")
+            claim = store.claim_cleanup(candidate, lease_owner, idle_seconds=CLEANUP_IDLE_SECONDS,
+                                        lease_seconds=300)
+            identity = ("profileName", "providerName", "connectionId", "tenantId", "objectId")
+            if (any(claim[key] != candidate[key] for key in identity)
+                    or claim["leaseOwner"] != lease_owner or claim["state"] != "deleting"):
+                raise StoreConflict("Cleanup claim identity changed")
+            if time.monotonic() >= deadline:
+                result["pending"] += 1
+                result["budgetExhausted"] = True
+                break
+            resource_id = apim_resource_id + "/authorizationProviders/" + provider + "/authorizations/" + connection
+            result["requested"] += 1
+            if delete_connection(resource_id, validate_claim=lambda claim=claim: store.validate_cleanup_claim(claim)) is not True:
+                result["pending"] += 1
+                continue
+            # This transaction rechecks the same lease/version and only then
+            # removes the mapping and releases its reserved capacity.
+            if store.finish_cleanup(claim) is not True:
+                raise StoreConflict("Cleanup completion was not confirmed")
+            result["deleted"] += 1
+        except StoreConflict:
+            result["conflicts"] += 1
+        except Exception:
+            # A single transport/SQL failure must not starve the remainder of
+            # the batch. Logs contain aggregate counts, never bodies or IDs.
+            result["failed"] += 1
+    return result
+
+
 def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_connection=None):
-    """Compare tracked connections with CM; never delete CM objects implicitly.
+    """Compare CM metadata and optionally reclaim SQL-claimed idle/deleting rows.
 
     Complete CM pool inventories establish absence. Applying closes missing
     or disconnected mappings without freeing their reserved capacity. CM
@@ -222,7 +276,6 @@ def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_c
         inventory[provider] = _inventory(arm, path)
     counts = {"present": 0, "missing": 0, "disconnected": 0, "unknown": 0,
               "changed": 0, "conflicts": 0, "unmappedCmConnections": 0, "poolsQuarantined": 0}
-    requested_deletions = deleted_connections = 0
     mapped = set()
     for item in store.reconciliation_candidates():
         provider, connection = _name(item["providerName"]), _name(item["connectionId"])
@@ -233,15 +286,6 @@ def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_c
             counts["unknown"] += 1
             continue
         value = values.get(resource_id)
-        if execute and item.get('state') == 'deleting' and delete_connection is not None:
-            requested_deletions += 1
-            if delete_connection(resource_id):
-                try:
-                    store.finish_disconnect(item['profileName'], item['tenantId'], item['objectId'], provider, connection)
-                    deleted_connections += 1
-                except StoreConflict:
-                    counts['conflicts'] += 1
-            continue
         state = connection_metadata_status(value)
         if state == "unavailable":
             counts["unknown"] += 1
@@ -269,8 +313,15 @@ def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_c
         counts["unmappedCmConnections"] += orphan_count
         if orphan_count and execute and store.block_pool_allocation(profile, provider):
             counts["poolsQuarantined"] += 1
-    return {"mode": "execute" if execute else "plan", "cmDeletionPerformed": bool(requested_deletions),
-            "deletedConnections": deleted_connections, "expiredState": expired, **counts}
+    # Finish orphan checks against the pre-cleanup inventory before deleting
+    # SQL mappings, so our own deletions cannot quarantine a healthy pool.
+    cleanup = (_cleanup_connections(store, pools, apim_resource_id, delete_connection)
+               if execute and delete_connection is not None else
+               {"attempted": 0, "requested": 0, "deleted": 0, "pending": 0,
+                "conflicts": 0, "failed": 0, "budgetExhausted": False})
+    counts["conflicts"] += cleanup["conflicts"]
+    return {"mode": "execute" if execute else "plan", "cmCleanupAttempted": bool(cleanup["requested"]),
+            "deletedConnections": cleanup["deleted"], "cleanup": cleanup, "expiredState": expired, **counts}
 
 
 def main(argv=None):
@@ -306,23 +357,8 @@ def main(argv=None):
                     # Scheduling logs contain only aggregate results, not HTTP
                     # bodies, bearer tokens, continuation tokens or user IDs.
                     return 0, None
-            def delete_connection(resource):
-                """利用者が解除を要求した既知の接続だけを削除し、GET404を確認する。"""
-                try:
-                    token = credential.get_token("https://management.azure.com/.default").token
-                    url = 'https://management.azure.com' + resource + '?api-version=2024-05-01'
-                    headers = {'Authorization': 'Bearer ' + token}
-                    before = client.get(url, headers=headers)
-                    if before.status_code == 404:
-                        return True
-                    if before.status_code != 200:
-                        return False
-                    deleted = client.delete(url, headers=headers)
-                    if deleted.status_code not in (200, 202, 204, 404):
-                        return False
-                    return client.get(url, headers=headers).status_code == 404
-                except Exception:
-                    return False
+            def delete_connection(resource, *, validate_claim):
+                return delete_authorization(client, credential, resource, validate_claim=validate_claim)
             result = reconcile(store, arm, apim_id, profiles=json.loads(os.environ["BROKER_PROFILES_JSON"]),
                                execute=args.execute, delete_connection=delete_connection)
     print(json.dumps(result))

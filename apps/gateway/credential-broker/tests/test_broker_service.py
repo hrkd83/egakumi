@@ -400,6 +400,80 @@ class BrokerServiceTests(BrokerTestCase):
                 self.service.connection_status(token, "subscription-a", PROFILE)
             self.assertEqual((503, "ConnectionUnavailable"), (error.exception.status, error.exception.code))
 
+    def test_connection_last_use_changes_for_business_use_not_reauthentication_or_status(self):
+        self.completed_flow()
+        mapping = next(iter(self.store.mappings.values()))
+        initial = mapping["lastUsedAt"]
+        self.cm.connected = True
+        self.store.now += 20
+        second, _ = self.completed_flow()
+        token = second["provisionalConnectionSession"]
+        self.service.authorize(token, "subscription-a", PROFILE)
+        self.assertEqual(mapping["lastUsedAt"], initial)
+        self.store.now += 10
+        self.assertTrue(self.use(token)["allowed"])
+        self.assertEqual(mapping["lastUsedAt"], self.store.now)
+
+    def test_cleanup_claimed_connection_rejects_business_use_and_reauthentication(self):
+        start, _ = self.completed_flow()
+        token = start["provisionalConnectionSession"]
+        mapping = next(iter(self.store.mappings.values()))
+        mapping.update(state="deleting", version=b"cleanup-claim")
+        before = list(self.cm.ensured)
+        self.assertFalse(self.service.authorize(token, "subscription-a", PROFILE)["allowed"])
+        self.assertFalse(self.use(token)["allowed"])
+        with self.assertRaises(BrokerError):
+            self.identity_flow()
+        self.assertEqual(self.cm.ensured, before)
+
+    def test_manual_disconnect_checks_its_mapping_generation_before_cm_deletion(self):
+        start, _ = self.completed_flow()
+        original = self.cm.delete_connection
+        def superseded(provider, connection, *, validate_claim):
+            mapping = next(iter(self.store.mappings.values()))
+            mapping.update(state="ready", version=b"new-allocation")
+            return original(provider, connection, validate_claim=validate_claim)
+        self.cm.delete_connection = superseded
+        self.assertEqual(self.service.disconnect(start["provisionalConnectionSession"], "subscription-a")["status"],
+                         "disconnect_pending")
+        self.assertEqual(self.cm.deleted, [])
+        self.assertEqual(next(iter(self.store.mappings.values()))["version"], b"new-allocation")
+
+    def test_cleanup_claim_blocks_both_reauthentication_challenge_kinds(self):
+        start, _ = self.completed_flow()
+        token = start["provisionalConnectionSession"]
+        mapping = next(iter(self.store.mappings.values()))
+        mapping["state"] = "deleting"
+        transactions = len(self.store.transactions)
+        for reason in ("session_required", "token_rejected"):
+            with self.subTest(reason=reason), self.assertRaises(BrokerError):
+                self.service.challenge(PROFILE, "subscription-a", token, reason)
+        self.assertEqual(len(self.store.transactions), transactions)
+        self.assertEqual(mapping["state"], "deleting")
+
+    def test_removed_connection_allows_fresh_identity_pinned_challenge(self):
+        start, _ = self.completed_flow()
+        token = start["provisionalConnectionSession"]
+        self.store.mappings.clear()
+        for reason in ("session_required", "token_rejected"):
+            result = self.service.challenge(PROFILE, "subscription-a", token, reason)
+            transaction = self.store.transactions[result["transactionId"]]
+            self.assertEqual(transaction["requiredTenantId"], TENANT)
+            self.assertEqual(transaction["requiredObjectId"], OWNER)
+        self.assertEqual(self.store.mappings, {})
+
+    def test_manual_disconnect_does_not_release_a_superseding_deletion_generation(self):
+        start, _ = self.completed_flow()
+        def superseded(provider, connection, *, validate_claim):
+            self.assertTrue(validate_claim())
+            next(iter(self.store.mappings.values()))["version"] = b"new-cleanup-claim"
+            return True
+        self.cm.delete_connection = superseded
+        with self.assertRaises(BrokerError):
+            self.service.disconnect(start["provisionalConnectionSession"], "subscription-a")
+        self.assertEqual(len(self.store.mappings), 1)
+        self.assertEqual(next(iter(self.store.mappings.values()))["version"], b"new-cleanup-claim")
+
 
 if __name__ == "__main__":
     unittest.main()

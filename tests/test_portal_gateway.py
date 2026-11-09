@@ -10,7 +10,7 @@ from deployment.helpers.portal_gateway import configure_portal_probe, gateway_id
 
 
 CONFIG = {"subscriptionId": "11111111-1111-4111-8111-111111111111", "resourceStem": "test-fixture",
-          "resourceGroupNames": {"nw": "rg-test-fixture-nw"}}
+          "resourceGroupNames": {"nw": "rg-test-fixture-nw"}, "services": {"apimInstanceId": "abc123"}}
 
 
 def fixture(codes=None, path="/"):

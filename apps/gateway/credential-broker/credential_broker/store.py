@@ -6,11 +6,11 @@ Microsoft access/refresh/ID tokens are never part of the ledger contract.
 from __future__ import annotations
 
 from contextlib import contextmanager
-import hashlib
 import hmac
 import json
 import os
 import re
+import secrets
 import struct
 import unicodedata
 import uuid
@@ -74,15 +74,20 @@ def _guid(value):
         raise ValueError("Invalid verified identity") from None
 
 
+def _version(value):
+    if not isinstance(value, (bytes, bytearray, memoryview)) or len(value) != 8:
+        raise ValueError("Invalid connection version")
+    return bytes(value)
+
+
 def connection_name(tenant_id, object_id, profile, upn):
-    """Readable first name plus a stable, tenant-qualified identity suffix."""
-    tenant_id, object_id, profile = _guid(tenant_id), _guid(object_id), _name(profile)
+    """Give each new allocation a readable name and independent 128-bit generation."""
+    _guid(tenant_id), _guid(object_id), _name(profile)
     if not isinstance(upn, str) or len(upn) > 320:
         raise ValueError("Invalid identity display attribute")
     local = unicodedata.normalize("NFKD", upn.split("@", 1)[0]).encode("ascii", "ignore").decode().lower()
-    prefix = re.sub(r"[^a-z0-9]+", "-", local).strip("-")[:63].rstrip("-") or "member"
-    suffix = hashlib.sha256((tenant_id + "|" + object_id + "|" + profile).encode()).hexdigest()[:16]
-    return prefix + "-" + suffix
+    prefix = re.sub(r"[^a-z0-9]+", "-", local).strip("-")[:47].rstrip("-") or "member"
+    return prefix + "-" + secrets.token_hex(16)
 
 
 def _flow_json(flow):
@@ -203,6 +208,8 @@ class SqlStore:
             internal = str(error)
             if re.search(r"\b51001\b", internal):
                 raise StoreCapacity("Credential pool capacity is exhausted") from None
+            if re.search(r"\b51002\b", internal):
+                raise StoreConflict("Credential connection is being deleted") from None
             if re.search(r"\b1205\b", internal):
                 raise StoreUnavailable("Concurrent ledger operation must be retried") from None
             if re.search(r"\b(?:2601|2627)\b", internal):
@@ -242,7 +249,7 @@ class SqlStore:
     def ensure_ready(self):
         with self._db() as cursor:
             cursor.execute("SELECT MAX(Version) FROM broker.SchemaVersions;")
-            if cursor.fetchone()[0] != 2:
+            if cursor.fetchone()[0] != 3:
                 raise StoreUnavailable("Credential ledger schema is not ready")
             cursor.execute("SELECT TOP(0) ProfileName,ProviderName,AllocationBlocked FROM broker.Pools;")
             cursor.execute("SELECT TOP(0) PendingSessionId,PendingSessionSecretHash,SubjectEpochAtVerification,ConnectionEpochAtVerification FROM broker.Transactions;")
@@ -288,11 +295,17 @@ class SqlStore:
                         or source['subscriptionId'] != subscription_id or source['profileName'] != profile):
                     raise StoreNotAuthorized("Credential proof is unavailable")
                 required_tenant, required_owner = source['tenantId'], source['objectId']
+                cursor.execute("SELECT State FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=?",
+                               profile, required_tenant, required_owner)
+                connection_state = cursor.fetchone()
+                if connection_state is not None and connection_state[0] == 'deleting':
+                    raise StoreConflict("Connection is being deleted")
                 if force_cm_login:
-                    cursor.execute("UPDATE broker.Connections SET State='unverified',SecurityEpoch=SecurityEpoch+1 WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND State<>'deleting'",
-                                   profile, required_tenant, required_owner)
-                    if cursor.rowcount != 1:
-                        raise StoreConflict("Connection is unavailable")
+                    if connection_state is not None:
+                        cursor.execute("UPDATE broker.Connections SET State='unverified',SecurityEpoch=SecurityEpoch+1 WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND State<>'deleting'",
+                                       profile, required_tenant, required_owner)
+                        if cursor.rowcount != 1:
+                            raise StoreConflict("Connection is unavailable")
                     cursor.execute("UPDATE broker.Sessions SET Revoked=1,RevokedAt=?,RevocationReason='REAUTHENTICATION_REQUIRED' WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0",
                                    now, profile, required_tenant, required_owner)
             cursor.execute("SELECT COUNT(*) FROM broker.Transactions WITH (UPDLOCK,HOLDLOCK,INDEX(IX_BrokerTransactionSubscriptionCreated)) WHERE SubscriptionId=? AND CreatedAt>?",
@@ -358,6 +371,7 @@ class SqlStore:
         profile, tenant_id, object_id = _name(profile), _guid(tenant_id), _guid(object_id)
         if not isinstance(lease_owner, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", lease_owner) or not 30 <= lease_seconds <= 600:
             raise ValueError("Invalid reservation lease")
+        # The procedure uses this candidate only for a new mapping; existing IDs stay unchanged.
         name = connection_name(tenant_id, object_id, profile, upn)
         with self._db() as cursor:
             cursor.execute("EXEC broker.AllocateConnection ?,?,?,?,?,?,?", profile, tenant_id, object_id, upn, name, lease_owner, lease_seconds)
@@ -452,8 +466,8 @@ class SqlStore:
             # 本人・接続のロック待ちでも取引期限を超え得る。全ロック取得後に再検証する。
             now = self._now(cursor)
             self._active(value, now, {'verifying'})
-            cursor.execute("UPDATE broker.Connections SET State='ready',LeaseOwner=NULL,LeaseUntil=0,LastUsedAt=?,LastCheckedAt=? WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND State<>'deleting'",
-                           now, now, value['profileName'], value['tenantId'], value['objectId'], value['providerName'], value['connectionId'])
+            cursor.execute("UPDATE broker.Connections SET State='ready',LeaseOwner=NULL,LeaseUntil=0,LastCheckedAt=? WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND State<>'deleting'",
+                           now, value['profileName'], value['tenantId'], value['objectId'], value['providerName'], value['connectionId'])
             if cursor.rowcount != 1:
                 raise StoreConflict("Credential mapping changed during verification")
             absolute = now + policy['absoluteLifetimeSeconds']
@@ -532,7 +546,10 @@ class SqlStore:
                 used = max(now, record['lastBusinessUsedAt'])
                 idle = min(used + record['idleTimeoutSeconds'], record['absoluteExpiresAt'])
                 cursor.execute("UPDATE broker.Sessions SET LastBusinessUsedAt=?,IdleExpiresAt=?,ExpiresAt=? WHERE SessionId=?", used, idle, idle, sid)
-                cursor.execute("UPDATE broker.Connections SET LastUsedAt=? WHERE ProfileName=? AND TenantId=? AND ObjectId=?", used, profile, record['tenantId'], record['objectId'])
+                cursor.execute("UPDATE broker.Connections SET LastUsedAt=CASE WHEN LastUsedAt>? THEN LastUsedAt ELSE ? END WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND State='ready' AND SecurityEpoch=?",
+                               used, used, profile, record['tenantId'], record['objectId'], record['providerName'], record['connectionId'], record['connectionEpoch'])
+                if cursor.rowcount != 1:
+                    raise StoreConflict("Credential connection changed during business use")
                 record.update(lastBusinessUsedAt=used, idleExpiresAt=idle, expiresAt=idle)
             result = {**record, 'allowed': not update_required, 'status': 409 if update_required else 200}
             if update_required:
@@ -597,16 +614,26 @@ class SqlStore:
             record, now = self._session(cursor, sid, secret_hash, subscription_id, lock=True)
             if record is None:
                 raise StoreNotAuthorized("Session expired or revoked")
-            cursor.execute("UPDATE broker.Connections SET State='deleting',SecurityEpoch=SecurityEpoch+1,LeaseOwner=NULL,LeaseUntil=0 WHERE ProfileName=? AND TenantId=? AND ObjectId=?", record['profileName'], record['tenantId'], record['objectId'])
+            cursor.execute("UPDATE broker.Connections SET State='deleting',SecurityEpoch=SecurityEpoch+1,LeaseOwner=NULL,LeaseUntil=0 OUTPUT INSERTED.Version WHERE ProfileName=? AND TenantId=? AND ObjectId=?", record['profileName'], record['tenantId'], record['objectId'])
+            changed = cursor.fetchone()
+            if changed is None:
+                raise StoreConflict("Credential connection changed during disconnect")
+            record['connectionVersion'] = changed[0]
             cursor.execute("UPDATE broker.Sessions SET Revoked=1,RevokedAt=?,RevocationReason='DISCONNECT' WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0", now, record['profileName'], record['tenantId'], record['objectId'])
-            # 接続名が後日再利用されても、解除前の完了チケットを有効にしません。
+            # 解除前の完了チケットを、新しい割当で有効にしません。
             cursor.execute("UPDATE broker.Transactions SET Phase='failed',TicketHash=NULL,CookieHash=NULL,OidcFlow=NULL,OidcStateHash=NULL,CmStateHash=NULL,PendingSessionSecretHash=NULL,FailureCode='DISCONNECTED' WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Phase<>'complete'", record['profileName'], record['tenantId'], record['objectId'])
             cursor.execute("DELETE r FROM broker.SessionRotationCandidates r JOIN broker.Sessions s ON s.SessionId=r.SessionId WHERE s.ProfileName=? AND s.TenantId=? AND s.ObjectId=?", record['profileName'], record['tenantId'], record['objectId'])
             return record
 
-    def finish_disconnect(self, profile, tenant_id, object_id, provider, connection):
+    def validate_disconnect(self, mapping):
+        key = self._cleanup_key(mapping, version_field='connectionVersion')
+        with self._db() as cursor:
+            cursor.execute("SELECT Version FROM broker.Connections WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=? AND State='deleting'", *key)
+            return cursor.fetchone() is not None
+
+    def finish_disconnect(self, profile, tenant_id, object_id, provider, connection, *, expected_version):
         with self._db(transaction=True) as cursor:
-            cursor.execute("SELECT * FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND State='deleting'", _name(profile), _guid(tenant_id), _guid(object_id), _name(provider), _name(connection))
+            cursor.execute("SELECT * FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=? AND State='deleting'", _name(profile), _guid(tenant_id), _guid(object_id), _name(provider), _name(connection), _version(expected_version))
             record = _row(cursor)
             if record is None:
                 raise StoreConflict("Deletion was superseded")
@@ -682,40 +709,104 @@ class SqlStore:
             if cursor.rowcount != 1:
                 raise StoreConflict("Credential mapping changed during reconciliation")
 
-    def release_deleted_connection(self, profile, tenant_id, object_id, expected_version):
-        """Release one capacity slot after the caller confirmed CM GET returned 404."""
-        with self._db(transaction=True) as cursor:
-            now = self._now(cursor)
-            cursor.execute("SELECT * FROM broker.Connections WITH (UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Version=? AND State='deleting'",
-                           _name(profile), _guid(tenant_id), _guid(object_id), expected_version)
-            connection = _row(cursor)
-            if connection is None:
-                raise StoreConflict("Credential deletion state changed")
-            cursor.execute("SELECT COUNT(*) FROM broker.Sessions WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0 AND ExpiresAt>?",
-                           profile, tenant_id, object_id, now)
-            if cursor.fetchone()[0]:
-                raise StoreConflict("Credential connection has active sessions")
-            cursor.execute("DELETE broker.Connections WHERE ProfileName=? AND TenantId=? AND ObjectId=?", profile, tenant_id, object_id)
-            cursor.execute("UPDATE broker.Pools SET Allocated=Allocated-1 WHERE ProfileName=? AND ProviderName=? AND Allocated>0", profile, connection["providerName"])
-            if cursor.rowcount != 1:
-                raise StoreConflict("Credential capacity counter needs reconciliation")
+    @staticmethod
+    def _cleanup_key(record, *, version_field='version'):
+        if not isinstance(record, dict) or any(key not in record for key in (
+                'profileName', 'tenantId', 'objectId', 'providerName', 'connectionId', version_field)):
+            raise ValueError("Invalid cleanup mapping")
+        return (_name(record['profileName']), _guid(record['tenantId']), _guid(record['objectId']),
+                _name(record['providerName']), _name(record['connectionId']), _version(record[version_field]))
 
-    def claim_cleanup(self, profile, tenant_id, object_id, lease_owner, idle_before, lease_seconds=300):
-        """Reserve deletion only for an idle mapping with no active sessions."""
-        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", lease_owner) or not 30 <= lease_seconds <= 600:
+    @staticmethod
+    def _cleanup_retention(idle_seconds):
+        if type(idle_seconds) is not int or not 1 <= idle_seconds <= 315360000:
+            raise ValueError("Invalid cleanup retention")
+        return idle_seconds
+
+    def cleanup_candidates(self, pools, *, batch_size=100, idle_seconds=5184000):
+        """Read a bounded, fairly ordered set from the exact configured pools."""
+        idle_seconds = self._cleanup_retention(idle_seconds)
+        if type(batch_size) is not int or not 1 <= batch_size <= 1000:
+            raise ValueError("Invalid cleanup batch size")
+        configured = sorted({(_name(profile), _name(provider)) for profile, provider in pools})
+        if len(configured) > 1000:
+            raise ValueError("Too many cleanup pools")
+        if not configured:
+            return []
+        scope = ' OR '.join('(c.ProfileName=? AND c.ProviderName=?)' for _ in configured)
+        with self._db() as cursor:
+            now = self._now(cursor)
+            cursor.execute("SELECT TOP (?) c.* FROM broker.Connections c WHERE (" + scope + ")"
+                + " AND (c.State='deleting' OR c.LastUsedAt<=?) AND c.LeaseUntil<=?"
+                + " AND NOT EXISTS (SELECT 1 FROM broker.Transactions t WHERE t.ProfileName=c.ProfileName"
+                + " AND ((t.TenantId=c.TenantId AND t.ObjectId=c.ObjectId)"
+                + " OR (t.RequiredTenantId=c.TenantId AND t.RequiredObjectId=c.ObjectId))"
+                + " AND t.Phase NOT IN ('complete','failed') AND t.ExpiresAt>?)"
+                + " ORDER BY COALESCE(c.LastCheckedAt,0),c.LastUsedAt,c.ProfileName,c.ProviderName,c.TenantId,c.ObjectId,c.ConnectionId",
+                batch_size, *(part for pair in configured for part in pair), now-idle_seconds, now, now)
+            return [_row(cursor, row) for row in cursor.fetchall()]
+
+    def claim_cleanup(self, candidate, lease_owner, *, idle_seconds=5184000, lease_seconds=300):
+        """Fence a stale snapshot, invalidate proofs, and reserve one deletion.
+
+        A SQL deadlock rolls this entire transaction back before CM is called.
+        An existing deleting row remains quarantined when a lease expires.
+        """
+        key = self._cleanup_key(candidate)
+        idle_seconds = self._cleanup_retention(idle_seconds)
+        if (not isinstance(lease_owner, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", lease_owner)
+                or type(lease_seconds) is not int or not 30 <= lease_seconds <= 600):
+            raise ValueError("Invalid cleanup lease")
+        profile, tenant, owner, provider, connection, _ = key
+        with self._db(transaction=True) as cursor:
+            cursor.execute("SELECT * FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=?", *key)
+            value = _row(cursor)
+            if value is None:
+                raise StoreConflict("Cleanup mapping changed")
+            # Lock both verified and identity-pinned authentication rows. Read the
+            # clock after waiting for these locks, not from the candidate scan.
+            cursor.execute("SELECT ExpiresAt FROM broker.Transactions WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND ((TenantId=? AND ObjectId=?) OR (RequiredTenantId=? AND RequiredObjectId=?)) AND Phase NOT IN ('complete','failed')",
+                           profile, tenant, owner, tenant, owner)
+            authentications = [int(row[0]) for row in cursor.fetchall()]
+            now = self._now(cursor)
+            if (value['leaseUntil'] > now or value['state'] != 'deleting' and value['lastUsedAt'] > now-idle_seconds
+                    or any(expiry > now for expiry in authentications)):
+                raise StoreConflict("Connection is not eligible for cleanup")
+            cursor.execute("UPDATE broker.Connections SET State='deleting',SecurityEpoch=SecurityEpoch+1,LeaseOwner=?,LeaseUntil=?,LastCheckedAt=? OUTPUT INSERTED.* WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=?",
+                           lease_owner, now+lease_seconds, now, *key)
+            claim = _row(cursor)
+            if claim is None:
+                raise StoreConflict("Cleanup mapping changed")
+            cursor.execute("UPDATE broker.Sessions SET Revoked=1,RevokedAt=?,RevocationReason='CONNECTION_IDLE' WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0", now, profile, tenant, owner)
+            cursor.execute("UPDATE broker.Transactions SET Phase='failed',TicketHash=NULL,CookieHash=NULL,LaunchHash=NULL,OidcFlow=NULL,OidcStateHash=NULL,CmStateHash=NULL,PendingSessionSecretHash=NULL,FailureCode='CONNECTION_IDLE' WHERE ProfileName=? AND ((TenantId=? AND ObjectId=?) OR (RequiredTenantId=? AND RequiredObjectId=?)) AND Phase<>'complete'", profile, tenant, owner, tenant, owner)
+            cursor.execute("DELETE r FROM broker.SessionRotationCandidates r JOIN broker.Sessions s ON s.SessionId=r.SessionId WHERE s.ProfileName=? AND s.TenantId=? AND s.ObjectId=?", profile, tenant, owner)
+            return claim
+
+    def validate_cleanup_claim(self, claim):
+        key = self._cleanup_key(claim)
+        owner = claim.get('leaseOwner')
+        if not isinstance(owner, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", owner):
+            raise ValueError("Invalid cleanup lease")
+        with self._db() as cursor:
+            cursor.execute("SELECT Version FROM broker.Connections WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=? AND State='deleting' AND LeaseOwner=? AND LeaseUntil>DATEDIFF_BIG(second,CONVERT(datetime2,'1970-01-01'),SYSUTCDATETIME())", *key, owner)
+            return cursor.fetchone() is not None
+
+    def finish_cleanup(self, claim):
+        """Release capacity only for the exact live claim after CM GET404."""
+        key = self._cleanup_key(claim)
+        owner = claim.get('leaseOwner')
+        if not isinstance(owner, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", owner):
             raise ValueError("Invalid cleanup lease")
         with self._db(transaction=True) as cursor:
-            now = self._now(cursor)
-            cursor.execute("SELECT * FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=?",
-                           _name(profile), _guid(tenant_id), _guid(object_id))
+            cursor.execute("SELECT * FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=? AND State='deleting' AND LeaseOwner=?", *key, owner)
             value = _row(cursor)
-            if value is None or value["lastUsedAt"] > idle_before or value["leaseUntil"] > now:
-                raise StoreConflict("Connection is not eligible for cleanup")
-            cursor.execute("SELECT COUNT(*) FROM broker.Sessions WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0 AND ExpiresAt>?",
-                           profile, tenant_id, object_id, now)
-            if cursor.fetchone()[0]:
-                raise StoreConflict("Connection has active sessions")
-            cursor.execute("UPDATE broker.Connections SET State='deleting',LeaseOwner=?,LeaseUntil=? WHERE ProfileName=? AND TenantId=? AND ObjectId=?",
-                           lease_owner, now + lease_seconds, profile, tenant_id, object_id)
-            cursor.execute("SELECT * FROM broker.Connections WHERE ProfileName=? AND TenantId=? AND ObjectId=?", profile, tenant_id, object_id)
-            return _row(cursor)
+            now = self._now(cursor)
+            if value is None or value['leaseUntil'] <= now:
+                raise StoreConflict("Cleanup lease was superseded or expired")
+            cursor.execute("DELETE broker.Connections WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND ProviderName=? AND ConnectionId=? AND Version=? AND State='deleting' AND LeaseOwner=?", *key, owner)
+            if cursor.rowcount != 1:
+                raise StoreConflict("Cleanup mapping changed")
+            cursor.execute("UPDATE broker.Pools SET Allocated=Allocated-1 WHERE ProfileName=? AND ProviderName=? AND Allocated>0", key[0], key[3])
+            if cursor.rowcount != 1:
+                raise StoreConflict("Credential capacity counter needs reconciliation")
+            return True

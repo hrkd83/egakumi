@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from credential_broker.store import SqlStore, StoreCapacity, StoreConflict, StoreNotAuthorized, StoreRotationConflict, StoreRotationExpired
+from credential_broker.store import (SqlStore, StoreCapacity, StoreConflict, StoreNotAuthorized,
+                                     StoreRotationConflict, StoreRotationExpired, StoreUnavailable)
 
 TENANT = '11111111-1111-4111-8111-111111111111'
 OWNER = '22222222-2222-4222-8222-222222222222'
@@ -37,6 +38,7 @@ class SessionSqlTests(unittest.TestCase):
             if not database.startswith('egakumi_broker_test_'):
                 raise RuntimeError('Only a dedicated temporary local test database is allowed')
         cls.store = SqlStore(cls.connect)
+        cls.store.ensure_ready()
 
     def query(self, statement, *values):
         with self.connect() as connection:
@@ -111,6 +113,21 @@ class SessionSqlTests(unittest.TestCase):
         self.assertNotEqual(first['connectionId'],other['connectionId'])
         self.assertLessEqual(len(long['connectionId']),80)
         self.assertEqual(3,self.query('SELECT Allocated FROM broker.Pools')[0][0])
+
+    def test_reallocation_after_confirmed_release_uses_a_new_connection_generation(self):
+        """同本人・同providerの再予約でも、削除前のCM Resource IDへ戻しません。"""
+        self.query('DELETE broker.Connections; UPDATE broker.Pools SET Allocated=0;')
+        first = self.store.allocate_connection(PROFILE, TENANT, OWNER, 'member@example.test', 'old-generation')
+        self.query("UPDATE broker.Connections SET State='deleting',LeaseUntil=0")
+        version = self.query('SELECT Version FROM broker.Connections')[0][0]
+        # This SQL-only contract starts where its caller has confirmed CM404.
+        self.store.finish_disconnect(PROFILE, TENANT, OWNER, first['providerName'],
+                                     first['connectionId'], expected_version=version)
+        second = self.store.allocate_connection(PROFILE, TENANT, OWNER, 'member@example.test', 'new-generation')
+        self.assertEqual(first['providerName'], second['providerName'])
+        self.assertNotEqual(first['connectionId'], second['connectionId'])
+        self.assertRegex(second['connectionId'], r'^member-[a-f0-9]{32}$')
+        self.assertEqual(1, self.query('SELECT Allocated FROM broker.Pools')[0][0])
 
     def test_runtime_policy_expansion_does_not_extend_an_authenticated_absolute_deadline(self):
         """認証後に最長期限の構成を拡張しても、実SQLへ保存済みの期限を延ばしません。"""
@@ -326,13 +343,99 @@ class SessionSqlTests(unittest.TestCase):
         self.store.create_transaction(pending_tx, PROFILE, SUB, 'a'*64, 'b'*64, self.now()+600,
             pending_session_id='e'*64, pending_secret_hash='f'*64)
         self.query("UPDATE broker.Transactions SET Phase='verifying',TenantId=?,ObjectId=?,ProviderName=?,ConnectionId='member',SubjectEpochAtVerification=0,TicketHash=? WHERE TransactionId=?", TENANT, OWNER, PROFILE+'-a', 'd'*64, pending_tx)
-        self.store.begin_disconnect(self.sid, digest(self.secret), SUB)
+        mapping = self.store.begin_disconnect(self.sid, digest(self.secret), SUB)
         self.assertIsNone(self.store.resolve_session(self.sid, digest(self.secret), SUB, PROFILE))
         self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 1)
-        self.store.finish_disconnect(PROFILE, TENANT, OWNER, PROFILE+'-a', 'member')
+        self.store.finish_disconnect(PROFILE, TENANT, OWNER, PROFILE+'-a', 'member',
+                                     expected_version=mapping['connectionVersion'])
         self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 0)
         with self.assertRaises(StoreConflict):
             self.store.complete_transaction(pending_tx, 'd'*64, OWNER, policy=POLICY)
+
+    def cleanup_candidate(self):
+        return self.store.cleanup_candidates({(PROFILE, PROFILE+'-a')})[0]
+
+    def age_connection(self):
+        self.query('UPDATE broker.Connections SET LastUsedAt=?', self.now()-5184000-1)
+
+    def test_allocation_and_authentication_do_not_extend_connection_business_clock(self):
+        used = self.now()-1000
+        self.query('UPDATE broker.Connections SET LastUsedAt=?', used)
+        self.store.allocate_connection(PROFILE, TENANT, OWNER, 'member@example.test', 'auth-owner')
+        self.assertEqual(self.query('SELECT LastUsedAt FROM broker.Connections')[0][0], used)
+        self.activate()
+        self.assertEqual(self.query('SELECT LastUsedAt FROM broker.Connections')[0][0], used)
+        self.assertTrue(self.prepare()[0]['allowed'])
+        self.assertGreater(self.query('SELECT LastUsedAt FROM broker.Connections')[0][0], used)
+        # A session with an older local clock cannot move the connection clock back.
+        future = self.now()+10
+        self.query('UPDATE broker.Connections SET LastUsedAt=?', future)
+        self.assertTrue(self.prepare()[0]['allowed'])
+        self.assertEqual(self.query('SELECT LastUsedAt FROM broker.Connections')[0][0], future)
+
+    def test_idle_cleanup_revokes_live_sessions_and_blocks_use_and_reauthentication(self):
+        self.activate(); self.age_connection()
+        claimed = self.store.claim_cleanup(self.cleanup_candidate(), 'cleanup-worker')
+        self.assertTrue(self.store.validate_cleanup_claim(claimed))
+        self.assertFalse(self.prepare()[0]['allowed'])
+        with self.assertRaises(StoreConflict):
+            self.store.allocate_connection(PROFILE, TENANT, OWNER, 'member@example.test', 'new-auth')
+        self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 1)
+        self.assertEqual(self.query('SELECT COUNT(*) FROM broker.Sessions WHERE Revoked=0')[0][0], 0)
+        self.store.finish_cleanup(claimed)
+        self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 0)
+        with self.assertRaises(StoreConflict):
+            self.store.finish_cleanup(claimed)
+
+    def test_business_use_after_candidate_snapshot_prevents_claim(self):
+        self.activate(); self.age_connection()
+        candidate = self.cleanup_candidate()
+        self.assertTrue(self.prepare()[0]['allowed'])
+        with self.assertRaises(StoreConflict):
+            self.store.claim_cleanup(candidate, 'cleanup-worker')
+        self.assertEqual(self.query('SELECT State FROM broker.Connections')[0][0], 'ready')
+
+    def test_identity_pinned_pending_authentication_is_protected_before_identity_callback(self):
+        self.activate(); self.age_connection()
+        candidate = self.cleanup_candidate()
+        self.store.create_challenge('e'*64, PROFILE, SUB, 'f'*64, '1'*64, self.now()+600,
+            pending_session_id='2'*64, pending_secret_hash='3'*64,
+            source_session=(self.sid, digest(self.secret)))
+        self.assertEqual(self.store.cleanup_candidates({(PROFILE, PROFILE+'-a')}), [])
+        with self.assertRaises(StoreConflict):
+            self.store.claim_cleanup(candidate, 'cleanup-worker')
+
+    def test_parallel_claims_have_one_winner_and_do_not_release_capacity(self):
+        self.activate(); self.age_connection()
+        candidate = self.cleanup_candidate()
+        def claim_one(number):
+            try:
+                return self.store.claim_cleanup(candidate, 'worker-'+str(number))
+            except (StoreConflict, StoreUnavailable):
+                return None
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            values = list(executor.map(claim_one, range(2)))
+        self.assertEqual(sum(value is not None for value in values), 1)
+        self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 1)
+
+    def test_reclaimed_lease_and_late_manual_finish_cannot_release_a_later_row(self):
+        self.activate()
+        manual = self.store.begin_disconnect(self.sid, digest(self.secret), SUB)
+        self.assertTrue(self.store.validate_disconnect(manual))
+        first = self.store.claim_cleanup(self.cleanup_candidate(), 'worker-one')
+        self.assertFalse(self.store.validate_disconnect(manual))
+        self.query('UPDATE broker.Connections SET LeaseUntil=?', self.now()-1)
+        second = self.store.claim_cleanup(self.cleanup_candidate(), 'worker-two')
+        self.assertFalse(self.store.validate_cleanup_claim(first))
+        with self.assertRaises(StoreConflict):
+            self.store.finish_cleanup(first)
+        self.store.finish_cleanup(second)
+        allocated = self.store.allocate_connection(PROFILE, TENANT, OWNER, 'member@example.test', 'new-auth')
+        self.store.set_connection_state(PROFILE, TENANT, OWNER, 'deleting', 'new-auth')
+        with self.assertRaises(StoreConflict):
+            self.store.finish_disconnect(PROFILE, TENANT, OWNER, allocated['providerName'],
+                allocated['connectionId'], expected_version=manual['connectionVersion'])
+        self.assertEqual(self.query('SELECT Allocated FROM broker.Pools')[0][0], 1)
 
     def test_reauthentication_creates_new_proof_without_reviving_old(self):
         self.activate()

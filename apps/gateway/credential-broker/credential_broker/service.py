@@ -304,10 +304,12 @@ class BrokerService:
     def disconnect(self, token, subscription_id):
         session_id, secret = session_parts(token)
         mapping = self._guard(lambda: self.store.begin_disconnect(session_id, digest(secret), self.subscription(subscription_id)))
-        deleted = self._guard(lambda: self.cm.delete_connection(mapping["providerName"], mapping["connectionId"]))
+        deleted = self._guard(lambda: self.cm.delete_connection(mapping["providerName"], mapping["connectionId"],
+            validate_claim=lambda: self.store.validate_disconnect(mapping)))
         if deleted:
             self._guard(lambda: self.store.finish_disconnect(mapping["profileName"], mapping["tenantId"],
-                mapping.get("ownerId", mapping.get("objectId")), mapping["providerName"], mapping["connectionId"]))
+                mapping.get("ownerId", mapping.get("objectId")), mapping["providerName"], mapping["connectionId"],
+                expected_version=mapping["connectionVersion"]))
         return {"status": "disconnected" if deleted else "disconnect_pending"}
 
     def connection_status(self, token, subscription_id, profile_name):
