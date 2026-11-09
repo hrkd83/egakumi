@@ -22,6 +22,7 @@
 - [テストの実行方法](#テストの実行方法)
 - [構築前チェックの責務](#構築前チェックの責務)
 - [ソースを読む順番](#ソースを読む順番)
+- [APIM共通ポリシーを改修する](#apim共通ポリシーを改修する)
 - [設定生成と独立した回帰確認](#設定生成と独立した回帰確認)
 - [音声・モデルのCLI確認](#音声モデルのcli確認)
 - [固定依存と配布物](#固定依存と配布物)
@@ -188,6 +189,19 @@ APIM全体ポリシーは[service.xml](apps/gateway/apim/policies/service.xml)�
 `gateway.authentication.credentialLogin`を設定すると、[CM共通接続窓口](docs/setup/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
 
 証明書のDNS-01はAzure Public DNSと事前作成したUAMIを使用します。`scripts/deployment/helpers/dns_selection.py`は準備済みのAzure DNS設定を確認します。DNS側Subscription ID・UAMIリソースIDは構築前にparamsへ必須設定します。`prepare_secrets.py`はCM用Entra secretの案内・非表示入力・保護保存を担当します。`preup`はローカル依存と準備済み公開IDを検査して構築へ進みます。公開例を直接書き換えず導入先paramsを使い、秘密値はparams/configへ書き込みません。
+
+## APIM共通ポリシーを改修する
+
+共通認証・監査・ルーティング・継承順等の処理自体を変える場合は、開発者が[service.xml](apps/gateway/apim/policies/service.xml)と関連XMLを改修し、対象回帰と差分を確認します。通常の本文上限・許可モデル等は[API定義の変更手順](docs/operations/apim.md)でJSONを編集し、生成・反映します。
+
+共通管理ブロックは`apim_authentication.py`がIDと内容を照合するため、`service.xml`を変えただけで稼働中の管理ブロックを自動上書きしません。次の確認XMLとソース差分をレビューし、APIMの「すべてのAPI」のポリシー画面で該当ブロックだけを整合させてからGateway個別配備で再照合します。既存の追加処理と同時編集を確認し、画面保存時の競合を無視しません。共通認可・要求IDや`<base />`の継承を保持します。確認XMLへ管理対象外の要素を加えただけでは、Gateway個別配備の反映対象は増えません。
+
+```sh
+python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
+  --output "$DEPLOY_LOCAL_DIRECTORY/generated/apim-policy-review.xml"
+```
+
+同じ環境の保護入力を選び、出力先は未作成のファイルを指定します。変更後は対象の正常・拒否と既存認証を確認します。このXML改修は通常運用のAPI制約変更とは分けて実施します。
 
 ## 設定生成と独立した回帰確認
 

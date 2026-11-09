@@ -7,16 +7,8 @@
 | 変更内容 | 正本 |
 | --- | --- |
 | API・operation、許可モデル、入力制約 | `apps/gateway/apim/apis/<API名>.json`。制約から操作ごとのポリシーも生成される |
-| 全APIに共通するポリシー | `apps/gateway/apim/policies/service.xml`と、それが読み込むXML。変更後は認証・継承順も確認する |
 
-API別制約は定義を変更してGで反映する。共通管理ブロックは`apim_authentication.py`がIDと内容を照合するため、`service.xml`を変えただけで稼働中の管理ブロックを自動上書きする入口ではない。変更時はソースと次の確認XMLをレビューし、APIMの「すべてのAPI」のポリシー画面で該当ブロックだけを整合させてからGで再照合する。既存の追加処理と同時編集を確認し、画面保存時の競合を無視しない。共通認可・要求IDや`<base />`の継承は保持する。確認XMLへ管理対象外の要素を加えただけではGの反映対象は増えない。今回の代表試験は、以下のAPI別制約と生成ポリシーを対象にする。
-
-```sh
-python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
-  --output "$DEPLOY_LOCAL_DIRECTORY/generated/apim-policy-review.xml"
-```
-
-出力先は未作成のファイルを指定する。API別制約の修正は以下の代表例で確認する。
+API別制約はJSON定義を変更してGで反映する。XMLは定義から生成するため、この手順でXMLを手編集する必要はない。共通認証・監査等の処理自体を変更する場合は、[開発者向けの共通ポリシー改修](../../DEVELOPMENT.md#apim共通ポリシーを改修する)として扱う。以下はAPI別制約の変更例である。
 
 ## 変更する箇所
 
