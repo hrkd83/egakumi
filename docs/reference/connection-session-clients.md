@@ -33,6 +33,12 @@ rotationCommitAttempted          確定要求を送る前に保存する試行�
 
 サーバー用クライアントの正本は[`apps/portal/lib/connection-session/client.ts`](../../apps/portal/lib/connection-session/client.ts)。[`clients/connection-session/typescript/connection-session.ts`](../../clients/connection-session/typescript/connection-session.ts)は同じ実装を再exportする入口で、別管理のコピーではない。別アプリへ取り込むときは正本を使い、暗号化共有store・認証済み本人の境界をそのアプリへ実装する。追加の認証SDKは要求せず、アプリの既存認証から確認済み本人を受け取る。PortalのBetter Authログインと、この接続セッションの期限を同一にしない。
 
+業務GETは排他取得後に開始する90秒のHTTP予算を使い、前後の更新確定と業務実行前409後の
+再試行でも同じ期限を共有する。更新確定などの制御要求は1要求25秒を上限とし、業務処理中は
+残り予算も越えない。期限後の追加送信や、成功済み業務の自動再送は行わない。
+単独の完了確認・ログアウト・切断は25秒のまま。SQLの処理時間はこのHTTP予算に含めた
+完了保証ではなく、共有storeのリースと版数・期限のfencingで保護する。
+
 ```typescript
 // app/api/graph/me/route.ts の組み込み例。server-onlyのモジュール内で生成する。
 import "server-only";

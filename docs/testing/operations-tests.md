@@ -30,20 +30,20 @@
 
 | ID | 普段行う作業と手順 | 確認すること・終了時の扱い | 結果 |
 | --- | --- | --- | --- |
-| OPS-01 | [更新・引継ぎの準備](../operations/common.md)：正規の保護入力・state・ソースを確認してP／Gを計画する | 認証先・現物との一致、今回の変更範囲、旧digest・戻す値を確認する。不一致の隔離入力は変更前に止め、元の入力を破壊せず計画し直す | 未実施 |
-| OPS-02 | [Portalの改修・FIXをリリース](../operations/portal.md)：代表画面の文言・ガイド等を小さく変更する | 変更に必要なlint・テスト・buildを通し、Pで更新、稼働digestと実画面・代表APIを確認する。不正候補はローカルで止め、確認済み旧版への切戻しも行う | 未実施 |
-| OPS-03 | [API定義・ポリシーを修正](../operations/apim.md)：Chat profileの本文上限を変更して、生成されるポリシーを反映する | Gで実反映し、4096／4097 bytesの正常・413拒否、APIポリシーの実値、未認証拒否を確認する。旧定義・ポリシーへ戻し、購読・他APIを保持する | 未実施 |
-| OPS-04 | [Foundryモデルを保守](../operations/foundry.md)：既存配備の容量を小さく変更する | `scripts/operations/model.py`でconfigの採用値を反映し、実容量を揃え、同じGateway・Portal要求を確認する。容量だけならG／Pは不要。旧容量・configへ戻す。モデル追加・版変更時の公開先整合も手順で確認する | 未実施 |
-| OPS-05 | [共用Entra client secretを更新](../operations/secrets-and-certificates.md)：`entra_secret.py`のcreate→switch→retireを新旧併存で実施する | 保護ファイル、共有KVの全対象、全CM provider、Broker・Portal・同期jobの参照を揃える。新規認証を確認して旧secretを廃止し、その後も認証成功を確認する。新値を継続採用する | 未実施 |
-| OPS-06 | [TLS証明書を更新](../operations/secrets-and-certificates.md)：`certificate.py --stage renew --rotate`で既存workerの計画更新を行う | 新しいKV版・SAN・期限、APIM／AppGWの同期、公開HTTPSの新leafと信頼を確認する。timerと通常APIを保持し、作業用タグを戻す。新証明書を継続利用する | 未実施 |
-| OPS-07 | [利用資格・Portalの対象設定を変更](../operations/access-and-keys.md)：Member所属と名前条件、必要な承認設定を変更する | Entra所属だけの変更とPが必要な設定を分ける。対象の許可・条件外の拒否、管理操作、既存キーの保持を確認する。今回の所属・条件変更を戻す | 未実施 |
-| OPS-08 | [APIキーを段階更新・停止・再開](../operations/access-and-keys.md)：専用購読の主副を切り替える | `api_key.py`で再生成し、利用先を切り替えて新値成功・旧値拒否・残した側の成功を確認する。Portalで停止・再開も確認する。再生成前の値への復元は求めず、専用キーは最後に回収する | 未実施 |
-| OPS-09 | [購読の同期](../operations/access-and-keys.md)：専用購読のAPIM側用途名だけを変えて台帳との差分を作る | Portal管理者がSQL正本のプレビューを確認し、対象1件だけを同期する。用途名の復元・差分解消・同じキーでの正常利用を確認する。削除・再作成を故障注入しない | 未実施 |
-| OPS-10 | [CMプール増設・定期jobの点検](../operations/access-and-keys.md)：pool数を1つ増やす | GでCM・権限・SQL・Brokerの追加先を揃え、既存接続を保持する。既存毎時jobのイメージ・MI・直近結果・集約ログを点検する。増設先は稼働中に縮小せず、環境撤去まで保持する | 未実施 |
-| OPS-11 | [WAFの限定反映](../operations/platform-settings.md)：`operations/waf.py`で対象profile・パス・ルールを計画・反映する | 正常入力と関係する攻撃対照、Prevention・対象外除外・参照経路を確認する。既存の誤検知がない場合は現在の承認済み除外を再適用し、差分なしと正常・拒否を確認する。新たな誤検知を修正した結果とは区別する | 未実施 |
-| OPS-12 | [バックエンドと外向き許可を整合](../operations/platform-settings.md)：共通公開メタデータを返す専用APIを1つ追加する | API定義と必要な固定FQDN・HTTPS443をGで反映・照合し、認証付き応答・未認証拒否・既存APIを確認する。既存許可の再利用と新規追加を区別し、専用API等だけを明示回収する | 未実施 |
-| OPS-13 | [監視の設定変更・運営時のログ確認](../operations/platform-settings.md)：`monitoring.py`で対象通知先とアラート1規則の閾値を変更する | scope・条件・宛先・正本を揃え、合意した宛先でテスト通知を1回確認する。代表要求の集約・相関ログを狭い期間で確認する。条件・一時通知先を旧値へ戻し、大量発報を作らない | 未実施 |
-| OPS-14 | [サービス容量を調整](../operations/platform-settings.md)：代表としてBrokerの最小replicaを1段階増やす | config正本と実設定・revision・digest、ヘルスと本人APIを確認する。最大値の範囲内で調整し、旧値へ戻す。最大負荷や障害を発生させない | 未実施 |
+| OPS-01 | [更新・引継ぎの準備](../operations/common.md)：正規の保護入力・state・ソースを確認してP／Gを計画する | 認証先・現物との一致、今回の変更範囲、旧digest・戻す値を確認する。不一致の隔離入力は変更前に止め、元の入力を破壊せず計画し直す | PASS |
+| OPS-02 | [Portalの改修・FIXをリリース](../operations/portal.md)：代表画面の文言・ガイド等を小さく変更する | 変更に必要なlint・テスト・buildを通し、Pで更新、稼働digestと実画面・代表APIを確認する。不正候補はローカルで止め、確認済み旧版への切戻しも行う | PASS |
+| OPS-03 | [API定義・ポリシーを修正](../operations/apim.md)：Chat profileの本文上限を変更して、生成されるポリシーを反映する | Gで実反映し、4096／4097 bytesの正常・413拒否、APIポリシーの実値、未認証拒否を確認する。旧定義・ポリシーへ戻し、購読・他APIを保持する | PASS |
+| OPS-04 | [Foundryモデルを保守](../operations/foundry.md)：既存配備の容量を小さく変更する | `scripts/operations/model.py`でconfigの採用値を反映し、実容量を揃え、同じGateway・Portal要求を確認する。容量だけならG／Pは不要。旧容量・configへ戻す。モデル追加・版変更時の公開先整合も手順で確認する | PASS |
+| OPS-05 | [共用Entra client secretを更新](../operations/secrets-and-certificates.md)：`entra_secret.py`のcreate→switch→retireを新旧併存で実施する | 保護ファイル、共有KVの全対象、全CM provider、Broker・Portal・同期jobの参照を揃える。新規認証を確認して旧secretを廃止し、その後も認証成功を確認する。新値を継続採用する | PASS |
+| OPS-06 | [TLS証明書を更新](../operations/secrets-and-certificates.md)：`certificate.py --stage renew --rotate`で既存workerの計画更新を行う | 新しいKV版・SAN・期限、APIM／AppGWの同期、公開HTTPSの新leafと信頼を確認する。timerと通常APIを保持し、作業用タグを戻す。新証明書を継続利用する | PASS |
+| OPS-07 | [利用資格・Portalの対象設定を変更](../operations/access-and-keys.md)：Member所属と名前条件、必要な承認設定を変更する | Entra所属だけの変更とPが必要な設定を分ける。対象の許可・条件外の拒否、管理操作、既存キーの保持を確認する。今回の所属・条件変更を戻す | PASS |
+| OPS-08 | [APIキーを段階更新・停止・再開](../operations/access-and-keys.md)：専用購読の主副を切り替える | `api_key.py`で再生成し、利用先を切り替えて新値成功・旧値拒否・残した側の成功を確認する。Portalで停止・再開も確認する。再生成前の値への復元は求めず、専用キーは最後に回収する | PASS |
+| OPS-09 | [購読の同期](../operations/access-and-keys.md)：専用購読のAPIM側用途名だけを変えて台帳との差分を作る | Portal管理者がSQL正本のプレビューを確認し、対象1件だけを同期する。用途名の復元・差分解消・同じキーでの正常利用を確認する。削除・再作成を故障注入しない | PASS |
+| OPS-10 | [CMプール増設・定期jobの点検](../operations/access-and-keys.md)：pool数を1つ増やす | GでCM・権限・SQL・Brokerの追加先を揃え、既存接続を保持する。既存毎時jobのイメージ・MI・直近結果・集約ログを点検する。増設先は稼働中に縮小せず、環境撤去まで保持する | PASS |
+| OPS-11 | [WAFの限定反映](../operations/platform-settings.md)：`operations/waf.py`で対象profile・パス・ルールを計画・反映する | 正常入力と関係する攻撃対照、Prevention・対象外除外・参照経路を確認する。既存の誤検知がない場合は現在の承認済み除外を再適用し、差分なしと正常・拒否を確認する。新たな誤検知を修正した結果とは区別する | PASS |
+| OPS-12 | [バックエンドと外向き許可を整合](../operations/platform-settings.md)：共通公開メタデータを返す専用APIを1つ追加する | API定義と必要な固定FQDN・HTTPS443をGで反映・照合し、認証付き応答・未認証拒否・既存APIを確認する。既存許可の再利用と新規追加を区別し、専用API等だけを明示回収する | PASS |
+| OPS-13 | [監視の設定変更・運営時のログ確認](../operations/platform-settings.md)：`monitoring.py`で既存通知先を照合し、アラート1規則の閾値を変更する | scope・条件・宛先・正本を揃え、合意した宛先でテスト通知を1回確認する。代表要求の集約・相関ログを狭い期間で確認する。閾値を旧値へ戻し、大量発報を作らない | PASS |
+| OPS-14 | [サービス容量を調整](../operations/platform-settings.md)：代表としてBrokerの最小replicaを1段階増やす | config正本と実設定・revision・digest、ヘルスと本人APIを確認する。最大値の範囲内で調整し、旧値へ戻す。最大負荷や障害を発生させない | PASS |
 
 ### API・モデル変更の代表条件
 
@@ -75,6 +75,6 @@
 
 ## 判定と記録
 
-結果は未実施／実施中／PASS／FAIL／ブロック／合意した対象外を使う。机上確認は実装・CLI・手順・ローカル回帰の整合確認であり、実配備のPASSではない。14シナリオの実測結果は、開始前はすべて未実施とする。
+結果は未実施／実施中／PASS／FAIL／ブロック／合意した対象外を使う。机上確認は実装・CLI・手順・ローカル回帰の整合確認であり、実配備のPASSではない。実施中は実施票と表を区切りごとに更新する。PASSには、その行で定めた確認と終了処理がすべて完了した項目だけを含める。
 
 実施票は`ID / 対象・担当 / revision・正本 / 変更前後 / 操作・期待 / 実結果 / 継続採用・切戻し・回収 / 判定・残件`を持つ。実測値を含む票と必要最小限のテキスト証跡は`.local/<environment>/evidence/<run-id>/`へ保護保存する。画像・動画や大容量ログは追加採取しない。
