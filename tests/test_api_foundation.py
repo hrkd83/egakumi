@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest import mock
 
-from arm_helpers import PolicyExpression
+from arm_helpers import DiscoveryExpression
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, configuration, fixture
 from deployment.helpers.diagnostics import canonical_settings
@@ -29,7 +29,7 @@ class ApiFoundationProjectionTests(unittest.TestCase):
         for api in built['infrastructureApiDefinitions']:
             self.assertEqual(set(api) - {'mcp'}, {'name', 'apiType', 'path', 'operations', 'authorization'})
             if 'mcp' in api:
-                self.assertEqual(set(api['mcp']), {'path'})
+                self.assertEqual(set(api['mcp']), {'name', 'path'})
             for operation in api['operations']:
                 self.assertEqual(set(operation), {'name', 'method', 'urlTemplate'})
             for constraint in api['authorization']['operationConstraints'].values():
@@ -85,12 +85,12 @@ class ApiFoundationBicepTests(unittest.TestCase):
     def setUpClass(cls):
         cls.main = compile_bicep('infra/main.bicep')
         cls.gateway = next(item for item in cls.main['resources']
-                           if 'customMimePaths' in item.get('properties', {}).get('parameters', {}))
+                           if 'publishedApiPaths' in item.get('properties', {}).get('parameters', {}))
         cls.services = next(item for item in cls.main['resources']
                             if 'modelDeployments' in item.get('properties', {}).get('parameters', {}))
 
     def value(self, expression, config):
-        return PolicyExpression(expression, self.main['variables']).evaluate({'configuration': config})
+        return DiscoveryExpression(expression, self.main['variables']).evaluate({'configuration': config})
 
     def paths(self, name, config):
         return self.value(self.gateway['properties']['parameters'][name]['value'], config)
@@ -109,11 +109,14 @@ class ApiFoundationBicepTests(unittest.TestCase):
     def test_standard_paths_and_websocket_logs_exist_while_public_array_stays_empty(self):
         config = configuration.build_bicep_configuration(foundation_configuration())
         self.assertEqual(config['apiDefinitions'], [])
-        self.assertEqual(self.paths('customMimePaths', config), [
+        self.assertEqual(self.paths('speechRawBodyPaths', config), [
             '/models/azure-speech/v1/synthesize', '/models/azure-speech/v1/recognize'])
-        self.assertEqual(self.paths('inlineImagePaths', config), ['/models/openai/v1/chat/completions'])
-        self.assertEqual(self.paths('inlinePdfPaths', config), ['/models/openai/v1/responses'])
-        self.assertEqual(self.paths('legacyMcpMessagePaths', config), [])
+        self.assertEqual(self.paths('documentUploadPaths', config), ['/tools/documents/v1/analyze'])
+        published = self.paths('publishedApiPaths', config)
+        for path in ('/models/openai/v1/chat/completions', '/models/openai/v1/responses',
+                     '/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'):
+            self.assertIn(path, published)
+        self.assertTrue(all('{' not in path and '*' not in path for path in published))
         self.assertTrue(self.value(self.main['variables']['realtimeEnabled'], config))
         self.assertIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
@@ -124,9 +127,8 @@ class ApiFoundationBicepTests(unittest.TestCase):
             'authorization': {'operationConstraints': {'chat': {'kind': 'bodyModel', 'bodyFormat': 'json',
                 'profiles': [{'modalities': ['text', 'image']}, {'modalities': ['text', 'audio']}]}}},
         }])
-        for name in ('inlineImagePaths', 'inlineAudioPaths'):
-            self.assertEqual(self.paths(name, config), ['/company/models/v2/chat/completions'])
-        for name in ('inlinePdfPaths', 'customMimePaths', 'legacyMcpMessagePaths'):
+        self.assertEqual(self.paths('publishedApiPaths', config), ['/company/models/v2/chat/completions'])
+        for name in ('speechRawBodyPaths', 'documentUploadPaths'):
             self.assertEqual(self.paths(name, config), [])
         self.assertNotIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
@@ -141,9 +143,19 @@ class ApiFoundationBicepTests(unittest.TestCase):
                                                        {'name': 'message', 'uriTemplate': '/messages/'}]},
         }]
         config.pop('infrastructureApiDefinitions')
-        self.assertEqual(self.paths('legacyMcpMessagePaths', config), ['/tools/company/v2/messages/'])
-        self.assertEqual(self.paths('customMimePaths', config), [])
+        self.assertEqual(self.paths('publishedApiPaths', config), ['/tools/company/v2/'])
+        self.assertEqual(self.paths('speechRawBodyPaths', config), [])
+        self.assertEqual(self.paths('documentUploadPaths', config), [])
+        self.assertEqual(config['apiDefinitions'][0]['mcpProxy']['endpoints'][1]['uriTemplate'], '/messages/')
         self.assertFalse(self.value(self.main['variables']['realtimeEnabled'], config))
+
+    def test_only_declared_data_and_raw_inputs_are_wired_to_gateway(self):
+        removed = {'customMimePaths', 'legacyMcpMessagePaths', 'inlineImagePaths', 'inlinePdfPaths', 'inlineAudioPaths'}
+        parameters = self.gateway['properties']['parameters']
+        self.assertTrue({'publishedApiPaths', 'speechRawBodyPaths', 'documentUploadPaths'} <= set(parameters))
+        self.assertFalse(removed & set(parameters))
+        self.assertFalse(removed & set(self.gateway['properties']['template']['parameters']))
+        self.assertFalse(removed & set(self.main['variables']))
 
     def test_metadata_does_not_enable_realtime_without_the_signing_key_configuration(self):
         config = configuration.build_bicep_configuration(foundation_configuration())

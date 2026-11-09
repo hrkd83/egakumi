@@ -15,6 +15,10 @@ param productName string
 param environmentName string
 @description('環境名と製品名をこの順で連結した共通名。作成と更新で同じ値を使います。')
 param resourceStem string = '${environmentName}-${productName}'
+@minLength(6)
+@maxLength(6)
+@description('同じ構築試行のAPIMと共有する、用途別WAFポリシー名の識別子。')
+param wafPolicyIdentifier string
 @description('このリソース群を配置する Azure リージョン。')
 param location string
 @description('製品・環境・所有者等を整理するタグ。資格情報や個人情報を入れません。')
@@ -86,20 +90,10 @@ param wafFileUploadLimitInMb int = 100
 param wafCustomRules array = []
 @description('WAF の管理規則から除外する属性の一覧。誤検知を確認した範囲だけを指定します。')
 param wafExclusions array = []
-@description('公開 API 契約から導出した、SSML/WAV を POST する正規の完全パス。この URI だけ Content-Type の誤検知を調整する内部入力です。')
-param customMimePaths array = []
 @description('固定の文書解析POST/binary/1MiB契約から導出した完全パス。本文上限とMIME規則の調整をこのURIだけに適用します。')
 param documentUploadPaths array = []
 @description('Azure Speech正本の完全POSTパス。raw SSML/WAVの930110誤検知だけを調整し、URI/query/header/cookieは専用Block規則で検査します。')
 param speechRawBodyPaths array = []
-@description('native MCP 従来 SSE の登録済み message パスから導出した公開 POST の完全パス。session_id の規則除外をこの URI だけへ限定する内部入力です。')
-param legacyMcpMessagePaths array = []
-@description('vision 操作契約の完全パス。インライン画像のJSON欄だけをXSS誤検知の調整対象にする内部入力です。')
-param inlineImagePaths array = []
-@description('pdf 操作契約の完全パス。インラインPDFのJSON欄だけをXSS誤検知の調整対象にする内部入力です。')
-param inlinePdfPaths array = []
-@description('audio-chat 操作契約の完全パス。インライン音声のJSON欄だけをSQLi誤検知の調整対象にする内部入力です。')
-param inlineAudioPaths array = []
 @description('公開API契約から有限値へ展開した完全パス。データ欄の除外はこの一覧に存在するURIだけに適用します。')
 param publishedApiPaths array = []
 @description('WAF ログから除去する情報の追加規則。既定の認証情報除去は維持します。')
@@ -138,33 +132,13 @@ var dataProfiles = map(filter(dataManifest.profiles, profile => createWafPolicy 
 })
 var dataGatewayPaths = flatten(map(filter(dataProfiles, profile => profile.scope == 'gateway'), profile => profile.paths))
 var dataPortalPaths = flatten(map(filter(dataProfiles, profile => profile.scope == 'portal'), profile => profile.paths))
-var speechPaths = filter(speechRawBodyPaths, path => contains(customMimePaths, path))
-var shareSpeechMimePolicy = !empty(speechPaths) && empty(filter(customMimePaths, path => !contains(speechPaths, path)))
-var useSeparateSpeechPolicy = createWafPolicy && !empty(speechPaths) && !shareSpeechMimePolicy
-var remainingCustomMimePaths = filter(customMimePaths, path => !contains(dataGatewayPaths, path) && !contains(documentPaths, path) && (!useSeparateSpeechPolicy || !contains(speechPaths, path)))
-var remainingLegacyMcpPaths = filter(legacyMcpMessagePaths, path => !contains(dataGatewayPaths, path))
-// 企業が指定した既存ポリシーを、こちらの既定値で置換しません。
-// その場合の Content-Type 調整は企業側ポリシーの管理者が同じ URI 範囲で行います。
-var useCustomMimeWafPolicy = createWafPolicy && !empty(remainingCustomMimePaths)
-var useLegacyMcpWafPolicy = createWafPolicy && !empty(remainingLegacyMcpPaths)
-// A consolidated Chat URI can carry both image and audio profiles. Bind one
-// combined policy to that exact URI rather than duplicate path-map entries.
-var inlineMediaPaths = filter(inlineImagePaths, path => contains(inlineAudioPaths, path))
-var inlineImageOnlyPaths = filter(inlineImagePaths, path => !contains(inlineMediaPaths, path))
-var inlineAudioOnlyPaths = filter(inlineAudioPaths, path => !contains(inlineMediaPaths, path))
-var remainingInlineMediaPaths = filter(inlineMediaPaths, path => !contains(dataGatewayPaths, path))
-var remainingInlineImagePaths = filter(inlineImageOnlyPaths, path => !contains(dataGatewayPaths, path))
-var remainingInlinePdfPaths = filter(inlinePdfPaths, path => !contains(dataGatewayPaths, path))
-var remainingInlineAudioPaths = filter(inlineAudioOnlyPaths, path => !contains(dataGatewayPaths, path))
-var useInlineMediaWafPolicy = createWafPolicy && !empty(remainingInlineMediaPaths)
-var useInlineImageWafPolicy = createWafPolicy && !empty(remainingInlineImagePaths)
-var useInlinePdfWafPolicy = createWafPolicy && !empty(remainingInlinePdfPaths)
-var useInlineAudioWafPolicy = createWafPolicy && !empty(remainingInlineAudioPaths)
+var speechPaths = speechRawBodyPaths
+var useSpeechWafPolicy = createWafPolicy && !empty(speechPaths)
 // 本人確認callbackはAPIの公開一覧が空でも必要です。企業管理の既存WAFは変更しません。
 var useGatewayAuthWafPolicy = createWafPolicy && !contains(dataGatewayPaths, '/auth/connections/browser/identity-callback')
 // APIと本人確認callbackの完全パスにだけ、用途別のWAF調整を適用します。
 // Consoleは独立したホスティングのため、そのcallbackをCoreのWAF例外へ追加しません。
-var useProtocolWafPolicies = useCustomMimeWafPolicy || useSeparateSpeechPolicy || useDocumentWafPolicy || useLegacyMcpWafPolicy || useInlineImageWafPolicy || useInlinePdfWafPolicy || useInlineAudioWafPolicy || useInlineMediaWafPolicy || useGatewayAuthWafPolicy || !empty(dataGatewayPaths)
+var useProtocolWafPolicies = useSpeechWafPolicy || useDocumentWafPolicy || useGatewayAuthWafPolicy || !empty(dataGatewayPaths)
 // WAF ログにも認証値が残らないよう、ヘッダー・cookie・引数の既知の秘密項目をマスクします。
 var defaultScrubbingRules = [for variable in ['RequestHeaderNames', 'RequestCookieNames', 'RequestArgNames', 'RequestJSONArgNames', 'RequestPostArgNames']: {
   state: 'Enabled'
@@ -196,7 +170,7 @@ var sharedWafProperties = {
 
 // 既存企業ポリシーが指定されていない場合の、共通 WAF 設定です。
 resource wafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}'
+  name: 'wafpol-g-base-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: sharedWafProperties
@@ -206,7 +180,7 @@ resource wafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPo
 // URI別policyはlistenerのpolicyを継承しないため、Portalの各policyにも同じ正本を合成します。
 var portalSessionExclusions = loadJsonContent('../../apps/portal/waf-session-exclusions.json')
 resource portalWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-portal'
+  name: 'wafpol-p-base-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: union(sharedWafProperties, {
@@ -219,7 +193,7 @@ resource portalWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFire
 // Microsoftが発行する不透明な認可コードだけを、実測したSQLi誤検知の3規則から除外します。
 // このポリシーはPortalの正規callback完全パスだけに関連付け、他の引数・規則は維持します。
 resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-portal-auth'
+  name: 'wafpol-p-auth-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: union(sharedWafProperties, {
@@ -245,7 +219,7 @@ resource portalAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplication
 // 専用policyは親policyを継承しないため、本文検査・ログ除去・企業追加規則を同じ設定から複製します。
 // codeの引数名・state・他の引数・他の規則は除外せず、下の完全パスだけに関連付けます。
 resource gatewayAuthWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useGatewayAuthWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-gateway-auth'
+  name: 'wafpol-g-auth-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: union(sharedWafProperties, {
@@ -308,25 +282,8 @@ var rawBodyProperties = union(sharedWafProperties, {
     }]
   })
 })
-resource customMimeWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useCustomMimeWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-custom-mime'
-  location: location
-  tags: tags
-  properties: shareSpeechMimePolicy ? rawBodyProperties : union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      managedRuleSets: [{
-        ruleSetType: 'OWASP'
-        ruleSetVersion: '3.2'
-        ruleGroupOverrides: [{
-          ruleGroupName: 'REQUEST-920-PROTOCOL-ENFORCEMENT'
-          rules: [{ ruleId: '920420', state: 'Disabled' }]
-        }]
-      }]
-    })
-  })
-}
-resource speechRawWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useSeparateSpeechPolicy) {
-  name: 'wafpol-agw-${resourceStem}-speech-raw-body'
+resource speechWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useSpeechWafPolicy) {
+  name: 'wafpol-g-speech-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: rawBodyProperties
@@ -336,7 +293,7 @@ resource speechRawWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationF
 // 1MiB全体を検査し、正規MIMEの920420とraw本文の930110誤検知を調整します。
 // 非本文のtraversalは共通の4Blockで補完し、930100等の管理規則は維持します。
 resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useDocumentWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-document-upload'
+  name: 'wafpol-g-document-upload-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: union(rawBodyProperties, {
@@ -348,168 +305,16 @@ resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplica
   })
 }
 
-// MCP の session_id はサーバー発行・本人に結び付ける識別子で、Referer のない SDK
-// 呼出しにも必要です。943120 について、この名前の引数キーだけを評価対象から外します。
-// 値を全規則から除外したり、他 URI のセッション規則・本文検査を弱めたりはしません。
-// https://learn.microsoft.com/azure/web-application-firewall/ag/application-gateway-waf-configuration
-resource legacyMcpWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useLegacyMcpWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-mcp-legacy'
-  location: location
-  tags: tags
-  properties: union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [{
-        matchVariable: 'RequestArgKeys'
-        selectorMatchOperator: 'Equals'
-        selector: 'session_id'
-        exclusionManagedRuleSets: [{
-          ruleSetType: 'OWASP'
-          ruleSetVersion: '3.2'
-          ruleGroups: [{
-            ruleGroupName: 'REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION'
-            rules: [{ ruleId: '943120' }]
-          }]
-        }]
-      }])
-    })
-  })
-}
-
-// data:形式の画像/PDFはXSS規則941130/941170で誤検知されます。ログで確認した
-// JSONの値の欄だけを、その2規則から外します。キー・他の欄・他の規則は維持します。
-// APIMは本人/モデル許可・全体bytes・出力枠を検査しますが、画像/PDFの内容や
-// MIMEを検査済みとは扱いません。入力データ自体の妥当性は下流モデルも検査します。
-var inlineImageExclusion = {
-  matchVariable: 'RequestArgValues'
-  selectorMatchOperator: 'Equals'
-  selector: 'messages.content.image_url.url'
-  exclusionManagedRuleSets: [{
-    ruleSetType: 'OWASP'
-    ruleSetVersion: '3.2'
-    ruleGroups: [{
-      ruleGroupName: 'REQUEST-941-APPLICATION-ATTACK-XSS'
-      rules: [{ ruleId: '941130' }, { ruleId: '941170' }]
-    }]
-  }]
-}
-var inlinePdfExclusion = union(inlineImageExclusion, { selector: 'input.content.file_data' })
-resource inlineImageWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useInlineImageWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-inline-image'
-  location: location
-  tags: tags
-  properties: union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [inlineImageExclusion])
-    })
-  })
-}
-resource inlinePdfWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useInlinePdfWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-inline-pdf'
-  location: location
-  tags: tags
-  properties: union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [inlinePdfExclusion])
-    })
-  })
-}
-
-// OpenAI Audio Chat の音声は標準JSONの input_audio.data にBase64で入ります。
-// 実測で誤検知した942450だけを、この欄・このAPIの完全パスに限って調整します。
-// 本文サイズ・他のSQLi規則・通常の文字入力は引き続き検査します。音声内容そのものを
-// WAFで検査済みとは扱わず、APIMの認証・モデル許可・JSON/bytes制約も維持します。
-var inlineAudioExclusion = {
-        matchVariable: 'RequestArgNames'
-        selectorMatchOperator: 'Equals'
-        selector: 'messages.content.input_audio.data'
-        exclusionManagedRuleSets: [{
-          ruleSetType: 'OWASP'
-          ruleSetVersion: '3.2'
-          ruleGroups: [{
-            ruleGroupName: 'REQUEST-942-APPLICATION-ATTACK-SQLI'
-            rules: [{ ruleId: '942450' }]
-          }]
-        }]
-      }
-
-resource inlineAudioWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useInlineAudioWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-inline-audio'
-  location: location
-  tags: tags
-  properties: union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [inlineAudioExclusion])
-    })
-  })
-}
-
-resource inlineMediaWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useInlineMediaWafPolicy) {
-  name: 'wafpol-agw-${resourceStem}-inline-media'
-  location: location
-  tags: tags
-  properties: union(sharedWafProperties, {
-    managedRules: union(sharedWafProperties.managedRules, {
-      exclusions: concat(wafExclusions, [inlineImageExclusion, inlineAudioExclusion])
-    })
-  })
-}
-
-// URI別ポリシーは継承されないため、共通保護と既存プロトコル例外を必ず合成します。
-// 同じURIを旧media規則と新data規則の両方へ登録せず、一つの完成したpolicyへ関連付けます。
-var callbackRuleIds = {
-  gateway: ['942430', '942440', '942450']
-  portal: ['942430', '942440', '942450']
-}
-var callbackPaths = {
-  gateway: '/auth/connections/browser/identity-callback'
-  portal: '/api/auth/callback/microsoft'
-}
+// データ欄の調整はmanifestだけを正本にし、用途外の例外を動的に足しません。
 var dataPolicyProperties = [for profile in dataProfiles: union(sharedWafProperties, {
   policySettings: union(sharedWafProperties.policySettings, { mode: 'Prevention' })
   managedRules: union(sharedWafProperties.managedRules, {
-    managedRuleSets: profile.scope == 'gateway' && length(filter(profile.paths, path => contains(customMimePaths, path))) > 0 ? [{
-      ruleSetType: 'OWASP'
-      ruleSetVersion: '3.2'
-      ruleGroupOverrides: [{
-        ruleGroupName: 'REQUEST-920-PROTOCOL-ENFORCEMENT'
-        rules: [{ ruleId: '920420', state: 'Disabled' }]
-      }]
-    }] : sharedWafProperties.managedRules.managedRuleSets
     exclusions: union(wafExclusions,
-      profile.scope == 'portal' ? portalSessionExclusions : [],
-      profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlineImagePaths, path))) > 0 ? [inlineImageExclusion] : [],
-      profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlinePdfPaths, path))) > 0 ? [inlinePdfExclusion] : [],
-      profile.scope == 'gateway' && length(filter(profile.paths, path => contains(inlineAudioPaths, path))) > 0 ? [union(inlineAudioExclusion, { matchVariable: 'RequestArgValues' })] : [],
-      contains(profile.paths, callbackPaths[profile.scope]) ? [{
-        matchVariable: 'RequestArgValues'
-        selectorMatchOperator: 'Equals'
-        selector: 'code'
-        exclusionManagedRuleSets: [{
-          ruleSetType: 'OWASP'
-          ruleSetVersion: '3.2'
-          ruleGroups: [{
-            ruleGroupName: 'REQUEST-942-APPLICATION-ATTACK-SQLI'
-            rules: map(callbackRuleIds[profile.scope], rule => { ruleId: rule })
-          }]
-        }]
-      }] : [],
-      profile.scope == 'gateway' && length(filter(profile.paths, path => contains(legacyMcpMessagePaths, path))) > 0 ? [{
-        matchVariable: 'RequestArgKeys'
-        selectorMatchOperator: 'Equals'
-        selector: 'session_id'
-        exclusionManagedRuleSets: [{
-          ruleSetType: 'OWASP'
-          ruleSetVersion: '3.2'
-          ruleGroups: [{
-            ruleGroupName: 'REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION'
-            rules: [{ ruleId: '943120' }]
-          }]
-        }]
-      }] : [], profile.exclusions)
+      profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions)
   })
 })]
 resource dataWafPolicies 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = [for (profile, index) in dataProfiles: {
-  name: 'wafpol-agw-${resourceStem}-data-${profile.name}'
+  name: 'wafpol-${profile.name}-${wafPolicyIdentifier}'
   location: location
   tags: tags
   properties: dataPolicyProperties[index]
@@ -518,7 +323,7 @@ var dataGatewayPathRules = map(filter(dataProfiles, profile => profile.scope == 
   name: 'waf-data-${profile.name}'
   properties: {
     paths: profile.paths
-    firewallPolicy: { id: resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'wafpol-agw-${resourceStem}-data-${profile.name}') }
+    firewallPolicy: { id: resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'wafpol-${profile.name}-${wafPolicyIdentifier}') }
     backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
     backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
     ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
@@ -528,7 +333,7 @@ var dataPortalPathRules = map(filter(dataProfiles, profile => profile.scope == '
   name: 'waf-data-${profile.name}'
   properties: {
     paths: profile.paths
-    firewallPolicy: { id: resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'wafpol-agw-${resourceStem}-data-${profile.name}') }
+    firewallPolicy: { id: resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'wafpol-${profile.name}-${wafPolicyIdentifier}') }
     backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-portal' }
     backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-portal' }
   }
@@ -731,11 +536,11 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
               ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
             }
-          }] : [], useSeparateSpeechPolicy ? [{
-            name: 'speech-raw-body'
+          }] : [], useSpeechWafPolicy ? [{
+            name: 'speech'
             properties: {
               paths: speechPaths
-              firewallPolicy: { id: speechRawWafPolicy!.id }
+              firewallPolicy: { id: speechWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
               ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
@@ -745,60 +550,6 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
             properties: {
               paths: documentPaths
               firewallPolicy: { id: documentUploadWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useCustomMimeWafPolicy ? [{
-            name: 'custom-content-type'
-            properties: {
-              paths: remainingCustomMimePaths
-              firewallPolicy: { id: customMimeWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useLegacyMcpWafPolicy ? [{
-            name: 'legacy-mcp-session'
-            properties: {
-              paths: remainingLegacyMcpPaths
-              firewallPolicy: { id: legacyMcpWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useInlineMediaWafPolicy ? [{
-            name: 'inline-media-data'
-            properties: {
-              paths: remainingInlineMediaPaths
-              firewallPolicy: { id: inlineMediaWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useInlineImageWafPolicy ? [{
-            name: 'inline-image-data'
-            properties: {
-              paths: remainingInlineImagePaths
-              firewallPolicy: { id: inlineImageWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useInlinePdfWafPolicy ? [{
-            name: 'inline-pdf-data'
-            properties: {
-              paths: remainingInlinePdfPaths
-              firewallPolicy: { id: inlinePdfWafPolicy!.id }
-              backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-              backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
-            }
-          }] : [], useInlineAudioWafPolicy ? [{
-            name: 'inline-audio-data'
-            properties: {
-              paths: remainingInlineAudioPaths
-              firewallPolicy: { id: inlineAudioWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
               ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})

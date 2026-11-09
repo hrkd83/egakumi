@@ -144,6 +144,109 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
         response.read.return_value = json.dumps(body or {}).encode()
         return response
 
+    def http_error(self, status, headers=None, body=None):
+        return HTTPError("https://management.azure.com" + self.path,
+                         status, "PRIVATE_HTTP_REASON_FIXTURE", headers or {},
+                         io.BytesIO(json.dumps(body or {"error": {
+                             "message": "PRIVATE_HTTP_BODY_FIXTURE"}}).encode()))
+
+    def test_transient_http_get_errors_recover_without_exposing_response_or_query(self):
+        for status in (408, 429, 500, 502, 503, 504):
+            with self.subTest(status=status):
+                self.opener.open.reset_mock()
+                error = self.http_error(status)
+                self.opener.open.side_effect = [error, self.response(body={"ready": True})]
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    observed = self.transport.request("GET", self.path + "&secret=PRIVATE_QUERY_FIXTURE")
+                self.assertEqual(observed["body"], {"ready": True})
+                self.assertEqual(self.opener.open.call_count, 2)
+                self.assertTrue(error.fp.closed)
+                sleep.assert_called_once_with(1)
+                self.assertIn(f"HTTP {status}", output.getvalue())
+                for secret in ("TOKEN_FIXTURE", "PRIVATE_HTTP", "PRIVATE_QUERY", "api-version"):
+                    self.assertNotIn(secret, output.getvalue())
+
+    def test_transient_http_get_exhaustion_returns_last_response_after_three_attempts(self):
+        errors = [self.http_error(504), self.http_error(503),
+                  self.http_error(504, {"Retry-After": "300"}, {"error": {"code": "GatewayTimeout"}})]
+        self.opener.open.side_effect = errors
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            observed = self.transport.request("GET", self.path)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+        self.assertEqual(observed, {"statusCode": 504, "headers": {"Retry-After": "300"},
+                                   "body": {"error": {"code": "GatewayTimeout"}}})
+        self.assertTrue(all(error.fp.closed for error in errors))
+
+    def test_http_and_connection_failures_share_the_three_attempt_read_budget(self):
+        self.opener.open.side_effect = [URLError(TimeoutError()), self.http_error(504), self.response()]
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
+    def test_mutations_and_get_with_body_never_retry_transient_http_statuses(self):
+        for method, body in [(method, None) for method in ("PUT", "POST", "PATCH", "DELETE")] + [("GET", {})]:
+            for status in (429, 504):
+                with self.subTest(method=method, body=body, status=status):
+                    self.opener.open.reset_mock()
+                    self.opener.open.side_effect = self.http_error(status, {"Retry-After": "10"})
+                    with mock.patch.object(lifecycle.time, "sleep") as sleep:
+                        observed = self.transport.request(method, self.path, body)
+                    self.assertEqual(observed["statusCode"], status)
+                    self.assertEqual(self.opener.open.call_count, 1)
+                    sleep.assert_not_called()
+
+    def test_authentication_and_other_non_transient_http_errors_are_not_retried(self):
+        for status in (302, 400, 401, 403, 404, 409, 412, 422, 501):
+            with self.subTest(status=status):
+                self.opener.open.reset_mock()
+                self.opener.open.side_effect = self.http_error(status, {"Retry-After": "10"})
+                with mock.patch.object(lifecycle.time, "sleep") as sleep:
+                    self.assertEqual(self.transport.request("GET", self.path)["statusCode"], status)
+                self.assertEqual(self.opener.open.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_supported_numeric_retry_after_waits_at_least_the_hint(self):
+        for value, delay in (("0", 1), ("3", 3), ("0003", 3), ("10", 10), ("\t3 ", 3)):
+            with self.subTest(value=value):
+                self.opener.open.reset_mock()
+                self.opener.open.side_effect = [self.http_error(429, {"retry-after": value}), self.response()]
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+                sleep.assert_called_once_with(delay)
+                self.assertEqual(self.opener.open.call_count, 2)
+                self.assertNotIn("PRIVATE_RETRY_FIXTURE", output.getvalue())
+
+    def test_long_or_unsupported_retry_after_returns_original_response_without_retry(self):
+        for value in ("11", "300", "999999999", "9" * 100,
+                      "Wed, 21 Oct 2026 07:28:00 GMT", "-1", "", None, 3,
+                      "PRIVATE_RETRY_FIXTURE"):
+            with self.subTest(value=value):
+                self.opener.open.reset_mock()
+                headers = {"Retry-After": value}
+                body = {"error": {"code": "TooManyRequests", "message": "PRIVATE_HTTP_BODY_FIXTURE"}}
+                error = self.http_error(429, headers, body)
+                self.opener.open.side_effect = error
+                output = io.StringIO()
+                with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(output):
+                    observed = self.transport.request("GET", self.path)
+                self.assertEqual(observed, {"statusCode": 429, "headers": headers, "body": body})
+                self.assertEqual(self.opener.open.call_count, 1)
+                self.assertTrue(error.fp.closed)
+                sleep.assert_not_called()
+                self.assertNotIn("PRIVATE_", output.getvalue())
+
+    def test_small_numeric_hint_does_not_shorten_the_second_attempt_backoff(self):
+        self.opener.open.side_effect = [self.http_error(504),
+                                       self.http_error(429, {"Retry-After": "0"}), self.response()]
+        with mock.patch.object(lifecycle.time, "sleep") as sleep, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.transport.request("GET", self.path)["statusCode"], 200)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(sleep.call_args_list, [mock.call(1), mock.call(2)])
+
     def test_transient_read_failure_is_retried_without_repeating_a_write(self):
         """配備の開始後、状態確認の通信断ではGETだけを再試行する。"""
         self.opener.open.side_effect = [self.response(202), URLError(TimeoutError()),

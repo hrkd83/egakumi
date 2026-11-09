@@ -332,8 +332,9 @@ class ArmTransport:
     def request(self, method: str, path: str, body=None, headers=None) -> dict:
         """対象ホストとサブスクを検査し、必要時だけトークンを更新してARM要求を送る。
 
-        HTTPエラーは状態と構造化した応答として返す。一時的な通信断ではGETだけを
-        最大3回試す。変更要求の応答が消えた場合は、資源状態を確認できるよう停止する。
+        HTTPエラーは状態と構造化した応答として返す。本文のないGETだけは、通信断と
+        一時的なHTTPエラーを合わせて最大3回試す。変更要求の応答が消えた場合は、
+        資源状態を確認できるよう停止する。
         """
         uri = path if path.startswith("https://") else "https://management.azure.com" + path
         parsed = urlparse(uri)
@@ -358,6 +359,29 @@ class ArmTransport:
                     return {"statusCode": response.status, "headers": dict(response.headers),
                             "body": json.loads(content) if content else None}
             except HTTPError as error:
+                response_headers = dict(error.headers or {})
+                if error.code in (408, 429, 500, 502, 503, 504) and attempt + 1 < attempts:
+                    delay = attempt + 1
+                    retry_after = [value for name, value in response_headers.items()
+                                   if name.lower() == "retry-after"]
+                    if retry_after:
+                        hint = retry_after[0]
+                        digits = hint.strip(" \t") if isinstance(hint, str) else ""
+                        if not re.fullmatch(r"[0-9]+", digits):
+                            delay = None
+                        else:
+                            digits = digits.lstrip("0")
+                            seconds = int(digits or "0") if len(digits) <= 2 else 11
+                            # 長い待機指示を短縮しない。未対応の指示も元応答を返す。
+                            delay = max(delay, seconds) if seconds <= 10 else None
+                    if delay is not None:
+                        # 読取だけの共通attempt予算を使い、指定された秒数以上待つ。
+                        # 再試行するエラー本文は読まない。
+                        error.close()
+                        print(f"Azure管理APIの読み取りを再試行します（{attempt + 2}/{attempts}、"
+                              f"HTTP {error.code}、{delay}秒後）。", file=sys.stderr, flush=True)
+                        time.sleep(delay)
+                        continue
                 # 応答メッセージには入力が含まれ得るため、生のエラー本文を表示しない。
                 try:
                     content = json.loads(error.read())
@@ -365,7 +389,7 @@ class ArmTransport:
                     content = None
                 finally:
                     error.close()
-                return {"statusCode": error.code, "headers": dict(error.headers), "body": content}
+                return {"statusCode": error.code, "headers": response_headers, "body": content}
             except (URLError, TimeoutError, ConnectionError, IncompleteRead, ssl.SSLError) as error:
                 reason = error.reason if isinstance(error, URLError) else error
                 certificate_failure = isinstance(reason, ssl.SSLCertVerificationError)

@@ -105,6 +105,15 @@ class InitialDeploymentTests(unittest.TestCase):
             (app / 'Dockerfile').write_bytes(b'public\n')
             self.assertEqual(image.source_bundle(root), (data, source_hash))
 
+    def test_idle_cleanup_schema_is_included_in_the_same_broker_image(self):
+        data, _ = image.source_bundle()
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+            path = 'sql/003_idle_connection_cleanup.sql'
+            self.assertIn(path, archive.getnames())
+            self.assertEqual(archive.extractfile(path).read(),
+                             (ROOT / 'apps/gateway/credential-broker' / path).read_bytes())
+            self.assertIn(b"Version=3", archive.extractfile(path).read())
+
     def test_build_receipt_reuse_requires_same_source_environment_and_successful_cleanup(self):
         config, state = fixture()
         targets = image.build_targets(config, state)

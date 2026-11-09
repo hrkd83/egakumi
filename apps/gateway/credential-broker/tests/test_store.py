@@ -5,7 +5,7 @@ import struct
 import sys
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from credential_broker.store import SqlStore, StoreConflict, StoreNotAuthorized, StoreRateLimited, StoreUnavailable, connection_name, _flow_json
 from _store_support import Connection, Cursor, OWNER, PROOF, TENANT, TX, fixture, transaction
@@ -16,12 +16,32 @@ POLICY = dict(idleTimeoutSeconds=604800, absoluteLifetimeSeconds=2592000,
 
 
 class NamingTests(unittest.TestCase):
-    def test_names_are_readable_bounded_and_identity_qualified(self):
-        first = connection_name(TENANT, OWNER, "graph-delegated", "Test.User@example.invalid")
-        self.assertRegex(first, r"^test-user-[a-f0-9]{16}$")
-        self.assertEqual(first, connection_name(TENANT, OWNER, "graph-delegated", "Test.User@another.invalid"))
-        self.assertNotEqual(first, connection_name(OWNER, OWNER, "graph-delegated", "Test.User@example.invalid"))
-        self.assertLessEqual(len(connection_name(TENANT, OWNER, "graph-delegated", "x" * 250 + "@example.invalid")), 80)
+    def test_names_use_fresh_128_bit_generations_for_the_same_identity(self):
+        with patch('credential_broker.store.secrets.token_hex', side_effect=['a' * 32, 'b' * 32]) as entropy:
+            first = connection_name(TENANT, OWNER, 'graph-delegated', 'Test.User@example.invalid')
+            second = connection_name(TENANT, OWNER, 'graph-delegated', 'Test.User@example.invalid')
+        self.assertRegex(first, r'^test-user-[a-f0-9]{32}$')
+        self.assertNotEqual(first, second)
+        self.assertEqual([call(16), call(16)], entropy.call_args_list)
+
+    def test_names_normalize_readable_prefix_and_remain_within_eighty_characters(self):
+        self.assertRegex(connection_name(TENANT, OWNER, 'graph-delegated', 'Ö Test___User@example.invalid'),
+                         r'^o-test-user-[a-f0-9]{32}$')
+        self.assertRegex(connection_name(TENANT, OWNER, 'graph-delegated', '日本語@example.invalid'),
+                         r'^member-[a-f0-9]{32}$')
+        long = connection_name(TENANT, OWNER, 'graph-delegated', 'x' * 250 + '@example.invalid')
+        self.assertEqual(80, len(long))
+        self.assertRegex(long, r'^x{47}-[a-f0-9]{32}$')
+
+    def test_names_still_require_verified_identity_and_configured_profile(self):
+        with patch('credential_broker.store.secrets.token_hex') as entropy:
+            for args in [('invalid', OWNER, 'graph-delegated', 'member@example.invalid'),
+                         (TENANT, '00000000-0000-0000-0000-000000000000', 'graph-delegated', 'member@example.invalid'),
+                         (TENANT, OWNER, 'Invalid/Profile', 'member@example.invalid'),
+                         (TENANT, OWNER, 'graph-delegated', 'x' * 321)]:
+                with self.subTest(args=args), self.assertRaises(ValueError):
+                    connection_name(*args)
+            entropy.assert_not_called()
 
     def test_flow_rejects_token_payloads_but_allows_one_use_pkce_state(self):
         self.assertIn("code_verifier", _flow_json({"flow": {"state": "nonce", "code_verifier": "verifier"}}))
@@ -43,6 +63,7 @@ class StoreContractTests(unittest.TestCase):
         store, cursor = fixture([
             ("BEGIN TRANSACTION", None), ("DATEDIFF_BIG", {"Now": 1000}),
             ("SELECT * FROM broker.Sessions", self.session_row(ExpiresAt=900, IdleExpiresAt=900)),
+            ("SELECT State FROM broker.Connections", {"State": "ready"}),
             ("UPDATE broker.Connections", 1), ("UPDATE broker.Sessions", 1), ("SELECT COUNT(*)", {"Count": 0}),
             ("INSERT broker.Transactions", None), ("SELECT * FROM broker.Transactions", transaction()), ("COMMIT", None)])
         store.create_challenge("0" * 64, "graph-delegated", "subscription-a", "1" * 64, "2" * 64, 1300,
@@ -59,6 +80,35 @@ class StoreContractTests(unittest.TestCase):
         self.assertNotIn(TENANT, statement)
         self.assertTrue(any("SecurityEpoch=SecurityEpoch+1" in sql for sql, _ in cursor.calls))
         self.assertFalse(any("Pools" in sql for sql, _ in cursor.calls))
+
+    def test_both_reauthentication_modes_reject_deleting_before_transaction_creation(self):
+        for force in (False, True):
+            store, cursor = fixture([
+                ('BEGIN TRANSACTION', None), ('DATEDIFF_BIG', {'Now': 1000}),
+                ('SELECT * FROM broker.Sessions', self.session_row()),
+                ('SELECT State FROM broker.Connections', {'State': 'deleting'}), ('ROLLBACK', None)])
+            with self.subTest(force=force), self.assertRaises(StoreConflict):
+                store.create_challenge('0'*64, 'graph-delegated', 'subscription-a', '1'*64, '2'*64, 1300,
+                    pending_session_id='3'*64, pending_secret_hash='4'*64,
+                    source_session=(TX, PROOF), force_cm_login=force)
+            self.assertFalse(any(sql.startswith(('UPDATE', 'INSERT')) for sql, _ in cursor.calls))
+
+    def test_removed_connection_allows_fresh_pinned_identity_authentication_in_both_modes(self):
+        for force in (False, True):
+            responses = [('BEGIN TRANSACTION', None), ('DATEDIFF_BIG', {'Now': 1000}),
+                         ('SELECT * FROM broker.Sessions', self.session_row()),
+                         ('SELECT State FROM broker.Connections', [])]
+            if force:
+                responses.append(('UPDATE broker.Sessions', 1))
+            responses.extend([('SELECT COUNT(*)', {'Count': 0}), ('INSERT broker.Transactions', None),
+                              ('SELECT * FROM broker.Transactions', transaction()), ('COMMIT', None)])
+            store, cursor = fixture(responses)
+            with self.subTest(force=force):
+                store.create_challenge('0'*64, 'graph-delegated', 'subscription-a', '1'*64, '2'*64, 1300,
+                    pending_session_id='3'*64, pending_secret_hash='4'*64,
+                    source_session=(TX, PROOF), force_cm_login=force)
+            self.assertTrue(any(sql.startswith('INSERT broker.Transactions') for sql, _ in cursor.calls))
+            self.assertFalse(any(sql.startswith('UPDATE broker.Connections') for sql, _ in cursor.calls))
 
     def test_challenge_rejects_spoofed_proof_before_count_and_insert(self):
         for row in [[], self.session_row(SecretHash="0" * 64), self.session_row(SubscriptionId="subscription-b"),
@@ -132,13 +182,29 @@ class StoreContractTests(unittest.TestCase):
     def test_allocation_uses_fixed_stored_procedure_and_parameterized_identity(self):
         row = {"ProviderName": "graph-delegated-a", "ConnectionId": "existing-readable-name",
                "State": "ready", "LeaseOwned": False, "IsNew": False}
-        store, cursor = fixture([("EXEC broker.AllocateConnection", row)])
-        result = store.allocate_connection("graph-delegated", TENANT, OWNER, "changed@example.invalid", TX)
+        store, cursor = fixture([("EXEC broker.AllocateConnection", row), ("EXEC broker.AllocateConnection", row)])
+        with patch('credential_broker.store.secrets.token_hex', side_effect=['a' * 32, 'b' * 32]):
+            result = store.allocate_connection("graph-delegated", TENANT, OWNER, "changed@example.invalid", TX)
+            again = store.allocate_connection("graph-delegated", TENANT, OWNER, "renamed@example.invalid", TX)
         self.assertEqual(result["connectionId"], "existing-readable-name")
+        self.assertEqual(result['connectionId'], again['connectionId'])
         sql, values = cursor.calls[0]
         self.assertNotIn("changed@example.invalid", sql)
         self.assertEqual(values[3], "changed@example.invalid")
+        self.assertNotEqual(values[4], cursor.calls[1][1][4])
         self.assertFalse(result["isNew"])
+
+    def test_new_allocation_lifecycles_pass_distinct_ids_to_the_sql_reservation(self):
+        old, new = 'member-' + 'a' * 32, 'member-' + 'b' * 32
+        rows = [{'ProviderName': 'graph-delegated-a', 'ConnectionId': name,
+                 'State': 'reserved', 'LeaseOwned': True, 'IsNew': True} for name in (old, new)]
+        store, cursor = fixture([('EXEC broker.AllocateConnection', row) for row in rows])
+        with patch('credential_broker.store.secrets.token_hex', side_effect=['a' * 32, 'b' * 32]):
+            first = store.allocate_connection('graph-delegated', TENANT, OWNER, 'member@example.invalid', TX)
+            # The SQL lifecycle has ended before this new reservation is returned.
+            second = store.allocate_connection('graph-delegated', TENANT, OWNER, 'member@example.invalid', TX)
+        self.assertNotEqual(first['connectionId'], second['connectionId'])
+        self.assertEqual([old, new], [params[4] for _, params in cursor.calls])
 
     def test_missing_cm_observation_does_not_release_capacity(self):
         store, cursor = fixture([

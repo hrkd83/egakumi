@@ -13,14 +13,15 @@ from gateway_ingress import (
 )
 from test_portal_gateway import Transport
 from deployment.helpers.apim_naming import apim_name
+from deployment.helpers.waf_names import policy_id, policy_name
 
 
 CONFIG = {'subscriptionId': '11111111-1111-4111-8111-111111111111', 'resourceStem': 'test-fixture',
           'resourceGroupNames': {'nw': 'rg-test-fixture-nw'}, 'services': {'apimInstanceId': 'abc123'},
           'gateway': {'publicHostName': 'gateway.example.test', 'grpc': {'enabled': True}}}
 GATEWAY_ID = gateway_id(CONFIG)
-BASE_ID = GATEWAY_ID.rsplit('/applicationGateways/', 1)[0] + '/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-test-fixture'
-POLICY_ID = BASE_ID + '-gateway-auth'
+BASE_ID = policy_id(CONFIG, 'g-base')
+POLICY_ID = policy_id(CONFIG, 'g-auth')
 REWRITE = {'id': GATEWAY_ID + '/rewriteRuleSets/trusted-l7-ingress'}
 POOL = {'id': GATEWAY_ID + '/backendAddressPools/bepool-apim'}
 BACKEND = {'id': GATEWAY_ID + '/backendHttpSettingsCollection/behttp-apim'}
@@ -45,7 +46,7 @@ def gateway(*, path_based=False):
              'urlPathMap': {'id': GATEWAY_ID + '/urlPathMaps/pathmap-portal-auth'}}}],
         'urlPathMaps': [{'name': 'pathmap-portal-auth', 'properties': {'pathRules': [
             {'name': 'portal-callback', 'properties': {'paths': ['/api/auth/callback/microsoft'],
-             'firewallPolicy': {'id': BASE_ID + '-portal-auth'}}}]}}],
+             'firewallPolicy': {'id': policy_id(CONFIG, 'p-auth')}}}]}}],
     }
     if path_based:
         properties['requestRoutingRules'][0]['properties'] = {'ruleType': 'PathBasedRouting', 'priority': 200,
@@ -54,13 +55,13 @@ def gateway(*, path_based=False):
         properties['urlPathMaps'].append({'name': 'pathmap-protocols', 'properties': {
             'defaultBackendAddressPool': POOL, 'defaultBackendHttpSettings': BACKEND, 'defaultRewriteRuleSet': REWRITE,
             'pathRules': [{'name': 'existing-api', 'properties': {'paths': ['/auth/*'], 'backendAddressPool': POOL,
-                          'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE, 'firewallPolicy': {'id': BASE_ID + '-custom'}}}]}})
+                          'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE, 'firewallPolicy': {'id': policy_id(CONFIG, 'g-chat-completions')}}}]}})
     return {'id': GATEWAY_ID, 'name': 'agw-test-fixture', 'type': 'Microsoft.Network/applicationGateways',
             'etag': '"gateway-v1"', 'location': 'japaneast', 'properties': copy.deepcopy(properties)}
 
 
 def policy():
-    return {'id': BASE_ID, 'name': 'wafpol-agw-test-fixture', 'etag': '"base-v1"', 'location': 'japaneast',
+    return {'id': BASE_ID, 'name': policy_name(CONFIG, 'g-base'), 'etag': '"base-v1"', 'location': 'japaneast',
         'type': 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'tags': {'fixture': 'keep'},
         'properties': {'provisioningState': 'Succeeded', 'applicationGateways': [{'id': GATEWAY_ID}],
             'policySettings': {'state': 'Enabled', 'mode': 'Prevention', 'requestBodyCheck': True,
@@ -72,7 +73,7 @@ def policy():
 
 def ready_policy(desired):
     result = copy.deepcopy(desired)
-    result.update({'id': POLICY_ID, 'name': 'wafpol-agw-test-fixture-gateway-auth',
+    result.update({'id': POLICY_ID, 'name': policy_name(CONFIG, 'g-auth'),
                    'type': 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'etag': '"policy-v2"'})
     result['properties']['provisioningState'] = 'Succeeded'
     return result
@@ -198,6 +199,23 @@ class GatewayCallbackWafTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'HTTP 412'):
             configure_gateway_identity_callback_waf(CONFIG, transport)
         self.assertEqual(len([call for call in transport.calls if call['method'] == 'PUT']), 1)
+
+    def test_owned_name_does_not_authorize_an_external_policy_or_another_purpose(self):
+        config = copy.deepcopy(CONFIG)
+        config['gateway']['existingWafPolicyId'] = BASE_ID
+        transport = Transport([])
+        with self.assertRaisesRegex(ValueError, 'external WAF'):
+            configure_gateway_identity_callback_waf(config, transport)
+        self.assertEqual(transport.calls, [])
+        with self.assertRaisesRegex(ValueError, 'owned purpose'):
+            _callback_gateway(CONFIG, gateway(), GATEWAY_ID, policy_id(CONFIG, 'g-speech'))
+        current = ready_gateway(_callback_gateway(CONFIG, gateway(), GATEWAY_ID, POLICY_ID))
+        selected = next(item for item in api_mapping(current)['pathRules'] if item['name'] == CALLBACK_RULE_NAME)
+        selected['properties']['firewallPolicy'] = {'id': '/enterprise/callback-policy'}
+        transport = Transport([{'statusCode': 200, 'body': current}])
+        with self.assertRaisesRegex(ValueError, 'another WAF policy'):
+            configure_gateway_identity_callback_waf(CONFIG, transport)
+        self.assertFalse(any(call['method'] == 'PUT' for call in transport.calls))
 
     def test_failed_async_update_is_not_reported_as_success(self):
         failed = ready_policy(_callback_policy(policy()))

@@ -5,13 +5,15 @@ from pathlib import Path
 import unittest
 
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, gateway, policy, api_mapping, ready_gateway, _writable_policy
+from deployment.helpers.waf_names import policy_id, policy_name
 from test_portal_gateway import Transport
 from gateway_ingress import DOCUMENT_PATH, DOCUMENT_RULE_NAME, document_upload_limit, _document_policy, _raw_body_policy, _path_gateway, configure_gateway_document_waf
 from bicep_helpers import compile_bicep
 from test_ssml_waf import GatewayExpression
+import test_ssml_waf as waf_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY_ID = BASE_ID + '-document-upload'
+POLICY_ID = policy_id(CONFIG, 'g-document-upload')
 
 
 def configuration():
@@ -54,7 +56,7 @@ class GatewayDocumentWafTests(unittest.TestCase):
 
     def test_exact_path_routing_keeps_existing_routes_and_backend(self):
         source=gateway(path_based=True)
-        desired=_path_gateway(configuration(),source,GATEWAY_ID,POLICY_ID,paths=[DOCUMENT_PATH],rule_name=DOCUMENT_RULE_NAME,policy_suffix='-document-upload')
+        desired=_path_gateway(configuration(),source,GATEWAY_ID,POLICY_ID,paths=[DOCUMENT_PATH],rule_name=DOCUMENT_RULE_NAME,policy_key='g-document-upload')
         mapping=api_mapping(desired)
         self.assertEqual(mapping['pathRules'][0]['properties']['paths'],[DOCUMENT_PATH])
         self.assertEqual(mapping['pathRules'][0]['properties']['firewallPolicy'],{'id':POLICY_ID})
@@ -64,7 +66,7 @@ class GatewayDocumentWafTests(unittest.TestCase):
 
     def test_redeployment_is_readonly_when_policy_and_route_match(self):
         base=policy()
-        ready=ready_gateway(_path_gateway(configuration(),gateway(path_based=True),GATEWAY_ID,POLICY_ID,paths=[DOCUMENT_PATH],rule_name=DOCUMENT_RULE_NAME,policy_suffix='-document-upload'))
+        ready=ready_gateway(_path_gateway(configuration(),gateway(path_based=True),GATEWAY_ID,POLICY_ID,paths=[DOCUMENT_PATH],rule_name=DOCUMENT_RULE_NAME,policy_key='g-document-upload'))
         assigned=_document_policy(base,1048576)
         assigned.update({'id':POLICY_ID,'etag':'"document-v1"'})
         assigned['properties']['provisioningState']='Succeeded'
@@ -98,7 +100,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
     def parameters(self, **changes):
         values = {key: copy.deepcopy(item.get('defaultValue', 'fixture'))
                   for key, item in self.template['parameters'].items()}
-        values.update(resourceStem='test-fixture', location='japaneast', documentUploadPaths=[DOCUMENT_PATH],
+        values.update(resourceStem='test-fixture', wafPolicyIdentifier='abc123', location='japaneast', documentUploadPaths=[DOCUMENT_PATH],
                       wafMaxRequestBodySizeInKb=2000, wafRequestBodyInspectLimitInKb=2000,
                       wafCustomRules=[{'name': 'retain-custom', 'priority': 1, 'action': 'Block'}],
                       wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}],
@@ -109,8 +111,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
     def value(self, expression, parameters):
         return GatewayExpression(expression, self.template['variables']).evaluate(parameters)
 
-    def resource(self, suffix):
-        return next(item for item in self.resources if item['name'] == suffix)
+    resource = waf_fixtures.SsmlWafTests.resource
 
     def test_main_derives_only_the_fixed_binary_one_mib_document_contract(self):
         from standard_apis import infrastructure_api_definitions
@@ -134,8 +135,8 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
 
     def test_compiled_document_policy_matches_python_and_keeps_every_common_protection(self):
         values = self.parameters()
-        common = self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")
-        document = self.resource("[format('wafpol-agw-{0}-document-upload', parameters('resourceStem'))]")
+        common = self.resource("g-base")
+        document = self.resource("g-document-upload")
         baseline = self.value(common['properties'], values)
         configured = self.value(document['properties'], values)
         expected = _document_policy({'properties': baseline}, 1048576)['properties']
@@ -162,7 +163,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
             self.assertEqual(len(selected), 1)
             rule = selected[0]['properties']
             self.assertEqual(rule['paths'], [DOCUMENT_PATH])
-            self.assertTrue(rule['firewallPolicy']['id'].endswith('-document-upload'))
+            self.assertTrue(rule['firewallPolicy']['id'].endswith('/wafpol-g-document-upload-abc123'))
             self.assertEqual(rule['backendAddressPool'], mapping['defaultBackendAddressPool'])
             self.assertEqual(rule['backendHttpSettings'], mapping['defaultBackendHttpSettings'])
             if grpc:
@@ -171,7 +172,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
                 self.assertNotIn('rewriteRuleSet', rule)
 
     def test_external_policy_standard_sku_and_unpublished_paths_do_not_create_document_policy(self):
-        document = self.resource("[format('wafpol-agw-{0}-document-upload', parameters('resourceStem'))]")
+        document = self.resource("g-document-upload")
         gateway_resource = next(item for item in self.resources if item['type'] == 'Microsoft.Network/applicationGateways')
         for changes in ({'existingWafPolicyId': '/external/policy'}, {'skuName': 'Standard_v2'},
                         {'documentUploadPaths': []}, {'documentUploadPaths': ['/tools/documents/v1/analyze/other']}):

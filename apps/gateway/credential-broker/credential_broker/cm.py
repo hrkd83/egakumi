@@ -9,6 +9,71 @@ class CmError(RuntimeError):
     pass
 
 
+def delete_authorization(client, credential, resource_id, *, validate_claim=None):
+    """既知の個別接続をETagとSQL guardで削除し、404だけを完了とする。"""
+    if not isinstance(resource_id, str) or not re.fullmatch(
+            r"/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[A-Za-z0-9_.()-]+"
+            r"/providers/Microsoft\.ApiManagement/service/[A-Za-z0-9-]+"
+            r"/authorizationProviders/[a-z0-9][a-z0-9._-]{0,79}"
+            r"/authorizations/[a-z0-9][a-z0-9._-]{0,79}", resource_id, re.IGNORECASE):
+        raise CmError("Connection is not configured")
+    url = "https://management.azure.com" + resource_id + "?api-version=2024-05-01"
+    guarded = callable(validate_claim)
+    if validate_claim is not None and not guarded:
+        return False
+    guard = validate_claim if guarded else lambda: True
+
+    def request(method, *, etag=None):
+        token = credential.get_token("https://management.azure.com/.default").token
+        headers = {"Authorization": "Bearer " + token}
+        if etag is not None:
+            headers["If-Match"] = etag
+        return client.request(method, url, headers=headers, timeout=20)
+
+    try:
+        before = request("GET")
+        if before.status_code == 404:
+            return guard() is True
+        if before.status_code != 200:
+            return False
+        metadata = before.json()
+        # A returned ID/type/name must identify this exact authorization, not
+        # another connection or a provider. Never use response-derived URLs.
+        if (not isinstance(metadata, dict)
+                or not isinstance(metadata.get("id"), str)
+                or metadata["id"].casefold() != resource_id.casefold()
+                or not isinstance(metadata.get("type"), str)
+                or metadata["type"].casefold() != "microsoft.apimanagement/service/authorizationproviders/authorizations"
+                or not isinstance(metadata.get("name"), str)
+                or metadata["name"].casefold() != resource_id.rsplit("/", 1)[1].casefold()):
+            return False
+        etags = before.headers.get_list("etag")
+        if not etags:
+            # This API can omit ETag. Wildcard deletion is safe only with an
+            # explicit SQL generation guard and non-reused connection names.
+            if not guarded:
+                return False
+            etag = "*"
+        elif (len(etags) != 1 or len(etags[0]) > 8192
+                or re.fullmatch(r'(?:W/)?"[\x21\x23-\x7e]*"', etags[0]) is None
+                or etags[0] in {'"*"', 'W/"*"'}):
+            return False
+        else:
+            etag = etags[0]
+        # Recheck after the network read. A worker whose SQL lease/version has
+        # changed must not delete the connection using a newly fetched ETag.
+        if guard() is not True:
+            return False
+        deleted = request("DELETE", etag=etag)
+        if deleted.status_code not in (200, 202, 204, 404):
+            return False
+        # An accepted/asynchronous DELETE never frees a slot on its own. Do not
+        # poll here: pending or uncertain work is retried by a later hourly run.
+        return request("GET").status_code == 404 and guard() is True
+    except Exception:
+        raise CmError("Credential Manager operation failed") from None
+
+
 def connection_metadata_status(response):
     """HTTP入口と定期照合で同じCM分類を使い、不明な障害で本人接続を失効させない。"""
     if response is None:
@@ -99,13 +164,10 @@ class CmClient:
         response = self._request("GET", self._path(provider, connection), allow_missing=True)
         return connection_metadata_status(response)
 
-    def delete_connection(self, provider, connection):
+    def delete_connection(self, provider, connection, *, validate_claim=None):
         """削除応答だけで容量を解放せず、GETの404まで確認する。"""
-        path = self._path(provider, connection)
-        if self._request("GET", path, allow_missing=True) is None:
-            return True
-        self._request("DELETE", path, allow_missing=True)
-        return self._request("GET", path, allow_missing=True) is None
+        return delete_authorization(self.client, self.credential, self._path(provider, connection),
+                                    validate_claim=validate_claim)
 
     def login_link(self, provider, connection, redirect_uri):
         parsed = urlsplit(redirect_uri)

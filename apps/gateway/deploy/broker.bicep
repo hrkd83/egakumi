@@ -114,7 +114,8 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
     }
   }
 }
-// 接続が消えた場合は台帳の利用を止めます。CMの削除・容量解放は実行しません。
+// 毎時の照合に、60日未使用・解除待ち接続の限定回収を含めます。
+// SQLの確保・CMのETag/削除完了・同じ確保状態を確認後にだけ容量を解放します。
 resource reconciliation 'Microsoft.App/jobs@2025-01-01' = if (deployApplication) {
   name: 'caj-${stem}-recon'
   location: location

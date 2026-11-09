@@ -141,6 +141,13 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         template = compile_bicep('apps/gateway/deploy/broker.bicep')
         jobs = [item for item in template['resources'] if item['type'].lower() == 'microsoft.app/jobs']
         self.assertEqual(len(jobs), 2)
+        scheduled = [item for item in jobs if item['properties']['configuration']['triggerType'] == 'Schedule']
+        self.assertEqual(len(scheduled), 1)
+        schedule = scheduled[0]['properties']['configuration']['scheduleTriggerConfig']
+        self.assertEqual(schedule, {'cronExpression': '17 * * * *', 'replicaCompletionCount': 1, 'parallelism': 1})
+        container, = scheduled[0]['properties']['template']['containers']
+        self.assertEqual(container['command'], ['python', '-m', 'credential_broker.cli'])
+        self.assertEqual(container['args'], ['reconcile', '--execute'])
         for stem in ('dev-egakumi', 'staging-orion', 'stage-' + 'p' * 11):
             config = configured()
             config['resourceStem'] = stem

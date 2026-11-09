@@ -89,15 +89,16 @@ class MigrationTests(unittest.TestCase):
     def test_migration_creates_client_id_bound_runtime_with_limited_objects_and_proc_execute(self):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 0}), ("SELECT schemafixture", None),
-            ("SELECT secondfixture", None), ("SELECT sid,type", []), ("CREATE USER", None),
+            ("SELECT secondfixture", None), ("SELECT thirdfixture", None), ("SELECT sid,type", []), ("CREATE USER", None),
             *grant_replies(),
             ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", []), ("INSERT broker.Pools", None), ("COMMIT", None),
-            ("SELECT MAX(Version)", {"version": 2}), ("SELECT TOP(0)", None)])
+            ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
             schema = Path(folder) / "001_fixture.sql"
             schema.write_text("SELECT schemafixture;\nGO\n", encoding="utf-8")
             (Path(folder) / "002_fixture.sql").write_text("SELECT secondfixture;", encoding="utf-8")
+            (Path(folder) / "003_fixture.sql").write_text("SELECT thirdfixture;", encoding="utf-8")
             result = migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
                 profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
         sql = "\n".join(query for query, _ in cursor.calls)
@@ -111,7 +112,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual({table: set(value.split(", ")) for table, value in RUNTIME_TABLE_PERMISSIONS.items()},
                          EXPECTED_RUNTIME_PERMISSIONS)
         self.assertEqual(result["poolCount"], 1)
-        self.assertEqual(result["schemaVersion"], 2)
+        self.assertEqual(result["schemaVersion"], 3)
 
     def test_existing_sql_user_bound_to_other_identity_stops_before_any_role_grant(self):
         store, cursor = fixture([("SELECT CASE WHEN OBJECT_ID", {"exists": 0}),
@@ -127,20 +128,44 @@ class MigrationTests(unittest.TestCase):
     def test_applied_migrations_are_not_replayed_on_a_later_deployment(self):
         import uuid
         store, cursor = fixture([
-            ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}]),
+            ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}, {"version": 3}]),
             ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}),
             *grant_replies((1, 1)),
             ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", [{"allocated": 0}]), ("UPDATE broker.Pools SET Capacity", None),
-            ("COMMIT", None), ("SELECT MAX(Version)", {"version": 2}), ("SELECT TOP(0)", None)])
+            ("COMMIT", None), ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
             schema = Path(folder) / "001_fixture.sql"
             schema.write_text("RAISE MUST_NOT_REPLAY_INITIAL;", encoding="utf-8")
             (Path(folder) / "002_fixture.sql").write_text("RAISE MUST_NOT_RESET_SESSION;", encoding="utf-8")
+            (Path(folder) / "003_fixture.sql").write_text("RAISE MUST_NOT_REPEAT_CLEANUP_UPGRADE;", encoding="utf-8")
             result = migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
                 profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
-        self.assertEqual(2, result["schemaVersion"])
+        self.assertEqual(3, result["schemaVersion"])
         self.assertFalse(any("RAISE" in sql for sql, _ in cursor.calls))
+
+    def test_version_two_applies_only_cleanup_migration_and_future_version_fails_closed(self):
+        store, cursor = fixture([
+            ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}]),
+            ("SELECT cleanupfixture", None),
+            ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}),
+            *grant_replies(), ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
+            ("SELECT Allocated", {"allocated": 0}), ("UPDATE broker.Pools SET Capacity", None), ("COMMIT", None),
+            ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
+        with tempfile.TemporaryDirectory() as folder:
+            schema = Path(folder) / "001_fixture.sql"
+            schema.write_text("RAISE MUST_NOT_REPLAY_INITIAL;", encoding="utf-8")
+            (Path(folder) / "002_fixture.sql").write_text("RAISE MUST_NOT_RESET_SESSION;", encoding="utf-8")
+            (Path(folder) / "003_fixture.sql").write_text("SELECT cleanupfixture;", encoding="utf-8")
+            self.assertEqual(migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
+                profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)["schemaVersion"], 3)
+            self.assertFalse(any("RAISE" in sql for sql, _ in cursor.calls))
+            newer, newer_cursor = fixture([
+                ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 4}])])
+            with self.assertRaises(StoreConflict):
+                migrate(newer, runtime_client_id=TENANT, runtime_user_name="id-runtime",
+                    profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
+            self.assertEqual(len(newer_cursor.calls), 2)
 
 
 class GrantStateCursor:
@@ -296,16 +321,22 @@ class ReconcileTests(unittest.TestCase):
             def reconciliation_candidates(self):
                 return [{"profileName": "graph", "providerName": "graph-a", "connectionId": "user",
                     "tenantId": TENANT, "objectId": OWNER, "state": "deleting", "version": b"v"}]
-            def finish_disconnect(self, *args): self.released.append(args)
+            def cleanup_candidates(self, pools, **kwargs): return self.reconciliation_candidates()
+            def claim_cleanup(self, candidate, owner, **kwargs): return dict(candidate, leaseOwner=owner)
+            def validate_cleanup_claim(self, claim): return True
+            def finish_cleanup(self, claim):
+                self.released.append(claim)
+                return True
         for confirmed in [False, True]:
             with self.subTest(confirmed=confirmed):
                 store, deletions = Store(), []
-                def delete(path):
+                def delete(path, *, validate_claim):
                     deletions.append(path)
+                    self.assertTrue(validate_claim())
                     return confirmed
                 result = reconcile(store, lambda _: (200, {"value": []}), resource,
                     profiles=profiles, execute=True, delete_connection=delete)
-                self.assertTrue(result["cmDeletionPerformed"])
+                self.assertTrue(result["cmCleanupAttempted"])
                 self.assertEqual(int(confirmed), result["deletedConnections"])
                 self.assertEqual(int(confirmed), len(store.released))
                 self.assertEqual(1, len(deletions))
@@ -387,7 +418,7 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual((result["disconnected"], result["unknown"], result["unmappedCmConnections"]), (1, 1, 1))
         self.assertEqual(len(store.writes), 1)
         self.assertFalse(store.writes[0][3])
-        self.assertFalse(result["cmDeletionPerformed"])
+        self.assertFalse(result["cmCleanupAttempted"])
         self.assertEqual(result["poolsQuarantined"], 1)
         self.assertEqual(store.blocks, [("graph", "graph-a")])
 

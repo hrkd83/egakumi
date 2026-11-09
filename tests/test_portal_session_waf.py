@@ -13,7 +13,8 @@ import test_ssml_waf as gateway_fixtures
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.portal_gateway import _callback_policy, _portal_policy, portal_session_exclusions
-from waf_policy import desired_policy, exclusion, protocol_exclusions, load_manifest, reconcile
+from deployment.helpers.waf_names import policy_id
+from waf_policy import desired_policy, exclusion, data_scope_exclusions, load_manifest, reconcile
 import test_waf_policy as data_fixtures
 
 
@@ -66,13 +67,13 @@ console.log(JSON.stringify(cookies));
 
     def test_compiled_default_and_callback_match_python_without_changing_common_protection(self):
         parameters = self.parameters()
-        base = self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")
+        base = self.resource("g-base")
         baseline = self.value(base["properties"], parameters)
         source = {"location": "japaneast", "properties": baseline}
         original = copy.deepcopy(source)
-        for suffix, builder in (("portal", _portal_policy), ("portal-auth", _callback_policy)):
+        for suffix, builder in (("p-base", _portal_policy), ("p-auth", _callback_policy)):
             with self.subTest(suffix=suffix):
-                policy = self.resource("[format('wafpol-agw-{0}-" + suffix + "', parameters('resourceStem'))]")
+                policy = self.resource(suffix)
                 compiled = self.value(policy["properties"], parameters)
                 expected = builder(source)["properties"]
                 self.assertEqual(compiled, expected)
@@ -85,27 +86,26 @@ console.log(JSON.stringify(cookies));
         self.assertTrue(all(item not in baseline["managedRules"]["exclusions"]
                             for item in portal_session_exclusions()))
 
-    def test_opaque_code_exception_matches_all_generators_without_other_query_or_route_exceptions(self):
+    def test_opaque_code_exception_is_limited_to_fixed_callback_policies(self):
         parameters = self.parameters()
-        base = self.value(self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")["properties"], parameters)
+        base = self.value(self.resource("g-base")["properties"], parameters)
         source = {"location": "japaneast", "properties": base}
-        compiled = self.value(self.resource("[format('wafpol-agw-{0}-portal-auth', parameters('resourceStem'))]")["properties"], parameters)
+        compiled = self.value(self.resource("p-auth")["properties"], parameters)
         callback = "/api/auth/callback/microsoft"
         expected = exclusion("code", "REQUEST-942-APPLICATION-ATTACK-SQLI", ["942430", "942440", "942450"])
         groups = [compiled["managedRules"]["exclusions"],
-                  _callback_policy(source)["properties"]["managedRules"]["exclusions"],
-                  protocol_exclusions({}, {"scope": "portal", "paths": [callback]})]
+                  _callback_policy(source)["properties"]["managedRules"]["exclusions"]]
         for values in groups:
             with self.subTest(values=values):
                 added = [item for item in values
                          if item not in base["managedRules"]["exclusions"] and item not in portal_session_exclusions()]
                 self.assertEqual(added, [expected])
-        for path in (callback + "/neighbor", callback.upper(), "/api/auth/sign-in/social", "/api/models/generate"):
+        for path in (callback, callback + "/neighbor", callback.upper(), "/api/auth/sign-in/social", "/api/models/generate"):
             with self.subTest(path=path):
-                self.assertEqual(protocol_exclusions({}, {"scope": "portal", "paths": [path]}),
+                self.assertEqual(data_scope_exclusions({"scope": "portal", "paths": [path]}),
                                  portal_session_exclusions())
-        self.assertEqual(protocol_exclusions({}, {"scope": "gateway", "paths": ["/auth/connections/browser/identity-callback"]}),
-                         [expected])
+        self.assertEqual(data_scope_exclusions({"scope": "gateway", "paths": ["/auth/connections/browser/identity-callback"]}),
+                         [])
 
     def test_only_portal_https_listener_has_the_new_default_and_enterprise_is_not_replaced(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
@@ -117,10 +117,10 @@ console.log(JSON.stringify(cookies));
                 for listener in properties["httpListeners"]:
                     reference = listener["properties"].get("firewallPolicy")
                     if listener["name"] == "portal-https" and enabled:
-                        self.assertTrue(reference["id"].endswith("-portal"))
+                        self.assertTrue(reference["id"].endswith("/wafpol-p-base-abc123"))
                     else:
                         self.assertIsNone(reference)
-                portal = self.resource("[format('wafpol-agw-{0}-portal', parameters('resourceStem'))]")
+                portal = self.resource("p-base")
                 self.assertEqual(self.value(portal["condition"], parameters), enabled)
 
     def test_replacing_data_policies_include_session_only_for_portal_profiles(self):
@@ -139,7 +139,7 @@ console.log(JSON.stringify(cookies));
             self.assertEqual(policy["policySettings"]["logScrubbing"]["state"], "Enabled")
 
     def test_python_data_reapplication_keeps_the_same_scope_and_deduplicates_session(self):
-        base = self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")
+        base = self.resource("g-base")
         source = {"properties": self.value(base["properties"], self.parameters())}
         for scope in ("portal", "gateway"):
             profile = {"scope": scope, "paths": ["/api/models/text"], "exclusions": [
@@ -159,7 +159,7 @@ console.log(JSON.stringify(cookies));
         self.assertEqual(len(selected), 1)
         profile = selected[0]
         self.assertEqual((profile["name"], profile["scope"], profile["paths"]),
-                         ("p-api-models-realtime-stop", "portal", [path]))
+                         ("p-realtime", "portal", [path]))
         expected = exclusion("handle", "REQUEST-942-APPLICATION-ATTACK-SQLI", ["942430", "942440"])
         self.assertEqual(profile["exclusions"], [expected])
         self.assertTrue(all(item["selector"] != "handle" for item in portal_session_exclusions()))
@@ -168,7 +168,7 @@ console.log(JSON.stringify(cookies));
         compiled_profiles = self.value("[variables('dataProfiles')]", parameters)
         index = next(i for i, item in enumerate(compiled_profiles) if item["name"] == profile["name"])
         compiled = self.value("[variables('dataPolicyProperties')]", parameters)[index]
-        base = self.value(self.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")["properties"], parameters)
+        base = self.value(self.resource("g-base")["properties"], parameters)
         self.assertEqual(compiled, desired_policy({"location": "japaneast", "properties": base}, profile, {})["properties"])
         for field in ("policySettings", "customRules"):
             self.assertEqual(compiled[field], base[field])
@@ -179,7 +179,7 @@ console.log(JSON.stringify(cookies));
         rules = self.value("[variables('dataPortalPathRules')]", parameters)
         route = [item for item in rules if item["properties"]["paths"] == [path]]
         self.assertEqual(len(route), 1)
-        self.assertTrue(route[0]["properties"]["firewallPolicy"]["id"].endswith("-data-p-api-models-realtime-stop"))
+        self.assertTrue(route[0]["properties"]["firewallPolicy"]["id"].endswith("/wafpol-p-realtime-abc123"))
         self.assertTrue(route[0]["properties"]["backendAddressPool"]["id"].endswith("/bepool-portal"))
         self.assertTrue(route[0]["properties"]["backendHttpSettings"]["id"].endswith("/behttp-portal"))
         for neighbor in (path + "/neighbor", path + "/", "/api/models/realtime/socket", "/api/models/generate"):
@@ -190,7 +190,7 @@ console.log(JSON.stringify(cookies));
         config["portal"] = {"publicHostName": "portal.example.test"}
         props = source["properties"]
         props["httpListeners"].append({"name": "portal-https", "properties": {"protocol": "Https",
-            "hostName": "portal.example.test", "firewallPolicy": {"id": data_fixtures.BASE_ID + "-portal"}}})
+            "hostName": "portal.example.test", "firewallPolicy": {"id": policy_id(config, "p-base")}}})
         props["requestRoutingRules"][1]["properties"]["httpListener"] = {"id": data_fixtures.GATEWAY_ID + "/httpListeners/portal-https"}
         mapping = props["urlPathMaps"][0]["properties"]
         pool = {"id": data_fixtures.GATEWAY_ID + "/backendAddressPools/bepool-portal"}
@@ -198,13 +198,13 @@ console.log(JSON.stringify(cookies));
         mapping.update(defaultBackendAddressPool=pool, defaultBackendHttpSettings=backend)
         mapping["pathRules"][0]["properties"].update(backendAddressPool=pool, backendHttpSettings=backend)
         original = copy.deepcopy(source)
-        profile = next(item for item in load_manifest()["profiles"] if item["name"] == "p-api-models-realtime-stop")
+        profile = next(item for item in load_manifest()["profiles"] if item["name"] == "p-realtime")
         manifest = {"version": 1, "profiles": [profile]}
         transport = data_fixtures.ArmMemory(source)
         receipt = reconcile(config, transport, scopes=("portal",), manifest=manifest)
         self.assertEqual((receipt["azureWrites"], receipt["policyUpdates"], receipt["gatewayUpdated"]), (2, 1, True))
         puts = [call for call in transport.calls if call[0] == "PUT"]
-        self.assertEqual([call[1] for call in puts], [data_fixtures.BASE_ID + "-data-p-api-models-realtime-stop", data_fixtures.GATEWAY_ID])
+        self.assertEqual([call[1] for call in puts], [policy_id(config, "p-realtime"), data_fixtures.GATEWAY_ID])
         self.assertEqual(puts[0][3], {"If-None-Match": "*"})
         self.assertEqual(puts[1][3], {"If-Match": original["etag"]})
         updated = transport.resources[data_fixtures.GATEWAY_ID]["properties"]

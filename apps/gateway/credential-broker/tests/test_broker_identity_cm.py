@@ -100,8 +100,8 @@ class CmTests(unittest.TestCase):
         self.responses = []
         def handler(request):
             self.requests.append(request)
-            code, value = self.responses.pop(0)
-            return httpx.Response(code, json=value)
+            code, value, *headers = self.responses.pop(0)
+            return httpx.Response(code, json=value, headers=headers[0] if headers else None)
         http = httpx.Client(transport=httpx.MockTransport(handler), headers={"Accept": "application/json"})
         credential = SimpleNamespace(get_token=lambda scope: SimpleNamespace(token="private-arm-token"))
         self.cm = CmClient(SETTINGS, credential=credential, client=http)
@@ -159,12 +159,143 @@ class CmTests(unittest.TestCase):
             self.cm.connection_status("graph-delegated-a", "member")
 
     def test_cm_deletion_is_only_confirmed_when_get_returns_404(self):
-        self.responses = [(200, {"properties": {"status": "Connected"}}), (202, {}), (200, {"properties": {"status": "Connected"}})]
+        metadata = self.authorization_metadata()
+        self.responses = [(200, metadata, {"ETag": '"one"'}), (202, {}), (200, metadata)]
         self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member"))
-        self.responses = [(200, {"properties": {"status": "Connected"}}), (204, {}), (404, {})]
+        self.assertEqual('"one"', self.requests[1].headers["If-Match"])
+        self.responses = [(200, metadata, {"ETag": 'W/"two"'}), (204, {}), (404, {})]
         self.assertTrue(self.cm.delete_connection("graph-delegated-a", "member"))
+        self.assertEqual('W/"two"', self.requests[4].headers["If-Match"])
         self.responses = [(404, {})]
         self.assertTrue(self.cm.delete_connection("graph-delegated-a", "member"))
+
+    def authorization_metadata(self):
+        return {"id": SETTINGS.apim_resource_id + "/authorizationProviders/graph-delegated-a/authorizations/member",
+                "name": "member", "type": "Microsoft.ApiManagement/service/authorizationProviders/authorizations",
+                "properties": {"status": "Connected"}}
+
+    def test_cm_deletion_rejects_invalid_etags_even_with_a_valid_sql_guard(self):
+        metadata = self.authorization_metadata()
+        for headers in ({"ETag": ""}, {"ETag": "*"}, {"ETag": '"*"'}, {"ETag": 'W/"*"'},
+                        {"ETag": "unquoted"}, [("ETag", '"one"'), ("ETag", '"two"')]):
+            with self.subTest(headers=headers):
+                self.requests.clear()
+                self.responses = [(200, metadata, headers)]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual(["GET"], [item.method for item in self.requests])
+
+    def test_cm_deletion_requires_matching_metadata_before_any_wildcard_delete(self):
+        metadata = self.authorization_metadata()
+        for changed in ({"id": metadata["id"] + "-other"}, {"name": "other"}, {"type": "other"}, {"id": None}):
+            with self.subTest(changed=changed):
+                self.requests.clear()
+                self.responses = [(200, dict(metadata, **changed))]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual(["GET"], [item.method for item in self.requests])
+
+    def test_cm_deletion_without_etag_requires_an_explicit_current_sql_guard(self):
+        metadata = self.authorization_metadata()
+        for guard in (None, False, True, lambda: False, lambda: 1):
+            with self.subTest(guard=guard):
+                self.requests.clear()
+                self.responses = [(200, metadata)]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=guard))
+                self.assertNotIn("DELETE", [item.method for item in self.requests])
+        self.requests.clear()
+        stages = []
+        def current_claim():
+            stages.append([item.method for item in self.requests])
+            return True
+        self.responses = [(200, metadata), (204, {}), (404, {})]
+        self.assertTrue(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=current_claim))
+        self.assertEqual(["GET", "DELETE", "GET"], [item.method for item in self.requests])
+        self.assertEqual("*", self.requests[1].headers["If-Match"])
+        self.assertEqual([["GET"], ["GET", "DELETE", "GET"]], stages)
+
+    def test_cm_wildcard_delete_keeps_pending_failed_or_superseded_claims_unconfirmed(self):
+        metadata = self.authorization_metadata()
+        for delete_status, final_status in ((202, 200), (204, 202), (503, None), (412, None)):
+            with self.subTest(delete_status=delete_status, final_status=final_status):
+                self.requests.clear()
+                self.responses = [(200, metadata), (delete_status, {})]
+                if final_status is not None:
+                    self.responses.append((final_status, metadata))
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual("*", self.requests[1].headers["If-Match"])
+                self.assertEqual(3 if final_status is not None else 2, len(self.requests))
+        states = iter([True, False])
+        self.responses = [(200, metadata), (204, {}), (404, {})]
+        self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: next(states)))
+
+    def test_delayed_old_wildcard_delete_cannot_remove_a_new_distinct_connection(self):
+        old_name, new_name = "member-" + "1" * 32, "member-" + "2" * 32
+        prefix = SETTINGS.apim_resource_id + "/authorizationProviders/graph-delegated-a/authorizations/"
+        def metadata(name):
+            return dict(self.authorization_metadata(), id=prefix + name, name=name)
+        resources = {old_name: metadata(old_name)}
+        current = {"connectionId": old_name, "version": "old", "allocated": 1}
+        def handler(request):
+            self.requests.append(request)
+            name = request.url.path.rsplit("/", 1)[1]
+            if request.method == "DELETE":
+                self.assertEqual(old_name, name)
+                self.assertEqual("*", request.headers["If-Match"])
+                # The old HTTP operation is already in flight when a later
+                # allocation gets its different physical resource name.
+                resources[new_name] = metadata(new_name)
+                current.update(connectionId=new_name, version="new")
+                resources.pop(name)
+                return httpx.Response(204)
+            return httpx.Response(200, json=resources[name]) if name in resources else httpx.Response(404)
+        self.cm.client = httpx.Client(transport=httpx.MockTransport(handler))
+        confirmed = self.cm.delete_connection("graph-delegated-a", old_name,
+            validate_claim=lambda: current["connectionId"] == old_name and current["version"] == "old")
+        if confirmed:
+            current["allocated"] -= 1
+        self.assertFalse(confirmed)
+        self.assertEqual({new_name: metadata(new_name)}, resources)
+        self.assertEqual(1, current["allocated"])
+        self.assertTrue(all(item.url.path == prefix + old_name for item in self.requests))
+
+    def test_cm_deletion_rechecks_guard_after_get_and_before_confirming_absence(self):
+        metadata = self.authorization_metadata()
+        # A stale SQL owner must not delete using a fresh network ETag.
+        self.responses = [(200, metadata, {"ETag": '"one"'})]
+        self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: False))
+        self.assertEqual(["GET"], [item.method for item in self.requests])
+        # Even absence is not authority to release a changed SQL mapping.
+        self.responses = [(404, {})]
+        self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: False))
+        states = iter([True, False])
+        self.responses = [(200, metadata, {"ETag": '"one"'}), (204, {}), (404, {})]
+        self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: next(states)))
+
+    def test_cm_deletion_preserves_mapping_on_unknown_http_result_and_sanitizes_exceptions(self):
+        metadata = self.authorization_metadata()
+        for status in (403, 412, 429, 500, 503):
+            with self.subTest(status=status):
+                self.requests.clear()
+                self.responses = [(200, metadata, {"ETag": '"one"'}), (status, {"error": "private-body"})]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual(["GET", "DELETE"], [item.method for item in self.requests])
+        self.responses = []
+        with self.assertRaises(CmError) as failure:
+            self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True)
+        self.assertEqual("Credential Manager operation failed", str(failure.exception))
+
+    def test_cm_deletion_never_confirms_unknown_initial_or_final_get_results(self):
+        metadata = self.authorization_metadata()
+        for status in (202, 403, 429, 500):
+            with self.subTest(stage="initial", status=status):
+                self.requests.clear()
+                self.responses = [(status, {})]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual(["GET"], [item.method for item in self.requests])
+            with self.subTest(stage="final", status=status):
+                self.requests.clear()
+                self.responses = [(200, metadata, {"ETag": '"one"'}), (204, {}), (status, {})]
+                self.assertFalse(self.cm.delete_connection("graph-delegated-a", "member", validate_claim=lambda: True))
+                self.assertEqual(["GET", "DELETE", "GET"], [item.method for item in self.requests])
 
 
 class SettingsTests(unittest.TestCase):

@@ -6,6 +6,7 @@ import json
 import time
 
 from .paths import REPOSITORY
+from .waf_names import policy_id as waf_policy_id
 
 
 NETWORK_API = "2024-05-01"
@@ -188,7 +189,7 @@ def _callback_policy(source):
     return desired
 
 
-def _callback_gateway(body, expected, policy_id, *, portal_host=None):
+def _callback_gateway(config, body, expected, policy_id, *, portal_host=None):
     """Portal HTTPSとcallbackへ専用policyを結び、Gateway側の経路は保持する。"""
     _probe(body, expected)
     updated = _writable(body)
@@ -202,10 +203,12 @@ def _callback_gateway(body, expected, policy_id, *, portal_host=None):
     listener = listeners[0].get("properties", {})
     if listener.get("protocol") != "Https" or (portal_host and listener.get("hostName") != portal_host):
         raise ValueError("Portal HTTPS listener uses another protocol or public host")
-    base_policy = expected.rsplit("/applicationGateways/", 1)[0] + "/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-" + expected.rsplit("/", 1)[-1]
+    base_policy = waf_policy_id(config, "g-base")
+    if policy_id.casefold() != waf_policy_id(config, "p-auth").casefold():
+        raise ValueError("Portal callback WAF target is not the owned purpose policy")
     if str(properties.get("firewallPolicy", {}).get("id", "")).casefold() != base_policy.casefold():
         raise ValueError("Portal callback WAF must use the owned common policy")
-    portal_policy = base_policy + "-portal"
+    portal_policy = waf_policy_id(config, "p-base")
     listener_policy = listener.get("firewallPolicy", {}).get("id")
     if listener_policy and listener_policy.casefold() not in {base_policy.casefold(), portal_policy.casefold()}:
         raise ValueError("Portal HTTPS listener uses another WAF policy")
@@ -276,11 +279,11 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
     gateway = _ok(response, "read callback routing")
     if gateway.get("properties", {}).get("provisioningState") != "Succeeded":
         raise ValueError("Portal gateway is not ready for callback routing")
-    base_id = expected.rsplit("/applicationGateways/", 1)[0] + "/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-" + config["resourceStem"]
-    policy_id = base_id + "-portal-auth"
-    portal_policy_id = base_id + "-portal"
+    base_id = waf_policy_id(config, "g-base")
+    policy_id = waf_policy_id(config, "p-auth")
+    portal_policy_id = waf_policy_id(config, "p-base")
     portal_host = config.get("portal", {}).get("publicHostName")
-    update = _callback_gateway(gateway, expected, policy_id, portal_host=portal_host)
+    update = _callback_gateway(config, gateway, expected, policy_id, portal_host=portal_host)
     base = _ok(transport.request("GET", base_id + "?api-version=" + NETWORK_API), "read common WAF policy")
     if str(base.get("id", "")).casefold() != base_id.casefold():
         raise ValueError("Portal common WAF response identifies another policy")
@@ -331,7 +334,7 @@ def configure_portal_callback_waf(config, transport, *, timeout=1200, sleep=time
         while monotonic() < deadline:
             observed = _ok(transport.request("GET", gateway_path), "read callback route update")
             status = observed.get("properties", {}).get("provisioningState")
-            if status == "Succeeded" and _callback_gateway(observed, expected, policy_id, portal_host=portal_host) == _writable(observed):
+            if status == "Succeeded" and _callback_gateway(config, observed, expected, policy_id, portal_host=portal_host) == _writable(observed):
                 break
             if status in ("Failed", "Canceled", "Deleting"):
                 raise ValueError("Portal callback routing update did not succeed")

@@ -3,14 +3,15 @@ import copy
 import unittest
 
 from test_portal_gateway import CONFIG, Transport, fixture
+from deployment.helpers.waf_names import policy_id, policy_name
 from deployment.helpers.portal_gateway import (CALLBACK_PATH, configure_portal_callback_waf,
                                                 gateway_id, _callback_gateway, _callback_policy, _portal_policy,
                                                 portal_session_exclusions, _writable)
 
 GATEWAY_ID = gateway_id(CONFIG)
-BASE_ID = GATEWAY_ID.rsplit("/applicationGateways/", 1)[0] + "/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-test-fixture"
-POLICY_ID = BASE_ID + "-portal-auth"
-SESSION_POLICY_ID = BASE_ID + "-portal"
+BASE_ID = policy_id(CONFIG, "g-base")
+POLICY_ID = policy_id(CONFIG, "p-auth")
+SESSION_POLICY_ID = policy_id(CONFIG, "p-base")
 
 
 def gateway():
@@ -31,7 +32,7 @@ def gateway():
 
 
 def policy():
-    return {"id": BASE_ID, "name": "wafpol-agw-test-fixture", "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
+    return {"id": BASE_ID, "name": policy_name(CONFIG, "g-base"), "type": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies",
             "etag": '"policy-v1"', "location": "japaneast", "tags": {"environment": "test"},
             "properties": {"provisioningState": "Succeeded", "applicationGateways": [{"id": GATEWAY_ID}],
                 "policySettings": {"mode": "Prevention", "state": "Enabled", "requestBodyCheck": True,
@@ -61,7 +62,7 @@ class PortalCallbackWafTests(unittest.TestCase):
         original_gateway, original_base = copy.deepcopy(current), copy.deepcopy(base)
         desired_policy = _callback_policy(base)
         desired_session_policy = _portal_policy(base)
-        desired_gateway = _callback_gateway(current, GATEWAY_ID, POLICY_ID)
+        desired_gateway = _callback_gateway(CONFIG, current, GATEWAY_ID, POLICY_ID)
         transport = Transport([
             {"statusCode": 200, "body": current}, {"statusCode": 200, "body": base},
             {"statusCode": 404, "body": None}, {"statusCode": 404, "body": None},
@@ -103,7 +104,7 @@ class PortalCallbackWafTests(unittest.TestCase):
     def test_repeating_completed_configuration_does_not_write(self):
         desired_policy = ready_policy(_callback_policy(policy()))
         desired_session_policy = ready_policy(_portal_policy(policy()), SESSION_POLICY_ID)
-        desired_gateway = ready_gateway(_callback_gateway(gateway(), GATEWAY_ID, POLICY_ID))
+        desired_gateway = ready_gateway(_callback_gateway(CONFIG, gateway(), GATEWAY_ID, POLICY_ID))
         transport = Transport([{"statusCode": 200, "body": desired_gateway}, {"statusCode": 200, "body": policy()},
                                {"statusCode": 200, "body": desired_session_policy},
                                {"statusCode": 200, "body": desired_policy}])
@@ -127,7 +128,7 @@ class PortalCallbackWafTests(unittest.TestCase):
             elif case == "sku":
                 body["properties"]["sku"]["name"] = "Standard_v2"
             else:
-                body = _callback_gateway(body, GATEWAY_ID, POLICY_ID)
+                body = _callback_gateway(CONFIG, body, GATEWAY_ID, POLICY_ID)
                 body["properties"]["urlPathMaps"][1]["properties"]["pathRules"][0]["properties"]["firewallPolicy"] = {"id": "/enterprise/callback-policy"}
             transport = Transport([{"statusCode": 200, "body": body}])
             with self.subTest(case=case), self.assertRaises(ValueError):
@@ -147,6 +148,12 @@ class PortalCallbackWafTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "public host"):
             configure_portal_callback_waf(config, transport)
         self.assertTrue(all(call["method"] == "GET" for call in transport.calls))
+
+    def test_callback_target_must_be_the_exact_owned_purpose_and_instance(self):
+        for identifier in (SESSION_POLICY_ID, POLICY_ID.replace("abc123", "def456"),
+                           BASE_ID + "-portal-auth"):
+            with self.subTest(identifier=identifier), self.assertRaisesRegex(ValueError, "owned purpose"):
+                _callback_gateway(CONFIG, gateway(), GATEWAY_ID, identifier)
 
     def test_gateway_etag_is_required_before_any_policy_write(self):
         current = gateway()
@@ -170,7 +177,7 @@ class PortalCallbackWafTests(unittest.TestCase):
         self.assertEqual(writes[0]["headers"], {"If-Match": '"policy-v2"'})
 
     def test_owned_portal_listener_policy_reference_casing_does_not_trigger_a_gateway_put(self):
-        current = ready_gateway(_callback_gateway(gateway(), GATEWAY_ID, POLICY_ID))
+        current = ready_gateway(_callback_gateway(CONFIG, gateway(), GATEWAY_ID, POLICY_ID))
         current["properties"]["httpListeners"][0]["properties"]["firewallPolicy"]["id"] = SESSION_POLICY_ID.lower()
         transport = Transport([{"statusCode": 200, "body": current}, {"statusCode": 200, "body": policy()},
                                {"statusCode": 200, "body": ready_policy(_portal_policy(policy()), SESSION_POLICY_ID)},
@@ -183,7 +190,7 @@ class PortalCallbackWafTests(unittest.TestCase):
         current, base = gateway(), policy()
         fresh = copy.deepcopy(current)
         fresh["etag"] = '"after-policy-updates"'
-        desired = _callback_gateway(current, GATEWAY_ID, POLICY_ID)
+        desired = _callback_gateway(CONFIG, current, GATEWAY_ID, POLICY_ID)
         transport = Transport([
             {"statusCode": 200, "body": current}, {"statusCode": 200, "body": base},
             {"statusCode": 404}, {"statusCode": 404},

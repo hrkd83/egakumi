@@ -6,15 +6,46 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 モデル等のデータ欄除外の正本は `apps/gateway/waf-data-exclusions.json` です。各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。`StartsWith`は`state.`、`questions.`、JSON Schema配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
 
+## 用途別のポリシー構成
+
+名前はGatewayが`wafpol-g-<用途>-<ID>`、Portalが`wafpol-p-<用途>-<ID>`です。`<ID>`にはparamsの`services.apimInstanceId`に保存した6文字の構築識別子を共通利用します。Bicepと個別配備は同じ名前を計算し、更新や途中再開で識別子を生成し直しません。APIのURLは変更しません。
+
+ポリシーの用途はGatewayが14個、Portalが11個の計25個です。Gatewayは公開対象に選んだ完全パスだけを関連付け、条件付きで別用途のポリシーを追加生成しません。
+
+| 用途 | Gatewayの用途名 | Portalの用途名 |
+| --- | --- | --- |
+| 既定のHTTP経路 | `base` | `base` |
+| Microsoft認証callback | `auth` | `auth` |
+| Chat Completions | `chat-completions` | `generate`（Responsesも同じ入口） |
+| Responses | `responses` | 上記`generate` |
+| 埋め込み | `embeddings` | `embeddings` |
+| リランク | `rerank` | `rerank` |
+| 意思決定 | `decision` | `decision` |
+| 画像生成・編集 | `images` | `images` |
+| 音声 | `speech`（Azure Speech） | `speech`（Portalの音声入口） |
+| 音声文字起こし | `transcribe` | 上記`speech` |
+| Realtime | `realtime`（HTTP calls） | `realtime`（停止用handle） |
+| Live | `live`（HTTP sessions） | 個別のデータ欄除外なし |
+| PIIのAPI・MCP | `pii-redact` | `pii-redact` |
+| 文書アップロード | `document-upload` | `document-upload` |
+
+Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシーへまとめ、各パスに必要な除外の集合和を適用します。画像の`input_image`、埋め込みの`input`と`texts`、PIIの`text`と`params.arguments.text`の除外は、同じポリシーの全経路に作用します。PortalのPIIは両入口とも`text`と同じCookie除外なので、除外範囲を追加せず共有します。
+
+用途名は検査するHTTP入口を表します。Realtime／LiveのWebSocket入口など、個別のデータ欄除外がない経路は`base`を使います。データ欄の除外はmanifestに明記した条件から生成し、APIのMIMEや機能名によって別の除外を自動追加しません。外部管理ポリシーの指定時は、そのポリシーを再利用します。
+
+## 保護条件の共通化
+
 PortalのHTTPSセッションCookie値は、`apps/portal/waf-session-exclusions.json`を正本とし、正確な名前`__Secure-egakumi.portal.session_token`を`RequestCookieValues`・`Equals`で選び、規則942450だけから除外します。Portal HTTPS listener専用の既定policyと、置換関係にあるPortal callback・データ欄policyへ同じ除外を合成します。Gateway側のpolicy、他のCookie、他の規則へは追加しません。HTTPの開発用Cookieを除外へ追加せず、Portalの認証・認可とCookieの保護属性は維持します。
 
 raw SSML/WAVと固定1MiBの文書APIでは、正規本文の相対パス`../`が930110に一致しました。AzureはXML/raw本文の項目単位除外に対応しないため、この3完全パスだけ930110を調整し、URI・query・全header・cookieには4本のcustom Blockを合成します。930100等の他の管理規則と本文検査は残します。正本は`apps/gateway/waf-raw-body-controls.json`です。CRSの全正規化処理と完全に同等の代替ではなく、本文内のパス文字列を許容する限定した判断です。Portal文書の`input`は1つのJSON文字列を持つmultipart項目のため、その中の通常のIDで誤検知した5 SQL規則を同項目だけ除外します。
 
 Log4j/JNDIの例文で検知した`Known-CVEs / 800100`も、実測した正規データ欄だけへ限定します。未知のfield・query・headerの攻撃対照と、同名queryへの影響を独立して検証します。
 
+Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。toolの動的JSON Schemaキーは、`RequestArgKeys / StartsWith / tools.function.parameters.`だけをSQL規則942100・942130・942180・942200・942260・942330・942390・942480から除外します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
+
 SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/speech-ssml-guard.xml`です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。元本文・認証継承・8192byte上限・上流URIは保持します。APIMネイティブの購読認証が先に働く匿名401だけではガード成功とせず、認証付きの正常音声生成と明示400応答も確認します。SSML全体のschema検証は従来どおり下流Speech側の責務です。
 
-`infra/modules/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、共通のPrevention・本文検査・サイズ上限・ログのマスク・customRulesと既存の画像／音声／PDF例外を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
+`infra/modules/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、共通のPrevention・本文検査・サイズ上限・ログのマスク・customRulesと、manifestに明記したデータ欄除外を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
 
 通常の配備と同じparamsを指定して、まずローカル計画を確認できます。計画ではAzureに接続しません。適用時は対象環境とETagを照合し、不要なPUTを行いません。
 

@@ -308,9 +308,9 @@ GatewayのGraph APIは`graph-profile-v1.json`の`$select`で、本人の表示�
 
 `/api/health`はログイン不要のプロセス稼働確認用APIです。応答に`Cache-Control: no-store`を付け、SQLへのアクセスや秘密情報の返却は行いません。
 
-Microsoftから返る認証コードには、WAFのSQL文字列検出で誤検知される文字列が含まれることがあります。現行資材の`wafpol-agw-<環境>-<製品>-portal-auth`は共通WAF設定を引き継ぎ、`/api/auth/callback/microsoft`の`code`引数の値だけを、規則`942430`・`942440`・`942450`から除外します。この戻り先以外の画面・APIには適用せず、他の規則・他の引数は検査を継続します。認証コードはアプリ側でもstate・PKCE・Microsoftとのコード交換で検証します。
+Microsoftから返る認証コードには、WAFのSQL文字列検出で誤検知される文字列が含まれることがあります。現行資材の`wafpol-p-auth-<ID>`は共通WAF設定を引き継ぎ、`/api/auth/callback/microsoft`の`code`引数の値だけを、規則`942430`・`942440`・`942450`から除外します。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子です。この戻り先以外の画面・APIには適用せず、他の規則・他の引数は検査を継続します。認証コードはアプリ側でもstate・PKCE・Microsoftとのコード交換で検証します。
 
-HTTPSのセッションCookie値にも不透明な文字列が含まれるため、Portal HTTPS listener専用の`wafpol-agw-<環境>-<製品>-portal`を使います。正本`apps/portal/waf-session-exclusions.json`に従い、`__Secure-egakumi.portal.session_token`の値を規則942450だけから除外します。URI別policyはlistener側のpolicyを継承しないため、上記callbackとPortalのデータ欄policyにも同じ除外を合成します。共通WAFの本文検査・サイズ制限・ログのマスク・customRulesを保ち、Gateway側のpolicyや他のCookie・規則は変更しません。
+HTTPSのセッションCookie値にも不透明な文字列が含まれるため、Portal HTTPS listener専用の`wafpol-p-base-<ID>`を使います。正本`apps/portal/waf-session-exclusions.json`に従い、`__Secure-egakumi.portal.session_token`の値を規則942450だけから除外します。URI別policyはlistener側のpolicyを継承しないため、上記callbackとPortalのデータ欄policyにも同じ除外を合成します。共通WAFの本文検査・サイズ制限・ログのマスク・customRulesを保ち、Gateway側のpolicyや他のCookie・規則は変更しません。
 
 ## 購読台帳からAPIMへの同期
 

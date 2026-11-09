@@ -12,6 +12,7 @@ if __name__ == "__main__":
 
 import argparse
 import copy
+import fnmatch
 import json
 from pathlib import Path
 import re
@@ -20,11 +21,17 @@ import time
 from deployment.helpers.paths import REPOSITORY
 from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
                                                 NETWORK_API, portal_session_exclusions)
+from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_KEYS,
+                                           PORTAL_DATA_POLICY_KEYS, policy_id)
 
 
 MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
-CALLBACKS = {'gateway': ('/auth/connections/browser/identity-callback', ['942430', '942440', '942450']),
-             'portal': ('/api/auth/callback/microsoft', ['942430', '942440', '942450'])}
+PROTOCOL_POLICY_KEYS = {
+    'gateway': ('g-base', 'g-auth', 'g-speech', 'g-document-upload'),
+    'portal': ('p-base', 'p-auth'),
+}
+SCOPED_DATA_POLICY_KEYS = {'gateway': GATEWAY_DATA_POLICY_KEYS, 'portal': PORTAL_DATA_POLICY_KEYS}
+RESERVED_POLICY_KEYS = frozenset(key for keys in PROTOCOL_POLICY_KEYS.values() for key in keys)
 
 
 def exclusion(selector, group, rules, variable='RequestArgValues'):
@@ -42,8 +49,12 @@ def _validate_manifest(data):
         raise ValueError('WAF manifest requires version 1 and profiles')
     names, paths = set(), set()
     for profile in data['profiles']:
-        if (not isinstance(profile, dict) or not re.fullmatch(r'[a-z][a-z0-9-]{0,40}', str(profile.get('name', '')))
+        if (not isinstance(profile, dict) or not re.fullmatch(r'[gp]-[a-z][a-z0-9]*(?:-[a-z0-9]+)*', str(profile.get('name', '')))
+                or len(profile['name']) > 42
                 or profile.get('scope') not in ('gateway', 'portal') or profile['name'] in names
+                or not profile['name'].startswith('g-' if profile['scope'] == 'gateway' else 'p-')
+                or profile['name'] in RESERVED_POLICY_KEYS
+                or profile['name'] not in DATA_POLICY_KEYS
                 or not isinstance(profile.get('paths'), list) or not profile['paths']
                 or not isinstance(profile.get('exclusions'), list) or not profile['exclusions']):
             raise ValueError('Invalid WAF manifest profile')
@@ -154,32 +165,9 @@ def canonical_gateway(body):
     return clean(_writable(body))
 
 
-def protocol_exclusions(config, profile):
-    """Keep the same media and callback exceptions as the infrastructure definition."""
-    result = portal_session_exclusions() if profile['scope'] == 'portal' else []
-    callback, rules = CALLBACKS[profile['scope']]
-    if callback in profile['paths']:
-        result.append(exclusion('code', 'REQUEST-942-APPLICATION-ATTACK-SQLI', rules))
-    if profile['scope'] != 'gateway':
-        return result
-    for api in _apis(config):
-        for operation in api.get('operations', []):
-            path = '/' + api.get('path', '').strip('/') + operation.get('urlTemplate', '')
-            if path not in profile['paths'] or operation.get('method') != 'POST':
-                continue
-            constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
-            modalities = {value for item in constraint.get('profiles', []) for value in item.get('modalities', [])}
-            if (operation.get('urlTemplate') == '/chat/completions' and constraint.get('kind') == 'bodyModel'
-                    and constraint.get('bodyFormat', 'json') == 'json'):
-                if operation.get('name') == 'vision' or 'image' in modalities:
-                    result.append(exclusion('messages.content.image_url.url', 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170']))
-                if operation.get('name') == 'audio-chat' or 'audio' in modalities:
-                    result.append(exclusion('messages.content.input_audio.data', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942450']))
-            if (operation.get('urlTemplate') == '/responses' and constraint.get('kind') == 'statelessResponses'
-                    and constraint.get('bodyFormat', 'json') == 'json'
-                    and (operation.get('name') == 'pdf' or 'file' in modalities)):
-                result.append(exclusion('input.content.file_data', 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170']))
-    return _unique(result)
+def data_scope_exclusions(profile):
+    """Only the common Portal cookie is implicit; data exceptions are explicit."""
+    return portal_session_exclusions() if profile['scope'] == 'portal' else []
 
 
 def desired_policy(base, profile, config, sources=()):
@@ -193,16 +181,13 @@ def desired_policy(base, profile, config, sources=()):
     sets = managed.get('managedRuleSets', [])
     if len([item for item in sets if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']) != 1:
         raise ValueError('Data WAF requires the existing OWASP 3.2 rule set')
-    known = _unique(managed.get('exclusions', []) + protocol_exclusions(config, profile) + profile['exclusions'])
+    known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile) + profile['exclusions'])
     for source in sources:
         current = _writable_policy(source)['properties']
         if current.get('policySettings') != settings or current.get('customRules', []) != properties.get('customRules', []):
             raise ValueError('Existing path WAF protection differs; reconcile its settings explicitly before combining paths')
         for item in current.get('managedRules', {}).get('exclusions', []):
-            normalized = copy.deepcopy(item)
-            if normalized.get('matchVariable') == 'RequestArgNames':
-                normalized['matchVariable'] = 'RequestArgValues'
-            if item not in known and normalized not in known:
+            if item not in known:
                 raise ValueError('Represent the existing path-specific WAF exclusion in the manifest before consolidation')
         for rule_set in current.get('managedRules', {}).get('managedRuleSets', []):
             matches = [item for item in sets if (item.get('ruleSetType'), item.get('ruleSetVersion')) ==
@@ -257,8 +242,9 @@ def _scope_mapping(body, expected, scope):
 
 def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None, execute=True,
               timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
-    profiles = selected_profiles(config, scopes, manifest)
-    receipt = plan(config, scopes, manifest)
+    data = load_manifest() if manifest is None else _validate_manifest(manifest)
+    profiles = selected_profiles(config, scopes, data)
+    receipt = plan(config, scopes, data)
     if not execute or receipt['status'] == 'external-policy-skipped' or not profiles:
         return receipt
     expected = gateway_id(config)
@@ -271,7 +257,7 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         return {**receipt, 'status': 'waf-not-enabled-skipped'}
     if source['properties'].get('sku', {}).get('name') != 'WAF_v2':
         raise ValueError('Data WAF requires WAF_v2')
-    base_id = expected.rsplit('/applicationGateways/', 1)[0] + '/ApplicationGatewayWebApplicationFirewallPolicies/wafpol-agw-' + config['resourceStem']
+    base_id = policy_id(config, 'g-base')
     if str(source['properties'].get('firewallPolicy', {}).get('id', '')).casefold() != base_id.casefold():
         return {**receipt, 'status': 'external-policy-skipped'}
     update, cache, changes = _writable(source), {}, []
@@ -287,7 +273,10 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         return cache[identifier]
     _, base = read_policy(base_id)
     for profile in profiles:
-        policy_id = base_id + '-data-' + profile['name']
+        identifier = policy_id(config, profile['name'])
+        owned_keys = ['g-base', *PROTOCOL_POLICY_KEYS[profile['scope']],
+                      *SCOPED_DATA_POLICY_KEYS[profile['scope']]]
+        owned_ids = {policy_id(config, key).casefold() for key in owned_keys}
         mapping, pool, backend = _scope_mapping(update, expected, profile['scope'])
         listener_name = 'listener-https' if profile['scope'] == 'gateway' else 'portal-https'
         listener = next(item['properties'] for item in update['properties']['httpListeners'] if item['name'] == listener_name)
@@ -297,7 +286,7 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         listener_policy = listener.get('firewallPolicy', {}).get('id')
         allowed_listener_policies = {base_id.casefold()}
         if profile['scope'] == 'portal':
-            allowed_listener_policies.add((base_id + '-portal').casefold())
+            allowed_listener_policies.add(policy_id(config, 'p-base').casefold())
         if listener_policy and listener_policy.casefold() not in allowed_listener_policies:
             raise ValueError('Data WAF listener uses another policy')
         sources, kept, existing_slot = [], [], None
@@ -305,7 +294,7 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         for rule in mapping.setdefault('pathRules', []):
             current = rule['properties']
             if rule.get('name') == 'waf-data-' + profile['name']:
-                if str(current.get('firewallPolicy', {}).get('id', '')).casefold() != policy_id.casefold():
+                if str(current.get('firewallPolicy', {}).get('id', '')).casefold() != identifier.casefold():
                     raise ValueError('Data WAF path rule name has another owner')
                 if current.get('backendAddressPool') != pool or current.get('backendHttpSettings') != backend:
                     raise ValueError('Data WAF owned path has another backend')
@@ -319,28 +308,35 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
                     raise ValueError('Data WAF exact path uses another backend')
                 if current.get('rewriteRuleSet') and current['rewriteRuleSet'] != mapping.get('defaultRewriteRuleSet'):
                     raise ValueError('Data WAF exact path has a distinct rewrite; preserve it in a separate profile')
-                identifier = current.get('firewallPolicy', {}).get('id', base_id)
-                if identifier.casefold() != policy_id.casefold():
-                    if not identifier.casefold().startswith(base_id.casefold() + '-') and identifier.casefold() != base_id.casefold():
+                current_id = current.get('firewallPolicy', {}).get('id', base_id)
+                if current_id.casefold() != identifier.casefold():
+                    if current_id.casefold() not in owned_ids:
                         raise ValueError('Data WAF exact path uses an external policy')
-                    sources.append(read_policy(identifier)[1])
+                    sources.append(read_policy(current_id)[1])
                 remaining = [path for path in current['paths'] if path.casefold() not in wanted]
                 if remaining:
                     kept.append({**rule, 'properties': {**current, 'paths': remaining}})
             else:
                 kept.append(rule)
-        observed, existing = read_policy(policy_id, optional=True)
+        observed, existing = read_policy(identifier, optional=True)
         desired = desired_policy(base, profile, config, sources)
         # Idempotent data policies are generated from the manifest, never accumulated from themselves.
         if existing is None or _writable_policy(existing) != desired:
-            changes.append((policy_id, desired, {'If-Match': _etag(observed)} if existing else {'If-None-Match': '*'}))
-        props = {'paths': profile['paths'], 'firewallPolicy': {'id': policy_id},
+            changes.append((identifier, desired, {'If-Match': _etag(observed)} if existing else {'If-None-Match': '*'}))
+        props = {'paths': profile['paths'], 'firewallPolicy': {'id': identifier},
                  'backendAddressPool': pool, 'backendHttpSettings': backend}
         if mapping.get('defaultRewriteRuleSet'):
             props['rewriteRuleSet'] = copy.deepcopy(mapping['defaultRewriteRuleSet'])
-        # Independent exact-path profiles need no routing reorder when selected
-        # alone or together. Preserve the existing slot to avoid needless PUTs.
-        kept.insert(existing_slot if existing_slot is not None else 0,
+        # Keep independent rules in place, but never leave an owned exact path
+        # behind a wildcard that would intercept it. App Gateway paths ignore case.
+        position = existing_slot if existing_slot is not None else 0
+        for index, rule in enumerate(kept[:position]):
+            if any('*' in pattern and any(fnmatch.fnmatchcase(path.casefold(), pattern.casefold())
+                                         for path in profile['paths'])
+                   for pattern in rule['properties'].get('paths', [])):
+                position = index
+                break
+        kept.insert(position,
                     {'name': 'waf-data-' + profile['name'], 'properties': props})
         mapping['pathRules'] = kept
     deadline = monotonic() + timeout

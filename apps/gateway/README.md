@@ -36,7 +36,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 計画は`.local/<environment>/state/gateway-plan.json`、完了結果は`.local/<environment>/state/gateway-deployment.json`に保存します。実際のMicrosoftサインインと各業務APIの疎通は、配備成功後に確認します。
 
-Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesize`とWAVの`/models/azure-speech/v1/recognize`に、既存の`wafpol-agw-<stem>-custom-mime`を関連付けます。パスは選択したAPI定義のPOST・本文形式・MIME契約から決めます。共通WAFの設定を引き継ぎ、正規のSSML/WAVを拒否する規則`920420`だけをこの完全パスで調整します。`920470`（Content-Type構文）、他の管理規則・本文検査、Portalや認証callbackの経路は維持します。公開WAVは`Content-Type: audio/wav`とし、codec指定はAPIMのバックエンド用ヘッダーに付与します。日本語の認識言語`ja-JP`は`azure-speech-v1.json`のバックエンドURLに明記します。
+Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesize`とWAVの`/models/azure-speech/v1/recognize`に、`wafpol-g-speech-<ID>`を関連付けます。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子です。パスは選択したAPI定義のPOST・本文形式・MIME契約から決めます。共通WAFの設定を保ち、正規のSSML/WAVを拒否する規則`920420`とraw本文の`930110`をこの完全パスで調整します。URI・query・header・Cookieには4本のtraversal Blockを合成し、`920470`（Content-Type構文）、他の管理規則と本文検査は維持します。公開WAVは`Content-Type: audio/wav`とし、codec指定はAPIMのバックエンド用ヘッダーに付与します。日本語の認識言語`ja-JP`は`azure-speech-v1.json`のバックエンドURLに明記します。[WAFの用途別構成と検証](../../docs/testing/waf-compatibility.md)も参照してください。
 
 [詳細な配備手順](../../docs/setup/credential-sql.md)・[API定義](apim/README.md)・[認証窓口](credential-broker/README.md)・[運用と更新](../../docs/operations.md)
 

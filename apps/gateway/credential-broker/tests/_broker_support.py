@@ -52,10 +52,13 @@ class LedgerDouble:
             if (not row or row["secretHash"] != source_session[1] or row["subscriptionId"] != sub
                     or row["profileName"] != profile):
                 raise StoreNotAuthorized()
+            mapping = self.mappings.get((profile, row["tenantId"], row["objectId"]))
+            if mapping and mapping["state"] == "deleting":
+                raise StoreConflict()
             required = dict(requiredTenantId=row["tenantId"], requiredObjectId=row["objectId"])
             if force_cm_login:
-                mapping = self.mappings[(profile, row["tenantId"], row["objectId"])]
-                mapping.update(state="unverified", leaseOwner=None)
+                if mapping:
+                    mapping.update(state="unverified", leaseOwner=None)
                 for session in self.sessions.values():
                     if (session["profileName"], session["tenantId"], session["objectId"]) == (profile, row["tenantId"], row["objectId"]):
                         session["revoked"] = True
@@ -104,7 +107,10 @@ class LedgerDouble:
         key = profile, tenant, owner
         if key not in self.mappings:
             self.mappings[key] = dict(profileName=profile, tenantId=tenant, objectId=owner,
-                providerName=profile + "-a", connectionId="member-1234567890abcdef", state="reserved", leaseOwner=lease_owner, version=b"one")
+                providerName=profile + "-a", connectionId="member-1234567890abcdef", state="reserved", leaseOwner=lease_owner,
+                createdAt=self.now, lastUsedAt=self.now, version=b"one")
+        elif self.mappings[key]["state"] == "deleting":
+            raise StoreConflict()
         elif self.mappings[key]["state"] == "unverified":
             self.mappings[key]["leaseOwner"] = lease_owner
         row = copy.deepcopy(self.mappings[key])
@@ -131,6 +137,8 @@ class LedgerDouble:
         if row["cookieHash"] != cookie:
             raise StoreConflict()
         mapping = self.mappings[(row["profileName"], row["tenantId"], row["objectId"])]
+        if mapping["state"] == "deleting":
+            raise StoreConflict()
         row.update(providerName=mapping["providerName"], connectionId=mapping["connectionId"], cmStateHash=state, phase="cmPending")
         return copy.deepcopy(row)
 
@@ -146,6 +154,8 @@ class LedgerDouble:
         if row["ticketHash"] != ticket or row["objectId"] != owner:
             raise StoreConflict()
         mapping = self.mappings[(row["profileName"], row["tenantId"], row["objectId"])]
+        if mapping["state"] == "deleting":
+            raise StoreConflict()
         mapping.update(state="ready", leaseOwner=None)
         row.update(phase="complete", ticketHash=None)
         self.sessions[row["pendingSessionId"]] = dict(row, sessionId=row["pendingSessionId"],
@@ -190,6 +200,8 @@ class LedgerDouble:
         overdue = record["updateRequired"]
         if not overdue:
             row.update(lastUsedAt=self.now, idleExpiresAt=min(self.now + row["policy"]["idleTimeoutSeconds"], row["absoluteExpiresAt"]))
+            mapping = self.mappings[(row["profileName"], row["tenantId"], row["objectId"])]
+            mapping["lastUsedAt"] = max(mapping["lastUsedAt"], self.now)
         result = self.resolve_session(sid, secret, sub, profile)
         result.update(allowed=not overdue, status=409 if overdue else 200)
         if overdue:
@@ -247,16 +259,23 @@ class LedgerDouble:
         if not record:
             raise StoreNotAuthorized()
         mapping = self.mappings[(record["profileName"], record["tenantId"], record["objectId"])]
-        mapping.update(state="deleting")
+        mapping.update(state="deleting", version=b"disconnect-" + secrets.token_bytes(8))
         for row in self.sessions.values():
             if (row["profileName"], row["tenantId"], row["objectId"]) == (record["profileName"], record["tenantId"], record["objectId"]):
                 row["revoked"] = True
-        return copy.deepcopy(record)
+        return dict(copy.deepcopy(record), connectionVersion=mapping["version"])
 
-    def finish_disconnect(self, profile, tenant, owner, provider, connection):
+    def validate_disconnect(self, record):
+        mapping = self.mappings.get((record["profileName"], record["tenantId"], record["objectId"]))
+        return bool(mapping and mapping["state"] == "deleting"
+            and mapping["providerName"] == record["providerName"] and mapping["connectionId"] == record["connectionId"]
+            and mapping["version"] == record["connectionVersion"])
+
+    def finish_disconnect(self, profile, tenant, owner, provider, connection, *, expected_version):
         key = profile, tenant, owner
-        mapping = self.mappings[key]
-        if mapping["providerName"] != provider or mapping["connectionId"] != connection or mapping["state"] != "deleting":
+        mapping = self.mappings.get(key)
+        if (not mapping or mapping["providerName"] != provider or mapping["connectionId"] != connection
+                or mapping["state"] != "deleting" or mapping["version"] != expected_version):
             raise StoreConflict()
         del self.mappings[key]
 
@@ -293,7 +312,9 @@ class CmDouble:
     def connection_status(self, provider, connection):
         return "connected" if self.connected else "requires_reauthentication"
 
-    def delete_connection(self, provider, connection):
+    def delete_connection(self, provider, connection, *, validate_claim=None):
+        if validate_claim is not None and not validate_claim():
+            return False
         self.deleted.append((provider, connection))
         return self.deletion_confirmed
 

@@ -67,24 +67,10 @@ var realtimeEnabled = (gatewayConfig.?realtimeControlEnabled ?? false) || length
 var useIngressSecrets = grpcEnabled || realtimeEnabled
 var certConfig = configuration.certificate
 var authorization = configuration.authorization
-// SSML/WAV は正規の API 契約で許可した POST の完全パスだけ Content-Type を調整します。
-// 任意パス・ワイルドカードへ広げず、企業ごとの API prefix に追随します。
-var customMimePaths = flatten(map(infrastructureApis, api => map(filter(api.operations, operation => operation.method == 'POST' && (contains(api.authorization.operationConstraints[operation.name].?contentTypes ?? [], 'application/ssml+xml') || contains(api.authorization.operationConstraints[operation.name].?contentTypes ?? [], 'audio/wav')) && !contains(operation.urlTemplate, '{') && !contains(operation.urlTemplate, '?') && !contains(operation.urlTemplate, '*') && !contains(api.path, '*') && !contains(api.path, '{')), operation => '/${api.path}${operation.urlTemplate}')))
 // Pythonの文書受付と同じ固定POST/binary/1MiB契約だけに、専用WAFを維持します。
 var documentUploadPaths = flatten(map(filter(infrastructureApis, api => api.path == 'tools/documents/v1'), api => map(filter(api.operations, operation => operation.name == 'analyze_document' && operation.method == 'POST' && operation.urlTemplate == '/analyze' && api.authorization.operationConstraints[operation.name].kind == 'documentAnalysis' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary' && (api.authorization.operationConstraints[operation.name].?maxRequestBytes ?? 0) == 1048576), operation => '/${api.path}${operation.urlTemplate}')))
 // Raw本文の調整はAzure Speech正本のtts/stt契約だけ。その他のSSML APIへ広げません。
 var speechRawBodyPaths = flatten(map(filter(infrastructureApis, api => (api.?name ?? '') == 'azure-speech-v1' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), api => map(filter(api.operations, operation => operation.method == 'POST' && api.authorization.operationConstraints[operation.name].kind == 'registeredOperation' && length(api.authorization.operationConstraints[operation.name].?contentTypes ?? []) == 1 && ((operation.name == 'tts' && operation.urlTemplate == '/synthesize' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'text' && contains(api.authorization.operationConstraints[operation.name].contentTypes, 'application/ssml+xml')) || (operation.name == 'stt' && operation.urlTemplate == '/recognize' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary' && contains(api.authorization.operationConstraints[operation.name].contentTypes, 'audio/wav')))), operation => '/${api.path}${operation.urlTemplate}')))
-// native MCP の従来 SSE は、最初の応答で案内された別の POST 先へ session_id を送ります。
-// バックエンド側の案内を変更せず、登録済み message パスへ APIM の公開 prefix を付けます。
-// WAF の session_id 調整も同じ正確な公開パスだけに限定し、他の API へ広げません。
-var legacyMcpMessagePaths = map(filter(infrastructureApis, api => (api.?apiType ?? 'http') == 'mcp' && (api.?mcpProxy.?transport ?? '') == 'sse' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), api => '/${api.path}${first(filter(api.mcpProxy.endpoints, endpoint => endpoint.name == 'message')).uriTemplate}')
-// 公開サンプルの vision/pdf 操作は、インライン画像/PDFを運ぶ明示的な契約です。
-// 名前だけでなく種類・HTTP方式・正規URLも照合し、他のChat/Responsesへ除外を広げません。
-// 画像/PDFの内容をAPIMで検査済みとは扱わず、下流モデルの入力検査も必要です。
-var inlineImagePaths = flatten(map(infrastructureApis, api => map(filter(api.operations, operation => (operation.name == 'vision' || length(filter(api.authorization.operationConstraints[operation.name].?profiles ?? [], profile => contains(profile.modalities, 'image'))) > 0) && operation.method == 'POST' && operation.urlTemplate == '/chat/completions' && api.authorization.operationConstraints[operation.name].kind == 'bodyModel' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? 'json') == 'json' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), operation => '/${api.path}${operation.urlTemplate}')))
-var inlinePdfPaths = flatten(map(infrastructureApis, api => map(filter(api.operations, operation => (operation.name == 'pdf' || length(filter(api.authorization.operationConstraints[operation.name].?profiles ?? [], profile => contains(profile.modalities, 'file'))) > 0) && operation.method == 'POST' && operation.urlTemplate == '/responses' && api.authorization.operationConstraints[operation.name].kind == 'statelessResponses' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? 'json') == 'json' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), operation => '/${api.path}${operation.urlTemplate}')))
-// Audio Chatの標準Base64欄の調整も、明示された正規POST/JSON契約からだけ導出します。
-var inlineAudioPaths = flatten(map(infrastructureApis, api => map(filter(api.operations, operation => (operation.name == 'audio-chat' || length(filter(api.authorization.operationConstraints[operation.name].?profiles ?? [], profile => contains(profile.modalities, 'audio'))) > 0) && operation.method == 'POST' && operation.urlTemplate == '/chat/completions' && api.authorization.operationConstraints[operation.name].kind == 'bodyModel' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? 'json') == 'json' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), operation => '/${api.path}${operation.urlTemplate}')))
 var serviceNames = {
   keyVault: 'kv-${stem}'
   foundry: 'aif-${stem}'
@@ -479,6 +465,7 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     productName: product
     environmentName: environmentName
     resourceStem: stem
+    wafPolicyIdentifier: configuration.services.apimInstanceId
     location: location
     tags: tags
     subnetId: network!.outputs.subnetIds.agw
@@ -504,13 +491,8 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     wafCustomRules: gatewayConfig.?wafCustomRules ?? []
     wafExclusions: gatewayConfig.?wafExclusions ?? []
     publishedApiPaths: concat(flatten(map(infrastructureApis, api => flatten(map(filter(api.operations, operation => !contains(operation.urlTemplate, '*')), operation => contains(operation.urlTemplate, '{deployment}') ? map(api.authorization.operationConstraints[operation.name].?allowedModels ?? [], model => '/${api.path}${replace(operation.urlTemplate, '{deployment}', model)}') : (!contains(operation.urlTemplate, '{') ? ['/${api.path}${operation.urlTemplate}'] : []))))), map(filter(infrastructureApis, api => contains(api, 'mcp')), api => '/${api.mcp.path}/mcp'))
-    customMimePaths: customMimePaths
     documentUploadPaths: documentUploadPaths
     speechRawBodyPaths: speechRawBodyPaths
-    legacyMcpMessagePaths: legacyMcpMessagePaths
-    inlineImagePaths: inlineImagePaths
-    inlinePdfPaths: inlinePdfPaths
-    inlineAudioPaths: inlineAudioPaths
     backendRequestTimeoutSeconds: gatewayConfig.backendRequestTimeoutSeconds
     grpcEnabled: grpcEnabled
     grpcPublicPort: grpcConfig.publicPort

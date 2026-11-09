@@ -11,12 +11,13 @@ from test_gateway_callback_waf import (
     ready_gateway, _callback_gateway, _writable, _writable_policy,
 )
 from gateway_ingress import (
-    SPEECH_RULE_NAME, configure_gateway_speech_waf, speech_content_type_paths, _path_gateway, _speech_policy, _raw_body_policy, _speech_path_gateway,
+    SPEECH_RULE_NAME, configure_gateway_speech_waf, speech_content_type_paths, _path_gateway, _speech_policy, _raw_body_policy,
 )
 from test_portal_gateway import Transport
+from deployment.helpers.waf_names import policy_id, policy_name
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY_ID = BASE_ID + '-custom-mime'
+POLICY_ID = policy_id(CONFIG, 'g-speech')
 PATHS = ['/models/azure-speech/v1/recognize', '/models/azure-speech/v1/synthesize']
 
 
@@ -28,12 +29,12 @@ def configuration():
 
 def desired_gateway(source):
     return ready_gateway(_path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID, paths=PATHS,
-                                       rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime'))
+                                       rule_name=SPEECH_RULE_NAME, policy_key='g-speech'))
 
 
 def ready_policy(desired):
     value = copy.deepcopy(desired)
-    value.update({'id': POLICY_ID, 'name': 'wafpol-agw-test-fixture-custom-mime', 'etag': '"speech-v2"',
+    value.update({'id': POLICY_ID, 'name': policy_name(CONFIG, 'g-speech'), 'etag': '"speech-v2"',
                   'type': 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies'})
     value['properties']['provisioningState'] = 'Succeeded'
     return value
@@ -131,7 +132,7 @@ class GatewaySpeechWafTests(unittest.TestCase):
         following['name'] = 'following-api'
         following['properties']['paths'] = ['/unrelated/exact']
         mapping['pathRules'].append(following)
-        selected['properties']['firewallPolicy'] = {'id': BASE_ID + '-previous'}
+        selected['properties']['firewallPolicy'] = {'id': BASE_ID}
         before = copy.deepcopy(source)
         observed = desired_gateway(source)
         observed_rule = next(rule for rule in api_mapping(observed)['pathRules']
@@ -184,7 +185,7 @@ class GatewaySpeechWafTests(unittest.TestCase):
             before = copy.deepcopy(source)
             with self.subTest(case=case), self.assertRaisesRegex(ValueError, 'backend, rewrite or path'):
                 _path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
-                    paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime')
+                    paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_key='g-speech')
             self.assertEqual(source, before)
 
     def test_reordered_managed_paths_still_move_above_a_matching_wildcard(self):
@@ -195,8 +196,8 @@ class GatewaySpeechWafTests(unittest.TestCase):
         mapping['pathRules'][0]['properties']['paths'] = ['/models/*']
         mapping['pathRules'].append(selected)
         before = copy.deepcopy(source)
-        result = _speech_path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
-            paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime')
+        result = _path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
+            paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_key='g-speech')
         rules = api_mapping(result)['pathRules']
         self.assertEqual([rule['name'] for rule in rules], [SPEECH_RULE_NAME, 'existing-api'])
         self.assertEqual(rules[0]['properties']['paths'], list(reversed(PATHS)))
@@ -293,52 +294,43 @@ class GatewaySpeechWafTests(unittest.TestCase):
         source = desired_gateway(gateway(path_based=True))
         mapping = api_mapping(source)
         mapping['pathRules'].append(mapping['pathRules'].pop(0))
-        result = _speech_path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
-            paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_suffix='-custom-mime')
+        result = _path_gateway(configuration(), source, GATEWAY_ID, POLICY_ID,
+            paths=PATHS, rule_name=SPEECH_RULE_NAME, policy_key='g-speech')
         self.assertEqual(result, _writable(source))
 
-    def test_mixed_mime_route_splits_only_canonical_speech_paths(self):
-        source = desired_gateway(gateway(path_based=True))
-        api_mapping(source)['pathRules'][0]['properties']['paths'].append('/company/ssml')
-        new_id = BASE_ID + '-speech-raw-body'
-        result = _speech_path_gateway(configuration(), source, GATEWAY_ID, new_id,
-            paths=PATHS, rule_name='speech-raw-body', policy_suffix='-speech-raw-body')
-        rules = api_mapping(result)['pathRules']
-        self.assertEqual(rules[0]['name'], 'speech-raw-body')
-        self.assertEqual(rules[0]['properties']['paths'], PATHS)
-        self.assertEqual(next(rule for rule in rules if rule['name'] == SPEECH_RULE_NAME)['properties']['paths'], ['/company/ssml'])
+    def test_other_path_owners_and_noncanonical_speech_shapes_are_rejected_without_migration(self):
+        for mutation in ('owner', 'extra-path', 'policy'):
+            source = desired_gateway(gateway(path_based=True))
+            rule = api_mapping(source)['pathRules'][0]
+            if mutation == 'owner': rule['name'] = 'another-purpose'
+            elif mutation == 'extra-path': rule['properties']['paths'].append('/company/ssml')
+            else: rule['properties']['firewallPolicy'] = {'id': policy_id(CONFIG, 'g-images')}
+            before = copy.deepcopy(source)
+            transport = Transport([{'statusCode': 200, 'body': source}])
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                configure_gateway_speech_waf(configuration(), transport)
+            self.assertEqual(source, before)
+            self.assertEqual([call['method'] for call in transport.calls], ['GET'])
 
-    def test_bicep_matches_raw_helper_and_separates_unrelated_mime_contracts(self):
+    def test_bicep_matches_raw_helper_and_has_one_canonical_speech_policy(self):
         from test_gateway_document_waf import GatewayDocumentWafBicepTests
-        from test_ssml_waf import GatewayExpression
         GatewayDocumentWafBicepTests.setUpClass()
         helper = GatewayDocumentWafBicepTests()
-        for mixed in (False, True):
-            values = helper.parameters(documentUploadPaths=[], customMimePaths=PATHS + (['/company/ssml'] if mixed else []), speechRawBodyPaths=PATHS)
-            common = helper.resource("[format('wafpol-agw-{0}', parameters('resourceStem'))]")
-            baseline = helper.value(common['properties'], values)
-            suffix = 'speech-raw-body' if mixed else 'custom-mime'
-            resource = helper.resource("[format('wafpol-agw-{0}-" + suffix + "', parameters('resourceStem'))]")
-            self.assertEqual(helper.value(resource['properties'], values), _raw_body_policy({'properties': baseline})['properties'])
-            gateway_resource = next(item for item in helper.resources if item['type'] == 'Microsoft.Network/applicationGateways')
-            properties = helper.value(gateway_resource['properties'], values)
-            mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
-            selected = next(item for item in mapping['pathRules'] if item['name'] == ('speech-raw-body' if mixed else SPEECH_RULE_NAME))
-            self.assertEqual(selected['properties']['paths'], PATHS)
-            self.assertEqual(sum(path in rule['properties']['paths'] for rule in mapping['pathRules'] for path in PATHS), 2)
-            if mixed:
-                mime = next(item for item in mapping['pathRules'] if item['name'] == SPEECH_RULE_NAME)
-                self.assertEqual(mime['properties']['paths'], ['/company/ssml'])
-                common_mime = helper.resource("[format('wafpol-agw-{0}-custom-mime', parameters('resourceStem'))]")
-                self.assertEqual(helper.value(common_mime['properties'], values)['customRules'], baseline['customRules'])
-        from standard_apis import infrastructure_api_definitions
-        api = configuration()['apiDefinitions'][0]
-        expression = helper.main['variables']['speechRawBodyPaths']
-        evaluate = lambda candidate: GatewayExpression(expression, helper.main['variables']).evaluate({
-            'configuration': {'apiDefinitions': [], 'infrastructureApiDefinitions': infrastructure_api_definitions([candidate])}})
-        self.assertEqual(sorted(evaluate(api)), PATHS)
-        api['name'] = 'unrelated-ssml'
-        self.assertEqual(evaluate(api), [])
+        values = helper.parameters(documentUploadPaths=[], speechRawBodyPaths=PATHS)
+        baseline = helper.value(helper.resource("g-base")['properties'], values)
+        resource = helper.resource("g-speech")
+        self.assertTrue(helper.value(resource['condition'], values))
+        self.assertEqual(helper.value(resource['properties'], values), _raw_body_policy({'properties': baseline})['properties'])
+        gateway_resource = next(item for item in helper.resources if item['type'] == 'Microsoft.Network/applicationGateways')
+        properties = helper.value(gateway_resource['properties'], values)
+        mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
+        selected = [item for item in mapping['pathRules'] if item['name'] == SPEECH_RULE_NAME]
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]['properties']['paths'], PATHS)
+        self.assertTrue(selected[0]['properties']['firewallPolicy']['id'].endswith('/wafpol-g-speech-abc123'))
+        self.assertEqual(sum(path in rule['properties']['paths'] for rule in mapping['pathRules'] for path in PATHS), 2)
+        disabled = helper.parameters(documentUploadPaths=[], speechRawBodyPaths=[])
+        self.assertFalse(helper.value(resource['condition'], disabled))
 
     def test_raw_controls_have_no_ineffective_ssml_body_rule_and_fit_four_free_priorities(self):
         base = policy()

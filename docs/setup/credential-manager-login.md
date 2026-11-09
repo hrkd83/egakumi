@@ -60,7 +60,7 @@
 
 ### 本人確認callbackのWAF調整
 
-自前のWAFを作成する構成では、`/auth/connections/browser/identity-callback`の完全パスに専用ポリシー`wafpol-agw-<resourceStem>-gateway-auth`を関連付ける。認可コードのSQLi誤検知を抑えるため、現行資材は`code`引数の**値**だけをOWASP 3.2の`942430`・`942440`・`942450`から除外する。引数名、`state`、他の引数・URI・規則は除外しない。本文検査、サイズ制限、秘密値のログ除去、追加の企業規則は共通WAFと同じに保つ。
+自前のWAFを作成する構成では、`/auth/connections/browser/identity-callback`の完全パスに専用ポリシー`wafpol-g-auth-<ID>`を関連付ける。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子を使う。認可コードのSQLi誤検知を抑えるため、現行資材は`code`引数の**値**だけをOWASP 3.2の`942430`・`942440`・`942450`から除外する。引数名、`state`、他の引数・URI・規則は除外しない。本文検査、サイズ制限、秘密値のログ除去、追加の企業規則は共通WAFと同じに保つ。
 
 既存の`pathmap-protocols`へ`credential-identity-callback`の規則を追加し、既存APIの経路を保持する。gRPCを併設する場合も、HTTP入口の`trusted-l7-ingress`書き換えをcallbackと既定経路の両方に適用する。初期構築用BicepとGateway配備処理が同じ構成を使用し、Portalの認証callback用ポリシーは変更しない。
 
