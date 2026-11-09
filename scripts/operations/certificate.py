@@ -97,7 +97,24 @@ def remote_script(vault, name, *, renew=False, thumbprint=None):
              f"[ \"$(sha256sum \"$dir/certificate.ps1\" | cut -d' ' -f1)\" = '{expected}' ]"]
     if renew:
         lines += ['if systemctl is-active --quiet "$unit.service"; then exit 1; fi',
-                  '/usr/bin/pwsh -NoLogo -NoProfile -NonInteractive -File "$dir/certificate.ps1" -Action Renew -ConfigFile "$dir/config.json"' +
+                  'command -v systemd-run >/dev/null 2>&1',
+                  # Reuse the installed worker with the timer's OS login and
+                  # cache environment. No service or timer is installed.
+                  f"task_worker_unit='{unit}-operations-{uuid.uuid4().hex[:12]}.service'",
+                  'task_worker_started=false',
+                  'finish_worker() { task_status=$?; trap - EXIT; if [ "$task_worker_started" = true ] && [ "$task_status" -ne 0 ]; then systemctl stop "$task_worker_unit" >/dev/null 2>&1 || true; fi; exit "$task_status"; }',
+                  'trap finish_worker EXIT', "trap 'exit 130' INT", "trap 'exit 143' TERM",
+                  'task_worker_load=$(systemctl show --property=LoadState --value "$task_worker_unit" 2>/dev/null || true)',
+                  '[ "$task_worker_load" = not-found ]', 'task_worker_started=true',
+                  'systemd-run --system --quiet --wait --pipe --collect --service-type=exec \\',
+                  ' --uid=root --gid=root --property=SetLoginEnvironment=yes --property=UMask=0077 \\',
+                  ' --property="Environment=XDG_CACHE_HOME=$dir/cache" \\',
+                  ' --property="Environment=XDG_CONFIG_HOME=$dir/config" \\',
+                  ' --property="Environment=XDG_DATA_HOME=$dir/data" \\',
+                  ' --property=NoNewPrivileges=yes --property=PrivateTmp=yes --property=ProtectHome=yes \\',
+                  ' --property=ProtectSystem=strict --property="ReadWritePaths=$dir" \\',
+                  ' --property=RuntimeMaxSec=3300 --property=TimeoutStopSec=30 --expand-environment=no \\',
+                  ' --unit="$task_worker_unit" /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive -File "$dir/certificate.ps1" -Action Renew -ConfigFile "$dir/config.json"' +
                   (' -RotateFromThumbprint ' + thumbprint if thumbprint else '')]
     lines += ["python3 - <<'CERTIFICATE_METADATA'", metadata_program(vault, name, unit), 'CERTIFICATE_METADATA']
     return '\n'.join(lines) + '\n'
@@ -124,6 +141,26 @@ def public_metadata(output, vault, name):
         raise OperationError('The VM public certificate metadata did not match this environment') from None
 
 
+def read_worker_command(ctx, vm, resource_id):
+    """既存の同一VM commandだけを読む。実行要求や回収は行わない。"""
+    if not re.fullmatch(re.escape(vm + '/runCommands/operations-certificate-') + r'[0-9a-f]{12}', resource_id):
+        raise OperationError('Select the exact recorded certificate command for this VM')
+    # Explicit VM identifiers select the managed-command CLI branch;
+    # --ids alone is not expanded by this overloaded show command.
+    raw = ctx.run_cli(['az', 'vm', 'run-command', 'show',
+                      '--subscription', ctx.config['subscriptionId'],
+                      '--resource-group', ctx.config['resourceGroupNames']['maint'],
+                      '--vm-name', vm.rsplit('/', 1)[-1],
+                      '--run-command-name', resource_id.rsplit('/', 1)[-1],
+                      '--instance-view', '--only-show-errors', '--output', 'json'])
+    observed = json.loads(raw)
+    if not isinstance(observed, dict) or str(observed.get('id', '')).casefold() != resource_id.casefold():
+        raise OperationError('The VM command result belongs to another resource')
+    properties = observed.get('properties', observed)
+    view = properties.get('instanceView') or observed.get('instanceView') or {}
+    return properties, view
+
+
 def run_worker(ctx, vm, vault, name, *, renew=False, thumbprint=None, timeout=3600, sleep=time.sleep, clock=time.monotonic):
     """単一のManaged Run Command。PUTは再送せず、そのexact resourceだけを待つ。"""
     resource_id = vm + '/runCommands/operations-certificate-' + uuid.uuid4().hex[:12]
@@ -137,13 +174,7 @@ def run_worker(ctx, vm, vault, name, *, renew=False, thumbprint=None, timeout=36
         raise OperationError('The VM certificate command was not accepted')
     deadline = clock() + timeout
     while clock() < deadline:
-        raw = ctx.run_cli(['az', 'vm', 'run-command', 'show', '--ids', resource_id,
-                          '--instance-view', '--only-show-errors', '--output', 'json'])
-        observed = json.loads(raw)
-        if str(observed.get('id', '')).casefold() != resource_id.casefold():
-            raise OperationError('The VM command result belongs to another resource')
-        properties = observed.get('properties', observed)
-        view = properties.get('instanceView') or observed.get('instanceView') or {}
+        properties, view = read_worker_command(ctx, vm, resource_id)
         state = view.get('executionState')
         if state in ('Failed', 'Canceled', 'TimedOut') or properties.get('provisioningState') in ('Failed', 'Canceled'):
             ctx.record('certificate-vm-retained', {'resourceId': resource_id, 'state': 'failed', 'deleted': False})
@@ -195,7 +226,7 @@ def verify_references(ctx, gateway, vault, name):
             raise OperationError('API Management does not reference the expected versionless certificate')
 
 
-def wait_refresh(ctx, response, *, timeout=1200, sleep=time.sleep, clock=time.monotonic):
+def wait_refresh(ctx, response, *, timeout=3600, sleep=time.sleep, clock=time.monotonic):
     """公式refreshHostnamesのLRO URLはRAM内で限定検査し、GETだけを送る。"""
     if response.get('statusCode') == 200:
         return
@@ -241,13 +272,35 @@ def wait_refresh(ctx, response, *, timeout=1200, sleep=time.sleep, clock=time.mo
             poll = ctx.transport.request('GET', url)
         except Exception:
             raise OperationError('Certificate synchronization status is unknown; no request was repeated') from None
-        body = poll.get('body') or {}
-        status = body.get('status') or body.get('properties', {}).get('provisioningState')
+        body = poll.get('body')
+        if body is None:
+            body = {}
+        if not isinstance(body, dict) or body.get('error') is not None:
+            raise OperationError('Certificate synchronization did not confirm successful completion')
+        properties = body.get('properties')
+        if properties is None:
+            properties = {}
+        if not isinstance(properties, dict):
+            raise OperationError('Certificate synchronization did not confirm successful completion')
+        states = (body.get('status'), properties.get('provisioningState'))
+        if any(value in ('Failed', 'Canceled', 'Cancelled') for value in states):
+            raise OperationError('Certificate synchronization did not confirm successful completion')
+        resource_result = not status_endpoint and ('id' in body or 'type' in body)
+        if resource_result and (str(body.get('id', '')).casefold() != ctx.service_id('apim').casefold()
+                or str(body.get('type', '')).casefold() != 'microsoft.apimanagement/service'):
+            raise OperationError('Certificate synchronization returned a different resource')
+        status = states[0] or states[1]
         if not status_endpoint and poll.get('statusCode') in (200, 204) and not body:
+            return
+        # refreshHostnames uses final-state-via=location. Its pending 202 can
+        # be empty; its final 200 is the owned service resource, not a status envelope.
+        if poll.get('statusCode') == 200 and resource_result and status is None:
             return
         if poll.get('statusCode') == 200 and status == 'Succeeded':
             return
-        if poll.get('statusCode') not in (200, 202) or status not in ('Accepted', 'InProgress', 'Running', 'Updating'):
+        location_pending = not status_endpoint and poll.get('statusCode') == 202 and not body
+        if not location_pending and (poll.get('statusCode') not in (200, 202)
+                or status not in ('Accepted', 'InProgress', 'Running', 'Updating')):
             raise OperationError('Certificate synchronization did not confirm successful completion')
         headers = {k.lower(): v for k, v in poll.get('headers', {}).items()}
     raise OperationError('Certificate synchronization remains pending; the POST was not repeated')
@@ -334,10 +387,29 @@ def operate(ctx, args):
             raise OperationError('The requested rotation did not produce a different public leaf')
         ctx.record('certificate-renewed', {'metadata': metadata, 'publicTls': 'not-verified'})
     if args.stage in ('renew', 'sync'):
-        if ctx.config['gateway'].get('grpc', {}).get('enabled'):
-            ctx.record('certificate-apim-refresh-requested', {'apiVersion': APIM_REFRESH_API, 'status': 'requested'})
-            response = ctx.request('POST', ctx.service_id('apim') + '/refreshHostnames', APIM_REFRESH_API)
-            wait_refresh(ctx, response)
+        grpc = ctx.config['gateway'].get('grpc', {})
+        if grpc.get('enabled'):
+            # A completed public delivery can outlive the previous CLI's LRO
+            # wait. Reuse that positive, trusted observation only for sync;
+            # an observation failure stops rather than repeating a pending POST.
+            delivered = tls_leaf(grpc['publicHostName'], grpc['publicPort']) if args.stage == 'sync' else None
+            if delivered is not None and delivered['thumbprint'] == metadata['thumbprint']:
+                ctx.record('certificate-apim-refresh-skipped', {
+                    'basis': 'trusted-public-tls-matches-current-key-vault',
+                    'postSkipped': True, 'lroCompletionObserved': False, 'publicTls': delivered})
+            else:
+                ctx.record('certificate-apim-refresh-requested', {'apiVersion': APIM_REFRESH_API, 'status': 'requested'})
+                response = ctx.request('POST', ctx.service_id('apim') + '/refreshHostnames', APIM_REFRESH_API)
+                # Preserve the definite response without retaining messages, headers,
+                # signed polling URLs, or other external response fields.
+                status = response.get('statusCode')
+                body = response.get('body')
+                error = body.get('error') if isinstance(body, dict) else None
+                code = error.get('code') if isinstance(error, dict) else None
+                ctx.record('certificate-apim-refresh-response', {
+                    'httpStatus': status if type(status) is int and 100 <= status <= 599 else None,
+                    'azureErrorCode': code if isinstance(code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,127}', code) else None})
+                wait_refresh(ctx, response)
         ctx.record('certificate-gateway-refresh-requested', {'status': 'requested'})
         refresh_gateway(ctx, gateway)
     observed = observe(ctx, metadata)

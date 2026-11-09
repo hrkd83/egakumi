@@ -64,6 +64,12 @@ const ROTATION_HEADERS = {
   expiresAt: "X-Core-Connection-Update-Expires-At",
 } as const;
 
+/** 制御要求は25秒を上限とし、業務処理中はその共通期限も越えません。 */
+function controlDeadline(deadline?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(25_000);
+  return deadline ? AbortSignal.any([deadline, timeout]) : timeout;
+}
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ConnectionSessionError("InvalidResponse");
   return value as Record<string, unknown>;
@@ -165,13 +171,14 @@ export class ConnectionSessionClient {
       options.principal.tenantId.toLowerCase(), options.principal.ownerId.toLowerCase()])).digest("hex");
   }
 
-  private async send(path: string, current?: string, body?: object, method = body ? "POST" : "GET"): Promise<Response> {
+  private async send(path: string, current?: string, body?: object, method = body ? "POST" : "GET", signal = controlDeadline()): Promise<Response> {
     const headers = new Headers({ "api-key": this.options.apiKey, "Accept": "application/json" });
     if (current) { sessionId(current); headers.set("X-Core-Connection-Session", current); }
     if (body) headers.set("Content-Type", "application/json");
     try {
+      signal.throwIfAborted();
       const response = await (this.options.fetch ?? fetch)(this.origin + path, { method, headers,
-        body: body ? JSON.stringify(body) : undefined, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(25000) });
+        body: body ? JSON.stringify(body) : undefined, redirect: "error", cache: "no-store", signal });
       return response;
     } catch { throw new ConnectionSessionError("GatewayUnavailable"); }
   }
@@ -232,18 +239,18 @@ export class ConnectionSessionClient {
     return this.save(tx, state, { ...state, metadata: next });
   }
 
-  private async commit(tx: StateTransaction, state: PrivateState): Promise<PrivateState> {
+  private async commit(tx: StateTransaction, state: PrivateState, deadline?: AbortSignal): Promise<PrivateState> {
     const candidate = state.pending;
     if (!candidate) return state;
     const retry = state.rotationCommitAttempted ?? false;
     if (!retry) state = await this.save(tx, state, { ...state, rotationCommitAttempted: true });
     const body = { rotationId: candidate.rotationId, candidateSession: candidate.candidateSession, fromGeneration: candidate.fromGeneration };
-    let response = await this.send("/auth/connections/session/commit", retry ? candidate.candidateSession : state.current, body);
+    let response = await this.send("/auth/connections/session/commit", retry ? candidate.candidateSession : state.current, body, "POST", controlDeadline(deadline));
     let value = await readJson(response);
     if (response.status === 403 && record(value.error).code === "ConnectionNotAuthorized") {
       // 確定の成否が不明なら、もう一方の保存済み証明でも確認します。
       // 両方の証明が明示的に拒否されたときだけ、業務APIから認証を取り直せます。
-      response = await this.send("/auth/connections/session/commit", retry ? state.current : candidate.candidateSession, body);
+      response = await this.send("/auth/connections/session/commit", retry ? state.current : candidate.candidateSession, body, "POST", controlDeadline(deadline));
       value = await readJson(response);
       if (response.status === 403 && record(value.error).code === "ConnectionNotAuthorized") {
         throw new ConnectionSessionError("ConnectionSessionExpired", 403);
@@ -277,8 +284,8 @@ export class ConnectionSessionClient {
    * 失効した更新候補で業務利用を永久に止めず、明示的な両証明の拒否後だけ新しい認証案内へ戻します。
    * @remarks 通信断や503は確定済みか判断できないため、候補を残して次回の確定確認を待ちます。
    */
-  private async commitForBusiness(tx: StateTransaction, state: PrivateState): Promise<PrivateState> {
-    try { return await this.commit(tx, state); }
+  private async commitForBusiness(tx: StateTransaction, state: PrivateState, deadline: AbortSignal): Promise<PrivateState> {
+    try { return await this.commit(tx, state, deadline); }
     catch (error) {
       if (error instanceof ConnectionSessionError && error.code === "ConnectionSessionExpired") {
         // 初回の確定試行フラグも先に永続化するため、消去の比較更新には最新の版を使います。
@@ -299,6 +306,9 @@ export class ConnectionSessionClient {
     if (!/^\/[A-Za-z0-9_./~-]+$/.test(path) || path.includes("//") || path.split("/").some((part) => part === "." || part === "..")
       || path.startsWith("/auth/")) throw new ConnectionSessionError("InvalidApiPath");
     return this.options.store.withExclusive(this.binding, async (tx) => {
+      // HTTPの90秒予算は排他取得後に一度だけ開始し、業務前の更新確定と
+      // 409後の再試行でも取り直しません。SQL自身の期限とfencingはstoreが担います。
+      const deadline = AbortSignal.timeout(90_000);
       let state = await tx.read();
       if (state?.status === "pending") {
         const remaining = Math.floor((state.authenticationExpiresAt ?? 0) - Date.now() / 1000);
@@ -306,9 +316,9 @@ export class ConnectionSessionClient {
         // 認証取引は短時間で失効します。期限切れのURLを再利用せず、新しい業務要求から案内を取り直します。
         state = await this.clear(tx, state);
       }
-      if (state?.status === "complete") state = await this.commitForBusiness(tx, state);
+      if (state?.status === "complete") state = await this.commitForBusiness(tx, state, deadline);
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const response = await preserveBusinessResponse(await this.send(path, state?.status === "complete" ? state.current : undefined));
+        const response = await preserveBusinessResponse(await this.send(path, state?.status === "complete" ? state.current : undefined, undefined, "GET", deadline));
         if (response.status === 409) {
           const value = await readJson(response.clone());
           const code = record(value.error).code;
@@ -322,7 +332,7 @@ export class ConnectionSessionClient {
           }
           if (code === "SessionUpdateRequired" && state?.status === "complete" && attempt === 0) {
             state = await this.save(tx, state, { ...state, pending: this.rotation(value.rotation, state) });
-            state = await this.commitForBusiness(tx, state);
+            state = await this.commitForBusiness(tx, state, deadline);
             continue; // 業務処理前の拒否だけを一度再試行します。
           }
           // 更新用JSONには秘密が含まれます。再試行上限に達しても業務応答として画面へ返しません。
@@ -336,7 +346,7 @@ export class ConnectionSessionClient {
             return [key, ["fromGeneration", "generation", "expiresAt"].includes(key) && value !== null ? Number(value) : value];
           }));
           state = await this.save(tx, state, { ...state, pending: this.rotation(item, state) });
-          try { state = await this.commit(tx, state); } catch { pending = true; }
+          try { state = await this.commit(tx, state, deadline); } catch { pending = true; }
         }
         const headers = new Headers(response.headers);
         for (const key of [...headers.keys()]) if (key.toLowerCase().startsWith("x-core-connection-")) headers.delete(key);

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { ApiKeyError, type ApiKeyActor, type ApiKeyRecord } from "../lib/api-keys/contracts.ts";
 import type { PrivateState, SharedStateStore, StateTransaction } from "../lib/connection-session/client.ts";
-import { ConnectionSessionError } from "../lib/connection-session/client.ts";
+import { ConnectionSessionClient, ConnectionSessionError } from "../lib/connection-session/client.ts";
 import { getGraphToolEnvironment, handleGraphToolConnection, handleGraphToolKeys, handleGraphToolProfile, type GraphToolDependencies } from "../lib/graph-tool-server.ts";
 
 const portal = "https://portal.example.invalid";
@@ -23,12 +23,14 @@ const profile = { id: owner.objectId, userPrincipalName: "person@example.invalid
 class TestStore implements SharedStateStore {
   states = new Map<string, PrivateState>();
   reads = 0;
+  afterSave?: () => void;
   async withExclusive<T>(binding: string, action: (transaction: StateTransaction) => Promise<T>): Promise<T> {
     this.reads++;
     return action({ read: async () => structuredClone(this.states.get(binding)), save: async (expected, state) => {
       assert.equal(expected, this.states.get(binding)?.revision ?? 0);
       assert.equal(state.revision, expected + 1);
       this.states.set(binding, structuredClone(state));
+      this.afterSave?.();
     } });
   }
   state(): PrivateState { assert.equal(this.states.size, 1); return [...this.states.values()][0]; }
@@ -69,6 +71,142 @@ async function body(response: Response): Promise<Record<string, unknown>> {
 function challenge(): Response { return Response.json({ error: { code: "ConnectionRequired" }, authentication: auth }, { status: 409 }); }
 /** 完了確認はメタデータと検証した本人だけを返します。 */
 function completion(actor: ApiKeyActor = owner): Response { return Response.json({ ...metadata(), status: "complete", tenantId: actor.tenantId, ownerId: actor.objectId }); }
+
+/** 実時間やネットワークを使わず、共通期限と各要求の中断を進める単調時計です。 */
+function deadlines(context: TestContext) {
+  let now = 0;
+  const timers: { due: number; controller: AbortController }[] = [];
+  const budgets: number[] = [];
+  context.mock.method(AbortSignal, "timeout", (milliseconds: number) => {
+    const controller = new AbortController();
+    budgets.push(milliseconds);
+    timers.push({ due: now + milliseconds, controller });
+    return controller.signal;
+  });
+  return { budgets, advance(milliseconds: number) {
+    now += milliseconds;
+    for (const timer of timers) if (timer.due <= now && !timer.controller.signal.aborted) {
+      timer.controller.abort(new DOMException("Synthetic deadline", "TimeoutError"));
+    }
+  } };
+}
+
+test("本人Graph業務は25秒を超えても90秒以内の応答を一度だけ受け取る", async (context) => {
+  const clock = deadlines(context);
+  const app = setup();
+  let calls = 0;
+  const result = await handleGraphToolProfile(request(), { ...app.dependencies, fetch: async (_url, options) => {
+    calls++;
+    clock.advance(30_000);
+    options?.signal?.throwIfAborted();
+    return Response.json(profile);
+  } });
+  assert.equal(result.status, 200);
+  assert.deepEqual((await body(result)).profile, profile);
+  assert.equal(calls, 1);
+  assert.deepEqual(clock.budgets, [90_000]);
+});
+
+test("業務前409の再試行も同じ90秒予算を使い、期限切れで自動再送しない", async (context) => {
+  const clock = deadlines(context);
+  const app = setup([challenge(), completion()]);
+  await handleGraphToolProfile(request(), app.dependencies);
+  await handleGraphToolConnection(request("connection", { apiKeyId: keyId, action: "status" }), app.dependencies);
+  clock.budgets.length = 0;
+  const signals: AbortSignal[] = [];
+  let commits = 0;
+  const result = await handleGraphToolProfile(request(), { ...app.dependencies, fetch: async (url, options) => {
+    assert.ok(options?.signal);
+    if (String(url).endsWith("/session/commit")) {
+      commits++;
+      clock.advance(10_000);
+      options.signal.throwIfAborted();
+      return Response.json(metadata(2));
+    }
+    signals.push(options.signal);
+    clock.advance(signals.length === 1 ? 60_000 : 30_000);
+    options.signal.throwIfAborted();
+    return Response.json({ error: { code: "SessionUpdateRequired" }, rotation: {
+      rotationId: "9".repeat(64), candidateSession: candidate, fromGeneration: 1, generation: 2, expiresAt: stamp + 600,
+    } }, { status: 409 });
+  } });
+  assert.equal(result.status, 503);
+  assert.deepEqual(await body(result), { error: { code: "GatewayUnavailable" } });
+  assert.equal(signals.length, 2);
+  assert.equal(signals[0], signals[1], "再試行時に90秒を取り直さない");
+  assert.equal(signals[1].aborted, true);
+  assert.equal(commits, 1);
+  assert.deepEqual(clock.budgets, [90_000, 25_000]);
+});
+
+test("SQL保存中に業務予算が尽きたら、次の確定要求も業務再試行も送らない", async (context) => {
+  const clock = deadlines(context);
+  const app = setup([challenge(), completion()]);
+  await handleGraphToolProfile(request(), app.dependencies);
+  await handleGraphToolConnection(request("connection", { apiKeyId: keyId, action: "status" }), app.dependencies);
+  app.store.afterSave = () => clock.advance(90_000);
+  let calls = 0;
+  const result = await handleGraphToolProfile(request(), { ...app.dependencies, fetch: async () => {
+    calls++;
+    return Response.json({ error: { code: "SessionUpdateRequired" }, rotation: {
+      rotationId: "9".repeat(64), candidateSession: candidate, fromGeneration: 1, generation: 2, expiresAt: stamp + 600,
+    } }, { status: 409 });
+  } });
+  assert.equal(result.status, 503);
+  assert.deepEqual(await body(result), { error: { code: "GatewayUnavailable" } });
+  assert.equal(calls, 1, "期限後のfetch呼出は0件");
+  assert.equal(app.store.state().pending?.candidateSession, candidate, "未確定候補を失わない");
+});
+
+test("成功済み業務は保持し、後続commitは25秒で止めて業務を再送しない", async (context) => {
+  const clock = deadlines(context);
+  const app = setup([challenge(), completion()]);
+  await handleGraphToolProfile(request(), app.dependencies);
+  await handleGraphToolConnection(request("connection", { apiKeyId: keyId, action: "status" }), app.dependencies);
+  clock.budgets.length = 0;
+  let businessCalls = 0, commitCalls = 0;
+  const result = await handleGraphToolProfile(request(), { ...app.dependencies, fetch: async (url, options) => {
+    if (String(url).endsWith("/session/commit")) {
+      commitCalls++;
+      clock.advance(25_000);
+      options?.signal?.throwIfAborted();
+      throw new Error("Synthetic missing timeout");
+    }
+    businessCalls++;
+    clock.advance(30_000);
+    options?.signal?.throwIfAborted();
+    return Response.json(profile, { headers: { "X-Core-Connection-Update": candidate, "X-Core-Connection-Update-Id": "9".repeat(64),
+      "X-Core-Connection-Update-From-Generation": "1", "X-Core-Connection-Update-Generation": "2", "X-Core-Connection-Update-Expires-At": String(stamp + 600) } });
+  } });
+  assert.equal(result.status, 200);
+  const value = await body(result);
+  assert.deepEqual(value.profile, profile);
+  assert.equal(value.sessionUpdatePending, true);
+  assert.equal(businessCalls, 1); assert.equal(commitCalls, 1);
+  assert.deepEqual(clock.budgets, [90_000, 25_000]);
+});
+
+test("単独pollとlogoutの制御要求は25秒の期限を維持する", async (context) => {
+  const clock = deadlines(context);
+  for (const operation of ["poll", "logout"] as const) {
+    const app = setup([challenge(), completion()]);
+    await handleGraphToolProfile(request(), app.dependencies);
+    if (operation === "logout") await handleGraphToolConnection(request("connection", { apiKeyId: keyId, action: "status" }), app.dependencies);
+    clock.budgets.length = 0;
+    let calls = 0;
+    const client = new ConnectionSessionClient({ origin, profile: "graph-delegated", apiKey: secretKey,
+      subscriptionId: "actual-apim-subscription", principal: { tenantId: owner.tenantId, ownerId: owner.objectId }, store: app.store,
+      fetch: async (_url, options) => {
+        calls++;
+        clock.advance(25_000);
+        options?.signal?.throwIfAborted();
+        throw new Error("Synthetic missing timeout");
+      } });
+    await assert.rejects(client[operation](), (error) => error instanceof ConnectionSessionError && error.code === "GatewayUnavailable");
+    assert.equal(calls, 1);
+    assert.deepEqual(clock.budgets, [25_000]);
+  }
+});
 
 test("業務APIから認証案内を取得し、完了確認後だけ本人プロフィールへ進む", async () => {
   const app = setup([challenge(), Response.json({ status: "pending" }), completion(), Response.json(profile, { headers: { "apim-request-id": "test-request-1" } })]);
