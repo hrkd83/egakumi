@@ -2,7 +2,7 @@
 
 [README](../README.md) · [構築手順](setup/06-deploy.md) · [開発ルール](../DEVELOPMENT.md)
 
-本書は、現行Egakumi Coreの個別配備・途中再開・撤去の共通手順です。業務ごとの操作は[構築後の変更手順](operations/README.md)、受入条件と実施順は[運用テスト](testing/operations-tests.md)から確認します。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
+本書は、現行Egakumi Coreの個別配備・途中再開・撤去の共通手順です。業務ごとの操作は[通常運用・改修の手順](operations/README.md)、受入条件と実施順は[運用テスト](testing/operations-tests.md)から確認します。処理の入口は [azure.yaml](../azure.yaml)、構築・撤去のhookは [lifecycle.py](../scripts/deployment/lifecycle.py)、撤去対象の照合は [cleanup.py](../scripts/deployment/helpers/cleanup.py)で管理します。実環境の試験状態・再開記録は環境別のGit管理外領域`.local/<environment>/`で管理します。この一般手順だけを理由に再構築や撤去を開始しません。
 
 ## 対象環境と記録を確認する
 

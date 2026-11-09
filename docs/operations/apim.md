@@ -9,7 +9,7 @@
 | API・operation、許可モデル、入力制約 | `apps/gateway/apim/apis/<API名>.json`。制約から操作ごとのポリシーも生成される |
 | 全APIに共通するポリシー | `apps/gateway/apim/policies/service.xml`と、それが読み込むXML。変更後は認証・継承順も確認する |
 
-資材が管理するものはソースを変更してGで反映する。Azure Portal上だけを編集して、次回配備で上書きされる状態を正本にしない。共通認可や`<base />`の継承を外して復旧しない。全体ポリシーの確認XMLは`render_apim_policy.py`で生成できるが、その出力だけでAPI別の生成ポリシーを検証したことにはならない。
+API別制約は定義を変更してGで反映する。共通管理ブロックは`apim_authentication.py`がIDと内容を照合するため、`service.xml`を変えただけで稼働中の管理ブロックを自動上書きする入口ではない。変更時はソースと次の確認XMLをレビューし、APIMの「すべてのAPI」のポリシー画面で該当ブロックだけを整合させてからGで再照合する。既存の追加処理と同時編集を確認し、画面保存時の競合を無視しない。共通認可・要求IDや`<base />`の継承は保持する。確認XMLへ管理対象外の要素を加えただけではGの反映対象は増えない。今回の代表試験は、以下のAPI別制約と生成ポリシーを対象にする。
 
 ```sh
 python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
@@ -41,13 +41,13 @@ authorization.operationConstraints["chat-completions"]
 ## 計画して反映する
 
 ```sh
-python3 -B scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE"
 ```
 
 計画と今回のソース差分を確認した後、同じ入口で実行する。
 
 ```sh
-python3 -B scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
 この入口はAPIだけの軽量更新ではなく、Broker・CM・SQL・API・WAF等を含めて照合する。計画は実Foundryの読取照合を行わず、実行ではBroker／SQL処理の後にモデル照合が行われるため、事前に人が現物とparamsを確認する。モデル不一致の負例を作るためにGを実行しない。目的外の差分がある場合は先に分離する。既存イメージを再利用できるかも計画・記録で確認し、API変更のたびに新しい環境を構築しない。

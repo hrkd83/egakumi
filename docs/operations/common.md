@@ -24,11 +24,11 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 
 | 対象 | 計画するコマンド | 反映 |
 | --- | --- | --- |
-| Portal（P） | `python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"` | 同じコマンドへ`--execute`を付ける |
-| Gateway／APIM（G） | `python3 -B scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"` | 同じコマンドへ`--execute`を付ける |
-| Foundry | [モデル変更手順](foundry.md)で対象配備をGUIから変更する | 実物に合わせた設定を確認し、必要なG→Pを行う |
+| Portal（P） | `python3 -B scripts/operations/release.py --component portal --config "$DEPLOY_PARAMS_FILE"` | 同じコマンドへ`--execute`を付ける |
+| Gateway／APIM（G） | `python3 -B scripts/operations/release.py --component gateway --config "$DEPLOY_PARAMS_FILE"` | 同じコマンドへ`--execute`を付ける |
+| Foundry | [モデル変更手順](foundry.md)の`operations/model.py`で対象配備を変更する | 実物に合わせた設定を確認し、必要なG→Pを行う |
 
-通常のP／Gの計画はローカル処理。`--deployment-name`を指定する場合は計画でもAzureの成功済みCore配備を読む。この指定を撤去用stateの復元に使わない。
+通常保守の入口は[`scripts/operations/`](../../scripts/operations/README.md)にまとめる。通常のP／Gの計画はローカル処理。既存の基盤配備CLIが持つ`--deployment-name`は運用入口へ追加せず、同じ保護stateを使う。
 
 計画は完全なARM差分表示ではない。PはDB・権限・WAF等、GはSQL・CM・Broker・API・WAF等も扱うため、ソース・設定と現物の差分を確認する。予定外の変更や実行中処理があれば止める。通常の運用更新では基盤の`azd up`・`azd provision`を実行しない。
 

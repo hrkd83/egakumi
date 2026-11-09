@@ -3538,6 +3538,38 @@
       "paths": [
         "tests/test_apim_sample_cleanup.py"
       ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "169.254.169.254",
+      "reason": "Microsoft Azure IMDS common endpoint, not an environment-specific address; https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/how-to-use-vm-token",
+      "paths": [
+        "scripts/operations/certificate.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "169.254.169.254",
+      "reason": "Microsoft Azure IMDS common endpoint, not an environment-specific address; https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/how-to-use-vm-token",
+      "paths": [
+        "scripts/operations/certificate.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "1.0.0.0",
+      "reason": "ARM deployment parameters contentVersion constant, not an IP address",
+      "paths": [
+        "scripts/operations/entra_secret.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-test-fixture.vault.azure.net",
+      "reason": "Independently invented offline Key Vault fixture. Tests make no real network requests and verify the fixed Azure vault host format",
+      "paths": [
+        "tests/test_operations_certificate.py"
+      ]
     }
   ],
   "reviewed_binary_assets": [

@@ -38,15 +38,15 @@ npm run build
 リポジトリルートで、共通手順で選択した保護入力を使用する。
 
 ```sh
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component portal
 ```
 
 1. 計画の対象アプリ・DB・ビルド／再利用・工程を確認する。これは資源ごとの完全なARM差分表示ではない。
-2. この入口はイメージ作成だけでなくDB初期化・権限・APIM連携・WAF等も照合する。UIだけの専用配備や、これらを省略するモードがあると扱わない。予定外の差分があれば止める。
+2. このラッパーは既存のPortal個別配備を使い、イメージ作成だけでなくDB初期化・権限・APIM連携・WAF等も照合する。UIだけの専用配備や、これらを省略するモードがあると扱わない。予定外の差分があれば止める。
 3. ソースと入力を変えず、同じコマンドに`--execute`を付けて実行する。構築後の更新に`azd up`・`azd provision`は使わない。
 
 ```sh
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
+python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component portal --execute
 ```
 
 4. 今回の終了コードと、同じ環境の`state/portal-deployment.json`を確認する。過去の成功JSONだけで判断しない。SQL初期化失敗等で停止した場合、後続のアプリ更新も成功したと扱わない。
@@ -67,8 +67,8 @@ python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 切戻しは確認済み旧digestを使う。現在のソース・テンプレート・paramsにも目的外変更がなく、DB・設定が旧アプリと互換であることを確認してから計画する。
 
 ```sh
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --image-digest '<PORTAL_IMAGE_DIGEST>'
-python3 -B scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --image-digest '<PORTAL_IMAGE_DIGEST>' --execute
+python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component portal --image-digest '<PORTAL_IMAGE_DIGEST>'
+python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --component portal --image-digest '<PORTAL_IMAGE_DIGEST>' --execute
 ```
 
 `<PORTAL_IMAGE_DIGEST>`は確認済みの`sha256:`形式を指定する。これはビルドを省略する指定であり、DB・権限・WAFの照合を省略する指定ではない。旧digestの稼働、対象表示、認証と代表API、対象外データの保持を確認して復旧を終える。DB互換性が確認できない場合は、旧イメージを強行せず復旧方法を確定する。

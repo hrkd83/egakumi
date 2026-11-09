@@ -124,7 +124,7 @@ Coreの[標準API一覧](docs/reference/api-design-proposal.md)は正式19 API�
 ## 構築後に使う資料
 
 - [更新・撤去・途中失敗時の扱い](docs/operations.md)：同じparamsとazd環境を使う`azd down`、削除履歴、保持対象を確認します。
-- [構築後の変更手順](docs/operations/README.md)・[運用テスト](docs/testing/operations-tests.md)：Portal・API定義・Foundryモデルの変更と復旧を確認します。
+- [通常運用・改修の手順](docs/operations/README.md)・[運用テスト](docs/testing/operations-tests.md)：アプリ・API・モデル、secret・証明書、利用資格・監視などの通常保守を確認します。
 - [API・認証・モデル・音声・証明書の仕様](docs/reference/platform.md)：公開APIの契約と運用上の動作を確認します。
 - [Foundryモデルの分類・リリース日一覧](docs/reference/foundry-model-catalog.md)：モデルの提供状態と、用途・プロバイダー別の公開日・出典・参考性能値を確認します。
 - [企業ネットワークへの接続（任意）](docs/setup/07-hub-spoke.md)：ハブ＆スポーク、中央DNS、経路伝搬等を担当部隊と調整します。

@@ -1,61 +1,91 @@
-# Foundryの既存モデル配備を変更する
+# Foundryモデルの容量・版・配備を変更する
 
 [共通確認](common.md) · [モデル設定](../setup/05-config.md)
 
-構築済みの隔離環境で、既存モデル配備の容量を変更し、正常要求・変更できない条件・元への復旧を確認する。モデル版変更・別リージョン移行・新規モデル購入は、この代表作業の必須条件にしない。
+[モデル保守script](../../scripts/operations/model.py)で、構築済みFoundryの一配備を
+対象に変更する。既定は実物を読む計画、`--execute`で反映する。
+共通基盤の再配備や、全モデルの作り直しは行わない。実環境での受入と、
+合成応答によるローカル回帰は分けて記録する。
 
-## 対象を決める
+## 正本と変更対象を決める
 
-1. Foundryリソース・プロジェクトと、変更する配備名・完全なIDを確認する。名前だけで別環境を選ばない。
-2. 現在のモデル名・版・形式・SKU・容量・更新方針、paramsの`configFile`が参照するconfig正本の設定を控える。
-3. 容量を変更できる配備種別と、追加分の利用枠を確認する。例はcapacity 1→2→1で、モデル名・版・SKUは維持する。
-4. 現在値が1でなければ、実施可能な小さい増分を選び、旧値・新値を先に確定する。課金・利用枠への影響を確認する。
+1. 共通手順でparams・Core state・認証先・APIM識別子を照合する。
+   現在のモデル名・版・形式・SKU・容量・更新方針を保護記録へ控える。
+2. paramsの`configFile`が参照するconfig正本の`services.modelDeployments`で、
+   `name`が完全一致する一件を選ぶ。モデル設定はconfigの担当項目であり、
+   paramsへ`services.modelDeployments`を追加する方法は使わない。
+3. 提供地域・利用枠・購入条件を確認し、変更後と戻す値を先に決める。
+   代表的な容量変更は小さい増分だけにする。capacityの単位やTPM換算は
+   モデル・SKUごとに異なり、全モデル共通の単位とは扱わない。
+4. 正本の対象項目を変更し、次の計画で現在値との差を確認する。
+   配列の順番や同じモデル名だけで対象を選ばず、変更前の一件を丸ごと保存する。
 
-capacityの単位とTPMへの換算はモデル・配備種別によって異なる。capacity 1を全モデル共通の1 TPMとして扱わない。対応していないSKUの容量変更を、別モデルの削除や利用枠の無断付替えで代用しない。
+## 容量だけを変更する
 
-実値・確認結果は `.local/<environment>/evidence/<work-id>/` に保護保存する。公開configへ実環境の配備IDやエンドポイントを転記しない。
+正本の対象`capacity`だけを採用値へ変更する。モデル名・形式・版・SKU・
+自動更新方針を同時に変えない。次は今回選んだ配備名を指定する。
 
-## GUIで変更する
-
-Microsoft Foundryの現行画面では、対象リソースの **Build → Models** から既存配備を開く。従来画面では **Models + endpoints** 等の表示名が異なるため、メニュー名だけでなく対象配備IDを確認する。[Microsoftの配備・管理手順](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/deploy-foundry-models)
-
-1. 対象の配備詳細で、現在の容量と変更可能な項目を確認する。
-2. 容量だけを計画した値へ変更する。モデル名・版・SKU・自動更新方針は同時に変えない。
-3. 保存後、処理中・成功・失敗を区別する。画面を更新し、成功状態と実際の容量を読み戻す。
-4. 失敗や利用枠不足なら、要求した値を反映済みと記録せず、実際の旧値を確認する。
-
-モデルの配備・変更にはCognitive Services Contributor等の権限と、そのモデル・リージョンの提供条件が必要。提供元によってMarketplace契約も異なる。既存配備の容量変更で済む場合は、新しいモデルの契約・購入を増やさない。[公式の前提条件](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/deploy-foundry-models#prerequisites)
-
-## 環境設定を揃える
-
-paramsの`configFile`が参照する`config/test.json`または`config/production.json`を確認する。その正本の`services.modelDeployments`から対象の`name`が完全一致する一件を選び、計画した`capacity`へ変更してGUIの反映値と一致させる。モデル設定はconfigの担当項目で、paramsへの`services.modelDeployments`の追加は検証で拒否される。configの別コピーを作らず、配列の順番や同じモデル名だけで対象を決めない。
-
-```json
-{
-  "name": "<対象の配備名>",
-  "capacity": 2
-}
+```sh
+python3 -B scripts/operations/model.py --config "$DEPLOY_PARAMS_FILE" \
+  --name '<DEPLOYMENT_NAME>' --intent update
+python3 -B scripts/operations/model.py --config "$DEPLOY_PARAMS_FILE" \
+  --name '<DEPLOYMENT_NAME>' --intent update --execute
 ```
 
-これは変更箇所だけを示す抜粋で、配列の一件をこの2項目だけへ置換する指示ではない。既存のモデル名・版・SKU等のフィールドは保持する。
+scriptはstateに記録したFoundryの親ID・所有RGと、対象配備のID・種類・状態を
+確認する。容量だけならSKUのPATCHを使い、モデル・RAI・spillover・tags等を
+PUTで置き換えない。実行中・未知の配備状態、モデル名・形式・SKU・更新方針の
+不一致があれば変更しない。
 
-容量だけの変更にGateway／Portalの再配備は不要。ただしGは、次回実行時に設定されたモデル配備名・版・形式・SKU・容量を実物と照合する。古いcapacityを残すと、その不一致で停止するため、計画したconfig正本の値と実物を同じ作業で揃える。モデル照合はG実行のAPI公開段階で、Broker／SQLの処理より後に行われる。モデル不一致なら全Azure変更前に停止する、という入口ではない。
+計画・要求受付・読戻し結果は、環境別`state/operations/`へ保護保存する。
+stdoutの要約だけを今回の受入証拠にせず、`applied`と実容量を確認する。
+HTTP受付だけでは成功とせず、期限内の`Succeeded`と設定一致を要求する。
+ETagが返れば条件付き要求を使い、直前の比較も行う。API側の原子的な競合防止を
+保証したものとはせず、外部GUIを含む同時保守を避ける。
 
-次回のローカル計画で対象設定が意図した値となることを確認する。計画を作っただけで、Azureの実容量を読み戻した証拠にはしない。`azd up`・`azd provision`は使わない。
+容量だけの変更にG／Pは不要。変更前と同じキー・配備名・API契約で小さい合成要求を
+一度実行し、モデル応答と対象外の代表要求を確認する。設定上限の反映、小さい要求の
+成功、性能・TPM・利用枠の実測は別に記録する。
 
-## 正常と変更できない条件を確認する
+## 版変更・新規配備を明示する
 
-- **正常：** 容量変更前と同じキー・配備名・API契約で、小さい合成要求を1回実行する。Gateway経由のモデル応答と、代表的な既存要求の継続を確認する。
-- **異常：** 運用テストでは`tests/test_publish_apis.py`の偽ARM応答で容量等の不一致を作り、API公開前の検査が停止することをローカルで確認する。実際の既存配備へ不正な容量を反映したり、不一致入力でGを起動したりしない。GUIで利用枠不足等が発生した場合も、要求値を成功扱いにせず実際の旧値を確認する。
-- 容量の読戻し、要求の成功、性能・利用枠の反映は別に記録する。小さい要求1回で性能保証やTPM上限の実測済みとはしない。
+| 作業 | 正本の変更 | CLIの指定 |
+| --- | --- | --- |
+| 既存モデルの版変更 | 対象の`modelVersion`。既存のモデル名・形式・SKU・更新方針は保持 | `--intent update --allow-version-change` |
+| 別名の新規モデル配備 | 完全な新しい一件を`services.modelDeployments`へ追加 | `--intent create` |
 
-実環境の利用枠が不足して正常変更を実施できなかった場合は、正常系をPASSにしない。実施可能な既存配備・変更値へ計画し直す。
+どちらも同じ引数で計画した後に`--execute`を付ける。版変更・作成は一対象へのPUTであり、
+既存配備を一旦削除しない。`create`は既存名の上書きを拒否する。モデル名・形式・SKUを
+既存配備の別用途へ変更する場合は、別名配備で切替方法を確定する。
+非既定のdynamic throttling等、版PUTで安全な保持を表現できない設定がある場合は停止する。
 
-## 元へ戻す
+モデルの実配備だけでAPIの許可やPortal掲載が増えるわけではない。追加・版変更の採用時は
+次の正本も確認し、必要な変更をローカル検査後のG→Pで反映する。
 
-1. 同じ対象の容量をGUIで控えた旧値へ戻す。モデル配備やFoundryリソース全体は削除しない。
-2. 成功状態と旧容量を読み戻し、参照config正本のcapacityも旧値へ戻す。
-3. 小さい通常要求を確認し、実設定・参照config・変更記録が変更前と一致することを確認する。
-4. 旧容量へ戻せない場合は現在値・理由・費用への影響を残し、復旧完了と記録しない。
+| 確認するもの | 正本・確認先 |
+| --- | --- |
+| 許可する配備名・操作・モダリティ | `apps/gateway/apim/apis/`の対象API・profile |
+| モデル別上限・契約の根拠 | `apps/gateway/apim/model-capabilities.json` |
+| Portalの表示・ガイド・試用 | API定義からの生成カタログと`apps/portal/lib/model-catalog.ts`等 |
 
-新しい同モデルの別名配備が必要な場合は、同じ契約を持つ検証用配備だけを追加し、APIの許可名・Portal能力定義を揃える別の作業として計画する。既存容量変更の試験に、モデル追加から削除までを必須で混ぜない。
+新しいAPI方式や表示実装が必要なモデルは、その改修の検証を先に行う。モデル全種・全版を
+追加する試験へ広げず、現在のAPI・Portalで扱える対象を選ぶ。
+Gはモデル設定と実物を照合するが、その前にBroker・SQL等も処理するため、
+不一致の負例を作るためにGを実行しない。
+
+## 失敗・再開・元への復旧
+
+応答不明・未完了・利用枠不足では変更値を反映済みと記録しない。変更要求は自動再送しない。
+同じ配備IDと操作履歴を読み、進行中なら完了を待つ。要求が成功している場合は実物と正本を
+照合し、再作成しない。`create`を重ねて既存資源へ上書きする復旧は使わない。
+
+容量を戻す場合は正本の対象`capacity`を控えた旧値へ戻し、同じ`update`を計画・実行する。
+旧版へ戻す場合も提供・利用枠と互換性を確認し、旧版の正本と明示オプションで実施する。
+成功状態・旧値・代表要求まで確認し、戻せない場合は現在値と残件を記録する。
+
+公開停止はAPIの許可とPortal掲載を先に止め、参照がなくなってから対象配備だけを
+Foundryの管理画面等で削除する。このscriptに削除の意図はない。親Foundryや他モデルを
+削除して戻さず、提供終了した版・解放済み利用枠を設定だけで復元できると扱わない。
+
+[Microsoftのモデル配備API](https://learn.microsoft.com/en-us/rest/api/microsoftfoundry/accountmanagement/deployments/create-or-update?view=rest-microsoftfoundry-accountmanagement-2025-06-01)
+と[容量更新API](https://learn.microsoft.com/en-us/rest/api/microsoftfoundry/accountmanagement/deployments/update?view=rest-microsoftfoundry-accountmanagement-2025-06-01)も参照する。
