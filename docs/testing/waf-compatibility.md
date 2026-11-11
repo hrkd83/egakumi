@@ -35,6 +35,12 @@ Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシ
 
 ## 保護条件の共通化
 
+ResponsesのCodex互換性調整は、`g-responses`の`RequestArgValues / Equals`に限定します。履歴の`input.input`・`input.output.text`、入れ子のツール説明`input.tools.tools.description`、ツール形式定義`input.tools.tools.format.definition`へ、原因となる個別規則の除外を追加しています。`input.content.text`には932140・933160・942320・942350を追加します。これは正規要求の再検証に向けた調整であり、実環境での通過確認済みとは扱いません。
+
+942150は履歴の`input.input`・`input.output.text`と`input.tools.tools.description`の値だけを追加対象とします。二段判定の前段候補として列挙されたキーを根拠に、`RequestArgKeys`や`input`全体の前方一致除外を追加しません。制御項目の検査、Prevention、本文検査、949110を維持します。
+
+追加の互換性調整では、ツール説明にコマンド・XSS・SQLの個別規則、`input.content.text`に941330・942310、`input.tools.tools.format.definition`に942430を追加します。引数Schemaの説明は`input.tools.tools.parameters.properties.`配下の`questions.items.properties.options.description`に942370、`code.description`に942380、`duration_ms.description`に942400だけを完全一致で指定します。`client_metadata.x-codex-turn-metadata`は942200・942260・942340・942370・942430の値検査だけを除外します。933151は`input.tools.tools.description`と`client_metadata.x-codex-turn-metadata`の値だけを完全一致で追加除外します。二段判定で候補として列挙された`client_metadata.session_id`のキー検査は維持し、候補キーの列挙を根拠に例外を広げません。この追加分も実環境での通過確認は未実施です。
+
 PortalのHTTPSセッションCookie値は、`apps/portal/waf-session-exclusions.json`を正本とし、正確な名前`__Secure-egakumi.portal.session_token`を`RequestCookieValues`・`Equals`で選び、規則942450だけから除外します。Portal HTTPS listener専用の既定policyと、置換関係にあるPortal callback・データ欄policyへ同じ除外を合成します。Gateway側のpolicy、他のCookie、他の規則へは追加しません。HTTPの開発用Cookieを除外へ追加せず、Portalの認証・認可とCookieの保護属性は維持します。
 
 raw SSML/WAVと固定1MiBの文書APIでは、正規本文の相対パス`../`が930110に一致しました。AzureはXML/raw本文の項目単位除外に対応しないため、この3完全パスだけ930110を調整し、URI・query・全header・cookieには4本のcustom Blockを合成します。930100等の他の管理規則と本文検査は残します。正本は`apps/gateway/waf-raw-body-controls.json`です。CRSの全正規化処理と完全に同等の代替ではなく、本文内のパス文字列を許容する限定した判断です。Portal文書の`input`は1つのJSON文字列を持つmultipart項目のため、その中の通常のIDで誤検知した5 SQL規則を同項目だけ除外します。
