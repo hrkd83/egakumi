@@ -444,8 +444,8 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     """Validate each JSON profile with the same limits as an ordinary operation."""
     p, op_name = q, operation["name"]
     backend, api_type, mode = api["backendService"], api["apiType"], api["authorization"]["mode"]
-    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel"})
-    kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis"))
+    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel", "embeddingInputField"})
+    kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis", "documentAnalysisStatus"))
     # profileの上流URIは、登録時に検査した固定表としてBicepへ渡します。
     # 選択済みprofileのモデルと転送先を一体で扱います。
     if "backendUrlTemplate" in constraint:
@@ -477,10 +477,6 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
             _fail(q, "Live creation requires POST /sessions on the managed-identity Foundry OpenAI backend")
         if constraint.get("model") not in deployed_models:
             _fail(q + ".model", "must reference an explicitly configured Live deployment")
-        if _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 4194304) > 131072:
-            _fail(q + ".maxRequestBytes", "Live SDP JSON input is bounded to 128 KiB")
-        if "marin" not in _strings(constraint.get("stringChoices", {}).get("voice"), q + ".stringChoices.voice", minimum=1):
-            _fail(q + ".stringChoices.voice", "must include the default Live voice marin")
     if kind in ("realtimeCreate", "realtimeHangup"):
         if backend != "foundryOpenAi" or api_type != "http" or operation["method"] != "POST":
             _fail(q, "Realtime session control requires HTTP POST on the registered Foundry OpenAI backend")
@@ -493,11 +489,9 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
                 _fail(q, "Realtime create must use POST /calls without URL parameters")
             if constraint.get("model") not in deployed_models:
                 _fail(q + ".model", "must reference an explicitly configured Realtime model deployment")
-            _integer(constraint.get("maxOutputTokens"), q + ".maxOutputTokens", 1, 1000000)
+            _integer(constraint.get("maxOutputTokens"), q + ".maxOutputTokens", 1, 9223372036854775807)
             if "initialOutputTokens" in constraint:
                 _integer(constraint["initialOutputTokens"], q + ".initialOutputTokens", 1, constraint["maxOutputTokens"])
-            if _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 4194304) > 131072:
-                _fail(q + ".maxRequestBytes", "Realtime SDP JSON input is bounded to 128 KiB")
         elif operation["urlTemplate"] != "/calls/{callId}/hangup" or [item["name"] for item in operation["templateParameters"]] != ["callId"] or body_format != "none":
             _fail(q, "Realtime hangup requires POST /calls/{callId}/hangup with no request body")
 
@@ -510,16 +504,16 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
                 _fail(q + "." + field, "must name top-level JSON fields")
             if field == "integerLimits":
                 _object(limit, q + ".integerLimits", {"minimum", "maximum", "required"})
-                low = _integer(limit.get("minimum"), q + ".integerLimits.minimum", 0, 1000000)
-                _integer(limit.get("maximum"), q + ".integerLimits.maximum", low, 1000000)
+                low = _integer(limit.get("minimum"), q + ".integerLimits.minimum", 0, 9223372036854775807)
+                _integer(limit.get("maximum"), q + ".integerLimits.maximum", low, 9223372036854775807)
                 _bool(limit.setdefault("required", False), q + ".integerLimits.required")
             elif field == "arrayLimits":
-                _integer(limit, q + ".arrayLimits", 1, 10000)
+                _integer(limit, q + ".arrayLimits", 1, 2147483647)
             else:
                 _strings(limit, q + ".stringChoices", minimum=1)
     if operation["method"] not in ("POST", "PUT", "PATCH"):
         constraint.setdefault("maxRequestBytes", 32768)
-    _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 4194304)
+    _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 524288000)
     if kind == "rerank":
         if (backend != "foundryServices" or api_type != "http" or mode != "subscriptionKey"
                 or operation["method"] != "POST" or operation["urlTemplate"] != "/rerank"
@@ -527,11 +521,11 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
             _fail(q, "rerank requires the registered Foundry JSON POST /rerank model contract")
         documents = constraint["arrayLimits"].get("documents")
         top_n = constraint["integerLimits"].get("top_n", {})
-        if (set(constraint["arrayLimits"]) != {"documents"}
-                or set(constraint["integerLimits"]) != {"top_n"}
-                or top_n.get("minimum") != 1 or top_n.get("required") is not True
-                or top_n.get("maximum", 0) > documents):
-            _fail(q, "rerank requires a document count bound and required top_n from one through that bound")
+        if (set(constraint["arrayLimits"]) - {"documents"}
+                or set(constraint["integerLimits"]) - {"top_n"}
+                or (top_n and top_n.get("minimum") != 1)
+                or (top_n and documents is not None and top_n.get("maximum", 0) > documents)):
+            _fail(q, "rerank permits provider document bounds and optional positive top_n")
         if any(name in constraint for name in ("maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "outputTokenParameter", "initialOutputTokens")):
             _fail(q, "rerank has result counts, not generation output-token limits")
     if kind == "textEmbeddings":
@@ -541,10 +535,12 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
                 or operation["method"] != "POST" or operation["templateParameters"]):
             _fail(q, "textEmbeddings requires a registered text embedding provider POST contract")
         text_field = "input" if openai else "texts"
-        if (set(constraint["arrayLimits"]) != ({"input"} if openai else {"texts", "embedding_types"})
-                or constraint["integerLimits"] or constraint["arrayLimits"].get(text_field) != 16
-                or (cohere and constraint["arrayLimits"].get("embedding_types") != 1)):
-            _fail(q, "textEmbeddings requires the registered text count and provider array bounds")
+        constraint.setdefault("embeddingInputField", text_field)
+        if constraint["embeddingInputField"] != text_field:
+            _fail(q + ".embeddingInputField", "must match the registered embedding provider")
+        if (set(constraint["arrayLimits"]) - ({"input"} if openai else {"texts", "embedding_types"})
+                or constraint["integerLimits"]):
+            _fail(q, "textEmbeddings permits only provider input array bounds")
         if (openai and constraint["stringChoices"]) or (cohere and constraint["stringChoices"] != {"input_type": ["search_document", "search_query", "classification", "clustering"]}):
             _fail(q, "textEmbeddings requires the registered provider purpose choices")
         dimensions = _object(constraint.get("embeddingDimensionsByModel"), q + ".embeddingDimensionsByModel")
@@ -554,7 +550,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         for name, bounds in dimensions.items():
             path = q + ".embeddingDimensionsByModel." + name
             _object(bounds, path, {"default", "maximum", "allowed"})
-            maximum = _integer(bounds.get("maximum"), path + ".maximum", 1, 1000000)
+            maximum = _integer(bounds.get("maximum"), path + ".maximum", 1, 9223372036854775807)
             default = _integer(bounds.get("default"), path + ".default", 1, maximum)
             if cohere and "allowed" not in bounds:
                 _fail(path + ".allowed", "Cohere requires explicit evaluated dimension choices")
@@ -566,7 +562,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
                     _fail(path + ".allowed", "must contain distinct dimensions including the default and maximum")
         if any(name in constraint for name in ("maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "outputTokenParameter", "initialOutputTokens")):
             _fail(q, "textEmbeddings has vector dimensions, not generation output-token limits")
-    elif "embeddingDimensionsByModel" in constraint:
+    elif "embeddingDimensionsByModel" in constraint or "embeddingInputField" in constraint:
         _fail(q + ".embeddingDimensionsByModel", "belongs only to the textEmbeddings contract")
     model_limits = constraint.get("maxOutputTokensByModel")
     if model_limits is not None:
@@ -579,7 +575,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         for name, maximum in model_limits.items():
             limit_kind = _choice(kinds[name], q + ".outputTokenLimitKinds", ("documented", "dynamic", "unsupported", "unverified"))
             if limit_kind == "documented":
-                _integer(maximum, q + ".maxOutputTokensByModel", 1, 1000000)
+                _integer(maximum, q + ".maxOutputTokensByModel", 1, 9223372036854775807)
             elif maximum is not None:
                 _fail(q + ".maxOutputTokensByModel", "variable or unsupported limits must not invent a numeric maximum")
         maxima = [value for value in model_limits.values() if value is not None]
@@ -591,7 +587,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         _fail(q + ".initialOutputTokens", "is reserved for the initial Realtime session setting")
     if kind == "statelessResponses" or "outputTokenParameter" in constraint or (kind in ("bodyModel", "pathModel") and "chat/completions" in operation["urlTemplate"]):
         if model_limits is None or constraint.get("maxOutputTokens") is not None:
-            _integer(constraint.get("maxOutputTokens"), q + ".maxOutputTokens", 1, 1000000)
+            _integer(constraint.get("maxOutputTokens"), q + ".maxOutputTokens", 1, 9223372036854775807)
         token_parameter = _choice(constraint.get("outputTokenParameter"), q + ".outputTokenParameter", ("max_output_tokens", "max_completion_tokens", "max_tokens"))
         if kind == "statelessResponses" and token_parameter != "max_output_tokens":
             _fail(q + ".outputTokenParameter", "Responses requires max_output_tokens")
@@ -618,28 +614,40 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         if constraint.get("modelVersion") in (None, "", "latest"):
             _fail(q + ".modelVersion", "must pin an evaluated PII model version")
         _string(constraint["modelVersion"], q + ".modelVersion")
-        languages = _strings(constraint.get("allowedLanguages"), q + ".allowedLanguages", minimum=1)
-        if not set(languages) <= {"ja", "en"}:
-            _fail(q + ".allowedLanguages", "the initial evaluated languages are ja and en")
+        _strings(constraint.setdefault("allowedLanguages", []), q + ".allowedLanguages")
+        if constraint["maxRequestBytes"] > 1000000:
+            _fail(q + ".maxRequestBytes", "must fit the Language provider's 1 MB native request ceiling")
         _strings(constraint.setdefault("allowedWarningCodes", []), q + ".allowedWarningCodes")
 
-    if kind == "documentAnalysis":
+    if kind in ("documentAnalysis", "documentAnalysisStatus"):
         if (backend != "foundryCognitive" or api_type != "http" or mode != "subscriptionKey"
                 or api["backendAuthentication"]["mode"] != "managedIdentity"
                 or api["name"] != "document-analysis-v1" or api["path"] != "tools/documents/v1"
-                or operation["name"] != "analyze_document" or operation["method"] != "POST"
-                or operation["urlTemplate"] != "/analyze" or operation["templateParameters"]
-                or "backendUrlTemplate" in operation or "backendOverride" in operation or body_format != "binary"):
-            _fail(q, "Document Intelligence requires the fixed managed-identity binary analysis contract")
+                or "backendUrlTemplate" in operation or "backendOverride" in operation):
+            _fail(q, "Document Intelligence requires the fixed managed-identity document API")
         if constraint.get("allowedModels") != ["prebuilt-read", "prebuilt-layout"]:
-            _fail(q + ".allowedModels", "must allow only the evaluated OCR and layout models")
-        if constraint.get("contentTypes") != ["application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp"]:
-            _fail(q + ".contentTypes", "must use the evaluated document file types")
+            _fail(q + ".allowedModels", "must reference the published OCR and layout models")
         if constraint.get("apiVersion") != "2024-11-30":
-            _fail(q + ".apiVersion", "must use the evaluated Document Intelligence GA API")
-        _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 1048576)
-        _integer(constraint.get("maxResponseBytes"), q + ".maxResponseBytes", 1, 4194304)
-        _integer(constraint.get("timeoutSeconds"), q + ".timeoutSeconds", 10, 60)
+            _fail(q + ".apiVersion", "must use the published Document Intelligence GA API")
+        if kind == "documentAnalysis":
+            if (operation["name"] != "analyze_document" or operation["method"] != "POST"
+                    or operation["urlTemplate"] != "/analyze" or operation["templateParameters"] or body_format != "binary"):
+                _fail(q, "Document submission requires POST /analyze with a binary body")
+            types = set(constraint.get("contentTypes", []))
+            supported = {"application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "text/html",
+                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+            if not types or not types <= supported:
+                _fail(q + ".contentTypes", "must use supported Document Intelligence file formats")
+            _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 500000000)
+        elif (operation["name"] != "get_document_operation" or operation["method"] != "GET"
+                or operation["urlTemplate"] != "/operations/{operationId}"
+                or [item["name"] for item in operation["templateParameters"]] != ["operationId"] or body_format != "none"):
+            _fail(q, "Document status requires the owner-verified GET /operations/{operationId} contract")
+        _integer(constraint.get("maxResponseBytes"), q + ".maxResponseBytes", 1, 524288000)
+        if "timeoutSeconds" in constraint:
+            _fail(q + ".timeoutSeconds", "document analysis is asynchronous; no Gateway processing deadline is applied")
     elif any(field in constraint for field in ("maxResponseBytes", "apiVersion", "timeoutSeconds")):
         _fail(q, "document response bounds and API version belong only to documentAnalysis")
 
@@ -1381,10 +1389,14 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     publish = _bool(c.get("publishApis"), "publishApis")
     c["apiDefinitions"] = _apis(c.get("apiDefinitions"), c["entraTenantId"], model_names, "https://" + g["publicHostName"], authentication)
     if g["skuName"] == "WAF_v2" and not g["existingWafPolicyId"]:
+        from .waf_body import managed_ai_paths
+        large_body_paths = managed_ai_paths(c)
         for i, api in enumerate(c["apiDefinitions"]):
             for name, constraint in api["authorization"]["operationConstraints"].items():
-                # Document analysis receives an exact-path WAF policy during Gateway publication.
-                if api["apiType"] == "http" and constraint["bodyFormat"] not in ("multipart", "none") and constraint["kind"] != "documentAnalysis" and constraint["maxRequestBytes"] > g["wafMaxRequestBodySizeInKb"] * 1024:
+                operation = next(item for item in api["operations"] if item["name"] == name)
+                public_path = "/" + api["path"].strip("/") + operation["urlTemplate"]
+                # Only the exact managed AI paths receive size-enforcement relaxation.
+                if api["apiType"] == "http" and constraint["bodyFormat"] not in ("multipart", "none") and public_path not in large_body_paths and constraint["maxRequestBytes"] > g["wafMaxRequestBodySizeInKb"] * 1024:
                     _fail(f"apiDefinitions[{i}].authorization.operationConstraints.{name}.maxRequestBytes", "must not exceed the managed WAF request-body limit")
     registered_backends = [backend for api in c["apiDefinitions"] for backend in
                            [api, *(operation["backendOverride"] for operation in api["operations"] if "backendOverride" in operation)]]
@@ -1392,8 +1404,10 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("services.speechEnabled", "must be enabled for registered Speech Entra backends; external resource RBAC remains an explicit prerequisite")
     if any(api["backendAuthentication"]["mode"] == "keyVaultHeader" for api in c["apiDefinitions"]) and not s["grantApimSecretAccess"]:
         _fail("services.grantApimSecretAccess", "must be enabled for registered backend Key Vault credentials")
-    if (g["realtimeControlEnabled"] or any(item["kind"] in ("realtimeCreate", "realtimeHangup") for api in c["apiDefinitions"] for item in api["authorization"]["operationConstraints"].values())) and not c["network"]["apimKeyVaultAccessEnabled"]:
-        _fail("network.apimKeyVaultAccessEnabled", "must be enabled for Realtime control ticket Key Vault references")
+    if not c["network"]["apimKeyVaultAccessEnabled"]:
+        from .grpc_lifecycle import owner_ticket_enabled
+        if owner_ticket_enabled(c):
+            _fail("network.apimKeyVaultAccessEnabled", "must be enabled for owner-bound operation ticket Key Vault references")
     for api in c["apiDefinitions"]:
         connection = api.get("credentialConnection")
         if connection:

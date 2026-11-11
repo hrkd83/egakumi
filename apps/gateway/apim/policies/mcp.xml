@@ -56,7 +56,8 @@
           &amp;&amp; arguments.Properties().All(p =&gt; p.Name == &quot;text&quot; || p.Name == &quot;language&quot;)
           &amp;&amp; arguments[&quot;text&quot;]?.Type == JTokenType.String &amp;&amp; !String.IsNullOrWhiteSpace((string)arguments[&quot;text&quot;])
           &amp;&amp; arguments[&quot;language&quot;]?.Type == JTokenType.String
-          &amp;&amp; ((JArray)constraint[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)arguments[&quot;language&quot;])
+          &amp;&amp; !String.IsNullOrWhiteSpace((string)arguments[&quot;language&quot;])
+          &amp;&amp; (((JArray)constraint[&quot;allowedLanguages&quot;]).Count == 0 || ((JArray)constraint[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)arguments[&quot;language&quot;]))
           &amp;&amp; System.Text.Encoding.UTF8.GetByteCount(arguments.ToString(Newtonsoft.Json.Formatting.None)) &lt;= (int)constraint[&quot;maxRequestBytes&quot;];
         if (valid) { return &quot;&quot;; }
         return new JObject(new JProperty(&quot;jsonrpc&quot;, &quot;2.0&quot;), new JProperty(&quot;id&quot;, message[&quot;id&quot;]),

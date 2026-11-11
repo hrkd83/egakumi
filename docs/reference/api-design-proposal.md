@@ -192,13 +192,13 @@ OpenAI公式のリアルタイム文字起こしは、transcription用の接続�
 
 Live WSSのURLは公開bindingの`LIVE_WS_BASE_URL`、文字起こしWSSは`TRANSCRIPTION_WS_BASE_URL`へ指定する。後者の`intent`は`websocket.queryParameters`からポリシーが固定設定するため、bindingのURLにはqueryを付けない。これらのv1接続先はAPI版queryを付けない。[Azure Live WSS](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-live)、[Azure Live WebRTC](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-live-webrtc)、[Azure文字起こしWSS](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets#transcribe-audio-in-real-time)
 
-Live WebRTCの公開入力は`{sdp,instructions?,voice?}`。ポリシーが固定モデル・`delegation.type=client`・`transport.type=webrtc`を組み立て、上流の応答を`{sessionId,sdp}`へ整える。初期voiceは`marin`、JSONは128 KiB、SDPは65,536文字、instructionsは8,192文字を上限とする。
+Live WebRTCの公開入力は`{sdp,instructions?,voice?}`。ポリシーが固定モデル・`delegation.type=client`・`transport.type=webrtc`を組み立て、上流の応答を`{sessionId,sdp}`へ整える。初期voiceは`marin`。本文はAPIM Classicの500 MiB枠、SDP・instructionsは型と提供元の契約を検証し、独自の小さい文字数上限は設けない。
 
 WSSの`websocket.session.models`は、クライアントとカタログが参照するモデル契約である。APIMはhandshakeの購読キー・接続先・固定query・回数上限を検査する。接続後のmodel指定・音声frame・セッション設定は、クライアント実装と上流サービスで検査する。WSS接続時の監査は接続と主体を記録し、frame内の実モデルや音声利用量はサービス側の記録と照合する。[APIMのWebSocketポリシー境界](https://learn.microsoft.com/en-us/azure/api-management/websocket-api)
 
 実環境ではMIのRBAC・audience、Private Endpointへの到達、Liveの`session.started`→音声／transcript→`session.closed`、文字起こしの途中／確定イベントを受入する。WebRTCメディアは端末とサービスのICE経路を確認し、WSS接続確認と別に試験する。
 
-TTSはAzure Speech、PII分析はAzure Languageを使う。文書OCRは既存FoundryのDocument Intelligenceを使う独立した`document-analysis-v1`として標準APIへ追加している。ファイル本文を受け付け、上流の非同期処理をGateway内で待って解析結果を返す。[文書解析の契約](document-analysis.md)・[モデルと専用サービスの区分](foundry-model-catalog.md#モデル配備とazureの専用サービス)
+TTSはAzure Speech、PII分析はAzure Languageを使う。文書OCRは既存FoundryのDocument Intelligenceを使う独立した`document-analysis-v1`として標準APIへ追加している。raw binaryの開始POSTは202を返し、同じ購読と署名チケットによる状態GETで処理状況・完了結果を取得する。Portalはこの照会と再開を扱う。[文書解析の契約](document-analysis.md)・[モデルと専用サービスの区分](foundry-model-catalog.md#モデル配備とazureの専用サービス)
 
 ## 認証・Product・テナントの扱い
 

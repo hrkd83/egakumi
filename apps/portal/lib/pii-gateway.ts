@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -37,7 +38,7 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
   if (Number(request.headers.get("content-length") ?? 0) > maxBffBytes) return failure("InvalidRequest", 413);
   let input: ReturnType<typeof piiExecutionSchema.parse>, body: string;
   try {
-    input = piiExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, maxBffBytes, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]))));
+    input = piiExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, maxBffBytes, request.signal)));
     body = JSON.stringify(buildPiiRequest(input));
   } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
   let gateway: ModelGatewayEnvironment;
@@ -51,7 +52,7 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
     key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, PII_API.apiId);
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new TypeError("Invalid subscription key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 90_000), signal = AbortSignal.any([request.signal, timeout]);
+  const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;
   try {
@@ -67,7 +68,7 @@ export async function handlePiiRedaction(request: Request, dependencies: PiiGate
       return failure([401, 403].includes(response.status) ? "GatewayUnauthorized" : "GenerationFailed", 502, details);
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
-    const raw = await readEmbeddingBody(response.body, 131_072, signal), value: unknown = JSON.parse(raw);
+    const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal), value: unknown = JSON.parse(raw);
     if (containsModelCredential(value, key, raw)) throw new TypeError("Unexpected credential reflection");
     const result = piiResponseSchema.parse(value);
     if (result.language !== input.language) throw new TypeError("Unexpected language");

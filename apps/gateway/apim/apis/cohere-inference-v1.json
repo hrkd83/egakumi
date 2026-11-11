@@ -32,14 +32,10 @@
       "cohere-embeddings": {
         "kind": "textEmbeddings",
         "bodyFormat": "json",
-        "maxRequestBytes": 262144,
+        "maxRequestBytes": 524288000,
         "allowedModels": [
           "embed-v-4-0"
         ],
-        "arrayLimits": {
-          "texts": 16,
-          "embedding_types": 1
-        },
         "stringChoices": {
           "input_type": [
             "search_document",
@@ -59,26 +55,17 @@
               1536
             ]
           }
-        }
+        },
+        "embeddingInputField": "texts"
       },
       "rerank": {
         "kind": "rerank",
-        "maxRequestBytes": 65536,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
         "allowedModels": [
           "Cohere-rerank-v4.0-fast",
           "Cohere-rerank-v4.0-pro"
-        ],
-        "arrayLimits": {
-          "documents": 8
-        },
-        "integerLimits": {
-          "top_n": {
-            "minimum": 1,
-            "maximum": 3,
-            "required": true
-          }
-        }
+        ]
       }
     }
   },

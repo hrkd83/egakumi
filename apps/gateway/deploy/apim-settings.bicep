@@ -6,7 +6,7 @@ param authentication object
 @description('AppGW HTTP 経路の識別値の Key Vault URI。値そのものは渡しません。')
 #disable-next-line secure-secrets-in-params
 param l7IngressSecretIdentifier string = ''
-@description('Realtime 所有者チケット署名鍵の Key Vault URI。値そのものは渡しません。')
+@description('Realtime・文書ジョブの所有者チケット署名鍵の Key Vault URI。値そのものは渡しません。')
 #disable-next-line secure-secrets-in-params
 param realtimeTicketSecretIdentifier string = ''
 param credentialBrokerUrl string = ''

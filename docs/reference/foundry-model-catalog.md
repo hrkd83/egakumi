@@ -80,9 +80,11 @@ Routerの選択先はAzure側のRouter定義で管理される。上記28モデ�
 
 ### テキスト生成の出力トークン入力範囲
 
-Portalの出力トークン初期値は、選択したモデルの公開最大値を使用する。数値の下限はAPI方式ごとに異なり、Chat Completionsは1、Responsesは16となる。Responsesの`response`・`pdf`プロファイルには、この下限をAPI定義の`integerLimits.max_output_tokens`で設定し、APIM・Portalの入力欄・サーバー検証・リクエストスキーマへ同じ制約を適用する。推論に使用したトークンも出力枠に含まれるため、最小値では本文の生成前に`incomplete`となる場合がある。
+Gatewayの出力トークン項目は省略でき、指定時はモデル別の公表上限を検査する。Portalは公表値があるモデルの初期値にその最大値を使い、指定時の下限はChat Completionsが1、Responsesが16となる。API定義での独自の必須指定は撤廃している。推論に使用したトークンも出力枠に含まれるため、最小値では本文の生成前に`incomplete`となる場合がある。
 
-画像・PDFを含むJSON本文（OpenAIのvision/pdfとFLUX.2の生成/編集）の公開上限は、UTF-8エンコード後の要求全体で2,000,000 bytesです。上限を1 byteでも超えるとAPIMが413を返します。WAFは本文検査・容量制限とも2000 KiB（2,048,000 bytes）を維持し、その境界に公開上限を重ねない余裕を取ります。Base64画像だけのサイズではなく、JSON構造・prompt等も含みます。OpenAI画像編集のmultipart上限とは別です。
+テキスト・画像・PDFを含む通常AI要求の受付枠は、APIM Classicの技術上限500 MiB（524,288,000 bytes）です。JSONはBase64・prompt・構造、multipartは境界・付随項目も含みます。WAFは対象AIパスだけ先頭2000 KiBを検査し、超過部分は検査せず受け付けます。実際に利用できる容量・枚数・寸法・品質は提供元のモデル・API・料金プランにも従います。
+
+画像の1枚・1024・低品質固定、埋め込みの16件固定は撤廃しました。GPT Imageの`n`は指定時1〜10、FLUX.2は提供元の出力1枚を維持します。音声・文書の独自の小容量枠も撤廃し、文書はraw binaryで500,000,000 bytesまで受け付けます。[APIMの制御](apim-policy-catalog.md)・[文書解析の非同期契約](document-analysis.md)
 API例が扱うパス・要求形式は[初期モデルと公開API](platform.md#初期モデルと公開api)を参照する。
 
 ## モデル配備とAzureの専用サービス

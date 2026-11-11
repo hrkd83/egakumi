@@ -24,6 +24,6 @@ export function resolveRealtimeVoice(model: RealtimeModel, input: { modelId: str
     return undefined;
   }
   const voice = input.voice ?? model.voice;
-  if (!getRealtimeVoiceOptions(model).some((entry) => entry.id === voice)) throw new Error("InvalidRequest");
+  if (model.family === "live" ? !/^[A-Za-z0-9:._-]{1,150}$/.test(voice) : !getRealtimeVoiceOptions(model).some((entry) => entry.id === voice)) throw new Error("InvalidRequest");
   return voice;
 }

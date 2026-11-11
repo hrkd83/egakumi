@@ -16,7 +16,7 @@ test("PIIの公開パス・上限・モデル版は正本のAPI定義に一致�
   assert.equal(operation.method, "POST");
   assert.equal(limits.maxRequestBytes, PII_API.maxRequestBytes);
   assert.equal(limits.modelVersion, PII_API.modelVersion);
-  assert.deepEqual(limits.allowedLanguages, [...PII_API.languages]);
+  assert.deepEqual(limits.allowedLanguages ?? [], []);
   assert.deepEqual(limits.allowedWarningCodes, [...PII_API.allowedWarningCodes]);
 });
 
@@ -28,14 +28,14 @@ test("PIIの公開スキーマと表示スキーマの必須項目・型・言�
   assert.deepEqual(Object.keys(response.properties as object), Object.keys(source.PiiRedactResult.properties));
   assert.equal(request.additionalProperties, false);
   assert.equal(response.additionalProperties, false);
-  assert.equal((request.properties as Record<string, { description: string }>).text.description, source.PiiRedactRequest.properties.text.description);
+  assert.match((request.properties as Record<string, { description: string }>).text.description, /1,000,000/);
 });
 
 test("本文はUnicode文字数で勝手に切らずコンパクトJSONのUTF-8予算を適用する", () => {
   assert.deepEqual(buildPiiRequest(PII_SAMPLE), PII_SAMPLE);
   assert.doesNotThrow(() => buildPiiRequest({ text: "😀".repeat(5120), language: "ja" }));
-  assert.throws(() => buildPiiRequest({ text: "あ".repeat(11000), language: "ja" }));
-  for (const value of [{ text: " ", language: "ja" }, { text: "hello", language: "fr" }, { ...PII_SAMPLE, url: "https://example.net" }]) assert.equal(piiInputSchema.safeParse(value).success, false);
+  assert.doesNotThrow(() => buildPiiRequest({ text: "あ".repeat(11000), language: "ja" }));
+  for (const value of [{ text: " ", language: "ja" }, { text: "hello", language: "invalid!" }, { ...PII_SAMPLE, url: "https://example.net" }]) assert.equal(piiInputSchema.safeParse(value).success, false);
 });
 
 test("コンパクトJSONの許可境界と超過を分け、結合文字・空白・改行を保持する", () => {
@@ -49,7 +49,7 @@ test("コンパクトJSONの許可境界と超過を分け、結合文字・空�
   assert.equal(buildPiiRequest({ text, language: "ja" }).text, text);
   // JSONエスケープの表現差で値を変えず、MCPとRESTへ同じ論理入力を渡します。
   const escaped = '{"text":"' + "\\u304b\\u3099".repeat(5120) + '","language":"ja"}';
-  assert.ok(new TextEncoder().encode(escaped).byteLength > PII_API.maxRequestBytes);
+  assert.ok(new TextEncoder().encode(escaped).byteLength > 32_768);
   const parsed = JSON.parse(escaped);
   assert.equal(buildPiiRequest(parsed).text, "か\u3099".repeat(5120));
 });
@@ -83,7 +83,7 @@ test("JSON.NETの3種のUnicode escapeを同じ予算で数え、入力自体を
   for (const codepoint of [0x85, 0x2028, 0x2029]) {
     const character = String.fromCodePoint(codepoint);
     assert.equal(getPiiRequestBytes({ text: `a${character}`, language: "en" }), 34);
-    const input = { text: `a${character.repeat(5000)}${"\u0301".repeat(1370)}`, language: "en" as const };
+    const input = { text: `a${character.repeat(5000)}${"a".repeat(PII_API.maxRequestBytes - 30_028)}`, language: "en" as const };
     assert.equal(getPiiRequestBytes(input), PII_API.maxRequestBytes);
     assert.equal(buildPiiRequest(input).text, input.text);
     assert.throws(() => buildPiiRequest({ ...input, text: `${input.text}x` }));

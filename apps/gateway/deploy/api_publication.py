@@ -113,12 +113,13 @@ def prepare_plan(config: dict, state: dict) -> dict:
         uuid.UUID(identity["clientId"])
     except (ValueError, KeyError, TypeError):
         raise ValueError("Certificate identity client ID is invalid") from None
-    grpc_on, realtime_on = grpc_lifecycle.enabled(config), grpc_lifecycle.realtime_enabled(config)
+    grpc_on = grpc_lifecycle.enabled(config)
+    ticket_on = grpc_lifecycle.owner_ticket_enabled(config)
     if grpc_on != outputs.get("grpc", {}).get("enabled", False):
         raise ValueError("Changing the TCP ingress requires core provisioning, not API-only publication")
     features = outputs.get("ingressSecrets", {})
-    if (grpc_on or realtime_on) and (features.get("enabled") is not True or
-            (realtime_on and features.get("realtimeEnabled") is not True)):
+    if (grpc_on or ticket_on) and (features.get("enabled") is not True or
+            (ticket_on and features.get("ownerTicketEnabled", features.get("realtimeEnabled")) is not True)):
         raise ValueError("Ingress/ticket features must be prepared by the foundation deployment")
     if not config.get("apiDefinitions"):
         raise ValueError("API publication requires resolved API definitions")
@@ -173,7 +174,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
             "subscriptionKey": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []},
             "application": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []}}),
         "l7IngressSecretIdentifier": vault_base + grpc_lifecycle.SECRET_NAME if grpc_on else "",
-        "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if realtime_on else ""}
+        "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
     policy_id = _scope(config, "nw") + "/providers/Microsoft.Network/firewallPolicies/afwp-" + stem
     result = {"schemaVersion": 1, "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),

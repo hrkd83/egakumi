@@ -44,6 +44,21 @@ def realtime_enabled(config: dict) -> bool:
                for entry in api.get("authorization", {}).get("operationConstraints", {}).values())
 
 
+def owner_ticket_enabled(config: dict) -> bool:
+    """Realtimeまたは文書ジョブの所有者を署名で確認する機能の有無を読む。"""
+    definitions = config.get("infrastructureApiDefinitions")
+    if definitions is None:
+        # 空の公開API配列は標準APIの後続公開を意味します。CoreのBicep入力と
+        # 同じ正本から文書機能を調べ、公開前の鍵準備を漏らしません。
+        from standard_apis import infrastructure_api_definitions
+        definitions = infrastructure_api_definitions(config.get("apiDefinitions", []))
+    return realtime_enabled(config) or any(
+        entry.get("kind") in ("documentAnalysis", "documentAnalysisStatus")
+        for api in definitions
+        for entry in api.get("authorization", {}).get("operationConstraints", {}).values()
+    )
+
+
 def secret_path(config: dict, root: Path, purpose="l7-ingress") -> Path:
     # macOSの/varのようなOS側リンクは信頼した作業ルートの解決時だけ許す。
     # 環境別のsecretsや資格情報ファイルがリンクなら、別ファイルを開かないよう拒否する。
@@ -55,7 +70,7 @@ def prepare_secret(config: dict, root: Path, write_protected) -> dict:
     """選択された機能にだけ、入口用とチケット署名用の独立した資格情報を用意する。"""
     result = {}
     for active, purpose, parameter in ((enabled(config), "l7-ingress", "l7IngressSecret"),
-                                       (realtime_enabled(config), "realtime-ticket", "realtimeTicketKey")):
+                                       (owner_ticket_enabled(config), "realtime-ticket", "realtimeTicketKey")):
         if active:
             result[parameter] = _prepare_credential(config, root, purpose, write_protected)
     return result
@@ -331,7 +346,8 @@ def configure_endpoint(config: dict, outputs: dict, transport, *, sleep=time.sle
 def configure_named_values(config: dict, outputs: dict, transport, *, sleep=time.sleep, timeout_seconds=600) -> dict:
     """Gateway資材の反映後に、入口・チケット鍵のKey Vault参照を確認する。"""
     grpc_on, realtime_on = enabled(config), realtime_enabled(config)
-    if not grpc_on and not realtime_on:
+    ticket_on = owner_ticket_enabled(config)
+    if not grpc_on and not ticket_on:
         return {"enabled": False}
     apim_id, _ = _own_apim(config, outputs)
     vault_id = outputs.get("cleanup", {}).get("serviceResourceIds", {}).get("keyVault", "")
@@ -340,10 +356,11 @@ def configure_named_values(config: dict, outputs: dict, transport, *, sleep=time
         raise ValueError("Ingress secrets targeted a different Key Vault")
     vault_name = vault_id.rsplit("/", 1)[-1]
     deadline = time.monotonic() + timeout_seconds
-    names = ([SECRET_NAME] if grpc_on else []) + ([TICKET_NAME] if realtime_on else [])
+    names = ([SECRET_NAME] if grpc_on else []) + ([TICKET_NAME] if ticket_on else [])
     for name in names:
         _refresh_secret(apim_id, name, vault_name, transport, sleep=sleep, deadline=deadline, location=config.get("location"))
     return {"enabled": True, "grpcEnabled": grpc_on, "realtimeEnabled": realtime_on,
+            "ownerTicketEnabled": ticket_on,
             "status": "management-plane-configured", "runtimeVerified": False,
             "certificateRenewal": "versionless-key-vault-reference" if grpc_on else "not-used-by-apim",
             "certificateRefresh": "observe-sync-and-expiry-in-runtime-test" if grpc_on else "not-used-by-apim",

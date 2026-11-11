@@ -22,14 +22,9 @@
     "operationConstraints": {
       "live-create": {
         "kind": "liveCreate",
-        "maxRequestBytes": 131072,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
-        "model": "gpt-live-1",
-        "stringChoices": {
-          "voice": [
-            "marin"
-          ]
-        }
+        "model": "gpt-live-1"
       }
     }
   },

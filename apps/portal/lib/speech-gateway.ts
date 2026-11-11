@@ -1,3 +1,5 @@
+import { inspectSpeechUpload } from "./speech-upload.ts";
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { containsModelCredential } from "./model-credential.ts";
 
@@ -7,7 +9,7 @@ import { getSpeechModels } from "./model-catalog.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { buildSpeechRequest, getSpeechEndpoint, getSpeechHeaders, validateSpeechModel } from "./speech-integration.ts";
 import { MAX_SPEECH_AUDIO_BYTES, MAX_SPEECH_JSON_BYTES, MAX_SPEECH_UPLOAD_BYTES, speechExecutionSchema, type SpeechInput } from "./speech-request.ts";
-import { inspectSpeechWav, parseSpeechAudio, parseSpeechTranscript, readSpeechBody } from "./speech-response.ts";
+import { parseSpeechAudio, parseSpeechTranscript, readSpeechBody } from "./speech-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { SpeechModel } from "./model-types.ts";
 
@@ -39,17 +41,17 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   const incomingContentType = request.headers.get("content-type") ?? "";
   const multipart = incomingContentType.split(";", 1)[0].trim().toLowerCase() === "multipart/form-data";
   if (!multipart && incomingContentType.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  const maximumBody = multipart ? MAX_SPEECH_UPLOAD_BYTES + 32_768 : 65_536;
+  const maximumBody = MAX_BUFFERED_BODY_BYTES;
   if (Number(request.headers.get("content-length") ?? 0) > maximumBody) return failure("InvalidRequest", 413);
   let input: SpeechInput & { apiKeyId: string }; let uploadedAudio: Uint8Array | undefined;
   try {
-    const bytes = await readSpeechBody(request.body, maximumBody, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]));
+    const bytes = await readSpeechBody(request.body, maximumBody, request.signal);
     if (multipart) {
       const form = await new Request("https://multipart.invalid", { method: "POST", headers: { "Content-Type": incomingContentType }, body: new Uint8Array(bytes).buffer }).formData();
       if ([...form.keys()].length !== 2 || form.getAll("input").length !== 1 || form.getAll("file").length !== 1) throw new Error("Invalid upload fields");
       const metadata = form.get("input"); const file = form.get("file");
-      if (typeof metadata !== "string" || metadata.length > 16_384 || !(file instanceof File) || file.size < 46 || file.size > MAX_SPEECH_UPLOAD_BYTES) throw new Error("Invalid upload");
-      input = speechExecutionSchema.parse(JSON.parse(metadata)); uploadedAudio = new Uint8Array(await file.arrayBuffer()); inspectSpeechWav(uploadedAudio);
+      if (typeof metadata !== "string" || metadata.length > 16_384 || !(file instanceof File) || file.size < 1 || file.size > MAX_SPEECH_UPLOAD_BYTES) throw new Error("Invalid upload");
+      input = speechExecutionSchema.parse(JSON.parse(metadata)); uploadedAudio = new Uint8Array(await file.arrayBuffer());
     } else input = speechExecutionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
   }
   catch { return request.signal.aborted ? failure("RequestCancelled", 499) : failure("InvalidRequest", 400); }
@@ -63,8 +65,9 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
     if (model.kind === "tts") { body = payload as string; contentType = "application/ssml+xml"; }
     else {
       const audio = uploadedAudio!;
+      const upload = inspectSpeechUpload(audio, model);
       if (model.apiId === "openai-audio-v1") {
-        const form = new FormData(); form.append("file", new Blob([new Uint8Array(audio).buffer], { type: "audio/wav" }), "input.wav");
+        const form = new FormData(); form.append("file", new Blob([new Uint8Array(audio).buffer], { type: upload.mediaType }), upload.filename);
         // boundary込みの実際の送信サイズを検査し、multipartの上限を越えないようにします。
         const encoded = new Request("https://multipart.invalid", { method: "POST", body: form });
         contentType = encoded.headers.get("content-type") ?? undefined; body = await encoded.arrayBuffer();
@@ -81,7 +84,7 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 180_000); const signal = AbortSignal.any([request.signal, timeout]); const started = performance.now(); let requestId: string | undefined;
+  const timeout = modelDeadline(dependencies.timeoutMs); const signal = AbortSignal.any([request.signal, timeout]); const started = performance.now(); let requestId: string | undefined;
   try {
     const upstream = await (dependencies.fetch ?? globalThis.fetch)(endpoint, { method: "POST", redirect: "error", cache: "no-store", signal, body,
       headers: { ...getSpeechHeaders(model), ...(contentType ? { "Content-Type": contentType } : {}), "api-key": key } });

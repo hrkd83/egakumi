@@ -55,7 +55,7 @@
     "operationConstraints": {
       "tts": {
         "kind": "registeredOperation",
-        "maxRequestBytes": 8192,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "text",
         "contentTypes": [
           "application/ssml+xml"
@@ -63,7 +63,7 @@
       },
       "stt": {
         "kind": "registeredOperation",
-        "maxRequestBytes": 1048576,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "binary",
         "contentTypes": [
           "audio/wav"

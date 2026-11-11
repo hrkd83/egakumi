@@ -23,7 +23,7 @@
     "operationConstraints": {
       "systemone": {
         "kind": "bodyModel",
-        "maxRequestBytes": 8192,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
         "allowedModels": [
           "decision-1"

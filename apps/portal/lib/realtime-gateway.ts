@@ -2,7 +2,7 @@ import WebSocket, { type ClientOptions, type RawData } from "ws";
 import { getRealtimeEndpoint, validateRealtimeModel } from "./realtime-integration.ts";
 import { decodeRealtimeAudio } from "./realtime-audio.ts";
 import { buildRealtimeSessionEvent, RealtimeProtocol } from "./realtime-protocol.ts";
-import { realtimeInputSchema, realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_DURATION_MS, REALTIME_MAX_STREAM_BYTES, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { realtimeInputSchema, realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import type { ModelGatewayErrorCode } from "./model-request.ts";
 import type { RealtimeModel } from "./model-types.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
@@ -43,7 +43,7 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
   if (model.transport !== "websocket" || input.modelId !== model.id || getRealtimeEndpoint(model, origin) !== endpoint || !/^[\x21-\x7e]{16,512}$/.test(key)) throw new RealtimeConversationError("InvalidRequest");
   const now = dependencies.now ?? (() => performance.now());
   const started = now(); const protocol = new RealtimeProtocol(model); const elapsed = () => Math.max(0, Math.round(now() - started));
-  let socket: WebSocket | undefined; let settled = false; let stopping = false; let bytesRead = 0; let inputAudioBytes = 0;
+  let socket: WebSocket | undefined; let settled = false; let stopping = false; let inputAudioBytes = 0;
   let transcriptionBufferedBytes = 0; let transcriptionPending = 0;
   let availableBytes = INPUT_BURST_BYTES; let rateTime = now();
   let unregister: (() => void) | undefined; let deadline: ReturnType<typeof setTimeout> | undefined; let stopTimer: ReturnType<typeof setTimeout> | undefined; let forceClose: ReturnType<typeof setTimeout> | undefined; let heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -102,7 +102,6 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
           let pcm: Uint8Array;
           try { pcm = decodeRealtimeAudio(command.delta); } catch { diagnose("audio-frame-invalid"); throw new RealtimeConversationError("InvalidRequest"); }
           if (pcm.length > 9600) { diagnose("audio-frame-too-large", { frameBytes: pcm.length }); throw new RealtimeConversationError("InvalidRequest"); }
-          if (inputAudioBytes + pcm.length > REALTIME_MAX_AUDIO_BYTES) { diagnose("audio-total-exceeded", { frameBytes: pcm.length }); throw new RealtimeConversationError("InvalidRequest"); }
           const receivedAt = now(); availableBytes = Math.min(INPUT_BURST_BYTES, availableBytes + (receivedAt - rateTime) * INPUT_REFILL_BYTES_PER_MS); rateTime = receivedAt;
           if (pcm.length > availableBytes) { diagnose("audio-rate-exceeded", { frameBytes: pcm.length, availableBytes: Math.max(0, Math.floor(availableBytes)) }); throw new RealtimeConversationError("InvalidRequest"); } availableBytes -= pcm.length; inputAudioBytes += pcm.length;
           send({ type: model.family === "live" ? "session.input_audio.append" : "input_audio_buffer.append", audio: command.delta });
@@ -133,8 +132,8 @@ export async function runRealtimeConversation(model: RealtimeModel, input: Realt
         if (settled) return;
         try {
           if (binary) throw new Error("Unexpected binary upstream message");
-          const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data); bytesRead += bytes.length;
-          if (bytes.length > 262144 || bytesRead > REALTIME_MAX_STREAM_BYTES || bytes.includes(Buffer.from(key))) throw new Error("Unsafe upstream message");
+          const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+          if (bytes.length > 262144 || bytes.includes(Buffer.from(key))) throw new Error("Unsafe upstream message");
           const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); const wasReady = protocol.ready;
           for (const event of protocol.accept(value, elapsed())) {
             if (model.family === "transcription" && event.type === "transcript" && event.final) transcriptionPending = Math.max(0, transcriptionPending - 1);

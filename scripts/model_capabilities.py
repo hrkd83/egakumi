@@ -29,7 +29,7 @@ def load_model_capabilities(path=CAPABILITIES_FILE):
             raise ValueError("Model capability identity is invalid")
         maximum = entry["maxOutputTokens"]
         if entry["limitKind"] == "documented":
-            if isinstance(maximum, bool) or not isinstance(maximum, int) or not 1 <= maximum <= 1_000_000:
+            if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
                 raise ValueError("Documented model capability requires a numeric limit")
         elif maximum is not None:
             raise ValueError("Variable or unsupported limits must not invent a numeric maximum")

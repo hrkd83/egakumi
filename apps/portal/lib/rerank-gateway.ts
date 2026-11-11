@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -43,9 +44,9 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   // 台帳IDなどBFF用のフィールド分を含めた受信上限です。転送本文は別途API上限で検査します。
-  if (Number(request.headers.get("content-length") ?? 0) > 1_048_576) return failure("InvalidRequest", 413);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: RerankInput & { apiKeyId: string };
-  try { input = rerankExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, 1_048_576, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
+  try { input = rerankExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
   let model: RerankModel | undefined;
   try { model = (await (dependencies.readModels ?? getRerankModels)()).find((entry) => entry.id === input.modelId); } catch { return failure("ModelUnavailable", 503); }
   if (!model) return failure("ModelUnavailable", 400);
@@ -64,7 +65,7 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
     key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new TypeError("Invalid subscription key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 90_000), signal = AbortSignal.any([request.signal, timeout]);
+  const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;
   try {
@@ -78,7 +79,7 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
       return failure([401, 403].includes(response.status) ? "GatewayUnauthorized" : "GenerationFailed", 502, details);
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
-    const raw = await readEmbeddingBody(response.body, 1_048_576, signal);
+    const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal);
     const value: unknown = JSON.parse(raw);
     if (containsModelCredential(value, key, raw)) throw new TypeError("Unexpected credential reflection");
     return Response.json(parseRerankResult(value, model, input, Math.round(performance.now() - started), identifier), { headers: responseHeaders });

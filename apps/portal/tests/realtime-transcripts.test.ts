@@ -63,15 +63,43 @@ test("実プロトコルの先頭空白deltaと空白だけの確定区間を表
 test("字幕区間番号は入力の有限整数だけで、生のitemIdや任意フィールドを受け付けない", () => {
   const base = { type: "transcript", role: "input", text: "独立した合成字幕", final: true };
   assert.ok(realtimeStreamEventSchema.safeParse({ ...base, segmentIndex: 0 }).success);
-  for (const segmentIndex of [-1, 0.5, 3000, Infinity, true, "1"]) assert.equal(realtimeStreamEventSchema.safeParse({ ...base, segmentIndex }).success, false);
+  assert.ok(realtimeStreamEventSchema.safeParse({ ...base, segmentIndex: 3000 }).success);
+  for (const segmentIndex of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Infinity, true, "1"]) assert.equal(realtimeStreamEventSchema.safeParse({ ...base, segmentIndex }).success, false);
   assert.equal(realtimeStreamEventSchema.safeParse({ ...base, role: "output", segmentIndex: 0 }).success, false);
   assert.equal(realtimeStreamEventSchema.safeParse({ ...base, item_id: "native-synthetic-private" }).success, false);
+});
+
+test("3000区間を超えても順序・全履歴を保ち、完了済みitemの再利用は拒否する", () => {
   const f = fixture();
-  for (let index = 0; index < 3000; index++) {
+  for (let index = 0; index < 3002; index++) {
     f.emit({ type: "input_audio_buffer.committed", item_id: `native-synthetic-${index}` });
-    f.emit({ type: "conversation.item.input_audio_transcription.completed", item_id: `native-synthetic-${index}`, content_index: 0, transcript: "" });
+    f.emit({ type: "conversation.item.input_audio_transcription.completed", item_id: `native-synthetic-${index}`, content_index: 0, transcript: "x" });
   }
-  assert.throws(() => f.emit({ type: "input_audio_buffer.committed", item_id: "native-synthetic-overflow" }));
+  assert.equal(f.turns().length, 3002);
+  assert.equal(f.turns().at(-1)?.segmentIndex, 3001);
+  assert.equal(joinRealtimeTranscriptionParagraph(f.turns()), "x".repeat(3002));
+  assert.throws(() => f.emit({ type: "input_audio_buffer.committed", item_id: "native-synthetic-0" }));
+  assert.throws(() => f.emit({ type: "conversation.item.input_audio_transcription.completed", item_id: "native-synthetic-3001", content_index: 0, transcript: "replayed" }));
+});
+
+test("16000文字を超える入力・出力字幕を単体と累積deltaの両方で保持する", () => {
+  const long = "合成🙂".repeat(5000), f = fixture();
+  f.emit({ type: "input_audio_buffer.committed", item_id: "native-synthetic-long" });
+  f.emit({ type: "conversation.item.input_audio_transcription.completed", item_id: "native-synthetic-long", content_index: 0, transcript: long });
+  assert.equal(joinRealtimeTranscriptionParagraph(f.turns()), long);
+  const protocol = new RealtimeProtocol({ ...model, family: "realtime" });
+  protocol.accept({ type: "session.updated", session: {} }, 0);
+  protocol.accept({ type: "response.created" }, 1);
+  let turns: RealtimeTurn[] = [];
+  for (const event of [
+    { type: "response.output_audio_transcript.delta", delta: "a".repeat(10_000) },
+    { type: "response.output_audio_transcript.delta", delta: "b".repeat(10_000) },
+    { type: "response.output_audio_transcript.done", transcript: long },
+  ]) for (const value of protocol.accept(event, 2)) if (value.type === "transcript") {
+    realtimeStreamEventSchema.parse(value); turns = appendRealtimeTranscript(turns, value);
+    assert.equal(turns[0].text, event.transcript ?? (event.delta!.startsWith("a") ? event.delta : "a".repeat(10_000) + event.delta));
+  }
+  assert.equal(turns[0].text, long);
 });
 
 test("文字起こしの表示だけを一段落へ結合し、日本語・英語・明示空白・引用や絵文字を保持する", () => {
@@ -86,16 +114,16 @@ test("文字起こしの表示だけを一段落へ結合し、日本語・英�
   assert.equal(joinRealtimeTranscriptionParagraph(["hel", "lo"].map((text, id) => ({ id, role: "input", text, final: true }))), "hello");
 });
 
-test("空finalは区間の本文を消さず、遅いfinalや多数区間でも100件・64000文字を超えない", () => {
+test("空finalは本文を消さず、100区間・64000文字を超えても履歴やUnicodeを切り捨てない", () => {
   let turns = appendRealtimeTranscript([], { type: "transcript", role: "input", text: "認識できた文章", final: false, segmentIndex: 0 });
   turns = appendRealtimeTranscript(turns, { type: "transcript", role: "input", text: "", final: true, segmentIndex: 0 });
   assert.equal(turns[0].text, "認識できた文章");
   for (let segmentIndex = 1; segmentIndex < 200; segmentIndex++) turns = appendRealtimeTranscript(turns, { type: "transcript", role: "input", text: "x".repeat(900), final: true, segmentIndex });
-  assert.ok(turns.length <= 100 && turns.reduce((n, turn) => n + turn.text.length, 0) <= 64_000);
-  const text = joinRealtimeTranscriptionParagraph(turns);
+  assert.equal(turns.length, 200);
+  assert.equal(joinRealtimeTranscriptionParagraph(turns), "認識できた文章" + "x".repeat(199 * 900));
   turns = appendRealtimeTranscript(turns, { type: "transcript", role: "input", text: "遅すぎた古い区間", final: true, segmentIndex: 0 });
-  assert.ok(joinRealtimeTranscriptionParagraph(turns) === text);
+  assert.equal(turns[0].text, "遅すぎた古い区間");
   const unicode = appendRealtimeTranscript([], { type: "transcript", role: "input", text: "🙂" + "a".repeat(15999), final: true, segmentIndex: 0 });
-  assert.ok(unicode[0].text === "a".repeat(15999));
-  assert.ok(joinRealtimeTranscriptionParagraph([{ id: 1, role: "input", text: "🙂" + "a".repeat(63999), final: true }]) === "a".repeat(63999));
+  assert.equal(unicode[0].text, "🙂" + "a".repeat(15999));
+  assert.equal(joinRealtimeTranscriptionParagraph([{ id: 1, role: "input", text: "🙂" + "a".repeat(63999), final: true }]), "🙂" + "a".repeat(63999));
 });

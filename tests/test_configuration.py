@@ -191,6 +191,18 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "reserved"):
             self.normalize(raw)
 
+    def test_ai_contract_uses_technical_body_ceiling_and_provider_numeric_limits(self):
+        raw = api_fixture()
+        constraint = raw["apiDefinitions"][0]["authorization"]["operationConstraints"]["responses-create"]
+        constraint.update(maxRequestBytes=524288000, maxOutputTokens=2000000, arrayLimits={"input": 12000})
+        actual = self.normalize(raw)["apiDefinitions"][0]["authorization"]["operationConstraints"]["responses-create"]
+        self.assertEqual(actual["maxRequestBytes"], 524288000)
+        self.assertEqual(actual["maxOutputTokens"], 2000000)
+        self.assertEqual(actual["arrayLimits"]["input"], 12000)
+        constraint["maxRequestBytes"] += 1
+        with self.assertRaisesRegex(configuration.ConfigurationError, "maxRequestBytes"):
+            self.normalize(raw)
+
     def test_same_identity_can_keep_disjoint_text_and_pdf_contracts(self):
         actual = self.normalize(profiled_api_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["name"], "openai-inference-v1")
@@ -1071,11 +1083,13 @@ class PolicySourceTests(unittest.TestCase):
         self.assertIn('context.Operation.UrlTemplate != "/responses"', self.guard)
         self.assertIn('constraint["allowedModels"]', self.guard)
 
-    def test_state_lookup_fields_not_in_explicit_allowed_fields(self):
-        declaration = self.guard.split("var allowedFields =", 1)[1].split(";", 1)[0]
-        for forbidden in ("previous_response_id", "conversation", "metadata", "prompt"):
-            self.assertNotIn('"' + forbidden + '"', declaration)
-        self.assertIn("!allowedFields.Contains(p.Name)", self.guard)
+    def test_stored_state_fields_are_blocked_without_narrowing_native_optional_fields(self):
+        declaration = self.guard.split("var stateFields =", 1)[1].split(";", 1)[0]
+        for forbidden in ("previous_response_id", "conversation", "conversation_id", "prompt"):
+            self.assertIn('"' + forbidden + '"', declaration)
+        self.assertNotIn('"metadata"', declaration)
+        self.assertNotIn('"client_metadata"', declaration)
+        self.assertIn("stateFields.Any", self.guard)
         self.assertIn('"item_reference"', self.guard)
         self.assertIn('"$..file_id"', self.guard)
         self.assertIn('"background"', self.guard)

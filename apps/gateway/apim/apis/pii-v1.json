@@ -22,12 +22,9 @@
     "operationConstraints": {
       "pii_redact_text": {
         "kind": "pii",
-        "maxRequestBytes": 32768,
+        "maxRequestBytes": 1000000,
         "modelVersion": "2026-05-01",
-        "allowedLanguages": [
-          "ja",
-          "en"
-        ],
+        "allowedLanguages": [],
         "allowedWarningCodes": []
       }
     }

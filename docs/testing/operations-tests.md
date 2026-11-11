@@ -47,7 +47,7 @@
 
 ### API・モデル変更の代表条件
 
-`OPS-03`は、`chat-completions.profiles[profileId=chat].maxRequestBytes`を例として32768→4096へ変更し、UTF-8本文全体が4096／4097 bytesの正しいJSONを使う。元の値が異なれば、その旧値を記録して復旧する。共通認可・要求ID・`<base />`の継承を維持し、制約から生成される実ポリシーを確認する。XMLを扱う共通管理ブロックの改修は[開発手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)へ分け、この代表試験には含めない。
+`OPS-03`は、`chat-completions.profiles[profileId=chat].maxRequestBytes`の現在値を記録し、隔離した試験だけ4096へ変更して、UTF-8本文全体が4096／4097 bytesの正しいJSONを使う。現行の標準値は500 MiBで、試験後は記録した元の値へ復旧する。下表の過去PASSを、容量緩和後の再検証結果として扱わない。共通認可・要求ID・`<base />`の継承を維持し、制約から生成される実ポリシーを確認する。XMLを扱う共通管理ブロックの改修は[開発手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)へ分け、この代表試験には含めない。
 
 `OPS-04`は容量変更を実測の代表とする。追加モデルや版変更の全組合せを実行する項目ではない。実モデルとconfigの不一致検出は、`tests/test_publish_apis.py`の`PublicationTests.test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes`等の偽ARM応答でローカル確認する。Gの計画は実モデルを読み取らず、G実行のAPI公開検査までにBroker・SQL等も配備されるため、不一致入力を実環境へ渡して全書込0の試験にしない。
 

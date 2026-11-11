@@ -23,6 +23,7 @@ from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_
                                                 NETWORK_API, portal_session_exclusions)
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_KEYS,
                                            PORTAL_DATA_POLICY_KEYS, policy_id)
+from deployment.helpers.waf_body import ai_body_settings, portal_document_profile, raw_body_policy
 
 
 MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
@@ -171,12 +172,14 @@ def data_scope_exclusions(profile):
 
 
 def desired_policy(base, profile, config, sources=()):
-    desired = _writable_policy(base)
+    baseline = _writable_policy(base)
+    desired = raw_body_policy(base) if portal_document_profile(profile) else copy.deepcopy(baseline)
     properties = desired['properties']
-    settings = properties.get('policySettings', {})
+    settings = baseline['properties'].get('policySettings', {})
     if (settings.get('state') != 'Enabled' or settings.get('mode') != 'Prevention'
             or settings.get('requestBodyCheck') is not True):
         raise ValueError('Data WAF requires enabled Prevention mode with request body inspection')
+    properties['policySettings'] = ai_body_settings(settings)
     managed = properties.get('managedRules', {})
     sets = managed.get('managedRuleSets', [])
     if len([item for item in sets if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']) != 1:
@@ -184,7 +187,8 @@ def desired_policy(base, profile, config, sources=()):
     known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile) + profile['exclusions'])
     for source in sources:
         current = _writable_policy(source)['properties']
-        if current.get('policySettings') != settings or current.get('customRules', []) != properties.get('customRules', []):
+        if (current.get('policySettings') not in (settings, properties['policySettings'])
+                or current.get('customRules', []) not in (baseline['properties'].get('customRules', []), properties.get('customRules', []))):
             raise ValueError('Existing path WAF protection differs; reconcile its settings explicitly before combining paths')
         for item in current.get('managedRules', {}).get('exclusions', []):
             if item not in known:
@@ -194,7 +198,11 @@ def desired_policy(base, profile, config, sources=()):
                        (rule_set.get('ruleSetType'), rule_set.get('ruleSetVersion'))]
             if len(matches) != 1:
                 raise ValueError('Existing path WAF uses another rule set')
-            if rule_set.get('ruleGroupOverrides', []) != matches[0].get('ruleGroupOverrides', []):
+            original = [item for item in baseline['properties'].get('managedRules', {}).get('managedRuleSets', [])
+                        if (item.get('ruleSetType'), item.get('ruleSetVersion')) ==
+                           (rule_set.get('ruleSetType'), rule_set.get('ruleSetVersion'))]
+            if rule_set.get('ruleGroupOverrides', []) not in (matches[0].get('ruleGroupOverrides', []),
+                    original[0].get('ruleGroupOverrides', []) if len(original) == 1 else None):
                 raise ValueError('Existing path WAF overrides differ; preserve them in a separate protocol policy')
     managed['exclusions'] = known
     return desired

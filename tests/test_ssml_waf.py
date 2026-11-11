@@ -8,12 +8,15 @@ from bicep_helpers import compile_bicep
 import copy
 import json
 from pathlib import Path
+import sys
 import unittest
 
 from arm_helpers import ArmExpression
 
 
 CORE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CORE / 'scripts'))
+from deployment.helpers.waf_body import ai_body_settings
 
 
 class GatewayExpression(ArmExpression):
@@ -155,7 +158,7 @@ class SsmlWafTests(unittest.TestCase):
         parameters = self.parameters()
         baseline = self.value(self.resource("g-base")["properties"], parameters)
         adjusted = self.value(self.resource("g-speech")["properties"], parameters)
-        self.assertEqual(adjusted["policySettings"], baseline["policySettings"])
+        self.assertEqual(adjusted["policySettings"], ai_body_settings(baseline["policySettings"]))
         self.assertEqual(adjusted["managedRules"]["exclusions"], baseline["managedRules"]["exclusions"])
         self.assertEqual(adjusted["customRules"][:len(baseline["customRules"])], baseline["customRules"])
         self.assertEqual([rule["name"] for rule in adjusted["customRules"][len(baseline["customRules"]):]],
@@ -185,7 +188,7 @@ class SsmlWafTests(unittest.TestCase):
                                  parameters["wafExclusions"] + selected[purpose]["exclusions"])
                 self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
                 self.assertEqual(policy["customRules"], baseline["customRules"])
-                self.assertEqual(policy["policySettings"], baseline["policySettings"])
+                self.assertEqual(policy["policySettings"], ai_body_settings(baseline["policySettings"]))
                 values = [item for item in policy["managedRules"]["exclusions"] if item["selector"] == selector]
                 groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
                            "rules": [{"ruleId": "941130"}, {"ruleId": "941170"}]}]

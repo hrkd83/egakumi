@@ -1,6 +1,7 @@
 <fragment>
-  <!-- AppGW custom-rule RequestBody documentation does not list SSML. Run before
-       inherited authentication/backend policies, without parsing/expanding XML.
+  <!-- AppGW custom-rule RequestBody documentation does not list SSML. Run after
+       inherited authentication/byte checks and before backend forwarding, without
+       parsing or expanding XML.
        Preserve the original bytes and skip literal examples in comments/CDATA.
        UTF-8/16/32 XML delimiters are decoded; no entity resolver is invoked. -->
   <set-variable name="speechSsmlDeclarationRejected" value="@{

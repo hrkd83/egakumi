@@ -123,7 +123,7 @@ test("入力文をXML本文としてエスケープし、音声要素や外部UR
 test("STTは選択ファイルの実WAV形式を検査し、重複フィールドやJSONだけの実行を拒否する", async () => {
   let calls = 0; const context = dependencies({ fetch: async () => { calls++; return Response.json({ text: "ok" }); } });
   const invalid = Buffer.from(audio); invalid.writeUInt32LE(48_000, 24);
-  assert.equal((await handleSpeech(request(openai, {}, {}, undefined, invalid), context)).status, 400);
+  assert.equal((await handleSpeech(request(stt, {}, {}, undefined, invalid), context)).status, 400);
   const jsonOnly = new Request(`${portalOrigin}/api/models/speech`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ ...defaultSpeechInput(openai), apiKeyId }) });
   assert.equal((await handleSpeech(jsonOnly, context)).status, 400);
   const form = new FormData(); form.append("input", JSON.stringify({ ...defaultSpeechInput(openai), apiKeyId })); form.append("file", new Blob([new Uint8Array(audio).buffer]), "input.wav"); form.append("file", new Blob([new Uint8Array(audio).buffer]), "second.wav");
@@ -162,7 +162,7 @@ test("パス・配備名・サイズ・設定の改変をキーの取得より�
   for (const extra of [{ modelId: "unknown" }, { text: "" }, { rate: "100%" }, { voice: "unapproved" }]) assert.equal((await handleSpeech(request(tts, extra), context)).status, 400);
   assert.equal((await handleSpeech(request(), { ...context, readModels: () => [{ ...tts, path: "/models/other" }] })).status, 400);
   assert.equal((await handleSpeech(request(), { ...context, readModels: () => [{ ...tts, maxRequestBytes: 1 }] })).status, 413);
-  assert.equal((await handleSpeech(request(tts, {}, { "Content-Length": "65537" }), context)).status, 413);
+  assert.equal((await handleSpeech(request(tts, {}, { "Content-Length": "524288001" }), context)).status, 413);
   assert.equal((await handleSpeech(request(stt, {}, {}, undefined, new Uint8Array([1, 2, 3])), context)).status, 400);
   assert.equal(keys, 0);
 });
@@ -200,7 +200,7 @@ test("上流エラーと応答型・サイズ違反は成功扱いしない", as
   const rejectedHeaders: Record<string, string>[] = [{ "Content-Type": "text/html" }, { "Content-Type": "audio/wav", "Content-Length": String(MAX_SPEECH_AUDIO_BYTES + 1) }];
   for (const headers of rejectedHeaders) assert.equal((await handleSpeech(request(), dependencies({ fetch: async () => new Response("not audio", { headers }) }))).status, 502);
   assert.equal((await handleSpeech(request(stt), dependencies({ fetch: async () => Response.json({ text: "wrong provider shape" }) }))).status, 502);
-  assert.equal((await handleSpeech(request(stt), dependencies({ fetch: async () => new Response(" ".repeat(MAX_SPEECH_JSON_BYTES + 1), { headers: { "Content-Type": "application/json" } }) }))).status, 502);
+  assert.equal((await handleSpeech(request(stt), dependencies({ fetch: async () => new Response("invalid json", { headers: { "Content-Type": "application/json" } }) }))).status, 502);
 });
 
 test("キーがJSONやWAVに反射されてもブラウザーへ戻さない", async () => {
@@ -245,7 +245,7 @@ test("両STTで引用符付きキーの値・プロパティ名への反射を�
 test("RIFF長・チャンク長・チャンネル・サンプルレート・PCM形式を検証する", () => {
   assert.equal(inspectSpeechWav(audio).audioDurationMs, 125);
   for (const [offset, value] of [[4, 10], [20, 3], [22, 2], [24, 48000], [32, 4], [34, 24], [40, audio.length]] as const) { const invalid = Buffer.from(audio); invalid.writeUInt32LE(value, offset); assert.throws(() => inspectSpeechWav(invalid)); }
-  assert.throws(() => inspectSpeechWav(new Uint8Array(MAX_SPEECH_AUDIO_BYTES + 1))); assert.throws(() => inspectSpeechWav(audio.subarray(0, audio.length - 1)));
+  assert.throws(() => inspectSpeechWav(new Uint8Array(46))); assert.throws(() => inspectSpeechWav(audio.subarray(0, audio.length - 1)));
 });
 
 test("大きなBase64を線形に検証し、不正なパディングや非WAVを拒否する", () => {

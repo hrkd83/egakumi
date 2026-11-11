@@ -1,12 +1,10 @@
 import { z } from "zod";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { TextGenerationModel } from "./model-types.ts";
-import { MODEL_MAX_RESPONSE_BYTES, MODEL_MAX_EVENT_BYTES, MODEL_MAX_STREAM_EVENTS } from "./model-request.ts";
+import { MODEL_MAX_EVENT_CHARACTERS } from "./model-request.ts";
 import { containsModelCredential } from "./model-credential.ts";
 
-const maximumStreamBytes = MODEL_MAX_RESPONSE_BYTES;
-const maximumEventBytes = MODEL_MAX_EVENT_BYTES;
-const maximumEvents = MODEL_MAX_STREAM_EVENTS;
+const maximumEventCharacters = MODEL_MAX_EVENT_CHARACTERS;
 const encoder = new TextEncoder();
 const tokenCount = z.number().int().nonnegative().safe();
 const contentFilterResult = z.object({
@@ -64,12 +62,12 @@ class EventFrames {
       offset = end + width;
       if (!line) {
         const frame = this.lines.join("");
-        if (encoder.encode(frame).byteLength > maximumEventBytes) throw new Error("SSE event limit exceeded");
+        if (frame.length > maximumEventCharacters) throw new Error("SSE event limit exceeded");
         frames.push(frame); this.lines = [];
       }
     }
     this.pending = this.pending.slice(offset);
-    if (encoder.encode(this.pending + this.lines.join("")).byteLength > maximumEventBytes) throw new Error("SSE event limit exceeded");
+    if (this.pending.length + this.lines.reduce((size, line) => size + line.length, 0) > maximumEventCharacters) throw new Error("SSE event limit exceeded");
     return frames;
   }
 }
@@ -90,13 +88,11 @@ function eventFields(frame: string): { event?: string; data: string } | null {
 class StreamValidation {
   private seen = false;
   private chatFinished = false;
-  private eventCount = 0;
 
   /** 正常な終端イベントならtrueを返します。それ以外の正常イベントはそのまま中継できます。 */
   accept(frame: string, operation: TextGenerationModel["operationId"]): { forward: boolean; terminal: boolean } {
     const event = eventFields(frame);
     if (!event) return { forward: false, terminal: false };
-    if (++this.eventCount > maximumEvents) throw new Error("SSE count limit exceeded");
     if (operation === "chat-completions" && event.data === "[DONE]") {
       if (!this.seen || !this.chatFinished) throw new Error("SSE completed before a result");
       return { forward: true, terminal: true };
@@ -134,7 +130,7 @@ class StreamCredentialGuard {
   private readonly prefix: number[];
   private readonly tails = new Map<string, number>();
   private pending: string[] = [];
-  private pendingBytes = 0;
+  private pendingCharacters = 0;
 
   constructor(credential: string) {
     if (!/^[\x21-\x7e]{16,512}$/.test(credential)) throw new Error("Invalid stream credential");
@@ -190,11 +186,11 @@ class StreamCredentialGuard {
       }
     }
     this.pending.push(frame);
-    this.pendingBytes += encoder.encode(frame).byteLength;
-    if (this.pendingBytes > maximumEventBytes) throw new Error("Stream credential buffer limit");
+    this.pendingCharacters += frame.length;
+    if (this.pendingCharacters > maximumEventCharacters) throw new Error("Stream credential buffer limit");
     if (this.tails.size && !terminal) return [];
     const safe = this.pending;
-    this.pending = []; this.pendingBytes = 0;
+    this.pending = []; this.pendingCharacters = 0;
     if (terminal) this.tails.clear();
     return safe;
   }
@@ -227,7 +223,6 @@ export function relayModelStream(options: {
       const frames = new EventFrames();
       const validation = new StreamValidation();
       const credentials = new StreamCredentialGuard(options.credential);
-      let bytes = 0;
       let terminal = false;
       let abortListener: (() => void) | undefined;
       const aborted = new Promise<never>((_resolve, reject) => {
@@ -238,10 +233,6 @@ export function relayModelStream(options: {
       try {
         while (!terminal) {
           const part = await Promise.race([reader.read(), aborted]);
-          if (!part.done) {
-            bytes += part.value.byteLength;
-            if (bytes > maximumStreamBytes) throw new Error("Model stream limit exceeded");
-          }
           for (const frame of frames.push(part.done ? undefined : part.value)) {
             const result = validation.accept(frame, options.operation);
             if (result.forward) {

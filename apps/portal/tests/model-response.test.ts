@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { ModelResponseError, readModelResponse } from "../lib/model-response.ts";
 import { chatModel as model } from "./helpers/model-fixtures.ts";
 import type { TextGenerationModel } from "../lib/model-types.ts";
-import { MODEL_MAX_EVENT_BYTES } from "../lib/model-request.ts";
 
 
 
@@ -113,7 +112,7 @@ test("HTTP失敗とSSEのportal.errorは固定コードだけを画面へ返す"
 test("Responsesの失敗イベントと上限超過のフレームを拒否する", async () => {
   const responsesModel: TextGenerationModel = { ...model, operationId: "responses-create", outputTokenParameter: "max_output_tokens" };
   await expectFailure(streamResponse('event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed","error":{"message":"private"}}}\n\n'), "GenerationFailed", responsesModel);
-  await expectFailure(streamResponse(`data: ${"x".repeat(MODEL_MAX_EVENT_BYTES + 1)}\n\n`, 1_048_576));
+  await expectFailure(streamResponse(`data: ${"x".repeat(17 * 1_048_576)}\n\n`, 1_048_576));
 });
 
 test("頻繁なイベントの再描画を抑えても、終端では全イベントを通知する", async () => {

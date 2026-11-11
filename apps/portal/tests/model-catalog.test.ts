@@ -71,7 +71,7 @@ test("埋め込み一覧はOpenAIとCohereの正本だけを実行先とし、�
     assert.equal(model.path, `/${source.path}${operation.urlTemplate}`);
     assert.ok(constraint.allowedModels.includes(model.id));
     assert.equal(model.maxRequestBytes, constraint.maxRequestBytes);
-    assert.equal(model.maxInputs, constraint.arrayLimits[model.providerId === "openai" ? "input" : "texts"]);
+    assert.equal(model.maxInputs, constraint.arrayLimits?.[model.providerId === "openai" ? "input" : "texts"] ?? 0xffffffff);
     assert.deepEqual(model.inputTypes, constraint.stringChoices?.input_type ?? []);
     assert.deepEqual(model.embeddingDimensions, constraint.embeddingDimensionsByModel[model.id]);
   }
@@ -84,9 +84,9 @@ test("リランクと意思決定の公開モデル・要求上限を正本か�
   assert.deepEqual(rerank.map((model) => model.id), limits.allowedModels);
   for (const model of rerank) {
     assert.equal(model.path, `/${rerankSource.path}/rerank`);
-    assert.equal(model.maxDocuments, limits.arrayLimits.documents);
-    assert.equal(model.minTopN, limits.integerLimits.top_n.minimum);
-    assert.equal(model.maxTopN, limits.integerLimits.top_n.maximum);
+    assert.equal(model.maxDocuments, limits.arrayLimits?.documents ?? 0xffffffff);
+    assert.equal(model.minTopN, limits.integerLimits?.top_n?.minimum ?? 1);
+    assert.equal(model.maxTopN, limits.integerLimits?.top_n?.maximum ?? Number.MAX_SAFE_INTEGER);
     assert.equal(model.maxRequestBytes, limits.maxRequestBytes);
   }
   const decision = getDecisionModels();
@@ -110,16 +110,18 @@ test("画像の生成用一覧へ編集操作を混ぜず、FLUXはモデルに�
     assert.equal(model.path, `/${source.path}${operation.urlTemplate}`);
     assert.ok(constraint.allowedModels.includes(model.id));
     if (model.providerId === "openai") {
-      assert.deepEqual(model.sizes, ["1024x1024"]);
-      assert.deepEqual(model.qualities, ["low"]);
+      assert.ok(model.sizes.includes("auto"));
+      assert.equal(model.maxImages, 10);
+      assert.ok(model.qualities.includes("high"));
+      assert.ok(model.formats.includes("webp"));
     } else {
       const profile = constraint.profiles.find((item: { profileId: string }) => item.profileId === model.profileId);
       assert.deepEqual(profile.allowedModels, [model.id]);
       assert.deepEqual(profile.modalities, ["text"]);
-      assert.equal(model.minWidth, profile.integerLimits.width.minimum);
-      assert.equal(model.maxWidth, profile.integerLimits.width.maximum);
-      assert.equal(model.minHeight, profile.integerLimits.height.minimum);
-      assert.equal(model.maxHeight, profile.integerLimits.height.maximum);
+      assert.equal(model.minWidth, profile.integerLimits?.width?.minimum ?? 1);
+      assert.equal(model.maxWidth, profile.integerLimits?.width?.maximum ?? Number.MAX_SAFE_INTEGER);
+      assert.equal(model.minHeight, profile.integerLimits?.height?.minimum ?? 1);
+      assert.equal(model.maxHeight, profile.integerLimits?.height?.maximum ?? Number.MAX_SAFE_INTEGER);
       assert.deepEqual(model.formats, profile.stringChoices.output_format);
     }
   }

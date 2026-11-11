@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import { readEmbeddingBody } from "./embedding-response.ts";
 import { piiMcpResultSchema, type PiiMcpResult } from "./pii-mcp-contract.ts";
 import { readPiiResponse } from "./pii-response.ts";
@@ -6,5 +7,5 @@ import { readPiiResponse } from "./pii-response.ts";
 export async function readPiiMcpResponse(response: Response, signal?: AbortSignal): Promise<PiiMcpResult> {
   if (!response.ok) { await readPiiResponse(response, signal); throw new Error("Unreachable"); }
   if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new Error("Invalid response type");
-  return piiMcpResultSchema.parse(JSON.parse(await readEmbeddingBody(response.body, 524288, signal)));
+  return piiMcpResultSchema.parse(JSON.parse(await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal)));
 }

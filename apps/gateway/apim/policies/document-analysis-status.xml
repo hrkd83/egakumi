@@ -1,0 +1,105 @@
+<policies>
+  <!-- 署名・現在の購読・API・接続先・モデル・ジョブ・期限を照合してから、固定の提供元GETへ転送します。 -->
+  <inbound>
+    <base />
+    <set-variable name="documentSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__DOCUMENT_SETTINGS_BASE64__&quot;)))" />
+    <set-variable name="documentBaseUrl" value="__DOCUMENT_BASE_URL__" />
+    <set-variable name="documentOwner" value="@{
+      try {
+        var ticket = context.Request.Headers.GetValueOrDefault(&quot;X-Core-Document-Ticket&quot;, &quot;&quot;);
+        var id = context.Request.MatchedParameters.GetValueOrDefault(&quot;operationId&quot;, &quot;&quot;);
+        Guid operation;
+        if (context.Request.Url.Query.Count != 0 || !Guid.TryParseExact(id, &quot;D&quot;, out operation) || ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(ticket, @&quot;^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$&quot;)) { return &quot;&quot;; }
+        var parts = ticket.Split('.');
+        string expected;
+        using (var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;))) {
+          expected = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(&quot;document-analysis-v1:&quot; + parts[0]))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
+        if (expected.Length != parts[1].Length) { return &quot;&quot;; }
+        var difference = 0;
+        for (var i = 0; i &lt; expected.Length; i++) { difference |= expected[i] ^ parts[1][i]; }
+        if (difference != 0) { return &quot;&quot;; }
+        var encoded = parts[0].Replace('-', '+').Replace('_', '/');
+        encoded += new string('=', (4 - encoded.Length % 4) % 4);
+        var claims = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+        var settings = JObject.Parse((string)context.Variables[&quot;documentSettings&quot;]);
+        if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)) { return &quot;&quot;; }
+        string scope;
+        using (var hash = System.Security.Cryptography.SHA256.Create()) {
+          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + context.Subscription.Id)));
+        }
+        if ((int?)claims[&quot;v&quot;] != 1 || (string)claims[&quot;aud&quot;] != &quot;document-analysis-v1&quot; || (string)claims[&quot;operationId&quot;] != operation.ToString(&quot;D&quot;) || (string)claims[&quot;scope&quot;] != scope || !((JArray)settings[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)claims[&quot;model&quot;])) { return &quot;&quot;; }
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var issued = (long?)claims[&quot;iat&quot;]; var expires = (long?)claims[&quot;exp&quot;];
+        if (issued == null || expires == null || issued &gt; now + 30 || expires != issued + 86400) { return &quot;&quot;; }
+        return claims.ToString(Newtonsoft.Json.Formatting.None);
+      } catch { return &quot;&quot;; }
+    }" />
+    <set-variable name="documentOwnerStatus" value="@{
+      var value = (string)context.Variables[&quot;documentOwner&quot;];
+      if (String.IsNullOrEmpty(value)) { return 403; }
+      return (long)JObject.Parse(value)[&quot;exp&quot;] &lt;= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ? 410 : 200;
+    }" />
+    <choose><when condition="@((int)context.Variables[&quot;documentOwnerStatus&quot;] != 200)">
+      <return-response><set-status code="@((int)context.Variables[&quot;documentOwnerStatus&quot;])" reason="Document operation access denied" /><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentOwnerStatus"] == 410 ? "DocumentOperationExpired" : "DocumentOperationDenied"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body></return-response>
+    </when></choose>
+    <set-variable name="documentOperationId" value="@((string)JObject.Parse((string)context.Variables[&quot;documentOwner&quot;])[&quot;operationId&quot;])" />
+    <set-variable name="documentModel" value="@((string)JObject.Parse((string)context.Variables[&quot;documentOwner&quot;])[&quot;model&quot;])" />
+    <rewrite-uri template="@(&quot;/documentintelligence/documentModels/&quot; + (string)context.Variables[&quot;documentModel&quot;] + &quot;/analyzeResults/&quot; + (string)context.Variables[&quot;documentOperationId&quot;] + &quot;?api-version=2024-11-30&quot;)" copy-unmatched-params="false" />
+    <set-header name="X-Core-Document-Ticket" exists-action="delete" />
+    <set-body>@("")</set-body>
+  </inbound>
+  <backend><base /></backend>
+  <outbound>
+    <base />
+    <set-variable name="documentPollEvaluation" value="@{
+      var status = 502; var result = &quot;&quot;; var retryAfter = 2;
+      try {
+        var response = context.Response;
+        if (response == null) { status = 504; }
+        else if (response.StatusCode == 429) { status = 429; }
+        else if (response.StatusCode == 404) { status = 404; }
+        else if (response.StatusCode == 410) { status = 410; }
+        else if (response.StatusCode == 200) {
+          var settings = JObject.Parse((string)context.Variables[&quot;documentSettings&quot;]);
+          var bytes = response.Body.As&lt;byte[]&gt;(preserveContent: true);
+          if (bytes.Length &lt;= (int)settings[&quot;maxResponseBytes&quot;]) {
+            var body = response.Body.As&lt;JObject&gt;();
+            var current = (string)body?[&quot;status&quot;];
+            if (current == &quot;running&quot; || current == &quot;notStarted&quot;) {
+              status = 202;
+              result = new JObject(new JProperty(&quot;operationId&quot;, (string)context.Variables[&quot;documentOperationId&quot;]), new JProperty(&quot;model&quot;, (string)context.Variables[&quot;documentModel&quot;]), new JProperty(&quot;status&quot;, &quot;running&quot;), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+            } else if (current == &quot;failed&quot; || current == &quot;canceled&quot;) { status = 422; }
+            else if (current == &quot;succeeded&quot;) {
+              var analysis = body[&quot;analyzeResult&quot;] as JObject;
+              if (analysis != null &amp;&amp; (string)analysis[&quot;apiVersion&quot;] == (string)settings[&quot;apiVersion&quot;] &amp;&amp; (string)analysis[&quot;modelId&quot;] == (string)context.Variables[&quot;documentModel&quot;] &amp;&amp; analysis[&quot;content&quot;]?.Type == JTokenType.String &amp;&amp; analysis[&quot;pages&quot;] is JArray) {
+                var projected = new JObject(new JProperty(&quot;analyzeResult&quot;, analysis), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+                if (System.Text.Encoding.UTF8.GetByteCount(projected) &lt;= (int)settings[&quot;maxResponseBytes&quot;]) { status = 200; result = projected; }
+              }
+            }
+          }
+        }
+        int delay;
+        if (response != null &amp;&amp; Int32.TryParse(response.Headers.GetValueOrDefault(&quot;Retry-After&quot;, &quot;&quot;), out delay) &amp;&amp; delay &gt; 0 &amp;&amp; delay &lt;= 86400) { retryAfter = delay; }
+      } catch { status = 502; result = &quot;&quot;; }
+      if (String.IsNullOrEmpty(result)) {
+        var code = status == 404 ? &quot;DocumentOperationNotFound&quot; : status == 410 ? &quot;DocumentOperationExpired&quot; : status == 422 ? &quot;DocumentRejected&quot; : status == 429 ? &quot;DocumentAnalysisThrottled&quot; : &quot;DocumentAnalysisUnavailable&quot;;
+        result = new JObject(new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, code))), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+      }
+      return new JObject(new JProperty(&quot;status&quot;, status), new JProperty(&quot;result&quot;, result), new JProperty(&quot;retryAfter&quot;, retryAfter)).ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <return-response>
+      <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;])" reason="Document analysis status" />
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+      <set-header name="Retry-After" exists-action="override"><value>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["retryAfter"])</value></set-header>
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-body>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["result"])</set-body>
+    </return-response>
+  </outbound>
+  <on-error>
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="documentPolicyErrorStatus" value="@(context.LastError.Source == &quot;authorization&quot; &amp;&amp; (context.LastError.Reason == &quot;SubscriptionKeyNotFound&quot; || context.LastError.Reason == &quot;SubscriptionKeyInvalid&quot;) ? 401 : context.LastError.Reason == &quot;Timeout&quot; ? 504 : 502)" />
+    <return-response><set-status code="@((int)context.Variables[&quot;documentPolicyErrorStatus&quot;])" reason="Document analysis unavailable" /><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentPolicyErrorStatus"] == 401 ? "AuthenticationRequired" : "DocumentAnalysisUnavailable"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body></return-response>
+  </on-error>
+</policies>

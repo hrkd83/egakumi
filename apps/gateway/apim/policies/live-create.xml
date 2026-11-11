@@ -15,14 +15,14 @@
         var fields = new string[] { &quot;sdp&quot;, &quot;instructions&quot;, &quot;voice&quot; };
         if (body == null || body.Properties().Any(p =&gt; !fields.Contains(p.Name))) { return &quot;&quot;; }
         var sdp = body[&quot;sdp&quot;];
-        if (sdp?.Type != JTokenType.String || !((string)sdp).StartsWith(&quot;v=0\r\n&quot;) || ((string)sdp).Length &gt; 65536) { return &quot;&quot;; }
+        if (sdp?.Type != JTokenType.String || !((string)sdp).StartsWith(&quot;v=0\r\n&quot;)) { return &quot;&quot;; }
         var instructions = body[&quot;instructions&quot;];
-        if (instructions != null &amp;&amp; (instructions.Type != JTokenType.String || ((string)instructions).Length &gt; 8192)) { return &quot;&quot;; }
+        if (instructions != null &amp;&amp; (instructions.Type != JTokenType.String)) { return &quot;&quot;; }
         var voice = body[&quot;voice&quot;];
         if (voice != null &amp;&amp; voice.Type != JTokenType.String) { return &quot;&quot;; }
         var voiceName = voice == null ? &quot;marin&quot; : (string)voice;
         var voices = constraint[&quot;stringChoices&quot;]?[&quot;voice&quot;] as JArray;
-        if (voices == null || !voices.Any(v =&gt; (string)v == voiceName)) { return &quot;&quot;; }
+        if (String.IsNullOrWhiteSpace(voiceName) || (voices != null &amp;&amp; voices.Count &gt; 0 &amp;&amp; !voices.Any(v =&gt; (string)v == voiceName))) { return &quot;&quot;; }
         var session = new JObject(
           new JProperty(&quot;model&quot;, (string)constraint[&quot;model&quot;]),
           new JProperty(&quot;delegation&quot;, new JObject(new JProperty(&quot;type&quot;, &quot;client&quot;))),
@@ -54,7 +54,7 @@
           var id = body?[&quot;session&quot;]?[&quot;id&quot;];
           var sdp = body?[&quot;transport&quot;]?[&quot;sdp&quot;];
           if (id?.Type != JTokenType.String || !System.Text.RegularExpressions.Regex.IsMatch((string)id, &quot;^[A-Za-z0-9_-]{1,160}$&quot;)
-              || sdp?.Type != JTokenType.String || !((string)sdp).StartsWith(&quot;v=0\r\n&quot;) || ((string)sdp).Length &gt; 65536) { return &quot;&quot;; }
+              || sdp?.Type != JTokenType.String || !((string)sdp).StartsWith(&quot;v=0\r\n&quot;)) { return &quot;&quot;; }
           return new JObject(new JProperty(&quot;sessionId&quot;, (string)id), new JProperty(&quot;sdp&quot;, (string)sdp)).ToString(Newtonsoft.Json.Formatting.None);
         } catch { return &quot;&quot;; }
       }" />

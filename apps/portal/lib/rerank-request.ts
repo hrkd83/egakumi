@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 
 /** 単独フィールドの安全上限です。本文全体はGatewayのUTF-8バイト上限でも検査します。 */
-export const MAX_RERANK_TEXT_CHARACTERS = 1_048_576;
+export const MAX_RERANK_TEXT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
 const nonblankText = z.string().min(1).max(MAX_RERANK_TEXT_CHARACTERS).refine((value) => value.trim().length > 0);
 
 /** 接続先や秘密を受け取らず、検索質問と候補文書を自由に編集できる入力です。 */

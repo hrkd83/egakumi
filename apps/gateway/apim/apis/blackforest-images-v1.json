@@ -30,7 +30,7 @@
       "flux2-generate": {
         "kind": "bodyModel",
         "bodyFormat": "json",
-        "maxRequestBytes": 2000000,
+        "maxRequestBytes": 524288000,
         "allowedModels": [
           "FLUX.2-flex",
           "FLUX.2-pro"
@@ -43,14 +43,6 @@
           "n": {
             "minimum": 1,
             "maximum": 1
-          },
-          "width": {
-            "minimum": 256,
-            "maximum": 1024
-          },
-          "height": {
-            "minimum": 256,
-            "maximum": 1024
           }
         },
         "stringChoices": {
@@ -64,7 +56,7 @@
           {
             "kind": "bodyModel",
             "bodyFormat": "json",
-            "maxRequestBytes": 2000000,
+            "maxRequestBytes": 524288000,
             "allowedModels": [
               "FLUX.2-flex"
             ],
@@ -76,14 +68,6 @@
               "n": {
                 "minimum": 1,
                 "maximum": 1
-              },
-              "width": {
-                "minimum": 256,
-                "maximum": 1024
-              },
-              "height": {
-                "minimum": 256,
-                "maximum": 1024
               }
             },
             "stringChoices": {
@@ -101,7 +85,7 @@
           {
             "kind": "bodyModel",
             "bodyFormat": "json",
-            "maxRequestBytes": 2000000,
+            "maxRequestBytes": 524288000,
             "allowedModels": [
               "FLUX.2-pro"
             ],
@@ -113,14 +97,6 @@
               "n": {
                 "minimum": 1,
                 "maximum": 1
-              },
-              "width": {
-                "minimum": 256,
-                "maximum": 1024
-              },
-              "height": {
-                "minimum": 256,
-                "maximum": 1024
               }
             },
             "stringChoices": {
@@ -140,7 +116,7 @@
       "flux2-edit": {
         "kind": "bodyModel",
         "bodyFormat": "json",
-        "maxRequestBytes": 2000000,
+        "maxRequestBytes": 524288000,
         "allowedModels": [
           "FLUX.2-flex",
           "FLUX.2-pro"
@@ -153,14 +129,6 @@
           "n": {
             "minimum": 1,
             "maximum": 1
-          },
-          "width": {
-            "minimum": 256,
-            "maximum": 1024
-          },
-          "height": {
-            "minimum": 256,
-            "maximum": 1024
           }
         },
         "stringChoices": {
@@ -174,7 +142,7 @@
           {
             "kind": "bodyModel",
             "bodyFormat": "json",
-            "maxRequestBytes": 2000000,
+            "maxRequestBytes": 524288000,
             "allowedModels": [
               "FLUX.2-flex"
             ],
@@ -186,14 +154,6 @@
               "n": {
                 "minimum": 1,
                 "maximum": 1
-              },
-              "width": {
-                "minimum": 256,
-                "maximum": 1024
-              },
-              "height": {
-                "minimum": 256,
-                "maximum": 1024
               }
             },
             "stringChoices": {
@@ -212,7 +172,7 @@
           {
             "kind": "bodyModel",
             "bodyFormat": "json",
-            "maxRequestBytes": 2000000,
+            "maxRequestBytes": 524288000,
             "allowedModels": [
               "FLUX.2-pro"
             ],
@@ -224,14 +184,6 @@
               "n": {
                 "minimum": 1,
                 "maximum": 1
-              },
-              "width": {
-                "minimum": 256,
-                "maximum": 1024
-              },
-              "height": {
-                "minimum": 256,
-                "maximum": 1024
               }
             },
             "stringChoices": {

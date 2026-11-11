@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 
 import { z } from "zod";
@@ -5,17 +6,16 @@ import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
 import { getTextGenerationModels } from "./model-catalog.ts";
 import { buildTextGenerationRequest, getTextGenerationHeaders } from "./model-integration.ts";
-import { textGenerationExecutionSchema, MODEL_MAX_UPSTREAM_JSON_BYTES, MODEL_REQUEST_TIMEOUT_MS } from "./model-request.ts";
+import { textGenerationExecutionSchema, MODEL_MAX_UPSTREAM_JSON_BYTES } from "./model-request.ts";
 import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { relayModelStream } from "./model-stream.ts";
 import { containsModelCredential } from "./model-credential.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure, TextGenerationInput, TextGenerationResult } from "./model-request.ts";
 import type { TextGenerationModel } from "./model-types.ts";
 
-const maximumInputBytes = 32_768;
+const maximumInputBytes = MAX_BUFFERED_BODY_BYTES;
 const maximumResponseBytes = MODEL_MAX_UPSTREAM_JSON_BYTES;
 const maximumErrorBytes = 8_192;
-const upstreamTimeoutMs = MODEL_REQUEST_TIMEOUT_MS;
 const apiPaths = {
   "chat-completions": "/models/openai/v1/chat/completions",
   "responses-create": "/models/openai/v1/responses",
@@ -207,7 +207,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
     return error instanceof ApiKeyError && error.status < 500
       ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503);
   }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? upstreamTimeoutMs);
+  const timeout = modelDeadline(dependencies.timeoutMs);
   const upstreamAbort = new AbortController();
   const signal = AbortSignal.any([timeout, request.signal, upstreamAbort.signal]);
   const started = performance.now();
@@ -254,6 +254,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
       await upstream.body?.cancel();
       return failure("GenerationFailed", 502, details);
     }
+    if (Number(upstream.headers.get("content-length") ?? 0) > maximumResponseBytes) { await upstream.body?.cancel(); return failure("GenerationFailed", 502, details); }
     const raw = await readLimitedBody(upstream.body, maximumResponseBytes, signal);
     const data: unknown = JSON.parse(raw);
     if (containsModelCredential(data, subscriptionKey, raw)) throw new Error("Unexpected credential reflection");

@@ -90,7 +90,7 @@ param wafFileUploadLimitInMb int = 100
 param wafCustomRules array = []
 @description('WAF の管理規則から除外する属性の一覧。誤検知を確認した範囲だけを指定します。')
 param wafExclusions array = []
-@description('固定の文書解析POST/binary/1MiB契約から導出した完全パス。本文上限とMIME規則の調整をこのURIだけに適用します。')
+@description('正本の文書解析POST/binary契約から導出した完全パス。本文受付とMIME規則の調整をこのURIだけに適用します。')
 param documentUploadPaths array = []
 @description('Azure Speech正本の完全POSTパス。raw SSML/WAVの930110誤検知だけを調整し、URI/query/header/cookieは専用Block規則で検査します。')
 param speechRawBodyPaths array = []
@@ -148,7 +148,7 @@ var defaultScrubbingRules = [for variable in ['RequestHeaderNames', 'RequestCook
 }]
 
 // URI 別ポリシーは親の設定を継承せず置換するため、保護設定を一つの定義で共有します。
-// 通常 API と各プロトコルで本文検査・上限・秘密のログ除去・企業追加規則を同じに保ちます。
+// 既定・認証・管理経路の本文上限を維持し、AI完全パスだけ下の専用設定で受付を緩和します。
 var sharedWafProperties = {
     policySettings: {
       state: 'Enabled'
@@ -167,6 +167,17 @@ var sharedWafProperties = {
     }
     customRules: wafCustomRules
 }
+
+// AI本文は先頭2000KiBまで検査し、超過部分は検査せず受け付けます。
+// API/provider側の受付上限とは分離し、既定・認証・管理経路へは適用しません。
+var aiWafPolicySettings = union(sharedWafProperties.policySettings, {
+  mode: 'Prevention'
+  requestBodyCheck: true
+  maxRequestBodySizeInKb: 2000
+  requestBodyInspectLimitInKB: 2000
+  requestBodyEnforcement: false
+  fileUploadEnforcement: false
+})
 
 // 既存企業ポリシーが指定されていない場合の、共通 WAF 設定です。
 resource wafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (createWafPolicy) {
@@ -267,6 +278,7 @@ var speechTraversalRules = [for (rule, index) in speechControls.rules: {
   }]
 }]
 var rawBodyProperties = union(sharedWafProperties, {
+  policySettings: aiWafPolicySettings
   customRules: concat(wafCustomRules, speechTraversalRules)
   managedRules: union(sharedWafProperties.managedRules, {
     managedRuleSets: [{
@@ -290,25 +302,19 @@ resource speechWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFire
 }
 
 // Gatewayアプリ配備と同名・同設定で永続化し、基盤再配備でも文書受付を失いません。
-// 1MiB全体を検査し、正規MIMEの920420とraw本文の930110誤検知を調整します。
+// 本文検査と受付容量を分離し、正規MIMEの920420とraw本文の930110誤検知を調整します。
 // 非本文のtraversalは共通の4Blockで補完し、930100等の管理規則は維持します。
 resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = if (useDocumentWafPolicy) {
   name: 'wafpol-g-document-upload-${wafPolicyIdentifier}'
   location: location
   tags: tags
-  properties: union(rawBodyProperties, {
-    policySettings: union(sharedWafProperties.policySettings, {
-      // Permit the public 1 MiB boundary through WAF; APIM enforces <= 1 MiB.
-      maxRequestBodySizeInKb: 1025
-      requestBodyInspectLimitInKB: 1025
-    })
-  })
+  properties: rawBodyProperties
 }
 
 // データ欄の調整はmanifestだけを正本にし、用途外の例外を動的に足しません。
-var dataPolicyProperties = [for profile in dataProfiles: union(sharedWafProperties, {
-  policySettings: union(sharedWafProperties.policySettings, { mode: 'Prevention' })
-  managedRules: union(sharedWafProperties.managedRules, {
+var dataPolicyProperties = [for profile in dataProfiles: union(profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents') ? rawBodyProperties : sharedWafProperties, {
+  policySettings: aiWafPolicySettings
+  managedRules: union(profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents') ? rawBodyProperties.managedRules : sharedWafProperties.managedRules, {
     exclusions: union(wafExclusions,
       profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions)
   })

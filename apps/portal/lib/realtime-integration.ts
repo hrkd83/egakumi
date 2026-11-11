@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { getRealtimeVoiceOptions, resolveRealtimeVoice } from "./realtime-voices.ts";
 import type { RealtimeModel } from "./model-types.ts";
 import { resolveRealtimeOutputTokens, type RealtimeInput } from "./realtime-request.ts";
@@ -20,8 +21,8 @@ export function validateRealtimeModel(model: RealtimeModel): void {
   const target = targets[model.family];
   if (!target || model.apiId !== target.apiId || model.path.replace(/\/$/, "") !== target.path || model.operationId !== "invoke" || target.models && !target.models.includes(model.modelId)
     || !/^[a-zA-Z0-9._-]{1,160}$/.test(model.modelId) || !/^[A-Za-z0-9:._-]{1,150}$/.test(model.voice)
-    || !Number.isInteger(model.maxRequestBytes) || model.maxRequestBytes < 4096 || model.maxRequestBytes > 65536
-    || model.maxOutputTokens !== null && (!Number.isInteger(model.maxOutputTokens) || model.maxOutputTokens < 1 || model.maxOutputTokens > 1_000_000)) throw new Error("Invalid realtime model");
+    || !Number.isInteger(model.maxRequestBytes) || model.maxRequestBytes < 4096 || model.maxRequestBytes > MAX_BUFFERED_BODY_BYTES
+    || model.maxOutputTokens !== null && (!Number.isSafeInteger(model.maxOutputTokens) || model.maxOutputTokens < 1)) throw new Error("Invalid realtime model");
 }
 
 /** キーをURLへ含めず、登録済みの公開Gatewayだけを接続先にします。 */
@@ -56,13 +57,13 @@ export function getRealtimeRequestExample(model: RealtimeModel, input: RealtimeI
 /** 音声本文と接続設定を区別し、WAVヘッダーを直接送れない契約を明示します。 */
 export function getRealtimeRequestSchema(model: RealtimeModel): Record<string, unknown> {
   if (model.transport === "webrtc") {
-    const sdp = { type: "string", minLength: 20, maxLength: 65536, pattern: "^v=0\\r\\n", description: "Browser-generated audio-only SDP offer; media codec is negotiated by WebRTC." };
+    const sdp = { type: "string", minLength: 20, maxLength: MAX_RUNTIME_STRING_CHARACTERS, pattern: "^v=0\\r\\n", description: "Browser-generated audio-only SDP offer; media codec is negotiated by WebRTC." };
     const common = { $schema: "https://json-schema.org/draft/2020-12/schema", title: `${model.label} WebRTC signaling`, transport: "webrtc", contentMediaType: "application/json", voiceOptions: getRealtimeVoiceOptions(model).map((voice) => voice.id), authentication: { header: "api-key", storage: "application backend" },
       media: { transport: "WebRTC audio track", route: "browser ↔ service over the negotiated ICE path", encoding: "negotiated in SDP; no PCM append events in this signaling request" } };
     if (model.family === "voice-live") return { ...common, signaling: "WSS GET upgrade, then JSON control events", type: "object", required: ["type", "sdp_offer", "session"], additionalProperties: false,
       properties: { type: { const: "rtc.call.sdp.create" }, sdp_offer: sdp, session: { type: "object", description: "Voice Live session configuration", properties: { modalities: { const: ["text", "audio"] }, voice: { type: "object", required: ["type", "name"], properties: { type: { const: "azure-standard" }, name: { enum: getRealtimeVoiceOptions(model).map((voice) => voice.id) } } }, max_response_output_tokens: { oneOf: [{ type: "integer", minimum: 1, maximum: model.numericMaxOutputTokens ?? model.maxOutputTokens }, { const: "inf", description: `Use the model maximum (${model.maxOutputTokens} tokens).` }] }, tools: { const: [] } } } } };
     return { ...common, signaling: "HTTPS POST", type: "object", required: ["sdp"], additionalProperties: false, properties: { sdp,
-      ...(model.family === "live" ? { instructions: { type: "string", maxLength: 8192 }, voice: { enum: getRealtimeVoiceOptions(model).map((voice) => voice.id) } } : {}) },
+      ...(model.family === "live" ? { instructions: { type: "string" }, voice: { type: "string", examples: getRealtimeVoiceOptions(model).map((voice) => voice.id) } } : {}) },
       modelBinding: { model: model.modelId, source: "Gateway operation definition; caller cannot override the model in the request body" },
       ...(model.family === "realtime" ? { afterConnectDataChannel: buildRealtimeSessionEvent(model, maximumRealtimeInput(model)) } : {}) };
   }
@@ -75,7 +76,7 @@ export function getRealtimeRequestSchema(model: RealtimeModel): Record<string, u
 /** 接続・途中イベントだけを成功扱いしないため、製品ごとの完了条件を示します。 */
 export function getRealtimeResponseSchema(model: RealtimeModel): Record<string, unknown> {
   if (model.transport === "webrtc") {
-    const sdp = { type: "string", minLength: 20, maxLength: 65536, pattern: "^v=0\\r\\n", description: "Apply this SDP answer to the browser RTCPeerConnection." };
+    const sdp = { type: "string", minLength: 20, maxLength: MAX_RUNTIME_STRING_CHARACTERS, pattern: "^v=0\\r\\n", description: "Apply this SDP answer to the browser RTCPeerConnection." };
     const common = { $schema: "https://json-schema.org/draft/2020-12/schema", title: `${model.label} WebRTC signaling response`, transport: "webrtc", media: { transport: "WebRTC audio track", audioReceivedOverSignaling: false, verification: "Verify the peer connection, received audio track, and media statistics separately from signaling success." } };
     if (model.family === "realtime") return { ...common, httpStatus: 201, contentMediaType: "application/sdp", ...sdp,
       ownershipHeaders: { "X-Core-Call-Id": "Server-only call identifier", "X-Core-Call-Ticket": "Server-only ownership proof; use with the same subscription key" },

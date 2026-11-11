@@ -15,6 +15,18 @@ const selectedKeyId = "portal-11111111-1111-4111-8111-111111111111";
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const defaultInput = { message: SAMPLE_TEXT_PROMPT, modelId: chatModel.id, maxOutputTokens: 128, stream: false };
 
+test("32KiBを超える文章も公開モデルの技術上限内なら変更せず転送する", async () => {
+  const message = "a".repeat(100_000); let calls = 0;
+  const response = await handleTextGeneration(request({ ...defaultInput, message }), dependencies({
+    readModels: () => [{ ...chatModel, maxRequestBytes: 524_288_000 }],
+    fetch: async (_url, init) => {
+      calls++; assert.equal(JSON.parse(String(init?.body)).messages[0].content, message);
+      return Response.json({ model: chatModel.id, choices: [{ message: { content: "Complete" } }] });
+    },
+  }));
+  assert.equal(response.status, 200); assert.equal(calls, 1);
+});
+
 /** 同一オリジンのブラウザーから送られる生成リクエストを用意します。 */
 function request(input: unknown = defaultInput, headers: Record<string, string> = {}): Request {
   return new Request(`${portalOrigin}/api/models/generate`, {
@@ -159,7 +171,7 @@ test("APIのモデル・出力上限と入力バイト数を送信前に検証�
   assert.equal((await handleTextGeneration(request({ ...defaultInput, modelId: "unknown-model" }), context)).status, 400);
   assert.equal((await handleTextGeneration(request({ ...defaultInput, maxOutputTokens: 513 }), context)).status, 400);
   assert.equal((await handleTextGeneration(request(defaultInput, { "Content-Type": "text/plain" }), context)).status, 415);
-  assert.equal((await handleTextGeneration(request(defaultInput, { "Content-Length": "40000" }), context)).status, 413);
+  assert.equal((await handleTextGeneration(request(defaultInput, { "Content-Length": "524288001" }), context)).status, 413);
   assert.equal((await handleTextGeneration(request({ ...defaultInput, prompt: "あ".repeat(12000) }), context)).status, 400);
   assert.equal(calls, 0);
 });
@@ -284,7 +296,7 @@ test("両JSON方式で引用符付きキーの値・プロパティ名への反�
 });
 
 test("上流応答のサイズと処理時間を制限し、再試行しない", async () => {
-  const huge = await handleTextGeneration(request(), dependencies({ fetch: async () => new Response("a".repeat(MODEL_MAX_UPSTREAM_JSON_BYTES + 1), { headers: { "Content-Type": "application/json" } }) }));
+  const huge = await handleTextGeneration(request(), dependencies({ fetch: async () => new Response("invalid json", { headers: { "Content-Type": "application/json" } }) }));
   assert.equal(huge.status, 502);
   let calls = 0;
   const timeout = await handleTextGeneration(request(), dependencies({

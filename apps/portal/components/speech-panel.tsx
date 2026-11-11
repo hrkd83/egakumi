@@ -1,5 +1,7 @@
 "use client";
 
+import { inspectSpeechUpload, MAX_TRANSCRIPTION_FILE_BYTES, TRANSCRIPTION_FILE_ACCEPT } from "@/lib/speech-upload";
+
 import { useFieldIds } from "@/lib/use-field-ids";
 
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
@@ -21,7 +23,7 @@ import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-int
 import { ModelResponseError } from "@/lib/model-response";
 import { MAX_SPEECH_UPLOAD_BYTES, MAX_SPEECH_TEXT_CHARACTERS, speechInputSchema, type SpeechInput, type SpeechResult } from "@/lib/speech-request";
 import { SAMPLE_SPEECH_TEXT, SPEECH_SAMPLE_PATH, SPEECH_VOICES, SPEECH_RATES, buildSpeechRequest, defaultSpeechInput, getSpeechEndpoint, getSpeechHeaders, getSpeechIntegrationExample, getSpeechRequestSchema, getSpeechResponseSchema } from "@/lib/speech-integration";
-import { inspectSpeechWav, readSpeechResponse, speechAudioBytes } from "@/lib/speech-response";
+import { readSpeechResponse, speechAudioBytes } from "@/lib/speech-response";
 import { buildSpeechExecutionRequest } from "@/lib/speech-client";
 import { AZURE_SPEECH_TTS_VOICES } from "@/lib/speech-voices";
 import type { SpeechModel } from "@/lib/model-types";
@@ -97,7 +99,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
   const parsed = speechInputSchema.safeParse(state.input);
   const origin = gatewayOrigin ?? "https://gateway.example.com";
   const number = new Intl.NumberFormat(locale);
-  const maximumUploadBytes = Math.min(MAX_SPEECH_UPLOAD_BYTES, model?.maxRequestBytes ?? MAX_SPEECH_UPLOAD_BYTES);
+  const maximumUploadBytes = Math.min(model?.providerId === "openai" ? MAX_TRANSCRIPTION_FILE_BYTES : MAX_SPEECH_UPLOAD_BYTES, model?.maxRequestBytes ?? MAX_SPEECH_UPLOAD_BYTES);
   const fileTooLarge = Boolean(state.inputFile && state.inputFile.size > maximumUploadBytes);
   const inputReady = model?.kind === "tts" || Boolean(state.inputFile && !state.fileChecking && !state.fileError && !fileTooLarge);
   let payload: ReturnType<typeof buildSpeechRequest> | null = null;
@@ -161,7 +163,8 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     if (!file) return;
     try {
       if (!file.size || file.size > maximumUploadBytes) throw new Error("Invalid audio size");
-      inspectSpeechWav(new Uint8Array(await file.arrayBuffer()));
+      if (!model) throw new Error("Missing model");
+      inspectSpeechUpload(new Uint8Array(await file.arrayBuffer()), model);
       if (selection !== fileSelectionRef.current) return;
       const url = URL.createObjectURL(file); inputAudioUrlRef.current = url; updateDrafts({ speechFile: file }); store.setState({ inputFile: file, inputAudioUrl: url, fileChecking: false });
     } catch { if (selection === fileSelectionRef.current) store.setState({ fileChecking: false, fileError: true }); }
@@ -176,7 +179,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     requestRef.current = controller;
     store.setState({ loading: true, tab: "response" });
     try {
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(185_000)]);
+      const signal = controller.signal;
       const response = await fetch("/api/models/speech", { ...buildSpeechExecutionRequest(model, parsed.data, selectedKey.id, state.inputFile), signal });
       const result = await readSpeechResponse(response, signal);
       if (controller.signal.aborted || requestRef.current !== controller) return;
@@ -229,7 +232,7 @@ export function SpeechPanel({ models, dictionary, locale, gatewayOrigin }: { mod
         <p className="text-sm leading-6 text-muted-foreground">{speech.fixedNotice}</p>
       </> : <>
         <div className="rounded-lg border border-border bg-white px-3 py-3"><p className="mb-1 text-sm font-semibold text-muted-foreground">{speech.inputLanguage}</p><p className="text-sm">{speech.japanese}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{model.providerId === "openai" ? speech.openaiLanguageNotice : speech.languageNotice}</p></div>
-        <div className="space-y-3 rounded-lg border border-border bg-white p-3"><label htmlFor={fieldId("speech-file")} className="block text-sm font-medium">{speech.file}</label><Input id={fieldId("speech-file")} type="file" accept=".wav,audio/wav,audio/x-wav" disabled={state.loading || state.fileChecking} onChange={(event) => void selectAudio(event.target.files?.[0])} className="bg-white" /><p className="text-sm leading-6 text-muted-foreground">{speech.fileHelp.replace("{size}", number.format(maximumUploadBytes / 1_048_576))}</p>{state.fileChecking && <p role="status" className="text-sm text-muted-foreground">{speech.fileChecking}</p>}{(state.fileError || fileTooLarge) && <p role="alert" className="text-sm text-destructive">{speech.fileInvalid}</p>}{state.inputFile && <p className="break-all text-sm text-muted-foreground">{state.inputFile.name} · {number.format(state.inputFile.size)} B</p>}{state.inputAudioUrl && <audio ref={inputAudioRef} controls preload="none" src={state.inputAudioUrl} aria-label={speech.file} className="w-full" />}<a href={SPEECH_SAMPLE_PATH} download="speech-ja-jp.wav" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-4"><Download className="size-3.5" />{speech.sampleDownload}</a><p className="text-sm leading-6 text-muted-foreground">{speech.sampleNotice}</p></div>
+        <div className="space-y-3 rounded-lg border border-border bg-white p-3"><label htmlFor={fieldId("speech-file")} className="block text-sm font-medium">{speech.file}</label><Input id={fieldId("speech-file")} type="file" accept={model.providerId === "openai" ? TRANSCRIPTION_FILE_ACCEPT : ".wav,audio/wav,audio/x-wav"} disabled={state.loading || state.fileChecking} onChange={(event) => void selectAudio(event.target.files?.[0])} className="bg-white" /><p className="text-sm leading-6 text-muted-foreground">{(model.providerId === "openai" ? speech.transcriptionFileHelp : speech.fileHelp).replace("{size}", number.format(maximumUploadBytes / 1_048_576))}</p>{state.fileChecking && <p role="status" className="text-sm text-muted-foreground">{speech.fileChecking}</p>}{(state.fileError || fileTooLarge) && <p role="alert" className="text-sm text-destructive">{speech.fileInvalid}</p>}{state.inputFile && <p className="break-all text-sm text-muted-foreground">{state.inputFile.name} · {number.format(state.inputFile.size)} B</p>}{state.inputAudioUrl && <audio ref={inputAudioRef} controls preload="none" src={state.inputAudioUrl} aria-label={speech.file} className="w-full" />}<a href={SPEECH_SAMPLE_PATH} download="speech-ja-jp.wav" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-4"><Download className="size-3.5" />{speech.sampleDownload}</a><p className="text-sm leading-6 text-muted-foreground">{speech.sampleNotice}</p></div>
       </>}
       <p className="text-sm leading-6 text-muted-foreground">{speech.wait}</p>
       <div className="flex justify-end gap-2">{state.loading && <Button type="button" size="sm" variant="outline" onClick={cancel}><Square className="size-3.5" />{text.cancel}</Button>}<Button type="submit" size="sm" disabled={state.loading || !payload || !selectedKey || !gatewayOrigin || !inputReady}>{state.loading ? <LoaderCircle className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{state.loading ? runningText : model.kind === "tts" ? speech.runTts : speech.runStt}</Button></div>

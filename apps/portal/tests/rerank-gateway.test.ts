@@ -55,7 +55,7 @@ test("未知項目・未知モデル・不正件数・文字列以外の文書�
     const result = await handleRerank(request(invalid), deps); assert.ok([400].includes(result.status));
   }
   assert.equal((await handleRerank(request(input, { "Content-Type": "text/plain" }), deps)).status, 415);
-  assert.equal((await handleRerank(request(input, { "Content-Length": "1048577" }), deps)).status, 413);
+  assert.equal((await handleRerank(request(input, { "Content-Length": "524288001" }), deps)).status, 413);
   assert.equal((await handleRerank(request({ ...input, query: "あ".repeat(22_000) }), deps)).status, 413);
   assert.equal(calls, 0);
 });

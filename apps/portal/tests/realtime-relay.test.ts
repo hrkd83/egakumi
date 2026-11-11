@@ -86,20 +86,22 @@ test("認可済みの購読だけで音声を中継し、ユーザーの停止�
   } finally { await app.close(); }
 });
 
-test("WebRTCのanswerをHTTP集約せず即送信し、取消時も所有通話を回収する", async () => {
+test("120KB超のSDPを中継し、answerを即送信して取消時も所有通話を回収する", async () => {
   const rtc: RealtimeModel = { ...model, id: "fixture-webrtc", transport: "webrtc", apiId: "openai-realtime-control-v1", path: "/models/openai-realtime/v1/calls", observer: { apiId: "openai-realtime-observer-v1", path: "/models/openai-realtime/v1/observer/" } };
+  const offer = "v=0\r\nfixture-audio-offer\r\n" + "a=x\r\n".repeat(30_000), answer = "v=0\r\nfixture-audio-answer\r\n" + "a=y\r\n".repeat(25_000);
   let cleaned = false;
   const app = await fixture({ authorize: async (input) => { assert.equal(input.voice, "cedar"); return { ...context, model: rtc }; }, runWebRtc: async (request, dependencies) => {
-    assert.equal((await request.json()).voice, "cedar");
+    const body = await request.json(); assert.equal(body.voice, "cedar"); assert.equal(body.sdp, offer);
     assert.deepEqual(await dependencies.readSession(), actor); assert.equal(await dependencies.resolveSubscriptionKey!(actor, apiKeyId, rtc.observer!.apiId), key);
     await assert.rejects(() => dependencies.resolveSubscriptionKey!(actor, apiKeyId, "unapproved-api"));
     return new Response(new ReadableStream({ start(controller) {
-      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "answer", sdp: "v=0\r\nfixture-audio-answer" })}\n\n`));
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "answer", sdp: answer })}\n\n`));
       request.signal.addEventListener("abort", () => { cleaned = true; controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "complete", durationMs: 1, inputAudioBytes: 0, outputAudioBytes: 0, stopStatus: "confirmed" })}\n\n`)); controller.close(); }, { once: true });
     } }));
   } });
-  try { const ws = client(app.url); const values = collect(ws); await once(ws, "open"); ws.send(JSON.stringify({ ...start, modelId: rtc.id, voice: "cedar", sdp: "v=0\r\nfixture-audio-offer" }));
+  try { const ws = client(app.url); const values = collect(ws); await once(ws, "open"); ws.send(JSON.stringify({ ...start, modelId: rtc.id, voice: "cedar", sdp: offer }));
     await until(() => values.some((value) => value.type === "answer")); assert.equal(cleaned, false);
+    assert.ok(values.some((value) => value.type === "answer" && value.sdp === answer));
     ws.send(JSON.stringify({ type: "stop" })); await once(ws, "close"); assert.ok(cleaned); assert.ok(values.some((value) => value.type === "complete" && value.stopStatus === "confirmed"));
   } finally { await app.close(); }
 });

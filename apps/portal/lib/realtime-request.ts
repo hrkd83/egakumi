@@ -1,9 +1,10 @@
+import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { z } from "zod";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 import type { RealtimeModel } from "./model-types.ts";
 
 /** 開始時のモデル・音声・応答上限だけを受け取り、接続先や上流イベントの任意入力を拒否します。 */
-export const realtimeInputSchema = z.object({ modelId: z.string().min(1).max(200), voice: z.string().regex(/^[A-Za-z0-9:._-]{1,150}$/).optional(), maxOutputTokens: z.union([z.number().int().min(1).max(1_000_000), z.literal("model-max")]).optional() }).strict();
+export const realtimeInputSchema = z.object({ modelId: z.string().min(1).max(200), voice: z.string().regex(/^[A-Za-z0-9:._-]{1,150}$/).optional(), maxOutputTokens: z.union([z.number().int().min(1).safe(), z.literal("model-max")]).optional() }).strict();
 /** リアルタイム音声の表示設定です。認証情報は保持しません。 */
 export type RealtimeInput = z.infer<typeof realtimeInputSchema>;
 
@@ -25,7 +26,7 @@ export function resolveRealtimeOutputTokens(model: RealtimeModel, input: Realtim
 /** 実行時には選択した購読の台帳IDを付け、キーの実値はBFFで解決します。 */
 export const realtimeExecutionSchema = realtimeInputSchema.extend({ apiKeyId: apiKeyIdSchema });
 /** WebRTCはブラウザーが生成した音声専用SDPを追加します。SDPはログへ出しません。 */
-export const realtimeWebRtcExecutionSchema = realtimeExecutionSchema.extend({ sdp: z.string().min(20).max(120_000) });
+export const realtimeWebRtcExecutionSchema = realtimeExecutionSchema.extend({ sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS) });
 /** 終了の再確認には、本人に束縛された暗号化参照だけを受け取ります。 */
 export const realtimeStopSchema = z.object({ handle: z.string().min(40).max(16_000) }).strict();
 
@@ -43,10 +44,10 @@ const errorCodeSchema = z.enum(["InvalidRequest", "AuthenticationRequired", "Req
 export const realtimeStreamEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("status"), stage: z.enum(["connecting", "connected", "sending", "receiving", "stopping"]), elapsedMs: z.number().nonnegative(), maximumDurationMs: z.number().int().positive().max(REALTIME_MAX_DURATION_MS).optional() }).strict(),
   z.object({ type: z.literal("event"), eventType: z.string().regex(/^[a-zA-Z0-9_.-]{1,100}$/), elapsedMs: z.number().nonnegative() }).strict(),
-  z.object({ type: z.literal("transcript"), role: z.enum(["input", "output"]), text: z.string().max(16_000), final: z.boolean(), segmentIndex: z.number().int().min(0).max(2999).optional() }).strict().refine((event) => event.segmentIndex === undefined || event.role === "input"),
+  z.object({ type: z.literal("transcript"), role: z.enum(["input", "output"]), text: z.string().max(MAX_RUNTIME_STRING_CHARACTERS), final: z.boolean(), segmentIndex: z.number().int().nonnegative().safe().optional() }).strict().refine((event) => event.segmentIndex === undefined || event.role === "input"),
   z.object({ type: z.literal("usage"), values: usageSchema }).strict(),
   z.object({ type: z.literal("audio"), delta: z.string().max(350_000), sampleRate: z.literal(24000) }).strict(),
-  z.object({ type: z.literal("answer"), sdp: z.string().min(20).max(120_000), handle: z.string().max(16_000).optional() }).strict(),
+  z.object({ type: z.literal("answer"), sdp: z.string().min(20).max(MAX_RUNTIME_STRING_CHARACTERS), handle: z.string().max(16_000).optional() }).strict(),
   z.object({ type: z.literal("complete"), durationMs: z.number().nonnegative(), inputAudioBytes: z.number().int().nonnegative(), outputAudioBytes: z.number().int().nonnegative(), stopStatus: z.enum(["confirmed", "transport-closed", "unconfirmed"]), handle: z.string().max(16_000).optional() }).strict(),
   z.object({ type: z.literal("error"), error: z.object({ code: errorCodeSchema }).strict(), requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(), handle: z.string().max(16_000).optional() }).strict(),
 ]);

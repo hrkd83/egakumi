@@ -81,7 +81,7 @@ export function RerankPanel({ models, dictionary, locale, gatewayOrigin }: { mod
     const controller = new AbortController(); requestRef.current = controller;
     store.setState({ loading: true, result: null, failure: null, cancelled: false, tab: "response" });
     try {
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(100_000)]);
+      const signal = controller.signal;
       const response = await fetch("/api/models/rerank", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal });
       const result = await readRerankResponse(response, signal);
       if (!controller.signal.aborted) store.setState({ loading: false, result });

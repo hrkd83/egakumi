@@ -7,6 +7,7 @@ import { realtimeStreamEventSchema, type RealtimeStreamEvent } from "../lib/real
 import type { RealtimeModel } from "../lib/model-types.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS } from "../lib/realtime-protocol.ts";
 import { defaultRealtimeInput, getRealtimeIntegrationCode, getRealtimeRequestExample, getRealtimeRequestSchema } from "../lib/realtime-integration.ts";
+import { MAX_BUFFERED_BODY_BYTES } from "../lib/model-runtime-limits.ts";
 
 const actor = { tenantId: "22222222-2222-4222-8222-222222222222", objectId: "33333333-3333-4333-8333-333333333333" };
 const apiKeyId = "portal-11111111-1111-4111-8111-111111111111"; const key = "test-only-private-realtime-key"; const handleSecret = "test-only-cleanup-secret-with-more-than-thirty-two-characters";
@@ -52,7 +53,24 @@ test("停止参照は暗号化され、改変・別本人・別鍵・期限切�
 
 test("SDPは音声track・先頭形式・サイズを検査し、映像とNULLを拒否する", () => {
   assert.equal(validateRealtimeSdp(sdp), sdp);
-  for (const value of ["not-sdp", "v=0\r\ns=no audio\r\n", `${sdp}m=video 9 RTP/AVP 96\r\n`, `${sdp}\0`, `${sdp}${"a".repeat(65536)}`]) assert.throws(() => validateRealtimeSdp(value));
+  for (const value of ["not-sdp", "v=0\r\ns=no audio\r\n", `${sdp}m=video 9 RTP/AVP 96\r\n`, `${sdp}\0`]) assert.throws(() => validateRealtimeSdp(value));
+});
+
+test("135KB超のSDP要求と100KB超のanswerを通し、実行環境の本文上限は維持する", async () => {
+  const selected = { ...realtime, maxRequestBytes: MAX_BUFFERED_BODY_BYTES }, longSdp = sdp + "a=synthetic-attribute\r\n".repeat(7000);
+  const body = JSON.stringify({ modelId: selected.id, maxOutputTokens: 256, apiKeyId, sdp: longSdp });
+  assert.ok(Buffer.byteLength(body) > 135_000);
+  let creates = 0; const original = dependencies();
+  const context = dependencies({ readModels: () => [selected], fetch: async (url, init) => {
+    if (String(url).endsWith("/hangup")) return original.fetch!(url, init);
+    creates++; assert.equal(JSON.parse(init!.body as string).sdp, longSdp);
+    return new Response(longSdp, { status: 201, headers: { "Content-Type": "application/sdp", "X-Core-Call-Id": callId, "X-Core-Call-Ticket": ticket() } });
+  } });
+  const output = await events(await handleRealtimeWebRtc(request(selected, { sdp: longSdp }, { "Content-Length": String(Buffer.byteLength(body)) }), context));
+  assert.equal(creates, 1); assert.ok(output.some((event) => event.type === "answer" && event.sdp === longSdp));
+  assert.ok(output.some((event) => event.type === "complete" && event.stopStatus === "confirmed"));
+  assert.equal((await handleRealtimeWebRtc(request(selected, {}, { "Content-Length": String(MAX_BUFFERED_BODY_BYTES + 1) }), context)).status, 413);
+  assert.equal(creates, 1);
 });
 
 test("未認証・異なるOrigin・不正入力は、上流呼び出しとキー取得の前に拒否する", async () => {
@@ -72,7 +90,7 @@ test("WebRTCの未知音声と別系列の音声はキー取得・上流接続�
     fetch: async () => { sideEffects++; throw new Error("Unexpected request"); },
     connectWebSocket: async () => { sideEffects++; throw new Error("Unexpected connection"); },
   });
-  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [live, "cedar"], [voice, " ja-JP-KeitaNeural"], [realtime, "a".repeat(151)]] as const) {
+  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [voice, " ja-JP-KeitaNeural"], [realtime, "a".repeat(151)]] as const) {
     assert.equal((await handleRealtimeWebRtc(request(model, { voice: selectedVoice }), context)).status, 400);
   }
   assert.equal(sideEffects, 0);
@@ -207,8 +225,8 @@ test("Live RTCの五言語ガイドとJSON・部分schemaは実BFFの固定指�
   assert.deepEqual({ ...example.body, sdp }, captured);
   const schema = getRealtimeRequestSchema(live) as { required: string[]; properties: Record<string, { type?: string; enum?: string[]; maxLength?: number }> };
   assert.ok(schema.required.includes("sdp")); assert.equal(schema.properties.instructions.type, "string");
-  assert.ok(REALTIME_CONVERSATION_INSTRUCTIONS.length <= schema.properties.instructions.maxLength!);
-  assert.ok(schema.properties.voice.enum!.includes(expected.voice));
+  assert.equal(schema.properties.instructions.maxLength, undefined);
+  assert.equal(schema.properties.voice.type, "string");
   const bodyPatterns = {
     typescript: /body: ("(?:\\.|[^"\\])*")/,
     python: /data=("(?:\\.|[^"\\])*")/,

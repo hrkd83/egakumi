@@ -34,8 +34,8 @@ test("他オリジン・未ログイン・不正入力・利用できない購�
   assert.equal((await handlePiiRedaction(request(input, { "sec-fetch-site": "cross-site" }), dependencies({ fetch: never }))).status, 403);
   assert.equal((await handlePiiRedaction(request(), dependencies({ readSession: async () => null, fetch: never }))).status, 401);
   assert.equal((await handlePiiRedaction(request({ ...input, url: "https://attacker.example" }), dependencies({ fetch: never }))).status, 400);
-  assert.equal((await handlePiiRedaction(request({ ...input, language: "fr" }), dependencies({ fetch: never }))).status, 400);
-  assert.equal((await handlePiiRedaction(request({ ...input, text: "あ".repeat(11000) }), dependencies({ fetch: never }))).status, 400);
+  assert.equal((await handlePiiRedaction(request({ ...input, language: "invalid!" }), dependencies({ fetch: never }))).status, 400);
+  assert.equal((await handlePiiRedaction(request({ ...input, text: "a".repeat(1_000_000) }), dependencies({ fetch: never }))).status, 400);
   assert.equal((await handlePiiRedaction(request(), dependencies({ resolveSubscriptionKey: async () => { throw new ApiKeyError("AccessDenied", 403); }, fetch: never }))).status, 403);
   assert.equal(calls, 0);
 });

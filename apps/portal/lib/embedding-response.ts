@@ -1,20 +1,21 @@
 import { z } from "zod";
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import { embeddingResultSchema, type EmbeddingInput, type EmbeddingResult } from "./embedding-request.ts";
 import { getEmbeddingDefaultDimensions } from "./embedding-integration.ts";
 import { ModelResponseError } from "./model-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
 import type { EmbeddingModel } from "./model-types.ts";
 
-const maximumResponseBytes = 2_097_152;
+const maximumResponseBytes = MAX_BUFFERED_BODY_BYTES;
 const tokenCount = z.number().int().nonnegative().safe();
-const vector = z.array(z.number().finite()).min(1).max(3_072);
+const vector = z.array(z.number().finite()).min(1);
 const openaiResponse = z.object({
   model: z.string().min(1).max(200),
-  data: z.array(z.object({ index: z.number().int().nonnegative(), embedding: vector })).min(1).max(16),
+  data: z.array(z.object({ index: z.number().int().nonnegative(), embedding: vector })).min(1),
   usage: z.object({ prompt_tokens: tokenCount, total_tokens: tokenCount }).optional(),
 });
 const cohereResponse = z.object({
-  embeddings: z.object({ float: z.array(vector).min(1).max(16) }),
+  embeddings: z.object({ float: z.array(vector).min(1) }),
   meta: z.object({ billed_units: z.object({ input_tokens: tokenCount }).optional() }).optional(),
 });
 const publicErrors = new Set<ModelGatewayErrorCode>(["InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable", "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout", "GenerationFailed", "AuthenticationUnavailable", "RequestCancelled", "ApiKeyUnavailable", "ApiKeyAccessUnavailable"]);

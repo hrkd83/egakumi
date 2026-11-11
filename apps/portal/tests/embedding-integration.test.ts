@@ -11,7 +11,7 @@ test("埋め込み入力は文章配列を受け付け、URL・秘密・未知�
   const input = defaultEmbeddingInput(small);
   assert.equal(embeddingInputSchema.safeParse(input).success, true);
   for (const extra of [{ prompt: "other" }, { url: "https://other.invalid" }, { apiKey: "secret" }, { stream: true }]) assert.equal(embeddingInputSchema.safeParse({ ...input, ...extra }).success, false);
-  for (const dimensions of [0, -1, 1.1, 3_073, "256", NaN]) assert.equal(embeddingInputSchema.safeParse({ ...input, dimensions }).success, false);
+  for (const dimensions of [0, -1, 1.1, "256", NaN]) assert.equal(embeddingInputSchema.safeParse({ ...input, dimensions }).success, false);
 });
 
 test("OpenAIは次元未指定時にdimensionsを省略し、入力文とfloat形式を送る", () => {

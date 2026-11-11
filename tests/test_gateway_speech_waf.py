@@ -15,6 +15,7 @@ from gateway_ingress import (
 )
 from test_portal_gateway import Transport
 from deployment.helpers.waf_names import policy_id, policy_name
+from deployment.helpers.waf_body import ai_body_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_ID = policy_id(CONFIG, 'g-speech')
@@ -252,11 +253,11 @@ class GatewaySpeechWafTests(unittest.TestCase):
         self.assertFalse(configure_gateway_speech_waf(CONFIG, empty)['required'])
         self.assertEqual(empty.calls, [])
 
-    def test_raw_body_adjustment_keeps_settings_and_adds_four_non_body_block_controls(self):
+    def test_raw_body_adjustment_separates_inspection_and_keeps_four_non_body_block_controls(self):
         base = policy()
         configured = _raw_body_policy(base)['properties']
         self.assertEqual(base, policy())
-        self.assertEqual(configured['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(configured['policySettings'], ai_body_settings(base['properties']['policySettings']))
         rules = configured['customRules']
         self.assertEqual(rules[0], base['properties']['customRules'][0])
         self.assertEqual([rule['priority'] for rule in rules[1:]], [2, 3, 4, 5])

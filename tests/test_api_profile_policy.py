@@ -31,6 +31,7 @@ public static class IntegratedProfileFixture {
  public static string Profile(Context context) { __PROFILE__ }
  public static string Auth(Context context) { __AUTH__ }
  public static string Limits(Context context) { __LIMITS__ }
+ public static bool Target(Context context) { __TARGET__ }
  public static string Model(Context context) { __MODEL__ }
  public static string ProtocolAuth(Context context) { __PROTOCOL_AUTH__ }
  public static bool Query(Context context) { __QUERY__ }
@@ -59,6 +60,7 @@ public static class IntegratedProfileFixture {
      result["decision"]=JObject.Parse(Auth(c));
      c.Variables["gatewayOperationConstraint"]=selection["constraint"].ToString(Formatting.None);
      result["limits"]=JObject.Parse(Limits(c));
+     result["targetAllowed"]=Target(c);
     }
    }
    result["reads"]=c.Request.Body.Reads;
@@ -109,17 +111,30 @@ class ProfilePolicyTests(unittest.TestCase):
         flux = dict(flux, operationConstraints={"chat-completions": flux["operationConstraints"]["flux2-generate"]})
         cases.append(case("flux-pro", config=flux, headers={"X-Egakumi-Profile": "pro"}, body={"model": "FLUX.2-pro", "prompt": "synthetic"}))
         cases.append(case("flux-wrong-profile", config=flux, headers={"X-Egakumi-Profile": "flex"}, body={"model": "FLUX.2-pro", "prompt": "synthetic"}))
-        # 公開JSON上限にWAFの2000KiB検査枠から余裕を取り、APIMの等号/超過を実式で検証します。
-        maximum = flux["operationConstraints"]["chat-completions"]["profiles"][0]["maxRequestBytes"]
+        # Use a small synthetic bound to exercise equality/overflow without allocating
+        # the actual Classic APIM 500 MiB buffer ceiling in a unit fixture.
+        for profile in flux["operationConstraints"]["chat-completions"]["profiles"]:
+            profile["maxRequestBytes"] = 2048
+        maximum = 2048
         for excess in (0, 1):
             body = json.dumps({"model": "FLUX.2-flex", "prompt": ""}, separators=(",", ":"))
             body = body.replace('"prompt":""', '"prompt":"' + "a" * (maximum + excess - len(body.encode("utf-8"))) + '"')
             cases.append(case("flux-byte-limit-" + str(excess), config=flux, headers={"X-Egakumi-Profile": "flex"}, rawBody=body))
         image = {"model": "shared", "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]}], "max_completion_tokens": 16}
-        for name, headers in (("image-default-denied", {}), ("image-authorized", {"X-Egakumi-Profile": "vision"})):
+        for name, headers in (("image-default", {}), ("image-authorized", {"X-Egakumi-Profile": "vision"})):
             cases.append(case(name, headers=headers, body=image))
-        cases.append(case("audio-default-denied", body={"model": "shared", "modalities": ["text", "audio"], "max_completion_tokens": 16}))
-        cases.append(case("file-default-denied", body={"model": "shared", "messages": [{"content": [{"type": "file", "file": {"file_data": "AA=="}}]}]}))
+        cases.append(case("audio-default", body={"model": "shared", "modalities": ["text", "audio"], "max_completion_tokens": 16}))
+        cases.append(case("file-default", body={"model": "shared", "messages": [{"content": [{"type": "file", "file": {"file_data": "AA=="}}]}]}))
+        # Use the shipped default Responses profile, with no special profile
+        # header, to reproduce Codex tool schemas and native multimodal content.
+        responses = dict(inference, operationConstraints={"chat-completions": inference["operationConstraints"]["responses-create"]})
+        tool_body = {"model": "gpt-6.1-sol", "input": "synthetic text", "tools": [{"type": "function", "name": "synthetic_tool",
+            "parameters": {"type": "object", "properties": {"image": {"type": "string"}, "audio": {"type": "string"},
+                "file": {"type": "object", "properties": {"type": {"const": "input_image"}}}}}}]}
+        cases.append(case("responses-tool-schema", config=responses, body=tool_body))
+        image_body = {"model": "gpt-6.1-sol", "input": [{"role": "user", "content": [{"type": "input_image", "image_url": "data:image/png;base64,AA=="}]}]}
+        cases.append(case("responses-default-image", config=responses, body=image_body))
+        cases.append(case("responses-image-unknown-model", config=responses, body={**image_body, "model": "unapproved-synthetic-model"}))
         cases.append(case("selected-size", body={"model": "shared", "messages": [{"content": "x" * 600}], "max_completion_tokens": 16}))
         for name, query, models in (("ws-default", {}, ["standard"]), ("ws-mini", {"model": "mini"}, ["standard", "mini"]),
                                     ("ws-mini-denied", {"model": "mini"}, ["standard"]),
@@ -129,7 +144,7 @@ class ProfilePolicyTests(unittest.TestCase):
             item = case(name, mode="ws", query=query, websocket={"allowedModels": models, "defaultModel": "standard", "queryParameters": {"api-version": "fixed"}})
             cases.append(item)
         source = SOURCE.replace("__PROFILE__", actual_expression("gateway.xml", "gatewayProfileSelection"))
-        source = source.replace("__AUTH__", actual_expression("gateway.xml", "gatewayDecision")).replace("__LIMITS__", LIMIT_EXPRESSION)
+        source = source.replace("__AUTH__", actual_expression("gateway.xml", "gatewayDecision")).replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed"))
         model = actual_expression("protocol.xml", "gatewayProtocolModel").replace(
             'JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)))', 'JObject.Parse((string)context.Variables["websocket"])').replace('var encoded = "__WEBSOCKET_SETTINGS_BASE64__";', 'var encoded = "fixture";')
         query = actual_expression("protocol.xml", "gatewayProtocolQueryAllowed").replace(
@@ -157,10 +172,19 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(self.results["explicit"]["decision"]["profileId"], "vision")
         self.assertEqual(self.results["default"]["decision"]["callerId"], self.results["explicit"]["decision"]["callerId"])
 
-    def test_model_and_modality_cannot_bypass_default_or_selected_profile(self):
-        for name in ("unknown", "duplicate", "wrong-model", "image-default-denied", "audio-default-denied", "file-default-denied"):
+    def test_profile_and_model_binding_remain_while_native_modalities_reach_provider(self):
+        for name in ("unknown", "duplicate", "wrong-model", "responses-image-unknown-model"):
             self.assertFalse(self.results[name]["profile"]["allowed"], name)
-        self.assertTrue(self.results["image-authorized"]["profile"]["allowed"])
+        for name in ("image-default", "image-authorized", "audio-default", "file-default"):
+            self.assertTrue(self.results[name]["profile"]["allowed"], name)
+
+    def test_tool_schema_keys_and_native_responses_images_do_not_require_special_profile(self):
+        for name in ("responses-tool-schema", "responses-default-image"):
+            result = self.results[name]
+            self.assertTrue(result["profile"]["allowed"], name)
+            self.assertEqual(result["profile"]["profileId"], "response")
+            self.assertTrue(result["limits"]["allowed"], name)
+            self.assertTrue(result["targetAllowed"], name)
 
     def test_bytes_are_bounded_before_json_and_again_for_selected_profile(self):
         self.assertEqual(self.results["huge-malformed"]["profile"]["status"], 413)
@@ -187,7 +211,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertFalse(self.results["compatible-wrong-token-field"]["limits"]["allowed"])
         self.assertFalse(self.results["flux-wrong-profile"]["profile"]["allowed"])
 
-    def test_published_json_boundary_retains_waf_inspection_headroom(self):
+    def test_ai_requests_use_the_classic_buffer_ceiling_independently_of_waf_inspection(self):
         accepted = self.results["flux-byte-limit-0"]
         self.assertTrue(accepted["profile"]["allowed"])
         self.assertTrue(accepted["limits"]["allowed"])
@@ -197,8 +221,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             def inspect(value):
                 if isinstance(value, dict):
                     if value.get("maxRequestBytes", 0) > 32768:
-                        self.assertLessEqual(value["maxRequestBytes"], 2_000_000)
-                        self.assertGreater(2000 * 1024 - value["maxRequestBytes"], 1024)
+                        self.assertEqual(value["maxRequestBytes"], 524288000)
                     for child in value.values(): inspect(child)
                 elif isinstance(value, list):
                     for child in value: inspect(child)

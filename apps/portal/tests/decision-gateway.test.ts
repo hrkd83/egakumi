@@ -44,7 +44,7 @@ test("入力制約、モデル固定先、要求バイト上限を外部送信�
   const context = dependencies({ fetch: async () => { calls++; throw new Error("not called"); } });
   for (const invalid of [{ ...input, modelId: "unknown" }, { ...input, stream: true }, { ...input, questions: {} }]) assert.equal((await handleDecision(request(invalid), context)).status, 400);
   assert.equal((await handleDecision(request({ ...input, state: { text: "あ".repeat(3000) } }), context)).status, 413);
-  assert.equal((await handleDecision(request(input, { "Content-Length": "16385" }), context)).status, 413);
+  assert.equal((await handleDecision(request(input, { "Content-Length": "524288001" }), context)).status, 413);
   for (const changed of [{ ...model, path: "/models/other" }, { ...model, apiId: "other" }, { ...model, operationId: "other" }]) assert.equal((await handleDecision(request(), { ...context, readModels: () => [changed as DecisionModel] })).status, 503);
   assert.equal(calls, 0);
 });

@@ -212,10 +212,10 @@ test("TypeScript例はNext.js推奨構成のdom・dom.iterableでも型検査を
   assert.deepEqual(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")), []);
 });
 
-test("C#例はヘッダー受信後の本文とSSEにも同じ600秒のキャンセルを適用する", () => {
+test("C#例は独自期限を設けず、本文とSSEへ同じ利用者キャンセルを適用する", () => {
   for (const stream of [false, true]) {
     const source = getIntegrationExample("csharp", chat, { message: SAMPLE_TEXT_PROMPT, maxOutputTokens: 128, stream }, origin);
-    assert.ok(source.includes("new CancellationTokenSource(TimeSpan.FromSeconds(600))"));
+    assert.ok(source.includes("new CancellationTokenSource()"));
     assert.ok(source.includes("HttpCompletionOption.ResponseHeadersRead, cancellation.Token"));
     if (stream) {
       assert.ok(source.includes("ReadAsStreamAsync(cancellation.Token)"));

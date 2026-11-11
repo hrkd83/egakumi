@@ -45,6 +45,7 @@
     "learn.microsoft.com",
     "login.microsoftonline.com",
     "management.azure.com",
+    "nextjs.org",
     "openai.com",
     "opencollective.com",
     "packages.microsoft.com",
@@ -2607,7 +2608,8 @@
         "tests/test_split_configuration.py",
         "tests/test_standard_gateway_authorization.py",
         "tests/test_subscription_profile_deployment.py",
-        "tests/test_voice_client.py"
+        "tests/test_voice_client.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2765,7 +2767,8 @@
         "tests/test_standard_gateway_authorization.py",
         "tests/test_subscription_profile_deployment.py",
         "tests/test_subscription_usage.py",
-        "tests/test_tenant_configuration.py"
+        "tests/test_tenant_configuration.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2820,7 +2823,8 @@
         "tests/test_prepare_secrets.py",
         "tests/test_publish_apis.py",
         "tests/test_realtime_policy.py",
-        "tests/test_standard_gateway_authorization.py"
+        "tests/test_standard_gateway_authorization.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2866,7 +2870,8 @@
         "tests/test_publish_apis.py",
         "tests/test_realtime_policy.py",
         "tests/test_split_cli.py",
-        "tests/test_standard_apis.py"
+        "tests/test_standard_apis.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2884,7 +2889,8 @@
         "tests/test_connection_configuration.py",
         "tests/test_deploy_portal.py",
         "tests/test_management_cleanup.py",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2896,7 +2902,8 @@
         "tests/test_audit_context.py",
         "tests/test_audit_usage.py",
         "tests/test_configuration.py",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -2916,7 +2923,8 @@
         "tests/test_audit_usage.py",
         "tests/test_configuration.py",
         "tests/test_prepare_coverage.py",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "apps/portal/tests/document-operation.test.ts"
       ]
     },
     {
@@ -3089,7 +3097,8 @@
         "apps/portal/tests/helpers/api-key-service-fixture.ts",
         "apps/portal/tests/model-key-choices.test.ts",
         "tests/test_gateway_limits_telemetry.py",
-        "tests/test_pii_policy.py"
+        "tests/test_pii_policy.py",
+        "tests/test_document_analysis_policy.py"
       ]
     },
     {
@@ -3570,6 +3579,23 @@
       "paths": [
         "tests/test_operations_certificate.py"
       ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n    CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 0,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status >= 300) { throw new RuntimeException(",
+      "paths": [
+        "apps/portal/lib/decision-integration.ts",
+        "apps/portal/lib/embedding-integration.ts"
+      ],
+      "reason": "Reviewed PHP template concatenates an environment-loaded variable into a header and sets unlimited cURL duration; this exact code fragment contains no credential value."
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey],\\n    CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 0,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status < 200 || $status >= 300) { throw new RuntimeException(",
+      "paths": [
+        "apps/portal/lib/rerank-integration.ts"
+      ],
+      "reason": "Reviewed PHP template concatenates an environment-loaded variable into a header and sets unlimited cURL duration; this exact code fragment contains no credential value."
     }
   ],
   "reviewed_binary_assets": [

@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import "server-only";
 import { z } from "zod";
 import { readEmbeddingBody } from "./embedding-response.ts";
@@ -16,7 +17,7 @@ const envelopeSchema = z.object({ jsonrpc: z.literal("2.0"), id: z.union([z.stri
 /** JSON/SSE両方を処理し、要求IDが一致した結果だけを返します。 */
 export async function readPiiMcpMessage(response: Response, expectedId: number | string, signal: AbortSignal): Promise<unknown> {
   const kind = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
-  const maximum = 262144;
+  const maximum = MAX_BUFFERED_BODY_BYTES;
   /** 他要求の応答、JSON-RPCエラー、未宣言のサーバー要求は採用しません。 */
   function inspect(value: unknown): { found: boolean; result?: unknown } {
     const entry = envelopeSchema.parse(value);

@@ -80,7 +80,7 @@ def foundation_inputs(config, state):
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
     foundation['l7IngressSecretIdentifier'] = vault + 'core-l7-ingress-secret' if output.get('grpc', {}).get('enabled') else ''
-    foundation['realtimeTicketSecretIdentifier'] = vault + 'core-realtime-ticket-key' if features.get('realtimeEnabled') else ''
+    foundation['realtimeTicketSecretIdentifier'] = vault + 'core-realtime-ticket-key' if features.get('ownerTicketEnabled', features.get('realtimeEnabled')) else ''
     return foundation
 
 

@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import copy
 import fnmatch
-import json
 import re
 import time
 
 from deployment.helpers.portal_gateway import _etag, _writable, _writable_policy
-from deployment.helpers.paths import REPOSITORY
 from deployment.helpers.apim_naming import apim_name
 from deployment.helpers.waf_names import policy_id as waf_policy_id
+from deployment.helpers.waf_body import (raw_body_policy as _raw_body_policy,
+                                         speech_content_policy as _speech_policy)
 
 
 NETWORK_API = '2024-05-01'
@@ -21,7 +21,6 @@ SPEECH_RULE_NAME = 'speech'
 SPEECH_RULE_ID = '920420'
 DOCUMENT_PATH = '/tools/documents/v1/analyze'
 DOCUMENT_RULE_NAME = 'document-analysis-upload'
-RAW_CONTROLS = REPOSITORY / 'apps/gateway/waf-raw-body-controls.json'
 
 
 def gateway_id(config):
@@ -106,92 +105,6 @@ def speech_content_type_paths(config):
                 raise ValueError('Gateway Speech WAF path is duplicated')
             paths.append(path)
     return sorted(paths)
-
-
-def _speech_policy(source):
-    """共通の保護を維持し、SSML/WAVを拒否するMIME許可リスト規則だけを調整する。"""
-    desired = _writable_policy(source)
-    properties = desired.get('properties', {})
-    if properties.get('policySettings', {}).get('state') != 'Enabled':
-        raise ValueError('Gateway Speech requires the existing enabled WAF policy')
-    selected = [item for item in properties.get('managedRules', {}).get('managedRuleSets', [])
-                if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']
-    if len(selected) != 1:
-        raise ValueError('Gateway Speech requires the existing OWASP 3.2 rule set')
-    groups = selected[0].setdefault('ruleGroupOverrides', [])
-    matching = [group for group in groups if group.get('ruleGroupName') == 'REQUEST-920-PROTOCOL-ENFORCEMENT']
-    if len(matching) > 1:
-        raise ValueError('Gateway Speech protocol enforcement overrides are duplicated')
-    if matching:
-        group = matching[0]
-        # グループ全体の無効化を引き継ぐと920470等も失われるため、明示的な規則一覧を必要とします。
-        if not isinstance(group.get('rules'), list) or not group['rules']:
-            raise ValueError('Gateway Speech requires individual protocol enforcement rules')
-    else:
-        group = {'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': []}
-        groups.append(group)
-    rules = group['rules']
-    if any(rule.get('ruleId') == '920470' and rule.get('state') == 'Disabled' for rule in rules):
-        raise ValueError('Gateway Speech must retain Content-Type syntax inspection (920470)')
-    matching = [rule for rule in rules if rule.get('ruleId') == SPEECH_RULE_ID]
-    if len(matching) > 1:
-        raise ValueError('Gateway Speech content type override is duplicated')
-    if matching:
-        matching[0]['state'] = 'Disabled'
-    else:
-        rules.append({'ruleId': SPEECH_RULE_ID, 'state': 'Disabled'})
-    return desired
-
-
-def _raw_body_policy(source):
-    """Allow opaque body bytes while retaining traversal checks outside the body.
-
-    XML/raw body field exclusions are unsupported. Only 930110 is adjusted;
-    930100 and every other managed rule remain enabled. These controls cover
-    literal and common percent-encoded traversal, not every CRS normalization.
-    """
-    desired = _speech_policy(source)
-    properties = desired['properties']
-    settings = properties.get('policySettings', {})
-    if settings.get('mode') != 'Prevention' or settings.get('requestBodyCheck') is not True:
-        raise ValueError('Raw data WAF requires Prevention mode and body inspection')
-    rule_set = next(item for item in properties['managedRules']['managedRuleSets'] if item.get('ruleSetType') == 'OWASP')
-    groups = rule_set.setdefault('ruleGroupOverrides', [])
-    selected = [group for group in groups if group.get('ruleGroupName') == 'REQUEST-930-APPLICATION-ATTACK-LFI']
-    if len(selected) > 1 or (selected and not selected[0].get('rules')):
-        raise ValueError('Raw data WAF requires individual LFI rule overrides')
-    if selected:
-        group = selected[0]
-    else:
-        group = {'ruleGroupName': 'REQUEST-930-APPLICATION-ATTACK-LFI', 'rules': []}
-        groups.append(group)
-    if any(rule.get('ruleId') == '930100' and rule.get('state') == 'Disabled' for rule in group['rules']):
-        raise ValueError('Raw data WAF must retain encoded traversal rule 930100')
-    matching = [rule for rule in group['rules'] if rule.get('ruleId') == '930110']
-    if len(matching) > 1:
-        raise ValueError('Raw data WAF traversal override is duplicated')
-    if matching:
-        matching[0]['state'] = 'Disabled'
-    else:
-        group['rules'].append({'ruleId': '930110', 'state': 'Disabled'})
-    controls = json.loads(RAW_CONTROLS.read_text(encoding='utf-8'))
-    custom = properties.setdefault('customRules', [])
-    specs = list(controls['rules'])
-    names = {item['name'] for item in specs}
-    if any(item.get('name') in names for item in custom):
-        raise ValueError('Raw data WAF custom rule name is already owned')
-    used = {item.get('priority') for item in custom}
-    available = [value for value in range(1, 101) if value not in used]
-    if len(available) < len(specs):
-        raise ValueError('Raw data WAF has insufficient custom rule priorities')
-    for spec, priority in zip(specs, available):
-        conditions = [{
-            'matchVariables': [{'variableName': spec['variableName']}], 'operator': 'Regex',
-            'negationConditon': False, 'matchValues': [spec.get('pattern', controls['pattern'])],
-            'transforms': spec.get('transforms', controls['transforms'])}]
-        custom.append({'name': spec['name'], 'priority': priority, 'ruleType': 'MatchRule',
-            'state': 'Enabled', 'action': 'Block', 'matchConditions': conditions})
-    return desired
 
 
 def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, policy_key):
@@ -397,37 +310,31 @@ def configure_gateway_speech_waf(config, transport, **options):
 
 
 def document_upload_limit(config):
-    """固定Document APIのファイル上限を取得し、別の公開パスへ広げない。"""
+    """正本文書POSTの受付上限を取得し、別の公開パスへ広げない。"""
     definitions = [api for api in config.get('apiDefinitions', []) if api.get('name') == 'document-analysis-v1']
     if not definitions:
         return None
     if len(definitions) != 1:
         raise ValueError('Document analysis API definition is duplicated')
     api = definitions[0]
-    operations = api.get('operations', [])
+    operations = [operation for operation in api.get('operations', [])
+                  if operation.get('name') == 'analyze_document']
     constraint = api.get('authorization', {}).get('operationConstraints', {}).get('analyze_document', {})
     limit = constraint.get('maxRequestBytes')
     if (api.get('path') != 'tools/documents/v1' or len(operations) != 1
             or operations[0].get('name') != 'analyze_document' or operations[0].get('method') != 'POST'
             or operations[0].get('urlTemplate') != '/analyze' or operations[0].get('templateParameters')
             or constraint.get('kind') != 'documentAnalysis' or constraint.get('bodyFormat') != 'binary'
-            or type(limit) is not int or not 1 <= limit <= 1048576):
-        raise ValueError('Document WAF requires the fixed bounded binary analysis contract')
+            or type(limit) is not int or limit < 1):
+        raise ValueError('Document WAF requires the canonical binary analysis POST contract')
     return limit
 
 
 def _document_policy(source, maximum):
-    """正規文書のMIME/本文誤検知を調整し、非本文のtraversalと本文上限を維持する。"""
-    desired = _raw_body_policy(source) if maximum == 1048576 else _speech_policy(source)
-    settings = desired.get('properties', {}).get('policySettings', {})
-    if settings.get('state') != 'Enabled':
-        raise ValueError('Document upload requires the existing enabled WAF policy')
-    # App Gateway rejects an entity at its exact byte boundary. Keep one byte
-    # of rounded-up inspection headroom; APIM still enforces the public limit.
-    limit_kb = max(8, (maximum + 1024) // 1024)
-    settings.update({'requestBodyCheck': True, 'requestBodyEnforcement': True,
-                     'maxRequestBodySizeInKb': limit_kb, 'requestBodyInspectLimitInKB': limit_kb})
-    return desired
+    """検査可能な先頭範囲と受付容量を分離し、非本文のtraversalを維持する。"""
+    if type(maximum) is not int or maximum < 1:
+        raise ValueError('Document upload requires a positive numeric API acceptance limit')
+    return _raw_body_policy(source)
 
 
 def configure_gateway_document_waf(config, transport, **options):
@@ -441,6 +348,6 @@ def configure_gateway_document_waf(config, transport, **options):
         policy_builder=lambda source: _document_policy(source, maximum), **options)
     if receipt['required']:
         receipt.update({'maxRequestBytes': maximum, 'excludedRuleIds': [],
-                        'disabledRuleIds': [SPEECH_RULE_ID, '930110'] if maximum == 1048576 else [SPEECH_RULE_ID],
+                        'disabledRuleIds': [SPEECH_RULE_ID, '930110'],
                         'retainedRuleIds': ['920470', '930100']})
     return receipt

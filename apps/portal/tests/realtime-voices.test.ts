@@ -17,7 +17,7 @@ test("系列ごとの音声だけを選べ、文字起こしには声を指定�
       assert.equal(resolveRealtimeVoice(model, input), voice.id);
       assert.ok(voice.label.ja && voice.label.en);
     }
-    for (const voice of ["unregistered", "https://other.invalid", model.family === "voice-live" ? "cedar" : "ja-JP-AoiNeural"]) {
+    for (const voice of model.family === "live" ? ["bad voice", "https://other.invalid"] : ["unregistered", "https://other.invalid", model.family === "voice-live" ? "cedar" : "ja-JP-AoiNeural"]) {
       assert.throws(() => validateRealtimeInput(model, { ...defaultRealtimeInput(model), voice }));
     }
     if (model.family === "transcription") assert.throws(() => validateRealtimeInput(model, { ...defaultRealtimeInput(model), voice: "marin" }));

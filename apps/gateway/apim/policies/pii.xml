@@ -23,7 +23,8 @@
         var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
         if (body == null || body.Properties().Count() != 2 || body.Properties().Any(p =&gt; p.Name != &quot;text&quot; &amp;&amp; p.Name != &quot;language&quot;)) { return 400; }
         if (body[&quot;text&quot;]?.Type != JTokenType.String || String.IsNullOrWhiteSpace((string)body[&quot;text&quot;]) || body[&quot;language&quot;]?.Type != JTokenType.String) { return 400; }
-        if (!((JArray)settings[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)body[&quot;language&quot;])) { return 400; }
+        var languages = settings[&quot;allowedLanguages&quot;] as JArray;
+        if (String.IsNullOrWhiteSpace((string)body[&quot;language&quot;]) || (languages != null &amp;&amp; languages.Count &gt; 0 &amp;&amp; !languages.Any(v =&gt; (string)v == (string)body[&quot;language&quot;]))) { return 400; }
         /* Match the native MCP argument budget. Compact JSON removes syntax
            whitespace and decodes JSON escapes, without normalizing, trimming
            or truncating the text value passed to Language. */
@@ -68,6 +69,20 @@
         ))
       ).ToString(Newtonsoft.Json.Formatting.None);
     }</set-body>
+    <!-- The provider's 1 MB limit includes the server-owned Language envelope,
+         not only the caller's compact text/language object. -->
+    <choose id="core-pii-native-request-size"><when condition="@(context.Request.Body.As&lt;byte[]&gt;(preserveContent: true).Length &gt; 1000000)">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="REQUEST_TOO_LARGE" />
+      <set-variable name="gatewayAuditStatus" value="@(413)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response><set-status code="413" reason="PII input exceeds provider request size" />
+        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", "PiiInputTooLarge"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+      </return-response>
+    </when></choose>
     <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
     <rewrite-uri template="/language/:analyze-text?api-version=2025-11-01" copy-unmatched-params="false" />
   </inbound>

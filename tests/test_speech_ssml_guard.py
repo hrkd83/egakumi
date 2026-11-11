@@ -154,17 +154,17 @@ class SpeechSsmlGuardPublicationTests(unittest.TestCase):
         return {'apiName': SPEECH['name'], 'operation': next(operation for operation in SPEECH['operations'] if operation['name'] == 'tts'),
             'constraint': copy.deepcopy(SPEECH['authorization']['operationConstraints']['tts'])}
 
-    def test_deployed_guard_is_before_base_and_is_the_only_policy_difference(self):
+    def test_deployed_guard_runs_after_authentication_and_size_checks_before_forwarding(self):
         entry = self.entry()
-        rendered = self.evaluate(entry)
+        rendered = self.evaluate(entry).replace("\r\n", "\n")
         fragment = POLICY.read_text(encoding='utf-8').replace('<fragment>', '').replace('</fragment>', '')
-        self.assertIn('<inbound>' + fragment + '<base />', rendered)
+        self.assertIn('<inbound><base />' + fragment, rendered)
         root = ET.fromstring(rendered)
-        self.assertEqual([child.tag for child in root.find('inbound')][:3], ['set-variable', 'choose', 'base'])
+        self.assertEqual([child.tag for child in root.find('inbound')][:3], ['base', 'set-variable', 'choose'])
         entry['apiName'] = 'unrelated-api'
-        self.assertEqual(rendered.replace(fragment, ''), self.evaluate(entry))
+        self.assertEqual(rendered.replace(fragment, ''), self.evaluate(entry).replace('\r\n', '\n'))
         self.assertIn('copy-unmatched-params="false"', rendered)
-        self.assertIn('<validate-content ', rendered)
+        self.assertNotIn('<validate-content ', rendered)
 
     def test_scope_is_exact_canonical_tts_contract_not_other_xml_or_stt_operations(self):
         entry = self.entry()

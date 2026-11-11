@@ -74,7 +74,7 @@ test("9分の独立したWorkletとtimerの微小ジッターでも音声を欠�
   }
 });
 
-test("字幕は複数ターンを残し、直前の会話を上書きせず履歴を上限内へ収める", () => {
+test("字幕は100ターン・64000文字を超えても直前までの会話を切り捨てない", () => {
   let turns: RealtimeTurn[] = [];
   for (const [role, text] of [["input", "こんにちは"], ["output", "こんにちは。"], ["input", "もう一つ質問"], ["output", "どうぞ。"]] as const) turns = appendRealtimeTranscript(turns, { type: "transcript", role, text, final: true });
   assert.deepEqual(turns.map((turn) => turn.text), ["こんにちは", "こんにちは。", "もう一つ質問", "どうぞ。"]);
@@ -84,7 +84,7 @@ test("字幕は複数ターンを残し、直前の会話を上書きせず履�
   delayed = appendRealtimeTranscript(delayed, { type: "transcript", role: "input", text: "質問です。", final: true });
   assert.deepEqual(delayed.map((turn) => turn.text), ["質問です。", "応答"]);
   for (let index = 0; index < 200; index++) turns = appendRealtimeTranscript(turns, { type: "transcript", role: "input", text: "x".repeat(2_000), final: true });
-  assert.ok(turns.length <= 100); assert.ok(turns.reduce((total, turn) => total + turn.text.length, 0) <= 64_000);
+  assert.equal(turns.length, 204); assert.equal(turns[0].text, "こんにちは"); assert.equal(turns.at(-1)?.text, "x".repeat(2_000));
 });
 
 test("無音の空文字・空白だけの字幕通知では発話者だけの行を作らない", () => {
@@ -123,7 +123,15 @@ test("空通知を挟んでも遅れて届いたfinalを元の字幕へ反映し
 test("既存の空行を除去し、大量の空白deltaでも認識済みの本文を失わない", () => {
   let turns: RealtimeTurn[] = [{ id: 1, role: "input", text: " ", final: true }, { id: 2, role: "output", text: "重要な本文", final: false }];
   turns = appendRealtimeTranscript(turns, { type: "transcript", role: "output", text: " ".repeat(16_000), final: false });
-  assert.equal(turns.length, 1); assert.ok(turns[0].text.startsWith("重要な本文")); assert.equal(turns[0].text.length, 16_000);
+  assert.equal(turns.length, 1); assert.equal(turns[0].text, "重要な本文" + " ".repeat(16_000));
+});
+
+test("WSとRTCの16000文字超字幕を同じ内容で受け付ける", () => {
+  const text = "合成の長い字幕🙂".repeat(2500);
+  const expected = { type: "transcript", role: "output", text, final: true };
+  assert.deepEqual(readRealtimeSocketMessage(JSON.stringify(expected)), expected);
+  const rtc = normalizeRealtimeBrowserEvent(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: text }), 1);
+  assert.deepEqual(rtc.find((event) => event.type === "transcript"), expected);
 });
 
 test("応答のcompleted/cancelled/incomplete/failedは会話の終了イベントへ変えない", () => {
@@ -203,7 +211,7 @@ for (const family of ["realtime", "voice-live"] as const) test(`${family}のWS�
   } finally { controller.abort(); fixture.restore(); }
 });
 
-test("WSの未再生PCMも9分の累積境界を維持し、超過時はマイクと全再生待ちを解放する", async () => {
+test("WSの累積PCMが旧境界を超えても継続し、利用者の停止でマイクと再生待ちを解放する", async () => {
   const fixture = installBrowserFixture("websocket"), controller = new AbortController(), events: RealtimeStreamEvent[] = [];
   try {
     const model = { ...rtcModel, transport: "websocket" as const };
@@ -219,9 +227,11 @@ test("WSの未再生PCMも9分の累積境界を維持し、超過時はマイ�
     assert.equal(events.some((event) => event.type === "error"), false); assert.equal(fixture.facts.micStops, 0);
     assert.ok(fixture.facts.maximumActiveOutput <= 21);
     fixture.socket().emit({ type: "audio", delta: btoa("\0\0"), sampleRate: 24000 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(events.some((event) => event.type === "error"), false);
+    await conversation.stop();
     const complete = await conversation.completion;
-    assert.equal(complete.outputAudioBytes, REALTIME_MAX_AUDIO_BYTES);
-    assert.equal(events.some((event) => event.type === "error" && event.error.code === "GenerationFailed"), true);
+    assert.equal(complete.outputAudioBytes, REALTIME_MAX_AUDIO_BYTES + 2);
     assert.equal(fixture.facts.micStops, 1); assert.equal(fixture.facts.activeOutput, 0); assert.equal(fixture.facts.contextClosed, 1);
   } finally { controller.abort(); fixture.restore(); }
 });

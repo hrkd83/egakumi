@@ -53,7 +53,7 @@ class LiveConfigurationTests(unittest.TestCase):
                 configuration.normalize_configuration(raw, base_directory=CORE / 'config')
 
     def test_live_control_is_fixed_model_key_authorized_and_bounded_json(self):
-        for mutation in ('undeployed', 'keyAuthentication', 'wrongRoute', 'voice', 'unbounded', 'upstreamOverride'):
+        for mutation in ('undeployed', 'keyAuthentication', 'wrongRoute', 'unbounded', 'upstreamOverride'):
             raw = bound_coverage()
             api = next(a for a in raw['apiDefinitions'] if a['name'] == 'openai-live-control-v1')
             c = api['authorization']['operationConstraints']['live-create']
@@ -61,7 +61,7 @@ class LiveConfigurationTests(unittest.TestCase):
             if mutation == 'keyAuthentication': api['authorization']['mode'] = 'keyOrEntra'
             if mutation == 'wrongRoute': api['operations'][0]['urlTemplate'] = '/calls'
             if mutation == 'voice': c['stringChoices'] = {}
-            if mutation == 'unbounded': c['maxRequestBytes'] = 4194304
+            if mutation == 'unbounded': c['maxRequestBytes'] = 524288001
             if mutation == 'upstreamOverride': api['operations'][0]['backendUrlTemplate'] = '/other'
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
                 configuration.normalize_configuration(raw, base_directory=CORE / 'config')
@@ -131,8 +131,12 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(request['transport'], {'type':'webrtc','sdp':'v=0\r\ns=synthetic\r\n'})
 
     def test_invalid_and_injected_inputs_are_rejected_by_actual_expression(self):
-        for name in ('modelInjection','delegationInjection','invalidSdp','hugeSdp','hugeInstructions','voice','wrongType','malformed'):
+        for name in ('modelInjection','delegationInjection','invalidSdp','voice','wrongType','malformed'):
             self.assertEqual(self.results[name]['request'], '', name)
+
+    def test_native_instructions_and_sdp_can_exceed_old_trial_limits(self):
+        for name in ('hugeSdp', 'hugeInstructions'):
+            self.assertTrue(self.results[name]['request'], name)
 
     def test_answer_exposes_the_public_contract_and_rejects_invalid_service_data(self):
         self.assertEqual(json.loads(self.results['valid']['answer']), {'sessionId':'live_synthetic','sdp':'v=0\r\ns=answer\r\n'})

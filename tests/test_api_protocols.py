@@ -98,7 +98,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
         for api in apis.values():
             for constraint in api["authorization"]["operationConstraints"].values():
                 # OCR/layout are built-in service models, not Foundry model deployments.
-                if constraint["kind"] != "documentAnalysis":
+                if constraint["kind"] not in ("documentAnalysis", "documentAnalysisStatus"):
                     published.update(constraint.get("allowedModels", []))
                 for profile in constraint.get("profiles", []):
                     published.update(profile["allowedModels"])
@@ -220,12 +220,20 @@ class ProtocolConfigurationTests(unittest.TestCase):
             self.normalize(raw)
 
     def test_managed_waf_and_api_body_limits_cannot_contradict(self):
-        for change in ("body", "inspect", "upload"):
+        for change in ("inspect", "upload"):
             raw = bound_coverage()
             if change == "body": raw["gateway"]["wafMaxRequestBodySizeInKb"] = 128; raw["gateway"]["wafRequestBodyInspectLimitInKb"] = 128
             if change == "inspect": raw["gateway"]["wafRequestBodyInspectLimitInKb"] = 2001
             if change == "upload": raw["gateway"]["wafFileUploadLimitInMb"] = 0
             with self.subTest(change=change), self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
+        # Managed AI paths inspect a bounded prefix while accepting the full request.
+        raw = bound_coverage()
+        raw["gateway"].update(wafMaxRequestBodySizeInKb=128, wafRequestBodyInspectLimitInKb=128)
+        self.normalize(raw)
+        # A custom path never inherits that relaxation from its API prefix.
+        custom = next(a for a in raw["apiDefinitions"] if a["name"] == "microsoft-decision-v1")
+        custom["path"] = "custom/decision/v1"
+        with self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
         # An external WAF's limits are unknown locally; its owner must verify it.
         raw = bound_coverage(); raw["gateway"]["existingWafPolicyId"] = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-network/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/external"
         raw["gateway"].update(wafMaxRequestBodySizeInKb=128,wafRequestBodyInspectLimitInKb=128)
@@ -298,7 +306,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
         self.assertFalse(self.normalize(raw)["gateway"]["realtimeControlEnabled"])
         raw["gateway"]["realtimeControlEnabled"] = True
         raw["network"]["apimKeyVaultAccessEnabled"] = False
-        with self.assertRaisesRegex(configuration.ConfigurationError, "Realtime control ticket"):
+        with self.assertRaisesRegex(configuration.ConfigurationError, "owner-bound operation ticket"):
             self.normalize(raw)
         raw["network"]["apimKeyVaultAccessEnabled"] = True
         actual = self.normalize(raw)
@@ -435,6 +443,12 @@ class ExpandedPolicyTests(unittest.TestCase):
                              ("target", {"model": "unapproved"}), ("agent", {"agent_id": "other"}),
                              ("duplicate", {"model": ["approved", "unapproved"]})):
             cases.append({"id": "query-" + name, "mode": "query", "query": query})
+        responses = {"operationConstraints": {"agent-responses": {"kind": "statelessResponses", "allowedModels": ["approved"]}}}
+        for name, patch in (("optional", {"client_metadata": {"client": "synthetic"}, "metadata": {"purpose": "synthetic"}, "prompt_cache_key": "synthetic", "vendor_extension": True}),
+                            ("previous", {"previous_response_id": "other"}), ("conversation", {"conversation": "other"}),
+                            ("prompt", {"prompt": {"id": "other"}}), ("background", {"background": True}),
+                            ("file-reference", {"input": [{"type": "input_file", "file_id": "other"}]})):
+            cases.append({"id": "responses-" + name, "config": responses, "body": {"model": "approved", "input": "synthetic", **patch}})
         auth = {"mode": "subscriptionKey"}
         cases.append({"id": "auth-valid", "mode": "auth", "config": auth, "key": "approved-key"})
         cases.append({"id": "auth-deny-missing", "mode": "auth", "config": auth})
@@ -457,6 +471,11 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         for mode in ("fixed", "model", "pii", "auth-probe"):
             for stream in (False, True): self.assertTrue(self.results[f"agent-{mode}-{stream}"]["result"])
         for name in ("state", "store", "metadata", "nested"): self.assertFalse(self.results["agent-deny-" + name]["result"])
+
+    def test_responses_accepts_native_extensions_and_preserves_shared_state_boundaries(self):
+        self.assertTrue(self.results["responses-optional"]["result"])
+        for name in ("previous", "conversation", "prompt", "background", "file-reference"):
+            self.assertFalse(self.results["responses-" + name]["result"], name)
 
     def test_l4_listener_cannot_bypass_l7_proof_for_normal_api(self):
         for name in ("missing", "spoof", "duplicate", "grpc-header"): self.assertTrue(self.results["ingress-" + name]["result"])

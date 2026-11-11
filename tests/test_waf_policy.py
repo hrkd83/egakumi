@@ -16,6 +16,7 @@ from waf_policy import (exclusion, load_manifest, selected_profiles, published_p
 from deployment.helpers.portal_gateway import portal_session_exclusions
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
+from deployment.helpers.waf_body import ai_body_settings
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 
 CHAT = '/models/openai/v1/chat/completions'
@@ -297,7 +298,7 @@ class DataWafTests(unittest.TestCase):
         for key in ('httpListeners', 'rewriteRuleSets', 'backendAddressPools', 'backendHttpSettingsCollection'):
             self.assertEqual(updated['properties'][key], before['properties'][key])
         configured = transport.resources[waf_policy_id(CONFIG, 'g-chat-completions')]['properties']
-        self.assertEqual(configured['policySettings'], policy()['properties']['policySettings'])
+        self.assertEqual(configured['policySettings'], ai_body_settings(policy()['properties']['policySettings']))
         self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
         selectors = {item['selector'] for item in configured['managedRules']['exclusions']}
         self.assertEqual(selectors, {'messages.content', 'Existing'})
@@ -308,6 +309,28 @@ class DataWafTests(unittest.TestCase):
         again = reconcile(configuration(), transport, scopes=('gateway',), manifest=manifest())
         self.assertEqual(again['azureWrites'], 0)
         self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
+
+    def test_existing_ai_policy_size_migration_leaves_base_and_routes_unchanged(self):
+        transport = ArmMemory()
+        value = manifest()
+        reconcile(configuration(), transport, scopes=('gateway',), manifest=value)
+        identifier = waf_policy_id(CONFIG, 'g-chat-completions')
+        old = transport.resources[identifier]['properties']
+        old['policySettings'] = copy.deepcopy(policy()['properties']['policySettings'])
+        before = copy.deepcopy(transport.resources)
+        transport.calls.clear()
+        result = reconcile(configuration(), transport, scopes=('gateway',), manifest=value)
+        self.assertEqual((result['policyUpdates'], result['gatewayUpdated'], result['azureWrites']), (1, False, 1))
+        after = transport.resources[identifier]['properties']
+        self.assertEqual(after['policySettings'], ai_body_settings(before[identifier]['properties']['policySettings']))
+        self.assertEqual(after['managedRules'], before[identifier]['properties']['managedRules'])
+        self.assertEqual(after['customRules'], before[identifier]['properties']['customRules'])
+        for resource_id, resource in before.items():
+            if resource_id != identifier:
+                self.assertEqual(transport.resources[resource_id], resource)
+        transport.calls.clear()
+        self.assertEqual(reconcile(configuration(), transport, scopes=('gateway',), manifest=value)['azureWrites'], 0)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
 
     def test_splits_existing_data_path_rule_without_duplicate_path_or_lost_neighbor(self):
         source = gateway(path_based=True)
@@ -518,7 +541,7 @@ class DataWafTests(unittest.TestCase):
 
     def test_owned_source_protection_differences_stop_before_writes(self):
         identifier = waf_policy_id(CONFIG, 'g-chat-completions')
-        for change in ('settings', 'custom', 'overrides'):
+        for change in ('settings', 'scrubbing', 'custom', 'overrides'):
             source = gateway(path_based=True)
             api_mapping(source)['pathRules'].insert(0, {'name': 'media', 'properties': {
                 'paths': [CHAT], 'firewallPolicy': {'id': identifier},
@@ -528,6 +551,9 @@ class DataWafTests(unittest.TestCase):
             properties = current['properties']
             if change == 'settings':
                 properties['policySettings']['requestBodyCheck'] = False
+            elif change == 'scrubbing':
+                properties['policySettings'] = ai_body_settings(properties['policySettings'])
+                properties['policySettings']['logScrubbing'] = {'state': 'Disabled'}
             elif change == 'custom':
                 properties['customRules'] = []
             else:
@@ -642,7 +668,7 @@ class DataWafTests(unittest.TestCase):
                              if other is not profile for item in other['exclusions']))
         base = policy()
         desired = desired_policy(base, profile, configuration())
-        self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         self.assertIn(image[0], desired['properties']['managedRules']['exclusions'])
 
@@ -682,7 +708,7 @@ class DataWafTests(unittest.TestCase):
         next(group for group in restored_argument['exclusionManagedRuleSets'][0]['ruleGroups']
              if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
         self.assertEqual(restored, previous)
-        self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         compiled = compile_bicep(str(ROOT / 'infra/modules/application-gateway.bicep'))
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
@@ -715,7 +741,7 @@ class DataWafTests(unittest.TestCase):
         next(group for group in reverted_entry['exclusionManagedRuleSets'][0]['ruleGroups']
              if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
         self.assertEqual(reverted, desired_policy(base, previous_profile, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
 
     def test_chat_function_schema_keys_keep_only_eight_exact_sql_rules(self):
@@ -741,7 +767,7 @@ class DataWafTests(unittest.TestCase):
         reverted = copy.deepcopy(desired)
         reverted['properties']['managedRules']['exclusions'].remove(expected)
         self.assertEqual(reverted, desired_policy(base, previous, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         for other in current['profiles']:
             if other is profile:
@@ -779,7 +805,7 @@ class DataWafTests(unittest.TestCase):
         next(item for item in reverted_entry['exclusionManagedRuleSets'][0]['ruleGroups']
              if item['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
         self.assertEqual(reverted, desired_policy(base, previous_profile, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], base['properties']['policySettings'])
+        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
 
     def test_compiled_manifest_retains_declared_protection_and_uses_one_rule_per_exact_path(self):
