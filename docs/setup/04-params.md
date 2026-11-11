@@ -282,12 +282,12 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 
 #### 認証設定と購読
 
-一般APIの基本形です。ProductにAPIを所属させ、APIM購読のキーをサーバー側へ配布します。キー値はparamsへ記載しません。
+標準AI APIの購読認証・容量設定の抜粋です。ProductにAPIを所属させ、APIM購読のキーをサーバー側へ配布します。キー値はparamsへ記載しません。独自の業務APIでは、その契約と適用先WAFに合わせて容量を指定します。
 
 ```json
 "authorization": {
   "mode": "subscriptionKey",
-  "operationConstraints": { "<操作名>": { "kind": "registeredOperation", "maxRequestBytes": 32768 } }
+  "operationConstraints": { "<操作名>": { "kind": "registeredOperation", "maxRequestBytes": 524288000 } }
 }
 ```
 
@@ -338,9 +338,9 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | --- | --- | --- |
 | `C.defaultProfile` | `chat`または`response` | profile選択headerを省略した場合の入力profile。 |
 | `C.profiles` | profile定義の配列 | 各entryにprofileId、modalitiesと既存のkind・許可モデル・本文/出力上限を保持。 |
-| `C.kind` | 操作ごとの例 | registeredOperation/pathModel/bodyModel/textEmbeddings/rerank/statelessResponses/hostedAgentPost/a2aJsonRpc/realtimeCreate/realtimeHangup/liveCreate/pii/documentAnalysis。 |
+| `C.kind` | 操作ごとの例 | registeredOperation/pathModel/bodyModel/textEmbeddings/rerank/statelessResponses/hostedAgentPost/a2aJsonRpc/realtimeCreate/realtimeHangup/liveCreate/pii/documentAnalysis/documentAnalysisStatus。 |
 | `C.bodyFormat` | HTTP書込はjson、GET等はnone | 本文形式。native protocolはnone。 |
-| `C.maxRequestBytes` | 操作例の主な値32768 | 本文byte上限。WAF上限と整合させる。 |
+| `C.maxRequestBytes` | 通常AIは524288000 | APIM Classicの500 MiBバッファー枠。文書は500000000、PIIは1000000。提供元の制約が先に適用される場合がある。管理対象AI以外は既定WAFの容量とも整合させる。 |
 | `C.contentTypes` | 必要な操作だけ設定 | 許可するmedia type。binary/multipart/textで必須。 |
 | `C.allowedModels` | モデル例ごとに指定 | 許可モデル。基盤モデルは配備定義と照合。 |
 | `C.parameter` | pathModel例だけ指定 | モデル名を持つURL変数。 |
@@ -357,6 +357,8 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | `C.arrayLimits` | {}または操作例 | 配列件数上限。 |
 | `C.stringChoices` | {}または操作例 | 文字列の許可値。 |
 | `C.embeddingDimensionsByModel` | textEmbeddings例で指定 | 許可モデル別の既定次元`default`・上限`maximum`と、必要な場合の選択肢`allowed`。 |
+| `C.maxResponseBytes` | 文書は524288000 | 文書の上流結果と公開応答のbyte上限。 |
+| `C.apiVersion` | 文書は2024-11-30 | 文書解析と状態確認の提供元API版。 |
 | `C.modelVersion` | PIIの固定評価版 | PII処理版。モデル配備版とは別。 |
 | `C.allowedLanguages` | PII例はja/en | PIIの許可言語。 |
 | `C.allowedWarningCodes` | [] | 許容PII warning。 |
@@ -364,11 +366,13 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | `C.sessionTtlSeconds` | Realtime例は600 | セッション有効秒。 |
 | `C.publicCallPath` | Realtime公開パス例 | 通話制御APIの公開パス。 |
 
-`textEmbeddings`は登録済みのOpenAI `POST /embeddings`またはCohere `POST /embed`のテキスト埋め込み用です。`embeddingDimensionsByModel`は`allowedModels`と同じモデル名を過不足なく持ち、各モデルの`default`と`maximum`を指定します。`allowed`を省略した場合は1から`maximum`までの整数を許可し、指定する場合は重複なく`default`と`maximum`を含めます。Cohereでは`allowed`が必須です。ベクトル次元は生成の出力トークン上限とは別のため、出力トークンの設定は使用しません。
+`textEmbeddings`は登録済みのOpenAI `POST /embeddings`またはCohere `POST /embed`のテキスト埋め込み用です。固定16件の上限は設けません。`embeddingDimensionsByModel`は`allowedModels`と同じモデル名を過不足なく持ち、各モデルの`default`と`maximum`を指定します。`allowed`を省略した場合は1から`maximum`までの整数を許可し、指定する場合は重複なく`default`と`maximum`を含めます。Cohereでは`allowed`が必須です。ベクトル次元は生成の出力トークン上限とは別のため、出力トークンの設定は使用しません。
 
-`rerank`はFoundryのJSON `POST /rerank`用です。`arrayLimits.documents`と必須の`integerLimits.top_n`で上限を指定し、query・各文書は非空白の文字列、文書は1件以上、`top_n`は文書数以下としてGatewayでも検査します。本文を切り詰めたり返却件数を補正したりしません。出力トークンの設定やprofilesは使用しません。
+`rerank`はFoundryのJSON `POST /rerank`用です。標準定義では独自の文書件数枠・`top_n`必須指定を設けません。query・各文書は非空白の文字列、文書は1件以上、`top_n`を指定した場合は文書数以下としてGatewayでも検査します。本文を切り詰めたり返却件数を補正したりしません。出力トークンの設定やprofilesは使用しません。
 
-`openai-inference-v1`の入力profileは`X-Egakumi-Profile` headerで選びます。`chat-completions`は`chat`（default）・`vision`・`audio-chat`、`responses-create`は`response`（default）・`pdf`です。ヘッダーを省略した場合はdefaultを使い、選択したprofileのモデル・入力形式・本文サイズ・出力上限を照合します。
+`openai-inference-v1`の入力profileは`X-Egakumi-Profile` headerで選びます。`chat-completions`は`chat`（default）・`vision`・`compatible`・`router`、`responses-create`は`response`（default）・`pdf`です。ヘッダーを省略した場合はdefaultを使い、選択したprofileのモデル・入力形式・本文サイズを照合します。出力トークン項目は省略でき、指定時だけモデル別上限を検査します。提供元の必須条件・利用クォータ・認証は維持します。
+
+AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査して超過部分も受け付けます。認証・管理系は既存のサイズ強制を維持します。文書は開始POSTの202受付後に所有者付きGETで結果を取得します。[WAFの範囲](../testing/waf-compatibility.md)・[文書解析](../reference/document-analysis.md)
 
 接続先が異なる操作には`operations[].backendOverride`を指定できます。指定できるのは`backendService`・`backendUrl`・`backendAudience`・`backendAuthentication`・`backendHeaders`で、省略値はAPI既定を継承します。下流URLは固定の登録値だけを使います。secretを使う認証のoperation overrideは扱わず、API既定に設定します。公開prefixと下流のパス（例`/rest`）は別に管理します。
 

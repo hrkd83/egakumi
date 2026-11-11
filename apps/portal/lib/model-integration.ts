@@ -185,7 +185,6 @@ const response = await fetch(${JSON.stringify(url)}, {
   },
   body: JSON.stringify(${body}),
   redirect: "error",
-  signal: AbortSignal.timeout(600_000),
 });
 if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
 ${stream ? `if (!response.body) throw new Error("Response body is missing");
@@ -232,7 +231,7 @@ request = urllib.request.Request(
     },
     method="POST",
 )
-with opener.open(request, timeout=600) as response:
+with opener.open(request) as response:
 ${stream ? `    # SSEの生データを確認します。空行がイベントの区切りです。
     for line in response:
         sys.stdout.write(line.decode("utf-8"))
@@ -260,7 +259,7 @@ curl_setopt_array($curl, [
     ],
     CURLOPT_POSTFIELDS => $body,
     CURLOPT_FOLLOWLOCATION => false,
-    CURLOPT_TIMEOUT => 600,
+    CURLOPT_TIMEOUT => 0,
 ${stream ? `    // SSEの生データを確認します。チャンク境界とイベント境界は一致しません。
     CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk): int {
         echo $chunk;
@@ -283,9 +282,9 @@ using System.Threading;
 ${stream ? "" : "using System.Text.Json;\n"}
 var apiKey = Environment.GetEnvironmentVariable("GATEWAY_API_KEY")
     ?? throw new InvalidOperationException("GATEWAY_API_KEY is required");
-using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(600));
+using var cancellation = new CancellationTokenSource();
 using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(600) };
+using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
 using var request = new HttpRequestMessage(HttpMethod.Post, ${JSON.stringify(url)});
 request.Headers.Add("api-key", apiKey);
 request.Headers.Add("X-Egakumi-Profile", ${JSON.stringify(profile)});
@@ -309,7 +308,7 @@ Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { W
 function curlExample(url: string, profile: string, body: string, stream: boolean): string {
   return `: "\${GATEWAY_API_KEY:?GATEWAY_API_KEY is required}"
 curl --silent --show-error --fail-with-body${stream ? " --no-buffer" : ""} \\
-  --connect-timeout 10 --max-time 600 \\
+  --connect-timeout 10 \\
   ${shellQuote(url)} \\
   --header 'Content-Type: application/json' \\
   --header 'Accept: ${stream ? "text/event-stream" : "application/json"}' \\

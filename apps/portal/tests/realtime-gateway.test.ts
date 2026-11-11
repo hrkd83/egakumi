@@ -77,7 +77,7 @@ test("選択音声をWSS開始設定とRealtimeのDataChannel設定へ反映す�
 
 test("未知・別系列・文字起こしへの音声指定は上流WSSを開く前に拒否する", async () => {
   let connected = 0;
-  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [live, "cedar"], [transcription, "marin"], [realtime, " cedar"], [realtime, "a".repeat(151)]] as const) {
+  for (const [model, selectedVoice] of [[realtime, "unregistered"], [realtime, "ja-JP-NanamiNeural"], [voice, "cedar"], [transcription, "marin"], [realtime, " cedar"], [realtime, "a".repeat(151)]] as const) {
     await assert.rejects(runRealtimeConversation(model, { ...defaultRealtimeInput(model), voice: selectedVoice }, getRealtimeEndpoint(model, gateway), key,
       new AbortController().signal, () => undefined, () => () => undefined, { connect: () => { connected++; throw new Error("Unexpected connection"); } }));
   }
@@ -234,10 +234,10 @@ test("取消と接続時間上限は確実に後始末し、自動再接続し�
   await assert.rejects(runRealtimeConversation(realtime, defaultRealtimeInput(realtime), getRealtimeEndpoint(realtime, gateway), key, preAborted.signal, () => undefined, () => { calls++; return () => undefined; })); assert.equal(calls, 0);
 });
 
-test("上流の未知イベントとイベント総数上限は本文を無制限に公開しない", () => {
+test("未知イベントを公開せず、旧累積件数上限を超えても正常に継続する", () => {
   const state = new RealtimeProtocol(realtime); assert.deepEqual(state.accept({ type: "unknown", body: key }, 0), []);
   for (let index = 1; index < REALTIME_MAX_EVENTS; index++) state.accept({ type: "unknown" }, 0);
-  assert.throws(() => state.accept({ type: "unknown" }, 0));
+  assert.deepEqual(state.accept({ type: "unknown" }, 0), []);
 });
 
 test("WebRTCのスキーマはSDP・track・製品別停止を示し、WSS会話ガイドはVADと複数発話を示す", () => {

@@ -185,6 +185,7 @@ var gatewayPolicyTemplate = replace(loadTextContent('policies/gateway.xml'), '__
 var protocolPolicyTemplate = replace(loadTextContent('policies/protocol.xml'), '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml)
 var piiPolicyTemplate = replace(loadTextContent('policies/pii.xml'), '__RATE_LIMIT_ERROR_XML__', rateLimitErrorXml)
 var documentAnalysisPolicyTemplate = replace(loadTextContent('policies/document-analysis.xml'), '__RATE_LIMIT_ERROR_XML__', rateLimitErrorXml)
+var documentAnalysisStatusPolicyTemplate = replace(loadTextContent('policies/document-analysis-status.xml'), '__RATE_LIMIT_ERROR_XML__', rateLimitErrorXml)
 var realtimeCreatePolicyTemplate = loadTextContent('policies/realtime-create.xml')
 var realtimeHangupPolicyTemplate = loadTextContent('policies/realtime-hangup.xml')
 var liveCreatePolicyTemplate = loadTextContent('policies/live-create.xml')
@@ -308,7 +309,7 @@ resource gatewayTelemetryFragment 'Microsoft.ApiManagement/service/policyFragmen
 resource modelLimitsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-model-limits'
-  properties: { format: 'rawxml', description: 'Reject oversized model requests and missing or excessive output-token limits.', value: loadTextContent('policies/model-limits.xml') }
+  properties: { format: 'rawxml', description: 'Validate received request sizes and provider input limits without requiring optional output tokens.', value: loadTextContent('policies/model-limits.xml') }
 }
 // 本人の登録済み OAuth 接続を解決する共通部品です。
 resource credentialConnectionFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
@@ -530,9 +531,12 @@ resource operations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01'
       description: 'Single text and explicit language. No arbitrary Language parameters.'
       representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactRequest' }]
     } : entry.constraint.kind == 'documentAnalysis' ? {
-      description: 'Raw PDF, JPEG, PNG, TIFF or BMP, up to 1 MiB. Required query model: prebuilt-read or prebuilt-layout. Gateway timeout: 60 seconds; no automatic resubmission.'
+      description: 'Binary document submission up to the provider limit. Returns 202 and an owner-bound operation ticket; never resubmits the billable POST.'
       queryParameters: [{ name: 'model', required: true, type: 'string', values: ['prebuilt-read', 'prebuilt-layout'] }]
       representations: map(entry.constraint.contentTypes, mime => { contentType: mime })
+    } : entry.constraint.kind == 'documentAnalysisStatus' ? {
+      description: 'Authenticated operation status/result. The ticket must belong to the same subscription, operation, API and backend.'
+      headers: [{ name: 'X-Core-Document-Ticket', required: true, type: 'string' }]
     } : entry.operation.?request ?? {}
     responses: entry.constraint.kind == 'pii' ? concat([
       { statusCode: 200, description: 'Redacted text and allowlisted metadata only.', representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactResult' }] }
@@ -540,13 +544,17 @@ resource operations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01'
       statusCode: statusCode
       description: 'Safe failure code and correlation ID. No input text or upstream diagnostic.'
       representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactError' }]
-    })) : entry.constraint.kind == 'documentAnalysis' ? concat([
-      { statusCode: 200, description: 'Native Document Intelligence analyzeResult and Gateway requestId. No upstream operation URL.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisResult' }] }
-    ], map([400, 411, 413, 415, 422, 429, 502, 504], statusCode => {
-      statusCode: statusCode
-      description: 'Safe failure code and correlation ID.'
-      representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisError' }]
-    })) : []
+    })) : contains(['documentAnalysis', 'documentAnalysisStatus'], entry.constraint.kind) ? concat(
+      entry.constraint.kind == 'documentAnalysis' ? [
+        { statusCode: 202, description: 'Accepted. Keep the operation ticket and poll the fixed Gateway status path.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisAccepted' }] }
+      ] : [
+        { statusCode: 202, description: 'Analysis is running. Honor Retry-After; do not repeat the submission.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisRunning' }] }
+        { statusCode: 200, description: 'Native analyzeResult with Gateway correlation ID.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisResult' }] }
+      ], map([400, 403, 404, 410, 413, 415, 422, 429, 502, 504], statusCode => {
+        statusCode: statusCode
+        description: 'Safe failure code and correlation ID. No provider operation URL or diagnostic content.'
+        representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisError' }]
+      })) : []
   }
   dependsOn: [apis, piiSchemas, documentSchemas, apiPolicies]
 }]
@@ -561,15 +569,18 @@ resource operationPolicies 'Microsoft.ApiManagement/service/apis/operations/poli
     value: entry.constraint.kind == 'pii'
       ? replace(piiPolicyTemplate, '__PII_SETTINGS_BASE64__', base64(string(entry.constraint)))
       : entry.constraint.kind == 'documentAnalysis' ? replace(replace(documentAnalysisPolicyTemplate, '__DOCUMENT_SETTINGS_BASE64__', base64(string(entry.constraint))), '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl))
+      : entry.constraint.kind == 'documentAnalysisStatus' ? replace(replace(documentAnalysisStatusPolicyTemplate, '__DOCUMENT_SETTINGS_BASE64__', base64(string(entry.constraint))), '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl))
       // 短期 token の取得先は、登録済み Foundry backend から固定生成します。
       // 利用者の入力 URL や公開 params に取得先を追加しません。
       : entry.constraint.kind == 'realtimeCreate' ? replace(realtimeCreatePolicyTemplate, '__REALTIME_CLIENT_SECRETS_URL__', xmlText('${entry.backendUrl}/realtime/client_secrets'))
       : entry.constraint.kind == 'realtimeHangup' ? realtimeHangupPolicyTemplate
       : entry.constraint.kind == 'liveCreate' ? liveCreatePolicyTemplate
       : join(['<policies><!-- APIの認証・権限・入力上限を継承し、このOperationの要求形式と上流URIを適用します。 --><inbound>'
-          requiresSpeechSsmlGuard(entry) ? speechSsmlGuardPolicy : ''
           '<base />'
-          contains(entry.constraint, 'contentTypes') ? '<!-- 許可した形式と要求サイズの上限を検査します。 --><validate-content unspecified-content-type-action="ignore" max-size="${entry.constraint.maxRequestBytes}" size-exceeded-action="prevent" />' : ''
+          // Authenticate and enforce received bytes before scanning large XML.
+          requiresSpeechSsmlGuard(entry) ? speechSsmlGuardPolicy : ''
+          // The shared fragment checks media type and received bytes. validate-content
+          // has a separate 100 KiB policy ceiling and cannot enforce large uploads.
           contains(entry.operation, 'staticResponse') ? '<return-response><set-status code="200" reason="OK" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-body>${xmlText(string(entry.operation.staticResponse.body))}</set-body></return-response>' : ''
           profileRoutingPolicy(entry.constraint)
           contains(entry.operation, 'backendUrlTemplate') ? '<!-- 登録済みの上流URIへ書き換えます。転送queryは定義した値に揃えます。 --><rewrite-uri template="${xmlText(entry.operation.backendUrlTemplate)}" copy-unmatched-params="false" />' : ''

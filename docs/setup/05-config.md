@@ -134,10 +134,10 @@ APIMがKVを参照する設定を選んだ場合、KVの`publicNetworkAccess: Di
 | `gateway.wafMode` | `"Prevention"` | Prevention=遮断、Detection=検知。 |
 | `gateway.wafCustomRules` | `[]` | 追加WAF custom rule配列。 |
 | `gateway.wafExclusions` | `[]` | WAF検査除外配列。 |
-| `gateway.backendRequestTimeoutSeconds` | `600` | バックエンド応答待ち秒、1〜86400。 |
-| `gateway.wafMaxRequestBodySizeInKb` | `2000` | 通常要求本文の最大サイズ、KiB。 |
-| `gateway.wafRequestBodyInspectLimitInKb` | `2000` | WAFが検査する本文サイズ、KiB。要求最大以下。 |
-| `gateway.wafFileUploadLimitInMb` | `4` | multipartファイル上限、MiB。 |
+| `gateway.backendRequestTimeoutSeconds` | `600` | AppGWのバックエンド応答待ち秒、1〜86400。今回の緩和で既定値は変更しない。 |
+| `gateway.wafMaxRequestBodySizeInKb` | `2000` | base・認証等の本文上限、KiB。管理対象AIパスではサイズ強制を解除。 |
+| `gateway.wafRequestBodyInspectLimitInKb` | `2000` | base・認証等の本文検査枠、KiB。AIパスは専用設定で2000 KiB。 |
+| `gateway.wafFileUploadLimitInMb` | `4` | base・認証等のmultipartファイル上限、MiB。管理対象AIパスでは強制しない。 |
 | `gateway.realtimeControlEnabled` | `true` | Realtimeの所有者確認・停止制御用の鍵等を準備。 |
 | `gateway.grpc.enabled` | `true` | native gRPC用TCP入口の構築を有効にする。 |
 | `gateway.grpc.publicPort` | `8443` | gRPCの公開ポート。1024〜64999、予約ポートを除く。 |

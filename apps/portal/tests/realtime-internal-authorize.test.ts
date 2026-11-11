@@ -142,7 +142,7 @@ test("内部Realtime認可の実POST配線をRequestから検証し、外部認�
       }
       f.reset(); f.bridge.sessionError = true; await emptyFailure(await f.post(request()), 503); assert.equal(f.bridge.keyCalls.length, 0);
     });
-    await t.test("不正JSON・UTF8・厳格入力・本文上限は空の固定エラーとなりキー照会へ進まない", async () => {
+    await t.test("不正JSON・UTF8・厳格入力は空の固定エラーとなりキー照会へ進まない", async () => {
       const bodies: BodyInit[] = ["{", new Uint8Array([0xff]), " ".repeat(135_001), JSON.stringify({ ...start, url: "https://other.invalid" }),
         JSON.stringify({ ...start, apiKey: key }), JSON.stringify({ ...start, tenantId: actor.tenantId }), JSON.stringify({ ...start, type: "other" }),
         JSON.stringify({ ...start, apiId: "unapproved-api" }), JSON.stringify({ ...start, headers: { "api-key": key } }),
@@ -205,8 +205,9 @@ test("内部Realtime認可の実POST配線をRequestから検証し、外部認�
         assert.equal(f.bridge.sessionCalls[0].headers.get("cookie"), "egakumi.portal.session_token=synthetic-only");
         const text = JSON.stringify(context); assert.equal(text.includes(proof), false); assert.equal(text.includes("Synthetic account"), false); assert.equal(text.includes("session_token"), false);
       }
-      f.reset(); const json = JSON.stringify(start), padded = json + " ".repeat(135_000 - new TextEncoder().encode(json).byteLength);
-      assert.equal((await f.post(request(padded))).status, 200, "本文上限ちょうどの有効JSONは受理する");
+      f.reset(); const body = JSON.stringify({ ...start, modelId: webrtc.id, sdp: "synthetic-sdp-offer-" + "a".repeat(150_000) });
+      assert.equal((await f.post(request(body))).status, 200, "135KBを超える開始要求でも本人・購読認可を通す");
+      assert.deepEqual(f.bridge.keyCalls.map((entry) => entry.apiId), [webrtc.apiId, webrtc.observer!.apiId]);
     });
   } finally { f.close(); }
 });

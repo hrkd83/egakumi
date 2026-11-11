@@ -6,6 +6,7 @@ import unittest
 
 from bicep_helpers import compile_bicep
 from test_ssml_waf import GatewayExpression
+from deployment.helpers.waf_body import ai_body_settings
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,16 +154,20 @@ class WafLayoutBicepTests(unittest.TestCase):
         baseline = policies[self.name("g-base")]
         for name, policy in policies.items():
             self.assertIn(parameters["wafExclusions"][0], policy["managedRules"]["exclusions"])
-            for field in ("state", "requestBodyCheck", "requestBodyEnforcement", "fileUploadEnforcement", "logScrubbing"):
+            for field in ("state", "requestBodyCheck", "logScrubbing"):
                 self.assertEqual(policy["policySettings"][field], baseline["policySettings"][field])
             if name.startswith("wafpol-p-"):
                 self.assertEqual(policy["managedRules"]["exclusions"].count(self.cookie), 1)
-                self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
-            if name in {self.name(purpose) for purpose in DATA_PURPOSES}:
-                self.assertEqual(policy["policySettings"], {**baseline["policySettings"], "mode": "Prevention"})
+                if name != self.name("p-document-upload"):
+                    self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
+            if name in {self.name(purpose) for purpose in DATA_PURPOSES | {"g-speech", "g-document-upload"}}:
+                self.assertEqual(policy["policySettings"], ai_body_settings({**baseline["policySettings"], "mode": "Prevention"}))
+            else:
+                self.assertEqual(policy["policySettings"], baseline["policySettings"])
+            if name in {self.name(purpose) for purpose in DATA_PURPOSES - {"p-document-upload"}}:
                 self.assertEqual(policy["customRules"], parameters["wafCustomRules"])
         self.assertNotIn(self.cookie, baseline["managedRules"]["exclusions"])
-        for purpose in ("p-base", "p-auth", "g-auth", "g-speech"):
+        for purpose in ("p-base", "p-auth", "g-auth"):
             self.assertEqual(policies[self.name(purpose)]["policySettings"]["mode"], "Detection")
 
     def test_single_speech_policy_preserves_raw_and_document_controls(self):
@@ -175,10 +180,11 @@ class WafLayoutBicepTests(unittest.TestCase):
             {"ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
              "rules": [{"ruleId": "930110", "state": "Disabled"}]},
         ]
-        for purpose in ("g-speech", "g-document-upload"):
+        for purpose in ("g-speech", "g-document-upload", "p-document-upload"):
             raw = policies[self.name(purpose)]
             self.assertEqual(raw["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], expected_overrides)
-            self.assertEqual(raw["managedRules"]["exclusions"], base["managedRules"]["exclusions"])
+            if purpose != "p-document-upload":
+                self.assertEqual(raw["managedRules"]["exclusions"], base["managedRules"]["exclusions"])
             self.assertEqual(raw["customRules"][:1], parameters["wafCustomRules"])
             blocks = raw["customRules"][1:]
             self.assertEqual(len(blocks), 4)
@@ -186,9 +192,8 @@ class WafLayoutBicepTests(unittest.TestCase):
             self.assertEqual({r["matchConditions"][0]["matchVariables"][0]["variableName"] for r in blocks},
                              {"RequestUri", "QueryString", "RequestHeaders", "RequestCookies"})
             self.assertEqual(len({r["priority"] for r in raw["customRules"]}), 5)
-        self.assertEqual(policies[self.name("g-speech")]["policySettings"], base["policySettings"])
-        self.assertEqual(policies[self.name("g-document-upload")]["policySettings"], {
-            **base["policySettings"], "maxRequestBodySizeInKb": 1025, "requestBodyInspectLimitInKB": 1025})
+        self.assertEqual(policies[self.name("g-speech")]["policySettings"], ai_body_settings(base["policySettings"]))
+        self.assertEqual(policies[self.name("g-document-upload")]["policySettings"], ai_body_settings(base["policySettings"]))
         gateway = self.gateway(parameters)
         rules = next(m["properties"]["pathRules"] for m in gateway["urlPathMaps"] if m["name"] == "pathmap-protocols")
         speech, = [r for r in rules if r["name"] == "speech"]
@@ -221,7 +226,9 @@ class WafLayoutBicepTests(unittest.TestCase):
                     expected.append(item)
             actual = policies[self.name(profile["name"])]
             self.assertEqual(actual["managedRules"]["exclusions"], expected)
-            self.assertEqual(actual["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], [])
+            expected_overrides = (policies[self.name("g-document-upload")]["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"]
+                                  if profile["name"] == "p-document-upload" else [])
+            self.assertEqual(actual["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], expected_overrides)
         for purpose, selector in (("g-chat-completions", "messages.content.image_url.url"),
                                   ("g-responses", "input.content.file_data")):
             profile = next(p for p in self.profiles if p["name"] == purpose)

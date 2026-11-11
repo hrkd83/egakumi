@@ -31,7 +31,7 @@
       "audio-transcriptions": {
         "kind": "pathModel",
         "bodyFormat": "multipart",
-        "maxRequestBytes": 4194304,
+        "maxRequestBytes": 524288000,
         "parameter": "deployment",
         "allowedModels": [
           "gpt-transcribe"

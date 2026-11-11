@@ -71,7 +71,9 @@ export type ImageGenerationModel = {
   maxRequestBytes: number;
   sizes: string[];
   qualities: string[];
-  formats: ("png" | "jpeg")[];
+  formats: ("png" | "jpeg" | "webp")[];
+  minImages?: number;
+  maxImages?: number;
   minWidth: number;
   maxWidth: number;
   minHeight: number;

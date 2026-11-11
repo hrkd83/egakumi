@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import "server-only";
 
 import WebSocket, { type RawData } from "ws";
@@ -9,7 +10,7 @@ import { getPublicModelGatewayOrigin } from "./model-public-config.ts";
 import { getTextGenerationEndpoint } from "./model-integration.ts";
 import type { RealtimeModel } from "./model-types.ts";
 import { openRealtimeCallHandle, sealRealtimeCallHandle, type RealtimeCallHandle } from "./realtime-call-handle.ts";
-import { REALTIME_MAX_DURATION_MS, REALTIME_MAX_EVENTS, REALTIME_MAX_STREAM_BYTES, realtimeStopSchema, realtimeStreamEventSchema, realtimeWebRtcExecutionSchema, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { REALTIME_MAX_DURATION_MS, realtimeStopSchema, realtimeStreamEventSchema, realtimeWebRtcExecutionSchema, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { readSpeechBody } from "./speech-response.ts";
 import { REALTIME_CONVERSATION_INSTRUCTIONS as conversationInstructions } from "./realtime-protocol.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
@@ -45,7 +46,7 @@ async function authorize(request: Request, dependencies: RealtimeWebRtcDependenc
 
 /** 登録済みの音声専用SDPだけを受け付け、サイズ・NULL・映像trackを検査します。 */
 export function validateRealtimeSdp(value: unknown): string {
-  if (typeof value !== "string" || !value.startsWith("v=0\r\n") || Buffer.byteLength(value) > 65_536 || value.includes("\0")
+  if (typeof value !== "string" || !value.startsWith("v=0\r\n") || value.includes("\0")
     || !/(?:\r\n)m=audio \d+ [^\r\n]+/.test(value) || /(?:\r\n)m=video /.test(value)) throw new Error("Invalid audio session description");
   return value;
 }
@@ -59,7 +60,7 @@ function validateModel(model: RealtimeModel): void {
   if (!expected || model.apiId !== expected[0] || model.path !== expected[1] || model.modelId !== expected[2]) throw new Error("Unregistered WebRTC operation");
   if (model.family === "realtime" && (model.observer?.apiId !== "openai-realtime-observer-v1" || model.observer.path !== "/models/openai-realtime/v1/observer/"
     || model.hangupPath !== "/models/openai-realtime/v1/calls/{callId}/hangup")) throw new Error("Incomplete call ownership contract");
-  if (model.family === "live" && model.voice !== "marin" || model.family === "voice-live" && model.voice !== "ja-JP-NanamiNeural") throw new Error("Unregistered voice");
+  if (model.family === "voice-live" && model.voice !== "ja-JP-NanamiNeural") throw new Error("Unregistered voice");
 }
 
 /** WSS接続先は登録済みHTTPSオリジンと公開パスだけで作ります。queryへ秘密は入れません。 */
@@ -162,8 +163,8 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
   if (request.headers.get("content-type")?.split(";", 1)[0] !== "application/json") return failure("InvalidRequest", 415);
   let input: RealtimeInput & { apiKeyId: string; sdp: string }; let model: RealtimeModel; let origin: string; let selectedVoice: string | undefined;
   try {
-    if (Number(request.headers.get("content-length") ?? 0) > 135_000) return failure("InvalidRequest", 413);
-    input = realtimeWebRtcExecutionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 135_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]))))); validateRealtimeSdp(input.sdp);
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
+    input = realtimeWebRtcExecutionSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal)))); validateRealtimeSdp(input.sdp);
     const selected = (await (dependencies.readModels ?? getRealtimeModels)()).find((entry) => entry.id === input.modelId); if (!selected) throw new Error("Missing model"); model = selected; validateModel(model);
     resolveRealtimeOutputTokens(model, input);
     selectedVoice = resolveRealtimeVoice(model, input);
@@ -185,11 +186,10 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
   const encoder = new TextEncoder(); const started = performance.now(); let consumerClosed = false;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      let events = 0; let outputBytes = 0;
       const emit = (event: RealtimeStreamEvent) => {
         if (consumerClosed) return;
         const encoded = encoder.encode(`data: ${JSON.stringify(realtimeStreamEventSchema.parse(event))}\n\n`);
-        if (++events > REALTIME_MAX_EVENTS || (outputBytes += encoded.byteLength) > REALTIME_MAX_STREAM_BYTES || (controller.desiredSize ?? 1) < -1_048_576) { cancelled.abort(); throw new Error("Stream output limit"); }
+        if ((controller.desiredSize ?? 1) < -1_048_576) { cancelled.abort(); throw new Error("Stream output limit"); }
         try { controller.enqueue(encoded); } catch { consumerClosed = true; cancelled.abort(); }
       };
       void (async () => {
@@ -209,7 +209,7 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
             upstreamStatus = upstream.status; stage = "validating-answer";
             if (model.family === "realtime") { call = captureCall(upstream, actor, input.apiKeyId, model.id); if (call) handle = sealRealtimeCallHandle(call, secret!); }
             if (model.family === "realtime" ? upstream.status !== 201 : !upstream.ok) { void upstream.body?.cancel().catch(() => undefined); throw new Error("Gateway session creation failed"); }
-            const bytes = await readSpeechBody(upstream.body, 100_000, signal); const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+            const bytes = await readSpeechBody(upstream.body, MAX_BUFFERED_BODY_BYTES, signal); const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
             if (text.includes(key) || call && text.includes(call.ticket)) throw new Error("Credential reflected in response");
             let answer: string;
             if (model.family === "realtime") {
@@ -228,10 +228,9 @@ export async function handleRealtimeWebRtc(request: Request, dependencies: Realt
           stage = "observing-control";
           if (!socket) {
             await new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener("abort", () => resolve(), { once: true }); });
-          } else { let receivedEvents = 0; let receivedBytes = 0; while (!signal.aborted) {
+          } else { while (!signal.aborted) {
             const value = await socket.receive(signal);
             if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid control event");
-            if (++receivedEvents > REALTIME_MAX_EVENTS || (receivedBytes += Buffer.byteLength(JSON.stringify(value))) > REALTIME_MAX_STREAM_BYTES) throw new Error("Control event limit");
             const event = value as Record<string, unknown>; const kind = typeof event.type === "string" && eventNames.has(event.type) ? event.type : undefined;
             if (!kind) continue;
             if (kind === "error" || kind === "rtc.call.error") throw new Error("Service control error");

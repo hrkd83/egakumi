@@ -1,11 +1,13 @@
 """Portal HTTPSの正確なセッション値・1規則だけを調整する契約を検証する。"""
 import copy
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import unittest
+from urllib.parse import unquote
 
 from bicep_helpers import compile_bicep
 import test_ssml_waf as gateway_fixtures
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from deployment.helpers.portal_gateway import _callback_policy, _portal_policy, portal_session_exclusions
 from deployment.helpers.waf_names import policy_id
+from deployment.helpers.waf_body import ai_body_settings, raw_body_policy
 from waf_policy import desired_policy, exclusion, data_scope_exclusions, load_manifest, reconcile
 import test_waf_policy as data_fixtures
 
@@ -151,6 +154,39 @@ console.log(JSON.stringify(cookies));
                 self.assertEqual(desired["properties"]["managedRules"]["exclusions"].count(session),
                                  1 if scope == "portal" else 0)
 
+    def test_raw_document_mime_and_non_body_guards_match_gateway_and_compiled_policy(self):
+        parameters = self.parameters()
+        base = {"properties": self.value(self.resource("g-base")["properties"], parameters)}
+        profile = next(item for item in load_manifest()["profiles"] if item["name"] == "p-document-upload")
+        self.assertEqual(profile["paths"], ["/api/tools/documents"])
+        desired = desired_policy(base, profile, {})
+        self.assertEqual(desired_policy(base, profile, {}, sources=(base, desired)), desired)
+        profiles = self.value("[variables('dataProfiles')]", parameters)
+        index = next(i for i, item in enumerate(profiles) if item["name"] == profile["name"])
+        compiled = self.value("[variables('dataPolicyProperties')]", parameters)[index]
+        self.assertEqual(compiled, desired["properties"])
+        gateway_raw = raw_body_policy(base)["properties"]
+        self.assertEqual(compiled["managedRules"]["managedRuleSets"], gateway_raw["managedRules"]["managedRuleSets"])
+        self.assertEqual(compiled["customRules"], gateway_raw["customRules"])
+        self.assertEqual(compiled["policySettings"], ai_body_settings(base["properties"]["policySettings"]))
+        self.assertEqual(compiled["managedRules"]["exclusions"],
+                         base["properties"]["managedRules"]["exclusions"] + portal_session_exclusions() + profile["exclusions"])
+        for rule in compiled["customRules"][len(base["properties"]["customRules"]):]:
+            self.assertEqual(rule["action"], "Block")
+            condition = rule["matchConditions"][0]
+            expression = re.compile(condition["matchValues"][0])
+            self.assertIn(condition["matchVariables"][0]["variableName"],
+                          {"RequestUri", "QueryString", "RequestHeaders", "RequestCookies"})
+            for attack in ("../file", "value=%2e%2e%2ffile", "X-Synthetic: %252e%252e%255cfile"):
+                self.assertIsNotNone(expression.search(unquote(attack).replace("\x00", "").lower()))
+            self.assertIsNone(expression.search("/api/tools/documents?model=prebuilt-read"))
+        for mutation in ({"name": "p-images"}, {"paths": ["/api/tools/documents/status"]},
+                         {"paths": ["/api/tools/documents", "/api/tools/other"]}):
+            changed = {**profile, **mutation}
+            ordinary = desired_policy(base, changed, {})["properties"]
+            self.assertEqual(ordinary["customRules"], base["properties"]["customRules"])
+            self.assertEqual(ordinary["managedRules"]["managedRuleSets"], base["properties"]["managedRules"]["managedRuleSets"])
+
 
     def test_realtime_stop_handle_policy_is_exact_value_two_rules_and_matches_bicep(self):
         path = "/api/models/realtime/stop"
@@ -170,8 +206,9 @@ console.log(JSON.stringify(cookies));
         compiled = self.value("[variables('dataPolicyProperties')]", parameters)[index]
         base = self.value(self.resource("g-base")["properties"], parameters)
         self.assertEqual(compiled, desired_policy({"location": "japaneast", "properties": base}, profile, {})["properties"])
-        for field in ("policySettings", "customRules"):
-            self.assertEqual(compiled[field], base[field])
+        from deployment.helpers.waf_body import ai_body_settings
+        self.assertEqual(compiled["policySettings"], ai_body_settings(base["policySettings"]))
+        self.assertEqual(compiled["customRules"], base["customRules"])
         self.assertEqual(compiled["managedRules"]["managedRuleSets"], base["managedRules"]["managedRuleSets"])
         self.assertTrue(compiled["policySettings"]["requestBodyCheck"])
         self.assertEqual(compiled["policySettings"]["mode"], "Prevention")

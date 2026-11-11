@@ -1,16 +1,17 @@
 import { z } from "zod";
+import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 
 /** 公開済みPII操作の固定契約です。正本API定義との一致は契約テストで確認します。 */
 export const PII_API = {
   apiId: "pii-v1", operationId: "pii_redact_text", path: "/tools/pii/v1/redact",
-  maxRequestBytes: 32_768, modelVersion: "2026-05-01", languages: ["ja", "en"], allowedWarningCodes: [],
+  maxRequestBytes: 1_000_000, modelVersion: "2026-05-01", languages: ["ja", "en"], allowedWarningCodes: [],
 } as const;
 
 /** 一度に送信する本文と言語です。接続先・任意ヘッダー・秘密値は入力できません。 */
 export const piiInputSchema = z.object({
   text: z.string().min(1).max(PII_API.maxRequestBytes).refine((value) => value.trim().length > 0),
-  language: z.enum(PII_API.languages),
+  language: z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/),
 }).strict();
 
 /** 試行画面とコード例で共有する入力です。 */
@@ -20,7 +21,7 @@ export const piiExecutionSchema = piiInputSchema.extend({ apiKeyId: apiKeyIdSche
 
 /** Gatewayが公開するマスキング済みの本文と、安全なメタデータだけを許可します。 */
 export const piiResponseSchema = z.object({
-  redactedText: z.string().max(131_072), language: z.enum(PII_API.languages),
+  redactedText: z.string().max(MAX_RUNTIME_STRING_CHARACTERS), language: z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/),
   detectedCount: z.number().int().nonnegative().safe(), modelVersion: z.literal(PII_API.modelVersion),
   warningCodes: z.array(z.string()).max(0), requestId: z.string().uuid(),
 }).strict();

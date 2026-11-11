@@ -83,6 +83,7 @@ class GrpcBootstrapTests(unittest.TestCase):
 
     def test_disabled_generates_nothing_and_does_not_access_transport(self):
         self.config["gateway"]["grpc"]["enabled"] = False
+        self.config["infrastructureApiDefinitions"] = []
         transport = Transport([])
         self.assertEqual(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json), {})
         self.assertEqual(grpc.configure_endpoint(self.config, {}, transport), {"enabled": False})
@@ -152,6 +153,40 @@ class GrpcBootstrapTests(unittest.TestCase):
         credentials = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
         self.assertEqual(set(credentials), {"realtimeTicketKey"})
         self.assertRegex(credentials["realtimeTicketKey"], r"^[a-f0-9]{128}$")
+
+    def test_document_jobs_prepare_and_refresh_owner_key_without_realtime_or_grpc(self):
+        """文書専用構成でも、公開前の署名鍵と所有するNamedValueを用意する。"""
+        self.config["gateway"]["grpc"]["enabled"] = False
+        self.config["infrastructureApiDefinitions"] = [{"authorization": {"operationConstraints": {
+            "analyze_document": {"kind": "documentAnalysis"}}}}]
+        self.assertFalse(grpc.realtime_enabled(self.config))
+        self.assertTrue(grpc.owner_ticket_enabled(self.config))
+        def save_fixture(path, value):
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            path.write_text(json.dumps(value), encoding="utf-8")
+            path.chmod(0o600)
+
+        credentials = grpc.prepare_secret(self.config, self.root, save_fixture)
+        self.assertEqual(set(credentials), {"realtimeTicketKey"})
+        transport = Transport([ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
+        result = grpc.configure_named_values(self.config, self.outputs, transport)
+        self.assertTrue(result["ownerTicketEnabled"])
+        self.assertFalse(result["grpcEnabled"])
+        self.assertFalse(result["realtimeEnabled"])
+        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET"])
+
+    def test_empty_public_array_prepares_standard_document_signing_before_metadata_exists(self):
+        """Coreが公開APIをまだ展開していなくても、標準文書APIの鍵は必要になる。"""
+        self.config["gateway"]["grpc"]["enabled"] = False
+        self.assertEqual(self.config["apiDefinitions"], [])
+        self.assertNotIn("infrastructureApiDefinitions", self.config)
+        self.assertFalse(grpc.realtime_enabled(self.config))
+        self.assertTrue(grpc.owner_ticket_enabled(self.config))
+        writes = []
+        value = grpc.prepare_secret(self.config, self.root, lambda path, payload: writes.append((path, payload)))
+        self.assertEqual(set(value), {"realtimeTicketKey"})
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][0], grpc.secret_path(self.config, self.root, "realtime-ticket"))
 
     def test_wrong_environment_weak_file_and_symlink_fail_without_replacing(self):
         path = grpc.secret_path(self.config, self.root)

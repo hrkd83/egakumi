@@ -164,6 +164,18 @@ class ApiFoundationBicepTests(unittest.TestCase):
         self.assertTrue(config['infrastructureApiDefinitions'])
         self.assertFalse(self.value(self.main['variables']['realtimeEnabled'], config))
 
+    def test_document_foundation_prepares_owner_key_before_public_api_creation(self):
+        """非公開の基盤用メタデータから文書ジョブの署名鍵だけを準備する。"""
+        config = configuration.build_bicep_configuration(foundation_configuration())
+        config['gateway']['grpc']['enabled'] = False
+        config['gateway']['realtimeControlEnabled'] = False
+        config['infrastructureApiDefinitions'] = [api for api in config['infrastructureApiDefinitions']
+                                                   if api.get('name') == 'document-analysis-v1']
+        self.assertEqual(config['apiDefinitions'], [])
+        self.assertFalse(self.value(self.main['variables']['realtimeEnabled'], config))
+        self.assertTrue(self.value(self.main['variables']['ownerTicketEnabled'], config))
+        self.assertTrue(self.value(self.main['variables']['useIngressSecrets'], config))
+
 
 if __name__ == '__main__':
     unittest.main()

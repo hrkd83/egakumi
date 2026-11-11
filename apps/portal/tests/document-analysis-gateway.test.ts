@@ -38,7 +38,7 @@ test("本人と選択キーの現権限を確認し、raw fileだけを固定Gat
   } }));
   assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(grants, [[actor, apiKeyId, "document-analysis-v1"]]);
   assert.equal(response.headers.get("operation-location"), null); assert.equal(response.headers.get("cache-control"), "no-store");
-  const output = await response.json(); assert.equal(output.content, "Document text"); assert.deepEqual(output.pageNumbers, [1]); assert.deepEqual(output.rawResponse, native); assert.equal(output.requestId, "document-request-1");
+  const output = await response.json(); assert.equal(output.rawResponse.analyzeResult.content, "Document text"); assert.equal("content" in output, false); assert.deepEqual(output.rawResponse, native); assert.equal(output.requestId, "document-request-1");
   assert.equal(JSON.stringify(output).includes(secret), false);
 });
 
@@ -55,10 +55,10 @@ test("クロスサイト・未認証・任意URL・追加パラメーターは�
 
 test("ファイル実体・形式・重複・サイズ・モデルの不正はキー取得前に拒否する", async () => {
   let grants = 0; const base = dependencies({ resolveSubscriptionKey: async () => { grants++; return secret; } });
-  const attempts = [request({ type: "text/html" }), request({ bytes: new Uint8Array([0x42, 0x4d]) }), request({ duplicate: true }), request({ model: "custom" }), request({ bytes: new Uint8Array(MAX_DOCUMENT_BYTES + 1) })];
+  const attempts = [request({ type: "image/svg+xml" }), request({ bytes: new Uint8Array([0x42, 0x4d]) }), request({ duplicate: true }), request({ model: "custom" })];
   for (const attempt of attempts) assert.ok([400, 413].includes((await handleDocumentAnalysis(attempt, base)).status));
   assert.equal(grants, 0);
-  const maximum = new Uint8Array(MAX_DOCUMENT_BYTES); maximum.set(pdf);
+  const maximum = new Uint8Array(2 * 1_048_576); maximum.set(pdf);
   assert.equal((await handleDocumentAnalysis(request({ bytes: maximum }), base)).status, 200);
 });
 
@@ -107,7 +107,7 @@ test("Gatewayの文書固有エラーを固定コードへ対応させ、詳細�
   ] as const;
   for (const [upstreamCode, code, status] of cases) {
     const result = await handleDocumentAnalysis(request(), dependencies({ fetch: async () => Response.json({ error: { code: upstreamCode, message: secret } }, { status }) }));
-    assert.equal(result.status, status); assert.deepEqual(await result.json(), { error: { code } });
+    assert.equal(result.status, status); assert.deepEqual(await result.json(), { error: { code }, ...(code === "RateLimitExceeded" ? { retryAfterSeconds: 2 } : {}) });
   }
 });
 

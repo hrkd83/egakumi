@@ -19,20 +19,21 @@ export function safeImageUrl(value: unknown): string | null {
 }
 
 /** Base64の文字列とPNG/JPEGの先頭バイトを検査し、SVGやHTMLを表示しません。 */
-export function rasterBase64Mime(value: unknown): "image/png" | "image/jpeg" | null {
-  if (typeof value !== "string" || value.length < 16 || value.length > 16 * 1_048_576 || value.length % 4 !== 0) return null;
+export function rasterBase64Mime(value: unknown): "image/png" | "image/jpeg" | "image/webp" | null {
+  if (typeof value !== "string" || value.length < 16 || value.length > MAX_IMAGE_RESPONSE_BYTES || value.length % 4 !== 0) return null;
   // 繰り返しグループの正規表現は大きな画像でスタックを消費するため、文字種と末尾を別に検査します。
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
   if (!/^[A-Za-z0-9+/]+$/.test(value.slice(0, value.length - padding))) return null;
   const prefix = atob(value.slice(0, 16));
   if (prefix.startsWith("\x89PNG\r\n\x1a\n")) return "image/png";
   if (prefix.startsWith("\xff\xd8\xff")) return "image/jpeg";
+  if (prefix.startsWith("RIFF") && prefix.slice(8, 12) === "WEBP") return "image/webp";
   return null;
 }
 
-/** 同期応答に含まれる1枚だけを検証し、実際のJSONは改変せず保持します。 */
+/** 同期応答に含まれる各画像を検証し、実際のJSONは改変せず保持します。 */
 export function parseImageGenerationResult(value: unknown, model: string, durationMs: number, requestId?: string): ImageGenerationResult {
-  if (!record(value) || value.error || !Array.isArray(value.data) || value.data.length !== 1) throw new Error("Invalid image generation response");
+  if (!record(value) || value.error || !Array.isArray(value.data) || value.data.length < 1) throw new Error("Invalid image generation response");
   const images: GeneratedImage[] = value.data.map((item, index) => {
     if (!record(item)) throw new Error("Invalid image item");
     if (item.b64_json !== undefined) {

@@ -20,7 +20,7 @@ PIIから生成するMCPも、RESTと同じProductの購読キーで利用しま
 
 PIIの`tools/call`は、型・必須項目・対応言語・追加項目・要求サイズを入口で検証します。不正な引数は実行せず、HTTP 400とJSON-RPCの`error.code=-32602`で返します。引数自体や本文の個人情報はエラーへ転記しません。
 
-PIIに限り、`maxRequestBytes=32768`は、厳密な`text`・`language`の入力を解析後にコンパクトJSONへ再直列化したUTF-8 byte数の上限です。RESTの受信本文そのものを32,768 bytesで拒否する方式から変更し、JSONエスケープや構文上の空白による表現の差を許容します。解析前の受信本文にはその6倍、196,608 bytesの独立した上限を適用します。どちらのサイズ超過もHTTP 413・`error.code=PiiInputTooLarge`・`requestId`の固定形式と`Cache-Control: no-store`で返します。受信上限内のJSON・必須値・言語等の入力不正はHTTP 400・`PiiInvalidInput`です。MCPもJSON-RPC全体ではなく`params.arguments`の同じコンパクトJSON予算で判定し、超過時はREST実行前に上記の400／`-32602`で拒否します。文字列値をNFC/NFKC等で正規化したり、前後の空白を削除したり、切り詰めたりしません。Languageの5,120 Unicodeテキスト要素とは別の上限であり、他のAPIの`maxRequestBytes`は引き続き受信本文のbyte数です。
+PIIの`maxRequestBytes=1000000`は、`text`・`language`をコンパクトJSONへ再直列化したUTF-8 byte数の上限です。JSONエスケープ等を考慮した解析前の受信枠はその6倍で、上流Language用の包みを付けた最終本文にも提供元の1,000,000 bytes上限を検査します。容量超過はHTTP 413・`PiiInputTooLarge`・`requestId`と`Cache-Control: no-store`、入力不正はHTTP 400・`PiiInvalidInput`です。MCPも`params.arguments`に同じ予算を適用します。文字列を正規化・切り詰めせず、Languageの5,120 Unicodeテキスト要素などのモデル制約は提供元で検証します。他の通常AI APIは受信本文全体にAPIM Classicの500 MiB枠を適用します。
 
 上記のPII入力エラー形式はAPIMまで到達した要求に適用します。壊れたJSONはApplication GatewayのWAFで先にHTTP 403となる場合があり、この場合はAPIMの`requestId`がないため、WAFの診断記録で拒否を確認します。
 
@@ -178,7 +178,7 @@ Realtime はモデルを接続先に固定します。WebRTC は一つの公開 
 同じチケットを使う構成を増やしません。
 [Azure Realtime の接続方法とセッション](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio)
 
-Microsoft Decisionは`Microsoft-Decision-1` v1／DataZoneStandard／初期割当1、配備名`decision-1`です。`state`と`noul`・`choice`・`score`を受け、型付き判断を返します。上流は`/providers/microsoft/v1/systemone`、公開上限8,192byteです。初期28モデルのうちDecisionはPreview、ほかは選定時GAです。版・SKU・quota名の正本はconfigで、`gpt-6.1-sol`の初期capacityは50、`gpt-5.6-luna`は5、ほかは1です。1は初期割当値です。[Decision仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision)
+Microsoft Decisionは`Microsoft-Decision-1` v1／DataZoneStandard／初期割当1、配備名`decision-1`です。`state`と`noul`・`choice`・`score`を受け、型付き判断を返します。上流は`/providers/microsoft/v1/systemone`、Gatewayの受付枠はAPIM Classicの技術上限500 MiBです。初期28モデルのうちDecisionはPreview、ほかは選定時GAです。版・SKU・quota名の正本はconfigで、`gpt-6.1-sol`の初期capacityは50、`gpt-5.6-luna`は5、ほかは1です。1は初期割当値です。[Decision仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision)
 
 Cohereは共有Foundryのprovider routeとMIを使い、利用者のtokenを転用しません。採用版の実route・MI対応・PE到達は受入で確認します。`disableLocalAuth:true`を緩めたりAPIキーへ自動fallbackしたりせず、401／403等は相関と権限を調べます。[CohereのAzure例](https://github.com/cohere-ai/cohere-azure-workshops)、[Foundry認証](https://learn.microsoft.com/en-us/azure/foundry/concepts/authentication-authorization-foundry#feature-support-matrix)
 
@@ -191,7 +191,7 @@ Cohereは共有Foundryのprovider routeとMIを使い、利用者のtokenを転�
 | 双方向会話・入力音声認識 | Realtime／Voice Live WebSocket。Voice Liveの`azure-speech`入力認識も画面で照合 |
 | ブラウザーの低遅延会話 | Realtime／Voice Live WebRTC。制御はGateway、mediaは端末とサービス間 |
 
-Speech TTSの正式コンソールは、`input.body`に`text`・`voice`・`language`だけを持つJSONを送ります。BFFが文章をXMLエスケープし、公開APIへは従来どおり`application/ssml+xml`を送ります。文章は空でない10,000文字以下、voiceはSpeechのlocale付き音声名、languageは35文字以下のBCP 47タグを検査し、変換後のUTF-8 byte上限も適用します。構造化入力で任意のXML属性は追加できず、生SSMLでもDTD・実体定義は拒否します。既存の生SSML文字列は上級者向けに残しますが、その文字列がWAFを通ることは保証しません。
+Speech TTSのコンソールは`text`・選択した`voice`・`rate`から安全なSSMLを作ります。BFFが文章をXMLエスケープし、公開APIへは従来どおり`application/ssml+xml`を送ります。文章は空でないことと制御文字を検査し、独自の10,000文字枠は設けず、実行環境の文字列上限と変換後のUTF-8 byte上限を適用します。音声名・localeは登録済み音声から解決し、構造化入力で任意のXML属性は追加できません。生SSMLでもDTD・実体定義は拒否します。既存の生SSML文字列は上級者向けに残しますが、その文字列がWAFを通ることは保証しません。
 
 | 例 | `input.body` |
 | --- | --- |

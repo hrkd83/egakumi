@@ -41,6 +41,14 @@ function syntheticPng(): string {
 const png = syntheticPng();
 const jpeg = Buffer.from([255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 255, 217]).toString("base64");
 
+test("複数画像とネイティブWebPを受理し、元の応答を保持する", () => {
+  const webp = Buffer.from("RIFF0000WEBPVP8 synthetic-raster", "ascii").toString("base64");
+  assert.equal(rasterBase64Mime(webp), "image/webp");
+  const raw = { data: [{ b64_json: png }, { b64_json: webp }] };
+  const result = parseImageGenerationResult(raw, openai.id, 1);
+  assert.equal(result.images.length, 2); assert.deepEqual(result.rawResponse, raw);
+});
+
 /** 実際のAPIと同じ入力制約を通し、外部通信と本人情報だけを固定します。 */
 function dependencies(overrides: Partial<ImageGenerationDependencies> = {}): ImageGenerationDependencies {
   return { readSession: async () => actor, readPortalOrigin: () => portalOrigin, readModels: () => models,
@@ -57,13 +65,13 @@ test("画像入力はプロンプトを受け付け、任意接続先・キー�
   const input = defaultImageInput(openai);
   assert.ok(imageGenerationInputSchema.safeParse(input).success);
   for (const extra of [{ apiKey: secret }, { url: "https://other.invalid" }, { n: 100 }, { stream: true }]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, ...extra }).success, false);
-  for (const width of [255, 1025, 512.5, "512", null]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, width }).success, false);
+  for (const width of [0, -1, 512.5, "512", null]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, width }).success, false);
 });
 
-test("OpenAIは正本のn1・1024x1024・lowに限定し、入力プロンプトを使う", () => {
-  const body = buildImageGenerationRequest(openai, defaultImageInput(openai));
-  assert.deepEqual(body, { model: openai.id, prompt: SAMPLE_IMAGE_PROMPT, n: 1, size: "1024x1024", quality: "low", output_format: "png" });
-  for (const changed of [{ size: "2048x2048" }, { quality: "high" }, { outputFormat: "jpeg" as const }, { width: 512 }]) assert.throws(() => buildImageGenerationRequest(openai, { ...defaultImageInput(openai), ...changed }));
+test("OpenAIは複数枚・高品質・大きな寸法を提供元へ送信できる", () => {
+  const input = { ...defaultImageInput(openai), count: 3, size: "2048x2048", quality: "high" };
+  assert.deepEqual(buildImageGenerationRequest(openai, input), { model: openai.id, prompt: SAMPLE_IMAGE_PROMPT, n: 3, size: "2048x2048", quality: "high", output_format: "png" });
+  for (const changed of [{ count: 11 }, { size: "bad" }, { quality: "<script>" }, { outputFormat: "svg" as "png" }]) assert.throws(() => buildImageGenerationRequest(openai, { ...input, ...changed }));
 });
 
 test("入力プロンプトの引用符・改行を保持し、任意の生成URLは受け付けない", async () => {
@@ -82,7 +90,7 @@ test("FLUXはサイズと形式だけを選び、API専用本文とproプロフ�
   assert.deepEqual(buildImageGenerationRequest(flux, input), { model: flux.id, prompt: SAMPLE_IMAGE_PROMPT, num_images: 1, width: 512, height: 768, output_format: "jpeg" });
   assert.equal(getImageGenerationHeaders(flux)["X-Egakumi-Profile"], "pro");
   assert.equal(getImageGenerationHeaders(openai)["X-Egakumi-Profile"], undefined);
-  for (const extra of [{ width: 255 }, { height: 1025 }, { width: 512.5 }, { quality: "high" }, { size: "auto" }]) assert.throws(() => buildImageGenerationRequest(flux, { ...input, ...extra }));
+  for (const extra of [{ width: 0 }, { count: 2 }, { width: 512.5 }, { quality: "high" }, { size: "auto" }]) assert.throws(() => buildImageGenerationRequest(flux, { ...input, ...extra }));
 });
 
 test("コード例は全言語で固定公開URLと現在の本文・プロファイルを使い、秘密実値を含めない", () => {
@@ -119,9 +127,9 @@ test("同一オリジン・本人認証・JSONがない場合は画像を生成�
 test("制約違反とパス改変は購読キーの取得・上流通信より先に拒否する", async () => {
   let calls = 0;
   const context = dependencies({ resolveSubscriptionKey: async () => { calls++; return secret; } });
-  for (const input of [{ ...defaultImageInput(openai), modelId: "unknown-model" }, { ...defaultImageInput(openai), quality: "high" }, { ...defaultImageInput(flux), width: 2000 }, { ...defaultImageInput(openai), prompt: "" }]) assert.equal((await handleImageGeneration(request(input), context)).status, 400);
+  for (const input of [{ ...defaultImageInput(openai), modelId: "unknown-model" }, { ...defaultImageInput(openai), count: 11 }, { ...defaultImageInput(flux), width: 0 }, { ...defaultImageInput(openai), prompt: "" }]) assert.equal((await handleImageGeneration(request(input), context)).status, 400);
   assert.equal((await handleImageGeneration(request(), { ...context, readModels: () => [{ ...openai, path: "/models/other/generate" }] })).status, 400);
-  assert.equal((await handleImageGeneration(request(undefined, { "Content-Length": "131073" }), context)).status, 413);
+  assert.equal((await handleImageGeneration(request(undefined, { "Content-Length": "524288001" }), context)).status, 413);
   assert.equal((await handleImageGeneration(request(), { ...context, readModels: () => [{ ...openai, maxRequestBytes: 10 }] })).status, 413);
   assert.equal(calls, 0);
 });
@@ -171,7 +179,7 @@ test("上流エラー・不正Content-Type・大きすぎる画像を成功扱�
   assert.deepEqual(await rate.json(), { error: { code: "RateLimitExceeded" }, retryAfterSeconds: 20 });
   const rejectedResponseHeaders: Record<string, string>[] = [{ "Content-Type": "text/html" }, { "Content-Type": "application/json", "Content-Length": String(MAX_IMAGE_RESPONSE_BYTES + 1) }];
   for (const headers of rejectedResponseHeaders) assert.equal((await handleImageGeneration(request(), dependencies({ fetch: async () => new Response("{}", { headers }) }))).status, 502);
-  for (const body of [{ data: [] }, { data: [{ b64_json: Buffer.from("<svg>unsafe</svg>").toString("base64") }] }, { data: [{ b64_json: png }, { b64_json: png }] }, { data: [{ url: "http://127.0.0.1/test" }] }, { error: { code: "blocked" }, data: [{ b64_json: png }] }]) assert.equal((await handleImageGeneration(request(), dependencies({ fetch: async () => Response.json(body) }))).status, 502);
+  for (const body of [{ data: [] }, { data: [{ b64_json: Buffer.from("<svg>unsafe</svg>").toString("base64") }] }, { data: [{ url: "http://127.0.0.1/test" }] }, { error: { code: "blocked" }, data: [{ b64_json: png }] }]) assert.equal((await handleImageGeneration(request(), dependencies({ fetch: async () => Response.json(body) }))).status, 502);
 });
 
 test("JSONのUnicodeエスケープで隠れた購読キーも画像の正常JSONへ含めない", async () => {

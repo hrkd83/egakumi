@@ -1,7 +1,8 @@
 import type { RealtimeModel } from "./model-types.ts";
 import { decodeRealtimeAudio } from "./realtime-audio.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
-import { REALTIME_MAX_AUDIO_BYTES, REALTIME_MAX_EVENTS, resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { resolveRealtimeOutputTokens, type RealtimeInput, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 
 /** マイクからの自然な会話に応じるための共通指示です。外部操作や固定の返答を要求しません。 */
 export const REALTIME_CONVERSATION_INSTRUCTIONS = "日本語で自然に会話してください。利用者の発話を聞き、簡潔で分かりやすく応答してください。ツールの呼び出しや外部の操作は行わないでください。";
@@ -49,7 +50,7 @@ const publicEventTypes = new Set(["session.created", "session.updated", "session
 /** 一つの発話が終わっても接続を維持する、継続会話のプロトコル検証です。 */
 export class RealtimeProtocol {
   readonly model: RealtimeModel;
-  ready = false; terminal = false; responseActive = false; outputAudioBytes = 0; eventCount = 0;
+  ready = false; terminal = false; responseActive = false; outputAudioBytes = 0;
   private committedItems = new Set<string>();
   private completedItems = new Set<string>();
   private transcriptionIndexes = new Map<string, number>();
@@ -60,7 +61,7 @@ export class RealtimeProtocol {
 
   /** 会話の複数turnを検査し、サービス終了と発話完了を別の状態として扱います。 */
   accept(raw: unknown, elapsedMs: number): RealtimeStreamEvent[] {
-    if (++this.eventCount > REALTIME_MAX_EVENTS || !raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid service event");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid service event");
     const event = raw as Record<string, unknown>; const type = event.type;
     if (typeof type !== "string" || type.length > 100) throw new Error("Missing service event type");
     if (type === "error" || type === "session.error" || type === "conversation.item.input_audio_transcription.failed") throw new Error("Service rejected operation");
@@ -75,7 +76,7 @@ export class RealtimeProtocol {
     if (type === "response.created") { this.responseActive = true; this.outputCharacters = 0; }
     if (type === "input_audio_buffer.committed" && this.model.family === "transcription") {
       const item = this.itemId(event);
-      if (this.committedItems.has(item) || this.completedItems.has(item) || this.committedItems.size >= 100 || this.transcriptionIndexes.size >= 3000) throw new Error("Invalid committed item");
+      if (this.committedItems.has(item) || this.completedItems.has(item) || this.committedItems.size >= 100 || !Number.isSafeInteger(this.transcriptionIndexes.size)) throw new Error("Invalid committed item");
       // 接続IDは公開せず、commit順の表示用番号で遅れて確定した字幕を対応付けます。
       const segmentIndex = this.transcriptionIndexes.size;
       this.transcriptionIndexes.set(item, segmentIndex);
@@ -92,7 +93,7 @@ export class RealtimeProtocol {
     if (isAudio) {
       if (!this.ready || this.model.family === "transcription" || typeof event.delta !== "string") throw new Error("Unexpected audio");
       const bytes = decodeRealtimeAudio(event.delta); this.outputAudioBytes += bytes.length;
-      if (bytes.length > 250_000 || this.outputAudioBytes > REALTIME_MAX_AUDIO_BYTES) throw new Error("Output audio exceeds limit");
+      if (bytes.length > 250_000) throw new Error("Output audio exceeds limit");
       events.push({ type: "audio", delta: event.delta, sampleRate: 24000 });
     }
     const input = type === "conversation.item.input_audio_transcription.delta" || type === "conversation.item.input_audio_transcription.completed" || type === "session.input_transcript.delta";
@@ -100,7 +101,7 @@ export class RealtimeProtocol {
     if (input || output) {
       if (!this.ready) throw new Error("Transcript before session ready");
       const final = type.endsWith(".completed") || type.endsWith(".done"); const text = final ? event.transcript : event.delta;
-      if (typeof text !== "string" || text.length > 16_000) throw new Error("Invalid transcript");
+      if (typeof text !== "string" || text.length > MAX_RUNTIME_STRING_CHARACTERS) throw new Error("Invalid transcript");
       if (this.model.family === "transcription") {
         const item = this.itemId(event);
         if (event.content_index !== 0 || this.completedItems.has(item)) throw new Error("Invalid transcription identity");
@@ -113,7 +114,7 @@ export class RealtimeProtocol {
         }
         if (final) this.completeTranscription(item, text);
       }
-      if (output && this.model.family !== "live") { this.outputCharacters = final ? text.length : this.outputCharacters + text.length; if (this.outputCharacters > 16_000) throw new Error("Output transcript exceeds limit"); }
+      if (output && this.model.family !== "live") { this.outputCharacters = final ? text.length : this.outputCharacters + text.length; if (this.outputCharacters > MAX_RUNTIME_STRING_CHARACTERS) throw new Error("Output transcript exceeds runtime string limit"); }
       events.push({ type: "transcript", role: input ? "input" : "output", text, final,
         ...(this.model.family === "transcription" ? { segmentIndex: this.transcriptionIndexes.get(this.itemId(event))! } : {}) });
     }
@@ -133,5 +134,5 @@ export class RealtimeProtocol {
   /** 本文とは別に保持する相関IDを検査し、クライアントへは公開しません。 */
   private itemId(event: Record<string, unknown>): string { if (typeof event.item_id !== "string" || !/^[a-zA-Z0-9_-]{1,200}$/.test(event.item_id)) throw new Error("Invalid input identity"); return event.item_id; }
   /** 確定した発話の状態だけを閉じます。認識完了後も次の発話を受け付けます。 */
-  private completeTranscription(item: string, text: string): void { if (this.completedItems.has(item) || this.completedItems.size >= 3000 || text.length > 16000) throw new Error("Invalid completed transcription"); this.committedItems.delete(item); this.completedItems.add(item); }
+  private completeTranscription(item: string, text: string): void { if (this.completedItems.has(item) || text.length > MAX_RUNTIME_STRING_CHARACTERS) throw new Error("Invalid completed transcription"); this.committedItems.delete(item); this.completedItems.add(item); }
 }

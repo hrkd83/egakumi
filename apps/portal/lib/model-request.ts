@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
 import type { TextGenerationModel } from "./model-types.ts";
 
@@ -7,18 +8,14 @@ export function getMinimumTextOutputTokens(model: Pick<TextGenerationModel, "ope
   return model.minOutputTokens ?? (model.operationId === "responses-create" ? 16 : 1);
 }
 
-/** 入力欄の文字数上限です。実際のAPI本文には別途UTF-8バイト数の上限を適用します。 */
-export const MAX_TEXT_MESSAGE_CHARACTERS = 32_000;
-/** モデルのトークン上限とは別に、Portalが保持・中継する応答量を制限します。 */
-export const MODEL_MAX_RESPONSE_BYTES = 32 * 1_048_576;
-/** Responses APIの最終イベントには完成文全体が含まれるため、単一イベントにも十分な枠を設けます。 */
-export const MODEL_MAX_EVENT_BYTES = 16 * 1_048_576;
-/** 細かいトークン断片も扱いながら、無限イベント列を停止するための上限です。 */
-export const MODEL_MAX_STREAM_EVENTS = 1_000_000;
-/** 長い推論・出力を許容するPortal側の期限です。経路や提供元の期限を延長するものではありません。 */
-export const MODEL_REQUEST_TIMEOUT_MS = 600_000;
-/** JSON応答はrawResponseと表示文を併記するため、上流本文には全体枠の半分を割り当てます。 */
-export const MODEL_MAX_UPSTREAM_JSON_BYTES = MODEL_MAX_RESPONSE_BYTES / 2 - 16_384;
+/** 対応する実行環境の単一文字列の技術上限です。モデルの入力枠は提供元が判定します。 */
+export const MAX_TEXT_MESSAGE_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
+/** 非ストリーム応答を扱うAPIM経路の技術上限です。SSE全体の累積量は制限しません。 */
+export const MODEL_MAX_RESPONSE_BYTES = MAX_BUFFERED_BODY_BYTES;
+/** 単一SSEイベントはJavaScript文字列の技術上限まで扱います。 */
+export const MODEL_MAX_EVENT_CHARACTERS = MAX_RUNTIME_STRING_CHARACTERS;
+/** 上流JSONにはAPIMのバッファー可能量を適用し、独自の小容量枠は設けません。 */
+export const MODEL_MAX_UPSTREAM_JSON_BYTES = MAX_BUFFERED_BODY_BYTES;
 /** テキスト生成画面とサーバーで共通に使う入力制約です。モデルごとの上限はサーバーでも確認します。 */
 export const textGenerationInputSchema = z.object({
   modelId: z.string().min(1).max(160),

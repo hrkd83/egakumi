@@ -1,6 +1,6 @@
 # APIMポリシー一覧
 
-2026年10月31日更新。Graphと文書解析を含む標準19 APIの登録資材を説明する。登録資材の構成と対象環境への反映状況は分けて扱い、実APIM・Microsoftサインイン・各クライアントの疎通は配備後に受入する。
+2026年11月11日更新。Graphと文書解析を含む標準19 APIの登録資材を説明する。登録資材の構成と対象環境への反映状況は分けて扱う。容量・入力制約の緩和と文書非同期APIは資材を変更した段階であり、Azure反映・実経路の受入は未実施。
 
 ## 要求が通る順序
 
@@ -33,7 +33,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 | --- | --- |
 | 共通処理の継承 | `<base/>`と完了マーカーを確認する。設定不足は503 |
 | 操作・モデル | 公開Operationと固定モデル・profile・URI・queryを照合する |
-| 入力・出力上限 | 本文サイズ、型、配列・文字列、生成トークン上限を検査する |
+| 入力・出力上限 | APIMの技術上限、型・必須構造、指定時のモデル別出力上限を検査。試験用の小容量・固定件数は標準AI APIへ追加しない |
 | 回数制限 | 検証済み購読IDをcounterに使用。追加の本人資格情報で利用枠を切り替えない |
 | 購読プロファイル | `subscription-profile.xml`の固定処理をAPIへ展開し、PortalのSQL設定を内部APIから取得。正常な値を30秒キャッシュし、取得障害を無制限へ変換しない |
 | LLMトークン上限 | `token-limit.xml`を対応HTTP APIだけから参照。プロファイルの毎分・期間内トークン数をAPIM標準ポリシーへ渡す。未設定は制限なし |
@@ -48,17 +48,27 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 | DeepSeek・Mistral・Grok Chat | `compatible`内のモデルごとの上限を検査 | `max_tokens`。DeepSeek 384,000／Grok 500,000。Mistralは未確認値を作らず自動値 |
 | Model Router | `router` profileからRouter配備を呼ぶ | 振り分け先で変わるため、固定最大値を設定せず自動値 |
 | Responses | モデル別の上限を検査し`store=false`へ設定 | `response`／`pdf`とも各モデル128,000。クライアントが会話入力を送る |
-| FLUX 2 flex／pro | profileとモデルを照合し、profileの固定`backendUrlTemplate`へ書換え | 生成／編集の2 Operationを共用。既定flex、proは明示選択 |
-| GPT Image | 本文またはURL配備名を照合しAzure用URIへ書換え | 生成3モデル、編集のアップロードは4 MiB以内 |
-| Embedding・Rerank | モデル・入力配列・件数・サイズを検査 | 検索インデックス側のモデル・次元・版と合わせる |
-| ファイル文字起こし | URLの配備名とmultipartサイズを検査 | `gpt-transcribe`、4 MiB以内 |
-| Speech | SSML／WAVとサイズを検査し、Speech用URI・ヘッダー・Entra認証形式へ変換 | TTS 8 KiB、STT 1 MiB |
-| Decision | 配備名と型付き要求を検査し、固定の`/systemone`へ転送 | `decision-1`、8 KiB |
+| FLUX 2 flex／pro | profileとモデルを照合し、profileの固定`backendUrlTemplate`へ書換え | 既定flex、proは明示選択。提供元の出力1枚は維持し、1024固定を撤廃 |
+| GPT Image | 本文またはURL配備名を照合しAzure用URIへ書換え | 生成3モデル、指定時の`n`は1〜10。1024・低品質固定を撤廃し、寸法・品質・編集入力は提供元の制約に従う |
+| Embedding・Rerank | モデル・型・非空入力・次元を検査 | Embeddingの16件固定を撤廃。`top_n`は任意、指定時は文書数以内。検索側のモデル・次元・版を合わせる |
+| ファイル文字起こし | URLの配備名とmultipart形式を検査 | `gpt-transcribe`。Gatewayの4 MiB枠を撤廃し、提供元のファイル制約に従う |
+| Speech | SSML／WAVを検査し、Speech用URI・ヘッダー・Entra認証形式へ変換 | TTS 8 KiB・STT 1 MiBの独自枠を撤廃。DTD／ENTITY拒否、対応形式・提供元の時間制約は維持 |
+| Decision | 配備名と型付き要求を検査し、固定の`/systemone`へ転送 | `decision-1`。8 KiBの独自枠を撤廃 |
 | PII | `{text,language}`を検査しLanguage用要求・結果へ変換 | 固定のPIIモデル版、対応言語と警告コードを照合。生成MCPも同じREST処理を使う |
 | Graph /me | CMの本人接続を検査し、本人のユーザー情報を固定`$select`で取得 | 氏名・所属・連絡先・アカウント状態など12属性。任意のGraph URLや属性追加は不可 |
-| Document Analysis | ファイルの形式・サイズとRead／Layoutモデルを検査。上流の非同期解析を開始し、固定ホストの結果だけを照会 | 1 MiB、最大約60秒、上流結果4 MiB。詳細は[文書解析の契約](document-analysis.md) |
+| Document Analysis | raw binaryの開始POSTと、署名チケット・同じ購読での状態GETを提供 | 入力500,000,000 bytes、結果500 MiB、受付202→状態GET→完了200。[文書解析の契約](document-analysis.md) |
 
-出力上限の正本は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json)。HTTPでは選択したモデルに対応する上限を検査する。Realtime WebRTCの作成時の512は初期設定であり、モデル上限4,096とは区別する。WebSocket確立後やWebRTCのDataChannelはAPIMポリシーで検査しないため、Portalが送信する設定と、Gatewayが全クライアントへ強制する制限は同一ではない。
+通常のAI APIの`maxRequestBytes`はAPIM Classicのバッファー上限**500 MiB（524,288,000 bytes）**に揃える。JSONはBase64や構造を含むUTF-8本文全体、multipartはファイル以外の境界・項目も含む。提供元のモデル・形式・料金プランによる上限が小さい場合は提供元が拒否するため、500 MiBは各モデルの受付保証ではない。Content-Lengthは必須化せず、chunked入力も実際の受信容量で検査する。[APIMの技術上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)
+
+出力上限の正本は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json)。HTTPの出力トークン項目は省略でき、指定時は選択モデルの公表上限を検査する。不明な固定上限を作らない。Realtime WebRTCの作成時の512は初期設定であり、モデル上限4,096とは区別する。WebSocket確立後やWebRTCのDataChannelはAPIMポリシーで検査しないため、Portalが送信する設定と、Gatewayが全クライアントへ強制する制限は同一ではない。
+
+WAFは対象AI完全パスだけ2000 KiBまで本文を検査し、サイズ超過だけでは拒否しない。認証・管理系の既定防御は維持する。AppGWは既存の設定可能な600秒、FWの通信先・ポート・IDPSは変更しない。Chat／Responsesの同期・SSEも維持する。[WAFの範囲](../testing/waf-compatibility.md)
+
+APIMの`forward-request`は引き続き`timeout="240"`・`buffer-response="false"`。240秒はバックエンドの応答ヘッダー待機であり、SSE全体の処理時間上限とは区別する。[forward-request仕様](https://learn.microsoft.com/en-us/azure/api-management/forward-request-policy)
+
+Portalは通常HTTP／SSEに独自の総処理時間枠を設けない。Node HTTPサーバーのヘッダー受信60秒・本文受信300秒は低速送信への通信保護として維持する。後者はアップロード完了までの期限であり、受信後のモデル処理やSSEの総時間には適用しない。
+
+購読認可、明示された回数・トークン枠、本人接続の有効期限と更新リースは維持する。容量の緩和で、停止キー・無権限の操作・失効済み接続を許可しない。
 
 ### Live・Realtime・文字起こしWSS
 
@@ -72,7 +82,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 | **文字起こしWSS** | 購読キー検証・固定上流・`intent=transcription`・接続回数上限 | `session.update`でモデルを指定、音声入力・途中／確定テキスト |
 | Voice Live | Speechサービス用の固定接続先・query・MI認証 | Voice Live固有の音声・WebRTC制御 |
 
-Live作成の入力上限はJSON 128 KiB、SDP 65,536文字、instructions 8,192文字。初期voiceは`marin`。失敗入力は400、形式が不正な上流の成功応答は502へ整える。[Live作成のXML](../../apps/gateway/apim/policies/live-create.xml)
+Live作成は共通の500 MiB枠と型・SDP形式を検査し、instructionsの独自文字数枠を設けない。初期voiceは`marin`。失敗入力は400、形式が不正な上流の成功応答は502へ整える。[Live作成のXML](../../apps/gateway/apim/policies/live-create.xml)
 
 WSSの`websocket.session.models`は接続後イベントで使うモデルのクライアント契約を表す。APIMが検査するのは接続開始時の要求である。frame内のモデル・音声・設定とセッション継続時間は、アプリと上流サービスで管理・検査する。HTTP要求回数と音声セッションの利用量は別に計測する。[Microsoft公式のWebSocket制約](https://learn.microsoft.com/en-us/azure/api-management/websocket-api)
 

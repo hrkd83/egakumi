@@ -6,6 +6,7 @@ import unittest
 
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, gateway, policy, api_mapping, ready_gateway, _writable_policy
 from deployment.helpers.waf_names import policy_id, policy_name
+from deployment.helpers.waf_body import ai_body_settings
 from test_portal_gateway import Transport
 from gateway_ingress import DOCUMENT_PATH, DOCUMENT_RULE_NAME, document_upload_limit, _document_policy, _raw_body_policy, _path_gateway, configure_gateway_document_waf
 from bicep_helpers import compile_bicep
@@ -22,9 +23,15 @@ def configuration():
 
 
 class GatewayDocumentWafTests(unittest.TestCase):
-    def test_only_the_fixed_document_contract_receives_one_mib_upload(self):
-        self.assertEqual(document_upload_limit(configuration()),1048576)
-        for target,value in [('path','other/api'),('kind','registeredOperation'),('limit',1048577),('limit',True),('route','/analyze/*')]:
+    def test_only_the_canonical_document_post_receives_the_api_upload_limit(self):
+        original = configuration()
+        expected = original['apiDefinitions'][0]['authorization']['operationConstraints']['analyze_document']['maxRequestBytes']
+        self.assertEqual(document_upload_limit(original), expected)
+        for maximum in (1024, 1048577, 500000000):
+            changed = configuration()
+            changed['apiDefinitions'][0]['authorization']['operationConstraints']['analyze_document']['maxRequestBytes'] = maximum
+            self.assertEqual(document_upload_limit(changed), maximum)
+        for target,value in [('path','other/api'),('kind','registeredOperation'),('limit',0),('limit',True),('route','/analyze/*')]:
             config=configuration()
             api=config['apiDefinitions'][0]
             if target=='path': api['path']=value
@@ -33,12 +40,13 @@ class GatewayDocumentWafTests(unittest.TestCase):
             with self.subTest(target=target),self.assertRaises(ValueError):
                 document_upload_limit(config)
 
-    def test_policy_changes_only_observed_mime_rule_and_keeps_full_body_inspection(self):
+    def test_document_acceptance_is_independent_of_waf_inspection_prefix(self):
         base=policy()
         desired=_document_policy(base,1048576)
         expected=_raw_body_policy(base)
-        expected['properties']['policySettings'].update({'requestBodyCheck':True,'requestBodyEnforcement':True,'maxRequestBodySizeInKb':1025,'requestBodyInspectLimitInKB':1025})
+        expected['properties']['policySettings'] = ai_body_settings(base['properties']['policySettings'])
         self.assertEqual(desired,expected)
+        self.assertEqual(_document_policy(base, 500000000), expected)
         self.assertEqual(base,policy())
 
     def test_syntax_and_sqli_rules_are_retained_and_syntax_disable_is_rejected(self):
@@ -67,12 +75,13 @@ class GatewayDocumentWafTests(unittest.TestCase):
     def test_redeployment_is_readonly_when_policy_and_route_match(self):
         base=policy()
         ready=ready_gateway(_path_gateway(configuration(),gateway(path_based=True),GATEWAY_ID,POLICY_ID,paths=[DOCUMENT_PATH],rule_name=DOCUMENT_RULE_NAME,policy_key='g-document-upload'))
-        assigned=_document_policy(base,1048576)
+        maximum = document_upload_limit(configuration())
+        assigned=_document_policy(base,maximum)
         assigned.update({'id':POLICY_ID,'etag':'"document-v1"'})
         assigned['properties']['provisioningState']='Succeeded'
         transport=Transport([{'statusCode':200,'body':ready},{'statusCode':200,'body':base},{'statusCode':200,'body':assigned}])
         receipt=configure_gateway_document_waf(configuration(),transport)
-        self.assertEqual(receipt['maxRequestBytes'],1048576)
+        self.assertEqual(receipt['maxRequestBytes'],maximum)
         self.assertEqual(receipt['excludedRuleIds'],[])
         self.assertEqual(receipt['disabledRuleIds'],['920420','930110'])
         self.assertEqual(receipt['retainedRuleIds'],['920470','930100'])
@@ -113,7 +122,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
 
     resource = waf_fixtures.SsmlWafTests.resource
 
-    def test_main_derives_only_the_fixed_binary_one_mib_document_contract(self):
+    def test_main_derives_only_the_canonical_binary_document_post_independent_of_size(self):
         from standard_apis import infrastructure_api_definitions
         original = configuration()['apiDefinitions'][0]
         expression = self.main['variables']['documentUploadPaths']
@@ -121,11 +130,14 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
             config = {'apiDefinitions': [], 'infrastructureApiDefinitions': infrastructure_api_definitions([api])}
             return GatewayExpression(expression, self.main['variables']).evaluate({'configuration': config})
         self.assertEqual(paths(original), [DOCUMENT_PATH])
-        for field, value in [('path', 'tools/other/v1'), ('method', 'GET'), ('urlTemplate', '/analyze/*'),
-                             ('kind', 'registeredOperation'), ('bodyFormat', 'json'), ('maxRequestBytes', 1048577),
-                             ('maxRequestBytes', 1024)]:
+        for maximum in (1024, 1048577, 500000000):
             changed = copy.deepcopy(original)
-            if field == 'path': changed[field] = value
+            changed['authorization']['operationConstraints']['analyze_document']['maxRequestBytes'] = maximum
+            self.assertEqual(paths(changed), [DOCUMENT_PATH])
+        for field, value in [('path', 'tools/other/v1'), ('method', 'GET'), ('urlTemplate', '/analyze/*'),
+                             ('kind', 'registeredOperation'), ('bodyFormat', 'json'), ('name', 'other-api')]:
+            changed = copy.deepcopy(original)
+            if field in ('path', 'name'): changed[field] = value
             elif field in ('method', 'urlTemplate'): changed['operations'][0][field] = value
             else: changed['authorization']['operationConstraints']['analyze_document'][field] = value
             with self.subTest(field=field, value=value):
@@ -143,9 +155,10 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
         self.assertEqual(configured, expected)
         self.assertEqual(configured['policySettings']['mode'], 'Prevention')
         self.assertTrue(configured['policySettings']['requestBodyCheck'])
-        self.assertTrue(configured['policySettings']['requestBodyEnforcement'])
-        self.assertEqual(configured['policySettings']['maxRequestBodySizeInKb'], 1025)
-        self.assertEqual(configured['policySettings']['requestBodyInspectLimitInKB'], 1025)
+        self.assertFalse(configured['policySettings']['requestBodyEnforcement'])
+        self.assertFalse(configured['policySettings']['fileUploadEnforcement'])
+        self.assertEqual(configured['policySettings']['maxRequestBodySizeInKb'], 2000)
+        self.assertEqual(configured['policySettings']['requestBodyInspectLimitInKB'], 2000)
         self.assertEqual(configured['policySettings']['logScrubbing'], baseline['policySettings']['logScrubbing'])
         self.assertEqual(configured['customRules'][:len(baseline['customRules'])], baseline['customRules'])
         self.assertEqual(len(configured['customRules']), len(baseline['customRules']) + 4)

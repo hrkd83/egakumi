@@ -1867,7 +1867,8 @@
         "maxRequestBytes": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 4194304
+          "maximum": 524288000,
+          "description": "要求全体の受付上限。標準AI APIはClassic APIMの本文バッファー技術上限500 MiB。モデルのファイル単位・token上限は提供元が検査します。"
         },
         "maxOutputTokens": {
           "type": [
@@ -1875,7 +1876,6 @@
             "null"
           ],
           "minimum": 1,
-          "maximum": 1000000,
           "description": "モデル別上限の外側の最大値。不定・非対応のみならnull。"
         },
         "outputTokenParameter": {
@@ -1893,8 +1893,9 @@
           "items": {
             "type": "string"
           },
-          "minItems": 1,
-          "uniqueItems": true
+          "minItems": 0,
+          "uniqueItems": true,
+          "description": "明示的な利用言語の許可リスト。空配列では提供元が対応言語を検査します。"
         },
         "allowedWarningCodes": {
           "type": "array",
@@ -1977,8 +1978,7 @@
               "integer",
               "null"
             ],
-            "minimum": 1,
-            "maximum": 1000000
+            "minimum": 1
           },
           "description": "API・操作で許可したモデルごとの公開上限。nullは不定または非対応。"
         },
@@ -1997,7 +1997,6 @@
         "initialOutputTokens": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 1000000,
           "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
         }
       }
@@ -2023,7 +2022,8 @@
             "realtimeHangup",
             "pii",
             "liveCreate",
-            "documentAnalysis"
+            "documentAnalysis",
+            "documentAnalysisStatus"
           ]
         },
         "parameter": {
@@ -2040,7 +2040,8 @@
         "maxRequestBytes": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 4194304
+          "maximum": 524288000,
+          "description": "要求全体の受付上限。標準AI APIはClassic APIMの本文バッファー技術上限500 MiB。モデルのファイル単位・token上限は提供元が検査します。"
         },
         "maxOutputTokens": {
           "type": [
@@ -2048,7 +2049,6 @@
             "null"
           ],
           "minimum": 1,
-          "maximum": 1000000,
           "description": "モデル別上限の外側の最大値。不定・非対応のみならnull。"
         },
         "outputTokenParameter": {
@@ -2066,8 +2066,9 @@
           "items": {
             "type": "string"
           },
-          "minItems": 1,
-          "uniqueItems": true
+          "minItems": 0,
+          "uniqueItems": true,
+          "description": "明示的な利用言語の許可リスト。空配列では提供元が対応言語を検査します。"
         },
         "allowedWarningCodes": {
           "type": "array",
@@ -2138,8 +2139,7 @@
               "integer",
               "null"
             ],
-            "minimum": 1,
-            "maximum": 1000000
+            "minimum": 1
           },
           "description": "API・操作で許可したモデルごとの公開上限。nullは不定または非対応。"
         },
@@ -2158,7 +2158,6 @@
         "initialOutputTokens": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 1000000,
           "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
         },
         "apiVersion": {
@@ -2171,14 +2170,8 @@
         "maxResponseBytes": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 4194304,
-          "description": "Document分析結果のGateway受信上限。サービスのモデル上限ではありません。"
-        },
-        "timeoutSeconds": {
-          "type": "integer",
-          "minimum": 10,
-          "maximum": 60,
-          "description": "Document分析のGateway待機時間。期限超過後に自動再送しません。"
+          "maximum": 524288000,
+          "description": "Document結果を解析するAPIM Classicのバッファリング技術上限。"
         },
         "embeddingDimensionsByModel": {
           "type": "object",
@@ -2193,13 +2186,11 @@
             "properties": {
               "default": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 1000000
+                "minimum": 1
               },
               "maximum": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 1000000
+                "minimum": 1
               },
               "allowed": {
                 "type": "array",
@@ -2207,13 +2198,19 @@
                 "uniqueItems": true,
                 "items": {
                   "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000
+                  "minimum": 1
                 }
               }
             }
           },
           "description": "モデル別の既定埋め込み次元と上限。allowedを省略した場合は1からmaximumまでの整数。"
+        },
+        "embeddingInputField": {
+          "enum": [
+            "input",
+            "texts"
+          ],
+          "description": "登録した埋め込み提供元の入力フィールド。件数制限とは別に扱います。"
         }
       }
     },

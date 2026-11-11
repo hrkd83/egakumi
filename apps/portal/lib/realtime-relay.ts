@@ -8,7 +8,7 @@ import { getRealtimeEndpoint } from "./realtime-integration.ts";
 import { runRealtimeConversation, type RealtimeConversationCommand } from "./realtime-gateway.ts";
 import { resolveRealtimeVoice } from "./realtime-voices.ts";
 import { handleRealtimeWebRtc } from "./realtime-webrtc.ts";
-import { realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, REALTIME_MAX_STREAM_BYTES, REALTIME_MAX_EVENTS, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { realtimeStreamEventSchema, resolveRealtimeOutputTokens, REALTIME_MAX_DURATION_MS, type RealtimeStreamEvent } from "./realtime-request.ts";
 import { REALTIME_RELAY_PATH, realtimeRelayStartSchema, verifyRealtimeInternalProof, type RealtimeRelayContext } from "./realtime-relay-contract.ts";
 export { REALTIME_RELAY_PATH, realtimeRelayStartSchema, verifyRealtimeInternalProof } from "./realtime-relay-contract.ts";
 export type { RealtimeRelayContext } from "./realtime-relay-contract.ts";
@@ -69,14 +69,14 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
     }
     server.handleUpgrade(request, socket, head, (client) => {
       const cancellation = new AbortController(); let started = false; let stopped = false; let command: ((value: RealtimeConversationCommand) => void) | undefined;
-      let context: RealtimeRelayContext | undefined; let totalBytes = 0; let incomingBytes = 0; let incomingFrames = 0; let alive = true; let work: Promise<void> | undefined;
+      let context: RealtimeRelayContext | undefined; let alive = true; let work: Promise<void> | undefined;
       let stopDeadline: ReturnType<typeof setTimeout> | undefined;
       let doneResolve: () => void = () => undefined; const done = new Promise<void>((resolve) => { doneResolve = resolve; }); active.set(client, { abort: cancellation, done });
       const closeSoon = () => { if (client.readyState === WebSocket.OPEN) client.close(1000); const timer = setTimeout(() => client.terminate(), 1000); timer.unref(); };
       const emit = (value: RealtimeStreamEvent) => {
         if (client.readyState !== WebSocket.OPEN) return;
-        const encoded = JSON.stringify(realtimeStreamEventSchema.parse(value)); totalBytes += Buffer.byteLength(encoded);
-        if (totalBytes > REALTIME_MAX_STREAM_BYTES || client.bufferedAmount > 1_048_576 || context && encoded.includes(context.key)) { cancellation.abort(); throw new Error("Stream consumer unavailable"); }
+        const encoded = JSON.stringify(realtimeStreamEventSchema.parse(value));
+        if (client.bufferedAmount > 1_048_576 || context && encoded.includes(context.key)) { cancellation.abort(); throw new Error("Stream consumer unavailable"); }
         client.send(encoded, (error) => { if (error) cancellation.abort(); });
       };
       const fail = (code: "InvalidRequest" | "GenerationFailed" | "AuthenticationRequired" | "ApiKeyUnavailable" | "ApiKeyAccessUnavailable" = "GenerationFailed") => { try { emit({ type: "error", error: { code } }); } catch { /* 受信側が遅いときも回収処理を優先します。 */ } cancellation.abort(); };
@@ -113,8 +113,7 @@ export function createRealtimeRelay(dependencies: RealtimeRelayDependencies): { 
       };
       client.on("message", (data: RawData, binary: boolean) => {
         try {
-          if (binary) throw new Error("Invalid frame"); const text = data.toString(); incomingBytes += Buffer.byteLength(text);
-          if (incomingBytes > REALTIME_MAX_STREAM_BYTES || ++incomingFrames > REALTIME_MAX_EVENTS) throw new Error("Input limit");
+          if (binary) throw new Error("Invalid frame"); const text = data.toString();
           const value: unknown = JSON.parse(text);
           if (!started) { const input = realtimeRelayStartSchema.parse(value); started = true; clearTimeout(firstFrame); work = execute(input); return; }
           const action = commandSchema.parse(value); if (action.type === "stop") {

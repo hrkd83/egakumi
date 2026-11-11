@@ -4,30 +4,32 @@ Tool Gatewayは、既存のFoundryリソース（`AIServices`）をAPIMのマネ
 
 ## 公開API
 
-`POST https://<gateway-host>/tools/documents/v1/analyze?model=prebuilt-layout`
+`POST https://gateway.example.com/tools/documents/v1/analyze?model=prebuilt-layout`（ホストは合成例）
 
 - `api-key`: このAPIを含む製品の有効な購読キー。
-- `Content-Type`: `application/pdf`、`image/jpeg`、`image/png`、`image/tiff`、`image/bmp`。
-- 本文: ファイルのバイナリ。JSON・ファイルURL・multipartは受け付けません。
-- `Content-Length`: ファイルサイズ。本文とともに上限を検査します。
+- `Content-Type`: PDF、JPEG、PNG、TIFF、BMP、HEIF／HEIC、Office Open XML（Word／Excel／PowerPoint）、HTMLの対応MIME。正確な一覧は[API定義のcontentTypes](../../apps/gateway/apim/apis/document-analysis-v1.json)を参照。
+- 本文: ファイルのraw binary。Base64へ変換せず転送します。JSON・ファイルURL・multipartのGateway直送は受け付けません。
+- `Content-Length`は必須にせず、実際に受信した本文のサイズを検査します。
 - `model`: `prebuilt-read`（文字認識）または`prebuilt-layout`（文字とレイアウト・表）。その他のクエリは受け付けません。
 
-Gatewayのファイル上限は**1 MiB（1,048,576 bytes）**、待機時間は**最大約60秒**、上流結果の受信上限と公開応答の上限はそれぞれ**4 MiB**です。公開応答は`requestId`を追加した後のUTF-8容量も検証します。これらは対話的なGateway利用のための境界であり、Document Intelligence自体の最大処理容量を示していません。ページを暗黙に一部だけ選択することはありません。
+Gatewayの受付は**500,000,000 bytes**、上流結果と公開応答はそれぞれ**500 MiB（524,288,000 bytes）**までです。前者はDocument Intelligence S0の500 MB、後者はAPIM Classicのバッファー上限に合わせています。提供元がF0の場合は4 MBなど、その料金プラン・モデル・形式の制約が先に適用されます。ページを暗黙に一部だけ選択しません。[Document Intelligenceの制約](https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/service-limits?view=doc-intel-4.0.0)、[APIMの技術上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)
 
 ```bash
-curl 'https://<gateway-host>/tools/documents/v1/analyze?model=prebuilt-layout' \
-  -H 'api-key: <YOUR_SUBSCRIPTION_KEY>' \
+curl 'https://gateway.example.com/tools/documents/v1/analyze?model=prebuilt-layout' \
+  -H "api-key: ${GATEWAY_API_KEY}" \
   -H 'Content-Type: application/pdf' \
   --data-binary '@document.pdf'
 ```
 
 ## 応答と処理
 
-正常応答は `{"analyzeResult": {...}, "requestId": "..."}` です。`analyzeResult`は[Document Intelligence 2024-11-30のネイティブ解析結果](https://learn.microsoft.com/rest/api/aiservices/document-models/get-analyze-result?view=rest-aiservices-v4.0%20(2024-11-30))で、`apiVersion`・`modelId`・`content`・`pages`を検査したうえで返します。表や段落などの任意フィールドは、文書と選択モデルにより存在しない場合があります。抽出内容はHTMLとして解釈せず、文字列・構造化データとして表示してください。
+開始POSTは上流の[非同期解析API](https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0%20(2024-11-30))を1回だけ呼び、受付後に**202**と`operationId`・`model`・`statusPath`・`ticket`・`expiresAt`を返します。内部のFoundry URL・`Operation-Location`は公開しません。
 
-上流の[非同期解析API](https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0%20(2024-11-30))へ開始POSTを1回だけ送信し、APIM内でGETの完了確認を繰り返します。呼び出し元には内部のOperation-Location・ジョブID・URLを渡しません。完了確認先は、同じFoundryホスト・選択済みモデル・正しいUUIDの結果パスだけに制限します。
+後続は同じ購読キーと`X-Core-Document-Ticket: <受付時のticket>`で`GET /tools/documents/v1/operations/{operationId}`を呼びます。UUID形式のIDと署名、購読・API・接続先・モデル・期限を照合してから、固定の提供元へGETします。処理中は202と`Retry-After`、完了時は200と`{"analyzeResult": {...}, "requestId": "..."}`です。チケット期限は開始から24時間で、期限切れは410、結果が取得できない場合は404です。購読キーとチケットはサーバー側で保管し、ブラウザー・URL・ログへ出しません。
 
-時間内に完了しなかった場合は`504 DocumentAnalysisTimeout`です。POSTを自動的に再送すると二重処理・追加料金が発生し得るため、GatewayもPortalも自動再送しません。新しい実行が必要かを利用者が判断してください。タイムアウトは上流処理の取消完了を意味しません。
+`analyzeResult`は[Document Intelligence 2024-11-30のネイティブ解析結果](https://learn.microsoft.com/rest/api/aiservices/document-models/get-analyze-result?view=rest-aiservices-v4.0%20(2024-11-30))で、API版・モデル・本文・ページ構造を検査して返します。表や段落などは文書と選択モデルに依存します。抽出内容をHTMLとして実行しないでください。
+
+Portalの画面はFileをraw本文で送り、BFFは形式判別用の先頭と受信byte数だけを検査してGatewayへストリーミングします。ファイル全体をBFFメモリーへ集約せず、元ファイルを一度だけ送信し、以後は状態確認を自動実行します。旧multipart入口も互換用に残します。ブラウザーへ渡すのは本人と選択キーの台帳IDに束縛した暗号化handleです。中止・一時的な通信障害・同じタブの再読込後も状態確認を再開でき、原本や平文チケットは保存しません。画面の中止は上流ジョブの取消を意味しません。最初のPOSTの結果が不明な場合は、二重処理・追加料金を避けるため自動再送しません。
 
 その他の失敗は、`DocumentInvalidInput`・`DocumentInputTooLarge`・`DocumentUnsupportedMediaType`・`DocumentRejected`・`DocumentAnalysisThrottled`・`DocumentAnalysisUnavailable`などの固定コードと追跡IDで返します。共通認可・流量制限の拒否は、Gatewayの共通エラー契約に従います。入力原本・抽出本文・上流の診断本文は監査ログへ含めません。
 
@@ -35,4 +37,6 @@ curl 'https://<gateway-host>/tools/documents/v1/analyze?model=prebuilt-layout' \
 
 `apps/gateway/apim/apis/document-analysis-v1.json`を標準APIとして自動読込し、`released-apis`製品へ関連付けます。既存の検証製品は`pii-users`を使います。`scripts/deploy_gateway.py`がAPI公開に続いて、文書受付の完全パスだけへ専用WAFポリシーを関連付けます。
 
-専用WAFは本文サイズの強制・全文検査を有効に保ちます。WAFが設定上限ちょうどの本文も拒否するため、この完全パスの最大値・検査枠には1 KiBの余裕を設けて1,025 KiBとし、公開契約の1 MiB上限はAPIMで厳密に検証します。文書のバイナリ受付を許可するため、この完全パスに限りOWASP 3.2の`920420`（Content-Typeの許可リスト）を無効にします。Content-Typeの構文検査`920470`、SQLインジェクション規則、その他の共通WAF規則は維持します。受付可能なMIME型とファイル署名・サイズはAPIMの操作ポリシーで別途検証します。他のパス、Gateway全体のWAF、既存の認証・音声API用ポリシーは変更しません。
+Gatewayの`/tools/documents/v1/analyze`とPortalの`/api/tools/documents`の専用WAFはPreventionと本文検査を維持し、先頭**2000 KiB**まで検査します。本文・ファイルのサイズ強制は解除し、検査枠を超える部分は検査せず受け付けます。受付MIMEの`920420`とraw本文の`930110`だけを調整し、URI・query・header・cookieのtraversalは4本のBlock規則で補完します。`920470`・`930100`などの他規則、認証・管理経路の厳格なポリシーは維持します。MIME・ファイル形式・容量はBFF・APIM・提供元でも検証します。[WAFの適用範囲](../testing/waf-compatibility.md)
+
+通常のChat／Responsesの同期・SSE契約は変更しません。AppGWのバックエンド待機時間は既存の既定600秒・設定可能なままで、FWも変更しません。この改修のAzure反映と実経路での受入確認は未実施です。

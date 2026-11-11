@@ -38,7 +38,7 @@
     "operationConstraints": {
       "image-generate": {
         "kind": "bodyModel",
-        "maxRequestBytes": 65536,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
         "allowedModels": [
           "gpt-image-2.5-flare",
@@ -48,22 +48,14 @@
         "integerLimits": {
           "n": {
             "minimum": 1,
-            "maximum": 1,
-            "required": true
+            "maximum": 10,
+            "required": false
           }
-        },
-        "stringChoices": {
-          "size": [
-            "1024x1024"
-          ],
-          "quality": [
-            "low"
-          ]
         }
       },
       "image-edit": {
         "kind": "pathModel",
-        "maxRequestBytes": 4194304,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "multipart",
         "parameter": "deployment",
         "allowedModels": [

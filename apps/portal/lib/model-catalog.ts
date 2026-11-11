@@ -1,4 +1,5 @@
 import "server-only";
+import { MAX_RUNTIME_ARRAY_LENGTH } from "./model-runtime-limits.ts";
 import { z } from "zod";
 import snapshot from "./generated/model-api-definitions.json" with { type: "json" };
 import type { EmbeddingModel, ImageGenerationModel, ModelCategory, ModelCategoryId, ModelOperation, ModelProviderId, RealtimeModel, SpeechModel, TextGenerationModel, TextModelProviderId } from "./model-types.ts";
@@ -172,7 +173,7 @@ export function getTextGenerationModels(): TextGenerationModel[] {
       models.push({
         id, label: id, ...providerFor(id), apiId: definition.name, operationId,
         path: `/${definition.path}${operation.urlTemplate}`, profileId: profile.profileId,
-        maxRequestBytes, maxOutputTokens, minOutputTokens: (profile.integerLimits ?? constraint.integerLimits)?.[outputTokenParameter]?.minimum ?? 1,
+        maxRequestBytes, maxOutputTokens, minOutputTokens: (profile.integerLimits ?? constraint.integerLimits)?.[outputTokenParameter]?.minimum ?? (operationId === "responses-create" ? 16 : 1),
         outputTokenParameter, outputTokenLimitKind: profile.outputTokenLimitKinds?.[id] ?? "configured",
       });
     }
@@ -190,7 +191,7 @@ export function getEmbeddingModels(): EmbeddingModel[] {
     const definition = definitions.find((item) => item.name === apiId);
     const operation = definition?.operations.find((item) => item.name === operationId);
     const constraint = definition?.authorization.operationConstraints[operationId];
-    const maxInputs = constraint?.arrayLimits?.[providerId === "openai" ? "input" : "texts"];
+    const maxInputs = constraint?.arrayLimits?.[providerId === "openai" ? "input" : "texts"] ?? MAX_RUNTIME_ARRAY_LENGTH;
     if (!definition || !operation || !constraint?.maxRequestBytes || !maxInputs || constraint.kind !== "textEmbeddings" || !constraint.embeddingDimensionsByModel) throw new Error("Embedding API definition is incomplete");
     for (const id of constraint.allowedModels ?? []) {
       const embeddingDimensions = constraint.embeddingDimensionsByModel[id];
@@ -209,8 +210,8 @@ export function getRerankModels(): RerankModel[] {
   const definition = definitions.find((item) => item.name === "cohere-inference-v1");
   const operation = definition?.operations.find((item) => item.name === "rerank");
   const constraint = definition?.authorization.operationConstraints.rerank;
-  const topN = constraint?.integerLimits?.top_n;
-  const maxDocuments = constraint?.arrayLimits?.documents;
+  const topN = constraint?.integerLimits?.top_n ?? { minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
+  const maxDocuments = constraint?.arrayLimits?.documents ?? MAX_RUNTIME_ARRAY_LENGTH;
   if (!definition || !operation || !constraint?.maxRequestBytes || !maxDocuments || !topN || topN.minimum < 1 || topN.maximum < topN.minimum) throw new Error("Rerank API definition is incomplete");
   return (constraint.allowedModels ?? []).map((id) => ({
     id, label: id, providerId: "cohere", provider: "Cohere", apiId: "cohere-inference-v1", operationId: "rerank",
@@ -249,14 +250,17 @@ export function getImageGenerationModels(): ImageGenerationModel[] {
       const limits = profile?.integerLimits ?? constraint.integerLimits;
       const width = limits?.width;
       const height = limits?.height;
-      const formats = (choices?.output_format ?? ["png"]).filter((format): format is "png" | "jpeg" => format === "png" || format === "jpeg");
+      const formats = (choices?.output_format ?? (providerId === "openai" ? ["png", "jpeg", "webp"] : ["png", "jpeg"])).filter((format): format is "png" | "jpeg" | "webp" => format === "png" || format === "jpeg" || format === "webp");
       models.push({ id, label: id, providerId, provider, apiId, operationId,
         path: `/${definition.path}${operation.urlTemplate}`,
         ...(profile ? { profileId: profile.profileId } : {}),
         maxRequestBytes: profile?.maxRequestBytes ?? constraint.maxRequestBytes,
-        sizes: choices?.size ?? [], qualities: choices?.quality ?? [], formats,
-        minWidth: width?.minimum ?? 1024, maxWidth: width?.maximum ?? 1024,
-        minHeight: height?.minimum ?? 1024, maxHeight: height?.maximum ?? 1024 });
+        sizes: choices?.size ?? (providerId === "openai" ? ["1024x1024", "1536x1024", "1024x1536", "auto"] : []),
+        qualities: choices?.quality ?? (providerId === "openai" ? (id.startsWith("gpt-image-2.5") ? ["auto", "low", "medium", "high", "xhigh", "max"] : ["low", "medium", "high"]) : []), formats,
+        minImages: limits?.[providerId === "openai" ? "n" : "num_images"]?.minimum ?? 1,
+        maxImages: limits?.[providerId === "openai" ? "n" : "num_images"]?.maximum ?? (providerId === "openai" ? 10 : 1),
+        minWidth: width?.minimum ?? 1, maxWidth: width?.maximum ?? Number.MAX_SAFE_INTEGER,
+        minHeight: height?.minimum ?? 1, maxHeight: height?.maximum ?? Number.MAX_SAFE_INTEGER });
     }
   }
   return models;

@@ -1,10 +1,8 @@
 import type { ModelGatewayErrorCode, TextGenerationFailure, TextGenerationResult } from "./model-request.ts";
 import type { TextGenerationModel } from "./model-types.ts";
-import { MODEL_MAX_RESPONSE_BYTES, MODEL_MAX_EVENT_BYTES, MODEL_MAX_STREAM_EVENTS } from "./model-request.ts";
+import { MODEL_MAX_RESPONSE_BYTES, MODEL_MAX_EVENT_CHARACTERS } from "./model-request.ts";
 
-const maximumStreamBytes = MODEL_MAX_RESPONSE_BYTES;
-const maximumFrameCharacters = MODEL_MAX_EVENT_BYTES;
-const maximumEvents = MODEL_MAX_STREAM_EVENTS;
+const maximumFrameCharacters = MODEL_MAX_EVENT_CHARACTERS;
 const errorCodes = new Set<ModelGatewayErrorCode>([
   "InvalidRequest", "AuthenticationRequired", "RequestNotAllowed", "ModelUnavailable",
   "GatewayNotConfigured", "GatewayUnauthorized", "RateLimitExceeded", "GatewayTimeout",
@@ -128,7 +126,6 @@ async function readStream(response: Response, model: TextGenerationModel, option
   let usage: TextGenerationResult["usage"];
   let finishReason: string | undefined;
   let terminal = false;
-  let size = 0;
   let buffer = "";
   let eventName = "";
   let dataLines: string[] = [];
@@ -162,7 +159,7 @@ async function readStream(response: Response, model: TextGenerationModel, option
     const name = eventName;
     eventName = "";
     if (!data) return;
-    if (events.length >= maximumEvents || terminal) throw new Error("Unexpected stream event");
+    if (terminal) throw new Error("Unexpected stream event");
     if (data === "[DONE]") {
       if (model.operationId !== "chat-completions" || !finishReason) throw new Error("Invalid stream terminator");
       events.push({ ...(name ? { event: name } : {}), data });
@@ -239,8 +236,6 @@ async function readStream(response: Response, model: TextGenerationModel, option
     while (true) {
       const part = await reader.read();
       if (part.done) break;
-      size += part.value.byteLength;
-      if (size > maximumStreamBytes) throw new Error("Stream is too large");
       buffer += decoder.decode(part.value, { stream: true });
       drain();
     }

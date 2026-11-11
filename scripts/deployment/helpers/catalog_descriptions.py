@@ -134,9 +134,11 @@ def describe_api(config, api, *, generated_mcp=False):
     category_line = f"区分: {category} / Product={api['productId']}。提供区分: {SERVICE_CLASSES[service_class]}。"
     operations = [f"{operation['method']} {operation['urlTemplate']}" for operation in api["operations"]]
     constraints = list(_constraints(api))
-    byte_limits = sorted({item["maxRequestBytes"] for item in constraints if "maxRequestBytes" in item})
+    byte_limits = sorted({item["maxRequestBytes"] for item in constraints if "maxRequestBytes" in item and item.get("bodyFormat") != "none"})
     token_limits = sorted({value for item in constraints for value in (item.get("maxOutputTokensByModel", {}).values() if item.get("maxOutputTokensByModel") else [item.get("maxOutputTokens")]) if isinstance(value, int) and not isinstance(value, bool)})
     limits = ("要求上限byte=" + _short_list(byte_limits) + "。" if byte_limits else "")
+    if 524288000 in byte_limits:
+        limits += "500 MiBはClassic APIM本文バッファーの技術上限。ファイル単位・入力tokenの制約は提供元が検査します。"
     limits += "出力枠=" + _short_list(token_limits) + " tokens。" if token_limits else ""
     if any("dynamic" in item.get("outputTokenLimitKinds", {}).values() for item in constraints):
         limits += "一部モデルの出力枠は振り分け先で変わります。"

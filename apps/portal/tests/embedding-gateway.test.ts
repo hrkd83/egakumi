@@ -47,9 +47,9 @@ test("認証と同一オリジンを確認できない埋め込み要求はAPIM�
 test("未知項目・未知モデル・不正な寸法と用途・過大本文を転送前に拒否する", async () => {
   let calls = 0;
   const context = dependencies({ fetch: async () => { calls++; throw new Error("should not call"); } });
-  for (const invalid of [{ ...input, prompt: "other" }, { ...input, modelId: "unknown" }, { ...input, dimensions: 1_537 }, { ...input, inputType: "search_query" }, { ...defaultEmbeddingInput(cohere), dimensions: 768 }, { ...input, texts: ["あ".repeat(32_001)] }]) assert.equal((await handleEmbeddings(request(invalid), context)).status, 400);
+  for (const invalid of [{ ...input, prompt: "other" }, { ...input, modelId: "unknown" }, { ...input, dimensions: 1_537 }, { ...input, inputType: "search_query" }, { ...defaultEmbeddingInput(cohere), dimensions: 768 }]) assert.equal((await handleEmbeddings(request(invalid), context)).status, 400);
   assert.equal((await handleEmbeddings(request(input, { "Content-Type": "text/plain" }), context)).status, 415);
-  assert.equal((await handleEmbeddings(request(input, { "Content-Length": "262145" }), context)).status, 413);
+  assert.equal((await handleEmbeddings(request(input, { "Content-Length": "524288001" }), context)).status, 413);
   assert.equal(calls, 0);
 });
 

@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -43,7 +44,7 @@ async function readBody(body: ReadableStream<Uint8Array> | null, maximum: number
 
 /**
  * 本人と現在のグループ権限を確認し、選択したキーでAPIMの固定画像生成操作を1回だけ呼びます。
- * @remarks 同期画像生成と大きな画像本文に合わせ上限180秒とし、自動再試行による二重課金を避けます。
+ * @remarks 同期画像生成の待機は利用者の中止と通信経路に従い、自動再試行による二重課金を避けます。
  */
 export async function handleImageGeneration(request: Request, dependencies: ImageGenerationDependencies): Promise<Response> {
   let portalOrigin: string;
@@ -53,9 +54,9 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
   let actor: ApiKeyActor | null;
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  if (Number(request.headers.get("content-length") ?? 0) > 131_072) return failure("InvalidRequest", 413);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: ImageGenerationInput & { apiKeyId: string };
-  try { input = imageGenerationExecutionSchema.parse(JSON.parse(await readBody(request.body, 131_072, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))); } catch { return failure("InvalidRequest", 400); }
+  try { input = imageGenerationExecutionSchema.parse(JSON.parse(await readBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure("InvalidRequest", 400); }
   let model: ImageGenerationModel | undefined;
   try { model = (await (dependencies.readModels ?? getImageGenerationModels)()).find((entry) => entry.id === input.modelId); } catch { return failure("ModelUnavailable", 503); }
   if (!model) return failure("ModelUnavailable", 400);
@@ -74,7 +75,7 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
     key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 180_000);
+  const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let requestId: string | undefined;

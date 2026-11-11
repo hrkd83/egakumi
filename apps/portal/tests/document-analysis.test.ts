@@ -6,16 +6,24 @@ import { getDocumentAnalysisExample, getDocumentAnalysisRequestSchema, getDocume
 /** Azureの文書解析結果に含まれる主要属性を備えた、個人情報を含まない試験データです。 */
 export const analysis = { analyzeResult: { apiVersion: "2024-11-30", modelId: "prebuilt-layout", content: "Title\nFirst\tSecond", pages: [{ pageNumber: 1, width: 210, height: 297, unit: "millimeter", words: [{ content: "Title", confidence: 0.99 }] }, { pageNumber: 2 }], paragraphs: [{ content: "Title", role: "title" }], tables: [{ rowCount: 1, columnCount: 2, cells: [{ rowIndex: 0, columnIndex: 0, content: "First", kind: "columnHeader" }, { rowIndex: 0, columnIndex: 1, content: "Second" }] }] }, requestId: "document-example-1" };
 
+test("Office・HEIFとHTML断片を受理し、UTF8の1024バイト境界で拒否しない", () => {
+  for (const mime of ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]) assert.equal(inspectDocument(new Uint8Array([0x50, 0x4b, 3, 4]), mime), mime);
+  assert.equal(inspectDocument(new TextEncoder().encode("0000ftypheic"), "image/heic"), "image/heic");
+  const html = "<p>" + "a".repeat(1020) + "日本語</p>";
+  assert.equal(inspectDocument(new TextEncoder().encode(html), "text/html"), "text/html");
+});
+
 test("ファイルのMIMEとシグネチャが一致する5形式だけを受け付ける", () => {
   const cases = [
     ["application/pdf", [0x25, 0x50, 0x44, 0x46, 0x2d]], ["image/jpeg", [0xff, 0xd8, 0xff]],
     ["image/png", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]], ["image/tiff", [0x49, 0x49, 0x2a, 0]], ["image/tiff", [0x4d, 0x4d, 0, 0x2a]], ["image/bmp", [0x42, 0x4d]],
   ] as const;
   for (const [mime, bytes] of cases) assert.equal(inspectDocument(new Uint8Array(bytes), mime), mime);
-  for (const mime of ["text/html", "application/octet-stream", "image/svg+xml"]) assert.throws(() => inspectDocument(new TextEncoder().encode("%PDF-1.7"), mime));
+  for (const mime of ["application/octet-stream", "image/svg+xml"]) assert.throws(() => inspectDocument(new TextEncoder().encode("%PDF-1.7"), mime));
   assert.throws(() => inspectDocument(new Uint8Array([0x42, 0x4d]), "application/pdf"));
   assert.throws(() => inspectDocument(new Uint8Array(0), "image/png"));
-  assert.throws(() => inspectDocument(new Uint8Array(MAX_DOCUMENT_BYTES + 1), "image/png"));
+  const larger = new Uint8Array(2 * 1_048_576); larger.set([0x25, 0x50, 0x44, 0x46, 0x2d]);
+  assert.equal(inspectDocument(larger, "application/pdf"), "application/pdf");
 });
 
 test("モデルと接続先は固定し、URL入力・任意モデル・秘密の追加入力を拒否する", () => {
@@ -46,7 +54,7 @@ test("不正モデル・重複ページ・範囲外の表・過剰な入れ子�
   assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, pages: [{ pageNumber: 1 }, { pageNumber: 1 }] } }, "prebuilt-layout", 0));
   assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, tables: [{ rowCount: 1, columnCount: 1, cells: [{ rowIndex: 2, columnIndex: 0, content: "bad" }] }] } }, "prebuilt-layout", 0));
   let nested: unknown = "value"; for (let i = 0; i < 40; i++) nested = { child: nested };
-  assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, nested } }, "prebuilt-layout", 0));
+  assert.doesNotThrow(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, nested } }, "prebuilt-layout", 0));
 });
 
 test("ブラウザーはBFFの検証済み結果と固定失敗コードだけを受け取る", async () => {

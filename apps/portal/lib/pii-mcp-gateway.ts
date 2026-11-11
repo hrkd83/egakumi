@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { containsModelCredential } from "./model-credential.ts";
 import { z } from "zod";
@@ -15,7 +16,7 @@ const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosnif
 const initializeSchema = z.object({ protocolVersion: z.enum(PII_MCP_PROTOCOLS), capabilities: z.object({ tools: z.object({}).passthrough() }).passthrough() });
 const toolsSchema = z.object({ tools: z.array(z.object({ name: z.string().max(128), inputSchema: z.record(z.string(), z.unknown()) })).max(64), nextCursor: z.string().max(2048).optional() });
 const argumentSchema = z.object({ type: z.literal("object"), properties: z.object({ text: z.object({ type: z.literal("string") }), language: z.object({ type: z.literal("string") }) }), required: z.array(z.string()) });
-const toolResponseSchema = z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string().max(131072) }).strip()).max(4).default([]), structuredContent: z.unknown().optional(), isError: z.boolean().optional() }).strip();
+const toolResponseSchema = z.object({ content: z.array(z.object({ type: z.literal("text"), text: z.string().max(MAX_BUFFERED_BODY_BYTES) }).strip()).default([]), structuredContent: z.unknown().optional(), isError: z.boolean().optional() }).strip();
 
 /** エラーの自由文・内部セッション・秘密のヘッダーを返さない固定応答です。 */
 function failure(code: ModelGatewayErrorCode, status: number, details: Omit<TextGenerationFailure, "error"> = {}): Response {
@@ -33,7 +34,7 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   let input: ReturnType<typeof piiExecutionSchema.parse>;
-  try { input = piiExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, 33792, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))); buildPiiRequest(input); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
+  try { input = piiExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, 1_001_024, request.signal))); buildPiiRequest(input); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
   let endpoint: string;
   try { endpoint = getPiiMcpEndpoint((await (dependencies.readGatewayEnvironment ?? getModelGatewayEnvironment)()).origin); } catch { return failure("GatewayNotConfigured", 503); }
   let key: string;
@@ -41,7 +42,7 @@ export async function handlePiiMcp(request: Request, dependencies: PiiGatewayDep
     key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, PII_MCP.apiId);
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 90_000), signal = AbortSignal.any([request.signal, timeout]), fetcher = dependencies.fetch ?? globalThis.fetch;
+  const timeout = modelDeadline(dependencies.timeoutMs), signal = AbortSignal.any([request.signal, timeout]), fetcher = dependencies.fetch ?? globalThis.fetch;
   let session: string | null = null, protocol: typeof PII_MCP_PROTOCOLS[number] | null = null, currentId: number | null = null, requestId: string | undefined;
   const started = performance.now();
   /** セッションはサーバー内部だけで継承し、送信先を変えません。 */

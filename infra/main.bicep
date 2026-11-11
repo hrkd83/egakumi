@@ -64,11 +64,13 @@ var grpcEnabled = grpcConfig.enabled
 // 公開API配列は変更せず、基盤に必要な経路・本文形式だけを参照します。
 var infrastructureApis = configuration.?infrastructureApiDefinitions ?? configuration.apiDefinitions
 var realtimeEnabled = (gatewayConfig.?realtimeControlEnabled ?? false) || length(filter(configuration.apiDefinitions, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['realtimeCreate', 'realtimeHangup'], entry.value.kind))) > 0)) > 0
-var useIngressSecrets = grpcEnabled || realtimeEnabled
+// 文書ジョブとRealtimeは同じサーバー署名鍵を用途別の署名文脈で使用します。
+var ownerTicketEnabled = realtimeEnabled || length(filter(infrastructureApis, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['documentAnalysis', 'documentAnalysisStatus'], entry.value.kind))) > 0)) > 0
+var useIngressSecrets = grpcEnabled || ownerTicketEnabled
 var certConfig = configuration.certificate
 var authorization = configuration.authorization
-// Pythonの文書受付と同じ固定POST/binary/1MiB契約だけに、専用WAFを維持します。
-var documentUploadPaths = flatten(map(filter(infrastructureApis, api => api.path == 'tools/documents/v1'), api => map(filter(api.operations, operation => operation.name == 'analyze_document' && operation.method == 'POST' && operation.urlTemplate == '/analyze' && api.authorization.operationConstraints[operation.name].kind == 'documentAnalysis' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary' && (api.authorization.operationConstraints[operation.name].?maxRequestBytes ?? 0) == 1048576), operation => '/${api.path}${operation.urlTemplate}')))
+// Pythonの文書受付と同じ正本POST/binary契約だけに、容量と独立した専用WAFを維持します。
+var documentUploadPaths = flatten(map(filter(infrastructureApis, api => (api.?name ?? '') == 'document-analysis-v1' && api.path == 'tools/documents/v1'), api => map(filter(api.operations, operation => operation.name == 'analyze_document' && operation.method == 'POST' && operation.urlTemplate == '/analyze' && api.authorization.operationConstraints[operation.name].kind == 'documentAnalysis' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary'), operation => '/${api.path}${operation.urlTemplate}')))
 // Raw本文の調整はAzure Speech正本のtts/stt契約だけ。その他のSSML APIへ広げません。
 var speechRawBodyPaths = flatten(map(filter(infrastructureApis, api => (api.?name ?? '') == 'azure-speech-v1' && !contains(api.path, '*') && !contains(api.path, '{') && !contains(api.path, '?')), api => map(filter(api.operations, operation => operation.method == 'POST' && api.authorization.operationConstraints[operation.name].kind == 'registeredOperation' && length(api.authorization.operationConstraints[operation.name].?contentTypes ?? []) == 1 && ((operation.name == 'tts' && operation.urlTemplate == '/synthesize' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'text' && contains(api.authorization.operationConstraints[operation.name].contentTypes, 'application/ssml+xml')) || (operation.name == 'stt' && operation.urlTemplate == '/recognize' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary' && contains(api.authorization.operationConstraints[operation.name].contentTypes, 'audio/wav')))), operation => '/${api.path}${operation.urlTemplate}')))
 var serviceNames = {
@@ -356,7 +358,7 @@ module certificate 'modules/certificate.bicep' = if (deployCore) {
       validationTimeoutSeconds: certConfig.?validationTimeoutSeconds ?? 120
       minimumValidDays: certConfig.?minimumValidDays ?? 7
       l7IngressEnabled: grpcEnabled
-      realtimeTicketEnabled: realtimeEnabled
+      realtimeTicketEnabled: ownerTicketEnabled
     }
     dnsPluginArgumentsJson: dnsPluginArgumentsJson
     l7IngressSecret: l7IngressSecret
@@ -565,6 +567,7 @@ output ingressSecrets object = deployCore && useIngressSecrets ? {
   enabled: true
   grpcEnabled: grpcEnabled
   realtimeEnabled: realtimeEnabled
+  ownerTicketEnabled: ownerTicketEnabled
   apimId: services!.outputs.serviceResourceIds.apim
 } : { enabled: false }
 // Expected IDs are available even if the subsequent core deployment fails.
@@ -622,5 +625,5 @@ output gatewayFoundation object = deployCore ? {
   registryServer: portalRegistry!.outputs.server
   vaultName: serviceNames.keyVault
   l7IngressSecretIdentifier: grpcEnabled ? 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-l7-ingress-secret' : ''
-  realtimeTicketSecretIdentifier: realtimeEnabled ? 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-realtime-ticket-key' : ''
+  realtimeTicketSecretIdentifier: ownerTicketEnabled ? 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-realtime-ticket-key' : ''
 } : {}

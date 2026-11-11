@@ -4,7 +4,6 @@ import { chatModel, responsesModel, textGenerationModels } from "./helpers/model
 import { handleTextGeneration } from "../lib/model-gateway.ts";
 import type { ModelGenerationDependencies } from "../lib/model-gateway.ts";
 import { SAMPLE_TEXT_PROMPT } from "../lib/model-integration.ts";
-import { MODEL_MAX_EVENT_BYTES } from "../lib/model-request.ts";
 import { readModelResponse } from "../lib/model-response.ts";
 
 const origin = "https://portal.example.invalid";
@@ -286,21 +285,18 @@ test("壊れた終端や未知の終了理由では保留した接頭辞を解�
 
 test("接頭辞を待つ間のイベント保留量とchannel数も有限に制限する", async () => {
   const prefix = reflectionKey.slice(0, 4);
-  const envelope = (padding: string) => `data: ${JSON.stringify({ object: "chat.completion.chunk", model: chatModel.id, choices: [], padding })}\n\n`;
-  const large = envelope("x".repeat(MODEL_MAX_EVENT_BYTES - encoder.encode(envelope("")).byteLength));
-  assert.equal(encoder.encode(large).byteLength, MODEL_MAX_EVENT_BYTES);
-  const buffered = await (await reflectionGeneration(fragment(chat(prefix) + large, 1_048_576))).text();
+  const buffered = await (await reflectionGeneration(fragment(chat(prefix)))).text();
   assert.match(buffered, /GenerationFailed/); assert.equal(buffered.includes(prefix), false);
   const channels = Array.from({ length: 65 }, (_, output_index) => responseEvent("response.output_text.delta", { output_index, delta: reflectionKey[0] })).join("");
   const exceeded = await (await reflectionGeneration(fragment(channels), responsesModel)).text();
   assert.match(exceeded, /GenerationFailed/); assert.doesNotMatch(exceeded, /response.output_text.delta/);
 });
 
-test("一イベントのサイズ上限を越えたSSEを破棄する", async () => {
-  const result = await generate(fragment(chat("a".repeat(MODEL_MAX_EVENT_BYTES)), 1_048_576));
+test("従来16MiBを超える正常な単一イベントも中継する", async () => {
+  const content = "a".repeat(17 * 1_048_576);
+  const result = await generate(fragment(chat(content) + chat("", "stop") + "data: [DONE]\n\n", 1_048_576));
   const text = await result.text();
-  assert.match(text, /GenerationFailed/);
-  assert.ok(text.length < 1000);
+  assert.ok(text.includes(content)); assert.doesNotMatch(text, /portal.error/);
 });
 
 test("旧イベント上限を超える正常ストリームを中継し、ブラウザーが終端まで読み取る", async () => {

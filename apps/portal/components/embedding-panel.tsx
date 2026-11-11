@@ -97,7 +97,7 @@ export function EmbeddingPanel({ models, dictionary, locale, gatewayOrigin }: { 
     requestRef.current = controller;
     store.setState({ loading: true, result: null, failure: null, cancelled: false, tab: "response" });
     try {
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(100_000)]);
+      const signal = controller.signal;
       const response = await fetch("/api/models/embeddings", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...parsed.data, apiKeyId: selectedKey.id }), signal });
       const result = await readEmbeddingResponse(response, signal);
       if (!controller.signal.aborted) store.setState({ loading: false, result });

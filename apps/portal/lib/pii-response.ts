@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import { readEmbeddingBody } from "./embedding-response.ts";
 import { ModelResponseError } from "./model-response.ts";
 import type { ModelGatewayErrorCode, TextGenerationFailure } from "./model-request.ts";
@@ -17,7 +18,7 @@ function failure(value: unknown): TextGenerationFailure {
 export async function readPiiResponse(response: Response, signal?: AbortSignal): Promise<PiiResult> {
   try {
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") throw new TypeError("Invalid response type");
-    const value = JSON.parse(await readEmbeddingBody(response.body, 131_072, signal));
+    const value = JSON.parse(await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal));
     if (!response.ok) throw new ModelResponseError(failure(value));
     return piiResultSchema.parse(value);
   } catch (error) { if (error instanceof ModelResponseError) throw error; throw new ModelResponseError({ error: { code: "GenerationFailed" } }); }

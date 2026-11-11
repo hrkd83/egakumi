@@ -58,13 +58,13 @@ export function parseSpeechTranscript(value: unknown, model: SpeechModel, durati
     const { RecognitionStatus } = z.object({ RecognitionStatus: z.string().min(1).max(100) }).parse(raw);
     transcript = "";
     if (RecognitionStatus === "Success") {
-      const response = z.object({ DisplayText: z.string().max(100_000).optional(), NBest: z.array(z.object({ Display: z.string().max(100_000) })).max(100).optional() }).parse(raw);
+      const response = z.object({ DisplayText: z.string().optional(), NBest: z.array(z.object({ Display: z.string() })).optional() }).parse(raw);
       const recognized = response.NBest?.[0]?.Display ?? response.DisplayText;
       if (recognized === undefined) throw new Error("Missing recognized speech");
       // 有効な無音で空文字が返る場合も、欠損した応答とは区別して保持します。
       transcript = recognized;
     }
-  } else transcript = z.object({ text: z.string().max(100_000) }).parse(raw).text;
+  } else transcript = z.object({ text: z.string() }).parse(raw).text;
   return speechResultSchema.parse({ kind: "stt", model: model.id, transcript, rawResponse: raw, durationMs, ...(requestId ? { requestId } : {}) });
 }
 

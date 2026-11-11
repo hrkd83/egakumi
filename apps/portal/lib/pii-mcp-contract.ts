@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES } from "./model-runtime-limits.ts";
 import { z } from "zod";
 import { piiResponseSchema, piiResultSchema } from "./pii-contract.ts";
 
@@ -12,7 +13,7 @@ export const piiMcpResultSchema = piiResultSchema.extend({
     protocolVersion: z.enum(PII_MCP_PROTOCOLS),
     toolName: z.literal(PII_MCP.toolName),
     response: z.object({ jsonrpc: z.literal("2.0"), id: z.number().int().positive().safe(), result: z.object({
-      content: z.array(z.object({ type: z.literal("text"), text: z.string().max(131072) }).strict()).max(4),
+      content: z.array(z.object({ type: z.literal("text"), text: z.string().max(MAX_BUFFERED_BODY_BYTES) }).strict()),
       structuredContent: piiResponseSchema.optional(), isError: z.literal(false).optional(),
     }).strict() }).strict(),
   }).strict(),

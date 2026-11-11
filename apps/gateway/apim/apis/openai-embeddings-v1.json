@@ -22,15 +22,12 @@
     "operationConstraints": {
       "embeddings": {
         "kind": "textEmbeddings",
-        "maxRequestBytes": 262144,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
         "allowedModels": [
           "text-embedding-3-small",
           "text-embedding-3-large"
         ],
-        "arrayLimits": {
-          "input": 16
-        },
         "embeddingDimensionsByModel": {
           "text-embedding-3-small": {
             "default": 1536,
@@ -40,7 +37,8 @@
             "default": 3072,
             "maximum": 3072
           }
-        }
+        },
+        "embeddingInputField": "input"
       }
     }
   },

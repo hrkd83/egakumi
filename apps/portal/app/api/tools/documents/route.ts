@@ -4,5 +4,5 @@ import { handleDocumentAnalysis } from "@/lib/document-analysis-gateway";
 
 /** 本人が選択した購読と文書で、Gatewayの文書解析APIを実行します。 */
 export async function POST(request: Request): Promise<Response> {
-  return handleDocumentAnalysis(request, { readSession: readPortalPrincipal, readPortalOrigin: () => getAuthEnvironment().baseURL });
+  return handleDocumentAnalysis(request, { readSession: readPortalPrincipal, readPortalOrigin: () => getAuthEnvironment().baseURL, readHandleSecret: () => getAuthEnvironment().secret });
 }

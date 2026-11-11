@@ -36,7 +36,7 @@
         }
         if (profiles.Count == 0) { return result.ToString(Newtonsoft.Json.Formatting.None); }
         var maxBytes = profiles.Max(p =&gt; (long)p[&quot;maxRequestBytes&quot;]);
-        if (maxBytes &lt; 1 || maxBytes &gt; 4194304) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        if (maxBytes &lt; 1 || maxBytes &gt; 524288000) { return result.ToString(Newtonsoft.Json.Formatting.None); }
         var bytes = context.Request.Body == null ? new byte[0] : context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
         if (bytes.Length &gt; maxBytes) { result[&quot;status&quot;] = 413; return result.ToString(Newtonsoft.Json.Formatting.None); }
         var profileId = (string)constraint[&quot;defaultProfile&quot;];
@@ -49,25 +49,9 @@
         var selected = (JObject)matches[0];
         var body = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
         if (body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)selected[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var requested = new System.Collections.Generic.List&lt;string&gt; { &quot;text&quot; };
-        foreach (var type in body.SelectTokens(&quot;$..type&quot;)) {
-          var name = type.Type == JTokenType.String ? (string)type : &quot;&quot;;
-          if (name == &quot;image_url&quot; || name == &quot;input_image&quot;) { requested.Add(&quot;image&quot;); }
-          if (name == &quot;file&quot; || name == &quot;input_file&quot;) { requested.Add(&quot;file&quot;); }
-          if (name == &quot;input_audio&quot; || name == &quot;output_audio&quot; || name == &quot;audio&quot;) { requested.Add(&quot;audio&quot;); }
-        }
-        foreach (var property in body.Descendants().OfType&lt;JProperty&gt;()) {
-          if (property.Name == &quot;image_url&quot; || property.Name == &quot;image&quot;) { requested.Add(&quot;image&quot;); }
-          if (property.Name == &quot;file&quot; || property.Name == &quot;file_data&quot; || property.Name == &quot;file_url&quot; || property.Name == &quot;file_id&quot;) { requested.Add(&quot;file&quot;); }
-          if (property.Name == &quot;input_audio&quot; || property.Name == &quot;audio&quot; || property.Name == &quot;audio_url&quot;) { requested.Add(&quot;audio&quot;); }
-        }
-        if (body[&quot;modalities&quot;] != null) {
-          var output = body[&quot;modalities&quot;] as JArray;
-          if (output == null || output.Any(m =&gt; m.Type != JTokenType.String || !new string[] { &quot;text&quot;, &quot;audio&quot; }.Contains((string)m))) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-          foreach (var modality in output) { requested.Add((string)modality); }
-        }
-        var allowed = selected[&quot;modalities&quot;] as JArray;
-        if (allowed == null || requested.Any(m =&gt; !allowed.Any(a =&gt; (string)a == m))) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        /* Profile selection binds a fixed route and approved model. Native
+           modality support belongs to the provider; arbitrary tool JSON Schema
+           property names and nested type values must not classify the request. */
         result[&quot;profileId&quot;] = profileId;
         result[&quot;constraint&quot;] = selected;
         result[&quot;allowed&quot;] = true;
@@ -161,8 +145,10 @@
           var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
           if (body == null || body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return false; }
           /* This contract forwards complete client-held Items and never looks up saved server state. */
-          var allowedFields = new string[] { &quot;model&quot;, &quot;input&quot;, &quot;instructions&quot;, &quot;max_output_tokens&quot;, &quot;temperature&quot;, &quot;top_p&quot;, &quot;stream&quot;, &quot;stream_options&quot;, &quot;tools&quot;, &quot;tool_choice&quot;, &quot;parallel_tool_calls&quot;, &quot;reasoning&quot;, &quot;text&quot;, &quot;truncation&quot;, &quot;include&quot;, &quot;service_tier&quot;, &quot;max_tool_calls&quot;, &quot;store&quot;, &quot;background&quot; };
-          if (body.Properties().Any(p =&gt; !allowedFields.Contains(p.Name))) { return false; }
+          /* Native optional fields and provider extensions are forwarded. Only
+             stored-state lookups are blocked on this shared stateless endpoint. */
+          var stateFields = new string[] { &quot;previous_response_id&quot;, &quot;conversation&quot;, &quot;conversation_id&quot;, &quot;prompt&quot; };
+          if (stateFields.Any(name =&gt; body.Property(name) != null)) { return false; }
           if (body[&quot;background&quot;] != null &amp;&amp; (body[&quot;background&quot;].Type != JTokenType.Boolean || (bool)body[&quot;background&quot;])) { return false; }
           var input = body[&quot;input&quot;];
           if (input == null || (input.Type != JTokenType.String &amp;&amp; input.Type != JTokenType.Array)) { return false; }
@@ -210,10 +196,10 @@
           /* The operation policy validates SDP and the signed session-owner ticket. */
           return context.Request.Method == &quot;POST&quot;;
         }
-        if (kind == &quot;documentAnalysis&quot;) {
-          /* Binary validation, fixed model selection and bounded native polling
-             belong to the operation policy. No public job URL is accepted. */
-          return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.Id == &quot;analyze_document&quot;;
+        if (kind == &quot;documentAnalysis&quot; || kind == &quot;documentAnalysisStatus&quot;) {
+          /* Operation policies validate native input and owner-bound job tickets. */
+          return (kind == &quot;documentAnalysis&quot; &amp;&amp; context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.Id == &quot;analyze_document&quot;)
+            || (kind == &quot;documentAnalysisStatus&quot; &amp;&amp; context.Request.Method == &quot;GET&quot; &amp;&amp; context.Operation.Id == &quot;get_document_operation&quot;);
         }
         if (kind == &quot;pii&quot;) {
           /* The operation policy owns the public {text,language} schema,

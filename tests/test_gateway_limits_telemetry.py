@@ -182,6 +182,22 @@ CASES = [
     {"id": "audit-connection-expiry-text", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "connectionExpiry": "SENTINEL_METADATA"},
 ]
 
+# Regression cases use the shipped contracts, including optional native fields.
+for _id, _api, _operation, _body in (
+    ("native-responses-history", "openai-inference-v1", "responses-create", {"model": "gpt-6.1-sol", "input": "a" * 98304}),
+    ("native-image-multiple", "openai-images-v1", "image-generate", {"model": "gpt-image-2", "n": 10, "size": "2048x1024", "quality": "high"}),
+    ("native-image-default", "openai-images-v1", "image-generate", {"model": "gpt-image-2", "prompt": "synthetic"}),
+    ("native-flux-dimensions", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "width": 2048, "height": 1024}),
+    ("native-flux-one-output", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "num_images": 2}),
+):
+    _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
+    _constraint = dict(_constraint)
+    if "outputTokenParameter" in _constraint:
+        _constraint["maxOutputTokens"] = 2000000
+    CASES.append(limit_case(_id, _body, _constraint))
+CASES.append(limit_case("published-token-above-old-ceiling", {"max_tokens": 1500000},
+                       {"kind": "bodyModel", "maxRequestBytes": 1024, "outputTokenParameter": "max_tokens", "maxOutputTokens": 2000000}))
+
 MODEL_LIMITS = {"kind": "bodyModel", "maxRequestBytes": 4096, "maxOutputTokens": 384000,
                 "outputTokenParameter": "max_tokens", "maxOutputTokensByModel": {"small": 128000, "large": 384000, "router": None}}
 CASES.extend([
@@ -208,6 +224,13 @@ for _format, _media in (("binary", "audio/wav"), ("multipart", "multipart/form-d
         _case = limit_case(_format + "-" + _suffix, "not JSON!", {"kind": "registeredOperation", "bodyFormat": _format, "maxRequestBytes": 1024, "contentTypes": [_media]})
         _case["headers"] = _headers
         CASES.append(_case)
+for _suffix, _headers in (("lengthless", {}), ("understated", {"Content-Length": "1"}), ("chunked", {"Transfer-Encoding": "chunked"})):
+    _case = limit_case("actual-upload-" + _suffix, "a" * 1025,
+                       {"kind": "registeredOperation", "bodyFormat": "binary", "maxRequestBytes": 1024, "contentTypes": ["audio/wav"]})
+    _case["headers"] = {"Content-Type": "audio/wav", **_headers}
+    CASES.append(_case)
+CASES.append(limit_case("native-rerank-default", {"query": "query", "documents": ["document"] * 17},
+                       {"kind": "rerank", "maxRequestBytes": 65536}))
 CASES.append(limit_case("protocol-unread", "opaque protocol frames", {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 1024}))
 for _classification in ("platform", "sample", "untrusted-value"):
     CASES.append({"id": "audit-class-" + _classification, "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
@@ -302,13 +325,25 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_binary_multipart_and_protocol_frames_are_never_read_as_json(self):
         for body_format in ("binary", "multipart", "text"):
-            for suffix, status in (("valid", 200), ("unknown", 411), ("too-large", 413), ("chunked", 411), ("wrong-type", 415)):
+            for suffix, status in (("valid", 200), ("unknown", 200), ("too-large", 413), ("chunked", 200), ("wrong-type", 415)):
                 case_id = body_format + "-" + suffix
                 with self.subTest(case_id=case_id):
                     self.assertEqual(self.decision(case_id)["status"], status)
-                    self.assertEqual(self.results[case_id]["reads"], 0)
+                    self.assertEqual(self.results[case_id]["reads"], 1 if status == 200 else 0)
         self.assertTrue(self.decision("protocol-unread")["allowed"])
         self.assertEqual(self.results["protocol-unread"]["reads"], 0)
+
+    def test_native_optional_counts_and_actual_chunked_byte_bounds(self):
+        self.assertTrue(self.decision("native-rerank-default")["allowed"])
+        for suffix in ("lengthless", "understated", "chunked"):
+            self.assertEqual(self.decision("actual-upload-" + suffix)["status"], 413)
+            self.assertEqual(self.results["actual-upload-" + suffix]["reads"], 1)
+
+    def test_standard_apis_accept_provider_inputs_beyond_old_trial_limits(self):
+        for case_id in ("native-responses-history", "native-image-multiple", "native-image-default",
+                        "native-flux-dimensions", "published-token-above-old-ceiling"):
+            self.assertTrue(self.decision(case_id)["allowed"], case_id)
+        self.assertFalse(self.decision("native-flux-one-output")["allowed"])
 
     def test_declared_json_cost_fields_are_bounded(self):
         self.assertTrue(self.decision("bounded-fields")["allowed"])
@@ -331,8 +366,9 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
 
-    def test_output_limit_must_be_explicit_and_bounded(self):
-        for case_id, code in (("missing-output-limit", "OUTPUT_LIMIT_REQUIRED"), ("excess-output-limit", "OUTPUT_LIMIT_EXCEEDED")):
+    def test_output_limit_is_optional_and_uses_provider_maximum_when_supplied(self):
+        self.assertTrue(self.decision("missing-output-limit")["allowed"])
+        for case_id, code in (("excess-output-limit", "OUTPUT_LIMIT_EXCEEDED"),):
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": False, "status": 400, "code": code})
 
@@ -374,10 +410,10 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(self.decision("rerank-bytes-65537"),
                          {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
 
-    def test_rerank_missing_deployed_count_bounds_fail_closed(self):
+    def test_rerank_does_not_require_gateway_count_caps(self):
         for field in ("arrayLimits", "integerLimits"):
             self.assertEqual(self.decision("rerank-unconfigured-" + field),
-                             {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
+                             {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
 
     def test_verified_caller_and_common_request_id_are_recorded(self):
         result = self.decision("audit-accepted")

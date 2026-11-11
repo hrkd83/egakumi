@@ -19,7 +19,7 @@ authorization.operationConstraints["chat-completions"]
   .profiles の profileId == "chat" の maxRequestBytes
 ```
 
-変更前32768 bytesを4096 bytesへ変更する。元の値が異なる環境ではその値を保護記録へ控え、復旧時は控えた値へ戻す。`vision`、`compatible`、`router`のprofile、許可モデル、認証、WAF、他operationは変更しない。
+変更前の値を保護記録へ控え、隔離した試験だけ4096 bytesへ変更する。現在の標準AI定義は500 MiB（524,288,000 bytes）であり、4096を通常利用の推奨値にはしない。復旧時は必ず控えた値へ戻す。`vision`、`compatible`、`router`のprofile、許可モデル、認証、WAF、他operationは変更しない。
 
 `profiles`を持つoperationの外側の`maxRequestBytes`は、読込時に全profileの最大値から組み立てられる。外側だけを4096にしてもChatの上限変更にはならない。Visionの大きい上限が残るため、外側とChatの値が同じになるとも限らない。
 
@@ -61,7 +61,7 @@ APIキーを含むcurlコマンドを作業票へ貼らない。HTTPクライア
 
 1. Chat profileの`maxRequestBytes`だけを変更前の値へ戻し、差分を確認する。
 2. Gの計画を確認し、同じコマンドに`--execute`を付けて反映する。全体ポリシーやAPI自体を削除しない。
-3. 元の上限が32768なら、先ほどの4097 bytesの正常JSONが本文サイズ検査を通過し、通常要求も成功することを確認する。
+3. 元の上限が4097 bytes以上なら、先ほどの4097 bytesの正常JSONが本文サイズ検査を通過し、通常要求も成功することを確認する。
 4. 最終のソース・配備先設定が変更前に戻ったことと、他API・既存キーの保持を記録する。専用要求ファイル等の保持・回収も決める。
 
 応答不明なら直ちに再配備を重ねず、実行履歴と現在設定を読む。計画・反映・確認・復旧を一組で行い、同じ変更を試験行ごとに再配備しない。

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { ModelResponseError } from "./model-response.ts";
 import { realtimeStreamEventSchema, type RealtimeStreamEvent } from "./realtime-request.ts";
+import { MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 
 /** 会話の終了時だけ返す、BFFの停止確認です。応答一件の完了とは区別します。 */
 export type RealtimeCompletion = Extract<RealtimeStreamEvent, { type: "complete" }>;
 /** 画面内だけで保持する会話字幕です。接続IDや認証情報は含めません。 */
-export type RealtimeTurn = { id: number; role: "input" | "output"; text: string; final: boolean; pendingFinal?: boolean; segmentIndex?: number; discardedSegmentThrough?: number };
+export type RealtimeTurn = { id: number; role: "input" | "output"; text: string; final: boolean; pendingFinal?: boolean; segmentIndex?: number };
 const maximumFrameCharacters = 400_000;
 
 /** 任意の通信エラー本文を公開せず、固定の失敗へ揃えます。 */
@@ -72,32 +73,28 @@ export class RealtimeMicrophoneQueue {
   clear(): void { this.frames = []; this.minimumCaptureAt = null; }
 }
 
-/** 表示上限で切る際に、UTF-16のサロゲートペアの片側だけを残しません。 */
-function transcriptTail(text: string, maximum: number): string {
-  const tail = text.slice(-maximum);
-  return /^[\uDC00-\uDFFF]/.test(tail) ? tail.slice(1) : tail;
+/** 実行環境で表現できる本文だけを連結し、字幕を途中で切り捨てません。 */
+function concatenateTranscript(left: string, right: string): string {
+  if (left.length + right.length > MAX_RUNTIME_STRING_CHARACTERS) throw invalid();
+  return left + right;
 }
 
-/** 発話ごとの字幕を更新し、長時間の会話でも表示履歴を無制限に保持しません。 */
+/** 発話ごとの字幕を更新し、確定順が前後しても本文と会話履歴を保持します。 */
 export function appendRealtimeTranscript(turns: readonly RealtimeTurn[], event: Extract<RealtimeStreamEvent, { type: "transcript" }>): RealtimeTurn[] {
+  if (event.text.length > MAX_RUNTIME_STRING_CHARACTERS) throw invalid();
   const result = turns.filter((turn) => event.segmentIndex !== undefined ? turn.text.length > 0 : turn.text.trim().length > 0).map((turn) => ({ ...turn }));
   if (event.segmentIndex !== undefined) {
-    if (event.role !== "input" || !Number.isInteger(event.segmentIndex) || event.segmentIndex < 0 || event.segmentIndex > 2999) throw invalid();
-    let discardedThrough = Math.max(-1, ...result.map((turn) => turn.discardedSegmentThrough ?? -1));
-    if (event.segmentIndex <= discardedThrough) return result;
+    if (event.role !== "input" || !Number.isSafeInteger(event.segmentIndex) || event.segmentIndex < 0) throw invalid();
     const current = result.find((turn) => turn.segmentIndex === event.segmentIndex);
     if (current) {
-      if (event.final) { if (event.text.length) current.text = transcriptTail(event.text, 16_000); current.final = true; }
-      else if (!current.final) current.text = transcriptTail(current.text + event.text, 16_000);
-    } else if (event.text.length) result.push({ id: Math.max(0, ...result.map((turn) => turn.id)) + 1, role: "input", text: transcriptTail(event.text, 16_000), final: event.final, segmentIndex: event.segmentIndex });
-    result.sort((left, right) => (left.segmentIndex ?? -1) - (right.segmentIndex ?? -1));
-    let characters = result.reduce((total, turn) => total + turn.text.length, 0);
-    while (result.length > 100 || characters > 64_000) {
-      const removed = result.shift()!; characters -= removed.text.length;
-      discardedThrough = Math.max(discardedThrough, removed.segmentIndex ?? -1);
+      if (event.final) { if (event.text.length) current.text = event.text; current.final = true; }
+      else if (!current.final) current.text = concatenateTranscript(current.text, event.text);
+    } else if (event.text.length) {
+      const id = result.reduce((maximum, turn) => Math.max(maximum, turn.id), 0) + 1;
+      if (!Number.isSafeInteger(id)) throw invalid();
+      result.push({ id, role: "input", text: event.text, final: event.final, segmentIndex: event.segmentIndex });
     }
-    // 廃棄済みの古い区間は、遅い確定通知で表示履歴へ復活させません。
-    if (result.length && discardedThrough >= 0) result[0].discardedSegmentThrough = discardedThrough;
+    result.sort((left, right) => (left.segmentIndex ?? -1) - (right.segmentIndex ?? -1));
     return result;
   }
   let active = result.findLastIndex((turn) => turn.role === event.role && !turn.final);
@@ -106,15 +103,13 @@ export function appendRealtimeTranscript(turns: readonly RealtimeTurn[], event: 
     if (active < 0) return result;
     const current = result[active];
     if (event.final) { current.final = true; current.pendingFinal = false; }
-    else current.text += event.text.slice(0, Math.max(0, 16_000 - current.text.length));
+    else current.text = concatenateTranscript(current.text, event.text);
   } else {
     // 別話者の開始後に届く確定字幕を、同じ発話の部分字幕へ反映します。
     if (active < 0 && event.final) active = result.findLastIndex((turn) => turn.role === event.role && turn.pendingFinal && (event.text.startsWith(turn.text) || turn.text.startsWith(event.text)));
-    if (active >= 0) { const current = result[active]; current.text = (event.final ? event.text : current.text + event.text).slice(-16_000); current.final = event.final; current.pendingFinal = false; }
-    else { for (const turn of result) if (turn.role !== event.role && !turn.final) { turn.final = true; turn.pendingFinal = true; } result.push({ id: (result.at(-1)?.id ?? 0) + 1, role: event.role, text: event.text.slice(-16_000), final: event.final }); }
+    if (active >= 0) { const current = result[active]; current.text = event.final ? event.text : concatenateTranscript(current.text, event.text); current.final = event.final; current.pendingFinal = false; }
+    else { for (const turn of result) if (turn.role !== event.role && !turn.final) { turn.final = true; turn.pendingFinal = true; } const id = (result.at(-1)?.id ?? 0) + 1; if (!Number.isSafeInteger(id)) throw invalid(); result.push({ id, role: event.role, text: event.text, final: event.final }); }
   }
-  let characters = result.reduce((total, turn) => total + turn.text.length, 0);
-  while (result.length > 100 || characters > 64_000) { characters -= result[0].text.length; result.shift(); }
   return result;
 }
 
@@ -126,9 +121,9 @@ export function joinRealtimeTranscriptionParagraph(turns: readonly RealtimeTurn[
   let paragraph = "";
   for (const turn of turns.filter((item) => item.role === "input").toSorted((left, right) => (left.segmentIndex ?? left.id) - (right.segmentIndex ?? right.id))) {
     if (!turn.text.length) continue;
-    paragraph += turn.text;
+    paragraph = concatenateTranscript(paragraph, turn.text);
   }
-  return paragraph.trim() ? transcriptTail(paragraph, 64_000) : "";
+  return paragraph.trim() ? paragraph : "";
 }
 
 /** 本人に束縛した停止参照だけを使い、制御接続を失った場合の停止を再確認します。 */
@@ -160,7 +155,7 @@ export function normalizeRealtimeBrowserEvent(raw: string, elapsedMs: number): R
   const isInput = ["conversation.item.input_audio_transcription.completed", "conversation.item.input_audio_transcription.delta", "session.input_transcript.delta"].includes(event.type);
   const isOutput = /^(response\.(audio_transcript|output_audio_transcript|text|output_text)\.(delta|done)|session\.output_transcript\.delta)$/.test(event.type);
   const text = event.transcript ?? event.text ?? event.delta;
-  if ((isInput || isOutput) && typeof text === "string") { if (text.length > 16_000) throw invalid(); events.push({ type: "transcript", role: isInput ? "input" : "output", text, final: event.type.endsWith(".done") || event.type.endsWith(".completed") }); }
+  if ((isInput || isOutput) && typeof text === "string") { if (text.length > MAX_RUNTIME_STRING_CHARACTERS) throw invalid(); events.push({ type: "transcript", role: isInput ? "input" : "output", text, final: event.type.endsWith(".done") || event.type.endsWith(".completed") }); }
   const response = record(event.response);
   if (event.type === "response.done") {
     if (response?.status === "failed") events.push({ type: "event", eventType: "response.failed", elapsedMs });

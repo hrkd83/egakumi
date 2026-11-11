@@ -90,7 +90,9 @@ public static class PiiApiLimitFixture {
         source = source.replace("__CONDITION__", condition[2:-1]).replace("__BODY__", mapped_body[2:-1])
         source = source.replace("__INPUT__", fixtures.INPUT_EXPRESSION).replace("__REQUEST__", fixtures.REQUEST_EXPRESSION)
         source = source.replace("__INPUT_ERROR__", input_error[2:-1])
-        settings = api["authorization"]["operationConstraints"]["pii_redact_text"]
+        # Small explicit adopter contract keeps byte-boundary fixtures compact;
+        # shipped provider-envelope boundary is exercised in test_pii_policy.
+        settings = {**api["authorization"]["operationConstraints"]["pii_redact_text"], "maxRequestBytes": 32768, "allowedLanguages": ["ja", "en"]}
         cls.cases = []
         for size in (32767, 32768, 32769):
             body = json.dumps({"text": "x" * (size - 27), "language": "en"}, separators=(",", ":"))

@@ -56,9 +56,16 @@ class RerankConfigurationTests(unittest.TestCase):
                 self.assertEqual(list(validator.iter_errors(constraint)), [])
                 self.assertTrue(list(validator.iter_errors({**constraint, "kind": "unregisteredRerank"})))
 
+    def test_provider_defaults_do_not_require_gateway_count_limits(self):
+        raw = rerank_fixture()
+        constraint = raw["apiDefinitions"][0]["authorization"]["operationConstraints"]["rerank"]
+        constraint.pop("arrayLimits")
+        constraint.pop("integerLimits")
+        self.assertEqual(self.normalize(raw)["apiDefinitions"][0]["authorization"]["operationConstraints"]["rerank"]["arrayLimits"], {})
+
     def test_incompatible_routes_formats_and_missing_count_bounds_fail_before_deployment(self):
-        for change in ("backend", "route", "method", "format", "no-documents", "extra-array", "no-top",
-                       "extra-integer", "optional-top", "zero-minimum", "top-above-document-bound",
+        for change in ("backend", "route", "method", "format", "extra-array",
+                       "extra-integer", "zero-minimum", "top-above-document-bound",
                        "undeployed-model", "no-models", "profiles", "output-tokens"):
             raw = rerank_fixture()
             api = raw["apiDefinitions"][0]

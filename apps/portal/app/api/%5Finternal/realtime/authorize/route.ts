@@ -9,6 +9,7 @@ import { realtimeRelayStartSchema, verifyRealtimeInternalProof } from "@/lib/rea
 import { resolveRealtimeOutputTokens } from "@/lib/realtime-request";
 import { resolveRealtimeVoice } from "@/lib/realtime-voices";
 import { readSpeechBody } from "@/lib/speech-response";
+import { MAX_BUFFERED_BODY_BYTES } from "@/lib/model-runtime-limits";
 
 /** 外側のサーバーが遮断したloopback専用口で、SQL本人と最新のGraph所属・購読権限を照合します。 */
 export async function POST(request: Request): Promise<Response> {
@@ -19,7 +20,7 @@ export async function POST(request: Request): Promise<Response> {
     const portalOrigin = getAuthEnvironment().baseURL;
     if (request.headers.get("origin") !== portalOrigin || request.headers.get("content-type")?.split(";", 1)[0] !== "application/json") return failure(403);
     const actor = await readPortalPrincipal(); if (!actor) return failure(401);
-    const input = realtimeRelayStartSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 135_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
+    const input = realtimeRelayStartSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, MAX_BUFFERED_BODY_BYTES, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
     const model = getRealtimeModels().find((entry) => entry.id === input.modelId);
     if (!model || (model.transport === "webrtc") !== Boolean(input.sdp)) return failure(400);
     try { resolveRealtimeOutputTokens(model, input); resolveRealtimeVoice(model, input); } catch { return failure(400); }

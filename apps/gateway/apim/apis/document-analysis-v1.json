@@ -14,6 +14,20 @@
       "method": "POST",
       "urlTemplate": "/analyze",
       "templateParameters": []
+    },
+    {
+      "name": "get_document_operation",
+      "displayName": "Get document analysis status or result",
+      "method": "GET",
+      "urlTemplate": "/operations/{operationId}",
+      "templateParameters": [
+        {
+          "name": "operationId",
+          "description": "Gateway-owned analysis operation identifier",
+          "type": "string",
+          "required": true
+        }
+      ]
     }
   ],
   "keySubscriptions": [],
@@ -23,12 +37,37 @@
       "analyze_document": {
         "kind": "documentAnalysis",
         "bodyFormat": "binary",
-        "contentTypes": ["application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp"],
-        "allowedModels": ["prebuilt-read", "prebuilt-layout"],
-        "maxRequestBytes": 1048576,
-        "maxResponseBytes": 4194304,
-        "apiVersion": "2024-11-30",
-        "timeoutSeconds": 60
+        "contentTypes": [
+          "application/pdf",
+          "image/jpeg",
+          "image/png",
+          "image/tiff",
+          "image/bmp",
+          "image/heif",
+          "image/heic",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "text/html"
+        ],
+        "allowedModels": [
+          "prebuilt-read",
+          "prebuilt-layout"
+        ],
+        "maxRequestBytes": 500000000,
+        "maxResponseBytes": 524288000,
+        "apiVersion": "2024-11-30"
+      },
+      "get_document_operation": {
+        "kind": "documentAnalysisStatus",
+        "bodyFormat": "none",
+        "allowedModels": [
+          "prebuilt-read",
+          "prebuilt-layout"
+        ],
+        "maxRequestBytes": 1,
+        "maxResponseBytes": 524288000,
+        "apiVersion": "2024-11-30"
       }
     }
   },

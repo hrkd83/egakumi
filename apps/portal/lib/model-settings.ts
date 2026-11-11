@@ -7,7 +7,7 @@ import type { RerankInput } from "./rerank-request.ts";
 /** 画面の再作成後も保持する設定だけです。本文・ファイル・購読・実行状態は含めません。 */
 export type ModelSettings = {
   embeddings: Pick<EmbeddingInput, "modelId" | "dimensions" | "inputType">;
-  image: Pick<ImageGenerationInput, "modelId" | "size" | "quality" | "outputFormat" | "width" | "height">;
+  image: Pick<ImageGenerationInput, "modelId" | "size" | "quality" | "outputFormat" | "width" | "height" | "count">;
   speech: Pick<SpeechInput, "modelId" | "voice" | "rate">;
   realtime: Pick<RealtimeInput, "modelId" | "voice" | "maxOutputTokens">;
   rerank: Pick<RerankInput, "modelId" | "topN">;
@@ -17,7 +17,7 @@ export type ScopedModelSettings = { [Category in keyof ModelSettings]: Record<st
 
 const fields = {
   embeddings: ["modelId", "dimensions", "inputType"],
-  image: ["modelId", "size", "quality", "outputFormat", "width", "height"],
+  image: ["modelId", "size", "quality", "outputFormat", "width", "height", "count"],
   speech: ["modelId", "voice", "rate"],
   realtime: ["modelId", "voice", "maxOutputTokens"],
   rerank: ["modelId", "topN"],

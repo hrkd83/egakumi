@@ -1,5 +1,6 @@
 "use client";
 
+import { waitForDocumentAnalysis, documentAnalysisPendingSchema, type DocumentAnalysisPending } from "@/lib/document-analysis-client";
 import { useFieldIds } from "@/lib/use-field-ids";
 import { deactivatePanelRequest } from "@/lib/panel-request-lifecycle";
 
@@ -12,7 +13,7 @@ import { ApiDocumentationLayout, ApiSchemaReference } from "@/components/api-doc
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DOCUMENT_ANALYSIS_API_ID, DOCUMENT_MEDIA_TYPES, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, DocumentAnalysisResponseError, getDocumentAnalysisEndpoint, inspectDocument, readDocumentAnalysisResponse, type DocumentAnalysisFailure, type DocumentAnalysisModel, type DocumentAnalysisResult } from "@/lib/document-analysis-contracts";
+import { DOCUMENT_ANALYSIS_API_ID, DOCUMENT_MEDIA_TYPES, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, DocumentAnalysisResponseError, getDocumentAnalysisEndpoint, type DocumentAnalysisFailure, type DocumentAnalysisModel, type DocumentAnalysisResult } from "@/lib/document-analysis-contracts";
 import { getDocumentAnalysisExample, getDocumentAnalysisRequestSchema, getDocumentAnalysisResponseSchema } from "@/lib/document-analysis-integration";
 import { getDocumentAnalysisDictionary } from "@/lib/i18n/document-analysis";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
@@ -21,7 +22,7 @@ import { INTEGRATION_LANGUAGES, type IntegrationLanguage } from "@/lib/model-int
 import { loadModelKeyChoices, type ModelKeyChoice } from "@/lib/model-key-choices";
 
 /** ページを開いている間だけ保持する選択値と実行状態です。ファイルや秘密を永続化しません。 */
-type DocumentState = { model: DocumentAnalysisModel; apiKeyId: string; file: File | null; language: IntegrationLanguage; tab: "request" | "schema" | "response"; loading: boolean; cancelled: boolean; result: DocumentAnalysisResult | null; failure: DocumentAnalysisFailure | null };
+type DocumentState = { model: DocumentAnalysisModel; apiKeyId: string; file: File | null; language: IntegrationLanguage; tab: "request" | "schema" | "response"; loading: boolean; cancelled: boolean; pending: DocumentAnalysisPending | null; result: DocumentAnalysisResult | null; failure: DocumentAnalysisFailure | null };
 const languageLabels: Record<IntegrationLanguage, string> = { typescript: "TypeScript", python: "Python", php: "PHP", csharp: "C#", curl: "cURL" };
 
 /** 文字列としてコードを表示し、HTMLやMarkdownとして実行しません。 */
@@ -37,12 +38,32 @@ function Code({ title, code, dictionary }: { title: string; code: string; dictio
 /** ガイド・仕様・実ファイルでの解析を同じ契約で確認する文書解析ページです。 */
 export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { locale: Locale; dictionary: Dictionary; gatewayOrigin: string | null }) {
   const formId = useFieldIds();
-  const [store] = useState(() => createStore<DocumentState>(() => ({ model: "prebuilt-read", apiKeyId: "", file: null, language: "curl", tab: "request", loading: false, cancelled: false, result: null, failure: null })));
+  const [store] = useState(() => createStore<DocumentState>(() => ({ model: "prebuilt-read", apiKeyId: "", file: null, language: "curl", tab: "request", loading: false, cancelled: false, pending: null, result: null, failure: null })));
+  const storageReady = useRef(false);
   const state = useStore(store); const text = getDocumentAnalysisDictionary(locale); const common = dictionary.modelGateway; const guide = common.integration;
   const [choices, setChoices] = useState<{ status: "loading" | "ready" | "error"; keys: ModelKeyChoice[] }>({ status: "loading", keys: [] });
   const [refresh, setRefresh] = useState(0); const request = useRef<AbortController | null>(null);
   const selectedKey = choices.status === "ready" ? choices.keys.find((key) => key.id === state.apiKeyId) : undefined;
   const origin = gatewayOrigin ?? "https://gateway.example.com";
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("document-analysis-operation");
+      if (raw) {
+        const saved = JSON.parse(raw) as { apiKeyId?: unknown; operation?: unknown };
+        const operation = documentAnalysisPendingSchema.parse(saved.operation);
+        if (typeof saved.apiKeyId === "string" && /^portal-[0-9a-f-]{36}$/i.test(saved.apiKeyId) && Date.parse(operation.expiresAt) > Date.now()) store.setState({ model: operation.model, apiKeyId: saved.apiKeyId, pending: operation });
+      }
+    } catch { /* 保存を禁止したブラウザーでも、現在の画面では解析を利用できます。 */ }
+    storageReady.current = true;
+  }, [store]);
+  useEffect(() => {
+    if (!storageReady.current) return;
+    const current = store.getState();
+    try {
+      if (current.pending) sessionStorage.setItem("document-analysis-operation", JSON.stringify({ apiKeyId: current.apiKeyId, operation: current.pending }));
+      else sessionStorage.removeItem("document-analysis-operation");
+    } catch { /* ファイル・本文・結果・購読キーは保存しません。 */ }
+  }, [store, state.pending, state.apiKeyId]);
   useEffect(() => () => deactivatePanelRequest(request, (pending) => store.setState({ loading: false, ...(pending ? { cancelled: true } : {}) })), [store]);
   useEffect(() => {
     const controller = new AbortController();
@@ -51,25 +72,31 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
   }, [refresh]);
 
   /** 条件を変えたときに以前の解析を消し、別文書の結果との混同を防ぎます。 */
-  function update(patch: Partial<DocumentState>) { store.setState({ result: null, failure: null, cancelled: false, ...patch }); }
+  function update(patch: Partial<DocumentState>) { store.setState({ result: null, failure: null, cancelled: false, pending: null, ...patch }); }
 
   /** ファイルを送る直前に形式を確認し、選択キーの台帳IDだけをBFFへ渡します。 */
   async function execute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (request.current || !state.file || !selectedKey || !gatewayOrigin) return;
+    if (request.current || !state.file && !state.pending || !selectedKey || !gatewayOrigin) return;
     const controller = new AbortController(); request.current = controller;
     store.setState({ loading: true, cancelled: false, failure: null, result: null });
     try {
-      const bytes = new Uint8Array(await state.file.arrayBuffer());
-      inspectDocument(bytes, state.file.type);
-      controller.signal.throwIfAborted();
-      const form = new FormData(); form.append("input", JSON.stringify({ model: state.model, apiKeyId: selectedKey.id })); form.append("file", state.file);
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(105_000)]);
-      const response = await fetch("/api/tools/documents", { method: "POST", credentials: "same-origin", body: form, signal });
-      const result = await readDocumentAnalysisResponse(response, state.model, signal);
-      if (!controller.signal.aborted) store.setState({ loading: false, result });
+      const signal = controller.signal;
+      let response: Response;
+      if (state.pending) response = Response.json(state.pending, { status: 202 });
+      else {
+        signal.throwIfAborted();
+        const query = new URLSearchParams({ model: state.model, apiKeyId: selectedKey.id });
+        response = await fetch(`/api/tools/documents?${query}`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": state.file!.type }, body: state.file!, signal });
+      }
+      const result = await waitForDocumentAnalysis(response, state.model, selectedKey.id, signal, { onPending: (pending) => { if (!signal.aborted) store.setState({ pending }); } });
+      if (!controller.signal.aborted) store.setState({ loading: false, pending: null, result });
     } catch (error) {
-      if (!controller.signal.aborted) store.setState({ loading: false, failure: error instanceof DocumentAnalysisResponseError ? error.failure : { error: { code: error instanceof TypeError || error instanceof RangeError ? "UnsupportedDocument" : error instanceof DOMException && error.name === "TimeoutError" ? "DocumentAnalysisTimeout" : "DocumentAnalysisFailed" } } });
+      if (!controller.signal.aborted) {
+        const failure: DocumentAnalysisFailure = error instanceof DocumentAnalysisResponseError ? error.failure : { error: { code: error instanceof TypeError || error instanceof RangeError ? "UnsupportedDocument" : error instanceof DOMException && error.name === "TimeoutError" ? "DocumentAnalysisTimeout" : "DocumentAnalysisFailed" } };
+        const terminal = ["DocumentOperationExpired", "DocumentOperationUnavailable", "DocumentRejected", "GatewayUnauthorized"].includes(failure.error.code);
+        store.setState({ loading: false, failure, ...(terminal ? { pending: null } : {}) });
+      }
     } finally { if (request.current === controller) request.current = null; }
   }
 
@@ -87,7 +114,7 @@ export function DocumentAnalysisPanel({ locale, dictionary, gatewayOrigin }: { l
       else update({ file });
     }} /><p id={formId("document-file-help")} className="text-sm leading-7 text-muted-foreground">{text.fileHelp}</p>{state.file && <p className="break-words text-sm">{state.file.name} · {(state.file.size / 1024).toFixed(1)} KiB</p>}</div>
     <p className="text-sm leading-7 text-muted-foreground">{text.privacy}</p>
-    <div className="flex flex-wrap gap-3">{state.loading && <Button type="button" variant="outline" onClick={() => { request.current?.abort(); request.current = null; store.setState({ loading: false, cancelled: true }); }}><Square className="size-4" />{common.cancel}</Button>}<Button type="submit" disabled={state.loading || !state.file || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? text.running : text.execute}</Button></div>
+    <div className="flex flex-wrap gap-3">{state.loading && <Button type="button" variant="outline" onClick={() => { request.current?.abort(); request.current = null; store.setState({ loading: false, cancelled: true }); }}><Square className="size-4" />{common.cancel}</Button>}<Button type="submit" disabled={state.loading || !state.file && !state.pending || !selectedKey || !gatewayOrigin}>{state.loading ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}{state.loading ? text.running : state.pending ? text.resume : text.execute}</Button></div>
   </form>;
 
   const result = state.result;

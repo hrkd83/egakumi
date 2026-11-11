@@ -171,7 +171,7 @@ export async function startRealtimeConversation(options: { model: RealtimeModel;
   function playPcm(base64: string) {
     if (!context || stopping) return;
     const bytes = decodeRealtimeAudio(base64);
-    if (outputBytes + bytes.length > REALTIME_MAX_AUDIO_BYTES || pendingPlaybackBytes + bytes.length > REALTIME_MAX_AUDIO_BYTES) throw failed();
+    if (pendingPlaybackBytes + bytes.length > REALTIME_MAX_AUDIO_BYTES) throw failed();
     outputBytes += bytes.length; pendingPlaybackBytes += bytes.length; pendingPlayback.push(bytes);
     schedulePlayback();
     if (!playbackTimer) playbackTimer = setInterval(() => { try { schedulePlayback(); } catch (error) { void end(error); } }, 100);

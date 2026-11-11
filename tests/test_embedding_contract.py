@@ -35,7 +35,7 @@ def embedding_cases(apis):
         field = 'input' if provider == 'openai' else 'texts'
         for label, value in [('empty', []), ('missing', None), ('string', 'independent'), ('null-item', [None]), ('integer-item', [1]), ('object-item', [{}]), ('blank', [' \t\u3000']), ('BOM', ['\ufeff']), ('sixteen', ['a'] * 16), ('seventeen', ['a'] * 17), ('u0085-is-not-ECMAScript-whitespace', ['\x85'])]:
             b = {**body, field: value}
-            add(provider + '-' + label, provider, b, label in ('sixteen', 'u0085-is-not-ECMAScript-whitespace'))
+            add(provider + '-' + label, provider, b, label in ('sixteen', 'seventeen', 'u0085-is-not-ECMAScript-whitespace') or (provider == 'openai' and label in ('string', 'integer-item')))
         dimension = 'dimensions' if provider == 'openai' else 'output_dimension'
         for label, value in [('zero', 0), ('negative', -1), ('float', 1.5), ('true', True), ('null', None), ('string', '256'), ('object', {})]:
             add(provider + '-dim-' + label, provider, {**body, dimension: value}, False)
@@ -64,9 +64,10 @@ def embedding_cases(apis):
         add('cohere-invalid-purpose-' + str(purpose), 'cohere', {**co, 'input_type': purpose}, False)
     add('direct-does-not-inherit-Portal-P', 'openai', {**oa, 'input': ['東京' + ' ' * 32000]}, True)
     add('other-bodyModel-unchanged', 'openai', {**oa, 'input': [], 'dimensions': 0}, True, kind='bodyModel')
+    add('openai-token-batches', 'openai', {**oa, 'input': [[1, 2], [3]]}, True)
     compact = json.dumps(oa, separators=(',', ':'))
     add('raw-L-exact', 'openai', oa, True, wire=compact + ' ' * (262144 - len(compact.encode())))
-    add('raw-L-plus1', 'openai', oa, False, wire=compact + ' ' * (262145 - len(compact.encode())))
+    add('raw-L-plus1', 'openai', oa, True, wire=compact + ' ' * (262145 - len(compact.encode())))
     return cases
 
 class EmbeddingConfigurationTests(unittest.TestCase):

@@ -36,7 +36,7 @@
     "operationConstraints": {
       "realtime-create": {
         "kind": "realtimeCreate",
-        "maxRequestBytes": 131072,
+        "maxRequestBytes": 524288000,
         "bodyFormat": "json",
         "model": "gpt-realtime-2.1",
         "sessionTtlSeconds": 600,

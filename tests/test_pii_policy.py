@@ -20,6 +20,8 @@ SETTINGS = {"kind": "pii", "modelVersion": "2025-11-01", "maxRequestBytes": 3276
 ID = "aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa"
 INPUT_EXPRESSION = expression(PII, "./inbound/set-variable[@name='piiInputStatus']", "value")
 REQUEST_EXPRESSION = expression(PII, "./inbound/set-body")
+_native_size = ET.parse(PII).find("./inbound/choose[@id='core-pii-native-request-size']/when").get("condition")
+NATIVE_SIZE_EXPRESSION = _native_size[2:-1]
 RESULT_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiResult']", "value")
 RETRY_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiRetryAfter']", "value")
 MCP_AUTH_EXPRESSION = expression(POLICIES / "mcp.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
@@ -67,6 +69,7 @@ public sealed class Context {
 public static class PiiPolicyFixture {
   public static int Input(Context context) { __INPUT__ }
   public static string Request(Context context) { __REQUEST__ }
+  public static bool NativeTooLarge(Context context) { return __NATIVE_SIZE__; }
   public static string Result(Context context) { __RESULT__ }
   public static string McpAuth(Context context) { __MCP_AUTH__ }
   public static string RestAuth(Context context) { __REST_AUTH__ }
@@ -111,14 +114,19 @@ public static class PiiPolicyFixture {
       } else {
         var status = Input(context);
         var value = new JObject(new JProperty("status", status));
-        if (status == 200) value["request"] = JObject.Parse(Request(context));
+        if (status == 200) {
+          var request = Request(context);
+          context.Request.Body.Data = request;
+          if (NativeTooLarge(context)) value["status"] = 413;
+          else value["request"] = JObject.Parse(request);
+        }
         result[(string)item["id"]] = value;
       }
     }
     return result.ToString(Formatting.None);
   }
 }
-'''.replace("__INPUT__", INPUT_EXPRESSION).replace("__REQUEST__", REQUEST_EXPRESSION).replace("__RESULT__", RESULT_EXPRESSION).replace("__RETRY__", RETRY_EXPRESSION)
+'''.replace("__INPUT__", INPUT_EXPRESSION).replace("__REQUEST__", REQUEST_EXPRESSION).replace("__RESULT__", RESULT_EXPRESSION).replace("__RETRY__", RETRY_EXPRESSION).replace("__NATIVE_SIZE__", NATIVE_SIZE_EXPRESSION)
 
 
 def response(**document):
@@ -178,6 +186,15 @@ class PiiPolicyTests(unittest.TestCase):
         cls.cases.append({"id": "operation-wire-over-malformed", "input": "{" + " " * 196608})
         # 本番API定義のモデル版・空のwarning allowlistでも同じ式を検査します。
         adopted = json.loads((POLICIES.parent / "apis/pii-v1.json").read_text())["authorization"]["operationConstraints"]["pii_redact_text"]
+        # Native Language counts the constructed envelope; combining marks show
+        # why UTF-16 length and the old compact 32 KiB budget are not native limits.
+        cls.cases.append({"id": "adopted-combining-long", "input": json.dumps({"text": ("e" + "\u0301" * 10) * 5000, "language": "fr"}, ensure_ascii=False), "settings": adopted})
+        envelope = {"kind": "PiiEntityRecognition", "analysisInput": {"documents": [{"id": ID, "language": "fr", "text": ""}]},
+                    "parameters": {"loggingOptOut": True, "modelVersion": adopted["modelVersion"], "stringIndexType": "TextElements_v8"}}
+        overhead = len(json.dumps(envelope, separators=(",", ":")).encode())
+        for excess in (0, 1):
+            text = "a" * (1000000 - overhead + excess)
+            cls.cases.append({"id": "adopted-native-byte-" + str(excess), "input": json.dumps({"text": text, "language": "fr"}), "settings": adopted})
         for name, document in (
             ("adopted-unknown-warning", response(entities=[], redactedText="synthetic harmless content",
                 warnings=[{"code": "UnregisteredWarning", "message": "SENTINEL_DIAGNOSTIC"}])),
@@ -234,6 +251,12 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
     def test_valid_unicode_is_not_rejected_by_utf16_length(self):
         for name in ("emoji-boundary", "combining-boundary"):
             self.assertEqual(self.results[name]["status"], 200)
+
+    def test_provider_size_includes_envelope_without_trial_language_or_unicode_limits(self):
+        self.assertEqual(self.results["adopted-combining-long"]["status"], 200)
+        self.assertEqual(self.results["adopted-combining-long"]["request"]["analysisInput"]["documents"][0]["language"], "fr")
+        self.assertEqual(self.results["adopted-native-byte-0"]["status"], 200)
+        self.assertEqual(self.results["adopted-native-byte-1"], {"status": 413})
 
     def test_schema_and_byte_rejections_prevent_upstream_request(self):
         for name in ("unsupported", "empty", "extra-field", "wrong-type", "native-rejected", "malformed-json", "query-rejected", "media-type"):

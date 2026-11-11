@@ -21,9 +21,9 @@ const vectors = [
   { name: "unsafe-count", value: { ...normal, detectedCount: Number.MAX_SAFE_INTEGER + 1 }, valid: false },
   { name: "text-type", value: { ...normal, redactedText: 17 }, valid: false },
   { name: "text-limit", value: { ...normal, redactedText: "a".repeat(131072) }, valid: true },
-  { name: "text-over", value: { ...normal, redactedText: "a".repeat(131073) }, valid: false },
+  { name: "text-over", value: { ...normal, redactedText: "a".repeat(131073) }, valid: true },
   { name: "unicode-limit", value: { ...normal, redactedText: "😀".repeat(131072) }, valid: true },
-  { name: "unicode-over", value: { ...normal, redactedText: "😀".repeat(131073) }, valid: false },
+  { name: "unicode-over", value: { ...normal, redactedText: "😀".repeat(131073) }, valid: true },
   { name: "extra-field", value: { ...normal, rawInput: "private-upstream-string" }, valid: false },
   { name: "missing-field", value: { ...normal, requestId: undefined }, valid: false },
 ];

@@ -12,7 +12,7 @@
             var body = context.Request.Body.As&lt;Newtonsoft.Json.Linq.JObject&gt;(preserveContent: true);
             if (body == null || body.Properties().Count() != 1 || body[&quot;sdp&quot;] == null || body[&quot;sdp&quot;].Type != Newtonsoft.Json.Linq.JTokenType.String) { return &quot;&quot;; }
             var sdp = (string)body[&quot;sdp&quot;];
-            if (String.IsNullOrEmpty(sdp) || sdp.Length &gt; 65536 || !sdp.StartsWith(&quot;v=0&quot;) || sdp.Contains(&quot;\0&quot;)) { return &quot;&quot;; }
+            if (String.IsNullOrEmpty(sdp) || !sdp.StartsWith(&quot;v=0&quot;) || sdp.Contains(&quot;\0&quot;)) { return &quot;&quot;; }
             return sdp;
         } catch { return &quot;&quot;; }
     }" />
@@ -143,7 +143,7 @@
                 if (mediaType != &quot;application/sdp&quot; &amp;&amp; mediaType != &quot;text/plain&quot;) { return &quot;REALTIME_CALL_MIME_OTHER&quot;; }
                 var answer = context.Response.Body.As&lt;string&gt;(preserveContent: true);
                 if (String.IsNullOrEmpty(answer) || answer.Contains(&quot;\0&quot;)) { return &quot;REALTIME_CALL_SDP_INVALID&quot;; }
-                if (System.Text.Encoding.UTF8.GetByteCount(answer) &gt; 65536) { return &quot;REALTIME_CALL_SDP_TOO_LARGE&quot;; }
+                if (System.Text.Encoding.UTF8.GetByteCount(answer) &gt; 524288000) { return &quot;REALTIME_CALL_SDP_TOO_LARGE&quot;; }
                 var lines = answer.Split(new string[] { &quot;\r\n&quot;, &quot;\n&quot; }, StringSplitOptions.None);
                 if (lines.Length &lt; 5 || lines[0] != &quot;v=0&quot;
                     || !lines.Any(line =&gt; System.Text.RegularExpressions.Regex.IsMatch(line, @&quot;\Ao=\S+ [0-9]+ [0-9]+ IN IP[46] \S+\z&quot;))

@@ -1,3 +1,4 @@
+import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -42,9 +43,9 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
-  if (Number(request.headers.get("content-length") ?? 0) > 262_144) return failure("InvalidRequest", 413);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: EmbeddingInput & { apiKeyId: string };
-  try { input = embeddingExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, 262_144, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
+  try { input = embeddingExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }
   let model: EmbeddingModel | undefined;
   try { model = (await (dependencies.readModels ?? getEmbeddingModels)()).find((item) => item.id === input.modelId); } catch { return failure("ModelUnavailable", 503); }
   if (!model) return failure("ModelUnavailable", 400);
@@ -63,7 +64,7 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
     key = await (dependencies.resolveSubscriptionKey ?? ((owner, id, apiId) => getApiKeyService().executionKey(owner, id, apiId)))(actor, input.apiKeyId, model.apiId);
     if (!/^[\x21-\x7e]{16,512}$/.test(key)) throw new Error("Invalid subscription key");
   } catch (error) { return error instanceof ApiKeyError && error.status < 500 ? failure("ApiKeyUnavailable", 403) : failure("ApiKeyAccessUnavailable", 503); }
-  const timeout = AbortSignal.timeout(dependencies.timeoutMs ?? 90_000);
+  const timeout = modelDeadline(dependencies.timeoutMs);
   const signal = AbortSignal.any([request.signal, timeout]);
   const started = performance.now();
   let identifier: string | undefined;
@@ -78,7 +79,7 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
       return failure([401, 403].includes(response.status) ? "GatewayUnauthorized" : "GenerationFailed", 502, details);
     }
     if (response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") { await response.body?.cancel(); return failure("GenerationFailed", 502, details); }
-    const raw = await readEmbeddingBody(response.body, 1_048_576, signal);
+    const raw = await readEmbeddingBody(response.body, MAX_BUFFERED_BODY_BYTES, signal);
     const value: unknown = JSON.parse(raw);
     if (containsModelCredential(value, key, raw)) throw new Error("Unexpected credential reflection");
     const result = parseEmbeddingResult(value, model, input, Math.round(performance.now() - started), identifier);

@@ -223,9 +223,9 @@ public static class TicketFixture {
     context.Response.Body.Text = validSdp + "a=" + new string('x',65536 - validSdp.Length - 4) + "\r\n";
     checks["exactSdpByteLimit"] = AnswerStatus(context) == "VALID";
     context.Response.Body.Text += "x";
-    checks["oversizedSdpRejected"] = AnswerStatus(context) == "REALTIME_CALL_SDP_TOO_LARGE";
+    checks["aboveOldSdpLimit"] = AnswerStatus(context) == "VALID";
     context.Response.Body.Text = validSdp + "a=" + new string('\u3042',30000) + "\r\n";
-    checks["utf8SdpLimit"] = AnswerStatus(context) == "REALTIME_CALL_SDP_TOO_LARGE";
+    checks["utf8AboveOldSdpLimit"] = AnswerStatus(context) == "VALID";
     checks["missingSecretResponse"] = SecretToken(context) == "";
     context.Variables["realtimeSecretResponse"] = null;
     checks["timeoutSecretResponse"] = SecretToken(context) == "";
@@ -343,8 +343,8 @@ class PolicyStructureTests(unittest.TestCase):
                     return [entry for group in values for entry in group]
                 return super().evaluate(parameters, index, tree, bindings)
 
-        bicep = shutil.which("bicep") or str(Path.home() / ".azure/bin/bicep")
-        if not Path(bicep).is_file(): self.skipTest("A local Bicep compiler is required")
+        from bicep_helpers import bicep_executable
+        bicep = bicep_executable()
         with tempfile.TemporaryDirectory(prefix="realtime-publication-") as folder:
             output = Path(folder) / "publication.json"
             result = subprocess.run([bicep, "build", str(CORE / "apps/gateway/apim/api-publication.bicep"), "--outfile", str(output)],
@@ -490,7 +490,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_created_call_response_requires_allowlisted_mime_and_valid_bounded_sdp(self):
         for name in ("callLocationValid", "callLocationsInvalid", "validSdpAndPlain", "unsafeMimeClassified",
-                     "invalidSdpRejected", "exactSdpByteLimit", "oversizedSdpRejected", "utf8SdpLimit"):
+                     "invalidSdpRejected", "exactSdpByteLimit", "aboveOldSdpLimit", "utf8AboveOldSdpLimit"):
             with self.subTest(name=name): self.assertTrue(self.checks[name])
 
 

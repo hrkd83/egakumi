@@ -13,7 +13,7 @@ const definitionSchema = z.object({
 }).passthrough();
 const capabilityEntrySchema = z.object({
   apiIds: z.array(z.string().min(1)).min(1), operationIds: z.array(z.string().min(1)).min(1), modelId: z.string().min(1),
-  maxOutputTokens: z.number().int().min(1).max(1_000_000).nullable(), limitKind: z.enum(["documented", "dynamic", "unsupported", "unverified"]),
+  maxOutputTokens: z.number().int().min(1).safe().nullable(), limitKind: z.enum(["documented", "dynamic", "unsupported", "unverified"]),
   sourceUrls: z.array(z.url().refine((value) => { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password; })).min(1),
   checkedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), numericMaxOutputTokens: z.number().int().positive().optional(), supportsMaximumOutput: z.boolean().optional(),
 }).strict().refine((entry) => entry.limitKind === "documented" ? entry.maxOutputTokens !== null : entry.maxOutputTokens === null)
