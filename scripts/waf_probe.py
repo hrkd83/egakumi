@@ -58,6 +58,7 @@ import tempfile
 import threading
 import time
 import zlib
+import zipfile
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
@@ -239,12 +240,51 @@ def _wav() -> bytes:
     return b"RIFF" + struct.pack("<I", 36 + len(samples)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 16000, 32000, 2, 16) + b"data" + struct.pack("<I", len(samples)) + samples
 
 
+def _ooxml_fixture(mime: str, text: str) -> bytes:
+    """Build deterministic synthetic package parts; this does not assert Office rendering."""
+    office = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    package = "http://schemas.openxmlformats.org/package/2006/relationships"
+    escaped = escape(text)
+    if mime.endswith("wordprocessingml.document"):
+        main = "word/document.xml"
+        parts = {main: ('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t xml:space="preserve">' + escaped + "</w:t></w:r></w:p></w:body></w:document>")}
+        types = {main: "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"}
+    elif mime.endswith("spreadsheetml.sheet"):
+        main = "xl/workbook.xml"
+        parts = {
+            main: f'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="{office}"><sheets><sheet name="Synthetic" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            "xl/_rels/workbook.xml.rels": f'<Relationships xmlns="{package}"><Relationship Id="rId1" Type="{office}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+            "xl/worksheets/sheet1.xml": '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t xml:space="preserve">' + escaped + "</t></is></c></row></sheetData></worksheet>",
+        }
+        types = {main: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "xl/worksheets/sheet1.xml": "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"}
+    else:
+        main = "ppt/presentation.xml"
+        parts = {
+            main: f'<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="{office}"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst><p:sldSz cx="9144000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>',
+            "ppt/_rels/presentation.xml.rels": f'<Relationships xmlns="{package}"><Relationship Id="rId1" Type="{office}/slide" Target="slides/slide1.xml"/></Relationships>',
+            "ppt/slides/slide1.xml": '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Synthetic"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>' + escaped + "</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+        }
+        types = {main: "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "ppt/slides/slide1.xml": "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"}
+    parts["_rels/.rels"] = f'<Relationships xmlns="{package}"><Relationship Id="rId1" Type="{office}/officeDocument" Target="{main}"/></Relationships>'
+    parts["[Content_Types].xml"] = ('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+        + "".join(f'<Override PartName="/{name}" ContentType="{kind}"/>' for name, kind in types.items()) + "</Types>")
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name in sorted(parts):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 0
+            info.external_attr = 0x20
+            archive.writestr(info, parts[name].encode("utf-8"))
+    return output.getvalue()
+
+
 def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture") -> bytes:
     """Provide real MIME signatures; no document/audio feature success is claimed.
 
-    PNG, BMP and WAV use minimal valid containers. Other document/image fixtures
-    deliberately supply only synthetic signature/comment structures. Their role
-    is to test WAF/MIME inspection, not the downstream decoder or OCR service.
+    PNG, BMP, WAV and OOXML use minimal valid containers/packages. Other fixtures
+    supply synthetic signature/comment structures, including HEIF file-type boxes.
+    Their role is WAF/MIME inspection, not downstream decoding or OCR success.
     """
     content = text.encode("utf-8")
     if mime == "audio/wav":
@@ -267,6 +307,14 @@ def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture
         return b"II\x2a\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00" + content
     if mime == "image/bmp":
         return b"BM" + struct.pack("<IHHI", 58 + len(content), 0, 0, 54) + struct.pack("<IiiHHIIiiII", 40, 1, 1, 1, 24, 0, 4, 0, 0, 0, 0) + b"\x00\x00\x00\x00" + content
+    if mime in {"image/heif", "image/heic"}:
+        brand = b"mif1" if mime == "image/heif" else b"heic"
+        file_type = brand + b"\x00\x00\x00\x00" + brand + (b"mif1" if mime == "image/heic" else b"")
+        return struct.pack(">I", len(file_type) + 8) + b"ftyp" + file_type + struct.pack(">I", len(content) + 8) + b"free" + content
+    if mime in {"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation"}:
+        return _ooxml_fixture(mime, text)
+    if mime == "text/html":
+        return ('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Synthetic WAF fixture</title></head><body><p>' + escape(text) + "</p></body></html>").encode("utf-8")
     return b"\x00\x01\x02\x7f\x80\xff" * 64
 
 
@@ -276,7 +324,7 @@ def _multipart(text: str, boundary: str = "waf-probe-fixed-boundary", *, portal_
     for name, value in fields:
         out.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n').encode())
     mime = file_mime or ("application/pdf" if document else "audio/wav")
-    extension = {"application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/tiff": "tiff", "image/bmp": "bmp", "audio/wav": "wav"}.get(mime, "bin")
+    extension = {"application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/tiff": "tiff", "image/bmp": "bmp", "audio/wav": "wav", "image/heif": "heif", "image/heic": "heic", "text/html": "html", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx", "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx"}.get(mime, "bin")
     out.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{file_field}"; filename="probe.{extension}"\r\nContent-Type: {mime}\r\n\r\n').encode())
     out.write(_binary_fixture(mime, text))
     out.write((f"\r\n--{boundary}--\r\n").encode())
@@ -853,7 +901,7 @@ def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[P
                 cases.append(_probe(route, f"size-{size}", "size-boundary", intent="validation",
                     body=b"p" * size, headers=[("Content-Type", (route.content_types or ("application/json",))[0])]))
         if route.body_format == "binary":
-            for mime in ("application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "audio/wav", "application/octet-stream"):
+            for mime in dict.fromkeys(("application/pdf", "image/png", "image/jpeg", "image/tiff", "image/bmp", "audio/wav", "application/octet-stream", *route.content_types)):
                 data = _binary_fixture(mime)
                 cases.append(_probe(route, "mime-" + mime.replace("/", "-"), "binary-mime", intent="compatibility" if mime in route.content_types else "validation", body=data, headers=[("Content-Type", mime)]))
             for size in (65535, 65536, 65537, 131071, 131072, 131073):

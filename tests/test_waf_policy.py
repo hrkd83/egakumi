@@ -156,6 +156,7 @@ class DataWafTests(unittest.TestCase):
     def test_standard_media_exceptions_are_explicit_and_do_not_follow_config_modalities(self):
         profiles = {item['name']: item for item in load_manifest()['profiles']}
         for name, selector in [('g-chat-completions', 'messages.content.image_url.url'),
+                               ('g-responses', 'input.content.image_url'),
                                ('g-responses', 'input.content.file_data')]:
             profile = profiles[name]
             expected = exclusion(selector, 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170'])
@@ -171,6 +172,23 @@ class DataWafTests(unittest.TestCase):
                 self.assertNotIn(expected, result['properties']['managedRules']['exclusions'])
         self.assertFalse(any(e['selector'] == 'messages.content.input_audio.data'
                              for p in profiles.values() for e in p['exclusions']))
+
+    def test_responses_image_exception_changes_only_its_exact_payload_field(self):
+        profiles = {item['name']: item for item in load_manifest()['profiles']}
+        profile = profiles['g-responses']
+        self.assertEqual(profile['paths'], ['/models/openai/v1/responses'])
+        expected = exclusion('input.content.image_url', 'REQUEST-941-APPLICATION-ATTACK-XSS',
+                             ['941130', '941170'])
+        self.assertEqual([item for item in profile['exclusions']
+                          if item['selector'] == 'input.content.image_url'], [expected])
+        self.assertTrue(all(expected not in item['exclusions']
+                            for name, item in profiles.items() if name != 'g-responses'))
+        previous = copy.deepcopy(profile)
+        previous['exclusions'].remove(expected)
+        before = desired_policy(policy(), previous, configuration())
+        after = desired_policy(policy(), profile, configuration())
+        after['properties']['managedRules']['exclusions'].remove(expected)
+        self.assertEqual(after, before)
 
     def test_chat_observed_rule_update_changes_only_two_fields_and_one_owned_policy(self):
         current = next(p for p in load_manifest()['profiles'] if p['name'] == 'g-chat-completions')
