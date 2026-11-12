@@ -208,8 +208,22 @@ console.log(JSON.stringify(cookies));
         self.assertEqual(compiled, desired_policy({"location": "japaneast", "properties": base}, profile, {})["properties"])
         from deployment.helpers.waf_body import ai_body_settings
         self.assertEqual(compiled["policySettings"], ai_body_settings(base["policySettings"]))
-        self.assertEqual(compiled["customRules"], base["customRules"])
-        self.assertEqual(compiled["managedRules"]["managedRuleSets"], base["managedRules"]["managedRuleSets"])
+        self.assertEqual(compiled["customRules"][:-1], base["customRules"])
+        block = compiled["customRules"][-1]
+        self.assertEqual((block["name"], block["action"]), ("coreAiContentType", "Block"))
+        present, mime = block["matchConditions"]
+        self.assertFalse(present["negationConditon"])
+        self.assertEqual(present["matchValues"], [r"[\s\S]"])
+        self.assertTrue(mime["negationConditon"])
+        for condition in (present, mime):
+            self.assertEqual(condition["matchVariables"], [{"variableName": "RequestHeaders", "selector": "Content-Type"}])
+            self.assertEqual(condition["transforms"], ["Lowercase"])
+        expected_sets = copy.deepcopy(base["managedRules"]["managedRuleSets"])
+        expected_sets[0]["ruleGroupOverrides"] = [{
+            "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+            "rules": [{"ruleId": "920420", "state": "Disabled"}],
+        }]
+        self.assertEqual(compiled["managedRules"]["managedRuleSets"], expected_sets)
         self.assertTrue(compiled["policySettings"]["requestBodyCheck"])
         self.assertEqual(compiled["policySettings"]["mode"], "Prevention")
         self.assertEqual(compiled["managedRules"]["exclusions"].count(expected), 1)

@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "name": "g-chat-completions",
+      "scope": "gateway",
+      "paths": [
+        "/models/openai/v1/chat/completions"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-responses",
+      "scope": "gateway",
+      "paths": [
+        "/models/openai/v1/responses"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-embeddings",
+      "scope": "gateway",
+      "paths": [
+        "/models/cohere/v1/embed",
+        "/models/openai-embeddings/v1/embeddings"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-rerank",
+      "scope": "gateway",
+      "paths": [
+        "/models/cohere/v1/rerank"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-decision",
+      "scope": "gateway",
+      "paths": [
+        "/models/microsoft-decision/v1/systemone"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-images",
+      "scope": "gateway",
+      "paths": [
+        "/models/blackforestlabs/v1/flux-2/edits",
+        "/models/blackforestlabs/v1/flux-2/generations",
+        "/models/openai-images/v1/deployments/gpt-image-2.5-flare/edits",
+        "/models/openai-images/v1/deployments/gpt-image-2.5-sunburst/edits",
+        "/models/openai-images/v1/deployments/gpt-image-2/edits",
+        "/models/openai-images/v1/generations"
+      ],
+      "format": "json-or-multipart"
+    },
+    {
+      "name": "g-realtime",
+      "scope": "gateway",
+      "paths": [
+        "/models/openai-realtime/v1/calls"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-live",
+      "scope": "gateway",
+      "paths": [
+        "/models/openai-live/v1/sessions"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "g-pii-redact",
+      "scope": "gateway",
+      "paths": [
+        "/tools/pii-v1-mcp/mcp",
+        "/tools/pii/v1/redact"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-generate",
+      "scope": "portal",
+      "paths": [
+        "/api/models/generate"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-embeddings",
+      "scope": "portal",
+      "paths": [
+        "/api/models/embeddings"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-rerank",
+      "scope": "portal",
+      "paths": [
+        "/api/models/rerank"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-decision",
+      "scope": "portal",
+      "paths": [
+        "/api/models/decision"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-images",
+      "scope": "portal",
+      "paths": [
+        "/api/models/images"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-speech",
+      "scope": "portal",
+      "paths": [
+        "/api/models/speech"
+      ],
+      "format": "json-or-multipart"
+    },
+    {
+      "name": "p-realtime",
+      "scope": "portal",
+      "paths": [
+        "/api/models/realtime/stop"
+      ],
+      "format": "json"
+    },
+    {
+      "name": "p-pii-redact",
+      "scope": "portal",
+      "paths": [
+        "/api/tools/pii",
+        "/api/tools/pii-mcp"
+      ],
+      "format": "json"
+    }
+  ],
+  "rule": {
+    "name": "coreAiContentType",
+    "variableName": "RequestHeaders",
+    "selector": "Content-Type",
+    "transforms": [
+      "Lowercase"
+    ],
+    "presentPattern": "[\\s\\S]"
+  },
+  "formats": [
+    {
+      "name": "json",
+      "pattern": "^[ \\t]*application/json[ \\t]*(?:;[ \\t]*[!#$%&'*+.^_`|~0-9a-z-]+[ \\t]*=[ \\t]*(?:[!#$%&'*+.^_`|~0-9a-z-]+|\"(?:[\\t !#-\\[\\]-~\\x80-\\xff]|\\\\[\\t -~\\x80-\\xff])*\")[ \\t]*)*\\z"
+    },
+    {
+      "name": "json-or-multipart",
+      "pattern": "^[ \\t]*(?:application/json|multipart/form-data)[ \\t]*(?:;[ \\t]*[!#$%&'*+.^_`|~0-9a-z-]+[ \\t]*=[ \\t]*(?:[!#$%&'*+.^_`|~0-9a-z-]+|\"(?:[\\t !#-\\[\\]-~\\x80-\\xff]|\\\\[\\t -~\\x80-\\xff])*\")[ \\t]*)*\\z"
+    }
+  ]
+}

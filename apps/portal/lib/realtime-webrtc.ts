@@ -140,7 +140,7 @@ async function stopCall(call: RealtimeCallHandle, model: RealtimeModel, origin: 
 /** 本人に束縛された停止参照を復号し、現在も使える同じ購読で通話の停止を再確認します。 */
 export async function handleRealtimeStop(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
-  if (request.headers.get("content-type")?.split(";", 1)[0] !== "application/json") return failure("InvalidRequest", 415);
+  if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   let call: RealtimeCallHandle; let model: RealtimeModel; let origin: string;
   try {
     const input = realtimeStopSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(await readSpeechBody(request.body, 17_000, AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])))));
@@ -160,7 +160,7 @@ export async function handleRealtimeStop(request: Request, dependencies: Realtim
  */
 export async function handleRealtimeWebRtc(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
-  if (request.headers.get("content-type")?.split(";", 1)[0] !== "application/json") return failure("InvalidRequest", 415);
+  if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   let input: RealtimeInput & { apiKeyId: string; sdp: string }; let model: RealtimeModel; let origin: string; let selectedVoice: string | undefined;
   try {
     if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);

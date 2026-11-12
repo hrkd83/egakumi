@@ -78,42 +78,106 @@ def managed_ai_paths(config):
     return selected
 
 
-SPEECH_RULE_ID = "920420"
+CONTENT_TYPE_RULE_ID = "920420"
 RAW_CONTROLS = REPOSITORY / "apps/gateway/waf-raw-body-controls.json"
+JSON_CONTROLS = REPOSITORY / "apps/gateway/waf-json-content-controls.json"
 
 
 def speech_content_policy(source):
     """共通の保護を維持し、SSML/WAVを拒否するMIME許可リスト規則だけを調整する。"""
+    return _content_type_policy(source, 'Gateway Speech')
+
+
+def _content_type_policy(source, label):
+    """Replace only the case-sensitive managed MIME allowlist check."""
     desired = _writable_policy(source)
     properties = desired.get('properties', {})
     if properties.get('policySettings', {}).get('state') != 'Enabled':
-        raise ValueError('Gateway Speech requires the existing enabled WAF policy')
+        raise ValueError(label + ' requires the existing enabled WAF policy')
     selected = [item for item in properties.get('managedRules', {}).get('managedRuleSets', [])
                 if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']
     if len(selected) != 1:
-        raise ValueError('Gateway Speech requires the existing OWASP 3.2 rule set')
+        raise ValueError(label + ' requires the existing OWASP 3.2 rule set')
     groups = selected[0].setdefault('ruleGroupOverrides', [])
     matching = [group for group in groups if group.get('ruleGroupName') == 'REQUEST-920-PROTOCOL-ENFORCEMENT']
     if len(matching) > 1:
-        raise ValueError('Gateway Speech protocol enforcement overrides are duplicated')
+        raise ValueError(label + ' protocol enforcement overrides are duplicated')
     if matching:
         group = matching[0]
         # グループ全体の無効化を引き継ぐと920470等も失われるため、明示的な規則一覧を必要とします。
         if not isinstance(group.get('rules'), list) or not group['rules']:
-            raise ValueError('Gateway Speech requires individual protocol enforcement rules')
+            raise ValueError(label + ' requires individual protocol enforcement rules')
     else:
         group = {'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': []}
         groups.append(group)
     rules = group['rules']
     if any(rule.get('ruleId') == '920470' and rule.get('state') == 'Disabled' for rule in rules):
-        raise ValueError('Gateway Speech must retain Content-Type syntax inspection (920470)')
-    matching = [rule for rule in rules if rule.get('ruleId') == SPEECH_RULE_ID]
+        raise ValueError(label + ' must retain Content-Type syntax inspection (920470)')
+    matching = [rule for rule in rules if rule.get('ruleId') == CONTENT_TYPE_RULE_ID]
     if len(matching) > 1:
-        raise ValueError('Gateway Speech content type override is duplicated')
+        raise ValueError(label + ' content type override is duplicated')
     if matching:
         matching[0]['state'] = 'Disabled'
     else:
-        rules.append({'ruleId': SPEECH_RULE_ID, 'state': 'Disabled'})
+        rules.append({'ruleId': CONTENT_TYPE_RULE_ID, 'state': 'Disabled'})
+    return desired
+
+
+def _ai_content_type_spec(profile):
+    """Select a MIME contract only for its canonical published path subset."""
+    controls = json.loads(JSON_CONTROLS.read_text(encoding='utf-8'))
+    paths = profile.get('paths')
+    if isinstance(paths, list) and paths:
+        matches = [item for item in controls['profiles']
+                   if profile.get('name') == item['name'] and profile.get('scope') == item['scope']
+                   and set(paths) <= set(item['paths'])]
+        if len(matches) == 1:
+            return controls, matches[0]
+    return None
+
+
+def ai_content_type_profile(profile):
+    """Identify an owned JSON-capable policy without widening its path scope."""
+    return _ai_content_type_spec(profile) is not None
+
+
+def ai_content_type_policy(source, profile):
+    """Allow JSON MIME case variants without bypassing managed body inspection.
+
+    Shared image/speech policies retain their JSON and multipart MIME union.
+    An absent/empty header is left to the existing protocol/application rules,
+    so bodyless MCP GET/DELETE requests do not acquire a MIME requirement.
+    The Block does not rewrite headers or exempt more body data from inspection.
+    """
+    selected = _ai_content_type_spec(profile)
+    if selected is None:
+        raise ValueError('AI content type requires a canonical JSON-capable profile')
+    controls, contract = selected
+    formats = [item for item in controls['formats'] if item['name'] == contract['format']]
+    if len(formats) != 1:
+        raise ValueError('AI content type requires one canonical MIME format')
+    desired = _content_type_policy(source, 'AI content type')
+    properties = desired['properties']
+    settings = properties.get('policySettings', {})
+    if settings.get('mode') != 'Prevention' or settings.get('requestBodyCheck') is not True:
+        raise ValueError('AI content type requires Prevention mode and body inspection')
+    spec = controls['rule']
+    custom = properties.setdefault('customRules', [])
+    if any(rule.get('name') == spec['name'] for rule in custom):
+        raise ValueError('AI content type custom rule name is already owned')
+    used = {rule.get('priority') for rule in custom}
+    priority = next((value for value in range(1, 101) if value not in used), None)
+    if priority is None:
+        raise ValueError('AI content type has insufficient custom rule priorities')
+    variable = {'variableName': spec['variableName'], 'selector': spec['selector']}
+    custom.append({'name': spec['name'], 'priority': priority, 'ruleType': 'MatchRule',
+        'state': 'Enabled', 'action': 'Block', 'matchConditions': [{
+            'matchVariables': [copy.deepcopy(variable)],
+            'operator': 'Regex', 'negationConditon': False, 'matchValues': [spec['presentPattern']],
+            'transforms': spec['transforms']}, {
+            'matchVariables': [copy.deepcopy(variable)],
+            'operator': 'Regex', 'negationConditon': True, 'matchValues': [formats[0]['pattern']],
+            'transforms': spec['transforms']}]})
     return desired
 
 

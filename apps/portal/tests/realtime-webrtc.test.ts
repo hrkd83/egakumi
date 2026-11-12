@@ -83,6 +83,60 @@ test("未認証・異なるOrigin・不正入力は、上流呼び出しとキ�
   assert.equal(calls, 0);
 });
 
+test("WebRTC開始はJSONの大小文字と区切り前の空白を許容し、上流へ正規のJSONを送る", async () => {
+  for (const contentType of ["application/json", "Application/JSON", "APPLICATION/JSON; charset=UTF-8", "Application/JSON \t; charset=UTF-8"]) {
+    let creates = 0; const original = dependencies();
+    const response = await handleRealtimeWebRtc(request(realtime, {}, { "Content-Type": contentType }), dependencies({ fetch: async (url, init) => {
+      if (!String(url).endsWith("/hangup")) {
+        creates++; assert.equal(new Headers(init?.headers).get("Content-Type"), "application/json");
+        assert.deepEqual(JSON.parse(String(init?.body)), { sdp });
+      }
+      return original.fetch!(url, init);
+    } }));
+    assert.equal(response.status, 200);
+    const output = await events(response);
+    assert.equal(creates, 1); assert.ok(output.some((event) => event.type === "answer"));
+    assert.ok(!output.some((event) => event.type === "error"));
+  }
+});
+
+test("Realtime停止はJSONの大小文字と区切り前の空白を許容して同じ停止処理を行う", async () => {
+  const handle = sealRealtimeCallHandle({ version: 1, ...actor, apiKeyId, modelId: realtime.id, callId, ticket: ticket(), expiresAt: Date.now() + 300_000 }, handleSecret);
+  for (const contentType of ["application/json", "Application/JSON", "APPLICATION/JSON; charset=UTF-8", "Application/JSON \t; charset=UTF-8"]) {
+    let calls = 0;
+    const input = new Request(`${portalOrigin}/api/models/realtime/stop`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": contentType }, body: JSON.stringify({ handle }) });
+    const response = await handleRealtimeStop(input, dependencies({ fetch: async (url, init) => {
+      calls++; assert.equal(String(url), gatewayOrigin + `/models/openai-realtime/v1/calls/${callId}/hangup`);
+      assert.equal(new Headers(init?.headers).get("Content-Type"), "application/json");
+      return new Response(null, { status: 204 });
+    } }));
+    assert.equal(response.status, 200); assert.deepEqual(await response.json(), { stopStatus: "confirmed" }); assert.equal(calls, 1);
+  }
+});
+
+test("RealtimeのJSONに似た別MIMEと未指定MIMEは本文・キー・上流の前に拒否し、認証順を保つ", async () => {
+  let sideEffects = 0;
+  const context = dependencies({
+    readModels: () => { sideEffects++; return [realtime]; },
+    resolveSubscriptionKey: async () => { sideEffects++; return key; },
+    fetch: async () => { sideEffects++; throw new Error("Unexpected request"); },
+    connectWebSocket: async () => { sideEffects++; throw new Error("Unexpected connection"); },
+  });
+  for (const handler of [handleRealtimeWebRtc, handleRealtimeStop]) {
+    for (const contentType of ["application/jsonx", "text/application/json", "application/json, text/plain", "text/plain", ""]) {
+      const input = request(realtime, {}, { "Content-Type": contentType });
+      const response = await handler(input, context);
+      assert.equal(response.status, 415); assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+      assert.equal(input.bodyUsed, false);
+    }
+    const missing = request(); missing.headers.delete("Content-Type");
+    assert.equal((await handler(missing, context)).status, 415); assert.equal(missing.bodyUsed, false);
+    assert.equal((await handler(request(realtime, {}, { "Content-Type": "text/plain" }), { ...context, readSession: async () => null })).status, 401);
+    assert.equal((await handler(request(realtime, {}, { origin: "https://other.invalid", "Content-Type": "text/plain" }), context)).status, 403);
+  }
+  assert.equal(sideEffects, 0);
+});
+
 test("WebRTCの未知音声と別系列の音声はキー取得・上流接続前に拒否する", async () => {
   let sideEffects = 0;
   const context = dependencies({
