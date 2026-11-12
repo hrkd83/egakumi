@@ -310,10 +310,44 @@ resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplica
   properties: rawBodyProperties
 }
 
-// データ欄の調整はmanifestだけを正本にし、用途外の例外を動的に足しません。
-var dataPolicyProperties = [for profile in dataProfiles: union(profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents') ? rawBodyProperties : sharedWafProperties, {
+// 埋め込みJSONのMIMEだけを大小文字非依存のBlock判定に置き換えます。
+// Allowによる検査の短絡やraw本文用930110の調整は行いません。
+var jsonContentControls = loadJsonContent('../../apps/gateway/waf-json-content-controls.json')
+var embeddingJsonProperties = union(sharedWafProperties, {
+  customRules: concat(wafCustomRules, [{
+    name: jsonContentControls.rule.name
+    priority: speechRulePriorities[0]
+    ruleType: 'MatchRule'
+    state: 'Enabled'
+    action: 'Block'
+    matchConditions: [{
+      matchVariables: [{ variableName: jsonContentControls.rule.variableName, selector: jsonContentControls.rule.selector }]
+      operator: 'Regex'
+      negationConditon: true
+      matchValues: [jsonContentControls.rule.pattern]
+      transforms: jsonContentControls.rule.transforms
+    }]
+  }])
+  managedRules: union(sharedWafProperties.managedRules, {
+    managedRuleSets: [{
+      ruleSetType: 'OWASP'
+      ruleSetVersion: '3.2'
+      ruleGroupOverrides: [{
+        ruleGroupName: 'REQUEST-920-PROTOCOL-ENFORCEMENT'
+        rules: [{ ruleId: '920420', state: 'Disabled' }]
+      }]
+    }]
+  })
+})
+var dataBaseProperties = [for profile in dataProfiles: profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents')
+  ? rawBodyProperties
+  : length(filter(jsonContentControls.profiles, item => item.name == profile.name && item.scope == profile.scope && length(profile.paths) > 0 && length(filter(profile.paths, path => !contains(item.paths, path))) == 0)) == 1
+    ? embeddingJsonProperties : sharedWafProperties]
+
+// データ欄とMIMEの正本を使い、用途外の例外を動的に足しません。
+var dataPolicyProperties = [for (profile, index) in dataProfiles: union(dataBaseProperties[index], {
   policySettings: aiWafPolicySettings
-  managedRules: union(profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents') ? rawBodyProperties.managedRules : sharedWafProperties.managedRules, {
+  managedRules: union(dataBaseProperties[index].managedRules, {
     exclusions: union(wafExclusions,
       profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions)
   })

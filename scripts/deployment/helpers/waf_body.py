@@ -80,40 +80,84 @@ def managed_ai_paths(config):
 
 SPEECH_RULE_ID = "920420"
 RAW_CONTROLS = REPOSITORY / "apps/gateway/waf-raw-body-controls.json"
+JSON_CONTROLS = REPOSITORY / "apps/gateway/waf-json-content-controls.json"
 
 
 def speech_content_policy(source):
     """共通の保護を維持し、SSML/WAVを拒否するMIME許可リスト規則だけを調整する。"""
+    return _content_type_policy(source, 'Gateway Speech')
+
+
+def _content_type_policy(source, label):
+    """Replace only the case-sensitive managed MIME allowlist check."""
     desired = _writable_policy(source)
     properties = desired.get('properties', {})
     if properties.get('policySettings', {}).get('state') != 'Enabled':
-        raise ValueError('Gateway Speech requires the existing enabled WAF policy')
+        raise ValueError(label + ' requires the existing enabled WAF policy')
     selected = [item for item in properties.get('managedRules', {}).get('managedRuleSets', [])
                 if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']
     if len(selected) != 1:
-        raise ValueError('Gateway Speech requires the existing OWASP 3.2 rule set')
+        raise ValueError(label + ' requires the existing OWASP 3.2 rule set')
     groups = selected[0].setdefault('ruleGroupOverrides', [])
     matching = [group for group in groups if group.get('ruleGroupName') == 'REQUEST-920-PROTOCOL-ENFORCEMENT']
     if len(matching) > 1:
-        raise ValueError('Gateway Speech protocol enforcement overrides are duplicated')
+        raise ValueError(label + ' protocol enforcement overrides are duplicated')
     if matching:
         group = matching[0]
         # グループ全体の無効化を引き継ぐと920470等も失われるため、明示的な規則一覧を必要とします。
         if not isinstance(group.get('rules'), list) or not group['rules']:
-            raise ValueError('Gateway Speech requires individual protocol enforcement rules')
+            raise ValueError(label + ' requires individual protocol enforcement rules')
     else:
         group = {'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': []}
         groups.append(group)
     rules = group['rules']
     if any(rule.get('ruleId') == '920470' and rule.get('state') == 'Disabled' for rule in rules):
-        raise ValueError('Gateway Speech must retain Content-Type syntax inspection (920470)')
+        raise ValueError(label + ' must retain Content-Type syntax inspection (920470)')
     matching = [rule for rule in rules if rule.get('ruleId') == SPEECH_RULE_ID]
     if len(matching) > 1:
-        raise ValueError('Gateway Speech content type override is duplicated')
+        raise ValueError(label + ' content type override is duplicated')
     if matching:
         matching[0]['state'] = 'Disabled'
     else:
         rules.append({'ruleId': SPEECH_RULE_ID, 'state': 'Disabled'})
+    return desired
+
+
+def embedding_json_profile(profile):
+    """Accept only published subsets of the two canonical embedding policies."""
+    controls = json.loads(JSON_CONTROLS.read_text(encoding='utf-8'))
+    paths = profile.get('paths')
+    return (isinstance(paths, list) and bool(paths)
+            and any(profile.get('name') == item['name'] and profile.get('scope') == item['scope']
+                    and set(paths) <= set(item['paths']) for item in controls['profiles']))
+
+
+def embedding_json_content_policy(source):
+    """Allow JSON MIME case variants without bypassing managed body inspection.
+
+    Called only for the canonical embedding path policies. The custom Block
+    replaces 920420's MIME allowlist; it is not an Allow and does not rewrite
+    headers or exempt any additional JSON field from managed rules.
+    """
+    desired = _content_type_policy(source, 'Embedding JSON')
+    properties = desired['properties']
+    settings = properties.get('policySettings', {})
+    if settings.get('mode') != 'Prevention' or settings.get('requestBodyCheck') is not True:
+        raise ValueError('Embedding JSON requires Prevention mode and body inspection')
+    controls = json.loads(JSON_CONTROLS.read_text(encoding='utf-8'))
+    spec = controls['rule']
+    custom = properties.setdefault('customRules', [])
+    if any(rule.get('name') == spec['name'] for rule in custom):
+        raise ValueError('Embedding JSON custom rule name is already owned')
+    used = {rule.get('priority') for rule in custom}
+    priority = next((value for value in range(1, 101) if value not in used), None)
+    if priority is None:
+        raise ValueError('Embedding JSON has insufficient custom rule priorities')
+    custom.append({'name': spec['name'], 'priority': priority, 'ruleType': 'MatchRule',
+        'state': 'Enabled', 'action': 'Block', 'matchConditions': [{
+            'matchVariables': [{'variableName': spec['variableName'], 'selector': spec['selector']}],
+            'operator': 'Regex', 'negationConditon': True, 'matchValues': [spec['pattern']],
+            'transforms': spec['transforms']}]})
     return desired
 
 

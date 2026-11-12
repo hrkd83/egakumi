@@ -1083,8 +1083,17 @@ class DataWafTests(unittest.TestCase):
             self.assertEqual(actual, expected)
             configured = desired_policy(policy(), profile, configuration())['properties']
             self.assertEqual(configured['policySettings'], ai_body_settings(policy()['properties']['policySettings']))
-            self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
-            self.assertEqual(configured['managedRules']['managedRuleSets'], policy()['properties']['managedRules']['managedRuleSets'])
+            if name in ('g-embeddings', 'p-embeddings'):
+                self.assertEqual(configured['customRules'][:-1], policy()['properties']['customRules'])
+                self.assertEqual(configured['customRules'][-1]['name'], 'coreEmbeddingJsonContentType')
+                self.assertEqual(configured['customRules'][-1]['action'], 'Block')
+                self.assertEqual(configured['managedRules']['managedRuleSets'], [{
+                    'ruleSetType': 'OWASP', 'ruleSetVersion': '3.2', 'ruleGroupOverrides': [{
+                        'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT',
+                        'rules': [{'ruleId': '920420', 'state': 'Disabled'}]}]}])
+            else:
+                self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
+                self.assertEqual(configured['managedRules']['managedRuleSets'], policy()['properties']['managedRules']['managedRuleSets'])
         for name, profile in profiles.items():
             if name not in fields:
                 self.assertFalse(any('rules' not in group for entry in profile['exclusions']
@@ -1158,10 +1167,12 @@ class DataWafTests(unittest.TestCase):
             source = (ROOT / 'infra/modules/application-gateway.bicep').read_text(encoding='utf-8')
             source = source.replace("loadJsonContent('../../apps/gateway/waf-data-exclusions.json')", "loadJsonContent('./manifest.json')")
             source = source.replace("loadJsonContent('../../apps/gateway/waf-raw-body-controls.json')", "loadJsonContent('./raw-controls.json')")
+            source = source.replace("loadJsonContent('../../apps/gateway/waf-json-content-controls.json')", "loadJsonContent('./json-controls.json')")
             source = source.replace("loadJsonContent('../../apps/portal/waf-session-exclusions.json')", "loadJsonContent('./portal-session.json')")
             (folder / 'gateway.bicep').write_text(source, encoding='utf-8')
             (folder / 'manifest.json').write_text(json.dumps(sample), encoding='utf-8')
             (folder / 'raw-controls.json').write_text((ROOT / 'apps/gateway/waf-raw-body-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
+            (folder / 'json-controls.json').write_text((ROOT / 'apps/gateway/waf-json-content-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
             (folder / 'portal-session.json').write_text(json.dumps(portal_session_exclusions()), encoding='utf-8')
             built = subprocess.run([bicep_executable(), 'build', str(folder / 'gateway.bicep'), '--stdout', '--no-restore'],
                                    env={**os.environ, 'DOTNET_BUNDLE_EXTRACT_BASE_DIR': str(folder)},

@@ -23,7 +23,8 @@ from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_
                                                 NETWORK_API, portal_session_exclusions)
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_KEYS,
                                            PORTAL_DATA_POLICY_KEYS, policy_id)
-from deployment.helpers.waf_body import ai_body_settings, portal_document_profile, raw_body_policy
+from deployment.helpers.waf_body import (ai_body_settings, portal_document_profile, raw_body_policy,
+                                         embedding_json_profile, embedding_json_content_policy)
 
 
 MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
@@ -367,7 +368,12 @@ def exclusion_is_covered(existing, desired):
 
 def desired_policy(base, profile, config, sources=()):
     baseline = _writable_policy(base)
-    desired = raw_body_policy(base) if portal_document_profile(profile) else copy.deepcopy(baseline)
+    if portal_document_profile(profile):
+        desired = raw_body_policy(base)
+    elif embedding_json_profile(profile):
+        desired = embedding_json_content_policy(base)
+    else:
+        desired = copy.deepcopy(baseline)
     properties = desired['properties']
     settings = baseline['properties'].get('policySettings', {})
     if (settings.get('state') != 'Enabled' or settings.get('mode') != 'Prevention'

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "name": "g-embeddings",
+      "scope": "gateway",
+      "paths": ["/models/cohere/v1/embed", "/models/openai-embeddings/v1/embeddings"]
+    },
+    {
+      "name": "p-embeddings",
+      "scope": "portal",
+      "paths": ["/api/models/embeddings"]
+    }
+  ],
+  "rule": {
+    "name": "coreEmbeddingJsonContentType",
+    "variableName": "RequestHeaders",
+    "selector": "Content-Type",
+    "pattern": "^[ \\t]*application/json[ \\t]*(?:;[ \\t]*[!#$%&'*+.^_`|~0-9a-z-]+[ \\t]*=[ \\t]*(?:[!#$%&'*+.^_`|~0-9a-z-]+|\"(?:[\\t !#-\\[\\]-~\\x80-\\xff]|\\\\[\\t -~\\x80-\\xff])*\")[ \\t]*)*\\z",
+    "transforms": ["Lowercase"]
+  }
+}

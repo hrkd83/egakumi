@@ -7,6 +7,7 @@ import unittest
 from bicep_helpers import compile_bicep
 from test_ssml_waf import GatewayExpression
 from deployment.helpers.waf_body import ai_body_settings
+from waf_policy import desired_policy
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         cls.resources = list(items.values()) if isinstance(items, dict) else items
         cls.profiles = json.loads((ROOT / "apps/gateway/waf-data-exclusions.json").read_text())["profiles"]
         cls.cookie = json.loads((ROOT / "apps/portal/waf-session-exclusions.json").read_text())[0]
+        cls.json_controls = json.loads((ROOT / "apps/gateway/waf-json-content-controls.json").read_text())
 
     def parameters(self, **changes):
         values = {key: copy.deepcopy(value["defaultValue"])
@@ -158,17 +160,58 @@ class WafLayoutBicepTests(unittest.TestCase):
                 self.assertEqual(policy["policySettings"][field], baseline["policySettings"][field])
             if name.startswith("wafpol-p-"):
                 self.assertEqual(policy["managedRules"]["exclusions"].count(self.cookie), 1)
-                if name != self.name("p-document-upload"):
+                if name not in {self.name("p-document-upload"), self.name("p-embeddings")}:
                     self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
             if name in {self.name(purpose) for purpose in DATA_PURPOSES | {"g-speech", "g-document-upload"}}:
                 self.assertEqual(policy["policySettings"], ai_body_settings({**baseline["policySettings"], "mode": "Prevention"}))
             else:
                 self.assertEqual(policy["policySettings"], baseline["policySettings"])
-            if name in {self.name(purpose) for purpose in DATA_PURPOSES - {"p-document-upload"}}:
+            if name in {self.name(purpose) for purpose in DATA_PURPOSES - {"p-document-upload", "g-embeddings", "p-embeddings"}}:
                 self.assertEqual(policy["customRules"], parameters["wafCustomRules"])
         self.assertNotIn(self.cookie, baseline["managedRules"]["exclusions"])
         for purpose in ("p-base", "p-auth", "g-auth"):
             self.assertEqual(policies[self.name(purpose)]["policySettings"]["mode"], "Detection")
+
+    def test_embedding_json_controls_match_python_and_change_only_the_two_policies(self):
+        custom = [{"name": "fixture-one", "priority": 1, "action": "Block"},
+                  {"name": "fixture-three", "priority": 3, "action": "Block"}]
+        policies = self.policies(self.parameters(wafCustomRules=custom))
+        baseline = policies[self.name("g-base")]
+        source = {"location": "japaneast", "properties": copy.deepcopy(baseline)}
+        owned_name = self.json_controls["rule"]["name"]
+        for purpose in ("g-embeddings", "p-embeddings"):
+            profile = next(p for p in self.profiles if p["name"] == purpose)
+            actual = policies[self.name(purpose)]
+            expected = desired_policy(source, profile, {})["properties"]
+            self.assertEqual(actual, expected)
+            self.assertEqual(actual["customRules"][:-1], custom)
+            rule, = [r for r in actual["customRules"] if r["name"] == owned_name]
+            self.assertEqual(rule["priority"], 2)
+            self.assertEqual(rule["action"], "Block")
+            condition, = rule["matchConditions"]
+            self.assertEqual(condition["transforms"], ["Lowercase"])
+            self.assertTrue(condition["negationConditon"])
+            self.assertEqual(actual["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], [{
+                "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                "rules": [{"ruleId": "920420", "state": "Disabled"}],
+            }])
+        for name, value in policies.items():
+            if name not in {self.name("g-embeddings"), self.name("p-embeddings")}:
+                self.assertFalse(any(r["name"] == owned_name for r in value["customRules"]))
+
+    def test_embedding_json_controls_follow_each_nonempty_published_gateway_subset(self):
+        profile = next(p for p in self.profiles if p["name"] == "g-embeddings")
+        for path in profile["paths"]:
+            with self.subTest(publishedPath=path):
+                parameters = self.parameters(publishedApiPaths=[path])
+                policies = self.policies(parameters)
+                source = {"location": "japaneast", "properties": copy.deepcopy(policies[self.name("g-base")])}
+                selected = {**profile, "paths": [path]}
+                self.assertEqual(policies[self.name("g-embeddings")], desired_policy(source, selected, {})["properties"])
+                gateway = self.gateway(parameters)
+                mapping = next(m["properties"] for m in gateway["urlPathMaps"] if m["name"] == "pathmap-protocols")
+                route, = [r for r in mapping["pathRules"] if r["name"] == "waf-data-g-embeddings"]
+                self.assertEqual(route["properties"]["paths"], [path])
 
     def test_single_speech_policy_preserves_raw_and_document_controls(self):
         parameters = self.parameters()
@@ -226,8 +269,13 @@ class WafLayoutBicepTests(unittest.TestCase):
                     expected.append(item)
             actual = policies[self.name(profile["name"])]
             self.assertEqual(actual["managedRules"]["exclusions"], expected)
-            expected_overrides = (policies[self.name("g-document-upload")]["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"]
-                                  if profile["name"] == "p-document-upload" else [])
+            if profile["name"] == "p-document-upload":
+                expected_overrides = policies[self.name("g-document-upload")]["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"]
+            elif profile["name"] in ("g-embeddings", "p-embeddings"):
+                expected_overrides = [{"ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                                       "rules": [{"ruleId": "920420", "state": "Disabled"}]}]
+            else:
+                expected_overrides = []
             self.assertEqual(actual["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], expected_overrides)
         for purpose, selector in (("g-chat-completions", "messages.content.image_url.url"),
                                   ("g-responses", "input.content.file_data")):
