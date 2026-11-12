@@ -1246,6 +1246,13 @@ def probe_user_agent(correlation: str) -> str:
     return "egakumi-waf-probe/1.0 " + correlation
 
 
+def probe_correlation(run_id: str, case_id: str) -> str:
+    """Use decimal identifiers so synthetic hex fragments cannot name scanners."""
+    run = int.from_bytes(hashlib.sha256(run_id.encode()).digest()[:8], "big")
+    case = int.from_bytes(hashlib.sha256(case_id.encode()).digest()[:6], "big")
+    return f"{run:020d}{case:015d}"
+
+
 def request_url(base: str, case: Probe) -> str:
     split = urlsplit(base + case.path)
     query = parse_qsl(split.query, keep_blank_values=True) + list(case.query)
@@ -1294,7 +1301,7 @@ def _curl_response(url: str, method: str, headers: dict, data: bytes | None, tim
 
 def run_probe(case: Probe, base: str, run_id: str, timeout: float, limiter: RateLimiter, key: str | None = None, transport: str = "urllib") -> dict:
     record = metadata(case)
-    correlation = re.sub(r"[^A-Za-z0-9]", "", run_id)[:40] + hashlib.sha256(case.case_id.encode()).hexdigest()[:12]
+    correlation = probe_correlation(run_id, case.case_id)
     record["correlation"] = correlation
     if case.auth_mode == "invalid-model-canary" and not key:
         return {**record, "classification": "skipped_key_required", "functional_success": False}
