@@ -47,7 +47,7 @@ Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシ
 
 OpenAIのResponsesとChat Completionsは、同じ用途のデータ欄に同じアプリケーション攻撃グループ除外を適用します。[MicrosoftのAIチャット向けWAFチューニング指針](https://learn.microsoft.com/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning)に沿って、会話・指示・コード・ツール結果・引数・説明・宣言的Schemaの欄だけを選びます。SQLやコードの構文をモデルへ渡すことは、Gatewayでその構文を実行することとは別の処理です。WAFの評価はHTTP要求単位であり、履歴やツール結果が後続要求の本文に含まれることで検出対象が増えます。
 
-manifest version 2は、限定した`g-responses`と`g-chat-completions`の完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、他用途へのグループ除外は許可しません。既存の920/921等の個別例外は保持し、プロトコル系グループを一括除外しません。
+manifest version 2は、限定した`g-responses`・`g-chat-completions`と、下記の`g-images`・`p-images`の完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、その他用途へのグループ除外は許可しません。既存の920/921等の個別例外は保持し、プロトコル系グループを一括除外しません。
 
 | 用途 | Responsesの例 | Chat Completionsの例 |
 | --- | --- | --- |
@@ -60,6 +60,20 @@ manifest version 2は、限定した`g-responses`と`g-chat-completions`の完�
 これは用途の対応表で、許可する実際のselectorの正本はmanifestとvalidatorです。値は明示した`Equals`、動的Schemaは区切り付き`StartsWith`で値とキーを選びます。`input.`・`messages.`・`tools.`全体には広げません。制御項目、画像・ファイルの取得先URL、暗号化履歴、metadataにグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
 
 同名queryにも引数除外が効くため、標準OpenAIの2操作にはAPIMの入口制約を組み合わせます。認証済み購読を確認した後、POST、単一の`application/json`のContent-Type、query引数がないことを検査します。`charset`等のmedia typeパラメーターは許容し、`api-version`を含めてquery引数は全拒否します。APIMのモデル許可、受信byte制約、Responsesのstateless制約、下流認証は維持します。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
+
+画像生成・編集では、`g-images`・`p-images`の`RequestArgValues / Equals / prompt`だけに同じ6カテゴリを適用します。各profileの既存prompt除外のうち、この6カテゴリに属する41個別IDをグループへ統合し、`800100`・`920230`・`920270`・`920271`の個別除外は保持します。`input_image`のSQL規則`942340`・`942390`・`942450`と、PortalセッションCookieの除外は変更しません。画像データ、mask、model等の制御欄へグループ除外を追加しません。これは画像APIの正規データ欄に限定した構成判断であり、画像生成モデル専用のMicrosoft推奨ルール一覧を採用したものではありません。
+
+| 用途 | 完全パス | 正規の本文形式 |
+| --- | --- | --- |
+| `g-images` | `/models/openai-images/v1/generations` | JSON |
+| `g-images` | `/models/openai-images/v1/deployments/gpt-image-2.5-flare/edits` | multipart |
+| `g-images` | `/models/openai-images/v1/deployments/gpt-image-2.5-sunburst/edits` | multipart |
+| `g-images` | `/models/openai-images/v1/deployments/gpt-image-2/edits` | multipart |
+| `g-images` | `/models/blackforestlabs/v1/flux-2/generations` | JSON |
+| `g-images` | `/models/blackforestlabs/v1/flux-2/edits` | JSON |
+| `p-images` | `/api/models/images` | JSON |
+
+画像のGateway入口も、継承した共通認証の後にPOST、queryなし、単一の正規Content-Typeを検査します。OpenAI編集は`multipart/form-data`、OpenAI生成とFLUXは`application/json`で受け、boundaryやcharset等のmedia typeパラメーターを許容します。multipartをJSONへ変換せず、元本文を保持して既存の受信byte・モデル許可・購読権限の検査へ進みます。Portal画像入口はPOST・同一Origin・セッション認証・JSONを要求し、同名promptを含む全queryを拒否します。未知のbody fieldや隣接パスがpromptと同じ除外を受けるとは扱いません。
 
 既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、管理規則のaction変更、認証・callback・他のAI用途への波及は許可しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・customRulesを維持します。
 
@@ -103,11 +117,20 @@ python3 scripts/waf_probe.py --raw-body-guards-only \
   --gateway-base-url https://gateway.example.com \
   --portal-base-url https://portal.example.com --transport curl \
   --phase raw-verification --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-raw-guard.json"
+
+# 画像の正規prompt・参照画像と、除外範囲の対照を独立して確認
+python3 scripts/waf_probe.py --image-prompts-only \
+  --gateway-base-url https://gateway.example.com \
+  --portal-base-url https://portal.example.com --transport curl \
+  --workers 2 --requests-per-second 2 --phase image-verification \
+  --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-image-prompts.json"
 ```
 
 `curl`はWindowsのSchannelで通常の証明書検証を行う環境でも利用できます。リダイレクトは追わず、本文、応答本文、キー、Cookieを証跡へ保存しません。各要求の`User-Agent`は`egakumi-waf-probe/1.0 <correlation>`とし、既存の証跡の`correlation`欄にある短い英数字の識別子を使います。アクセスログではqueryを保持しないため、相関用queryは追加しません。試験入力のqueryはそのまま送り、正確な`User-Agent`・所有AppGW・要求時刻でアクセスログを絞り、`TransactionId`でWAF規則ログと照合します。識別子が失われた要求を、順序だけで個別試験へ割り当てません。
 
 FLUX画像編集はpromptだけでなく、`input_image`のraw Base64画像も確認します。OpenAIの画像URLと形式を混同して`data:image/png;base64,...`を付けず、正規のAPI契約に従った入力で評価します。契約外入力の遮断だけを理由にWAF除外を追加しません。
+
+`--image-prompts-only`は既定の大きなコーパスと分け、PHP変数関数・SQL・HTML・シェル・URL・パスを画像化する合成prompt、OpenAI編集のPNG画像と透明mask、FLUXのraw Base64参照画像を使います。未知のbody field、queryの`id`、隣接パスは攻撃対照とし、同名promptのqueryは入口検証用に区別します。全件匿名で本文のmodelまたはmodelIdを不正モデルに固定し、画像生成の成功や認証済み入口ガードの実証には数えません。PortalでWAF通過後のセッション認証まで確認する場合は、保護された検証runnerから同一Originを付けます。Origin不足によるアプリ403をWAF遮断と取り違えません。
 
 通常はキー無しで通信します。401、アプリの403／400はWAFを通過した参考証拠ですが、機能成功とは数えません。HTTP 403だけでWAF遮断とは判定せず、App Gatewayの応答シグネチャとAGWFirewallLogs／AGWAccessLogsを照合します。任意の`--key-file`は、通常推論を発生させない不正モデルの認証canaryにのみ使います。実際のモデル／Tool成功は、正規キーと応答形式を確認する少数のE2Eで別途検証します。
 

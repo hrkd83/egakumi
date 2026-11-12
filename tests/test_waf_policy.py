@@ -135,7 +135,6 @@ class DataWafTests(unittest.TestCase):
         # They were captured from the approved unions of the previous separate profiles.
         expected = {
             'g-embeddings': (2, 90, '1a49ab9b9cd891c6219af00946ebc644702ed869b80834dd32757964ece32ab0'),
-            'g-images': (6, 48, '200b43a7b5bb1ee91534d6e089cc0dc66042ff2164a5476c31aeca7b0f8a1dca'),
             'g-pii-redact': (2, 90, '3067508805f9dc859ddc93dbea1df3f305557caee8b5d7c0ab501546cb013798'),
             'p-pii-redact': (2, 45, '19799e83b1e4ee13e438d30009ce38529c6309c493cc33934bd5ca4e78d24664'),
         }
@@ -809,8 +808,10 @@ class DataWafTests(unittest.TestCase):
         self.assertFalse(any(item[0] == 'PUT' for item in transport.calls))
 
     def test_gateway_and_portal_merged_paths_each_use_one_policy_and_remain_idempotent(self):
-        profiles = {p['name']: p for p in load_manifest()['profiles']}
-        for name, scope in [('g-embeddings', 'gateway'), ('p-pii-redact', 'portal')]:
+        manifest_source = load_manifest()
+        profiles = {p['name']: p for p in manifest_source['profiles']}
+        for name, scope in [('g-embeddings', 'gateway'), ('p-pii-redact', 'portal'),
+                            ('g-images', 'gateway'), ('p-images', 'portal')]:
             config, source = configuration(), gateway()
             profile = profiles[name]
             config['apiDefinitions'] = [{'path': path.rsplit('/', 1)[0].lstrip('/'), 'operations': [{
@@ -829,8 +830,8 @@ class DataWafTests(unittest.TestCase):
                 backend = {'id': GATEWAY_ID + '/backendHttpSettingsCollection/behttp-portal'}
                 mapping.update(defaultBackendAddressPool=pool, defaultBackendHttpSettings=backend)
                 mapping['pathRules'][0]['properties'].update(backendAddressPool=pool, backendHttpSettings=backend)
-            transport = ArmMemory(source)
-            value = {'version': 1, 'profiles': [profile]}
+            transport = ArmMemory(source, empty_group_rules=name in ('g-images', 'p-images'))
+            value = {'version': manifest_source['version'], 'profiles': [profile]}
             with self.subTest(profile=name):
                 first = reconcile(config, transport, scopes=(scope,), manifest=value)
                 self.assertEqual(first['policyUpdates'], 1)
@@ -896,7 +897,79 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         self.assertIn(image[0], desired['properties']['managedRules']['exclusions'])
 
-    def test_both_ai_apis_share_group_policy_for_equivalent_data_fields(self):
+    def test_image_prompt_groups_cover_every_prior_prompt_rule_and_keep_other_exclusions(self):
+        legacy_rules = {
+            'Known-CVEs': ['800100'],
+            'REQUEST-920-PROTOCOL-ENFORCEMENT': ['920230', '920270', '920271'],
+            'REQUEST-930-APPLICATION-ATTACK-LFI': ['930120'],
+            'REQUEST-932-APPLICATION-ATTACK-RCE': ['932100', '932105', '932110', '932115', '932120', '932130', '932160'],
+            'REQUEST-933-APPLICATION-ATTACK-PHP': ['933151', '933210'],
+            'REQUEST-941-APPLICATION-ATTACK-XSS': ['941100', '941110', '941120', '941130', '941140', '941150', '941160', '941170', '941210', '941320', '941340'],
+            'REQUEST-942-APPLICATION-ATTACK-SQLI': ['942100', '942110', '942120', '942130', '942150', '942180', '942190', '942200', '942210', '942260', '942300', '942330', '942340', '942370', '942380', '942390', '942410', '942430', '942440', '942480'],
+        }
+        legacy = exclusion('prompt', 'Known-CVEs', ['800100'])
+        legacy['exclusionManagedRuleSets'][0]['ruleGroups'] = [
+            {'ruleGroupName': name, 'rules': [{'ruleId': rule} for rule in rules]}
+            for name, rules in legacy_rules.items()]
+        self.assertEqual(sum(map(len, legacy_rules.values())), 45)
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        for name, expected_count in (('g-images', 2), ('p-images', 1)):
+            profile = profiles[name]
+            self.assertEqual(len(profile['exclusions']), expected_count)
+            prompt = next(e for e in profile['exclusions'] if e['selector'] == 'prompt')
+            self.assertEqual((prompt['matchVariable'], prompt['selectorMatchOperator']), ('RequestArgValues', 'Equals'))
+            self.assertTrue(exclusion_is_covered(legacy, prompt))
+            individual = [g for g in prompt['exclusionManagedRuleSets'][0]['ruleGroups'] if 'rules' in g]
+            self.assertEqual(individual, legacy['exclusionManagedRuleSets'][0]['ruleGroups'][:2])
+            previous = copy.deepcopy(profile)
+            previous['exclusions'][previous['exclusions'].index(prompt)] = legacy
+            old_policy = desired_policy(policy(), previous, configuration())
+            new_policy = desired_policy(policy(), profile, configuration(), sources=[old_policy])
+            for entry in old_policy['properties']['managedRules']['exclusions']:
+                self.assertTrue(any(exclusion_is_covered(entry, candidate)
+                                    for candidate in new_policy['properties']['managedRules']['exclusions']))
+            for key in ('policySettings', 'customRules'):
+                self.assertEqual(new_policy['properties'][key], old_policy['properties'][key])
+            self.assertEqual(new_policy['properties']['managedRules']['managedRuleSets'],
+                             old_policy['properties']['managedRules']['managedRuleSets'])
+            if name == 'p-images':
+                self.assertTrue(all(e in new_policy['properties']['managedRules']['exclusions']
+                                    for e in portal_session_exclusions()))
+            else:
+                tuples = sorted((e['matchVariable'], e['selectorMatchOperator'], e['selector'],
+                                 rs['ruleSetType'], rs['ruleSetVersion'], g['ruleGroupName'], r['ruleId'])
+                                for e in previous['exclusions'] for rs in e['exclusionManagedRuleSets']
+                                for g in rs['ruleGroups'] for r in g['rules'])
+                self.assertEqual(len(tuples), 48)
+                self.assertEqual(hashlib.sha256(json.dumps(tuples, separators=(',', ':')).encode()).hexdigest(),
+                                 '200b43a7b5bb1ee91534d6e089cc0dc66042ff2164a5476c31aeca7b0f8a1dca')
+
+    def test_image_groups_require_exact_profile_scope_paths_and_prompt_value(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        for name in ('g-images', 'p-images'):
+            good = {'version': 2, 'profiles': [profiles[name]]}
+            selected_profiles(configuration(), manifest=good)
+            for change in ('version', 'scope', 'reduced-paths', 'extra-path', 'wildcard-path', 'neighbor-path',
+                           'input-image', 'metadata', 'model', 'key', 'prefix', 'protocol-group'):
+                value = copy.deepcopy(good)
+                profile = value['profiles'][0]
+                prompt = next(e for e in profile['exclusions'] if e['selector'] == 'prompt')
+                if change == 'version': value['version'] = 1
+                elif change == 'scope': profile['scope'] = 'portal' if name == 'g-images' else 'gateway'
+                elif change == 'reduced-paths': profile['paths'].pop()
+                elif change == 'extra-path': profile['paths'].append('/unapproved/images')
+                elif change == 'wildcard-path': profile['paths'][0] += '/*'
+                elif change == 'neighbor-path': profile['paths'][0] += '/neighbor'
+                elif change == 'input-image': prompt['selector'] = 'input_image'
+                elif change == 'metadata': prompt['selector'] = 'metadata'
+                elif change == 'model': prompt['selector'] = 'model'
+                elif change == 'key': prompt['matchVariable'] = 'RequestArgKeys'
+                elif change == 'prefix': prompt.update(selector='prompt.', selectorMatchOperator='StartsWith')
+                else: prompt['exclusionManagedRuleSets'][0]['ruleGroups'] = [{'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT'}]
+                with self.subTest(profile=name, change=change), self.assertRaises(ValueError):
+                    selected_profiles(configuration(), manifest=value)
+
+    def test_ai_group_policy_uses_only_approved_fields_across_chat_and_image_profiles(self):
         current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
         self.assertEqual(current['version'], 2)
         profiles = {p['name']: p for p in current['profiles']}
@@ -919,6 +992,8 @@ class DataWafTests(unittest.TestCase):
                            'input.tools.tools.description', 'input.tools.tools.format.definition'},
                 'schemas': {'text.format.schema.', 'tools.parameters.', 'input.tools.tools.parameters.'},
             },
+            'g-images': {'values': {'prompt'}, 'schemas': set()},
+            'p-images': {'values': {'prompt'}, 'schemas': set()},
         }
         for name, scopes in fields.items():
             profile = profiles[name]
@@ -969,10 +1044,10 @@ class DataWafTests(unittest.TestCase):
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
                                     functions=compiled.get('functions', [])).evaluate({})
         self.assertEqual(expanded, current)
-        groups = [g for p in expanded['profiles'] if p['name'] in ('g-responses', 'g-chat-completions')
+        groups = [g for p in expanded['profiles'] if p['name'] in ('g-responses', 'g-chat-completions', 'g-images', 'p-images')
                   for e in p['exclusions'] for rs in e['exclusionManagedRuleSets'] for g in rs['ruleGroups']
                   if 'rules' not in g]
-        self.assertEqual(len(groups), 192)
+        self.assertEqual(len(groups), 204)
         self.assertTrue(all(set(group) == {'ruleGroupName'} for group in groups))
 
     def test_compiled_manifest_retains_declared_protection_and_uses_one_rule_per_exact_path(self):
