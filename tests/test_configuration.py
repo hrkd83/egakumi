@@ -404,14 +404,47 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(actual["operatorAddressPrefixes"], [])
 
     def test_explicit_client_source_ranges_are_preserved(self):
-        raw = fixture()
-        raw["network"]["clientAddressPrefixes"] = ["203.0.113.10/32", "10.20.0.0/16"]
-        self.assertEqual(self.normalize(raw)["network"]["clientAddressPrefixes"], raw["network"]["clientAddressPrefixes"])
+        for prefixes in (["0.0.0.0/0"], ["203.0.113.10/32", "198.51.100.0/24"], ["203.0.113.10"]):
+            raw = fixture()
+            raw["network"]["clientAddressPrefixes"] = prefixes
+            with self.subTest(prefixes=prefixes):
+                self.assertEqual(self.normalize(raw)["network"]["clientAddressPrefixes"], prefixes)
 
-    def test_explicit_empty_client_source_ranges_remain_closed(self):
+    def test_explicit_empty_client_source_ranges_are_rejected(self):
         raw = fixture()
         raw["network"]["clientAddressPrefixes"] = []
-        self.assertEqual(self.normalize(raw)["network"]["clientAddressPrefixes"], [])
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.clientAddressPrefixes.*at least 1"):
+            self.normalize(raw)
+
+    def test_client_source_ranges_still_require_unique_ipv4_addresses_or_cidrs(self):
+        for prefixes in (None, "203.0.113.10/32", {}, True, [True], [1], [""],
+                         ["::/0"], ["203.0.113.10/24"], ["203.0.113.0/33"],
+                         ["203.0.113.10/32", "203.0.113.10/32"], ["PRIVATE-INPUT-SENTINEL"]):
+            raw = fixture()
+            raw["network"]["clientAddressPrefixes"] = prefixes
+            with self.subTest(prefixes=prefixes):
+                with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.clientAddressPrefixes") as caught:
+                    self.normalize(raw)
+                self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
+
+    def test_empty_client_sources_stop_provisioning_before_external_operations(self):
+        from deployment import lifecycle
+        raw = fixture()
+        raw["network"]["clientAddressPrefixes"] = []
+        raw["management"]["sshPublicKeyFile"] = "fixture-management-key.pub"
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "combined.json"
+            source.write_text(json.dumps(raw), encoding="utf-8")
+            errors = io.StringIO()
+            with mock.patch.object(lifecycle, "preprovision") as provision, \
+                 mock.patch.object(lifecycle, "ArmTransport") as transport, \
+                 mock.patch.object(lifecycle, "run") as external, \
+                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
+                self.assertEqual(lifecycle.main(["preprovision", "--config", str(source)]), 1)
+            self.assertIn("network.clientAddressPrefixes", errors.getvalue())
+            provision.assert_not_called()
+            transport.assert_not_called()
+            external.assert_not_called()
 
     def test_bgp_route_propagation_preserves_explicit_false_and_defaults_missing_keys(self):
         raw = fixture()

@@ -106,11 +106,11 @@ class FixedGrpcInfrastructureTests(unittest.TestCase):
                     for path in pathmap["pathRules"]:
                         self.assertEqual(path["properties"]["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
 
-    def test_empty_client_allowlist_only_closes_public_ingress(self):
+    def test_valid_client_sources_keep_public_and_internal_grpc_ingress_allowed(self):
         template = self.templates["network"]
-        for clients, access in (([], "Deny"), (["203.0.113.10/32"], "Allow")):
+        for clients in (None, ["0.0.0.0/0"], ["203.0.113.10/32"]):
             parameters = self.defaults("network")
-            parameters.update(config={"clientAddressPrefixes": clients},
+            parameters.update(config={} if clients is None else {"clientAddressPrefixes": clients},
                               subnetPrefixes={"agw": "192.0.2.0/26", "apim": "198.51.100.0/26", "management": "203.0.113.0/26"},
                               foundryPrivateIps=["192.0.2.132"], keyVaultPrivateIps=["192.0.2.133"],
                               managementPrivateIp="203.0.113.4", firewallPublicIpAddress="192.0.2.250")
@@ -118,7 +118,9 @@ class FixedGrpcInfrastructureTests(unittest.TestCase):
             groups = resolver.resolve("[variables('rulesByNsg')]", parameters)
             rules = {item["name"]: item["properties"] for group in groups for item in group}
             with self.subTest(clients=clients):
-                self.assertEqual(rules["allow-client-grpc"]["access"], access)
+                self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (150, "Allow"))
+                self.assertEqual(rules["allow-client-grpc"]["sourceAddressPrefix"],
+                                 (clients or ["0.0.0.0/0"])[0])
                 self.assertEqual(rules["allow-client-grpc"]["destinationPortRange"], "8443")
                 self.assertEqual(rules["allow-apim-grpc"]["access"], "Allow")
                 for name in ("allow-apim-grpc", "allow-agw-grpc", "allow-management-grpc", "allow-apim-grpc-comparison"):

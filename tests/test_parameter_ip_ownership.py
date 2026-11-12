@@ -180,17 +180,25 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for kind in ("subscriptionKey", "application"):
             self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], parameters["gateway"]["rateLimits"][kind]["overrides"])
 
-    def test_explicit_empty_dns_and_allowlists_survive_normalization(self):
+    def test_explicit_empty_dns_and_operator_ranges_survive_normalization(self):
         options, parameters = custom_documents()
-        for key in ("dnsServers", "clientAddressPrefixes", "operatorAddressPrefixes"):
+        for key in ("dnsServers", "operatorAddressPrefixes"):
             parameters["network"][key] = []
         parameters["network"]["firewall"]["dnsServers"] = []
         parameters["monitoring"]["auditAllowedIpAddresses"] = []
         result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
-        for key in ("dnsServers", "clientAddressPrefixes", "operatorAddressPrefixes"):
+        for key in ("dnsServers", "operatorAddressPrefixes"):
             self.assertEqual(result["network"][key], [])
+        self.assertEqual(result["network"]["clientAddressPrefixes"], parameters["network"]["clientAddressPrefixes"])
         self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
+
+    def test_empty_client_ranges_are_rejected_before_bicep_configuration(self):
+        options, parameters = custom_documents()
+        parameters["network"]["clientAddressPrefixes"] = []
+        raw = load_documents(options, parameters)
+        with self.assertRaisesRegex(ConfigurationError, r"network\.clientAddressPrefixes"):
+            normalize_configuration(raw)
 
     def test_combined_internal_json_still_accepts_the_full_network(self):
         options, parameters = custom_documents()
@@ -316,10 +324,10 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             'network-bindings': compile_bicep('infra/modules/network-bindings.bicep'),
         }
 
-    def configuration(self, empty=False):
+    def configuration(self, empty_optional=False):
         options, parameters = custom_documents()
-        if empty:
-            for key in ("dnsServers", "clientAddressPrefixes", "operatorAddressPrefixes"):
+        if empty_optional:
+            for key in ("dnsServers", "operatorAddressPrefixes"):
                 parameters["network"][key] = []
             parameters["network"]["firewall"]["dnsServers"] = []
         return build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
@@ -329,6 +337,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
+            "nsgNames": {key: "nsg-test-fixture-" + suffix
+                         for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"), ("management", "vm"))},
             "grpcEnabled": True, "grpcPublicPort": 8443, "grpcBackendPort": 443}
         return NetworkArmExpression("[createObject()]", template), parameters
 
@@ -385,12 +395,53 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 for rule in config["network"]["firewall"][owner + "Additional" + suffix]:
                     self.assertIn(rule, actual)
 
-    def test_empty_allowlists_revoke_access_and_dns_uses_azure_defaults(self):
-        config = self.configuration(empty=True)
+    def test_client_sources_keep_web_and_grpc_children_with_fixed_allow_priorities(self):
+        # 許可元を評価する前のARMにも、Webの4080分岐を残さない。
+        self.assertNotIn("4080", json.dumps(self.templates["network"]["variables"]["nsgDefinitions"]))
+        for clients in (None, ["0.0.0.0/0"], ["203.0.113.70/32"],
+                        ["192.0.2.0/24", "198.51.100.0/24"]):
+            options, parameters = custom_documents()
+            if clients is None:
+                parameters["network"].pop("clientAddressPrefixes")
+            else:
+                parameters["network"]["clientAddressPrefixes"] = clients
+            config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
+            expected = clients if clients is not None else ["0.0.0.0/0"]
+            self.assertEqual(config["network"]["clientAddressPrefixes"], expected)
+            if clients is None:
+                # 公開入力の省略値と、直接ARM入力で省略した場合の既定値を両方確認する。
+                config["network"].pop("clientAddressPrefixes")
+            for module, collection, resource_name, rule_name, priority in (
+                ("network", "staticNsgRules", "staticSecurityRules", "allow-client-web", 100),
+                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-client-grpc", 150),
+            ):
+                expression, supplied = self.resolver(module, config)
+                entries = expression.resolve("[variables('" + collection + "')]", supplied)
+                matches = [(index, entry["rule"]) for index, entry in enumerate(entries)
+                           if entry["nsgIndex"] == 0 and entry["rule"]["name"] == rule_name]
+                with self.subTest(clients=clients, module=module):
+                    self.assertEqual(len(matches), 1)
+                    index, rule = matches[0]
+                    properties = rule["properties"]
+                    self.assertEqual((properties["priority"], properties["access"]), (priority, "Allow"))
+                    source_key = "sourceAddressPrefix" if len(expected) == 1 else "sourceAddressPrefixes"
+                    self.assertEqual(properties[source_key], expected[0] if len(expected) == 1 else expected)
+                    self.assertEqual(properties["destinationAddressPrefix"], "10.70.0.0/24")
+                    self.assertFalse(any(entry["nsgIndex"] == 0 and entry["rule"]["properties"]["priority"] == 4080
+                                         for entry in entries))
+                    child = self.templates[module]["resources"][resource_name]
+                    self.assertEqual(child["type"], "Microsoft.Network/networkSecurityGroups/securityRules")
+                    self.assertNotIn("condition", child)
+                    self.assertEqual(expression.resolve(child["copy"]["count"], supplied), len(entries))
+                    child_name = NetworkArmExpression(child["name"], self.templates[module]).evaluate(supplied, index)
+                    self.assertEqual(child_name, "nsg-test-fixture-agw/" + rule_name)
+
+    def test_empty_operator_ranges_revoke_management_access_and_dns_uses_azure_defaults(self):
+        config = self.configuration(empty_optional=True)
         expression, parameters = self.resolver("network", config)
         rules = expression.resolve("[variables('staticNsgRules')]", parameters)
         by_name = {entry["rule"]["name"]: entry["rule"]["properties"] for entry in rules}
-        self.assertEqual(by_name["allow-client-web"]["access"], "Deny")
+        self.assertEqual((by_name["allow-client-web"]["priority"], by_name["allow-client-web"]["access"]), (100, "Allow"))
         self.assertEqual(by_name["allow-dns-tcp"]["destinationAddressPrefix"], "168.63.129.16")
         vnet = self.templates["network"]["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(vnet["dhcpOptions"], parameters), {"dnsServers": []})
@@ -399,8 +450,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         expression, parameters = self.resolver("network-bindings", config)
         groups = expression.resolve("[variables('rulesByNsg')]", parameters)
         rules = {item["name"]: item["properties"] for group in groups for item in group}
-        self.assertEqual(rules["allow-client-grpc"]["access"], "Deny")
-        self.assertEqual(rules["allow-operator-management"]["access"], "Deny")
+        self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (150, "Allow"))
+        self.assertEqual((rules["allow-operator-management"]["priority"], rules["allow-operator-management"]["access"]), (4080, "Deny"))
 
 
 if __name__ == "__main__":

@@ -66,9 +66,7 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-func withAccess(rule object, access string) object => union(rule, { properties: union(rule.properties, { access: access }) })
-
-// Public API source restriction is optional; omission permits all IPv4 clients.
+// 利用者の接続元は入力検査で1件以上を必須にします。省略時は全IPv4を使います。
 var clientAddressPrefixes = config.?clientAddressPrefixes ?? ['0.0.0.0/0']
 // 小さい priority の規則から評価されます。接続元を許可しても別段階の token/key 認証と API 認可は必要です。
 var nsgDefinitions = [
@@ -76,11 +74,7 @@ var nsgDefinitions = [
     key: 'agw'
     suffix: 'agw'
     rules: [
-      // Keep the child resource even when the allowlist is empty. Updating a
-      // populated allowlist to [] must revoke the previous permission.
-      empty(clientAddressPrefixes)
-        ? withAccess(allowRule('allow-client-web', 4080, 'Inbound', 'Tcp', ['*'], [subnetPrefixes.agw], ['80', '443']), 'Deny')
-        : allowRule('allow-client-web', 100, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
+      allowRule('allow-client-web', 100, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
       allowRule('allow-gateway-manager', 110, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
       allowRule('allow-load-balancer', 120, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
       // The normal AGW v2 deployment requires direct Internet egress and no
