@@ -17,7 +17,7 @@ from waf_policy import (exclusion, load_manifest, selected_profiles, published_p
 from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
-from deployment.helpers.waf_body import ai_body_settings
+from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 
 CHAT = '/models/openai/v1/chat/completions'
@@ -450,7 +450,9 @@ class DataWafTests(unittest.TestCase):
             self.assertEqual(updated['properties'][key], before['properties'][key])
         configured = transport.resources[waf_policy_id(CONFIG, 'g-chat-completions')]['properties']
         self.assertEqual(configured['policySettings'], ai_body_settings(policy()['properties']['policySettings']))
-        self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
+        self.assertEqual(configured['customRules'][:-1], policy()['properties']['customRules'])
+        self.assertEqual(configured['customRules'][-1]['name'], 'coreAiContentType')
+        self.assertEqual(configured['customRules'][-1]['action'], 'Block')
         selectors = {item['selector'] for item in configured['managedRules']['exclusions']}
         self.assertEqual(selectors, {'messages.content', 'Existing'})
         writes = [item for item in transport.calls if item[0] == 'PUT']
@@ -800,7 +802,7 @@ class DataWafTests(unittest.TestCase):
             else:
                 properties['managedRules']['managedRuleSets'][0]['ruleGroupOverrides'] = [{
                     'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT',
-                    'rules': [{'ruleId': '920420', 'state': 'Disabled'}]}]
+                    'rules': [{'ruleId': '920470', 'state': 'Disabled'}]}]
             transport = ArmMemory(source, {identifier: current})
             value = manifest()
             value['profiles'][0]['name'] = 'g-responses'
@@ -912,7 +914,8 @@ class DataWafTests(unittest.TestCase):
         base = policy()
         desired = desired_policy(base, profile, configuration())
         self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
-        self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
+        self.assertEqual(desired['properties']['customRules'][:-1], base['properties']['customRules'])
+        self.assertEqual(desired['properties']['customRules'][-1]['name'], 'coreAiContentType')
         self.assertIn(image[0], desired['properties']['managedRules']['exclusions'])
 
     def test_image_prompt_groups_cover_every_prior_prompt_rule_and_keep_other_exclusions(self):
@@ -1083,9 +1086,9 @@ class DataWafTests(unittest.TestCase):
             self.assertEqual(actual, expected)
             configured = desired_policy(policy(), profile, configuration())['properties']
             self.assertEqual(configured['policySettings'], ai_body_settings(policy()['properties']['policySettings']))
-            if name in ('g-embeddings', 'p-embeddings'):
+            if ai_content_type_profile(profile):
                 self.assertEqual(configured['customRules'][:-1], policy()['properties']['customRules'])
-                self.assertEqual(configured['customRules'][-1]['name'], 'coreEmbeddingJsonContentType')
+                self.assertEqual(configured['customRules'][-1]['name'], 'coreAiContentType')
                 self.assertEqual(configured['customRules'][-1]['action'], 'Block')
                 self.assertEqual(configured['managedRules']['managedRuleSets'], [{
                     'ruleSetType': 'OWASP', 'ruleSetVersion': '3.2', 'ruleGroupOverrides': [{
@@ -1138,6 +1141,8 @@ class DataWafTests(unittest.TestCase):
 
         class CompiledExpression(GatewayExpression):
             def resolve(self, item, parameters, index=0):
+                if isinstance(item, str) and item.startswith('[['):
+                    return item[1:]  # ARM escapes a literal leading bracket.
                 if isinstance(item, str) and item.startswith('[') and item.endswith(']'):
                     return CompiledExpression(item, self.variables).evaluate(parameters, index)
                 if isinstance(item, dict): return {key: self.resolve(value, parameters, index) for key, value in item.items()}
@@ -1186,8 +1191,8 @@ class DataWafTests(unittest.TestCase):
                           wafCustomRules=[{'name': 'retain-custom', 'priority': 1, 'action': 'Block'}],
                           wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}])
         evaluate = lambda item, index=0: CompiledExpression('[true()]', variables).resolve(item, parameters, index)
-        for variable in variables.get('copy', []):
-            variables[variable['name']] = [evaluate(variable['input'], index) for index in range(evaluate(variable['count']))]
+        # GatewayExpression expands copy variables on demand. Keep the compiled
+        # input intact so an escaped literal is never decoded and parsed twice.
         profiles = evaluate("[variables('dataProfiles')]")
         self.assertEqual(profiles[0]['paths'], [CHAT])
         resources = template['resources']
@@ -1196,10 +1201,11 @@ class DataWafTests(unittest.TestCase):
         properties = CompiledExpression("[true()]", variables).resolve(resource['properties'], parameters)
         mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
         self.assertEqual(sum(CHAT in item['properties']['paths'] for item in mapping['pathRules']), 1)
-        configured = variables['dataPolicyProperties'][0]
+        configured = evaluate("[variables('dataPolicyProperties')]")[0]
         self.assertEqual(configured['policySettings']['mode'], 'Prevention')
         self.assertTrue(configured['policySettings']['requestBodyCheck'])
-        self.assertEqual(configured['customRules'], parameters['wafCustomRules'])
+        self.assertEqual(configured['customRules'][:-1], parameters['wafCustomRules'])
+        self.assertEqual(configured['customRules'][-1]['name'], 'coreAiContentType')
         self.assertEqual(configured, desired_policy({**policy(), 'properties': {**policy()['properties'],
             'policySettings': configured['policySettings'], 'customRules': parameters['wafCustomRules'],
             'managedRules': {'managedRuleSets': configured['managedRules']['managedRuleSets'],

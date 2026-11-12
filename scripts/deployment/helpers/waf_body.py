@@ -78,7 +78,7 @@ def managed_ai_paths(config):
     return selected
 
 
-SPEECH_RULE_ID = "920420"
+CONTENT_TYPE_RULE_ID = "920420"
 RAW_CONTROLS = REPOSITORY / "apps/gateway/waf-raw-body-controls.json"
 JSON_CONTROLS = REPOSITORY / "apps/gateway/waf-json-content-controls.json"
 
@@ -113,50 +113,70 @@ def _content_type_policy(source, label):
     rules = group['rules']
     if any(rule.get('ruleId') == '920470' and rule.get('state') == 'Disabled' for rule in rules):
         raise ValueError(label + ' must retain Content-Type syntax inspection (920470)')
-    matching = [rule for rule in rules if rule.get('ruleId') == SPEECH_RULE_ID]
+    matching = [rule for rule in rules if rule.get('ruleId') == CONTENT_TYPE_RULE_ID]
     if len(matching) > 1:
         raise ValueError(label + ' content type override is duplicated')
     if matching:
         matching[0]['state'] = 'Disabled'
     else:
-        rules.append({'ruleId': SPEECH_RULE_ID, 'state': 'Disabled'})
+        rules.append({'ruleId': CONTENT_TYPE_RULE_ID, 'state': 'Disabled'})
     return desired
 
 
-def embedding_json_profile(profile):
-    """Accept only published subsets of the two canonical embedding policies."""
+def _ai_content_type_spec(profile):
+    """Select a MIME contract only for its canonical published path subset."""
     controls = json.loads(JSON_CONTROLS.read_text(encoding='utf-8'))
     paths = profile.get('paths')
-    return (isinstance(paths, list) and bool(paths)
-            and any(profile.get('name') == item['name'] and profile.get('scope') == item['scope']
-                    and set(paths) <= set(item['paths']) for item in controls['profiles']))
+    if isinstance(paths, list) and paths:
+        matches = [item for item in controls['profiles']
+                   if profile.get('name') == item['name'] and profile.get('scope') == item['scope']
+                   and set(paths) <= set(item['paths'])]
+        if len(matches) == 1:
+            return controls, matches[0]
+    return None
 
 
-def embedding_json_content_policy(source):
+def ai_content_type_profile(profile):
+    """Identify an owned JSON-capable policy without widening its path scope."""
+    return _ai_content_type_spec(profile) is not None
+
+
+def ai_content_type_policy(source, profile):
     """Allow JSON MIME case variants without bypassing managed body inspection.
 
-    Called only for the canonical embedding path policies. The custom Block
-    replaces 920420's MIME allowlist; it is not an Allow and does not rewrite
-    headers or exempt any additional JSON field from managed rules.
+    Shared image/speech policies retain their JSON and multipart MIME union.
+    An absent/empty header is left to the existing protocol/application rules,
+    so bodyless MCP GET/DELETE requests do not acquire a MIME requirement.
+    The Block does not rewrite headers or exempt more body data from inspection.
     """
-    desired = _content_type_policy(source, 'Embedding JSON')
+    selected = _ai_content_type_spec(profile)
+    if selected is None:
+        raise ValueError('AI content type requires a canonical JSON-capable profile')
+    controls, contract = selected
+    formats = [item for item in controls['formats'] if item['name'] == contract['format']]
+    if len(formats) != 1:
+        raise ValueError('AI content type requires one canonical MIME format')
+    desired = _content_type_policy(source, 'AI content type')
     properties = desired['properties']
     settings = properties.get('policySettings', {})
     if settings.get('mode') != 'Prevention' or settings.get('requestBodyCheck') is not True:
-        raise ValueError('Embedding JSON requires Prevention mode and body inspection')
-    controls = json.loads(JSON_CONTROLS.read_text(encoding='utf-8'))
+        raise ValueError('AI content type requires Prevention mode and body inspection')
     spec = controls['rule']
     custom = properties.setdefault('customRules', [])
     if any(rule.get('name') == spec['name'] for rule in custom):
-        raise ValueError('Embedding JSON custom rule name is already owned')
+        raise ValueError('AI content type custom rule name is already owned')
     used = {rule.get('priority') for rule in custom}
     priority = next((value for value in range(1, 101) if value not in used), None)
     if priority is None:
-        raise ValueError('Embedding JSON has insufficient custom rule priorities')
+        raise ValueError('AI content type has insufficient custom rule priorities')
+    variable = {'variableName': spec['variableName'], 'selector': spec['selector']}
     custom.append({'name': spec['name'], 'priority': priority, 'ruleType': 'MatchRule',
         'state': 'Enabled', 'action': 'Block', 'matchConditions': [{
-            'matchVariables': [{'variableName': spec['variableName'], 'selector': spec['selector']}],
-            'operator': 'Regex', 'negationConditon': True, 'matchValues': [spec['pattern']],
+            'matchVariables': [copy.deepcopy(variable)],
+            'operator': 'Regex', 'negationConditon': False, 'matchValues': [spec['presentPattern']],
+            'transforms': spec['transforms']}, {
+            'matchVariables': [copy.deepcopy(variable)],
+            'operator': 'Regex', 'negationConditon': True, 'matchValues': [formats[0]['pattern']],
             'transforms': spec['transforms']}]})
     return desired
 

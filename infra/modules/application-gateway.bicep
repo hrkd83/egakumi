@@ -310,10 +310,12 @@ resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplica
   properties: rawBodyProperties
 }
 
-// 埋め込みJSONのMIMEだけを大小文字非依存のBlock判定に置き換えます。
+// JSONを受けるAI用途のMIMEだけを大小文字非依存のBlock判定に置き換えます。
 // Allowによる検査の短絡やraw本文用930110の調整は行いません。
 var jsonContentControls = loadJsonContent('../../apps/gateway/waf-json-content-controls.json')
-var embeddingJsonProperties = union(sharedWafProperties, {
+var jsonContentProperties = [for format in jsonContentControls.formats: {
+  name: format.name
+  properties: union(sharedWafProperties, {
   customRules: concat(wafCustomRules, [{
     name: jsonContentControls.rule.name
     priority: speechRulePriorities[0]
@@ -323,8 +325,14 @@ var embeddingJsonProperties = union(sharedWafProperties, {
     matchConditions: [{
       matchVariables: [{ variableName: jsonContentControls.rule.variableName, selector: jsonContentControls.rule.selector }]
       operator: 'Regex'
+      negationConditon: false
+      matchValues: [jsonContentControls.rule.presentPattern]
+      transforms: jsonContentControls.rule.transforms
+    }, {
+      matchVariables: [{ variableName: jsonContentControls.rule.variableName, selector: jsonContentControls.rule.selector }]
+      operator: 'Regex'
       negationConditon: true
-      matchValues: [jsonContentControls.rule.pattern]
+      matchValues: [format.pattern]
       transforms: jsonContentControls.rule.transforms
     }]
   }])
@@ -338,11 +346,13 @@ var embeddingJsonProperties = union(sharedWafProperties, {
       }]
     }]
   })
-})
-var dataBaseProperties = [for profile in dataProfiles: profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents')
+  })
+}]
+var dataMimeProfiles = [for profile in dataProfiles: filter(jsonContentControls.profiles, item => item.name == profile.name && item.scope == profile.scope && length(profile.paths) > 0 && length(filter(profile.paths, path => !contains(item.paths, path))) == 0)]
+var dataBaseProperties = [for (profile, index) in dataProfiles: profile.name == 'p-document-upload' && profile.scope == 'portal' && length(profile.paths) == 1 && contains(profile.paths, '/api/tools/documents')
   ? rawBodyProperties
-  : length(filter(jsonContentControls.profiles, item => item.name == profile.name && item.scope == profile.scope && length(profile.paths) > 0 && length(filter(profile.paths, path => !contains(item.paths, path))) == 0)) == 1
-    ? embeddingJsonProperties : sharedWafProperties]
+  : length(dataMimeProfiles[index]) == 1
+    ? filter(jsonContentProperties, format => format.name == dataMimeProfiles[index][0].format)[0].properties : sharedWafProperties]
 
 // データ欄とMIMEの正本を使い、用途外の例外を動的に足しません。
 var dataPolicyProperties = [for (profile, index) in dataProfiles: union(dataBaseProperties[index], {

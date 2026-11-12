@@ -22,13 +22,16 @@ from deployment.helpers.waf_body import ai_body_settings
 class GatewayExpression(ArmExpression):
     """既存のローカル ARM 評価器に、この入口定義で使う関数だけを足す。"""
 
-    def __init__(self, expression, variables):
+    def __init__(self, expression, variables, variable_caches=None):
         super().__init__(expression)
         self.variables = variables
+        self.variable_caches = {} if variable_caches is None else variable_caches
 
     def resolve(self, item, parameters, index=0):
+        if isinstance(item, str) and item.startswith("[["):
+            return item[1:]  # ARM escapes a literal leading bracket.
         if isinstance(item, str) and item.startswith("[") and item.endswith("]"):
-            return GatewayExpression(item, self.variables).evaluate(parameters, index)
+            return GatewayExpression(item, self.variables, self.variable_caches).evaluate(parameters, index)
         if isinstance(item, dict):
             return {key: self.resolve(value, parameters, index) for key, value in item.items()}
         if isinstance(item, list):
@@ -56,11 +59,19 @@ class GatewayExpression(ArmExpression):
             return super().evaluate(parameters, index, tree, bindings)
         values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
         if name == "variables":
+            # ARM variables are immutable for one parameter input. Share their
+            # evaluated values through recursive resolvers, never across inputs.
+            cache = self.variable_caches.setdefault(json.dumps(parameters, sort_keys=True), {})
+            if values[0] in cache:
+                return cache[values[0]]
             if values[0] in self.variables:
-                return self.resolve(self.variables[values[0]], parameters, index)
-            definition = next(item for item in self.variables.get("copy", []) if item["name"] == values[0])
-            return [self.resolve(definition["input"], parameters, number)
-                    for number in range(self.resolve(definition["count"], parameters))]
+                result = self.resolve(self.variables[values[0]], parameters, index)
+            else:
+                definition = next(item for item in self.variables.get("copy", []) if item["name"] == values[0])
+                result = [self.resolve(definition["input"], parameters, number)
+                          for number in range(self.resolve(definition["count"], parameters))]
+            cache[values[0]] = result
+            return result
         if name == "and": return all(values)
         if name == "or": return any(values)
         if name == "not": return not values[0]
@@ -173,6 +184,8 @@ class SsmlWafTests(unittest.TestCase):
 
     def test_chat_and_responses_keep_media_exclusions_in_their_manifest_profiles(self):
         manifest = json.loads((CORE / "apps/gateway/waf-data-exclusions.json").read_text())["profiles"]
+        content_controls = json.loads((CORE / "apps/gateway/waf-json-content-controls.json").read_text())
+        json_pattern = next(item["pattern"] for item in content_controls["formats"] if item["name"] == "json")
         selected = {profile["name"]: profile for profile in manifest
                     if profile["name"] in ("g-chat-completions", "g-responses")}
         parameters = self.parameters(publishedApiPaths=[path for profile in selected.values() for path in profile["paths"]])
@@ -186,8 +199,20 @@ class SsmlWafTests(unittest.TestCase):
                 policy = configured[purpose]
                 self.assertEqual(policy["managedRules"]["exclusions"],
                                  parameters["wafExclusions"] + selected[purpose]["exclusions"])
-                self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
-                self.assertEqual(policy["customRules"], baseline["customRules"])
+                expected_sets = copy.deepcopy(baseline["managedRules"]["managedRuleSets"])
+                expected_sets[0]["ruleGroupOverrides"] = [{
+                    "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                    "rules": [{"ruleId": "920420", "state": "Disabled"}]}]
+                self.assertEqual(policy["managedRules"]["managedRuleSets"], expected_sets)
+                self.assertEqual(policy["customRules"], baseline["customRules"] + [{
+                    "name": "coreAiContentType", "priority": 2, "ruleType": "MatchRule",
+                    "state": "Enabled", "action": "Block", "matchConditions": [{
+                        "matchVariables": [{"variableName": "RequestHeaders", "selector": "Content-Type"}],
+                        "operator": "Regex", "negationConditon": False,
+                        "matchValues": [r"[\s\S]"], "transforms": ["Lowercase"]}, {
+                        "matchVariables": [{"variableName": "RequestHeaders", "selector": "Content-Type"}],
+                        "operator": "Regex", "negationConditon": True,
+                        "matchValues": [json_pattern], "transforms": ["Lowercase"]}]}])
                 self.assertEqual(policy["policySettings"], ai_body_settings(baseline["policySettings"]))
                 values = [item for item in policy["managedRules"]["exclusions"] if item["selector"] == selector]
                 groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",

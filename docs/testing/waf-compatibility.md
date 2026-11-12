@@ -79,9 +79,13 @@ manifest version 2は、限定した`g-responses`・`g-chat-completions`と、�
 
 埋め込みの入口制約は、公開契約のAPI名・操作・パスと`textEmbeddings`/JSON契約に一致する2操作だけを対象とし、共通認証の後にPOST、単一の`application/json`を検査します。OpenAIはqueryなし、または単一の`api-version=v1`/`preview`だけを許可し、元の値を転送します。未知名・同名input/texts・重複・不正なversionは拒否します。CohereとPortalはqueryを全拒否し、Cohereのrerank等の別操作へ広げません。Portalの既存のOrigin・セッション・JSON・入力schemaの検査を保ちます。OpenAIの単一文字列、文字列配列、token配列・二重token配列とCohereの文字列配列を変更せず、モデル・次元・provider固有オプションの検査を維持します。検査先頭2000 KiBと既存の受信byte制約は変更せず、検査枠を超えた本文を全検査したとは扱いません。これはチャット向け指針を本文の文書データに適用する構成判断であり、embedding専用のMicrosoft推奨ルール一覧ではありません。[公式APIの任意api-versionと入力型](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/embeddings)を維持します。
 
-埋め込みの上記3完全パスでは、MIMEの大小文字による誤検知を避けるため、専用の`g-embeddings`・`p-embeddings`内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ定義を使います。`Content-Type`を照合時だけ小文字化し、単一の`application/json`と正規のtoken／quoted-stringパラメーターを許可し、それ以外を拒否します。`Application/JSON; charset=UTF-8`は同じJSONとして扱い、`application/jsonp`、`text/plain`、カンマで結合した複数のMIME、不正なパラメーターは許可しません。[HTTP仕様のMIME比較](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)に沿うJSON専用APIの構成判断です。custom Allowは使わず、920470等の他の管理規則・JSON本文検査・既存のデータ欄除外・認証・入口制約を維持します。ヘッダーの実値を書き換える機能ではなく、基底・隣接・他用途のポリシーへ適用しません。
+JSONを受ける既存の用途別WAF 17 profileでは、MIMEの大小文字による誤検知を避けるため、そのpath policy内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ有限のprofile・scope・完全パス・MIME形式を使います。対象はGatewayの`g-transcribe`を除く9 profileと、Portalの`p-document-upload`を除く8 profileです。基底・認証・正本にないJSON入口へは自動展開しません。
 
-この変更の受入確認では、大小文字両方のMIMEで同じ本文を試し、正規の`input`／`texts`が通ることと、除外外fieldの攻撃対照が遮断されることを独立して照合します。匿名canaryでのWAF通過、認証付きの不正入力拒否、有効モデルによる埋め込み応答を区別し、通常MIMEと大小文字混在MIMEの推論結果は件数・数値配列・次元を検査します。APIキー、入力本文、埋め込みvectorは公開記録へ残しません。
+`Content-Type`が非空の場合だけ照合用に小文字化し、単一の`application/json`と正規のtoken／quoted-stringパラメーターを許可します。`Application/JSON; charset=UTF-8`は同じJSONとして扱い、`application/jsonp`、`text/plain`、カンマで結合した複数のMIME、不正なパラメーターは許可しません。共有の`g-images`と`p-speech`はJSONと`multipart/form-data`の集合和を許可し、各操作のAPIM／Portalでの形式検査を維持します。MCPの本文なしGET/DELETE等に新たなMIME必須条件を追加せず、欠落ヘッダーは既存の920340等のプロトコル規則とアプリ側受付条件に従います。[HTTP仕様のMIME比較](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)に沿うAPI契約上の構成判断です。
+
+custom Allowは使わず、920470等の他の管理規則・JSON本文検査・既存のデータ欄除外・認証・入口制約を維持します。照合変換はヘッダーの実値を書き換えません。非JSON専用の`g-transcribe`と、raw本文用の`p-document-upload`、Speech／Gateway文書の既存調整も変更しません。PortalのRealtime JSON handlerは他のJSON handlerと同じ大小文字非依存の判定を使い、認証と読取り順を保ちます。
+
+受入確認では、大小文字両方のMIMEで同じ本文を試し、正規のデータ欄が通ることと、除外外fieldの攻撃対照が遮断されることを独立して照合します。画像編集・音声のmultipartと、本文なしMCP操作を別に確認します。匿名canaryでのWAF通過、認証付きの不正入力拒否、有効モデルによる埋め込み応答を区別し、通常MIMEと大小文字混在MIMEの推論結果は件数・数値配列・次元を検査します。APIキー、入力本文、埋め込みvectorは公開記録へ残しません。
 
 既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、認証・callback・他のAI用途への波及は許可しません。管理規則の変更は上記の完全パス限定のMIME判定置換等を正本に明示し、それ以外へ追加しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・企業のcustomRulesを維持します。
 
