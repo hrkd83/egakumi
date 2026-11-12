@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from test_api_protocols import CSHARP as EXISTING_CSHARP, actual_expression, bound_coverage, configuration
 from test_gateway_limits_telemetry import LIMIT_EXPRESSION, PWSH
@@ -28,6 +29,7 @@ CLASSES = EXISTING_CSHARP.split("public static class ExpandedPolicyFixture")[0].
 
 SOURCE = CLASSES + r'''
 public static class IntegratedProfileFixture {
+ public static bool InferenceRequest(Context context) { __INFERENCE_REQUEST__ }
  public static string Profile(Context context) { __PROFILE__ }
  public static string Auth(Context context) { __AUTH__ }
  public static string Limits(Context context) { __LIMITS__ }
@@ -39,7 +41,10 @@ public static class IntegratedProfileFixture {
   var results = new JObject();
   foreach (JObject item in JArray.Parse(input)) {
    var c = new Context();
-   c.Operation.Id = "chat-completions";
+   c.Api.Id = (string)item["api"] ?? "synthetic-api";
+   c.Operation.Id = (string)item["operation"] ?? "chat-completions";
+   c.Operation.UrlTemplate = (string)item["path"] ?? "/responses";
+   c.Request.Method = (string)item["method"] ?? "POST";
    c.Request.Body = new Body {Data=item["rawBody"]!=null?(string)item["rawBody"]:(item["body"]??new JObject()).ToString(Formatting.None)};
    c.Variables["config"] = item["config"].ToString(Formatting.None);
    c.Variables["websocket"] = (item["websocket"]??new JObject()).ToString(Formatting.None);
@@ -54,6 +59,13 @@ public static class IntegratedProfileFixture {
     result["decision"]=JObject.Parse(ProtocolAuth(c));
     result["queryAllowed"]=Query(c);
    } else {
+    result["requestAllowed"]=InferenceRequest(c);
+    if (!(bool)result["requestAllowed"]) {
+     result["reads"]=c.Request.Body.Reads;
+     result["bodyAfter"]=c.Request.Body.Data;
+     results[(string)item["id"]]=result;
+     continue;
+    }
     var selection=JObject.Parse(Profile(c));c.Variables["gatewayProfileSelection"]=selection.ToString(Formatting.None);
     result["profile"]=selection;
     if((bool)selection["allowed"]) {
@@ -136,6 +148,33 @@ class ProfilePolicyTests(unittest.TestCase):
         cases.append(case("responses-default-image", config=responses, body=image_body))
         cases.append(case("responses-image-unknown-model", config=responses, body={**image_body, "model": "unapproved-synthetic-model"}))
         cases.append(case("selected-size", body={"model": "shared", "messages": [{"content": "x" * 600}], "max_completion_tokens": 16}))
+        native_body = {"model": "gpt-6.1-sol", "stream": True,
+            "provider_extension": {"arbitrary": ["SELECT * FROM synthetic;", "<?php $function(); ?>"]},
+            "tools": [{"type": "function", "name": "synthetic_tool", "parameters": {
+                "type": "object", "properties": {"arbitrary-code-key": {"type": "string"}},
+                "additionalProperties": True}}]}
+        for label, operation, path, data in (
+            ("chat", "chat-completions", "/chat/completions", {"messages": [{"role": "tool", "content": "synthetic code"}]}),
+            ("responses", "responses-create", "/responses", {"input": [
+                {"type": "function_call_output", "call_id": "synthetic_call", "output": "synthetic code"},
+                {"type": "reasoning", "encrypted_content": "synthetic opaque value"}]})):
+            base = {"config": inference, "api": "openai-inference-v1", "operation": operation,
+                "path": path, "body": {**native_body, **data}, "headers": {"Content-Type": "application/json"}}
+            cases.append(case(label + "-native-request", **base))
+            cases.append(case(label + "-json-charset", **{**base, "headers": {"Content-Type": "Application/JSON; charset=utf-8"}}))
+            cases.append(case(label + "-revision-query", **{**base, "api": "openai-inference-v1;rev=2", "query": {"input.input": "synthetic"}}))
+            for suffix, patch in (
+                ("query", {"query": {"arbitrary": "synthetic"}}),
+                ("same-name-query", {"query": {"input.output.text": "synthetic"}}),
+                ("duplicate-query", {"query": {"messages.content": ["synthetic", "second"]}}),
+                ("query-before-body", {"query": {"input": "synthetic"}, "rawBody": "{"}),
+                ("method", {"method": "GET"}),
+                ("missing-type", {"headers": {}}),
+                ("wrong-type", {"headers": {"Content-Type": "text/plain"}}),
+                ("duplicate-type", {"headers": {"Content-Type": ["application/json", "application/json"]}})):
+                cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
+            cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"provider-option": "synthetic"}, "headers": {"Content-Type": "text/plain"}}))
+            cases.append(case(label + "-other-operation", **{**base, "path": "/different-operation", "query": {"provider-option": "synthetic"}}))
         for name, query, models in (("ws-default", {}, ["standard"]), ("ws-mini", {"model": "mini"}, ["standard", "mini"]),
                                     ("ws-mini-denied", {"model": "mini"}, ["standard"]),
                                     ("ws-unknown", {"model": "unknown"}, ["standard", "mini"]),
@@ -144,6 +183,7 @@ class ProfilePolicyTests(unittest.TestCase):
             item = case(name, mode="ws", query=query, websocket={"allowedModels": models, "defaultModel": "standard", "queryParameters": {"api-version": "fixed"}})
             cases.append(item)
         source = SOURCE.replace("__PROFILE__", actual_expression("gateway.xml", "gatewayProfileSelection"))
+        source = source.replace("__INFERENCE_REQUEST__", actual_expression("gateway.xml", "gatewayInferenceRequestAllowed"))
         source = source.replace("__AUTH__", actual_expression("gateway.xml", "gatewayDecision")).replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed"))
         model = actual_expression("protocol.xml", "gatewayProtocolModel").replace(
             'JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)))', 'JObject.Parse((string)context.Variables["websocket"])').replace('var encoded = "__WEBSOCKET_SETTINGS_BASE64__";', 'var encoded = "fixture";')
@@ -171,6 +211,45 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertTrue(self.results["explicit"]["decision"]["allowed"])
         self.assertEqual(self.results["explicit"]["decision"]["profileId"], "vision")
         self.assertEqual(self.results["default"]["decision"]["callerId"], self.results["explicit"]["decision"]["callerId"])
+
+    def test_openai_inference_query_and_media_contract_rejects_before_reading_body(self):
+        for label in ("chat", "responses"):
+            for suffix in ("query", "same-name-query", "duplicate-query", "query-before-body", "method", "missing-type", "wrong-type", "duplicate-type"):
+                name = label + "-reject-" + suffix
+                self.assertFalse(self.results[name]["requestAllowed"], name)
+                self.assertEqual(self.results[name]["reads"], 0, name)
+            self.assertFalse(self.results[label + "-revision-query"]["requestAllowed"])
+
+    def test_openai_inference_guard_preserves_native_data_and_other_api_contracts(self):
+        for label in ("chat", "responses"):
+            for suffix in ("native-request", "json-charset", "other-api", "other-operation"):
+                name = label + "-" + suffix
+                result = self.results[name]
+                self.assertTrue(result["requestAllowed"], name)
+                self.assertTrue(result["profile"]["allowed"], name)
+                self.assertTrue(result["decision"]["allowed"], name)
+                self.assertTrue(result["limits"]["allowed"], name)
+                if name == "responses-other-operation":
+                    self.assertFalse(result["targetAllowed"], name)
+                else:
+                    self.assertTrue(result["targetAllowed"], name)
+                self.assertIn("provider_extension", json.loads(result["bodyAfter"]))
+
+    def test_inference_contract_rejection_is_audited_after_authentication(self):
+        root = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").getroot()
+        inbound = list(root.find("inbound"))
+        guard = next(node for node in inbound if node.tag == "set-variable" and node.get("name") == "gatewayInferenceRequestAllowed")
+        profile = next(node for node in inbound if node.tag == "set-variable" and node.get("name") == "gatewayProfileSelection")
+        self.assertLess(next(i for i, node in enumerate(inbound) if node.tag == "base"), inbound.index(guard))
+        self.assertLess(inbound.index(guard), inbound.index(profile))
+        rejection = inbound[inbound.index(guard) + 1].find("when")
+        self.assertEqual(rejection.find("set-variable[@name='gatewayAuditCode']").get("value"), "INVALID_INFERENCE_REQUEST")
+        self.assertEqual(rejection.find("set-variable[@name='gatewayAuditStatus']").get("value"), "@(400)")
+        self.assertIsNotNone(rejection.find("include-fragment[@fragment-id='core-gateway-telemetry']"))
+        response = rejection.find("return-response")
+        self.assertEqual(response.find("set-status").get("code"), "400")
+        self.assertIsNotNone(response.find("set-header[@name='apim-request-id']"))
+        self.assertIsNone(response.find("set-body"))
 
     def test_profile_and_model_binding_remain_while_native_modalities_reach_provider(self):
         for name in ("unknown", "duplicate", "wrong-model", "responses-image-unknown-model"):

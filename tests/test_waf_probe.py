@@ -9,6 +9,7 @@ from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -392,6 +393,120 @@ class WafProbeTests(unittest.TestCase):
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(report["selected_case_count"], len(probe.jndi_field_probes(self.routes)))
             self.assertTrue(all("jndi" in item["case_id"] for item in report["results"]))
+
+    def test_ai_coding_corpus_is_bounded_anonymous_and_keeps_its_controls(self):
+        cases = probe.ai_coding_probes(self.routes)
+        self.assertLessEqual(len(cases), 96)
+        self.assertGreater(len(cases), 60)
+        self.assertEqual([case.case_id for case in cases], [case.case_id for case in probe.ai_coding_probes(self.routes)])
+        self.assertEqual(len(cases), len({case.case_id for case in cases}))
+        self.assertTrue(all(case.auth_mode == "anonymous" for case in cases))
+        self.assertTrue(all(case.target == "gateway" and case.method == "POST" for case in cases))
+        self.assertTrue(all(json.loads(case.body)["model"] == probe.INVALID_MODEL for case in cases))
+        self.assertLess(max(len(case.body) for case in cases), 16384)
+        for _, path in probe.CANARY_ROUTES:
+            selected = [case for case in cases if case.path == path or case.path == path + "/neighbor"]
+            controls = {case.category for case in selected if case.intent == "attack_control"}
+            self.assertEqual(controls, {"ai-coding-control-unknown-sqli", "ai-coding-control-unknown-xss",
+                "ai-coding-control-query-sqli", "ai-coding-control-neighbor-xss"})
+            for case in selected:
+                if "query-collision" in case.category:
+                    self.assertEqual(case.intent, "validation")
+                    self.assertEqual(case.query[0][1], probe.CONTROL_SQL)
+                if case.intent == "compatibility":
+                    self.assertIn((case.method, case.path), probe.CANARY_ROUTES)
+            for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
+                family_cases = [case for case in selected if case.category.startswith("ai-coding-" + family + "-")]
+                self.assertEqual(len(family_cases), 5)
+                self.assertTrue(all(case.intent == "compatibility" for case in family_cases))
+        with self.assertRaisesRegex(ValueError, "exactly"):
+            probe.ai_coding_probes([route for route in self.routes if not route.path.endswith("/responses")])
+
+    def test_ai_coding_responses_history_uses_native_content_arrays_and_matched_tool_calls(self):
+        cases = [case for case in probe.ai_coding_probes(self.routes) if case.path.endswith("/responses")]
+        for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
+            output = next(case for case in cases if case.category == "ai-coding-" + family + "-tool-parts")
+            history = json.loads(output.body)["input"]
+            call, result = history[1:3]
+            self.assertEqual(call["type"], "function_call")
+            self.assertEqual(result["type"], "function_call_output")
+            self.assertEqual(call["call_id"], result["call_id"])
+            self.assertIsInstance(result["output"], list)
+            self.assertEqual(result["output"][0]["type"], "input_text")
+            self.assertEqual(history[-1]["role"], "user")
+            self.assertEqual(output.payload_field, "input[].output[].text")
+            custom = next(case for case in cases if case.category == "ai-coding-" + family + "-custom-input")
+            history = json.loads(custom.body)["input"]
+            self.assertEqual([item["type"] for item in history[1:3]], ["custom_tool_call", "custom_tool_call_output"])
+            self.assertEqual(history[1]["call_id"], history[2]["call_id"])
+            self.assertIsInstance(history[1]["input"], str)
+        php = next(case for case in cases if case.category == "ai-coding-php-variable-function-tool-parts")
+        self.assertIn('$formatter("SYNTHETIC")', json.loads(php.body)["input"][2]["output"][0]["text"])
+
+    def test_ai_coding_chat_history_includes_function_custom_and_legacy_tool_shapes(self):
+        cases = [case for case in probe.ai_coding_probes(self.routes) if case.path.endswith("/chat/completions")]
+        function = next(case for case in cases if case.category == "ai-coding-php-variable-function-function-arguments")
+        history = json.loads(function.body)["messages"]
+        call = history[1]["tool_calls"][0]
+        self.assertEqual(call["type"], "function")
+        self.assertEqual(history[2]["tool_call_id"], call["id"])
+        self.assertIn('$formatter("SYNTHETIC")', json.loads(call["function"]["arguments"])["source"])
+        parts = next(case for case in cases if case.category == "ai-coding-php-variable-function-tool-parts")
+        tool_message = json.loads(parts.body)["messages"][2]
+        self.assertEqual(tool_message["role"], "tool")
+        self.assertEqual(tool_message["content"][0]["type"], "text")
+        custom = next(case for case in cases if case.category == "ai-coding-php-variable-function-custom-input")
+        history = json.loads(custom.body)["messages"]
+        self.assertEqual(history[1]["tool_calls"][0]["type"], "custom")
+        self.assertIn('$formatter("SYNTHETIC")', history[1]["tool_calls"][0]["custom"]["input"])
+        self.assertEqual(history[1]["tool_calls"][0]["id"], history[2]["tool_call_id"])
+        legacy = next(case for case in cases if case.category == "ai-coding-legacy-arguments")
+        history = json.loads(legacy.body)["messages"]
+        self.assertEqual(history[2]["role"], "function")
+        self.assertEqual(history[1]["function_call"]["name"], history[2]["name"])
+        self.assertIn("source", json.loads(history[1]["function_call"]["arguments"]))
+
+    def test_ai_coding_tool_search_namespace_and_chat_grammar_use_distinct_native_schemas(self):
+        cases = probe.ai_coding_probes(self.routes)
+        for label in ("nested-description", "nested-schema", "nested-grammar"):
+            case = next(case for case in cases if case.category == "ai-coding-" + label)
+            history = json.loads(case.body)["input"]
+            search, output = history[:2]
+            self.assertEqual(search["type"], "tool_search_call")
+            self.assertEqual(output["type"], "tool_search_output")
+            self.assertEqual(search["call_id"], output["call_id"])
+            namespace = output["tools"][0]
+            self.assertEqual(namespace["type"], "namespace")
+            self.assertEqual(len(namespace["tools"]), 1)
+            child = namespace["tools"][0]
+            if label == "nested-schema":
+                self.assertEqual(child["parameters"]["$schema"], "https://json-schema.org/draft-07/schema#")
+                self.assertIn("SELECT sample", child["parameters"]["properties"])
+            if label == "nested-grammar":
+                self.assertEqual(child["format"]["type"], "grammar")
+                self.assertEqual(child["format"]["syntax"], "regex")
+                self.assertNotIn("grammar", child["format"])
+                re.compile(child["format"]["definition"])
+        chat = next(case for case in cases if case.category == "ai-coding-custom-grammar")
+        format_value = json.loads(chat.body)["tools"][0]["custom"]["format"]
+        self.assertEqual(format_value["type"], "grammar")
+        self.assertEqual(format_value["grammar"]["syntax"], "regex")
+        self.assertNotIn("definition", format_value)
+        re.compile(format_value["grammar"]["definition"])
+
+    def test_ai_coding_cli_dry_run_is_separate_and_reports_no_bodies_or_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "ai-plan.json"
+            with patch.object(probe, "run_probe", side_effect=AssertionError("network attempted")):
+                code = probe.main(["--ai-coding-only", "--dry-run", "--case-filter", "php-variable-function",
+                    "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
+            self.assertEqual(code, 0)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["selected_case_count"], 10)
+            self.assertTrue(all(case["auth_mode"] == "anonymous" for case in report["results"]))
+            self.assertTrue(all("body" not in case and "headers" not in case for case in report["results"]))
+            self.assertNotIn('$formatter("SYNTHETIC")', json.dumps(report))
+            self.assertTrue(any("not feature success" in item for item in report["limitations"]))
 
     def test_literal_attack_documentation_is_data_in_real_fields_never_an_xml_request(self):
         cases = probe.adversarial_content(self.routes)

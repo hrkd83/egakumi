@@ -1,6 +1,6 @@
 # App Gateway WAFの互換性・遮断確認
 
-GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたまま使用します。SQL、HTML、シェルコード、不透明な機械生成文字列をモデル・PII等へ渡すことは正当な利用です。そのデータを実行命令として扱うURL、ヘッダー、APIの制御情報とは分け、誤検知した正規パス・引数・個別ルールだけを調整します。
+GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたまま使用します。SQL、HTML、シェルコード、不透明な機械生成文字列をモデル・PII等へ渡すことは正当な利用です。そのデータを実行命令として扱うURL、ヘッダー、APIの制御情報とは分け、正規の完全パス・データ欄に限り、個別ルールまたは承認したアプリケーション攻撃ルールグループを調整します。
 
 コマンドはリポジトリルートで実行し、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
@@ -45,11 +45,23 @@ Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシ
 
 ## 保護条件の共通化
 
-ResponsesのCodex互換性調整は、`g-responses`の`RequestArgValues / Equals`に限定します。履歴の`input.input`・`input.output.text`、入れ子のツール説明`input.tools.tools.description`、ツール形式定義`input.tools.tools.format.definition`へ、原因となる個別規則の除外を追加しています。`input.content.text`には932140・933160・942320・942350を追加します。これは正規要求の再検証に向けた調整であり、実環境での通過確認済みとは扱いません。
+OpenAIのResponsesとChat Completionsは、同じ用途のデータ欄に同じアプリケーション攻撃グループ除外を適用します。[MicrosoftのAIチャット向けWAFチューニング指針](https://learn.microsoft.com/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning)に沿って、会話・指示・コード・ツール結果・引数・説明・宣言的Schemaの欄だけを選びます。SQLやコードの構文をモデルへ渡すことは、Gatewayでその構文を実行することとは別の処理です。WAFの評価はHTTP要求単位であり、履歴やツール結果が後続要求の本文に含まれることで検出対象が増えます。
 
-942150は履歴の`input.input`・`input.output.text`と`input.tools.tools.description`の値だけを追加対象とします。二段判定の前段候補として列挙されたキーを根拠に、`RequestArgKeys`や`input`全体の前方一致除外を追加しません。制御項目の検査、Prevention、本文検査、949110を維持します。
+manifest version 2は、限定した`g-responses`と`g-chat-completions`の完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、他用途へのグループ除外は許可しません。既存の920/921等の個別例外は保持し、プロトコル系グループを一括除外しません。
 
-追加の互換性調整では、ツール説明にコマンド・XSS・SQLの個別規則、`input.content.text`に941330・942310、`input.tools.tools.format.definition`に942430を追加します。引数Schemaの説明は`input.tools.tools.parameters.properties.`配下の`questions.items.properties.options.description`に942370、`code.description`に942380、`duration_ms.description`に942400だけを完全一致で指定します。`client_metadata.x-codex-turn-metadata`は942200・942260・942340・942370・942430の値検査だけを除外します。933151は`input.tools.tools.description`と`client_metadata.x-codex-turn-metadata`の値だけを完全一致で追加除外します。二段判定で候補として列挙された`client_metadata.session_id`のキー検査は維持し、候補キーの列挙を根拠に例外を広げません。この追加分も実環境での通過確認は未実施です。
+| 用途 | Responsesの例 | Chat Completionsの例 |
+| --- | --- | --- |
+| 会話・指示・ツール結果 | `input`、`input.content`、`input.content.text`、`input.output`、`input.output.text`、`instructions` | `messages.content`、`messages.content.text` |
+| シリアライズされた呼び出し引数 | `input.arguments`、`input.input` | `messages.tool_calls.function.arguments` |
+| ツール説明 | `tools.description`、`input.tools.tools.description` | `tools.function.description` |
+| 引数Schema | `tools.parameters.`、`input.tools.tools.parameters.` | `tools.function.parameters.` |
+| 出力Schema | `text.format.schema.` | `response_format.json_schema.schema.` |
+
+これは用途の対応表で、許可する実際のselectorの正本はmanifestとvalidatorです。値は明示した`Equals`、動的Schemaは区切り付き`StartsWith`で値とキーを選びます。`input.`・`messages.`・`tools.`全体には広げません。制御項目、画像・ファイルの取得先URL、暗号化履歴、metadataにグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
+
+同名queryにも引数除外が効くため、標準OpenAIの2操作にはAPIMの入口制約を組み合わせます。認証済み購読を確認した後、POST、単一の`application/json`のContent-Type、query引数がないことを検査します。`charset`等のmedia typeパラメーターは許容し、`api-version`を含めてquery引数は全拒否します。APIMのモデル許可、受信byte制約、Responsesのstateless制約、下流認証は維持します。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
+
+既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、管理規則のaction変更、認証・callback・他のAI用途への波及は許可しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・customRulesを維持します。
 
 PortalのHTTPSセッションCookie値は、`apps/portal/waf-session-exclusions.json`を正本とし、正確な名前`__Secure-egakumi.portal.session_token`を`RequestCookieValues`・`Equals`で選び、規則942450だけから除外します。Portal HTTPS listener専用の既定policyと、置換関係にあるPortal callback・データ欄policyへ同じ除外を合成します。Gateway側のpolicy、他のCookie、他の規則へは追加しません。HTTPの開発用Cookieを除外へ追加せず、Portalの認証・認可とCookieの保護属性は維持します。
 
@@ -57,7 +69,7 @@ raw SSML/WAVと正本の文書受付では、正規本文の相対パス`../`が
 
 Log4j/JNDIの例文で検知した`Known-CVEs / 800100`も、実測した正規データ欄だけへ限定します。未知のfield・query・headerの攻撃対照と、同名queryへの影響を独立して検証します。
 
-Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。toolの動的JSON Schemaキーは、`RequestArgKeys / StartsWith / tools.function.parameters.`だけをSQL規則942100・942130・942180・942200・942260・942330・942390・942480から除外します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
+Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。toolの動的JSON Schemaキーは、承認された引数Schema prefixの`RequestArgKeys / StartsWith`に限り、上記6カテゴリのグループ除外へ統合します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
 
 SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/speech-ssml-guard.xml`です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。独自の8192byte枠は撤廃し、継承した認証・受信byte検査の後、上流へ転送する前に宣言を検査します。元本文と上流URIは保持します。匿名401だけではガード成功とせず、認証付きの正常音声生成と明示400応答も確認します。SSML全体のschema検証は下流Speech側の責務です。
 
@@ -71,6 +83,8 @@ python3 scripts/waf_policy.py --config "$DEPLOY_PARAMS_FILE" --scope all --execu
 ```
 
 ## 再現する試験
+
+ResponsesとChat Completionsの対応するデータ欄を、PHPの変数関数呼び出しを含む言語別の例と、ツール呼び出し・ツール結果を含む履歴構造で確認します。ネストしたツール説明・Schema、動的キーも対象にし、クライアント・API・managed rule版を更新するときに再実行します。匿名canaryの通過確認と、認証付きの複数ターンE2Eを区別します。
 
 `waf_probe.py`は公開API契約・Portalの実ハンドラーから入口を列挙します。JSON／配列／Schema／関数引数／動的キー、Unicode・記号・コード・Base64、画像・PDF・音声、SSML、multipart、SDP、WebSocket Upgrade、callback、query・header、サイズ境界、攻撃対照を合成入力で試します。
 
