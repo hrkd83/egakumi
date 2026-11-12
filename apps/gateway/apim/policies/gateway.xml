@@ -19,12 +19,13 @@
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
     <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
     <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
-    <!-- These inference/image operations use JSON or multipart bodies. Argument
-         exclusions in WAF also match same-named query arguments, so reject all
-         query parameters before reading the native body in its declared format. -->
+    <!-- WAF argument exclusions also match query arguments. These known model
+         operations validate media type and query before reading native bodies;
+         only OpenAI embeddings retains its documented optional API version. -->
     <set-variable name="gatewayInferenceRequestAllowed" value="@{
       var api = context.Api.Id.Split(';')[0];
-      if (api != &quot;openai-inference-v1&quot; &amp;&amp; api != &quot;openai-images-v1&quot; &amp;&amp; api != &quot;blackforest-images-v1&quot;) { return true; }
+      if (api != &quot;openai-inference-v1&quot; &amp;&amp; api != &quot;openai-images-v1&quot; &amp;&amp; api != &quot;blackforest-images-v1&quot;
+          &amp;&amp; api != &quot;openai-embeddings-v1&quot; &amp;&amp; api != &quot;cohere-inference-v1&quot;) { return true; }
       var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
       var constraint = config[&quot;operationConstraints&quot;]?[context.Operation.Id];
       var kind = (string)constraint?[&quot;kind&quot;];
@@ -42,9 +43,20 @@
       var imageMultipart = api == &quot;openai-images-v1&quot; &amp;&amp; operation == &quot;image-edit&quot;
         &amp;&amp; path == &quot;/deployments/{deployment}/edits&quot; &amp;&amp; kind == &quot;pathModel&quot; &amp;&amp; format == &quot;multipart&quot;;
       if (imageOperation &amp;&amp; !imageJson &amp;&amp; !imageMultipart) { return false; }
-      if (!inference &amp;&amp; !imageJson &amp;&amp; !imageMultipart) { return true; }
+      var embeddingOperation = (api == &quot;openai-embeddings-v1&quot; &amp;&amp; operation == &quot;embeddings&quot;)
+        || (api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;cohere-embeddings&quot;);
+      var openaiEmbedding = api == &quot;openai-embeddings-v1&quot; &amp;&amp; operation == &quot;embeddings&quot; &amp;&amp; path == &quot;/embeddings&quot;
+        &amp;&amp; kind == &quot;textEmbeddings&quot; &amp;&amp; format == &quot;json&quot; &amp;&amp; (string)constraint?[&quot;embeddingInputField&quot;] == &quot;input&quot;;
+      var cohereEmbedding = api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;cohere-embeddings&quot; &amp;&amp; path == &quot;/embed&quot;
+        &amp;&amp; kind == &quot;textEmbeddings&quot; &amp;&amp; format == &quot;json&quot; &amp;&amp; (string)constraint?[&quot;embeddingInputField&quot;] == &quot;texts&quot;;
+      if (embeddingOperation &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding) { return false; }
+      if (!inference &amp;&amp; !imageJson &amp;&amp; !imageMultipart &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding) { return true; }
+      var queryAllowed = openaiEmbedding
+        ? context.Request.Url.Query.Count &lt;= 1 &amp;&amp; context.Request.Url.Query.All(q =&gt; q.Key == &quot;api-version&quot;
+          &amp;&amp; q.Value.Length == 1 &amp;&amp; (q.Value[0] == &quot;v1&quot; || q.Value[0] == &quot;preview&quot;))
+        : context.Request.Url.Query.Count == 0;
       var contentType = imageMultipart ? &quot;multipart/form-data&quot; : &quot;application/json&quot;;
-      return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Request.Url.Query.Count == 0
+      return context.Request.Method == &quot;POST&quot; &amp;&amp; queryAllowed
         &amp;&amp; context.Request.Headers.ContainsKey(&quot;Content-Type&quot;)
         &amp;&amp; context.Request.Headers[&quot;Content-Type&quot;].Length == 1
         &amp;&amp; String.Equals(context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim(), contentType, StringComparison.OrdinalIgnoreCase);

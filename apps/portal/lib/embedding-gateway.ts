@@ -43,6 +43,7 @@ export async function handleEmbeddings(request: Request, dependencies: Embedding
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
+  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: EmbeddingInput & { apiKeyId: string };
   try { input = embeddingExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure(request.signal.aborted ? "RequestCancelled" : "InvalidRequest", request.signal.aborted ? 499 : 400); }

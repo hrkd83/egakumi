@@ -1,11 +1,13 @@
 """埋め込みの次元・入力意味制約を実APIM式で検査する。外部通信はしない。"""
 import copy
+import base64
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
@@ -161,6 +163,41 @@ class EmbeddingExpressionTests(unittest.TestCase):
             self.assertEqual(settings["operationConstraints"], api["authorization"]["operationConstraints"])
             self.assertEqual(settings["llmOperationIds"], [])
             self.assertEqual(settings["tokenLimitOperationIds"], [])
+
+    def test_compiled_embedding_policies_publish_the_guard_without_rewriting_native_queries(self):
+        template = compile_bicep("apps/gateway/apim/api-publication.bicep")
+        apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
+        source_guard = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").find(
+            './inbound/set-variable[@name="gatewayInferenceRequestAllowed"]').get("value")
+        resources = template["resources"]
+        resources = list(resources.values()) if isinstance(resources, dict) else resources
+        operation_policy = next(resource for resource in resources
+            if resource["type"] == "Microsoft.ApiManagement/service/apis/operations/policies"
+            and resource.get("copy", {}).get("name") == "operationPolicies")
+        for api in apis:
+            if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
+                continue
+            api["backendUrl"] = "https://provider.example.com/openai/v1" if api["name"] == "openai-embeddings-v1" else "https://provider.example.com"
+            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
+
+            def evaluate(value):
+                return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)
+
+            root = ET.fromstring(evaluate("[variables('policyValues')]")[0])
+            authorization = base64.b64encode(json.dumps(api["authorization"], ensure_ascii=False, separators=(",", ":")).encode()).decode()
+            self.assertEqual(root.find('./inbound/set-variable[@name="gatewayInferenceRequestAllowed"]').get("value"),
+                             source_guard.replace("__AUTHORIZATION_BASE64__", authorization))
+            inbound = list(root.find("inbound"))
+            guard = root.find('./inbound/set-variable[@name="gatewayInferenceRequestAllowed"]')
+            limit = root.find('./inbound/include-fragment[@fragment-id="core-model-limits"]')
+            self.assertLess(inbound.index(guard), inbound.index(limit))
+            self.assertEqual({node.get("name") for node in root.findall(".//set-query-parameter")}, {"api-key", "subscription-key"})
+            operation = ET.fromstring(evaluate(operation_policy["properties"]["value"]))
+            rewrite = operation.find("./inbound/rewrite-uri")
+            if api["name"] == "openai-embeddings-v1":
+                self.assertIsNone(rewrite)
+            else:
+                self.assertEqual(rewrite.attrib, {"template": "/providers/cohere/v2/embed", "copy-unmatched-params": "false"})
 
 
 if __name__ == "__main__":

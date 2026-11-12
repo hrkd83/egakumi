@@ -26,6 +26,14 @@
 | [graph-profile-v1.json](graph-profile-v1.json) | CMの本人接続によるMicrosoft Graph /meの12属性取得 |
 | [document-analysis-v1.json](document-analysis-v1.json) | PDF・画像の文字認識と文書レイアウト・表の解析 |
 
+## 埋め込みAPIの入口
+
+OpenAIの`POST /models/openai-embeddings/v1/embeddings`とCohereの`POST /models/cohere/v1/embed`は、単一の`Content-Type: application/json`を必要とします。`charset`等のMIMEパラメーターは利用できます。WAFの引数値除外は同名queryにも作用するため、APIMは本文を読む前にqueryを検査します。
+
+OpenAIはqueryなし、または完全一致名の`api-version`を1個だけ指定した`v1`／`preview`を受け付け、元の値を上流へ転送します。Cohere Embedはqueryを受け付けず、既存の`/providers/cohere/v2/embed`へ転送します。同名の入力query、未知名、重複値、不正なAPI版は400です。同じAPIのCohere Rerankはこの入口制約の対象に含めません。[OpenAI Embeddings v1のAPI版](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/embeddings)
+
+本文は既存のモデル・入力型・次元・受信byte制約を維持します。OpenAIの`input`は文字列、文字列配列、非負整数のtoken配列、token配列の配列を扱い、Cohereの`texts`は文字列配列を扱います。許可されたnative optionの扱いと、本文を変更せず転送する動作は維持します。
+
 ## 変更する場所
 
 - APIの公開パス、操作、許可モデル、要求上限、下流接続、製品・購読との関連は、対象APIのJSONで変更します。

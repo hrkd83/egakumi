@@ -61,6 +61,7 @@ public static class IntegratedProfileFixture {
     result["queryAllowed"]=Query(c);
    } else {
     result["requestAllowed"]=InferenceRequest(c);
+    result["queryAfter"]=JObject.FromObject(c.Request.Url.Query);
     if (!(bool)result["requestAllowed"]) {
      result["reads"]=c.Request.Body.Reads;
      result["bodyAfter"]=c.Request.Body.Data;
@@ -221,6 +222,63 @@ class ProfilePolicyTests(unittest.TestCase):
                 changed_config["operationConstraints"][operation][field] = value
                 cases.append(case(label + "-reject-" + suffix, **{**base, "config": changed_config}))
             cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"provider-option": "synthetic"}}))
+        cls.embedding_cases = []
+        cls.embedding_bodies = {}
+        for label, api, operation, path, body in (
+            ("openai-embedding", "openai-embeddings-v1", "embeddings", "/embeddings", {
+                "model": "text-embedding-3-small", "input": ["Synthetic SELECT and <script> examples."],
+                "dimensions": 256, "encoding_format": "base64", "provider_extension": {"synthetic": True}}),
+            ("cohere-embedding", "cohere-inference-v1", "cohere-embeddings", "/embed", {
+                "model": "embed-v-4-0", "texts": ["Synthetic SELECT and <script> examples."],
+                "input_type": "search_query", "output_dimension": 256, "embedding_types": ["float"],
+                "truncate": "END", "provider_extension": {"synthetic": True}})):
+            cls.embedding_cases.append(label)
+            cls.embedding_bodies[label] = body
+            base = {"config": apis[api]["authorization"], "api": api, "operation": operation,
+                "path": path, "headers": {"Content-Type": "application/json"}, "body": body}
+            cases.append(case(label + "-native-request", **base))
+            cases.append(case(label + "-json-charset", **{**base, "headers": {"Content-Type": "Application/JSON; charset=utf-8"}}))
+            cases.append(case(label + "-revision-request", **{**base, "api": api + ";rev=2"}))
+            for suffix, patch in (
+                ("query", {"query": {"arbitrary": "synthetic"}}),
+                ("input-query", {"query": {"input": "synthetic"}}),
+                ("texts-query", {"query": {"texts": "synthetic"}}),
+                ("duplicate-query", {"query": {"texts": ["synthetic", "second"]}}),
+                ("query-before-body", {"query": {"input": "synthetic"}, "rawBody": "{"}),
+                ("method", {"method": "GET"}),
+                ("missing-type", {"headers": {}}),
+                ("wrong-type", {"headers": {"Content-Type": "text/plain"}}),
+                ("duplicate-type", {"headers": {"Content-Type": ["application/json", "application/json"]}}),
+                ("wrong-route", {"path": "/different-operation"})):
+                cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
+            cases.append(case(label + "-revision-query", **{**base, "api": api + ";rev=2", "query": {"texts": "synthetic"}}))
+            for suffix, field, value in (("wrong-kind", "kind", "bodyModel"),
+                                          ("wrong-format", "bodyFormat", "multipart"),
+                                          ("wrong-input-field", "embeddingInputField", "texts" if label == "openai-embedding" else "input")):
+                changed = json.loads(json.dumps(base["config"]))
+                changed["operationConstraints"][operation][field] = value
+                cases.append(case(label + "-reject-" + suffix, **{**base, "config": changed}))
+            cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"input": "synthetic"}, "headers": {"Content-Type": "text/plain"}}))
+            if label == "openai-embedding":
+                for version in ("v1", "preview"):
+                    cases.append(case(label + "-version-" + version, **{**base, "query": {"api-version": version}}))
+                    cases.append(case(label + "-revision-version-" + version, **{**base, "api": api + ";rev=2", "query": {"api-version": version}}))
+                for suffix, query in (
+                    ("both-versions", {"api-version": ["v1", "preview"]}),
+                    ("duplicate-version", {"api-version": ["v1", "v1"]}),
+                    ("empty-version", {"api-version": ""}),
+                    ("unknown-version", {"api-version": "synthetic-version"}),
+                    ("uppercase-name", {"API-VERSION": "v1"}),
+                    ("uppercase-value", {"api-version": "V1"}),
+                    ("version-with-input", {"api-version": "v1", "input": "synthetic"})):
+                    cases.append(case(label + "-reject-" + suffix, **{**base, "query": query}))
+                for suffix, native_input in (("scalar", "Synthetic text"), ("tokens", [1, 2]), ("token-batches", [[1, 2], [3]])):
+                    cases.append(case(label + "-input-" + suffix, **{**base, "body": {**body, "input": native_input}}))
+            else:
+                cases.append(case(label + "-reject-api-version", **{**base, "query": {"api-version": "v1"}}))
+                rerank = {"model": "Cohere-rerank-v4.0-fast", "query": "Synthetic query", "documents": ["Synthetic document"]}
+                cases.append(case("cohere-rerank-unchanged", **{**base, "operation": "rerank", "path": "/rerank",
+                    "query": {"texts": "synthetic"}, "headers": {"Content-Type": "text/plain"}, "body": rerank}))
         for name, query, models in (("ws-default", {}, ["standard"]), ("ws-mini", {"model": "mini"}, ["standard", "mini"]),
                                     ("ws-mini-denied", {"model": "mini"}, ["standard"]),
                                     ("ws-unknown", {"model": "unknown"}, ["standard", "mini"]),
@@ -319,6 +377,52 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                     self.assertEqual(result["reads"], 1, name)
                 else:
                     self.assertIn("provider_extension", json.loads(result["bodyAfter"]), name)
+
+    def test_embedding_operations_reject_invalid_query_media_or_binding_before_body_reads(self):
+        for label in self.embedding_cases:
+            for suffix in ("query", "input-query", "texts-query", "duplicate-query", "query-before-body", "method",
+                           "missing-type", "wrong-type", "duplicate-type", "wrong-route", "wrong-kind", "wrong-format", "wrong-input-field"):
+                name = label + "-reject-" + suffix
+                self.assertFalse(self.results[name]["requestAllowed"], name)
+                self.assertEqual(self.results[name]["reads"], 0, name)
+            self.assertFalse(self.results[label + "-revision-query"]["requestAllowed"])
+            self.assertEqual(self.results[label + "-revision-query"]["reads"], 0)
+        for suffix in ("both-versions", "duplicate-version", "empty-version", "unknown-version", "uppercase-name", "uppercase-value", "version-with-input"):
+            name = "openai-embedding-reject-" + suffix
+            self.assertFalse(self.results[name]["requestAllowed"], name)
+            self.assertEqual(self.results[name]["reads"], 0, name)
+        self.assertFalse(self.results["cohere-embedding-reject-api-version"]["requestAllowed"])
+        self.assertEqual(self.results["cohere-embedding-reject-api-version"]["reads"], 0)
+
+    def test_embedding_guard_preserves_body_options_versions_and_other_operations(self):
+        for label in self.embedding_cases:
+            for suffix in ("native-request", "json-charset", "revision-request", "other-api"):
+                name = label + "-" + suffix
+                result = self.results[name]
+                self.assertTrue(result["requestAllowed"], name)
+                for stage in ("profile", "decision", "limits"):
+                    self.assertTrue(result[stage]["allowed"], (name, stage))
+                self.assertTrue(result["targetAllowed"], name)
+                self.assertEqual(json.loads(result["bodyAfter"]), self.embedding_bodies[label], name)
+        for version in ("v1", "preview"):
+            for prefix in ("openai-embedding-version-", "openai-embedding-revision-version-"):
+                result = self.results[prefix + version]
+                self.assertTrue(result["requestAllowed"])
+                self.assertTrue(result["limits"]["allowed"])
+                self.assertTrue(result["targetAllowed"])
+                self.assertEqual(result["queryAfter"], {"api-version": [version]})
+                self.assertEqual(json.loads(result["bodyAfter"]), self.embedding_bodies["openai-embedding"])
+        for suffix, native_input in (("scalar", "Synthetic text"), ("tokens", [1, 2]), ("token-batches", [[1, 2], [3]])):
+            result = self.results["openai-embedding-input-" + suffix]
+            self.assertTrue(result["requestAllowed"])
+            self.assertTrue(result["limits"]["allowed"])
+            self.assertTrue(result["targetAllowed"])
+            self.assertEqual(json.loads(result["bodyAfter"])["input"], native_input)
+        rerank = self.results["cohere-rerank-unchanged"]
+        self.assertTrue(rerank["requestAllowed"])
+        self.assertTrue(rerank["limits"]["allowed"])
+        self.assertTrue(rerank["targetAllowed"])
+        self.assertEqual(rerank["queryAfter"], {"texts": ["synthetic"]})
 
     def test_profile_and_model_binding_remain_while_native_modalities_reach_provider(self):
         for name in ("unknown", "duplicate", "wrong-model", "responses-image-unknown-model"):
