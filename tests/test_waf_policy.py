@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
-                        desired_policy, reconcile, canonical_gateway, RESERVED_POLICY_KEYS)
+                        desired_policy, reconcile, canonical_gateway, RESERVED_POLICY_KEYS, exclusion_is_covered)
 from deployment.helpers.portal_gateway import portal_session_exclusions
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
@@ -190,53 +190,162 @@ class DataWafTests(unittest.TestCase):
         after['properties']['managedRules']['exclusions'].remove(expected)
         self.assertEqual(after, before)
 
-    def test_chat_observed_rule_update_changes_only_two_fields_and_one_owned_policy(self):
-        current = next(p for p in load_manifest()['profiles'] if p['name'] == 'g-chat-completions')
-        previous = copy.deepcopy(current)
-        additions = {
-            ('RequestArgValues', 'Equals', 'messages.content.image_url.url'): {'942340', '942450'},
-            ('RequestArgKeys', 'StartsWith', 'tools.function.parameters.'): {'942200', '942260', '942480'},
-        }
-        for entry in previous['exclusions']:
-            remove = additions.get((entry['matchVariable'], entry['selectorMatchOperator'], entry['selector']), set())
-            rule_set = entry['exclusionManagedRuleSets'][0]
-            for group in rule_set['ruleGroups']:
-                group['rules'] = [rule for rule in group['rules'] if rule['ruleId'] not in remove]
-            rule_set['ruleGroups'] = [group for group in rule_set['ruleGroups'] if group['rules']]
-
+    def test_ai_group_upgrade_covers_legacy_rules_with_one_owned_policy_write(self):
+        old = manifest()
+        current = copy.deepcopy(old)
+        current['version'] = 2
+        current['profiles'][0]['exclusions'][0]['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
         config, transport = configuration(), ArmMemory()
-        reconcile(config, transport, scopes=('gateway',), manifest={'version': 1, 'profiles': [previous]})
+        reconcile(config, transport, scopes=('gateway',), manifest=old)
         before = copy.deepcopy(transport.resources)
         transport.calls.clear()
-        result = reconcile(config, transport, scopes=('gateway',), manifest={'version': 1, 'profiles': [current]})
+        result = reconcile(config, transport, scopes=('gateway',), manifest=current)
         identifier = waf_policy_id(config, 'g-chat-completions')
         self.assertEqual((result['policyUpdates'], result['gatewayUpdated'], result['azureWrites']), (1, False, 1))
         writes = [call for call in transport.calls if call[0] == 'PUT']
         self.assertEqual([(call[1], call[3]) for call in writes], [(identifier, {'If-Match': '"updated"'})])
-        self.assertEqual(set(transport.resources), set(before))
         for resource_id in before:
             if resource_id != identifier:
                 self.assertEqual(transport.resources[resource_id], before[resource_id])
-
-        def tuples(properties):
-            return {(entry['matchVariable'], entry['selectorMatchOperator'], entry['selector'],
-                     rule_set['ruleSetType'], rule_set['ruleSetVersion'], group['ruleGroupName'], rule['ruleId'])
-                    for entry in properties['managedRules']['exclusions']
-                    for rule_set in entry.get('exclusionManagedRuleSets', [])
-                    for group in rule_set['ruleGroups'] for rule in group['rules']}
-
-        old, new = before[identifier]['properties'], transport.resources[identifier]['properties']
-        expected = {(*scope, 'OWASP', '3.2', 'REQUEST-942-APPLICATION-ATTACK-SQLI', rule_id)
-                    for scope, rule_ids in additions.items() for rule_id in rule_ids}
-        self.assertEqual(tuples(new) - tuples(old), expected)
-        self.assertFalse(tuples(old) - tuples(new))
+        old_properties, new_properties = before[identifier]['properties'], transport.resources[identifier]['properties']
         for name in ('policySettings', 'customRules'):
-            self.assertEqual(new[name], old[name])
-        self.assertEqual(new['managedRules']['managedRuleSets'], old['managedRules']['managedRuleSets'])
+            self.assertEqual(new_properties[name], old_properties[name])
+        self.assertEqual(new_properties['managedRules']['managedRuleSets'], old_properties['managedRules']['managedRuleSets'])
+        upgraded = current['profiles'][0]['exclusions'][0]
+        self.assertIn(upgraded, new_properties['managedRules']['exclusions'])
+        self.assertTrue(exclusion_is_covered(old['profiles'][0]['exclusions'][0], upgraded))
         transport.calls.clear()
-        self.assertEqual(reconcile(config, transport, scopes=('gateway',),
-                                   manifest={'version': 1, 'profiles': [current]})['azureWrites'], 0)
+        self.assertEqual(reconcile(config, transport, scopes=('gateway',), manifest=current)['azureWrites'], 0)
         self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+        # Removing part of a live exclusion is not an implicit rollback.
+        with self.assertRaisesRegex(ValueError, 'Represent the existing path-specific WAF exclusion'):
+            reconcile(config, transport, scopes=('gateway',), manifest=old)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_manifest_groups_require_version_two_and_approved_field_route_and_category(self):
+        good = manifest()
+        good['version'] = 2
+        entry = good['profiles'][0]['exclusions'][0]
+        entry['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+        self.assertEqual(selected_profiles(configuration(), manifest=good), good['profiles'])
+        changes = {
+            'version-one': lambda d: d.update(version=1),
+            'other-profile': lambda d: d['profiles'][0].update(name='g-images'),
+            'neighbor-route': lambda d: d['profiles'][0].update(paths=[CHAT + '/neighbor']),
+            'extra-route': lambda d: d['profiles'][0]['paths'].append('/unpublished'),
+            'model': lambda d: d['profiles'][0]['exclusions'][0].update(selector='model'),
+            'media': lambda d: d['profiles'][0]['exclusions'][0].update(selector='messages.content.image_url.url'),
+            'key': lambda d: d['profiles'][0]['exclusions'][0].update(matchVariable='RequestArgKeys'),
+            'wide-prefix': lambda d: d['profiles'][0]['exclusions'][0].update(selector='messages.', selectorMatchOperator='StartsWith'),
+            'unknown-property': lambda d: d['profiles'][0]['exclusions'][0].update(unapproved=True),
+        }
+        for name, change in changes.items():
+            value = copy.deepcopy(good)
+            change(value)
+            with self.subTest(change=name), self.assertRaises(ValueError):
+                selected_profiles(configuration(), manifest=value)
+        for group in ('REQUEST-920-PROTOCOL-ENFORCEMENT', 'REQUEST-921-PROTOCOL-ATTACK',
+                      'REQUEST-949-BLOCKING-EVALUATION', 'REQUEST-980-CORRELATION', 'Known-CVEs',
+                      'REQUEST-944-APPLICATION-ATTACK-JAVA', 'REQUEST-942-UNAPPROVED'):
+            value = copy.deepcopy(good)
+            value['profiles'][0]['exclusions'][0]['exclusionManagedRuleSets'][0]['ruleGroups'] = [{'ruleGroupName': group}]
+            with self.subTest(group=group), self.assertRaises(ValueError):
+                selected_profiles(configuration(), manifest=value)
+
+    def test_manifest_rejects_ambiguous_empty_duplicate_and_unscoped_group_forms(self):
+        good = manifest()
+        good['version'] = 2
+        for change in ('empty-rules', 'null-rules', 'duplicate-group', 'duplicate-rule',
+                       'duplicate-selector', 'all-groups', 'missing-groups', 'other-rule-set', 'group-extra-property'):
+            value = copy.deepcopy(good)
+            entry = value['profiles'][0]['exclusions'][0]
+            rule_set = entry['exclusionManagedRuleSets'][0]
+            group = rule_set['ruleGroups'][0]
+            if change == 'empty-rules': group['rules'] = []
+            elif change == 'null-rules': group['rules'] = None
+            elif change == 'duplicate-group': rule_set['ruleGroups'].append(copy.deepcopy(group))
+            elif change == 'duplicate-rule': group['rules'].append(copy.deepcopy(group['rules'][0]))
+            elif change == 'duplicate-selector': value['profiles'][0]['exclusions'].append(copy.deepcopy(entry))
+            elif change == 'all-groups': rule_set['ruleGroups'] = []
+            elif change == 'missing-groups': rule_set.pop('ruleGroups')
+            elif change == 'other-rule-set': rule_set['ruleSetVersion'] = '2.2'
+            else: group['unapproved'] = True
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                selected_profiles(configuration(), manifest=value)
+
+    def test_group_coverage_never_silently_changes_an_existing_scope(self):
+        old = exclusion('input.output.text', 'REQUEST-933-APPLICATION-ATTACK-PHP', ['933151', '933180'])
+        whole = copy.deepcopy(old)
+        whole['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+        self.assertTrue(exclusion_is_covered(old, whole))
+        self.assertFalse(exclusion_is_covered(whole, old))
+        for change in ('selector', 'operator', 'variable', 'version', 'category', 'extra-rule', 'unscoped'):
+            candidate = copy.deepcopy(whole)
+            existing = copy.deepcopy(old)
+            if change == 'selector': candidate['selector'] = 'input.content.text'
+            elif change == 'operator': candidate['selectorMatchOperator'] = 'StartsWith'
+            elif change == 'variable': candidate['matchVariable'] = 'RequestArgKeys'
+            elif change == 'version': candidate['exclusionManagedRuleSets'][0]['ruleSetVersion'] = '3.1'
+            elif change == 'category': candidate['exclusionManagedRuleSets'][0]['ruleGroups'][0]['ruleGroupName'] = 'REQUEST-942-APPLICATION-ATTACK-SQLI'
+            elif change == 'extra-rule': existing['exclusionManagedRuleSets'][0]['ruleGroups'].append({'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': [{'ruleId': '920230'}]})
+            else: existing.pop('exclusionManagedRuleSets')
+            with self.subTest(change=change):
+                self.assertFalse(exclusion_is_covered(existing, candidate))
+        fewer = copy.deepcopy(old)
+        fewer['exclusionManagedRuleSets'][0]['ruleGroups'][0]['rules'].pop()
+        self.assertFalse(exclusion_is_covered(old, fewer))
+        self.assertTrue(exclusion_is_covered(fewer, old))
+
+    def test_schema_prefix_coverage_respects_variables_and_field_boundaries(self):
+        exact = exclusion('text.format.schema.properties.code.description',
+                          'REQUEST-933-APPLICATION-ATTACK-PHP', ['933180'])
+        prefix = copy.deepcopy(exact)
+        prefix.update(selector='text.format.schema.', selectorMatchOperator='StartsWith')
+        prefix['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+        self.assertTrue(exclusion_is_covered(exact, prefix))
+        narrower = copy.deepcopy(exact)
+        narrower.update(selector='text.format.schema.properties.', selectorMatchOperator='StartsWith')
+        self.assertTrue(exclusion_is_covered(narrower, prefix))
+        self.assertFalse(exclusion_is_covered(prefix, narrower))
+        for selector, operator, variable in (
+                ('text.format.schema', 'Equals', 'RequestArgValues'),
+                ('text.format.schema_sibling.code', 'Equals', 'RequestArgValues'),
+                ('text.format.schema.properties.code.description', 'Contains', 'RequestArgValues'),
+                ('text.format.schema.properties.code.description', 'Equals', 'RequestArgKeys')):
+            changed = copy.deepcopy(exact)
+            changed.update(selector=selector, selectorMatchOperator=operator, matchVariable=variable)
+            with self.subTest(selector=selector, operator=operator, variable=variable):
+                self.assertFalse(exclusion_is_covered(changed, prefix))
+        old_protocol = copy.deepcopy(exact)
+        old_protocol['exclusionManagedRuleSets'][0]['ruleGroups'].append({
+            'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': [{'ruleId': '920230'}]})
+        self.assertFalse(exclusion_is_covered(old_protocol, prefix))
+
+    def test_schema_group_cleanup_covers_old_exact_exceptions_before_one_policy_update(self):
+        source = load_manifest()
+        profile = next(p for p in source['profiles'] if p['name'] == 'g-responses')
+        legacy = [
+            exclusion('text.format.schema.$schema', 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130']),
+            exclusion('input.tools.tools.parameters.properties.questions.items.properties.options.description',
+                      'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942370']),
+            exclusion('input.tools.tools.parameters.properties.code.description',
+                      'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942380']),
+            exclusion('input.tools.tools.parameters.properties.duration_ms.description',
+                      'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942400']),
+        ]
+        self.assertFalse({e['selector'] for e in legacy} & {e['selector'] for e in profile['exclusions']})
+        old = {'version': 1, 'profiles': [{**copy.deepcopy(profile), 'exclusions': legacy}]}
+        current = {'version': source['version'], 'profiles': [profile]}
+        config, transport = configuration(), ArmMemory()
+        config['apiDefinitions'][0]['operations'].append({'name': 'responses', 'method': 'POST', 'urlTemplate': '/responses'})
+        reconcile(config, transport, scopes=('gateway',), manifest=old)
+        before_gateway = copy.deepcopy(transport.resources[GATEWAY_ID])
+        transport.calls.clear()
+        result = reconcile(config, transport, scopes=('gateway',), manifest=current)
+        self.assertEqual((result['policyUpdates'], result['gatewayUpdated'], result['azureWrites']), (1, False, 1))
+        self.assertEqual(transport.resources[GATEWAY_ID], before_gateway)
+        self.assertTrue(all(any(exclusion_is_covered(item, candidate) for candidate in profile['exclusions'])
+                            for item in legacy))
 
     def test_manifest_rejects_wildcard_duplicate_scope_and_unscoped_rules(self):
         for change in ('path', 'duplicate', 'global', 'aggregate', 'selector'):
@@ -690,141 +799,84 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         self.assertIn(image[0], desired['properties']['managedRules']['exclusions'])
 
-    def test_responses_function_arguments_keep_one_exact_sql_rule_across_generators(self):
+    def test_both_ai_apis_share_group_policy_for_equivalent_data_fields(self):
+        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
+        self.assertEqual(current['version'], 2)
+        profiles = {p['name']: p for p in current['profiles']}
+        expected_groups = {
+            'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
+            'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
+            'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+        }
+        fields = {
+            'g-chat-completions': {
+                'values': {'messages.content', 'messages.content.text',
+                           'messages.tool_calls.function.arguments', 'messages.function_call.arguments',
+                           'messages.tool_calls.custom.input', 'tools.function.description',
+                           'functions.description', 'tools.custom.description', 'tools.custom.format.grammar.definition'},
+                'schemas': {'response_format.json_schema.schema.', 'tools.function.parameters.', 'functions.parameters.'},
+            },
+            'g-responses': {
+                'values': {'input', 'input.content', 'input.content.text', 'instructions', 'input.arguments',
+                           'input.output', 'input.output.text', 'input.input', 'tools.description',
+                           'input.tools.tools.description', 'input.tools.tools.format.definition'},
+                'schemas': {'text.format.schema.', 'tools.parameters.', 'input.tools.tools.parameters.'},
+            },
+        }
+        for name, scopes in fields.items():
+            profile = profiles[name]
+            expected = {('RequestArgValues', 'Equals', selector) for selector in scopes['values']}
+            expected |= {(variable, 'StartsWith', selector) for selector in scopes['schemas']
+                         for variable in ('RequestArgValues', 'RequestArgKeys')}
+            actual = set()
+            for entry in profile['exclusions']:
+                groups = [g for rs in entry['exclusionManagedRuleSets'] for g in rs['ruleGroups'] if 'rules' not in g]
+                if groups:
+                    with self.subTest(profile=name, selector=entry['selector']):
+                        self.assertEqual({g['ruleGroupName'] for g in groups}, expected_groups)
+                    actual.add((entry['matchVariable'], entry['selectorMatchOperator'], entry['selector']))
+            self.assertEqual(actual, expected)
+            configured = desired_policy(policy(), profile, configuration())['properties']
+            self.assertEqual(configured['policySettings'], ai_body_settings(policy()['properties']['policySettings']))
+            self.assertEqual(configured['customRules'], policy()['properties']['customRules'])
+            self.assertEqual(configured['managedRules']['managedRuleSets'], policy()['properties']['managedRules']['managedRuleSets'])
+        for name, profile in profiles.items():
+            if name not in fields:
+                self.assertFalse(any('rules' not in group for entry in profile['exclusions']
+                                     for rs in entry['exclusionManagedRuleSets'] for group in rs['ruleGroups']))
+
+    def test_ai_group_policy_retains_protocol_rules_and_opaque_data_boundaries(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        response = profiles['g-responses']
+        output = next(e for e in response['exclusions'] if e['selector'] == 'input.output.text')
+        rules = {g['ruleGroupName']: g.get('rules') for g in output['exclusionManagedRuleSets'][0]['ruleGroups']}
+        self.assertEqual(rules['REQUEST-920-PROTOCOL-ENFORCEMENT'], [{'ruleId': '920230'}])
+        self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
+        self.assertIsNone(rules['REQUEST-933-APPLICATION-ATTACK-PHP'])
+        for selector in ('input.encrypted_content', 'input.content.file_data', 'input.content.image_url',
+                         'client_metadata.x-codex-turn-metadata'):
+            entry = next(e for e in response['exclusions'] if e['selector'] == selector)
+            self.assertTrue(all(group.get('rules') for rs in entry['exclusionManagedRuleSets'] for group in rs['ruleGroups']))
+        chat = next(e for e in profiles['g-chat-completions']['exclusions'] if e['selector'] == 'messages.content')
+        self.assertIn({'ruleGroupName': 'Known-CVEs', 'rules': [{'ruleId': '800100'}]},
+                      chat['exclusionManagedRuleSets'][0]['ruleGroups'])
+        self.assertFalse(any(e['selector'] in ('input.', 'messages.', 'tools.')
+                             for p in profiles.values() for e in p['exclusions']))
+
+    def test_compiled_bicep_retains_group_exclusion_objects_from_the_manifest(self):
         from bicep_helpers import compile_bicep
         from arm_helpers import PolicyExpression
 
         current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
-        response_path = '/models/openai/v1/responses'
-        profiles = [profile for profile in current['profiles'] if response_path in profile['paths']]
-        self.assertEqual(len(profiles), 1)
-        profile = profiles[0]
-        self.assertEqual((profile['scope'], profile['paths']), ('gateway', [response_path]))
-        argument = [item for item in profile['exclusions'] if item['selector'] == 'input.arguments']
-        self.assertEqual(len(argument), 1)
-        self.assertEqual((argument[0]['matchVariable'], argument[0]['selectorMatchOperator']),
-                         ('RequestArgValues', 'Equals'))
-        rule_set = argument[0]['exclusionManagedRuleSets']
-        self.assertEqual([(item['ruleSetType'], item['ruleSetVersion']) for item in rule_set], [('OWASP', '3.2')])
-        sql = next(group for group in rule_set[0]['ruleGroups']
-                   if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')
-        self.assertEqual(sql['rules'].count({'ruleId': '942100'}), 1)
-        self.assertFalse(any(item['ruleId'] in ('942110', '942450', '949110') for item in sql['rules']))
-        self.assertFalse(any(item['selector'].startswith('input.arguments') and item is not argument[0]
-                             for item in profile['exclusions']))
-        old_profile = copy.deepcopy(profile)
-        old_argument = next(item for item in old_profile['exclusions'] if item['selector'] == 'input.arguments')
-        old_sql = next(group for group in old_argument['exclusionManagedRuleSets'][0]['ruleGroups']
-                       if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')
-        old_sql['rules'].remove({'ruleId': '942100'})
-        base = policy()
-        desired = desired_policy(base, profile, configuration())
-        previous = desired_policy(base, old_profile, configuration())
-        restored = copy.deepcopy(desired)
-        restored_argument = next(item for item in restored['properties']['managedRules']['exclusions']
-                                 if item['selector'] == 'input.arguments')
-        next(group for group in restored_argument['exclusionManagedRuleSets'][0]['ruleGroups']
-             if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
-        self.assertEqual(restored, previous)
-        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
-        self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
         compiled = compile_bicep(str(ROOT / 'infra/modules/application-gateway.bicep'))
         expanded = PolicyExpression("[variables('dataManifest')]", compiled['variables'],
                                     functions=compiled.get('functions', [])).evaluate({})
         self.assertEqual(expanded, current)
-
-    def test_chat_serialized_function_arguments_keep_one_exact_sql_rule(self):
-        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
-        profiles = [profile for profile in current['profiles'] if CHAT in profile['paths']]
-        self.assertEqual(len(profiles), 1)
-        profile = profiles[0]
-        self.assertEqual((profile['scope'], profile['paths']), ('gateway', [CHAT]))
-        entries = [item for item in profile['exclusions'] if item['selector'] == 'messages.tool_calls.function.arguments']
-        self.assertEqual(len(entries), 1)
-        self.assertEqual((entries[0]['matchVariable'], entries[0]['selectorMatchOperator']), ('RequestArgValues', 'Equals'))
-        rule_sets = entries[0]['exclusionManagedRuleSets']
-        self.assertEqual([(item['ruleSetType'], item['ruleSetVersion']) for item in rule_sets], [('OWASP', '3.2')])
-        sql = next(group for group in rule_sets[0]['ruleGroups'] if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')
-        self.assertEqual(sql['rules'].count({'ruleId': '942100'}), 1)
-        self.assertFalse(any(item['ruleId'] in ('942110', '942450', '949110') for item in sql['rules']))
-        previous_profile = copy.deepcopy(profile)
-        old_entry = next(item for item in previous_profile['exclusions'] if item['selector'] == 'messages.tool_calls.function.arguments')
-        next(group for group in old_entry['exclusionManagedRuleSets'][0]['ruleGroups']
-             if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
-        base = policy()
-        desired = desired_policy(base, profile, configuration())
-        reverted = copy.deepcopy(desired)
-        reverted_entry = next(item for item in reverted['properties']['managedRules']['exclusions']
-                              if item['selector'] == 'messages.tool_calls.function.arguments')
-        next(group for group in reverted_entry['exclusionManagedRuleSets'][0]['ruleGroups']
-             if group['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
-        self.assertEqual(reverted, desired_policy(base, previous_profile, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
-        self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
-
-    def test_chat_function_schema_keys_keep_only_eight_exact_sql_rules(self):
-        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
-        profiles = [profile for profile in current['profiles'] if CHAT in profile['paths']]
-        self.assertEqual(len(profiles), 1)
-        profile = profiles[0]
-        self.assertEqual((profile['scope'], profile['paths']), ('gateway', [CHAT]))
-        entries = [item for item in profile['exclusions']
-                   if item['matchVariable'] == 'RequestArgKeys' and item['selector'] == 'tools.function.parameters.']
-        self.assertEqual(len(entries), 1)
-        expected = exclusion('tools.function.parameters.', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-                             ['942100', '942130', '942180', '942200', '942260', '942330', '942390', '942480'],
-                             'RequestArgKeys')
-        expected['selectorMatchOperator'] = 'StartsWith'
-        self.assertEqual(entries, [expected])
-        self.assertFalse(any(item['matchVariable'] == 'RequestArgKeys' and item['selector'].startswith('tools.function.parameters')
-                             and item is not entries[0] for item in profile['exclusions']))
-        previous = copy.deepcopy(profile)
-        previous['exclusions'].remove(expected)
-        base = policy()
-        desired = desired_policy(base, profile, configuration())
-        reverted = copy.deepcopy(desired)
-        reverted['properties']['managedRules']['exclusions'].remove(expected)
-        self.assertEqual(reverted, desired_policy(base, previous, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
-        self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
-        for other in current['profiles']:
-            if other is profile:
-                continue
-            self.assertNotIn(expected, other['exclusions'])
-
-    def test_responses_schema_property_names_keep_one_delimited_sql_exclusion(self):
-        current = load_manifest(ROOT / 'apps/gateway/waf-data-exclusions.json')
-        profiles = [profile for profile in current['profiles']
-                    if '/models/openai/v1/responses' in profile['paths']]
-        self.assertEqual(len(profiles), 1)
-        profile = profiles[0]
-        self.assertEqual((profile['scope'], profile['paths']),
-                         ('gateway', ['/models/openai/v1/responses']))
-        entries = [item for item in profile['exclusions']
-                   if item['matchVariable'] == 'RequestArgKeys' and item['selector'] == 'text.format.schema.']
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]['selectorMatchOperator'], 'StartsWith')
-        self.assertEqual([(item['ruleSetType'], item['ruleSetVersion'])
-                          for item in entries[0]['exclusionManagedRuleSets']], [('OWASP', '3.2')])
-        sql = next(item for item in entries[0]['exclusionManagedRuleSets'][0]['ruleGroups']
-                   if item['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')
-        self.assertEqual(sql['rules'].count({'ruleId': '942100'}), 1)
-        self.assertNotIn({'ruleId': '949110'}, sql['rules'])
-        previous_profile = copy.deepcopy(profile)
-        old_entry = next(item for item in previous_profile['exclusions']
-                         if item['matchVariable'] == 'RequestArgKeys' and item['selector'] == 'text.format.schema.')
-        next(item for item in old_entry['exclusionManagedRuleSets'][0]['ruleGroups']
-             if item['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
-        base = policy()
-        desired = desired_policy(base, profile, configuration())
-        reverted = copy.deepcopy(desired)
-        reverted_entry = next(item for item in reverted['properties']['managedRules']['exclusions']
-                              if item['matchVariable'] == 'RequestArgKeys' and item['selector'] == 'text.format.schema.')
-        next(item for item in reverted_entry['exclusionManagedRuleSets'][0]['ruleGroups']
-             if item['ruleGroupName'] == 'REQUEST-942-APPLICATION-ATTACK-SQLI')['rules'].remove({'ruleId': '942100'})
-        self.assertEqual(reverted, desired_policy(base, previous_profile, configuration()))
-        self.assertEqual(desired['properties']['policySettings'], ai_body_settings(base['properties']['policySettings']))
-        self.assertEqual(desired['properties']['customRules'], base['properties']['customRules'])
+        groups = [g for p in expanded['profiles'] if p['name'] in ('g-responses', 'g-chat-completions')
+                  for e in p['exclusions'] for rs in e['exclusionManagedRuleSets'] for g in rs['ruleGroups']
+                  if 'rules' not in g]
+        self.assertEqual(len(groups), 192)
+        self.assertTrue(all(set(group) == {'ruleGroupName'} for group in groups))
 
     def test_compiled_manifest_retains_declared_protection_and_uses_one_rule_per_exact_path(self):
         from bicep_helpers import bicep_executable

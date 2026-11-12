@@ -19,6 +19,32 @@
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
     <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
     <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <!-- These inference operations accept data in JSON bodies only. Argument
+         exclusions in WAF also match same-named query arguments, so reject all
+         query parameters before parsing their otherwise native request bodies. -->
+    <set-variable name="gatewayInferenceRequestAllowed" value="@{
+      if (context.Api.Id.Split(';')[0] != &quot;openai-inference-v1&quot;) { return true; }
+      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
+      var kind = (string)config[&quot;operationConstraints&quot;]?[context.Operation.Id]?[&quot;kind&quot;];
+      var inference = (context.Operation.UrlTemplate == &quot;/responses&quot; &amp;&amp; kind == &quot;statelessResponses&quot;)
+        || (context.Operation.UrlTemplate == &quot;/chat/completions&quot; &amp;&amp; kind == &quot;bodyModel&quot;);
+      if (!inference) { return true; }
+      return context.Request.Method == &quot;POST&quot; &amp;&amp; context.Request.Url.Query.Count == 0
+        &amp;&amp; context.Request.Headers.ContainsKey(&quot;Content-Type&quot;)
+        &amp;&amp; context.Request.Headers[&quot;Content-Type&quot;].Length == 1
+        &amp;&amp; String.Equals(context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim(), &quot;application/json&quot;, StringComparison.OrdinalIgnoreCase);
+    }" />
+    <choose><when condition="@(!(bool)context.Variables[&quot;gatewayInferenceRequestAllowed&quot;])">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="INVALID_INFERENCE_REQUEST" />
+      <set-variable name="gatewayAuditStatus" value="@(400)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response>
+        <set-status code="400" reason="Invalid inference request" />
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+      </return-response>
+    </when></choose>
     <!-- JSONを読む前に本文サイズを確認し、要求された入力profileのモデル・形式を検査します。 -->
     <set-variable name="gatewayProfileSelection" value="@{
       var result = new JObject(new JProperty(&quot;allowed&quot;, false), new JProperty(&quot;status&quot;, 403), new JProperty(&quot;profileId&quot;, &quot;&quot;));

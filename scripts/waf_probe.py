@@ -24,6 +24,8 @@ Examples::
     python scripts/waf_probe.py --gateway-base-url https://gateway.example.com \
         --case-filter 'authenticated-canary' --key-file .local/example/secrets/probe-key.txt \
         --output .local/example/evidence/waf-canary.json
+    python scripts/waf_probe.py --ai-coding-only --gateway-base-url https://gateway.example.com \
+        --output .local/example/evidence/waf-coding.json
 
 This finite corpus cannot enumerate every possible request. WebSocket probes
 cover the HTTP upgrade only, not frames (which AppGW WAF does not inspect).
@@ -834,6 +836,138 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
     return cases
 
 
+def ai_coding_probes(routes: list[Route]) -> list[Probe]:
+    """Build a small, standalone Responses/Chat coding-content regression set.
+
+    These are anonymous invalid-model canaries. Their tool calls, results and
+    namespace definitions are synthetic API input history, never instructions
+    executed by this program. Native content arrays produce flattened WAF paths
+    such as input.output.text; artificial output objects would test a different,
+    invalid request shape. Successful transit is not model feature success.
+    """
+    candidates = [route for route in routes if route.target == "gateway" and
+                  (route.method, route.path) in CANARY_ROUTES]
+    if len(candidates) != 2 or {route.path for route in candidates} != {path for _, path in CANARY_ROUTES}:
+        raise ValueError("AI coding probes require exactly the published Responses and Chat POST contracts")
+    values = (
+        ("php-variable-function", '$formatter = "strtolower"; $formatter("SYNTHETIC");'),
+        ("sql-source", "Explain this inert SQL example: " + CONTROL_SQL),
+        ("html-source", '<script>console.log("synthetic")</script><a style="color:blue" href="javascript:void(0)">example</a>'),
+        ("shell-source", "Explain inert shell source: $(printf synthetic); cat /etc/example.conf | sed 's/a/b/'"),
+        ("powershell-source", 'Explain inert PowerShell: $code = { param($value) $value }; & $code "synthetic"'),
+    )
+    mixed = "Review inert documentation only:\n" + "\n".join(text for _, text in values)
+    schema = {"$schema": "https://json-schema.org/draft-07/schema#", "type": "object",
+              "properties": {"sample": {"type": "string", "description": mixed},
+                             "SELECT sample": {"type": "string", "default": "<div>synthetic</div>"}},
+              "additionalProperties": False}
+    cases = []
+    for route in sorted(candidates, key=lambda item: item.path):
+        is_responses = route.path.endswith("/responses")
+        base = {"model": INVALID_MODEL, "store": False}
+        if is_responses:
+            base.update(input="Synthetic coding documentation", max_output_tokens=1)
+        else:
+            base.update(messages=[{"role": "user", "content": "Synthetic coding documentation"}], max_completion_tokens=1)
+
+        def add(label: str, field_name: str, value: dict, *, intent: str = "compatibility", query=(), path=None):
+            target = replace(route, path=path) if path else route
+            cases.append(_probe(target, "ai-coding-" + label, "ai-coding-" + label, intent=intent,
+                body=json_bytes(value), headers=[("Content-Type", "application/json")], query=query, payload_field=field_name))
+
+        for label, text in values:
+            arguments = json_bytes({"source": text}).decode()
+            if is_responses:
+                add(label + "-input", "input", {**base, "input": text})
+                add(label + "-message", "input[].content[].text", {**base, "input": [
+                    {"role": "user", "content": [{"type": "input_text", "text": text}]}]})
+                history = [{"role": "user", "content": "Review the synthetic tool output."},
+                    {"type": "function_call", "call_id": "call_waf_probe", "name": "synthetic_probe", "arguments": "{}"}]
+                add(label + "-tool-string", "input[].output", {**base, "input": history + [
+                    {"type": "function_call_output", "call_id": "call_waf_probe", "output": text},
+                    {"role": "user", "content": "Continue the review."}]})
+                add(label + "-tool-parts", "input[].output[].text", {**base, "input": history + [
+                    {"type": "function_call_output", "call_id": "call_waf_probe", "output": [{"type": "input_text", "text": text}]},
+                    {"role": "user", "content": "Continue the review."}]})
+                add(label + "-custom-input", "input[].input", {**base, "input": [
+                    {"role": "user", "content": "Review this synthetic custom tool call."},
+                    {"type": "custom_tool_call", "call_id": "call_waf_custom", "name": "synthetic_custom", "input": text},
+                    {"type": "custom_tool_call_output", "call_id": "call_waf_custom", "output": "Synthetic result"},
+                    {"role": "user", "content": "Continue the review."}]})
+            else:
+                add(label + "-message", "messages[].content", {**base, "messages": [{"role": "user", "content": text}]})
+                add(label + "-message-parts", "messages[].content[].text", {**base, "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": text}]}]})
+                call = {"id": "call_waf_probe", "type": "function", "function": {"name": "synthetic_probe", "arguments": arguments}}
+                add(label + "-function-arguments", "messages[].tool_calls[].function.arguments", {**base, "messages": [
+                    {"role": "user", "content": "Review these synthetic function arguments."},
+                    {"role": "assistant", "tool_calls": [call]},
+                    {"role": "tool", "tool_call_id": "call_waf_probe", "content": "Synthetic result"},
+                    {"role": "user", "content": "Continue the review."}]})
+                add(label + "-tool-parts", "messages[].content[].text", {**base, "messages": [
+                    {"role": "user", "content": "Review the synthetic tool output."},
+                    {"role": "assistant", "tool_calls": [{**call, "function": {"name": "synthetic_probe", "arguments": "{}"}}]},
+                    {"role": "tool", "tool_call_id": "call_waf_probe", "content": [{"type": "text", "text": text}]},
+                    {"role": "user", "content": "Continue the review."}]})
+                add(label + "-custom-input", "messages[].tool_calls[].custom.input", {**base, "messages": [
+                    {"role": "user", "content": "Review this synthetic custom tool call."},
+                    {"role": "assistant", "tool_calls": [{"id": "call_waf_custom", "type": "custom",
+                        "custom": {"name": "synthetic_custom", "input": text}}]},
+                    {"role": "tool", "tool_call_id": "call_waf_custom", "content": "Synthetic result"},
+                    {"role": "user", "content": "Continue the review."}]})
+
+        function = {"name": "synthetic_probe", "description": mixed, "parameters": schema, "strict": False}
+        grammar = r"(?:SELECT|UNION|<script>|\$formatter\(.*\)|\$\(printf synthetic\))"
+        if is_responses:
+            add("instructions", "instructions", {**base, "instructions": mixed})
+            add("string-message", "input[].content", {**base, "input": [{"role": "user", "content": mixed}]})
+            add("function-definition", "tools[].description", {**base, "tools": [{"type": "function", **function}]})
+            add("function-schema", "tools[].parameters", {**base, "tools": [{"type": "function", **function, "description": "Synthetic function"}]})
+            add("output-schema", "text.format.schema", {**base, "text": {"format": {
+                "type": "json_schema", "name": "synthetic_probe", "strict": False, "schema": schema}}})
+            for label, child, field_name in (
+                ("nested-description", {"type": "function", **function, "parameters": {"type": "object", "properties": {}}}, "input[].tools[].tools[].description"),
+                ("nested-schema", {"type": "function", **function, "description": "Synthetic function"}, "input[].tools[].tools[].parameters"),
+                ("nested-grammar", {"type": "custom", "name": "synthetic_custom", "format": {
+                    "type": "grammar", "syntax": "regex", "definition": grammar}}, "input[].tools[].tools[].format.definition"),
+            ):
+                add(label, field_name, {**base, "input": [
+                    {"type": "tool_search_call", "call_id": "call_waf_search", "arguments": {"query": "synthetic"}, "execution": "client"},
+                    {"type": "tool_search_output", "call_id": "call_waf_search", "execution": "client", "tools": [
+                        {"type": "namespace", "name": "synthetic_namespace", "description": "Synthetic namespace", "tools": [child]}]},
+                    {"role": "user", "content": "Review the synthetic tool definition."}]})
+        else:
+            add("function-definition", "tools[].function.description", {**base, "tools": [{"type": "function", "function": function}]})
+            add("function-schema", "tools[].function.parameters", {**base, "tools": [{"type": "function", "function": {**function, "description": "Synthetic function"}}]})
+            add("output-schema", "response_format.json_schema.schema", {**base, "response_format": {
+                "type": "json_schema", "json_schema": {"name": "synthetic_probe", "strict": False, "schema": schema}}})
+            add("legacy-definition", "functions[].description", {**base, "functions": [function]})
+            add("legacy-schema", "functions[].parameters", {**base, "functions": [{**function, "description": "Synthetic function"}]})
+            add("legacy-arguments", "messages[].function_call.arguments", {**base, "messages": [
+                {"role": "user", "content": "Review these synthetic legacy arguments."},
+                {"role": "assistant", "function_call": {"name": "synthetic_probe", "arguments": json_bytes({"source": mixed}).decode()}},
+                {"role": "function", "name": "synthetic_probe", "content": "Synthetic result"},
+                {"role": "user", "content": "Continue the review."}]})
+            add("custom-description", "tools[].custom.description", {**base, "tools": [{"type": "custom",
+                "custom": {"name": "synthetic_custom", "description": mixed, "format": {"type": "text"}}}]})
+            add("custom-grammar", "tools[].custom.format.grammar.definition", {**base, "tools": [{"type": "custom",
+                "custom": {"name": "synthetic_custom", "format": {"type": "grammar", "grammar": {"syntax": "regex", "definition": grammar}}}}]})
+
+        # Exact endpoint controls establish that the data exceptions do not
+        # extend to unrelated body fields, query arguments, or adjacent paths.
+        for label, payload in (("unknown-sqli", CONTROL_SQL), ("unknown-xss", "<script>alert(1)</script>")):
+            add("control-" + label, "_attack", {**base, "_attack": payload}, intent="attack_control")
+        add("control-query-sqli", "query:id", base, intent="attack_control", query=[("id", CONTROL_SQL)])
+        neighbor = {**base, "input": "<script>alert(1)</script>"} if is_responses else {
+            **base, "messages": [{"role": "user", "content": "<script>alert(1)</script>"}]}
+        add("control-neighbor-xss", "input" if is_responses else "messages[].content", neighbor,
+            intent="attack_control", path=route.path + "/neighbor")
+        for name in (("input.output.text", "input.input") if is_responses else ("messages.content", "messages.tool_calls.custom.input")):
+            add("query-collision-" + name.replace(".", "-"), "query:" + name, base,
+                intent="validation", query=[(name, CONTROL_SQL)])
+    return cases
+
+
 def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[Probe]:
     """Build deterministic, finite cases; synthetic attacks always remain anonymous."""
     routes = load_routes(root) if routes is None else routes
@@ -1137,17 +1271,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Write a metadata-only plan without network traffic.")
     parser.add_argument("--raw-body-guards-only", action="store_true", help="Use the separate raw SSML/WAV/PDF traversal boundary corpus.")
     parser.add_argument("--jndi-fields-only", action="store_true", help="Use the standalone anonymous JNDI data-field/control corpus.")
+    parser.add_argument("--ai-coding-only", action="store_true", help="Use the bounded anonymous Responses/Chat coding-content and exclusion-control corpus.")
     parser.add_argument("--workers", type=int, default=2, choices=(1, 2, 3, 4))
     parser.add_argument("--requests-per-second", type=float, default=2.0, help="Aggregate rate, > 0 and <= 4 (default 2).")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request socket timeout, 1 to 60 seconds.")
     args = parser.parse_args(argv)
     if not 0 < args.requests_per_second <= 4 or not 1 <= args.timeout <= 60:
         parser.error("rate must be > 0 and <= 4; timeout must be 1 to 60")
-    if args.raw_body_guards_only and args.jndi_fields_only:
+    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only)) > 1:
         parser.error("select only one standalone corpus")
     try:
         pattern = re.compile(args.case_filter)
-        corpus = jndi_field_probes(load_routes()) if args.jndi_fields_only else raw_body_guard_controls(load_routes()) if args.raw_body_guards_only else build_corpus()
+        corpus = ai_coding_probes(load_routes()) if args.ai_coding_only else jndi_field_probes(load_routes()) if args.jndi_fields_only else raw_body_guard_controls(load_routes()) if args.raw_body_guards_only else build_corpus()
         cases = [case for case in corpus if pattern.search(" ".join((case.case_id, case.category, case.intent, case.path)))]
         bases = {name: validate_base_url(value) for name, value in (("gateway", args.gateway_base_url), ("portal", args.portal_base_url)) if value}
     except (ValueError, re.error) as error:
