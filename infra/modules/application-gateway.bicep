@@ -102,15 +102,14 @@ param additionalWafLogScrubbingRules array = []
 @maxValue(86400)
 @description('AppGW がバックエンド応答を待つ秒数。長い推論やストリーミングにも影響します。')
 param backendRequestTimeoutSeconds int = 600
-@description('通常 HTTPS とは別に native gRPC 用の TCP/TLS 経路を作るか。')
-param grpcEnabled bool = false
-@minValue(1)
-@maxValue(64999)
-@description('利用者が gRPC で接続する公開 TCP ポート。通常は 8443 です。')
+@allowed([true])
+@description('通常 HTTPS とは別に常設する native gRPC 用 TCP/TLS 経路。無効化できません。')
+param grpcEnabled bool = true
+@allowed([8443])
+@description('利用者が gRPC で接続する固定公開 TCP ポート。8443 だけを使います。')
 param grpcPublicPort int = 8443
-@minValue(1)
-@maxValue(65535)
-@description('AppGW が内部 APIM の gRPC 入口へ接続する TCP ポート。通常は TLS の 443 です。')
+@allowed([443])
+@description('AppGW が内部 APIM の gRPC 入口へ接続する固定 TCP ポート。TLS の 443 だけを使います。')
 param grpcBackendPort int = 443
 @description('AppGW の HTTP 書き換え経路を APIM が見分ける共有値。利用者の認証トークンとは別です。')
 @secure()

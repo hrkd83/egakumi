@@ -28,7 +28,7 @@ from deployment.helpers.credential_image import (
 )
 from deployment.helpers.credential_broker_lifecycle import prepare_secret
 from deployment.helpers.credential_pools import broker_enabled, resource_names
-from deployment.helpers.grpc_lifecycle import configure_named_values
+from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from standard_apis import resolve_publication_configuration
 from waf_policy import reconcile as configure_data_waf, selected_profiles as data_waf_profiles
@@ -61,6 +61,7 @@ def foundation_inputs(config, state):
     foundation = output.get('gatewayFoundation')
     if not isinstance(foundation, dict) or not foundation:
         raise ValueError('Current infrastructure gatewayFoundation output is required; use the current Core deployment state')
+    require_shared_ingress(config, output)
     foundation = copy.deepcopy(foundation)
     expected = {
         'resourceGroup': config['resourceGroupNames']['svc'],

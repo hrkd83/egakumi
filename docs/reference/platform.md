@@ -287,6 +287,8 @@ API説明はAPIMの公開契約から生成し、API Centerへ同期します。
 
 MCPとgRPCは、標準同期でAPIの説明・接続先が掲載されても、仕様Downloadが提供されるとは限りません。MCPの実tool定義は認証後の`tools/list`、gRPCのメッセージ定義は提供元のproto（公開登録の`grpc.definition`と同じ内容）で確認します。RESTのOpenAPIが取得できたことを、これらの仕様ファイルも取得できるという意味には扱いません。
 
+gRPCの入口は基盤共通の公開TCP8443として常設します。AppGWからFirewallを介してAPIMのTCP443へ渡し、APIMでTLSを終端します。有効状態とポートは構築処理が内部で生成し、config・params・合成設定ファイルの入力項目にはしません。同じ固定値でも指定すると構築前に拒否します。入口の常設とは別に、利用するgRPCサービスをAPIとして登録します。
+
 native gRPCは、API説明に表示する完全な公開URL（例：`https://<GATEWAY_FQDN>:8443/`）、SNI、protoのservice名を使います。明示実行するAPI登録コマンドは、proto取り込み後にAPIMの説明を読み直し、必要な場合だけ説明をETag付きで更新します。API Centerの自動同期が管理する`deployment.server.runtimeUri`は、APIM側のHTTPS URLを示し、AppGWのTCP入口の公開ポートを含まない場合があります。この欄をAPI Center側で上書きしても維持される保証はないため、説明をAPIMから生成し、公開ポートを含む接続先を明示します。同期URLとの不一致と仕様ファイルの提供可否は、受入記録に残します。
 
 gRPCの受入では、正常な4方式に加え、入力エラー・期限・取消の最終statusを実SDKで確認します。採用構成のAPIM中継では、本文のない早期エラーを初回HEADERSだけで終える標準形式（Trailers-Only）が、クライアントで`UNKNOWN`に変わる場合があります。backendは初期metadataと終了metadataを分け、最終`grpc-status`を`END_STREAM`付きのtrailing HEADERSで返す構成にします。認証前に終了するフレームワーク由来のエラーや未登録methodも、利用するbackendで別途確認してください。成功RPCだけで全エラーの中継を保証しません。[gRPCのHTTP/2応答形式](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses)

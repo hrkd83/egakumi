@@ -39,11 +39,14 @@ param keyVaultPrivateIps array
 @minLength(1)
 @description('管理 VM の確定済みプライベート IP。運用操作と内部接続の通信元・宛先に使います。')
 param managementPrivateIp string
-@description('通常 HTTPS とは別に native gRPC 用の TCP/TLS 経路を作るか。')
-param grpcEnabled bool = false
-@description('利用者が gRPC で接続する公開 TCP ポート。通常は 8443 です。')
+@allowed([true])
+@description('通常 HTTPS とは別に常設する native gRPC 用 TCP/TLS 経路。無効化できません。')
+param grpcEnabled bool = true
+@allowed([8443])
+@description('利用者が gRPC で接続する固定公開 TCP ポート。8443 だけを使います。')
 param grpcPublicPort int = 8443
-@description('AppGW が内部 APIM の gRPC 入口へ接続する TCP ポート。通常は TLS の 443 です。')
+@allowed([443])
+@description('AppGW が内部 APIM の gRPC 入口へ接続する固定 TCP ポート。TLS の 443 だけを使います。')
 param grpcBackendPort int = 443
 
 // 単一 IP と IP 配列のどちらにも同じ方針で NSG 規則を組み立てる共通関数です。
@@ -99,9 +102,9 @@ var rulesByNsg = [
     allowRule('allow-apim-http', 100, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
     allowRule('allow-key-vault', 110, 'Outbound', 'Tcp', [subnetPrefixes.agw], keyVaultPrivateIps, ['443'])
     withAccess(allowRule('allow-certificate-observer', 194, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
-    // Stable rule names also revoke earlier gRPC permissions when disabled.
+    // gRPC は常設しますが、空の利用者許可範囲は同名規則を Deny にして入口を閉じます。
     withAccess(allowRule('allow-client-grpc', 150, 'Inbound', 'Tcp', empty(clientAddressPrefixes) ? ['*'] : clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)]), grpcEnabled && !empty(clientAddressPrefixes) ? 'Allow' : 'Deny')
-    withAccess(allowRule('allow-apim-grpc', 120, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
+    allowRule('allow-apim-grpc', 120, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])
   ]
   [
     allowRule('allow-private-backends', 100, 'Outbound', 'Tcp', [subnetPrefixes.apim], foundryPrivateIps, ['443'])

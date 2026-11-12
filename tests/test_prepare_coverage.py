@@ -174,11 +174,14 @@ class CoveragePreparationTests(unittest.TestCase):
         self.assertEqual(sum(api["name"] == "openai-inference-v1" for api in result["apiDefinitions"]), 1)
 
     def test_foundation_does_not_need_sample_endpoints_or_publish_apis(self):
+        from deployment.helpers.configuration import normalize_configuration
         effective = {key: value for key, value in self.overlay.items() if key != "apiDefinitions"}
         bindings = {key: self.bindings[key] for key in prepare_coverage.required_bindings(effective)}
         result = prepare_coverage.prepare(self.base, self.overlay, bindings, base_directory=CORE / "config", phase="foundation")
         self.assertEqual(len(result["apiDefinitions"]), len(self.base.get("apiDefinitions", [])))
-        self.assertTrue(result["gateway"]["grpc"]["enabled"])
+        normalized = normalize_configuration(result, base_directory=CORE / "config")
+        self.assertEqual({key: normalized["gateway"]["grpc"][key] for key in ("enabled", "publicPort", "backendPort")},
+                         {"enabled": True, "publicPort": 8443, "backendPort": 443})
         self.assertEqual(len(result["credentialProviders"]), len(self.base["credentialProviders"]))
         self.assertEqual(result["gateway"]["authentication"]["credentialLogin"],
                          self.base["gateway"]["authentication"]["credentialLogin"])

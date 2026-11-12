@@ -32,6 +32,10 @@ def fixture():
         'environmentName': 'cae-' + stem, 'environmentDomain': 'environment.example.com',
         'registryName': 'acr' + stem.replace('-', ''),
     }
+    host = config['gateway']['publicHostName']
+    state['outputs']['grpc'] = {'enabled': True, 'publicHostName': host,
+                                'publicUrl': 'https://' + host + ':8443'}
+    state['outputs'].setdefault('ingressSecrets', {}).update(enabled=True, grpcEnabled=True)
     return config, state
 
 
@@ -92,6 +96,24 @@ class GatewayDeploymentTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'state differs'):
                     gateway.main(arguments)
                 for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release'):
+                    observed[boundary].assert_not_called()
+
+    def test_old_grpc_foundation_stops_before_build_or_azure_requests(self):
+        for change in ('disabled', 'port', 'host', 'proof'):
+            config, state = fixture()
+            config['publishApis'] = True
+            if change == 'disabled':
+                state['outputs']['grpc']['enabled'] = False
+            elif change == 'port':
+                state['outputs']['grpc']['publicUrl'] = state['outputs']['grpc']['publicUrl'].replace(':8443', ':9443')
+            elif change == 'host':
+                state['outputs']['grpc']['publicHostName'] += '.invalid'
+            else:
+                state['outputs']['ingressSecrets']['grpcEnabled'] = False
+            with self.subTest(change=change), self.isolated_cli(config, state) as (arguments, observed):
+                with self.assertRaisesRegex(ValueError, 'update the Core'):
+                    gateway.main(arguments)
+                for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release', 'publication_plan'):
                     observed[boundary].assert_not_called()
 
     def test_cli_refuses_public_or_other_environment_paths_before_building(self):

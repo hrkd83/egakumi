@@ -1200,16 +1200,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             caller_ids.add(caller_id)
             _integer(entry.get("calls"), entry_path + ".calls", 1, 1000000)
             _integer(entry.get("renewalPeriodSeconds"), entry_path + ".renewalPeriodSeconds", 1, 300)
-    grpc = _object(g.setdefault("grpc", {}), "gateway.grpc", {"enabled", "publicPort", "publicHostName", "backendPort"})
-    _bool(grpc.setdefault("enabled", False), "gateway.grpc.enabled")
-    _integer(grpc.setdefault("publicPort", 8443), "gateway.grpc.publicPort", 1024, 64999)
-    if grpc["publicPort"] in (3389, 3443, 6390):
-        _fail("gateway.grpc.publicPort", "must not conflict with platform or management ports")
+    grpc = _object(g.setdefault("grpc", {}), "gateway.grpc", {"publicHostName"})
     grpc["publicHostName"] = _host(grpc.setdefault("publicHostName", g["publicHostName"]), "gateway.grpc.publicHostName")
-    _integer(grpc.setdefault("backendPort", 443), "gateway.grpc.backendPort", 443, 443)
     if grpc["publicHostName"] != g["publicHostName"]:
         _fail("gateway.grpc", "requires the existing certificate hostname and APIM HTTPS port 443")
-    if grpc["enabled"] and not c["network"]["apimKeyVaultAccessEnabled"]:
+    # 常設gRPCの有効状態・ポートは入力から受け取らず、内部設定として生成します。
+    grpc.update(enabled=True, publicPort=8443, backendPort=443)
+    if not c["network"]["apimKeyVaultAccessEnabled"]:
         _fail("network.apimKeyVaultAccessEnabled", "must be enabled for the gRPC certificate and L7 ingress Key Vault references")
     c["gateway"] = g
     # VMはサイズとOSイメージだけでなく、ディスク方式・SSH鍵・管理者名も検査する。
@@ -1527,6 +1524,9 @@ def _reject_config_environment_inputs(standard: dict) -> None:
             if isinstance(parent, dict) and path[-1] in parent:
                 field = ".".join(path)
                 _fail("config." + field, "move this environment-specific setting to params." + field)
+    gateway = standard.get("gateway", {})
+    if isinstance(gateway, dict) and "grpc" in gateway:
+        _fail("config.gateway", "contains unsupported field(s): grpc")
 
 
 def load_configuration_source(path: Path | str) -> dict:

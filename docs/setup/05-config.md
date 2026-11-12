@@ -19,7 +19,7 @@
 
 1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。StandardでIDPSを有効にしない。
 2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。paramsのAPIごとの許可モデルと対応させる。
-3. gRPC／音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。
+3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。gRPCの共通入口は公開8443／APIM443で常設する。
 4. 同じparamsでローカル検査し、整合を確認する。
 
 ```sh
@@ -59,7 +59,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 | `network.bgpRoutePropagation.apim` | `true` | APIM用RTのルート伝搬。 |
 | `network.bgpRoutePropagation.management` | `true` | 管理VM用RTのルート伝搬。デフォルトルートのnext hopやピアリングとは別。 |
 | `network.appGatewayZones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW用公開IPの可用性ゾーン番号。gateway.zonesと一致させる。[]は番号の明示なし。 |
-| `network.apimKeyVaultAccessEnabled` | `true` | APIM→Key Vault PEの通信許可。gRPC証明書・Realtime制御鍵等に使用。Azure RBACは別設定。 |
+| `network.apimKeyVaultAccessEnabled` | `true` | APIM→Key Vault PEの通信許可。常設gRPCの証明書・入口証明のためtrueが必須。Azure RBACは別設定。 |
 | `network.certificatePublicProbeEnabled` | `true` | この環境のFW公開IPからAppGW:443を通す規則。実際のHTTP／TLS／API検査の実行は別。 |
 | `network.dnsTtl` | `300` | 作成するPrivate DNSレコードのTTL、秒。1〜86400。 |
 
@@ -96,7 +96,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 | `services.projectDescription` | `"Core platform project for shared model, agent, and tool capabilities."` | 初期Projectの説明。 |
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
 | `services.grantApimFoundryModelsAccess` | `true` | APIMへ対象Foundryの非OpenAIモデル用の組み込み利用権限を付与。 |
-| `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。gRPC／Realtime制御を有効にした場合は、この指定と別に必須のKV読取権限をAPIM自身へ付与。通信許可とは別。 |
+| `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設gRPCの証明書・入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
 | `services.modelDeployments` | [初期28モデル](../reference/platform.md#初期モデルと公開api)（固定版・SKUはconfig参照） | 単一FoundryへBicepで配備。32件の上限内で選定し、実カタログと利用枠を配備前に照合。 |
 
 初回は32件の上限のうち28件を使用します。モデル追加時は、配備数の上限・対象モデルの提供条件・利用枠を確認します。
@@ -116,14 +116,14 @@ Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもA
 
 共通認可の`gateway.authentication.subscriptionKeyHeader`は企業固有のparamsで設定します。全体ポリシーが購読キーと利用範囲を検証し、API側が操作・モデル・入力の制約と下流認証を設定します。本人接続が必要なAPIはCMを利用します。[共通認証の設定](04-params.md#gateway全体の認証とapiごとの認可)を参照してください。
 
-native gRPC用のTCP入口を有効化した場合、その経路は通常のHTTPS本文WAF検査の対象外です。他APIの迂回防止は実機試験で確認します。
+native gRPC用のTCP入口は共通仕様として常設し、その経路は通常のHTTPS本文WAF検査の対象外です。他APIの迂回防止は実機試験で確認します。
 
 WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/gateway/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
 
 
 APIMのTLS証明書と入口／RealtimeのKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。
 
-APIMがKVを参照する設定を選んだ場合、KVの`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。APIMのカスタムドメイン証明書取得には、VNetからKVへ到達できる場合でもこの例外が必要です。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材は同じKVに証明書とnamed valueを保持するため、APIMのKV読取またはgRPC／Realtimeを有効にしたときだけ例外を有効化します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。通常のAPIMバックエンド呼出し・管理VM・AppGWの証明書読取はPE経由で確認します。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
+APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。APIMのカスタムドメイン証明書取得には、VNetからKVへ到達できる場合でもこの例外が必要です。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材はgRPCの共通入口を常設し、同じKVから証明書と入口証明を参照するため、この管理用例外を有効化します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。通常のAPIMバックエンド呼出し・管理VM・AppGWの証明書読取はPE経由で確認します。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -139,12 +139,15 @@ APIMがKVを参照する設定を選んだ場合、KVの`publicNetworkAccess: Di
 | `gateway.wafRequestBodyInspectLimitInKb` | `2000` | base・認証等の本文検査枠、KiB。AIパスは専用設定で2000 KiB。 |
 | `gateway.wafFileUploadLimitInMb` | `4` | base・認証等のmultipartファイル上限、MiB。管理対象AIパスでは強制しない。 |
 | `gateway.realtimeControlEnabled` | `true` | Realtimeの所有者確認・停止制御用の鍵等を準備。 |
-| `gateway.grpc.enabled` | `true` | native gRPC用TCP入口の構築を有効にする。 |
-| `gateway.grpc.publicPort` | `8443` | gRPCの公開ポート。1024〜64999、予約ポートを除く。 |
-| `gateway.grpc.backendPort` | `443` | gRPC用APIM接続ポート。現実装は443。 |
 | `gateway.rateLimits.subscriptionKey.enabled` | `false` | APIM購読ID単位の共通上限を明示的に有効にするか。既定は無制限。 |
 | `gateway.rateLimits.subscriptionKey.calls` | `60` | 有効化した場合のみ適用する期間内要求数、整数1〜1,000,000。 |
 | `gateway.rateLimits.subscriptionKey.renewalPeriodSeconds` | `60` | 有効化した場合のみ適用する計数期間、整数1〜300秒。 |
+
+gRPCの入口は基盤の共通仕様として、常に有効・公開TCP8443・APIM側TCP443に固定します。configやparamsで無効化・ポート変更する調整項目ではありません。標準configからこれらの指定を除き、構築処理が固定値を補完して既存の配備処理へ渡します。公開ホスト名は従来どおりparamsで指定します。
+
+`gateway.grpc.enabled`・`publicPort`・`backendPort`は入力項目ではありません。config・params・合成設定ファイルで指定すると、固定値と同じ`true`・`8443`・`443`でも構築前に拒否します。公開ホスト名だけをparamsで指定でき、検査後に構築処理が内部用の固定値を生成します。`clientAddressPrefixes`による利用者の接続元制限と、Realtime・文書ジョブの署名鍵の準備条件は別の設定です。
+
+API公開では、基盤の配備出力が共通仕様の公開ホスト名・TCP8443・入口証明の準備状態と一致することを確認します。一致しない基盤へは公開せず、先にCoreを配備してください。入口を常設することと、登録した各gRPCサービスの実通信が検証済みであることは別です。
 
 #### Linux管理VM（management）
 

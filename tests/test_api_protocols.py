@@ -282,7 +282,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
         for change in ("network", "ttl", "callId", "missingHangup", "unknownModel"):
             raw = bound_coverage()
             api = next(a for a in raw["apiDefinitions"] if a["name"] == "openai-realtime-control-v1")
-            if change == "network": raw["network"]["apimKeyVaultAccessEnabled"] = False; raw["gateway"]["grpc"]["enabled"] = False
+            if change == "network": raw["network"]["apimKeyVaultAccessEnabled"] = False
             if change == "ttl": api["authorization"]["operationConstraints"]["realtime-hangup"]["sessionTtlSeconds"] = 300
             if change == "callId": api["operations"][1]["urlTemplate"] = "/calls/{other}/hangup"; api["operations"][1]["templateParameters"][0]["name"] = "other"
             if change == "missingHangup": api["operations"].pop(); api["authorization"]["operationConstraints"].pop("realtime-hangup")
@@ -300,17 +300,22 @@ class ProtocolConfigurationTests(unittest.TestCase):
             self.normalize(raw)
 
     def test_foundation_can_prepare_realtime_key_before_apis_exist(self):
+        from deployment.helpers.grpc_lifecycle import realtime_enabled
         raw = fixture()
-        raw["gateway"]["grpc"]["enabled"] = False
         raw["gateway"].pop("realtimeControlEnabled")
-        self.assertFalse(self.normalize(raw)["gateway"]["realtimeControlEnabled"])
+        without_realtime = self.normalize(raw)
+        self.assertFalse(without_realtime["gateway"]["realtimeControlEnabled"])
+        self.assertFalse(realtime_enabled(without_realtime))
+        self.assertTrue(without_realtime["gateway"]["grpc"]["enabled"])
         raw["gateway"]["realtimeControlEnabled"] = True
         raw["network"]["apimKeyVaultAccessEnabled"] = False
-        with self.assertRaisesRegex(configuration.ConfigurationError, "owner-bound operation ticket"):
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.apimKeyVaultAccessEnabled"):
             self.normalize(raw)
         raw["network"]["apimKeyVaultAccessEnabled"] = True
         actual = self.normalize(raw)
         self.assertTrue(actual["gateway"]["realtimeControlEnabled"])
+        self.assertTrue(realtime_enabled(actual))
+        self.assertTrue(actual["gateway"]["grpc"]["enabled"])
         self.assertEqual(actual["apiDefinitions"], [])
         raw["gateway"]["realtimeControlEnabled"] = "true"
         with self.assertRaisesRegex(configuration.ConfigurationError, "realtimeControlEnabled"):
@@ -326,16 +331,22 @@ class ProtocolConfigurationTests(unittest.TestCase):
             if change == "mixedQuery": api["websocket"]["queryParameters"] = {"model": "unapproved"}
             with self.subTest(change=change), self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
 
-    def test_grpc_import_has_no_external_proto_dependencies_and_uses_valid_port(self):
+    def test_grpc_import_is_self_contained_and_does_not_expose_listener_settings(self):
         raw = bound_external_coverage()
         api = next(a for a in raw["apiDefinitions"] if a.get("apiType") == "grpc")
         self.assertEqual(api["path"], "")
         api["grpc"]["definition"] += '\nimport "external.proto";'
         with self.assertRaisesRegex(configuration.ConfigurationError, "self-contained"):
             self.normalize(raw)
-        for port in (65000, 65535, 443, 3389):
-            raw = bound_external_coverage(); raw["gateway"]["grpc"]["publicPort"] = port
-            with self.subTest(port=port), self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
+        for key, values in (("enabled", (True, False)),
+                            ("publicPort", (8443, 9443, 65000, 65535, 443, 3389)),
+                            ("backendPort", (443, 80))):
+            for value in values:
+                raw = bound_external_coverage()
+                raw["gateway"].setdefault("grpc", {})[key] = value
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(
+                        configuration.ConfigurationError, r"gateway\.grpc.*unsupported field.*" + key):
+                    self.normalize(raw)
 
     def test_mcp_endpoint_names_and_transport_are_official_contracts(self):
         raw = bound_external_coverage()

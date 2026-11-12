@@ -793,24 +793,11 @@
         "grpc": {
           "type": "object",
           "additionalProperties": false,
+          "description": "gRPC入口は常設です。入力できるのは通常HTTPSと同じ公開ホスト名だけです。",
           "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": false
-            },
-            "publicPort": {
-              "type": "integer",
-              "minimum": 1024,
-              "maximum": 64999,
-              "default": 8443
-            },
             "publicHostName": {
               "type": "string",
               "minLength": 1
-            },
-            "backendPort": {
-              "const": 443,
-              "default": 443
             }
           }
         },

@@ -113,10 +113,9 @@ def prepare_plan(config: dict, state: dict) -> dict:
         uuid.UUID(identity["clientId"])
     except (ValueError, KeyError, TypeError):
         raise ValueError("Certificate identity client ID is invalid") from None
+    grpc_lifecycle.require_shared_ingress(config, outputs)
     grpc_on = grpc_lifecycle.enabled(config)
     ticket_on = grpc_lifecycle.owner_ticket_enabled(config)
-    if grpc_on != outputs.get("grpc", {}).get("enabled", False):
-        raise ValueError("Changing the TCP ingress requires core provisioning, not API-only publication")
     features = outputs.get("ingressSecrets", {})
     if (grpc_on or ticket_on) and (features.get("enabled") is not True or
             (ticket_on and features.get("ownerTicketEnabled", features.get("realtimeEnabled")) is not True)):

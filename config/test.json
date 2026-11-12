@@ -334,11 +334,6 @@
     "wafRequestBodyInspectLimitInKb": 2000,
     "wafFileUploadLimitInMb": 4,
     "realtimeControlEnabled": true,
-    "grpc": {
-      "enabled": true,
-      "publicPort": 8443,
-      "backendPort": 443
-    },
     "rateLimits": {
       "user": {
         "enabled": false,

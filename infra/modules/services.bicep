@@ -35,8 +35,9 @@ param apimSkuName string = 'Premium'
 @minValue(1)
 @description('APIM の処理ユニット数。SKU と負荷に合わせて指定します。')
 param apimCapacity int = 1
-@description('gRPC 用に APIM の HTTP/2 を有効にするか。対応 SKU と入口も合わせて設定します。')
-param enableGrpc bool = false
+@allowed([true])
+@description('常設 gRPC 用に APIM の HTTP/2 を有効にする固定指定。無効化できません。')
+param enableGrpc bool = true
 @description('azd が所有確認した実 APIM 名ごとの公開ドメイン設定。秘密証明書・観測した証明書情報や状態は含めず、利用者の公開 config では指定しません。')
 param existingApimHostnameConfigurations object = {}
 @allowed(['standard', 'premium'])

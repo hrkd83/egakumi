@@ -264,13 +264,20 @@ class SplitConfigurationTests(unittest.TestCase):
                     self.assertNotIn("ENTERPRISE-VALUE-SENTINEL", str(caught.exception))
 
     def test_nested_params_expose_only_environment_fields_and_not_platform_options(self):
-        for settings in ({"gateway": {"grpc": {"enabled": True}}},
-                         {"gateway": {"rateLimits": {"user": {"calls": 1}}}},
+        for settings in ({"gateway": {"rateLimits": {"user": {"calls": 1}}}},
                          {"gateway": {"rateLimits": {"application": {"calls": 1}}}},
                          {"certificate": {"renewBeforeDays": 10}},
                          {"monitoring": {"enableLogAlerts": True}}):
             with self.subTest(settings=settings), self.assertRaises(ConfigurationError):
                 self.sources(parameters=settings)
+
+    def test_params_cannot_select_grpc_switch_or_ports_even_with_fixed_values(self):
+        for key, values in (("enabled", (True, False)),
+                            ("publicPort", (8443, 9443)),
+                            ("backendPort", (443, 8443))):
+            for value in values:
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ConfigurationError, r"gateway\.grpc.*unsupported field"):
+                    self.sources(parameters={"gateway": {"grpc": {key: value}}})
 
     def test_environment_regions_do_not_silently_fall_back_to_another_region(self):
         raw = load_configuration_source(CORE / "params/test.example.json")
@@ -313,6 +320,21 @@ class SplitSchemaTests(unittest.TestCase):
             self.assertFalse(service.get("additionalProperties", True))
             validator = jsonschema.Draft202012Validator(service)
             self.assertFalse(validator.is_valid({"unexpectedSetting": "synthetic"}))
+
+    def test_params_schema_cannot_select_grpc_switch_or_ports_even_with_fixed_values(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        schema = json.loads((CORE / "schemas/params.schema.json").read_text())
+        validator = jsonschema.Draft202012Validator(schema["properties"]["gateway"]["properties"]["grpc"])
+        self.assertTrue(validator.is_valid({"publicHostName": "api.example.com"}))
+        for key, values in (("enabled", (True, False)),
+                            ("publicPort", (8443, 9443)),
+                            ("backendPort", (443, 8443))):
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    self.assertFalse(validator.is_valid({key: value}))
 
     def test_samples_and_merged_configs_match_their_separate_schemas(self):
         try:
