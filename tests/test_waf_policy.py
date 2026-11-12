@@ -12,8 +12,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
-                        desired_policy, reconcile, canonical_gateway, RESERVED_POLICY_KEYS, exclusion_is_covered)
-from deployment.helpers.portal_gateway import portal_session_exclusions
+                        desired_policy, reconcile, canonical_gateway, canonical_policy,
+                        RESERVED_POLICY_KEYS, exclusion_is_covered)
+from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
 from deployment.helpers.waf_body import ai_body_settings
@@ -37,12 +38,13 @@ def manifest():
 
 
 class ArmMemory:
-    def __init__(self, gateway_value=None, policies=None, subresource_metadata=False):
+    def __init__(self, gateway_value=None, policies=None, subresource_metadata=False, empty_group_rules=False):
         self.resources = {GATEWAY_ID: gateway_value or gateway(), BASE_ID: policy()}
         self.resources.update(policies or {})
         self.calls = []
         self.conflict = False
         self.subresource_metadata = subresource_metadata
+        self.empty_group_rules = empty_group_rules
 
     def request(self, method, path, body=None, headers=None):
         identifier = path.split('?', 1)[0]
@@ -52,6 +54,11 @@ class ArmMemory:
             if not current:
                 return {'statusCode': 404}
             value = copy.deepcopy(current)
+            if self.empty_group_rules:
+                for item in value.get('properties', {}).get('managedRules', {}).get('exclusions', []):
+                    for rule_set in item.get('exclusionManagedRuleSets', []):
+                        for group in rule_set.get('ruleGroups', []):
+                            group.setdefault('rules', [])
             if self.subresource_metadata and identifier == GATEWAY_ID:
                 def decorate(item, location):
                     if isinstance(item, dict):
@@ -512,6 +519,96 @@ class DataWafTests(unittest.TestCase):
             rule = api_mapping(changed)['pathRules'][0]['properties']
             rule[key] = {'id': '/another/reference'}
             self.assertNotEqual(canonical_gateway(changed), normalized)
+
+    def test_policy_canonicalization_is_comparison_only_and_keeps_other_differences(self):
+        expected = policy()
+        entry = exclusion('messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])
+        entry['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+        expected['properties']['managedRules']['exclusions'].append(entry)
+        observed = copy.deepcopy(expected)
+        group = observed['properties']['managedRules']['exclusions'][-1]['exclusionManagedRuleSets'][0]['ruleGroups'][0]
+        group['rules'] = []
+        before = copy.deepcopy(observed)
+        self.assertEqual(canonical_policy(observed), canonical_policy(expected))
+        self.assertEqual(observed, before)
+        normalized_entry = observed['properties']['managedRules']['exclusions'][-1]
+        self.assertTrue(exclusion_is_covered(normalized_entry, entry))
+        finite = exclusion('messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])
+        self.assertFalse(exclusion_is_covered(normalized_entry, finite))
+        self.assertIn('rules', _writable_policy(observed)['properties']['managedRules']['exclusions'][-1]
+                      ['exclusionManagedRuleSets'][0]['ruleGroups'][0])
+        for rules in ([{'ruleId': '942100'}], None, {}, False):
+            changed = copy.deepcopy(observed)
+            changed['properties']['managedRules']['exclusions'][-1]['exclusionManagedRuleSets'][0]['ruleGroups'][0]['rules'] = rules
+            with self.subTest(rules=rules):
+                self.assertNotEqual(canonical_policy(changed), canonical_policy(expected))
+        for change in ('group-property', 'other-group', 'other-rule-set', 'mode', 'custom-rule', 'override'):
+            changed = copy.deepcopy(observed)
+            props = changed['properties']
+            rule_set = props['managedRules']['exclusions'][-1]['exclusionManagedRuleSets'][0]
+            if change == 'group-property': rule_set['ruleGroups'][0]['unapproved'] = True
+            elif change == 'other-group': rule_set['ruleGroups'][0]['ruleGroupName'] = 'REQUEST-920-PROTOCOL-ENFORCEMENT'
+            elif change == 'other-rule-set': rule_set['ruleSetVersion'] = '3.1'
+            elif change == 'mode': props['policySettings']['mode'] = 'Detection'
+            elif change == 'custom-rule': props['customRules'] = []
+            else: props['managedRules']['managedRuleSets'][0]['ruleGroupOverrides'] = [{'ruleGroupName': 'REQUEST-942-APPLICATION-ATTACK-SQLI', 'rules': []}]
+            with self.subTest(change=change):
+                self.assertNotEqual(canonical_policy(changed), canonical_policy(expected))
+        # An empty rule list outside the precise exclusion branch is not removed.
+        for name, version in (('REQUEST-920-PROTOCOL-ENFORCEMENT', '3.2'),
+                              ('REQUEST-942-APPLICATION-ATTACK-SQLI', '3.1')):
+            with_empty = copy.deepcopy(observed)
+            rs = with_empty['properties']['managedRules']['exclusions'][-1]['exclusionManagedRuleSets'][0]
+            rs['ruleSetVersion'] = version
+            rs['ruleGroups'][0]['ruleGroupName'] = name
+            without_empty = copy.deepcopy(with_empty)
+            without_empty['properties']['managedRules']['exclusions'][-1]['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+            self.assertNotEqual(canonical_policy(with_empty), canonical_policy(without_empty))
+
+    def test_normalized_group_readback_converges_resumes_second_policy_and_is_idempotent(self):
+        source = load_manifest()
+        profiles = [p for p in source['profiles'] if p['name'] in ('g-chat-completions', 'g-responses')]
+        current = {'version': source['version'], 'profiles': profiles}
+        old = {'version': 1, 'profiles': [
+            {**copy.deepcopy(p), 'exclusions': [exclusion(
+                'messages.content' if p['name'] == 'g-chat-completions' else 'input.content.text',
+                'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])]} for p in profiles]}
+        config, transport = configuration(), ArmMemory()
+        config['apiDefinitions'][0]['operations'].append({'name': 'responses', 'method': 'POST', 'urlTemplate': '/responses'})
+        reconcile(config, transport, scopes=('gateway',), manifest=old)
+        transport.empty_group_rules = True
+        before_gateway = copy.deepcopy(transport.resources[GATEWAY_ID])
+        chat = {'version': source['version'], 'profiles': [profiles[0]]}
+        transport.calls.clear()
+        first = reconcile(config, transport, scopes=('gateway',), manifest=chat, timeout=1)
+        self.assertEqual((first['policyUpdates'], first['gatewayUpdated'], first['azureWrites']), (1, False, 1))
+        transport.calls.clear()
+        self.assertEqual(reconcile(config, transport, scopes=('gateway',), manifest=chat, timeout=1)['azureWrites'], 0)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+        transport.calls.clear()
+        resumed = reconcile(config, transport, scopes=('gateway',), manifest=current, timeout=1)
+        self.assertEqual((resumed['policyUpdates'], resumed['gatewayUpdated'], resumed['azureWrites']), (1, False, 1))
+        writes = [call for call in transport.calls if call[0] == 'PUT']
+        self.assertEqual([call[1] for call in writes], [waf_policy_id(config, 'g-responses')])
+        self.assertEqual(transport.resources[GATEWAY_ID], before_gateway)
+        # GET-only normalization must not rewrite omitted-rules PUT payloads.
+        self.assertEqual(writes[0][2]['properties']['managedRules']['exclusions'],
+                         policy()['properties']['managedRules']['exclusions'] + profiles[1]['exclusions'])
+        transport.calls.clear()
+        self.assertEqual(reconcile(config, transport, scopes=('gateway',), manifest=current, timeout=1)['azureWrites'], 0)
+        with self.assertRaisesRegex(ValueError, 'Represent the existing path-specific WAF exclusion'):
+            reconcile(config, transport, scopes=('gateway',), manifest=old)
+        self.assertFalse(any(call[0] == 'PUT' for call in transport.calls))
+
+    def test_normalized_group_readback_converges_on_final_deadline_check(self):
+        current = manifest()
+        current['version'] = 2
+        current['profiles'][0]['exclusions'][0]['exclusionManagedRuleSets'][0]['ruleGroups'][0].pop('rules')
+        transport = ArmMemory(empty_group_rules=True)
+        result = reconcile(configuration(), transport, scopes=('gateway',), manifest=current, timeout=0)
+        self.assertEqual((result['policyUpdates'], result['gatewayUpdated'], result['azureWrites']), (1, True, 2))
+        transport.calls.clear()
+        self.assertEqual(reconcile(configuration(), transport, scopes=('gateway',), manifest=current, timeout=0)['azureWrites'], 0)
 
     def test_partial_profile_then_full_manifest_preserves_existing_path_order(self):
         config, value = configuration(), manifest()
