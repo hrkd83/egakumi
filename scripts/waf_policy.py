@@ -234,6 +234,36 @@ def canonical_gateway(body):
     return clean(_writable(body))
 
 
+def canonical_policy(body):
+    """Compare Azure's empty whole-group rule lists with omitted rule lists.
+
+    This is comparison-only: manifest validation and the PUT body retain their
+    explicit forms. Do not normalize overrides, nonempty lists, other rule sets
+    or group objects with unknown properties.
+    """
+    result = _writable_policy(body)
+    exclusions = result.get('properties', {}).get('managedRules', {}).get('exclusions', [])
+    if isinstance(exclusions, list):
+        for item in exclusions:
+            rule_sets = item.get('exclusionManagedRuleSets', []) if isinstance(item, dict) else []
+            if not isinstance(rule_sets, list):
+                continue
+            for rule_set in rule_sets:
+                if (not isinstance(rule_set, dict)
+                        or (rule_set.get('ruleSetType'), rule_set.get('ruleSetVersion')) != ('OWASP', '3.2')):
+                    continue
+                groups = rule_set.get('ruleGroups', [])
+                if not isinstance(groups, list):
+                    continue
+                for group in groups:
+                    if (isinstance(group, dict) and set(group) == {'ruleGroupName', 'rules'}
+                            and isinstance(group['ruleGroupName'], str)
+                            and group['ruleGroupName'] in AI_DATA_RULE_GROUPS
+                            and isinstance(group['rules'], list) and not group['rules']):
+                        group.pop('rules')
+    return result
+
+
 def data_scope_exclusions(profile):
     """Only the common Portal cookie is implicit; data exceptions are explicit."""
     return portal_session_exclusions() if profile['scope'] == 'portal' else []
@@ -460,7 +490,7 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         observed, existing = read_policy(identifier, optional=True)
         desired = desired_policy(base, profile, config, sources + ([existing] if existing else []))
         # Idempotent data policies are generated from the manifest, never accumulated from themselves.
-        if existing is None or _writable_policy(existing) != desired:
+        if existing is None or canonical_policy(existing) != canonical_policy(desired):
             changes.append((identifier, desired, {'If-Match': _etag(observed)} if existing else {'If-None-Match': '*'}))
         props = {'paths': profile['paths'], 'firewallPolicy': {'id': identifier},
                  'backendAddressPool': pool, 'backendHttpSettings': backend}
@@ -482,12 +512,12 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
     def apply(identifier, desired, headers, policy):
         path = identifier + '?api-version=' + NETWORK_API
         _ok(transport.request('PUT', path, desired, headers=headers), 'update data WAF', (200, 201, 202), require_body=False)
-        expected_state = desired if policy else canonical_gateway(desired)
+        expected_state = canonical_policy(desired) if policy else canonical_gateway(desired)
         notice = monotonic() + 45
         while monotonic() < deadline:
             value = _ok(transport.request('GET', path), 'read data WAF update')
             state = value.get('properties', {}).get('provisioningState')
-            if state == 'Succeeded' and (_writable_policy(value) if policy else canonical_gateway(value)) == expected_state:
+            if state == 'Succeeded' and (canonical_policy(value) if policy else canonical_gateway(value)) == expected_state:
                 return
             if state in ('Failed', 'Canceled', 'Deleting'):
                 raise ValueError('Data WAF update failed')
@@ -498,7 +528,7 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         # 期限直後の収束は同じ完全一致条件で一度だけ確認し、PUTは再送しません。
         value = _ok(transport.request('GET', path), 'read data WAF final update')
         state = value.get('properties', {}).get('provisioningState')
-        matched = (_writable_policy(value) if policy else canonical_gateway(value)) == expected_state
+        matched = (canonical_policy(value) if policy else canonical_gateway(value)) == expected_state
         if state == 'Succeeded' and matched:
             return
         state_label = state if state in ('Succeeded', 'Updating', 'Creating', 'Failed', 'Canceled', 'Deleting') else 'Unknown'
