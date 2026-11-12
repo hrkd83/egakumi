@@ -778,6 +778,15 @@
     },
     {
       "rule": "nonpublic-host",
+      "value": "schemas.openxmlformats.org",
+      "reason": "Public OOXML namespace constant used only by independent synthetic document packages and their parser tests; exact path/value only",
+      "paths": [
+        "scripts/waf_probe.py",
+        "tests/test_waf_probe.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
       "value": "169.254.169.254",
       "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
       "paths": [

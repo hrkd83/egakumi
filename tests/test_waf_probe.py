@@ -3,6 +3,9 @@ from collections import Counter
 import base64
 import io
 from dataclasses import replace
+from email import policy
+from email.parser import BytesParser
+from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
@@ -11,6 +14,7 @@ import sys
 import tempfile
 import unittest
 import wave
+import zipfile
 from xml.etree import ElementTree
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -25,6 +29,16 @@ class WafProbeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.routes = probe.load_routes()
         cls.cases = probe.build_corpus(cls.routes)
+
+    def assert_media_signature(self, mime, body):
+        signatures = {"application/pdf": b"%PDF-", "image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff", "image/tiff": b"II\x2a\x00", "image/bmp": b"BM", "audio/wav": b"RIFF", "text/html": b"<!DOCTYPE html>"}
+        if mime in {"image/heif", "image/heic"}:
+            self.assertEqual(body[4:8], b"ftyp")
+            self.assertEqual(body[8:12], b"mif1" if mime == "image/heif" else b"heic")
+        elif mime.startswith("application/vnd.openxmlformats-officedocument."):
+            self.assertTrue(zipfile.is_zipfile(io.BytesIO(body)))
+        else:
+            self.assertTrue(body.startswith(signatures[mime]))
 
     def test_every_contract_operation_and_portal_handler_has_a_baseline(self):
         expected = {(route.target, route.method, route.path) for route in self.routes}
@@ -95,23 +109,101 @@ class WafProbeTests(unittest.TestCase):
         self.assertTrue(result["attack_block_evidence"])
 
     def test_every_declared_binary_media_type_has_a_signature_fixture(self):
-        signatures = {"application/pdf": b"%PDF-", "image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff", "image/tiff": b"II\x2a\x00", "image/bmp": b"BM", "audio/wav": b"RIFF"}
         for route in self.routes:
             if route.body_format != "binary":
                 continue
             for mime in route.content_types:
                 with self.subTest(route=route.path, mime=mime):
                     case = next(case for case in self.cases if case.path == route.path and case.category == "binary-mime" and dict(case.headers)["Content-Type"] == mime)
-                    self.assertTrue(case.body.startswith(signatures[mime]))
+                    self.assert_media_signature(mime, case.body)
                     self.assertEqual(case.intent, "compatibility")
-        for mime, signature in signatures.items():
-            self.assertTrue(probe._binary_fixture(mime).startswith(signature))
         multipart = [case for case in self.cases if case.path == "/api/tools/documents" and case.category == "multipart-mime"]
         document_contract = next(route for route in self.routes if route.constraint.get("kind") == "documentAnalysis")
+        self.assertEqual(set(document_contract.content_types), {"application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/html"})
         self.assertEqual(len(multipart), len(document_contract.content_types))
         for mime in document_contract.content_types:
             case = next(case for case in multipart if ("Content-Type: " + mime).encode() in case.body)
-            self.assertIn(signatures[mime], case.body)
+            message = BytesParser(policy=policy.default).parsebytes(b"MIME-Version: 1.0\r\nContent-Type: " + dict(case.headers)["Content-Type"].encode() + b"\r\n\r\n" + case.body)
+            part = next(part for part in message.iter_parts() if part.get_param("name", header="content-disposition") == "file")
+            self.assertEqual(part.get_content_type(), mime)
+            expected_extension = {"image/heif": "heif", "image/heic": "heic", "text/html": "html", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx", "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx"}.get(mime)
+            if expected_extension:
+                self.assertEqual(part.get_filename(), "probe." + expected_extension)
+            self.assert_media_signature(mime, part.get_payload(decode=True))
+
+    def test_heif_and_heic_fixtures_have_consistent_distinct_file_type_boxes(self):
+        text = "Independent synthetic HEIF metadata 日本語🙂"
+        for mime, brand in (("image/heif", b"mif1"), ("image/heic", b"heic")):
+            with self.subTest(mime=mime):
+                data = probe._binary_fixture(mime, text)
+                boxes = []; offset = 0
+                while offset < len(data):
+                    size = int.from_bytes(data[offset:offset + 4], "big")
+                    self.assertGreaterEqual(size, 8)
+                    self.assertLessEqual(offset + size, len(data))
+                    boxes.append((data[offset + 4:offset + 8], data[offset + 8:offset + size]))
+                    offset += size
+                self.assertEqual(offset, len(data))
+                self.assertEqual([kind for kind, _ in boxes], [b"ftyp", b"free"])
+                self.assertEqual(boxes[0][1][:4], brand)
+                self.assertEqual(boxes[0][1][4:8], b"\x00\x00\x00\x00")
+                compatible = boxes[0][1][8:]
+                self.assertEqual(len(compatible) % 4, 0)
+                self.assertIn(b"mif1", [compatible[i:i + 4] for i in range(0, len(compatible), 4)])
+                self.assertEqual(boxes[1][1].decode("utf-8"), text)
+                self.assertEqual(data, probe._binary_fixture(mime, text))
+
+    def test_ooxml_fixtures_are_parseable_deterministic_packages_with_synthetic_text(self):
+        text = 'Independent synthetic <&> "文書" 🙂\nsecond line'
+        packages = {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("word/document.xml", "word/document.xml", "http://schemas.openxmlformats.org/wordprocessingml/2006/main"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ("xl/workbook.xml", "xl/worksheets/sheet1.xml", "http://schemas.openxmlformats.org/spreadsheetml/2006/main"),
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ("ppt/presentation.xml", "ppt/slides/slide1.xml", "http://schemas.openxmlformats.org/drawingml/2006/main"),
+        }
+        for mime, (main, content_part, namespace) in packages.items():
+            with self.subTest(mime=mime):
+                data = probe._binary_fixture(mime, text)
+                self.assertEqual(data, probe._binary_fixture(mime, text))
+                with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                    self.assertIsNone(archive.testzip())
+                    self.assertEqual(archive.namelist(), sorted(archive.namelist()))
+                    self.assertIn("[Content_Types].xml", archive.namelist())
+                    self.assertIn("_rels/.rels", archive.namelist())
+                    for info in archive.infolist():
+                        self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0))
+                        self.assertFalse(info.filename.startswith("/"))
+                        self.assertNotIn("..", info.filename.split("/"))
+                        ElementTree.fromstring(archive.read(info.filename))
+                    types = ElementTree.fromstring(archive.read("[Content_Types].xml"))
+                    self.assertIn(("/" + main, mime + ".main+xml"), {(value.get("PartName"), value.get("ContentType")) for value in types if value.tag.endswith("Override")})
+                    relationships = ElementTree.fromstring(archive.read("_rels/.rels"))
+                    self.assertEqual(len(relationships), 1)
+                    self.assertEqual(relationships[0].get("Target"), main)
+                    self.assertEqual(relationships[0].get("Type"), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument")
+                    content = ElementTree.fromstring(archive.read(content_part))
+                    self.assertEqual("".join(element.text or "" for element in content.iter("{" + namespace + "}t")), text)
+
+    def test_html_fixture_is_utf8_and_keeps_source_text_out_of_markup(self):
+        class Document(HTMLParser):
+            def __init__(self):
+                super().__init__(convert_charrefs=True)
+                self.tags = []; self.declarations = []; self.paragraph = []; self.in_paragraph = False; self.charset = None
+            def handle_decl(self, decl): self.declarations.append(decl.lower())
+            def handle_starttag(self, tag, attrs):
+                self.tags.append(tag)
+                if tag == "p": self.in_paragraph = True
+                if tag == "meta": self.charset = dict(attrs).get("charset")
+            def handle_endtag(self, tag):
+                if tag == "p": self.in_paragraph = False
+            def handle_data(self, data):
+                if self.in_paragraph: self.paragraph.append(data)
+        text = 'Synthetic <script>literal source</script> & "日本語🙂"'
+        data = probe._binary_fixture("text/html", text)
+        document = Document(); document.feed(data.decode("utf-8", errors="strict")); document.close()
+        self.assertEqual(document.declarations, ["doctype html"])
+        self.assertEqual(document.charset, "utf-8")
+        self.assertNotIn("script", document.tags)
+        self.assertEqual("".join(document.paragraph), text)
 
     def test_real_content_fields_are_exercised_one_at_a_time(self):
         by_path = {}

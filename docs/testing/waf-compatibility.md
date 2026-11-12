@@ -57,7 +57,7 @@ raw SSML/WAVと正本の文書受付では、正規本文の相対パス`../`が
 
 Log4j/JNDIの例文で検知した`Known-CVEs / 800100`も、実測した正規データ欄だけへ限定します。未知のfield・query・headerの攻撃対照と、同名queryへの影響を独立して検証します。
 
-Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。toolの動的JSON Schemaキーは、`RequestArgKeys / StartsWith / tools.function.parameters.`だけをSQL規則942100・942130・942180・942200・942260・942330・942390・942480から除外します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
+Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。toolの動的JSON Schemaキーは、`RequestArgKeys / StartsWith / tools.function.parameters.`だけをSQL規則942100・942130・942180・942200・942260・942330・942390・942480から除外します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
 
 SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/speech-ssml-guard.xml`です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。独自の8192byte枠は撤廃し、継承した認証・受信byte検査の後、上流へ転送する前に宣言を検査します。元本文と上流URIは保持します。匿名401だけではガード成功とせず、認証付きの正常音声生成と明示400応答も確認します。SSML全体のschema検証は下流Speech側の責務です。
 

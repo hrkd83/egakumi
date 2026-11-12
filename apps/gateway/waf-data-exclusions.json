@@ -1295,6 +1295,30 @@
         {
           "matchVariable": "RequestArgValues",
           "selectorMatchOperator": "Equals",
+          "selector": "input.content.image_url",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
+                  "rules": [
+                    {
+                      "ruleId": "941130"
+                    },
+                    {
+                      "ruleId": "941170"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
           "selector": "input.content.file_data",
           "exclusionManagedRuleSets": [
             {
