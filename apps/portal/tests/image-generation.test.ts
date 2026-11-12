@@ -57,14 +57,15 @@ function dependencies(overrides: Partial<ImageGenerationDependencies> = {}): Ima
 }
 
 /** 同一オリジンのJSON実行要求です。キー実値はブラウザーから送りません。 */
-function request(input: unknown = defaultImageInput(openai), headers: Record<string, string> = {}, signal?: AbortSignal): Request {
-  return new Request(`${portalOrigin}/api/models/images`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(input as object) }), signal });
+function request(input: unknown = defaultImageInput(openai), headers: Record<string, string> = {}, signal?: AbortSignal, query = ""): Request {
+  return new Request(`${portalOrigin}/api/models/images${query}`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(input as object) }), signal });
 }
 
 test("画像入力はプロンプトを受け付け、任意接続先・キー実値は拒否する", () => {
   const input = defaultImageInput(openai);
   assert.ok(imageGenerationInputSchema.safeParse(input).success);
-  for (const extra of [{ apiKey: secret }, { url: "https://other.invalid" }, { n: 100 }, { stream: true }]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, ...extra }).success, false);
+  for (const extra of [{ apiKey: secret }, { url: "https://other.invalid" }, { n: 100 }, { stream: true },
+    ...["image", "image_url", "input_image", "input_image_2", "mask"].map((field) => ({ [field]: "synthetic" }))]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, ...extra }).success, false);
   for (const width of [0, -1, 512.5, "512", null]) assert.equal(imageGenerationInputSchema.safeParse({ ...input, width }).success, false);
 });
 
@@ -122,6 +123,39 @@ test("同一オリジン・本人認証・JSONがない場合は画像を生成�
   assert.equal((await handleImageGeneration(request(), { ...context, readSession: async () => { throw new Error(secret); } })).status, 503);
   assert.equal((await handleImageGeneration(request(undefined, { "Content-Type": "text/plain" }), context)).status, 415);
   assert.equal(calls, 0);
+});
+
+test("画像APIの同名queryやAPI版queryは本文・購読・上流処理の前に拒否する", async () => {
+  let calls = 0;
+  const forbidden = () => { calls++; throw new Error("not called"); };
+  const context = dependencies({ readModels: forbidden, resolveSubscriptionKey: forbidden, fetch: forbidden });
+  for (const query of ["?prompt=synthetic", "?%70rompt=synthetic", "?prompt=one&prompt=two", "?api-version=preview", "?input_image=synthetic", "?unexpected", "?=synthetic"]) {
+    const incoming = request(undefined, {}, undefined, query);
+    const response = await handleImageGeneration(incoming, context);
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+    assert.equal(incoming.bodyUsed, false);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  }
+  const malformed = new Request(`${portalOrigin}/api/models/images?prompt=synthetic`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
+  assert.equal((await handleImageGeneration(malformed, context)).status, 400);
+  assert.equal(malformed.bodyUsed, false);
+  assert.equal(calls, 0);
+});
+
+test("query拒否を追加しても同一オリジン・本人認証・JSONの既存判定順序を維持する", async () => {
+  let sessions = 0;
+  let calls = 0;
+  const context = dependencies({ readSession: async () => { sessions++; return actor; }, fetch: async () => { calls++; throw new Error("not called"); } });
+  const query = "?prompt=synthetic";
+  assert.equal((await handleImageGeneration(request(undefined, { origin: "https://other.invalid" }, undefined, query), context)).status, 403);
+  assert.equal(sessions, 0);
+  assert.equal((await handleImageGeneration(request(undefined, {}, undefined, query), { ...context, readSession: async () => null })).status, 401);
+  assert.equal((await handleImageGeneration(request(undefined, { "Content-Type": "text/plain" }, undefined, query), context)).status, 415);
+  assert.equal((await handleImageGeneration(request(undefined, {}, undefined, query), context)).status, 400);
+  assert.equal(sessions, 2);
+  assert.equal(calls, 0);
+  assert.equal((await handleImageGeneration(request(undefined, { "Content-Type": "application/json; charset=utf-8" }), dependencies())).status, 200);
 });
 
 test("制約違反とパス改変は購読キーの取得・上流通信より先に拒否する", async () => {

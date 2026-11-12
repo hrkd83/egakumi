@@ -26,6 +26,8 @@ Examples::
         --output .local/example/evidence/waf-canary.json
     python scripts/waf_probe.py --ai-coding-only --gateway-base-url https://gateway.example.com \
         --output .local/example/evidence/waf-coding.json
+    python scripts/waf_probe.py --image-prompts-only --gateway-base-url https://gateway.example.com \
+        --portal-base-url https://portal.example.com --output .local/example/evidence/waf-images.json
 
 This finite corpus cannot enumerate every possible request. WebSocket probes
 cover the HTTP upgrade only, not frames (which AppGW WAF does not inspect).
@@ -281,7 +283,7 @@ def _ooxml_fixture(mime: str, text: str) -> bytes:
     return output.getvalue()
 
 
-def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture") -> bytes:
+def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture", *, transparent: bool = False) -> bytes:
     """Provide real MIME signatures; no document/audio feature success is claimed.
 
     PNG, BMP, WAV and OOXML use minimal valid containers/packages. Other fixtures
@@ -300,8 +302,8 @@ def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture
     if mime == "image/png":
         def chunk(name: bytes, data: bytes) -> bytes:
             return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff)
-        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
-                + chunk(b"tEXt", b"Comment\x00" + content) + chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00")) + chunk(b"IEND", b""))
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6 if transparent else 2, 0, 0, 0))
+                + chunk(b"tEXt", b"Comment\x00" + content) + chunk(b"IDAT", zlib.compress(b"\x00" * (5 if transparent else 4))) + chunk(b"IEND", b""))
     if mime == "image/jpeg":
         comment = content[:65500]
         return b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + b"\xff\xfe" + struct.pack(">H", len(comment) + 2) + comment + b"\xff\xd9"
@@ -968,6 +970,83 @@ def ai_coding_probes(routes: list[Route]) -> list[Probe]:
     return cases
 
 
+def _image_prompt_body(route: Route, text: str, *, extra: dict | None = None) -> tuple[bytes, str]:
+    """Use native image JSON/multipart envelopes with invalid model canaries."""
+    if route.body_format == "multipart":
+        boundary = "waf-probe-image-boundary"
+        output = io.BytesIO()
+        fields = {"model": INVALID_MODEL, "prompt": text, "n": "1", "size": "1024x1024", **(extra or {})}
+        for name, value in fields.items():
+            output.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n').encode())
+        for name, transparent in (("image", False), ("mask", True)):
+            output.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="synthetic-{name}.png"\r\nContent-Type: image/png\r\n\r\n').encode())
+            output.write(_binary_fixture("image/png", "Synthetic image boundary fixture", transparent=transparent))
+            output.write(b"\r\n")
+        output.write((f"--{boundary}--\r\n").encode())
+        return output.getvalue(), "multipart/form-data; boundary=" + boundary
+    if route.target == "portal":
+        value = {"apiKeyId": "portal-00000000-0000-4000-8000-000000000001", "modelId": INVALID_MODEL,
+                 "prompt": text, "size": "1024x1024", "quality": "low", "width": 512, "height": 512, "outputFormat": "png"}
+    elif route.path.startswith("/models/blackforestlabs/"):
+        value = {"model": INVALID_MODEL, "prompt": text, "width": 512, "height": 512, "num_images": 1, "output_format": "png"}
+        if route.path.endswith("/edits"):
+            value["input_image"] = base64.b64encode(_binary_fixture("image/png", "Synthetic reference image")).decode()
+    else:
+        value = {"model": INVALID_MODEL, "prompt": text, "n": 1, "size": "1024x1024", "quality": "low"}
+    return json_bytes({**value, **(extra or {})}), "application/json"
+
+
+def image_prompt_probes(routes: list[Route]) -> list[Probe]:
+    """Build a separate bounded image prompt/data-versus-control corpus.
+
+    All probes omit credentials, including portal requests. An invalid model
+    remains in every body; approved deployment paths come only from the route
+    inventory. The finite fixtures test WAF transit, not image generation or
+    image decoding. No model call, file upload, or inference is authorized by a
+    passing anonymous canary. Portal Origin, if required, belongs in the runner.
+    """
+    candidates = [route for route in routes if route.method == "POST" and (
+        route.target == "gateway" and route.operation.split(":")[0] in {"openai-images-v1", "blackforest-images-v1"}
+        or route.target == "portal" and route.path == "/api/models/images")]
+    counts = Counter(route.target for route in candidates)
+    if counts != {"gateway": 6, "portal": 1} or len({(route.target, route.path) for route in candidates}) != 7:
+        raise ValueError("image prompt probes require the six published image POST paths and the portal image POST contract")
+    prompts = (
+        ("php-variable-function", 'Draw a code card displaying this inert PHP example: $formatter = "strtolower"; $formatter("SYNTHETIC");'),
+        ("sql-source", "Draw a SQL training card displaying this inert example: " + CONTROL_SQL),
+        ("html-source", '<script>console.log("synthetic")</script><a href="javascript:void(0)" style="color:blue">Draw this markup as source text.</a>'),
+        ("shell-source", "Draw a terminal tutorial card displaying inert shell source: $(printf synthetic); cat /etc/example.conf"),
+        ("rfi-url", "Draw a documentation card displaying this example URL as text: https://example.invalid/reference/source.txt?sample=1"),
+        ("path-source", r"Draw a source-control diagram with literal path labels: ../../etc/passwd C:\work\synthetic\sample.php /etc/example.conf"),
+    )
+    cases = []
+    for route in sorted(candidates, key=lambda item: (item.target, item.path)):
+        def add(label: str, prompt: str, *, intent: str = "compatibility", extra=None, query=(), path=None, field_name="prompt"):
+            body, mime = _image_prompt_body(route, prompt, extra=extra)
+            target = replace(route, path=path) if path else route
+            cases.append(_probe(target, "image-prompts-" + label, "image-prompts-" + label, intent=intent,
+                body=body, headers=[("Content-Type", mime)], query=query, payload_field=field_name))
+
+        baseline = "Draw a blue square on a white background. Synthetic WAF fixture."
+        add("baseline", baseline)
+        for label, prompt in prompts:
+            add(label, prompt)
+        for label, value in (("unknown-sqli", CONTROL_SQL), ("unknown-xss", "<script>alert(1)</script>")):
+            add("control-" + label, baseline, intent="attack_control", extra={"_attack": value}, field_name="_attack")
+        add("control-query-sqli", baseline, intent="attack_control", query=[("id", CONTROL_SQL)], field_name="query:id")
+        add("control-neighbor-xss", "<script>alert(1)</script>", intent="attack_control", path=route.path + "/neighbor")
+        add("query-collision-prompt", baseline, intent="validation", query=[("prompt", CONTROL_SQL)], field_name="query:prompt")
+        if route.target == "gateway" and route.path == "/models/blackforestlabs/v1/flux-2/edits":
+            for label, metadata_text in (("plain", "Synthetic reference image"), ("sql-text", CONTROL_SQL),
+                                         ("punctuation", "Synthetic PNG comment: ;'\"()<>[]{}=+-/*" * 8)):
+                image = base64.b64encode(_binary_fixture("image/png", metadata_text)).decode()
+                add("flux-base64-" + label, baseline, extra={"input_image": image}, field_name="input_image")
+    ids = [case.case_id for case in cases]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate image prompt case IDs")
+    return cases
+
+
 def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[Probe]:
     """Build deterministic, finite cases; synthetic attacks always remain anonymous."""
     routes = load_routes(root) if routes is None else routes
@@ -1272,17 +1351,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-body-guards-only", action="store_true", help="Use the separate raw SSML/WAV/PDF traversal boundary corpus.")
     parser.add_argument("--jndi-fields-only", action="store_true", help="Use the standalone anonymous JNDI data-field/control corpus.")
     parser.add_argument("--ai-coding-only", action="store_true", help="Use the bounded anonymous Responses/Chat coding-content and exclusion-control corpus.")
+    parser.add_argument("--image-prompts-only", action="store_true", help="Use the bounded anonymous image generation/edit prompt, media and control corpus.")
     parser.add_argument("--workers", type=int, default=2, choices=(1, 2, 3, 4))
     parser.add_argument("--requests-per-second", type=float, default=2.0, help="Aggregate rate, > 0 and <= 4 (default 2).")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request socket timeout, 1 to 60 seconds.")
     args = parser.parse_args(argv)
     if not 0 < args.requests_per_second <= 4 or not 1 <= args.timeout <= 60:
         parser.error("rate must be > 0 and <= 4; timeout must be 1 to 60")
-    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only)) > 1:
+    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only, args.image_prompts_only)) > 1:
         parser.error("select only one standalone corpus")
     try:
         pattern = re.compile(args.case_filter)
-        corpus = ai_coding_probes(load_routes()) if args.ai_coding_only else jndi_field_probes(load_routes()) if args.jndi_fields_only else raw_body_guard_controls(load_routes()) if args.raw_body_guards_only else build_corpus()
+        corpus = image_prompt_probes(load_routes()) if args.image_prompts_only else ai_coding_probes(load_routes()) if args.ai_coding_only else jndi_field_probes(load_routes()) if args.jndi_fields_only else raw_body_guard_controls(load_routes()) if args.raw_body_guards_only else build_corpus()
         cases = [case for case in corpus if pattern.search(" ".join((case.case_id, case.category, case.intent, case.path)))]
         bases = {name: validate_base_url(value) for name, value in (("gateway", args.gateway_base_url), ("portal", args.portal_base_url)) if value}
     except (ValueError, re.error) as error:

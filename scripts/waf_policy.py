@@ -43,7 +43,8 @@ AI_DATA_RULE_GROUPS = frozenset({
 })
 AI_DATA_SCOPES = {
     'g-chat-completions': {
-        'path': '/models/openai/v1/chat/completions',
+        'scope': 'gateway',
+        'paths': frozenset({'/models/openai/v1/chat/completions'}),
         'values': frozenset({
             'messages.content', 'messages.content.text',
             'messages.tool_calls.function.arguments', 'messages.function_call.arguments',
@@ -57,7 +58,8 @@ AI_DATA_SCOPES = {
         }),
     },
     'g-responses': {
-        'path': '/models/openai/v1/responses',
+        'scope': 'gateway',
+        'paths': frozenset({'/models/openai/v1/responses'}),
         'values': frozenset({
             'input', 'input.content', 'input.content.text', 'instructions',
             'input.arguments', 'input.output', 'input.output.text', 'input.input',
@@ -68,12 +70,31 @@ AI_DATA_SCOPES = {
             'text.format.schema.', 'tools.parameters.', 'input.tools.tools.parameters.',
         }),
     },
+    'g-images': {
+        'scope': 'gateway',
+        'paths': frozenset({
+            '/models/blackforestlabs/v1/flux-2/edits',
+            '/models/blackforestlabs/v1/flux-2/generations',
+            '/models/openai-images/v1/deployments/gpt-image-2.5-flare/edits',
+            '/models/openai-images/v1/deployments/gpt-image-2.5-sunburst/edits',
+            '/models/openai-images/v1/deployments/gpt-image-2/edits',
+            '/models/openai-images/v1/generations',
+        }),
+        'values': frozenset({'prompt'}),
+        'schemas': frozenset(),
+    },
+    'p-images': {
+        'scope': 'portal',
+        'paths': frozenset({'/api/models/images'}),
+        'values': frozenset({'prompt'}),
+        'schemas': frozenset(),
+    },
 }
 
 
 def _allows_ai_group(profile, item):
     scope = AI_DATA_SCOPES.get(profile['name'])
-    if (not scope or profile['scope'] != 'gateway' or profile['paths'] != [scope['path']]
+    if (not scope or profile['scope'] != scope['scope'] or frozenset(profile['paths']) != scope['paths']
             or set(item) != {'matchVariable', 'selectorMatchOperator', 'selector', 'exclusionManagedRuleSets'}):
         return False
     variable, operator, selector = (item[key] for key in

@@ -16,6 +16,7 @@ import tempfile
 import unittest
 import wave
 import zipfile
+import zlib
 from xml.etree import ElementTree
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -507,6 +508,127 @@ class WafProbeTests(unittest.TestCase):
             self.assertTrue(all("body" not in case and "headers" not in case for case in report["results"]))
             self.assertNotIn('$formatter("SYNTHETIC")', json.dumps(report))
             self.assertTrue(any("not feature success" in item for item in report["limitations"]))
+
+    def test_image_prompt_corpus_covers_only_the_published_image_routes_with_bounded_anonymous_cases(self):
+        cases = probe.image_prompt_probes(self.routes)
+        compatibility = [case for case in cases if case.intent == "compatibility"]
+        expected = {(route.target, route.path) for route in self.routes if route.method == "POST" and (
+            route.target == "gateway" and route.operation.split(":")[0] in {"openai-images-v1", "blackforest-images-v1"}
+            or route.target == "portal" and route.path == "/api/models/images")}
+        self.assertEqual(len(expected), 7)
+        self.assertEqual({(case.target, case.path) for case in compatibility}, expected)
+        self.assertEqual(len(cases), 87)
+        self.assertLessEqual(len(cases), 100)
+        self.assertEqual(Counter(case.intent for case in cases), {"compatibility": 52, "attack_control": 28, "validation": 7})
+        self.assertLess(max(len(case.body) for case in cases), 4096)
+        self.assertEqual(len(cases), len({case.case_id for case in cases}))
+        self.assertEqual([case.case_id for case in cases], [case.case_id for case in probe.image_prompt_probes(self.routes)])
+        self.assertTrue(all(case.auth_mode == "anonymous" and case.method == "POST" for case in cases))
+        self.assertTrue(all(not any(name.lower() in {"api-key", "authorization", "cookie", "origin"} for name, _ in case.headers) for case in cases))
+        self.assertTrue(all(case.category.startswith("image-prompts-") for case in cases))
+        with self.assertRaisesRegex(ValueError, "six published"):
+            probe.image_prompt_probes([route for route in self.routes if route.path != "/api/models/images"])
+
+    def test_image_prompt_variants_keep_prompt_separate_from_unknown_query_and_neighbor_controls(self):
+        cases = probe.image_prompt_probes(self.routes)
+        baselines = [case for case in cases if case.category == "image-prompts-baseline"]
+        self.assertEqual(len(baselines), 7)
+        for baseline in baselines:
+            path_cases = [case for case in cases if case.target == baseline.target and case.path in {baseline.path, baseline.path + "/neighbor"}]
+            for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "rfi-url", "path-source"):
+                matched = [case for case in path_cases if case.category == "image-prompts-" + family]
+                self.assertEqual(len(matched), 1)
+                self.assertEqual(matched[0].payload_field, "prompt")
+                self.assertEqual(matched[0].intent, "compatibility")
+            controls = {case.category for case in path_cases if case.intent == "attack_control"}
+            self.assertEqual(controls, {"image-prompts-control-unknown-sqli", "image-prompts-control-unknown-xss",
+                "image-prompts-control-query-sqli", "image-prompts-control-neighbor-xss"})
+            collision = next(case for case in path_cases if case.category == "image-prompts-query-collision-prompt")
+            self.assertEqual(collision.intent, "validation")
+            self.assertEqual(collision.query, (("prompt", probe.CONTROL_SQL),))
+            self.assertEqual(collision.body, baseline.body)
+            neighbor = next(case for case in path_cases if case.category == "image-prompts-control-neighbor-xss")
+            self.assertEqual(neighbor.path, baseline.path + "/neighbor")
+
+    def test_image_prompt_json_uses_provider_native_fields_and_invalid_model_canaries(self):
+        cases = [case for case in probe.image_prompt_probes(self.routes) if dict(case.headers)["Content-Type"] == "application/json"]
+        for case in cases:
+            value = json.loads(case.body)
+            self.assertIsInstance(value["prompt"], str)
+            self.assertNotIn("messages", value)
+            if case.target == "portal":
+                self.assertEqual(value["modelId"], probe.INVALID_MODEL)
+                self.assertNotIn("model", value)
+                portal_route = next(route for route in self.routes if route.target == "portal" and route.path == "/api/models/images")
+                self.assertEqual(value["apiKeyId"], probe._json_variants(portal_route, "Synthetic image auth fixture")[0][1]["apiKeyId"])
+                self.assertEqual(value["outputFormat"], "png")
+            else:
+                self.assertEqual(value["model"], probe.INVALID_MODEL)
+                if "/blackforestlabs/" in case.path:
+                    self.assertEqual(value["num_images"], 1)
+                    self.assertEqual(value["output_format"], "png")
+                    self.assertNotIn("n", value)
+                else:
+                    self.assertEqual(value["n"], 1)
+        media = [case for case in cases if case.category.startswith("image-prompts-flux-base64-")]
+        self.assertEqual(len(media), 3)
+        for case in media:
+            self.assertEqual(case.path, "/models/blackforestlabs/v1/flux-2/edits")
+            self.assertEqual(case.payload_field, "input_image")
+            image = json.loads(case.body)["input_image"]
+            self.assertFalse(image.startswith("data:"))
+            self.assertTrue(base64.b64decode(image, validate=True).startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_image_edit_multipart_has_valid_same_size_png_image_and_transparent_mask(self):
+        cases = [case for case in probe.image_prompt_probes(self.routes) if dict(case.headers)["Content-Type"].startswith("multipart/")]
+        self.assertEqual(len(cases), 36)
+        for case in cases:
+            message = BytesParser(policy=policy.default).parsebytes(b"MIME-Version: 1.0\r\nContent-Type: " + dict(case.headers)["Content-Type"].encode() + b"\r\n\r\n" + case.body)
+            parts = {part.get_param("name", header="content-disposition"): part for part in message.iter_parts()}
+            self.assertEqual(parts["model"].get_payload(decode=True).decode(), probe.INVALID_MODEL)
+            self.assertNotIn("response_format", parts)
+            dimensions = []
+            for field_name in ("image", "mask"):
+                part = parts[field_name]
+                self.assertEqual(part.get_content_type(), "image/png")
+                data = part.get_payload(decode=True)
+                self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
+                chunks = {}; offset = 8
+                while offset < len(data):
+                    length = int.from_bytes(data[offset:offset + 4], "big")
+                    name = data[offset + 4:offset + 8]
+                    payload = data[offset + 8:offset + 8 + length]
+                    crc = int.from_bytes(data[offset + 8 + length:offset + 12 + length], "big")
+                    self.assertEqual(crc, zlib.crc32(name + payload) & 0xffffffff)
+                    chunks[name] = payload
+                    offset += length + 12
+                self.assertEqual(offset, len(data))
+                dimensions.append(chunks[b"IHDR"][:8])
+                self.assertEqual(chunks[b"IHDR"][9], 6 if field_name == "mask" else 2)
+                pixels = zlib.decompress(chunks[b"IDAT"])
+                self.assertEqual(pixels, b"\x00" * (5 if field_name == "mask" else 4))
+                self.assertNotIn(b"$formatter", chunks[b"tEXt"])
+            self.assertEqual(dimensions, [(1).to_bytes(4, "big") * 2] * 2)
+
+    def test_image_prompt_cli_dry_run_keeps_new_corpus_separate_and_never_reads_a_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "image-plan.json"
+            with patch.object(probe, "run_probe", side_effect=AssertionError("network attempted")):
+                code = probe.main(["--image-prompts-only", "--dry-run", "--case-filter", "php-variable-function",
+                    "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
+            self.assertEqual(code, 0)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["selected_case_count"], 7)
+            self.assertTrue(all(case["auth_mode"] == "anonymous" for case in report["results"]))
+            self.assertTrue(all("body" not in case and "headers" not in case for case in report["results"]))
+            self.assertNotIn('$formatter("SYNTHETIC")', json.dumps(report))
+        anonymous = next(case for case in probe.image_prompt_probes(self.routes) if case.target == "gateway")
+        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")) as send:
+            record = probe.run_probe(anonymous, "https://example.invalid", "synthetic-run", 1, probe.RateLimiter(4),
+                key="sentinel-key-must-not-be-sent", transport="curl")
+        self.assertNotIn("api-key", {name.lower(): value for name, value in send.call_args.args[2].items()})
+        self.assertEqual(record["classification"], "application_rejected")
+        self.assertFalse(record["functional_success"])
 
     def test_literal_attack_documentation_is_data_in_real_fields_never_an_xml_request(self):
         cases = probe.adversarial_content(self.routes)

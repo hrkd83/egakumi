@@ -51,6 +51,7 @@ public static class IntegratedProfileFixture {
    c.Variables["gatewayKeyHeader"] = "api-key";
    foreach(var entry in ((JObject)(item["headers"]??new JObject())).Properties()) c.Request.Headers[entry.Name]=entry.Value is JArray?entry.Value.Select(x=>(string)x).ToArray():new[] {(string)entry.Value};
    foreach(var entry in ((JObject)(item["query"]??new JObject())).Properties()) c.Request.Url.Query[entry.Name]=entry.Value is JArray?entry.Value.Select(x=>(string)x).ToArray():new[] {(string)entry.Value};
+   foreach(var entry in ((JObject)(item["parameters"]??new JObject())).Properties()) c.Request.MatchedParameters[entry.Name]=(string)entry.Value;
    if(item["key"]!=null) { c.Subscription=new Named {Id=(string)item["key"]};c.Product=new Named {Id="tool-users"};c.Request.Headers["api-key"]=new[] {"fixture-value"}; }
    var result=new JObject();
    if((string)item["mode"]=="ws") {
@@ -175,6 +176,51 @@ class ProfilePolicyTests(unittest.TestCase):
                 cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
             cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"provider-option": "synthetic"}, "headers": {"Content-Type": "text/plain"}}))
             cases.append(case(label + "-other-operation", **{**base, "path": "/different-operation", "query": {"provider-option": "synthetic"}}))
+        multipart = ('--synthetic-image-boundary\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n'
+            'Keep the synthetic <script> example as text.\r\n--synthetic-image-boundary\r\n'
+            'Content-Disposition: form-data; name="image"; filename="synthetic.png"\r\n'
+            'Content-Type: image/png\r\n\r\nsynthetic image bytes\r\n--synthetic-image-boundary--\r\n')
+        image_contracts = [
+            ("openai-image", "openai-images-v1", "image-generate", "/generations", "json", None),
+            ("flux-generate", "blackforest-images-v1", "flux2-generate", "/flux-2/generations", "json", None),
+            ("flux-edit", "blackforest-images-v1", "flux2-edit", "/flux-2/edits", "json", None),
+        ]
+        for deployment in apis["openai-images-v1"]["authorization"]["operationConstraints"]["image-edit"]["allowedModels"]:
+            image_contracts.append(("openai-edit-" + deployment, "openai-images-v1", "image-edit", "/deployments/{deployment}/edits", "multipart", deployment))
+        cls.image_cases = []
+        for label, api, operation, path, body_format, deployment in image_contracts:
+            cls.image_cases.append(label)
+            media = "multipart/form-data; boundary=synthetic-image-boundary" if body_format == "multipart" else "application/json; charset=utf-8"
+            body = ({"model": "gpt-image-2", "prompt": "Draw the synthetic SELECT and <script> examples.", "n": 2,
+                "provider_extension": {"synthetic": True}} if api == "openai-images-v1" else {
+                "model": "FLUX.2-flex", "prompt": "Draw the synthetic SELECT example.", "input_image": "c3ludGhldGlj",
+                "input_image_2": "c2Vjb25k", "provider_extension": {"synthetic": True}})
+            base = {"config": apis[api]["authorization"], "api": api, "operation": operation,
+                "path": path, "headers": {"Content-Type": media}, "body": body}
+            if deployment is not None:
+                base.update(rawBody=multipart, parameters={"deployment": deployment})
+            cases.append(case(label + "-native-request", **base))
+            cases.append(case(label + "-revision-request", **{**base, "api": api + ";rev=2"}))
+            for suffix, patch in (
+                ("query", {"query": {"arbitrary": "synthetic"}}),
+                ("same-name-query", {"query": {"prompt": "synthetic"}}),
+                ("base64-query", {"query": {"input_image": "synthetic"}}),
+                ("api-version", {"query": {"api-version": "preview"}}),
+                ("duplicate-query", {"query": {"prompt": ["synthetic", "second"]}}),
+                ("query-before-body", {"query": {"prompt": "synthetic"}, "rawBody": "{"}),
+                ("method", {"method": "GET"}),
+                ("missing-type", {"headers": {}}),
+                ("wrong-type", {"headers": {"Content-Type": "application/json" if body_format == "multipart" else "multipart/form-data; boundary=synthetic"}}),
+                ("duplicate-type", {"headers": {"Content-Type": [media, media]}}),
+                ("wrong-route", {"path": "/different-operation"})):
+                cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
+            # Wrongly configured known operations must not bypass the media guard.
+            for suffix, field, value in (("wrong-kind", "kind", "registeredOperation"),
+                                          ("wrong-format", "bodyFormat", "json" if body_format == "multipart" else "multipart")):
+                changed_config = json.loads(json.dumps(base["config"]))
+                changed_config["operationConstraints"][operation][field] = value
+                cases.append(case(label + "-reject-" + suffix, **{**base, "config": changed_config}))
+            cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"provider-option": "synthetic"}}))
         for name, query, models in (("ws-default", {}, ["standard"]), ("ws-mini", {"model": "mini"}, ["standard", "mini"]),
                                     ("ws-mini-denied", {"model": "mini"}, ["standard"]),
                                     ("ws-unknown", {"model": "unknown"}, ["standard", "mini"]),
@@ -250,6 +296,29 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(response.find("set-status").get("code"), "400")
         self.assertIsNotNone(response.find("set-header[@name='apim-request-id']"))
         self.assertIsNone(response.find("set-body"))
+
+    def test_image_operations_enforce_query_media_and_fixed_contract_before_body_reads(self):
+        for label in self.image_cases:
+            for suffix in ("query", "same-name-query", "base64-query", "api-version", "duplicate-query", "query-before-body",
+                           "method", "missing-type", "wrong-type", "duplicate-type", "wrong-route", "wrong-kind", "wrong-format"):
+                name = label + "-reject-" + suffix
+                self.assertFalse(self.results[name]["requestAllowed"], name)
+                self.assertEqual(self.results[name]["reads"], 0, name)
+
+    def test_image_operations_preserve_json_extensions_multipart_and_model_binding(self):
+        for label in self.image_cases:
+            for suffix in ("native-request", "revision-request", "other-api"):
+                name = label + "-" + suffix
+                result = self.results[name]
+                self.assertTrue(result["requestAllowed"], name)
+                for stage in ("profile", "decision", "limits"):
+                    self.assertTrue(result[stage]["allowed"], (name, stage))
+                self.assertTrue(result["targetAllowed"], name)
+                if label.startswith("openai-edit-"):
+                    self.assertTrue(result["bodyAfter"].startswith("--synthetic-image-boundary\r\n"), name)
+                    self.assertEqual(result["reads"], 1, name)
+                else:
+                    self.assertIn("provider_extension", json.loads(result["bodyAfter"]), name)
 
     def test_profile_and_model_binding_remain_while_native_modalities_reach_provider(self):
         for name in ("unknown", "duplicate", "wrong-model", "responses-image-unknown-model"):
