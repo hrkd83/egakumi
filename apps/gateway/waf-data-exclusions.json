@@ -3341,6 +3341,9 @@
                   "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
                   "rules": [
                     {
+                      "ruleId": "942100"
+                    },
+                    {
                       "ruleId": "942120"
                     },
                     {
@@ -3598,6 +3601,9 @@
                     },
                     {
                       "ruleId": "942450"
+                    },
+                    {
+                      "ruleId": "942480"
                     }
                   ]
                 }
