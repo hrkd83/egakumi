@@ -162,10 +162,11 @@ class PublicSampleTests(unittest.TestCase):
             self.assertEqual(gateway["wafRequestBodyInspectLimitInKb"], 2000)
             self.assertEqual(gateway["wafFileUploadLimitInMb"], 4)
             self.assertTrue(gateway["realtimeControlEnabled"])
-            self.assertTrue(gateway["grpc"]["enabled"])
+            self.assertEqual({key: actual["gateway"]["grpc"][key] for key in ("enabled", "publicPort", "backendPort")},
+                             {"enabled": True, "publicPort": 8443, "backendPort": 443})
             self.assertEqual(actual["gateway"]["grpc"]["publicHostName"], actual["gateway"]["publicHostName"])
-            # An optional gRPC hostname must follow the one company-specific FQDN.
-            self.assertNotIn("publicHostName", gateway["grpc"])
+            # 共通gRPC入口は設定選択を持たず、公開名はparamsのFQDNへ揃える。
+            self.assertNotIn("grpc", gateway)
 
     def test_org_inputs_cannot_be_deployed_with_unset_target_guids(self):
         for name in ("test", "production"):

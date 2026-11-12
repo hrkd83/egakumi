@@ -30,11 +30,40 @@ API = "2024-05-01"
 HTTP2 = "Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2"
 SECRET_NAME = "core-l7-ingress-secret"
 TICKET_NAME = "core-realtime-ticket-key"
+PUBLIC_GRPC_PORT = 8443
+APIM_GRPC_PORT = 443
 
 
 def enabled(config: dict) -> bool:
-    """公開gRPC用のTCP/HTTP2入口が選択されているか読む。"""
-    return config.get("gateway", {}).get("grpc", {}).get("enabled", False) is True
+    """常設入口の内部設定を検査し、無効化・別ポートの値を拒否する。"""
+    settings = config.get("gateway", {}).get("grpc", {})
+    if not isinstance(settings, dict) or settings.get("enabled", True) is not True:
+        raise ValueError("The shared gRPC ingress cannot be disabled")
+    for name, expected in (("publicPort", PUBLIC_GRPC_PORT), ("backendPort", APIM_GRPC_PORT)):
+        value = settings.get(name, expected)
+        if type(value) is not int or value != expected:
+            raise ValueError("The shared gRPC ingress requires public port 8443 and APIM port 443")
+    return True
+
+
+def require_shared_ingress(config: dict, outputs: dict) -> None:
+    """固定入口を配備した出力か照合し、古い基盤へのAPI公開を止める。通信は行わない。"""
+    enabled(config)
+    gateway = config.get("gateway", {})
+    host = gateway.get("publicHostName")
+    declared_host = gateway.get("grpc", {}).get("publicHostName", host)
+    applied = outputs.get("grpc", {})
+    secrets_state = outputs.get("ingressSecrets", {})
+    expected_url = f"https://{host}:{PUBLIC_GRPC_PORT}"
+    if (not isinstance(host, str) or not host or declared_host != host
+            or not isinstance(applied, dict) or applied.get("enabled") is not True
+            or not isinstance(applied.get("publicHostName"), str)
+            or applied["publicHostName"].casefold() != host.casefold()
+            or not isinstance(applied.get("publicUrl"), str)
+            or applied["publicUrl"].rstrip("/").casefold() != expected_url.casefold()
+            or not isinstance(secrets_state, dict) or secrets_state.get("enabled") is not True
+            or secrets_state.get("grpcEnabled") is not True):
+        raise ValueError("The shared gRPC ingress on port 8443 must be provisioned before API publication; update the Core first")
 
 
 def realtime_enabled(config: dict) -> bool:
@@ -130,6 +159,7 @@ def apim_name_matches(config: dict, name: str) -> bool:
 
 def _own_apim(config: dict, outputs: dict) -> tuple[str, dict]:
     """配備出力のAPIM IDを命名・配置先・撤去記録と照合する。"""
+    require_shared_ingress(config, outputs)
     grpc = outputs.get("grpc" if enabled(config) else "ingressSecrets", {})
     if not isinstance(grpc, dict) or grpc.get("enabled") is not True:
         raise ValueError("gRPC bootstrap outputs are missing")

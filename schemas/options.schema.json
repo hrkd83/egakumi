@@ -377,26 +377,6 @@
           "type": "boolean",
           "default": false
         },
-        "grpc": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": {
-              "type": "boolean",
-              "default": false
-            },
-            "publicPort": {
-              "type": "integer",
-              "minimum": 1024,
-              "maximum": 64999,
-              "default": 8443
-            },
-            "backendPort": {
-              "const": 443,
-              "default": 443
-            }
-          }
-        },
         "rateLimits": {
           "type": "object",
           "additionalProperties": false,

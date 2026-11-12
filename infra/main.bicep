@@ -59,7 +59,8 @@ var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
 var portalConfig = configuration.portal
 var gatewayConfig = configuration.gateway
-var grpcConfig = gatewayConfig.?grpc ?? { enabled: false, publicPort: 8443, publicHostName: gatewayConfig.publicHostName, backendPort: 443 }
+// gRPC は通常 HTTPS と同じホストで常設し、公開 8443 から内部 APIM 443 へ転送します。
+var grpcConfig = { enabled: true, publicPort: 8443, publicHostName: gatewayConfig.publicHostName, backendPort: 443 }
 var grpcEnabled = grpcConfig.enabled
 // 公開API配列は変更せず、基盤に必要な経路・本文形式だけを参照します。
 var infrastructureApis = configuration.?infrastructureApiDefinitions ?? configuration.apiDefinitions

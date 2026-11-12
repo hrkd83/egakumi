@@ -43,7 +43,8 @@ class CatalogPublicationTests(unittest.TestCase):
     """同じ正規モジュールをnative up/API再公開から安全に呼べることを確認する。"""
     def setUp(self):
         self.config = public_contract()
-        self.config["gateway"]["grpc"] = {"enabled": True, "publicHostName": "rpc.fixture.example", "publicPort": 9443}
+        self.config["gateway"]["publicHostName"] = "rpc.fixture.example"
+        self.config["gateway"]["grpc"]["publicHostName"] = "rpc.fixture.example"
         self.api = self.config["apiDefinitions"][0]
         self.api.update(apiType="grpc", path="", productId="tool-users",
                         grpc={"definition": 'syntax = "proto3"; package fixture.v1; service Probe { rpc Echo (X) returns (X); }'})
@@ -67,7 +68,7 @@ class CatalogPublicationTests(unittest.TestCase):
         self.assertEqual(result, {"enabled": True, "checked": 1, "updated": 1, "apiIds": [self.api_id]})
         self.assertEqual(self.patches()[0][2], {"properties": {"description": describe_api(self.config, self.api)}})
         self.assertEqual(self.patches()[0][3], {"If-Match": '"fixture-api-etag"'})
-        self.assertIn("https://rpc.fixture.example:9443/", self.transport.api["properties"]["description"])
+        self.assertIn("https://rpc.fixture.example:8443/", self.transport.api["properties"]["description"])
         self.assertEqual({k: v for k, v in self.transport.api["properties"].items() if k != "description"},
                          {k: v for k, v in before.items() if k != "description"})
         self.transport.calls.clear()

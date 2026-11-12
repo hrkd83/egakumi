@@ -55,7 +55,8 @@ class GrpcBootstrapTests(unittest.TestCase):
             "resourceGroupNames": {"svc": "rg-test-fixture-svc"},
             "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True,
                 "publicHostName": "fixture.example.com", "publicPort": 8443, "backendPort": 443}},
-            "certificate": {"certificateName": "gateway-tls"}, "apiDefinitions": []}
+            "certificate": {"certificateName": "gateway-tls"}, "apiDefinitions": [],
+            "infrastructureApiDefinitions": []}
         self.client_id = "33333333-3333-4333-8333-333333333333"
         scope = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/rg-test-fixture-svc/providers/"
         self.apim_id = scope + "Microsoft.ApiManagement/service/apim-test-fixture-abc123"
@@ -63,9 +64,10 @@ class GrpcBootstrapTests(unittest.TestCase):
         self.vault = "kv-test-fixture"
         self.secret_uri = f"https://{self.vault}.vault.azure.net/secrets/gateway-tls"
         self.outputs = {"grpc": {"enabled": True, "apimId": self.apim_id,
-            "publicHostName": "fixture.example.com", "certificateSecretUri": self.secret_uri,
+            "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443",
+            "certificateSecretUri": self.secret_uri,
             "namedValueId": self.apim_id + "/namedValues/" + grpc.SECRET_NAME},
-            "ingressSecrets": {"enabled": True, "apimId": self.apim_id},
+            "ingressSecrets": {"enabled": True, "grpcEnabled": True, "apimId": self.apim_id},
             "cleanup": {"serviceResourceIds": {"apim": self.apim_id, "keyVault": self.vault_id}}}
         self.desired = {"type": "Proxy", "hostName": "fixture.example.com", "keyVaultId": self.secret_uri,
             "identityClientId": None, "defaultSslBinding": True, "negotiateClientCertificate": False}
@@ -81,15 +83,25 @@ class GrpcBootstrapTests(unittest.TestCase):
             "secretIdentifier": f"https://{self.vault}.vault.azure.net/secrets/{name}",
             "lastStatus": {"code": status}}}}
 
-    def test_disabled_generates_nothing_and_does_not_access_transport(self):
-        self.config["gateway"]["grpc"]["enabled"] = False
-        self.config["infrastructureApiDefinitions"] = []
-        transport = Transport([])
-        self.assertEqual(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json), {})
-        self.assertEqual(grpc.configure_endpoint(self.config, {}, transport), {"enabled": False})
-        self.assertEqual(grpc.configure_named_values(self.config, {}, transport), {"enabled": False})
-        self.assertFalse(list(self.root.iterdir()))
-        self.assertEqual(transport.calls, [])
+    def test_invalid_enabled_is_rejected_before_writes_or_transport(self):
+        for value in (False, None, 0, 1, "true"):
+            with self.subTest(value=value):
+                self.config["gateway"]["grpc"]["enabled"] = value
+                transport = Transport([])
+                for action in (
+                    lambda: grpc.prepare_secret(self.config, self.root, lifecycle.protected_json),
+                    lambda: grpc.configure_endpoint(self.config, {}, transport),
+                    lambda: grpc.configure_named_values(self.config, {}, transport),
+                ):
+                    with self.assertRaises(ValueError):
+                        action()
+                self.assertFalse(list(self.root.iterdir()))
+                self.assertEqual(transport.calls, [])
+
+    def test_omitted_grpc_still_prepares_the_permanent_ingress_secret(self):
+        self.config["gateway"].pop("grpc")
+        self.assertTrue(grpc.enabled(self.config))
+        self.assertEqual(set(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)), {"l7IngressSecret"})
 
     def test_apim_name_matches_owned_service_case_insensitively(self):
         """所有するサービス名だけを認め、別名・パス・クエリーは拒否する。"""
@@ -116,6 +128,26 @@ class GrpcBootstrapTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             grpc._own_apim(self.config, candidate)
 
+    def test_stale_output_contract_is_rejected_before_transport(self):
+        changes = (
+            ("grpc", "enabled", False), ("grpc", "publicHostName", "other.example.com"),
+            ("grpc", "publicUrl", "https://fixture.example.com:9443"),
+            ("ingressSecrets", "grpcEnabled", False),
+        )
+        for group, field, value in changes:
+            for missing in (False, True):
+                candidate = copy.deepcopy(self.outputs)
+                if missing:
+                    candidate[group].pop(field)
+                else:
+                    candidate[group][field] = value
+                with self.subTest(group=group, field=field, missing=missing):
+                    transport = Transport([])
+                    for action in (grpc.configure_endpoint, grpc.configure_named_values):
+                        with self.assertRaises(ValueError):
+                            action(self.config, candidate, transport)
+                    self.assertEqual(transport.calls, [])
+
     def test_grpc_rejects_coherent_foreign_service_identity(self):
         """出力と撤去記録が一致しても、別サービスのIDは採用しない。"""
         candidate = copy.deepcopy(self.outputs)
@@ -135,28 +167,28 @@ class GrpcBootstrapTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(json.loads(path.read_text())["azureTenantId"], self.config["azureTenantId"])
 
-    def test_realtime_key_independent_and_reused_without_grpc(self):
+    def test_realtime_key_is_independent_and_reused_when_reselected(self):
         self.config["apiDefinitions"] = [{"authorization": {"operationConstraints": {"create": {"kind": "realtimeCreate"}}}}]
         both = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
         self.assertNotEqual(both["l7IngressSecret"], both["realtimeTicketKey"])
-        self.config["gateway"]["grpc"]["enabled"] = False
-        ticket = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
-        self.assertEqual(ticket, {"realtimeTicketKey": both["realtimeTicketKey"]})
+        self.config["apiDefinitions"] = []
+        ingress = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
+        self.assertEqual(ingress, {"l7IngressSecret": both["l7IngressSecret"]})
+        self.config["gateway"]["realtimeControlEnabled"] = True
+        self.assertEqual(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json), both)
         grpc.remove_secret(self.config, self.root)
         self.assertFalse(list((lifecycle.local_paths(self.config, self.root).secrets).glob("*.json")))
 
     def test_foundation_can_prepare_ticket_before_api_publication(self):
-        self.config["gateway"]["grpc"]["enabled"] = False
         self.config["gateway"]["realtimeControlEnabled"] = True
         self.config["apiDefinitions"] = []
         self.assertTrue(grpc.realtime_enabled(self.config))
         credentials = grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)
-        self.assertEqual(set(credentials), {"realtimeTicketKey"})
+        self.assertEqual(set(credentials), {"l7IngressSecret", "realtimeTicketKey"})
         self.assertRegex(credentials["realtimeTicketKey"], r"^[a-f0-9]{128}$")
 
-    def test_document_jobs_prepare_and_refresh_owner_key_without_realtime_or_grpc(self):
+    def test_document_jobs_prepare_and_refresh_owner_key_without_realtime(self):
         """文書専用構成でも、公開前の署名鍵と所有するNamedValueを用意する。"""
-        self.config["gateway"]["grpc"]["enabled"] = False
         self.config["infrastructureApiDefinitions"] = [{"authorization": {"operationConstraints": {
             "analyze_document": {"kind": "documentAnalysis"}}}}]
         self.assertFalse(grpc.realtime_enabled(self.config))
@@ -167,26 +199,27 @@ class GrpcBootstrapTests(unittest.TestCase):
             path.chmod(0o600)
 
         credentials = grpc.prepare_secret(self.config, self.root, save_fixture)
-        self.assertEqual(set(credentials), {"realtimeTicketKey"})
-        transport = Transport([ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
+        self.assertEqual(set(credentials), {"l7IngressSecret", "realtimeTicketKey"})
+        transport = Transport([ok(self.named()), ok(self.named()),
+                               ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
         result = grpc.configure_named_values(self.config, self.outputs, transport)
         self.assertTrue(result["ownerTicketEnabled"])
-        self.assertFalse(result["grpcEnabled"])
+        self.assertTrue(result["grpcEnabled"])
         self.assertFalse(result["realtimeEnabled"])
-        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET"])
+        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "POST", "GET"])
 
     def test_empty_public_array_prepares_standard_document_signing_before_metadata_exists(self):
         """Coreが公開APIをまだ展開していなくても、標準文書APIの鍵は必要になる。"""
-        self.config["gateway"]["grpc"]["enabled"] = False
+        self.config.pop("infrastructureApiDefinitions")
         self.assertEqual(self.config["apiDefinitions"], [])
         self.assertNotIn("infrastructureApiDefinitions", self.config)
         self.assertFalse(grpc.realtime_enabled(self.config))
         self.assertTrue(grpc.owner_ticket_enabled(self.config))
         writes = []
         value = grpc.prepare_secret(self.config, self.root, lambda path, payload: writes.append((path, payload)))
-        self.assertEqual(set(value), {"realtimeTicketKey"})
-        self.assertEqual(len(writes), 1)
-        self.assertEqual(writes[0][0], grpc.secret_path(self.config, self.root, "realtime-ticket"))
+        self.assertEqual(set(value), {"l7IngressSecret", "realtimeTicketKey"})
+        self.assertEqual([path for path, _ in writes], [grpc.secret_path(self.config, self.root),
+                         grpc.secret_path(self.config, self.root, "realtime-ticket")])
 
     def test_wrong_environment_weak_file_and_symlink_fail_without_replacing(self):
         path = grpc.secret_path(self.config, self.root)
@@ -328,15 +361,16 @@ class GrpcBootstrapTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "refresh was not confirmed"):
                         grpc.configure_named_values(self.config, self.outputs, transport)
 
-    def test_realtime_only_refreshes_ticket_without_custom_domain_or_http2_patch(self):
-        self.config["gateway"]["grpc"]["enabled"] = False
+    def test_realtime_refreshes_both_keys_without_custom_domain_or_http2_patch(self):
         self.config["apiDefinitions"] = [{"authorization": {"operationConstraints": {"stop": {"kind": "realtimeHangup"}}}}]
-        transport = Transport([ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
+        transport = Transport([ok(self.named()), ok(self.named()),
+                               ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
         result = grpc.configure_named_values(self.config, self.outputs, transport)
-        self.assertFalse(result["grpcEnabled"])
+        self.assertTrue(result["grpcEnabled"])
         self.assertTrue(result["realtimeEnabled"])
-        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET"])
-        self.assertIn("/namedValues/core-realtime-ticket-key/", transport.calls[0]["path"])
+        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "POST", "GET"])
+        self.assertIn("/namedValues/core-l7-ingress-secret/", transport.calls[0]["path"])
+        self.assertIn("/namedValues/core-realtime-ticket-key/", transport.calls[2]["path"])
 
     def test_foreign_output_host_versioned_cert_and_existing_foreign_cert_rejected(self):
         for change in ("service", "vault", "cert", "version", "host"):
@@ -487,7 +521,6 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         expected = {
             "allow-agw-grpc": (140, "Inbound", "subnetPrefixes.agw"),
             "allow-management-grpc": (150, "Inbound", "managementPrivateIp"),
-            "allow-apim-grpc": (120, "Outbound", "subnetPrefixes.agw"),
             "allow-apim-grpc-comparison": (120, "Outbound", "managementPrivateIp"),
         }
         for name, (priority, direction, source) in expected.items():
@@ -498,13 +531,15 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
                     network,
                 )
         self.assertIn("allowRule('allow-apim-http', 100, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])", network)
+        self.assertIn("allowRule('allow-apim-grpc', 120, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])", network)
+        self.assertNotIn("withAccess(allowRule('allow-apim-grpc'", network)
         # NSG の宛先を変えても、Firewall を迂回する経路や別ノード宛ての FW 許可は追加しない。
         self.assertIn("addressPrefix: '${apimPrivateIp}/32'", network)
         self.assertIn("nextHopIpAddress: firewallPrivateIp", network)
         self.assertIn("destinationAddresses: [apimPrivateIp]", network)
         self.assertIn("destinationPorts: grpcEnabled ? ['80', string(grpcBackendPort)] : ['80']", network)
 
-    def test_secure_inputs_do_not_enter_public_outputs_and_default_stays_disabled(self):
+    def test_secure_inputs_do_not_enter_public_outputs_and_grpc_stays_enabled(self):
         core = Path(__file__).resolve().parents[1]
         source = (core / "infra/main.bicep").read_text()
         self.assertIn("@secure()\nparam l7IngressSecret", source)
@@ -514,7 +549,7 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
                 self.assertNotIn("l7IngressSecret", line)
                 self.assertNotIn("realtimeTicketKey", line)
         services = (core / "infra/modules/services.bicep").read_text()
-        self.assertIn("param enableGrpc bool = false", services)
+        self.assertIn("param enableGrpc bool = true", services)
         self.assertIn("identity: { type: 'SystemAssigned' }", services)
         self.assertNotIn("param enableCertificateReader", services)
         self.assertNotIn("param certificateIdentityId", services)
@@ -523,7 +558,7 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         self.assertNotIn("param l7IngressIdentityClientId", publication)
         self.assertNotIn("param realtimeTicketIdentityClientId", publication)
         gateway = (core / "infra/modules/application-gateway.bicep").read_text()
-        self.assertIn("param grpcEnabled bool = false", gateway)
+        self.assertIn("param grpcEnabled bool = true", gateway)
         self.assertIn("protocol: 'Tcp'", gateway)
         self.assertIn("headerName: 'X-Core-L7-Ingress', headerValue: l7IngressSecret", gateway)
         self.assertIn("backendHttpSettingsCollection", gateway)

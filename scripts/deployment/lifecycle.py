@@ -60,13 +60,10 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
   3. 実際のリソースIDなどを.local/<environment>/state/latest.jsonへ保存する。入口の仕上げが
      失敗しても、後の更新・撤去に必要な構築記録を残すため、先に保存する。
   4. deployment/helpers/grpc_lifecycle.pyのconfigure_endpoint()を呼び、
-     gateway.grpc.enabledとgateway.realtimeControlEnabled、およびAPI定義内の
-     Realtime制御操作の有無に応じて、次の仕上げを行う。
-     - gRPC有効時: APIMのカスタムドメインへ発行済み証明書のKey Vault参照を
-       設定し、HTTP/2を有効化して、反映完了を確認する。
-     - gRPCが無効の場合は、入口設定の変更を省略する。
-       Named Valueの配置・Key Vault参照の確認は後続のGateway配備が担当する。
-  5. 上記機能が有効なら、仕上げの確認結果を.local/<environment>/state/ingress-bootstrap.jsonへ保存する。
+     常設gRPC用にAPIMのカスタムドメインへ発行済み証明書のKey Vault参照を
+     設定し、HTTP/2を有効化して、反映完了を確認する。
+     Named Valueの配置・Key Vault参照の確認は後続のGateway配備が担当する。
+  5. 仕上げの確認結果を.local/<environment>/state/ingress-bootstrap.jsonへ保存する。
   6. Azure Public DNSを選んだ場合は、DNS用Subscriptionの公開ゾーンを照合し、
      GatewayとPortalのAエイリアスを今回のApp Gateway Public IPへ接続する。
      保存した参照先を読み直し、結果を.local/<environment>/state/public-dns.jsonへ記録する。

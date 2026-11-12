@@ -82,7 +82,8 @@ class PublicationTests(unittest.TestCase):
             "apimInstanceId": "abc123", "serviceResourceIds": ids, "outputs": {"names": names, "resourceGroups": self.config["resourceGroupNames"],
                 "cleanup": {"serviceResourceIds": ids}, "services": ids,
                 "endpoints": {"public": "https://fixture.example.com", "foundry": "https://aif-test-fixture.services.ai.azure.com"},
-                "certificateIdentity": {"id": identity_id, "clientId": client_id}, "grpc": {"enabled": True},
+                "certificateIdentity": {"id": identity_id, "clientId": client_id},
+                "grpc": {"enabled": True, "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443"},
                 "ingressSecrets": {"enabled": True, "grpcEnabled": True, "realtimeEnabled": True}}}
         self.plan = publish.prepare_plan(self.config, self.state)
         self.tags = {"product": "fixture", "environment": "test"}
@@ -548,6 +549,26 @@ class PublicationTests(unittest.TestCase):
             if expected["backendService"] == "foundryOpenAi":
                 expected["backendUrl"] = "https://aif-test-fixture.openai.azure.com/openai/v1"
             self.assertEqual(published, expected)
+
+    def test_api_plan_requires_applied_shared_grpc_endpoint(self):
+        """別ポートや未準備の基盤を、新しい固定入口として案内しない。"""
+        for change in ("disabled", "missing", "port", "host", "url", "proof"):
+            state = copy.deepcopy(self.state)
+            feature = state["outputs"]["grpc"]
+            if change == "disabled":
+                feature["enabled"] = False
+            elif change == "missing":
+                del state["outputs"]["grpc"]
+            elif change == "port":
+                feature["publicUrl"] = feature["publicUrl"].replace(":8443", ":9443")
+            elif change == "host":
+                feature["publicHostName"] += ".invalid"
+            elif change == "url":
+                del feature["publicUrl"]
+            else:
+                state["outputs"]["ingressSecrets"]["grpcEnabled"] = False
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "update the Core"):
+                publish.prepare_plan(self.config, state)
 
     def test_foreign_state_names_identity_and_unprepared_feature_flags_fail_offline(self):
         for key in ("subscription", "groups", "names", "identity", "grpc", "realtime"):

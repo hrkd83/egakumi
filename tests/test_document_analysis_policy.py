@@ -346,17 +346,24 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
         self.assertNotIn('timeoutSeconds', constraints['analyze_document'])
 
     def test_document_only_foundation_prepares_the_existing_server_owner_key(self):
-        from deployment.helpers.grpc_lifecycle import owner_ticket_enabled, prepare_secret, realtime_enabled
+        from deployment.helpers.grpc_lifecycle import enabled, owner_ticket_enabled, prepare_secret, realtime_enabled
         raw = self.raw()
         raw['gateway']['realtimeControlEnabled'] = False
-        raw['gateway']['grpc'] = {'enabled': False}
         config = normalize_configuration(raw)
+        self.assertTrue(enabled(config))
         self.assertFalse(realtime_enabled(config))
         self.assertTrue(owner_ticket_enabled(config))
         writer = mock.Mock()
-        with mock.patch('deployment.helpers.grpc_lifecycle._prepare_credential', return_value='synthetic-test-key') as prepare:
-            self.assertEqual(prepare_secret(config, ROOT, writer), {'realtimeTicketKey': 'synthetic-test-key'})
-            prepare.assert_called_once_with(config, ROOT, 'realtime-ticket', writer)
+        with mock.patch('deployment.helpers.grpc_lifecycle._prepare_credential',
+                        side_effect=['synthetic-ingress-key', 'synthetic-document-ticket-key']) as prepare:
+            self.assertEqual(prepare_secret(config, ROOT, writer), {
+                'l7IngressSecret': 'synthetic-ingress-key',
+                'realtimeTicketKey': 'synthetic-document-ticket-key',
+            })
+            self.assertEqual(prepare.call_args_list, [
+                mock.call(config, ROOT, 'l7-ingress', writer),
+                mock.call(config, ROOT, 'realtime-ticket', writer),
+            ])
         writer.assert_not_called()
 
     def test_standard_foundation_requires_owner_key_access_before_api_expansion(self):
@@ -364,9 +371,13 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
         raw = self.raw()
         raw['apiDefinitions'] = []
         raw['gateway']['realtimeControlEnabled'] = False
-        raw['gateway']['grpc'] = {'enabled': False}
+        from deployment.helpers.grpc_lifecycle import owner_ticket_enabled, realtime_enabled
+        config = normalize_configuration(raw)
+        self.assertFalse(realtime_enabled(config))
+        self.assertTrue(owner_ticket_enabled(config))
+        self.assertTrue(config['gateway']['grpc']['enabled'])
         raw['network']['apimKeyVaultAccessEnabled'] = False
-        with self.assertRaisesRegex(ValueError, 'owner-bound operation ticket'):
+        with self.assertRaisesRegex(ValueError, r'network\.apimKeyVaultAccessEnabled'):
             normalize_configuration(raw)
 
     def test_canonical_paths_models_auth_provider_bounds_and_owner_key_remain_required(self):

@@ -89,7 +89,7 @@ APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`で
 
 1. [標準API定義](../../apps/gateway/apim/apis/)から必要なAPIファイルを選び、そのJSONオブジェクトをparamsの`apiDefinitions`配列へ記載します。モデルだけなら[openai-inference-v1.json](../../apps/gateway/apim/apis/openai-inference-v1.json)、PIIなら[pii-v1.json](../../apps/gateway/apim/apis/pii-v1.json)を選べます。各ファイルは1つのAPI定義です。
 2. 利用するProductと購読を設定し、CM接続の条件が必要なAPIにはその設定を加えます。下の省略条件と[認証設定と購読](04-params.md#認証設定と購読)を確認し、`__NAME__`の置換欄を実値へ置換します。
-3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、gRPC有効化、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。モデル名と許可モデルの整合も確認します。
+3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの入口は有効・公開8443・APIM443に固定し、paramsで有効状態やポートを変更する項目はありません。モデル名と許可モデルの整合も確認します。
 4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
 
 | 利用する方式 | 必要な定義と省略できるもの |

@@ -145,7 +145,7 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 3. Azure Portalで5RG、APIM／Foundry／AppGW等の作成状態、選択したモデルの配備成功を確認する。
 4. `.local/<environment>/state/latest.json`の`outputs.gateway.publicIpId`・`outputs.gateway.publicIp`を、PortalのそのPublic IPと照合する。
 5. `.local/<environment>/state/public-dns.json`でAzure Public DNSのGateway・Portal用Aエイリアスが**対象環境のAppGW Public IPリソース**へ接続されたことを確認する。
-6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。native gRPCを使う場合はconfigで選択した追加TCPポートでも確認する。
+6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。常設するnative gRPCの公開TCP8443でも確認する。入口のTLS確認とは別に、登録したgRPCサービスの実RPCとストリーミングを確認する。
 7. 実行した配備で更新された`.local/<environment>/state/gateway-deployment.json`の`status: deployed`と、`.local/<environment>/state/portal-deployment.json`の`status: deployed`・`publicHealthVerified: true`を確認する。過去の成功結果が残っているだけの場合と区別する。
 8. 正規の購読キーと必要な本人セッションでGatewayの実応答を確認し、PortalのMicrosoftサインインと管理画面も確認する。初期構築後に同じ配備コマンドを重ねて実行する必要はない。
 
