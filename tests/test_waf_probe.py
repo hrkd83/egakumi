@@ -1,6 +1,7 @@
 """WAF probe evidence must preserve auth boundaries, attribution and secrecy."""
 from collections import Counter
 import base64
+import hashlib
 import io
 from dataclasses import replace
 from email import policy
@@ -786,10 +787,35 @@ class WafProbeTests(unittest.TestCase):
         url, method, headers, body, _ = send.call_args.args
         self.assertEqual(parse_qs(urlsplit(url).query, keep_blank_values=True), expected_query)
         self.assertEqual(headers["User-Agent"], "egakumi-waf-probe/1.0 " + record["correlation"])
-        self.assertRegex(record["correlation"], r"^[A-Za-z0-9]{1,56}$")
+        self.assertRegex(record["correlation"], r"^[0-9]{35}$")
         self.assertEqual((method, body), (case.method, case.body))
         self.assertNotIn("headers", record)
         self.assertNotIn(headers["User-Agent"], json.dumps(record))
+
+    def test_probe_correlation_does_not_turn_synthetic_php_case_or_run_into_a_scanner_name(self):
+        case = next(case for case in probe.image_prompt_probes(self.routes)
+            if case.path == "/models/openai-images/v1/deployments/gpt-image-2/edits"
+            and case.category == "image-prompts-php-variable-function")
+        self.assertIn("bfac", hashlib.sha256(case.case_id.encode()).hexdigest()[:12])
+        with patch.object(probe, "_curl_response", return_value=(401, {}, b"Unauthorized")) as send:
+            record = probe.run_probe(case, "https://example.invalid", "synthetic-bfac-run", 1, probe.RateLimiter(4), transport="curl")
+        correlation = record["correlation"]
+        self.assertRegex(correlation, r"^[0-9]{35}$")
+        self.assertNotIn("bfac", send.call_args.args[2]["User-Agent"].lower())
+        self.assertEqual(send.call_args.args[3], case.body)
+        self.assertEqual(urlsplit(send.call_args.args[0]).path, case.path)
+        self.assertEqual(urlsplit(send.call_args.args[0]).query, "")
+        self.assertEqual(record["case_id"], case.case_id)
+
+    def test_probe_correlation_is_deterministic_bounded_and_separates_runs_and_cases(self):
+        cases = probe.image_prompt_probes(self.routes)
+        runs = ("synthetic-run-one", "synthetic-run-two", "synthetic-bfac-run")
+        correlations = [probe.probe_correlation(run, case.case_id) for run in runs for case in cases]
+        self.assertEqual(len(correlations), len(set(correlations)))
+        self.assertEqual(correlations, [probe.probe_correlation(run, case.case_id) for run in runs for case in cases])
+        self.assertTrue(all(re.fullmatch(r"[0-9]{35}", value) for value in correlations))
+        for run in ("", "0", "a" * 1000, "合成試験-bfac-\r\n"):
+            self.assertRegex(probe.probe_correlation(run, "synthetic-case"), r"^[0-9]{35}$")
 
     def test_both_transports_send_the_same_exact_user_agent_and_no_marker_query(self):
         case = probe.Probe("transport-correlation-fixture", "gateway", "GET", "/probe", "test", "compatibility", "test",
@@ -804,6 +830,7 @@ class WafProbeTests(unittest.TestCase):
         request = opener.return_value.open.call_args.args[0]
         expected = "egakumi-waf-probe/1.0 " + curl_record["correlation"]
         self.assertEqual(curl_record["correlation"], urllib_record["correlation"])
+        self.assertRegex(curl_record["correlation"], r"^[0-9]{35}$")
         self.assertEqual(curl.call_args.args[2]["User-Agent"], expected)
         self.assertEqual(request.get_header("User-agent"), expected)
         self.assertEqual(request.full_url, "https://example.invalid/probe")
