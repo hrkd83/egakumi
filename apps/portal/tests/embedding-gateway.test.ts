@@ -23,8 +23,8 @@ test("任意の複数文章を順序どおり送信し、その件数のベク�
 });
 
 /** 認証済みの同一オリジンPOSTを、固定された公開入力で作ります。 */
-function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal): Request {
-  return new Request(`${portalOrigin}/api/models/embeddings`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
+function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal, query = ""): Request {
+  return new Request(`${portalOrigin}/api/models/embeddings${query}`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
 }
 
 /** 上流通信と認証だけを置き換え、ハンドラー自身の制約はそのまま検証します。 */
@@ -42,6 +42,46 @@ test("認証と同一オリジンを確認できない埋め込み要求はAPIM�
   assert.equal((await handleEmbeddings(request(), { ...context, readSession: async () => null })).status, 401);
   assert.equal((await handleEmbeddings(request(), { ...context, readSession: async () => { throw new Error("private database detail"); } })).status, 503);
   assert.equal(calls, 0);
+});
+
+test("埋め込みAPIの同名queryやAPI版queryは本文・購読・上流処理の前に拒否する", async () => {
+  let calls = 0;
+  const forbidden = () => { calls++; throw new Error("not called"); };
+  const context = dependencies({ readModels: forbidden, readGatewayEnvironment: forbidden, resolveSubscriptionKey: forbidden, fetch: forbidden });
+  for (const value of [input, defaultEmbeddingInput(cohere)]) {
+    for (const query of ["?texts=synthetic", "?%74exts=synthetic", "?texts=one&texts=two", "?input=synthetic", "?api-version=v1", "?api-version=preview", "?unexpected", "?=synthetic"]) {
+      const incoming = request(value, {}, undefined, query);
+      const response = await handleEmbeddings(incoming, context);
+      assert.equal(response.status, 400, query);
+      assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+      assert.equal(incoming.bodyUsed, false);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+  }
+  const malformed = new Request(`${portalOrigin}/api/models/embeddings?texts=synthetic`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
+  assert.equal((await handleEmbeddings(malformed, context)).status, 400);
+  assert.equal(malformed.bodyUsed, false);
+  assert.equal(calls, 0);
+});
+
+test("query拒否を追加しても埋め込みのmethod・同一オリジン・本人認証・JSONの判定順序を維持する", async () => {
+  let sessions = 0;
+  let calls = 0;
+  const context = dependencies({ readSession: async () => { sessions++; return actor; }, fetch: async () => { calls++; throw new Error("not called"); } });
+  const query = "?texts=synthetic";
+  const get = new Request(`${portalOrigin}/api/models/embeddings${query}`, { headers: { Origin: portalOrigin, "Content-Type": "application/json" } });
+  assert.equal((await handleEmbeddings(get, context)).status, 403);
+  assert.equal((await handleEmbeddings(request(input, { Origin: "https://other.invalid" }, undefined, query), context)).status, 403);
+  assert.equal(sessions, 0);
+  assert.equal((await handleEmbeddings(request(input, {}, undefined, query), { ...context, readSession: async () => null })).status, 401);
+  assert.equal((await handleEmbeddings(request(input, {}, undefined, query), { ...context, readSession: async () => { throw new Error("private session detail"); } })).status, 503);
+  const cancelled = new AbortController(); cancelled.abort();
+  assert.equal((await handleEmbeddings(request(input, {}, cancelled.signal, query), context)).status, 499);
+  assert.equal((await handleEmbeddings(request(input, { "Content-Type": "text/plain" }, undefined, query), context)).status, 415);
+  assert.equal((await handleEmbeddings(request(input, {}, undefined, query), context)).status, 400);
+  assert.equal(sessions, 3);
+  assert.equal(calls, 0);
+  assert.equal((await handleEmbeddings(request(input, { "Content-Type": "application/json; charset=utf-8" }), dependencies())).status, 200);
 });
 
 test("未知項目・未知モデル・不正な寸法と用途・過大本文を転送前に拒否する", async () => {

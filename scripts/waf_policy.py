@@ -89,6 +89,18 @@ AI_DATA_SCOPES = {
         'values': frozenset({'prompt'}),
         'schemas': frozenset(),
     },
+    'g-embeddings': {
+        'scope': 'gateway',
+        'paths': frozenset({'/models/cohere/v1/embed', '/models/openai-embeddings/v1/embeddings'}),
+        'values': frozenset({'input', 'texts'}),
+        'schemas': frozenset(),
+    },
+    'p-embeddings': {
+        'scope': 'portal',
+        'paths': frozenset({'/api/models/embeddings'}),
+        'values': frozenset({'texts'}),
+        'schemas': frozenset(),
+    },
 }
 
 
