@@ -14,6 +14,6 @@ AIで実現したい仕事の体験から、それを支えるAzure上のAIゲ�
 | 第4回 | [VNetとネットワークの全体像](https://youtu.be/gSfWAc1Cmnc) |
 | 第5回 | [システム経路とUDRの関係](https://youtu.be/Dv6Dk_y5Q2Y) |
 | 第6回 | [egakumiのUDR設定](https://youtu.be/UJGoEkp3K6A) |
-| 第7回 | [NSGの仕組みとルール](https://youtu.be/fHkwwrjNNOE) |
+| 第7回 | [ネットワークセキュリティの仕組みとルール](https://youtu.be/lo0VWU_hRGs) |
 
 導入・構築は[リポジトリREADME](../README.md)、API・認証・接続の仕様は[参照資料](reference/platform.md)を参照してください。
