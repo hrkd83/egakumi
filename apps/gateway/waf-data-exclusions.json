@@ -3315,6 +3315,9 @@
                       "ruleId": "941140"
                     },
                     {
+                      "ruleId": "941150"
+                    },
+                    {
                       "ruleId": "941160"
                     },
                     {
@@ -3348,6 +3351,9 @@
                     },
                     {
                       "ruleId": "942160"
+                    },
+                    {
+                      "ruleId": "942170"
                     },
                     {
                       "ruleId": "942180"
@@ -3522,6 +3528,9 @@
                   "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
                   "rules": [
                     {
+                      "ruleId": "942100"
+                    },
+                    {
                       "ruleId": "942120"
                     },
                     {
@@ -3532,6 +3541,9 @@
                     },
                     {
                       "ruleId": "942160"
+                    },
+                    {
+                      "ruleId": "942170"
                     },
                     {
                       "ruleId": "942180"
@@ -3904,6 +3916,27 @@
                   "rules": [
                     {
                       "ruleId": "933151"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "text.format.schema.$schema",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [
+                    {
+                      "ruleId": "931130"
                     }
                   ]
                 }
