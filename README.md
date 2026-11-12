@@ -8,7 +8,7 @@ Egakumiは、AIを企業・組織の「働き手」として迎え、既存の�
 
 このリポジトリでは、その土台となる **Egakumi Core** を公開しています。企業でAIを利用するための接続、APIの保護と認証、利用制限、APIキー管理、監視・監査を、Azure上で構築・運用するための資材です。将来の体験構想と、このCoreが提供する機能の範囲は区別して説明します。
 
-[YouTube再生リスト：企業向けAI基盤を学ぶ｜Egakumi勉強会](https://www.youtube.com/playlist?list=PLNZqnNo-J21s) · [勉強会動画](docs/videos.md) · [導入ガイド](docs/setup/01-prerequisites.md) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
+[勉強会動画](docs/videos.md) · [導入ガイド](docs/setup/01-prerequisites.md) · [Apache 2.0](LICENSE) · [素材・商標の扱い](MEDIA-LICENSES.md)
 
 変更に着手する前に、[リポジトリ共通ルール（AGENTS.md）](AGENTS.md)と[開発ルール](DEVELOPMENT.md)を確認してください。**企業・実環境固有の情報は、Git管理する資材・公開文書・画像・ログ・コミット履歴へ含めません。** 資材はこの1つのcheckoutを正本として使い、実設定・秘密・記録はルートの`.local/<environment>/`、azd専用情報は`.azure/`へ保護保存します。この2領域はGit・公開用の配布物へ含めません。
 
