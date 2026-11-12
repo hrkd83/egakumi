@@ -102,8 +102,8 @@ var rulesByNsg = [
     allowRule('allow-apim-http', 100, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
     allowRule('allow-key-vault', 110, 'Outbound', 'Tcp', [subnetPrefixes.agw], keyVaultPrivateIps, ['443'])
     withAccess(allowRule('allow-certificate-observer', 194, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
-    // gRPC は常設しますが、空の利用者許可範囲は同名規則を Deny にして入口を閉じます。
-    withAccess(allowRule('allow-client-grpc', 150, 'Inbound', 'Tcp', empty(clientAddressPrefixes) ? ['*'] : clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)]), grpcEnabled && !empty(clientAddressPrefixes) ? 'Allow' : 'Deny')
+    // gRPC は常設し、入力検査を通った1件以上の利用者許可範囲から接続を受けます。
+    allowRule('allow-client-grpc', 150, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)])
     allowRule('allow-apim-grpc', 120, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])
   ]
   [

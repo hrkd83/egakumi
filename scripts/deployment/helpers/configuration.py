@@ -335,11 +335,10 @@ def _network(raw: Any) -> dict:
         subnet_networks.append(subnet)
     if any(left.overlaps(right) for i, left in enumerate(subnet_networks) for right in subnet_networks[i + 1:]):
         _fail("network.subnetPrefixes", "subnets overlap")
-    # 利用者向けの省略値は全IPv4許可。空配列[]は許可元なしの明示指定であり、
-    # 「省略と同じ」と扱わない。IP許可を広げてもAPIの認証は別途必要となる。
-    for key in ("clientAddressPrefixes", "operatorAddressPrefixes"):
-        default = ["0.0.0.0/0"] if key == "clientAddressPrefixes" else []
-        n[key] = _cidrs(n.get(key, default), "network." + key)
+    # 利用者の送信元は1件以上を指定し、空配列[]は拒否します。省略時は全IPv4許可。
+    # 運用者の空配列は引き続き許可元なしを表し、APIの認証は別途必要です。
+    n["clientAddressPrefixes"] = _cidrs(n.get("clientAddressPrefixes", ["0.0.0.0/0"]), "network.clientAddressPrefixes", minimum=1)
+    n["operatorAddressPrefixes"] = _cidrs(n.get("operatorAddressPrefixes", []), "network.operatorAddressPrefixes")
     n["dnsServers"] = _strings(n.get("dnsServers", []), "network.dnsServers")
     for address in n["dnsServers"]:
         try:

@@ -213,17 +213,41 @@ class SplitConfigurationTests(unittest.TestCase):
         self.write(self.parameters, internal)
         self.assertEqual(load_configuration_source(self.parameters), internal)
 
-    def test_explicit_empty_ip_selections_survive_merge_and_normalization(self):
+    def test_explicit_non_client_empty_ip_selections_survive_merge_and_normalization(self):
         options = json.loads((CORE / "config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         parameters.pop("configFile")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(parameters)
-        parameters["network"]["clientAddressPrefixes"] = []
         result = normalize_configuration(self.sources(options, parameters))
-        for key in ("clientAddressPrefixes", "operatorAddressPrefixes", "dnsServers", "managementAdditionalSecurityRules"):
+        self.assertEqual(result["network"]["clientAddressPrefixes"], ["0.0.0.0/0"])
+        for key in ("operatorAddressPrefixes", "dnsServers", "managementAdditionalSecurityRules"):
             self.assertEqual(result["network"][key], [])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
+
+    def test_client_sources_are_nonempty_after_loading_real_split_files(self):
+        options = json.loads((CORE / "config/test.json").read_text())
+        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        parameters.pop("configFile")
+        for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
+            parameters[key] = fixture()[key]
+        adopt_azure_dns_references(parameters)
+        for prefixes in (None, ["0.0.0.0/0"], ["203.0.113.10/32", "198.51.100.0/24"], ["203.0.113.10"], []):
+            selected = copy.deepcopy(parameters)
+            if prefixes is None:
+                selected["network"].pop("clientAddressPrefixes")
+            else:
+                selected["network"]["clientAddressPrefixes"] = prefixes
+            self.sources(options, selected)
+            with self.subTest(prefixes=prefixes):
+                if prefixes == []:
+                    with self.assertRaisesRegex(ConfigurationError, r"network\.clientAddressPrefixes.*at least 1"):
+                        load_configuration(self.parameters)
+                else:
+                    loaded = load_configuration(self.parameters)
+                    expected = ["0.0.0.0/0"] if prefixes is None else prefixes
+                    self.assertEqual(loaded["network"]["clientAddressPrefixes"], expected)
+                    self.assertEqual(build_bicep_configuration(loaded)["network"]["clientAddressPrefixes"], expected)
 
     def test_public_sample_ip_values_move_unchanged_and_operational_defaults_stay_in_config(self):
         expected = {"addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
@@ -297,6 +321,38 @@ class SplitConfigurationTests(unittest.TestCase):
 
 class SplitSchemaTests(unittest.TestCase):
     """paramsと標準configの読込・合成とSchemaを検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+
+    def test_client_source_schemas_reject_empty_arrays_and_keep_optional_defaults(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        for name in ("params", "configuration"):
+            schema = json.loads((CORE / "schemas" / (name + ".schema.json")).read_text())
+            if name == "params":
+                document = json.loads((CORE / "params/test.example.json").read_text())
+                for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+                    document[key] = fixture()[key]
+                adopt_azure_dns_references(document)
+            else:
+                document = fixture()
+            validator = local_schema_validator(schema)
+            for prefixes in (None, ["0.0.0.0/0"], ["203.0.113.10/32", "198.51.100.0/24"], ["203.0.113.10"]):
+                selected = copy.deepcopy(document)
+                if prefixes is None:
+                    selected["network"].pop("clientAddressPrefixes")
+                else:
+                    selected["network"]["clientAddressPrefixes"] = prefixes
+                selected["network"]["operatorAddressPrefixes"] = []
+                selected["network"]["dnsServers"] = []
+                with self.subTest(schema=name, prefixes=prefixes):
+                    validator.validate(selected)
+            document["network"]["clientAddressPrefixes"] = []
+            with self.subTest(schema=name, prefixes=[]):
+                errors = list(validator.iter_errors(document))
+                self.assertTrue(any(error.validator == "minItems"
+                                    and list(error.absolute_path) == ["network", "clientAddressPrefixes"]
+                                    for error in errors))
 
     def test_schema_editor_defaults_match_the_files_that_use_them(self):
         # エディターが挿入するschema既定値も、JSON利用元から新配置へ解決します。
