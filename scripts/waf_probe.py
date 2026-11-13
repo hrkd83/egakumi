@@ -838,11 +838,13 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
     covered_fields = {(case.target, case.path, case.payload_field) for case in cases
                       if case.category == "extended-content-jndi-all-fields"}
     for case in _coding_content_probes(routes, (("jndi-source", literal),), literal):
-        if case.intent != "compatibility":
+        if case.intent != "compatibility" or case.payload_field.startswith("keys:"):
             continue
         route = route_by_path[(case.target, case.method, case.path)]
         label = case.category.removeprefix("ai-coding-")
-        if (case.target, case.path, case.payload_field) in covered_fields and label != "jndi-source-tool-parts":
+        if ((case.target, case.path, case.payload_field) in covered_fields
+                and label not in {"jndi-source-tool-parts", "jndi-source-reasoning-content",
+                                  "jndi-source-native-local-output", "jndi-source-native-patch-output"}):
             continue
         body = case.body
         if label == "legacy-definition":
@@ -889,6 +891,25 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
                         {"type": "namespace", "name": "synthetic_namespace", "tools": [{"type": "function", **function}]}]},
                     {"role": "user", "content": "Review the synthetic schema."}]}),
             )
+            variants += tuple(
+                item for item in _conversation_data_variants(base, True, literal)
+                if item[1].startswith("keys:")
+            )
+            for label, field_name, value in (
+                ("arguments-sibling", "input[].argumentsExtra", {**base, "input": [{
+                    "type": "tool_search_call", "call_id": "call_waf_search",
+                    "arguments": {"query": "Synthetic query"},
+                    "argumentsExtra": literal, "execution": "client"}]}),
+                ("schema-sibling", "input[].tools[].parametersExtra", {**base, "input": [{
+                    "type": "tool_search_output", "call_id": "call_waf_search",
+                    "execution": "client", "tools": [{"type": "function",
+                        "name": "synthetic_probe", "parametersExtra": literal}]}]}),
+            ):
+                cases.append(_probe(
+                    route, "jndi-control-" + label, "jndi-field-control-" + label,
+                    intent="attack_control", body=json_bytes(value),
+                    headers=[("Content-Type", "application/json")],
+                    payload_field=field_name))
         elif is_chat:
             variants = (
                 ("output-schema", "keys:response_format.json_schema.schema.properties", {**base, "response_format": {
@@ -896,11 +917,27 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
                 ("function-schema", "keys:tools[].function.parameters.properties", {**base, "tools": [{"type": "function", "function": function}]}),
                 ("legacy-schema", "keys:functions[].parameters.properties", {**base, "functions": [function]}),
             )
+            variants += tuple(
+                item for item in _conversation_data_variants(base, False, literal)
+                if item[1].startswith("keys:")
+            )
+            cases.append(_probe(
+                route, "jndi-control-reasoning-sibling", "jndi-field-control-reasoning-sibling",
+                intent="attack_control", body=json_bytes({**base, "messages": [{
+                    "role": "assistant", "content": "Synthetic final answer",
+                    "reasoning_contentExtra": literal}]}),
+                headers=[("Content-Type", "application/json")],
+                payload_field="messages[].reasoning_contentExtra"))
         else:
             variants = (
                 ("question-name", "keys:questions", {**base, "questions": {literal: {"type": "noul", "instructions": "Synthetic question."}}}),
                 ("state-key", "keys:state", {**base, "state": {literal: "Synthetic value"}}),
             )
+        if is_responses or is_chat:
+            cases.append(_probe(
+                route, "jndi-control-model", "jndi-field-control-model",
+                intent="attack_control", body=json_bytes({**base, "model": literal}),
+                headers=[("Content-Type", "application/json")], payload_field="model"))
         for label, payload_field, value in variants:
             cases.append(_probe(route, "jndi-key-" + label, "extended-content-jndi-dynamic-keys",
                 body=json_bytes(value), headers=[("Content-Type", "application/json")], payload_field=payload_field))
@@ -918,6 +955,167 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate JNDI field case IDs")
     return cases
+
+
+def _conversation_data_variants(
+    base: dict, is_responses: bool, text: str,
+) -> list[tuple[str, str, dict]]:
+    """履歴・説明・Schemaの各データ欄へ合成文字列を1種類ずつ入れます。
+
+    正規APIの配列・refusal・reasoning・tool searchの形を使います。
+    ``keys:``は値ではなく任意のJSONプロパティ名を試すケースです。
+    専用toolの履歴も合成JSONだけで、tools指定や実行は行いません。
+    """
+    plain_schema = {"type": "object", "properties": {}}
+    source_schema = {"type": "object", "properties": {
+        "sample": {"type": "string", "description": text}}}
+    key_schema = {"type": "object", "properties": {text: {"type": "string"}}}
+    if not is_responses:
+        continuation = {"role": "user", "content": "Continue the synthetic review."}
+        return [
+            ("assistant-refusal", "messages[].refusal", {**base, "messages": [
+                {"role": "assistant", "content": None, "refusal": text}, continuation]}),
+            ("assistant-refusal-parts", "messages[].content[].refusal", {**base, "messages": [
+                {"role": "assistant", "content": [{"type": "refusal", "refusal": text}]}, continuation]}),
+            ("assistant-reasoning", "messages[].reasoning_content", {**base, "messages": [
+                {"role": "assistant", "content": "Synthetic final answer",
+                 "reasoning_content": text}, continuation]}),
+            ("prediction-string", "prediction.content", {**base,
+                "prediction": {"type": "content", "content": text}}),
+            ("prediction-parts", "prediction.content[].text", {**base,
+                "prediction": {"type": "content", "content": [{"type": "text", "text": text}]}}),
+            ("format-description", "response_format.json_schema.description", {**base,
+                "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "synthetic_probe", "description": text,
+                    "strict": False, "schema": plain_schema}}}),
+            ("format-schema-key", "keys:response_format.json_schema.schema.properties", {**base,
+                "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "synthetic_probe", "strict": False, "schema": key_schema}}}),
+            ("function-parameters-key", "keys:tools[].function.parameters.properties", {**base,
+                "tools": [{"type": "function", "function": {
+                    "name": "synthetic_probe", "parameters": key_schema}}]}),
+            ("legacy-parameters-key", "keys:functions[].parameters.properties", {**base,
+                "functions": [{"name": "synthetic_probe", "parameters": key_schema}]}),
+        ]
+
+    function = {"type": "function", "name": "synthetic_probe",
+                "parameters": plain_schema}
+    namespace = {"type": "namespace", "name": "synthetic_namespace",
+                 "description": "Synthetic namespace", "tools": [function]}
+
+    def tool_history(tool: dict) -> dict:
+        return {**base, "input": [
+            {"type": "tool_search_call", "call_id": "call_waf_search",
+             "arguments": {"query": "Synthetic query"}, "execution": "client"},
+            {"type": "tool_search_output", "call_id": "call_waf_search",
+             "execution": "client", "tools": [tool]},
+            {"role": "user", "content": "Review the synthetic tool definition."},
+        ]}
+
+    variants = [
+        ("reasoning-summary", "input[].summary[].text", {**base, "input": [
+            {"type": "reasoning", "id": "rs_waf_summary", "summary": [
+                {"type": "summary_text", "text": text}]},
+            {"role": "user", "content": "Continue the synthetic review."}]}),
+        ("reasoning-content", "input[].content[].text", {**base, "input": [
+            {"type": "reasoning", "id": "rs_waf_content", "summary": [],
+             "content": [{"type": "reasoning_text", "text": text}]},
+            {"role": "user", "content": "Continue the synthetic review."}]}),
+        ("assistant-refusal", "input[].content[].refusal", {**base, "input": [
+            {"type": "message", "id": "msg_waf_refusal", "role": "assistant",
+             "status": "completed", "content": [{"type": "refusal", "refusal": text}]},
+            {"role": "user", "content": "Continue the synthetic review."}]}),
+        ("format-description", "text.format.description", {**base,
+            "text": {"format": {"type": "json_schema", "name": "synthetic_probe",
+                "description": text, "strict": False, "schema": plain_schema}}}),
+        ("function-output-schema", "tools[].output_schema.properties.sample.description",
+            {**base, "tools": [{**function, "output_schema": source_schema}]}),
+        ("function-output-schema-key", "keys:tools[].output_schema.properties",
+            {**base, "tools": [{**function, "output_schema": key_schema}]}),
+        ("format-schema-key", "keys:text.format.schema.properties", {**base,
+            "text": {"format": {"type": "json_schema", "name": "synthetic_probe",
+                "strict": False, "schema": key_schema}}}),
+        ("function-parameters-key", "keys:tools[].parameters.properties",
+            {**base, "tools": [{**function, "parameters": key_schema}]}),
+        ("nested-function-parameters-key", "keys:input[].tools[].tools[].parameters.properties",
+            tool_history({**namespace, "tools": [{**function, "parameters": key_schema}]})),
+        ("direct-function-description", "input[].tools[].description",
+            tool_history({**function, "description": text})),
+        ("direct-custom-description", "input[].tools[].description",
+            tool_history({"type": "custom", "name": "synthetic_custom",
+                          "description": text, "format": {"type": "text"}})),
+        ("namespace-description", "input[].tools[].description",
+            tool_history({**namespace, "description": text})),
+        ("direct-custom-grammar", "input[].tools[].format.definition",
+            tool_history({"type": "custom", "name": "synthetic_custom",
+                "format": {"type": "grammar", "syntax": "regex", "definition": text}})),
+        ("direct-function-schema", "input[].tools[].parameters.properties.sample.description",
+            tool_history({**function, "parameters": source_schema})),
+        ("direct-function-schema-key", "keys:input[].tools[].parameters.properties",
+            tool_history({**function, "parameters": key_schema})),
+        ("direct-output-schema", "input[].tools[].output_schema.properties.sample.description",
+            tool_history({**function, "output_schema": source_schema})),
+        ("direct-output-schema-key", "keys:input[].tools[].output_schema.properties",
+            tool_history({**function, "output_schema": key_schema})),
+        ("nested-output-schema", "input[].tools[].tools[].output_schema.properties.sample.description",
+            tool_history({**namespace, "tools": [{**function, "output_schema": source_schema}]})),
+        ("nested-output-schema-key", "keys:input[].tools[].tools[].output_schema.properties",
+            tool_history({**namespace, "tools": [{**function, "output_schema": key_schema}]})),
+    ]
+    for label, arguments in (("object-arguments", {"query": text}),
+                             ("object-arguments-key", {text: "Synthetic value"})):
+        value = tool_history(function)
+        value["input"][0]["arguments"] = arguments
+        field = "keys:input[].arguments" if label.endswith("-key") else "input[].arguments.query"
+        variants.append((label, field, value))
+    variants.extend(_native_history_variants(base, text))
+    return variants
+
+
+def _native_history_variants(base: dict, text: str) -> list[tuple[str, str, dict]]:
+    """native shell・patchの合成履歴を作り、コマンドは実行しません。
+
+    トップレベルtoolsの契約を変更せず、通常の本文と同じ不正モデル・
+    匿名canaryで専用Itemのコマンド、diff、結果の各文字列を試します。
+    """
+    local = {"type": "local_shell_call", "id": "ls_waf_native",
+             "call_id": "call_waf_local", "status": "completed",
+             "action": {"type": "exec", "command": ["printf", "synthetic"], "env": {}}}
+    local_output = {"type": "local_shell_call_output", "id": "call_waf_local",
+                    "status": "completed", "output": "Synthetic local output"}
+    shell = {"type": "shell_call", "call_id": "call_waf_shell", "status": "completed",
+             "action": {"commands": ["printf synthetic"]}}
+    shell_output = {"type": "shell_call_output", "call_id": "call_waf_shell",
+                    "status": "completed", "output": [{"stdout": "Synthetic stdout",
+                        "stderr": "", "outcome": {"type": "exit", "exit_code": 0}}]}
+    patch = {"type": "apply_patch_call", "call_id": "call_waf_patch", "status": "completed",
+             "operation": {"type": "create_file", "path": "synthetic-probe.txt",
+                           "diff": "+Synthetic file\n"}}
+    patch_output = {"type": "apply_patch_call_output", "call_id": "call_waf_patch",
+                    "status": "completed", "output": "Synthetic patch output"}
+
+    def history(call: dict, output: dict) -> dict:
+        return {**base, "input": [call, output,
+            {"role": "user", "content": "Review this inert execution history."}]}
+
+    diff = "\n".join("+" + line for line in text.splitlines()) + "\n"
+    variants = [
+        ("native-local-command", "input[].action.command[]", history({**local,
+            "action": {**local["action"], "command": ["sh", "-c", text]}}, local_output)),
+        ("native-shell-command", "input[].action.commands[]", history({**shell,
+            "action": {"commands": [text]}}, shell_output)),
+        ("native-local-output", "input[].output", history(local, {**local_output, "output": text})),
+        ("native-shell-stdout", "input[].output[].stdout", history(shell, {**shell_output,
+            "output": [{**shell_output["output"][0], "stdout": text}]})),
+        ("native-shell-stderr", "input[].output[].stderr", history(shell, {**shell_output,
+            "output": [{**shell_output["output"][0], "stderr": text}]})),
+        ("native-patch-output", "input[].output", history(patch, {**patch_output, "output": text})),
+    ]
+    for operation, patch_text in (("create_file", diff), ("update_file", "@@\n" + diff)):
+        variants.append(("native-patch-" + operation.replace("_file", ""), "input[].operation.diff",
+            history({**patch, "operation": {**patch["operation"],
+                "type": operation, "diff": patch_text}}, patch_output)))
+    return variants
 
 
 def ai_coding_probes(routes: list[Route]) -> list[Probe]:
@@ -1007,6 +1205,11 @@ def _coding_content_probes(routes: list[Route], values: tuple[tuple[str, str], .
                         "custom": {"name": "synthetic_custom", "input": text}}]},
                     {"role": "tool", "tool_call_id": "call_waf_custom", "content": "Synthetic result"},
                     {"role": "user", "content": "Continue the review."}]})
+            for variant, field_name, value in _conversation_data_variants(
+                base, is_responses, text,
+            ):
+                if not field_name.startswith("keys:"):
+                    add(label + "-" + variant, field_name, value)
 
         function = {"name": "synthetic_probe", "description": mixed, "parameters": schema, "strict": False}
         if is_responses:
@@ -1044,11 +1247,67 @@ def _coding_content_probes(routes: list[Route], values: tuple[tuple[str, str], .
             add("custom-grammar", "tools[].custom.format.grammar.definition", {**base, "tools": [{"type": "custom",
                 "custom": {"name": "synthetic_custom", "format": {"type": "grammar", "grammar": {"syntax": "regex", "definition": grammar}}}}]})
 
+        # 動的キーはsourceの組合せ1種類で各データprefixを確認します。
+        for variant, field_name, value in _conversation_data_variants(
+            base, is_responses, mixed,
+        ):
+            if field_name.startswith("keys:"):
+                add("data-key-" + variant, field_name, value)
+                name = field_name.removeprefix("keys:").replace("[]", "")
+                add("query-key-collision-" + variant, "query-keys:" + name,
+                    base, intent="validation",
+                    query=[(name + "." + CONTROL_SQL, "Synthetic value")])
+                add("query-key-multiline-collision-" + variant, "query-keys:" + name,
+                    base, intent="validation",
+                    query=[(name + "." + mixed, "Synthetic value")])
+
         # Exact endpoint controls establish that the data exceptions do not
         # extend to unrelated body fields, query arguments, or adjacent paths.
         for label, payload in (("unknown-sqli", CONTROL_SQL), ("unknown-xss", "<script>alert(1)</script>")):
             add("control-" + label, "_attack", {**base, "_attack": payload}, intent="attack_control")
         add("control-query-sqli", "query:id", base, intent="attack_control", query=[("id", CONTROL_SQL)])
+        add("control-model-sqli", "model", {**base, "model": CONTROL_SQL},
+            intent="attack_control")
+        cases.append(_probe(
+            route, "ai-coding-control-header-sqli", "ai-coding-control-header-sqli",
+            intent="attack_control", body=json_bytes(base),
+            headers=[("Content-Type", "application/json"), ("X-Attack", CONTROL_SQL)],
+            payload_field="header:X-Attack"))
+        if is_responses:
+            add("control-arguments-sibling", "input[].argumentsExtra", {
+                **base, "input": [{"type": "tool_search_call",
+                    "call_id": "call_waf_search", "arguments": {"query": "Synthetic query"},
+                    "argumentsExtra": CONTROL_SQL, "execution": "client"}]},
+                intent="attack_control")
+            add("control-schema-sibling", "input[].tools[].parametersExtra", {
+                **base, "input": [{"type": "tool_search_output",
+                    "call_id": "call_waf_search", "execution": "client", "tools": [
+                        {"type": "function", "name": "synthetic_probe",
+                         "parametersExtra": CONTROL_SQL}]}]}, intent="attack_control")
+            for name in ("command", "commands"):
+                action = {name: ["printf synthetic"], name + "Extra": [CONTROL_SQL]}
+                call = {"type": "local_shell_call" if name == "command" else "shell_call",
+                        "call_id": "call_waf_native_control", "action": action}
+                if name == "command":
+                    call.update(id="ls_waf_native_control", status="completed")
+                    action.update(type="exec", env={})
+                add("control-native-" + name + "-sibling", "input[].action." + name + "Extra[]",
+                    {**base, "input": [call]}, intent="attack_control")
+            add("control-native-diff-sibling", "input[].operation.diffExtra", {**base,
+                "input": [{"type": "apply_patch_call", "call_id": "call_waf_patch_control",
+                    "status": "completed", "operation": {"type": "create_file",
+                        "path": "synthetic-probe.txt", "diff": "+Synthetic file\n",
+                        "diffExtra": CONTROL_SQL}}]}, intent="attack_control")
+            for name in ("stdout", "stderr"):
+                output = {"stdout": "Synthetic stdout", "stderr": "",
+                          "outcome": {"type": "exit", "exit_code": 0}, name + "Extra": CONTROL_SQL}
+                add("control-native-" + name + "-sibling", "input[].output[]." + name + "Extra",
+                    {**base, "input": [{"type": "shell_call_output", "call_id": "call_waf_shell_control",
+                        "output": [output]}]}, intent="attack_control")
+        else:
+            add("control-reasoning-sibling", "messages[].reasoning_contentExtra", {**base,
+                "messages": [{"role": "assistant", "content": "Synthetic final answer",
+                    "reasoning_contentExtra": CONTROL_SQL}]}, intent="attack_control")
         neighbor = {**base, "input": "<script>alert(1)</script>"} if is_responses else {
             **base, "messages": [{"role": "user", "content": "<script>alert(1)</script>"}]}
         add("control-neighbor-xss", "input" if is_responses else "messages[].content", neighbor,
@@ -1056,6 +1315,12 @@ def _coding_content_probes(routes: list[Route], values: tuple[tuple[str, str], .
         for name in (("input.output.text", "input.input") if is_responses else ("messages.content", "messages.tool_calls.custom.input")):
             add("query-collision-" + name.replace(".", "-"), "query:" + name, base,
                 intent="validation", query=[(name, CONTROL_SQL)])
+        names = {field_name.replace("[]", "")
+                 for _, field_name, _ in _conversation_data_variants(base, is_responses, CONTROL_SQL)
+                 if not field_name.startswith("keys:")}
+        for name in sorted(names):
+            add("query-collision-data-" + name.replace(".", "-"), "query:" + name,
+                base, intent="validation", query=[(name, CONTROL_SQL)])
     return cases
 
 

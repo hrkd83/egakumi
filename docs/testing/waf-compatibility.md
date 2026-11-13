@@ -4,7 +4,7 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 コマンドはリポジトリルートで実行し、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
-モデル等のデータ欄除外の正本は `apps/gateway/waf-data-exclusions.json` です。各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。`StartsWith`は`state.`、`questions.`、JSON Schema配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
+モデル等のデータ欄除外の正本は `apps/gateway/waf-data-exclusions.json` です。各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。`StartsWith`は`state.`、`questions.`、JSON Schemaやobject形式の引数配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
 
 ## 受付容量と検査範囲
 
@@ -47,17 +47,30 @@ Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシ
 
 OpenAIのResponsesとChat Completionsは、同じ用途のデータ欄に同じアプリケーション攻撃グループ除外を適用します。[MicrosoftのAIチャット向けWAFチューニング指針](https://learn.microsoft.com/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning)に沿って、会話・指示・コード・ツール結果・引数・説明・宣言的Schemaの欄だけを選びます。SQLやコードの構文をモデルへ渡すことは、Gatewayでその構文を実行することとは別の処理です。WAFの評価はHTTP要求単位であり、履歴やツール結果が後続要求の本文に含まれることで検出対象が増えます。
 
-manifest version 2は、限定した`g-responses`・`g-chat-completions`と、下記の画像・埋め込みprofileの完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、その他用途へのグループ除外は許可しません。既存の920/921等の個別例外は保持し、プロトコル系グループを一括除外しません。
+manifest version 2は、限定した`g-responses`・`g-chat-completions`と、下記の画像・埋め込みprofileの完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、その他用途へのグループ除外は許可しません。既存の921120・921130・921150等の個別例外は保持し、プロトコル系グループを一括除外しません。
+
+Responses／Chat Completionsの承認済み自由文Valuesと、Schema・構造化引数prefixのValuesは、この6グループに`800100`・`920230`・`920270`・`920271`を加えた共通セットにそろえます。従来の欄ごとの920系の差を統一し、summary、refusal、予測出力、形式説明など同じ性質の正規データにも適用します。これはMicrosoftが指定したルール一覧ではなく、AIチャット向けの指針をこのAPI契約へ適用する構成判断です。
+
+Schema・構造化引数のKeysは、下表の11個の承認prefixすべてに6グループと`800100`・`921150`を適用します。JSONのプロパティ名はエスケープした改行やコードを含められ、モデルへ渡すデータ名がpayload中のCR/LF検知に一致することがあります。このため`921150`は`RequestArgKeys / StartsWith`の有限prefixに限って除外します。既存Keysの`920270`・`920271`等の追加例外は保持し、`920230`等を全キーへ一律に追加しません。921のグループ全体、header、兄弟fieldへこの個別例外を広げません。引数除外は同名queryにも作用するため、APIMのquery禁止を維持して拒否します。
 
 | 用途 | Responsesの例 | Chat Completionsの例 |
 | --- | --- | --- |
-| 会話・指示・ツール結果 | `input`、`input.content`、`input.content.text`、`input.output`、`input.output.text`、`instructions` | `messages.content`、`messages.content.text` |
-| シリアライズされた呼び出し引数 | `input.arguments`、`input.input` | `messages.tool_calls.function.arguments` |
-| ツール説明 | `tools.description`、`input.tools.tools.description` | `tools.function.description` |
-| 引数Schema | `tools.parameters.`、`input.tools.tools.parameters.` | `tools.function.parameters.` |
-| 出力Schema | `text.format.schema.` | `response_format.json_schema.schema.` |
+| 会話・指示・ツール結果 | `input`、`input.content`、`input.content.text`、`input.summary.text`、`input.content.refusal`、`input.output`、`input.output.text`、`instructions` | `messages.content`、`messages.content.text`、`messages.refusal`、`messages.content.refusal`、`messages.reasoning_content` |
+| 予測出力・形式説明 | `text.format.description` | `prediction.content`、`prediction.content.text`、`response_format.json_schema.description` |
+| 文字列形式の呼び出し引数 | `input.arguments`、`input.input` | `messages.tool_calls.function.arguments`、`messages.function_call.arguments`、`messages.tool_calls.custom.input` |
+| ツール説明・grammar | `tools.description`、`input.tools.description`、`input.tools.tools.description`、`input.tools.format.definition`、`input.tools.tools.format.definition` | `tools.function.description`、`functions.description`、`tools.custom.description`、`tools.custom.format.grammar.definition` |
+| 引数Schema | `tools.parameters.`、`input.tools.parameters.`、`input.tools.tools.parameters.` | `tools.function.parameters.`、`functions.parameters.` |
+| 出力Schema | `text.format.schema.`、`tools.output_schema.`、`input.tools.output_schema.`、`input.tools.tools.output_schema.` | `response_format.json_schema.schema.` |
+| object形式の呼び出し引数 | `input.arguments.` | 個別prefixの追加なし |
+| native toolの履歴データ | `input.action.command`、`input.action.commands`、`input.operation.diff`、`input.output.stdout`、`input.output.stderr` | 個別fieldの追加なし |
 
-これは用途の対応表で、許可する実際のselectorの正本はmanifestとvalidatorです。値は明示した`Equals`、動的Schemaは区切り付き`StartsWith`で値とキーを選びます。`input.`・`messages.`・`tools.`全体には広げません。制御項目、画像・ファイルの取得先URL、暗号化履歴、metadataにグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
+これは用途の対応表で、許可する実際のselectorの正本はmanifestとvalidatorです。値は明示した`Equals`、動的Schemaとobject形式の引数は区切り付き`StartsWith`で値とキーを選びます。`input.arguments`の文字列形式と`input.arguments.`のobject形式を分け、近い名前の兄弟fieldを含めません。tool search履歴で返る直置きのtool定義とnamespace内のtool定義は、それぞれ明示した説明・grammar・Schemaだけを対象にします。
+
+`StartsWith`はAzureが抽出した引数名の文字列prefixであり、JSONPathや型検証ではありません。配列を含む正規本文と抽出後の引数名を対応させ、たとえば`input[].summary[].text`を`input.summary.text`で確認します。`input.`・`messages.`・`tools.`全体には広げません。この共通化は2つのprofileの列挙済みselectorだけに限定し、他profile、画像・ファイル・暗号化履歴・metadataの既存個別除外を保持します。制御項目や取得先URLにグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
+
+native toolの履歴は[Responsesの公式入力型](https://developers.openai.com/api/reference/resources/responses/methods/create)に基づき、local shellの`action.command`配列、shellの`action.commands`配列、patchの`operation.diff`、shell結果の`output[].stdout`・`stderr`だけを上表のexact Valuesで選びます。local shell／patchの文字列形式の結果は既存の`input.output`で扱います。Gatewayが実行しない会話データに対する除外であり、Responsesのtop-level `tools`をfunctionに限定する既存APIM制約、認証・API権限を変更しません。`env`、`user`、`working_directory`、`path`、timeout、outcome、exit code、type、IDや、媒体と衝突する`input.result`へ除外を追加しません。ツールを実行するクライアントの権限・承認・sandboxは別途維持します。
+
+Chat Completionsの`messages.reasoning_content`も、モデルが生成した推論テキストを履歴へ戻す正規の自由文として同じValuesセットで扱います。[Azureのreasoning応答例](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-chat-reasoning)と[DeepSeekのthinking modeの履歴契約](https://api-docs.deepseek.com/guides/thinking_mode)は区別し、Azureの応答例だけで後続要求の受理を実証したとは扱いません。除外の根拠は公式型とデータの用途であり、特定モデルの推論成功を除外の前提にしません。実経路でのWAF通過と、モデルによる要求受理・推論成功を別々に検証します。
 
 同名queryにも引数除外が効くため、標準OpenAIの2操作にはAPIMの入口制約を組み合わせます。認証済み購読を確認した後、POST、単一の`application/json`のContent-Type、query引数がないことを検査します。`charset`等のmedia typeパラメーターは許容し、`api-version`を含めてquery引数は全拒否します。APIMのモデル許可、受信byte制約、Responsesのstateless制約、下流認証は維持します。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
 
@@ -87,7 +100,7 @@ custom Allowは使わず、920470等の他の管理規則・JSON本文検査・�
 
 受入確認では、大小文字両方のMIMEで同じ本文を試し、正規のデータ欄が通ることと、除外外fieldの攻撃対照が遮断されることを独立して照合します。画像編集・音声のmultipartと、本文なしMCP操作を別に確認します。匿名canaryでのWAF通過、認証付きの不正入力拒否、有効モデルによる埋め込み応答を区別し、通常MIMEと大小文字混在MIMEの推論結果は件数・数値配列・次元を検査します。APIキー、入力本文、埋め込みvectorは公開記録へ残しません。
 
-既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、認証・callback・他のAI用途への波及は許可しません。管理規則の変更は上記の完全パス限定のMIME判定置換等を正本に明示し、それ以外へ追加しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・企業のcustomRulesを維持します。
+既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema・構造化引数prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、認証・callback・他のAI用途への波及は許可しません。管理規則の変更は上記の完全パス限定のMIME判定置換等を正本に明示し、それ以外へ追加しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・企業のcustomRulesを維持します。
 
 Azureがグループ全体の除外を読み戻す際に省略した`rules`を空配列へ補完する場合は、承認済みOWASP 3.2グループの除外に限り、比較上だけ同じ状態として扱います。manifestでは引き続き`rules`を省略し、空配列の入力を拒否します。個別ルール、管理規則のoverride、未知の属性や他の設定差は同一視せず、再実行で不要なPUTを避けます。
 
@@ -95,7 +108,7 @@ PortalのHTTPSセッションCookie値は、`apps/portal/waf-session-exclusions.
 
 raw SSML/WAVと正本の文書受付では、正規本文の相対パス`../`が930110に一致しました。AzureはXML/raw本文の項目単位除外に対応しないため、Speechの2パス・Gateway文書受付・Portalの`/api/tools/documents`の計4完全パスだけ920420／930110を調整し、URI・query・全header・cookieには4本のcustom Blockを合成します。930100・920470等の他の管理規則と本文検査は残します。正本は`apps/gateway/waf-raw-body-controls.json`、Python生成は共通の`waf_body.raw_body_policy`です。CRSの全正規化処理と完全に同等の代替ではなく、本文内のパス文字列を許容する限定した判断です。Portalはrawストリーミングを使い、互換用multipartの`input`に対する既存5 SQL規則の値除外も維持します。Portalの状態確認・隣接パスへraw本文の調整は広げません。
 
-Log4j/JNDIの例文で検知する`Known-CVEs / 800100`は、ResponsesとChat Completionsの上表の同じ用途のデータ欄へそろえます。会話・指示・文字列／配列形式のツール結果・呼び出し引数・ツール説明・grammar定義の値、および承認済みの区切り付きSchema prefixの値とキーが対象です。Decisionの`questions.`と`state.`も、任意の質問名・判断対象JSONのキーを値と同じデータとして扱います。画像prompt、埋め込み本文、リランク本文、Portalのmessage等の既存800100除外は保持します。これは確認済みの誤検知を同義のデータ構造へ展開する構成判断であり、Microsoftがこの個別ルールやselectorを指定したものではありません。
+Log4j/JNDIの例文で検知する`Known-CVEs / 800100`は、ResponsesとChat Completionsの上表の同じ用途のデータ欄へそろえます。会話・指示・文字列／配列形式のツール結果・呼び出し引数・ツール説明・grammar定義の値、および承認済みの区切り付きSchema・構造化引数prefixの値とキーが対象です。Decisionの`questions.`と`state.`も、任意の質問名・判断対象JSONのキーを値と同じデータとして扱います。画像prompt、埋め込み本文、リランク本文、Portalのmessage等の既存800100除外は保持します。これは確認済みの誤検知を同義のデータ構造へ展開する構成判断であり、Microsoftがこの個別ルールやselectorを指定したものではありません。
 
 `Known-CVEs`全体の除外や800100の無効化は行いません。model等の制御欄、取得先URL、暗号化履歴、metadata、binaryには追加せず、既存の個別例外も変更しません。DecisionのGateway／Portal入口はPOST・JSON・queryなしに限定し、認証後・本文読取り前に拒否します。未知のfield・query・header・隣接パスの攻撃対照と、同名queryの入口検証を独立して確認します。Prevention、本文検査、集計949110/980130とプロトコル規則は維持します。
 
@@ -114,7 +127,7 @@ python3 scripts/waf_policy.py --config "$DEPLOY_PARAMS_FILE" --scope all --execu
 
 ## 再現する試験
 
-ResponsesとChat Completionsの対応するデータ欄を、PHPの変数関数呼び出しを含む言語別の例と、ツール呼び出し・ツール結果を含む履歴構造で確認します。ネストしたツール説明・Schema、動的キーも対象にし、クライアント・API・managed rule版を更新するときに再実行します。匿名canaryの通過確認と、認証付きの複数ターンE2Eを区別します。
+ResponsesとChat Completionsの対応するデータ欄を、PHPの変数関数呼び出しを含む言語別の例と、ツール呼び出し・ツール結果を含む履歴構造で確認します。summary・refusal・予測出力・形式説明、tool search履歴の直置き／namespace内の説明・Schema、object形式の引数と動的キー、native toolのcommand配列・patch差分・stdout／stderr、`reasoning_content`も対象にし、クライアント・API・managed rule版を更新するときに再実行します。Keysは既存・新規の全承認prefixで、コードとエスケープしたCR/LFを含む同じ合成キーを試します。承認prefixと近い名前の兄弟field、同名query、未知のbody field・header・隣接パスを対照に含めます。匿名canaryの通過確認と、認証付きの複数ターンE2Eを区別します。
 
 `waf_probe.py`は公開API契約・Portalの実ハンドラーから入口を列挙します。JSON／配列／Schema／関数引数／動的キー、Unicode・記号・コード・Base64、画像・PDF・音声、SSML、multipart、SDP、WebSocket Upgrade、callback、query・header、サイズ境界、攻撃対照を合成入力で試します。
 
@@ -125,6 +138,12 @@ python3 scripts/waf_probe.py \
   --portal-base-url https://portal.example.com \
   --transport curl --workers 4 --requests-per-second 4 \
   --phase verification --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-verification.json"
+
+# Responses／Chatの正規本文・Schemaと、除外範囲の対照を独立して確認
+python3 scripts/waf_probe.py --ai-coding-only \
+  --gateway-base-url https://gateway.example.com --transport curl \
+  --workers 2 --requests-per-second 2 --phase coding-verification \
+  --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-ai-coding.json"
 
 # 正規raw本文と、非本文のパストラバーサル対照を別途確認
 python3 scripts/waf_probe.py --raw-body-guards-only \

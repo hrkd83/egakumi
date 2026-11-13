@@ -1057,14 +1057,24 @@ class DataWafTests(unittest.TestCase):
                 'values': {'messages.content', 'messages.content.text',
                            'messages.tool_calls.function.arguments', 'messages.function_call.arguments',
                            'messages.tool_calls.custom.input', 'tools.function.description',
-                           'functions.description', 'tools.custom.description', 'tools.custom.format.grammar.definition'},
+                           'functions.description', 'tools.custom.description', 'tools.custom.format.grammar.definition',
+                           'messages.refusal', 'messages.content.refusal', 'prediction.content',
+                           'prediction.content.text', 'response_format.json_schema.description',
+                           'messages.reasoning_content'},
                 'schemas': {'response_format.json_schema.schema.', 'tools.function.parameters.', 'functions.parameters.'},
             },
             'g-responses': {
                 'values': {'input', 'input.content', 'input.content.text', 'instructions', 'input.arguments',
                            'input.output', 'input.output.text', 'input.input', 'tools.description',
-                           'input.tools.tools.description', 'input.tools.tools.format.definition'},
-                'schemas': {'text.format.schema.', 'tools.parameters.', 'input.tools.tools.parameters.'},
+                           'input.tools.tools.description', 'input.tools.tools.format.definition',
+                           'input.summary.text', 'input.content.refusal', 'text.format.description',
+                           'input.tools.description', 'input.tools.format.definition',
+                           'input.action.command', 'input.action.commands',
+                           'input.operation.diff', 'input.output.stdout', 'input.output.stderr'},
+                'schemas': {'text.format.schema.', 'tools.parameters.', 'tools.output_schema.',
+                            'input.tools.parameters.', 'input.tools.output_schema.',
+                            'input.tools.tools.parameters.', 'input.tools.tools.output_schema.'},
+                'json_data': {'input.arguments.'},
             },
             'g-images': {'values': {'prompt'}, 'schemas': set()},
             'p-images': {'values': {'prompt'}, 'schemas': set()},
@@ -1074,7 +1084,8 @@ class DataWafTests(unittest.TestCase):
         for name, scopes in fields.items():
             profile = profiles[name]
             expected = {('RequestArgValues', 'Equals', selector) for selector in scopes['values']}
-            expected |= {(variable, 'StartsWith', selector) for selector in scopes['schemas']
+            prefixes = scopes['schemas'] | scopes.get('json_data', set())
+            expected |= {(variable, 'StartsWith', selector) for selector in prefixes
                          for variable in ('RequestArgValues', 'RequestArgKeys')}
             actual = set()
             for entry in profile['exclusions']:
@@ -1109,7 +1120,8 @@ class DataWafTests(unittest.TestCase):
         response = profiles['g-responses']
         output = next(e for e in response['exclusions'] if e['selector'] == 'input.output.text')
         rules = {g['ruleGroupName']: g.get('rules') for g in output['exclusionManagedRuleSets'][0]['ruleGroups']}
-        self.assertEqual(rules['REQUEST-920-PROTOCOL-ENFORCEMENT'], [{'ruleId': '920230'}])
+        self.assertEqual(rules['REQUEST-920-PROTOCOL-ENFORCEMENT'],
+                         [{'ruleId': rule} for rule in ('920230', '920270', '920271')])
         self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
         self.assertEqual(rules['Known-CVEs'], [{'ruleId': '800100'}])
         self.assertIsNone(rules['REQUEST-933-APPLICATION-ATTACK-PHP'])
@@ -1122,6 +1134,173 @@ class DataWafTests(unittest.TestCase):
                       chat['exclusionManagedRuleSets'][0]['ruleGroups'])
         self.assertFalse(any(e['selector'] in ('input.', 'messages.', 'tools.')
                              for p in profiles.values() for e in p['exclusions']))
+
+    def test_ai_text_and_json_values_share_the_normal_body_rule_conditions(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        protocol_group = 'REQUEST-920-PROTOCOL-ENFORCEMENT'
+        for name in ('g-responses', 'g-chat-completions'):
+            for entry in profiles[name]['exclusions']:
+                groups = entry['exclusionManagedRuleSets'][0]['ruleGroups']
+                if (entry['matchVariable'] != 'RequestArgValues'
+                        or not any('rules' not in group for group in groups)):
+                    continue
+                with self.subTest(profile=name, selector=entry['selector']):
+                    individual = {
+                        group['ruleGroupName']: {r['ruleId'] for r in group['rules']}
+                        for group in groups if 'rules' in group
+                    }
+                    self.assertEqual(individual[protocol_group],
+                                     {'920230', '920270', '920271'})
+                    self.assertEqual(individual['Known-CVEs'], {'800100'})
+
+        retained = [
+            ('RequestArgValues', 'Equals', selector, ['921120', '921130'])
+            for selector in ('input.output.text', 'input.input',
+                             'input.tools.tools.description')
+        ] + [
+            ('RequestArgKeys', 'StartsWith', selector, ['921150'])
+            for selector in ('text.format.schema.', 'tools.parameters.')
+        ]
+        for variable, operator, selector, rules in retained:
+            old = exclusion(selector, 'REQUEST-921-PROTOCOL-ATTACK', rules,
+                            variable)
+            old['selectorMatchOperator'] = operator
+            with self.subTest(selector=selector, variable=variable):
+                self.assertTrue(any(exclusion_is_covered(old, entry)
+                                    for entry in profiles['g-responses']['exclusions']))
+        old = exclusion('response_format.json_schema.schema.',
+                        'REQUEST-921-PROTOCOL-ATTACK', ['921150'],
+                        'RequestArgKeys')
+        old['selectorMatchOperator'] = 'StartsWith'
+        self.assertTrue(any(exclusion_is_covered(old, entry)
+                            for entry in profiles['g-chat-completions']['exclusions']))
+
+    def test_native_ai_data_fields_reject_controls_and_adjacent_scopes(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        fields = {
+            'g-responses': {
+                'values': ('input.summary.text', 'input.content.refusal',
+                           'text.format.description', 'input.tools.description',
+                           'input.tools.format.definition', 'input.action.command',
+                           'input.action.commands', 'input.operation.diff',
+                           'input.output.stdout', 'input.output.stderr'),
+                'prefixes': ('tools.output_schema.', 'input.tools.parameters.',
+                             'input.tools.output_schema.',
+                             'input.tools.tools.output_schema.', 'input.arguments.'),
+                'controls': ('input.summary.type', 'input.content.image_url',
+                             'input.encrypted_content', 'input.tools.server_url',
+                             'input.tools.tools.server_url', 'input.operation.path',
+                             'input.action.working_directory', 'input.action.env',
+                             'input.action.user', 'input.action.timeout_ms',
+                             'input.output.exit_code', 'input.output.outcome.type',
+                             'input.status', 'input.type', 'input.id', 'model'),
+            },
+            'g-chat-completions': {
+                'values': ('messages.refusal', 'messages.content.refusal',
+                           'prediction.content', 'prediction.content.text',
+                           'response_format.json_schema.description',
+                           'messages.reasoning_content'),
+                'prefixes': (),
+                'controls': ('messages.audio.id', 'messages.content.file.file_data',
+                             'messages.content.input_audio.data',
+                             'messages.content.image_url.url', 'tools.custom.name',
+                             'prediction.type', 'response_format.json_schema.name'),
+            },
+        }
+        for name, contract in fields.items():
+            profile = profiles[name]
+            entries = {(e['matchVariable'], e['selectorMatchOperator'], e['selector']): e
+                       for e in profile['exclusions']}
+            approved = [('RequestArgValues', 'Equals', value)
+                        for value in contract['values']]
+            approved += [(variable, 'StartsWith', prefix)
+                         for prefix in contract['prefixes']
+                         for variable in ('RequestArgValues', 'RequestArgKeys')]
+            for variable, operator, selector in approved:
+                entry = entries[(variable, operator, selector)]
+                good = {'version': 2, 'profiles': [{
+                    'name': name, 'scope': 'gateway', 'paths': profile['paths'],
+                    'exclusions': [entry],
+                }]}
+                selected_profiles(configuration(), manifest=good)
+                for change in ('adjacent-field', 'neighbor-route', 'other-profile'):
+                    invalid = copy.deepcopy(good)
+                    item = invalid['profiles'][0]
+                    if change == 'adjacent-field':
+                        item['exclusions'][0]['selector'] = (
+                            selector[:-1] + 'Extra.' if operator == 'StartsWith'
+                            else selector + '.nested')
+                    elif change == 'neighbor-route':
+                        item['paths'] = [profile['paths'][0] + '/neighbor']
+                    else:
+                        item['name'] = 'g-rerank'
+                    with self.subTest(profile=name, selector=selector, change=change):
+                        with self.assertRaises(ValueError):
+                            selected_profiles(configuration(), manifest=invalid)
+            for selector in contract['controls']:
+                entry = copy.deepcopy(entries[approved[0]])
+                entry['selector'] = selector
+                invalid = {'version': 2, 'profiles': [{
+                    'name': name, 'scope': 'gateway', 'paths': profile['paths'],
+                    'exclusions': [entry],
+                }]}
+                with self.subTest(profile=name, control=selector):
+                    with self.assertRaises(ValueError):
+                        selected_profiles(configuration(), manifest=invalid)
+
+    def test_json_data_keys_share_only_the_individual_header_injection_exception(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        legacy_protocol = {
+            'g-chat-completions': {'response_format.json_schema.schema.'},
+            'g-responses': {'text.format.schema.', 'tools.parameters.'},
+        }
+        key_count = 0
+        for name in ('g-responses', 'g-chat-completions'):
+            for entry in profiles[name]['exclusions']:
+                if entry['matchVariable'] != 'RequestArgKeys':
+                    continue
+                key_count += 1
+                groups = {g['ruleGroupName']: g for g in
+                          entry['exclusionManagedRuleSets'][0]['ruleGroups']}
+                with self.subTest(profile=name, selector=entry['selector']):
+                    self.assertEqual(entry['selectorMatchOperator'], 'StartsWith')
+                    self.assertEqual(groups['REQUEST-921-PROTOCOL-ATTACK'], {
+                        'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK',
+                        'rules': [{'ruleId': '921150'}],
+                    })
+                    self.assertEqual(groups['Known-CVEs']['rules'],
+                                     [{'ruleId': '800100'}])
+                    if entry['selector'] in legacy_protocol[name]:
+                        self.assertEqual(groups['REQUEST-920-PROTOCOL-ENFORCEMENT'], {
+                            'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT',
+                            'rules': [{'ruleId': '920270'}, {'ruleId': '920271'}],
+                        })
+                    else:
+                        self.assertNotIn('REQUEST-920-PROTOCOL-ENFORCEMENT', groups)
+        self.assertEqual(key_count, 11)
+
+    def test_function_argument_json_prefix_covers_only_its_keys_and_values(self):
+        response = next(p for p in load_manifest()['profiles']
+                        if p['name'] == 'g-responses')
+        self.assertTrue(any(e['selector'] == 'input.arguments'
+                            and e['selectorMatchOperator'] == 'Equals'
+                            for e in response['exclusions']))
+        for variable in ('RequestArgValues', 'RequestArgKeys'):
+            prefix = next(e for e in response['exclusions']
+                          if e['selector'] == 'input.arguments.'
+                          and e['matchVariable'] == variable)
+            for selector, covered in [
+                ('input.arguments.command', True),
+                ('input.arguments.options.note', True),
+                ('input.argumentsExtra.command', False),
+                ('input.argument.command', False),
+                ('input.arguments', False),
+                ('input.content.text', False),
+            ]:
+                old = exclusion(selector, 'REQUEST-932-APPLICATION-ATTACK-RCE',
+                                ['932120'], variable)
+                with self.subTest(variable=variable, selector=selector):
+                    self.assertEqual(exclusion_is_covered(old, prefix), covered)
 
     def test_decision_jndi_excludes_data_keys_and_values_without_widening_state_root(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
@@ -1150,7 +1329,7 @@ class DataWafTests(unittest.TestCase):
         groups = [g for p in expanded['profiles'] if p['name'] in ('g-responses', 'g-chat-completions', 'g-images', 'p-images', 'g-embeddings', 'p-embeddings')
                   for e in p['exclusions'] for rs in e['exclusionManagedRuleSets'] for g in rs['ruleGroups']
                   if 'rules' not in g]
-        self.assertEqual(len(groups), 222)
+        self.assertEqual(len(groups), 378)
         self.assertTrue(all(set(group) == {'ruleGroupName'} for group in groups))
 
     def test_compiled_manifest_retains_declared_protection_and_uses_one_rule_per_exact_path(self):

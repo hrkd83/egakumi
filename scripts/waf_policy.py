@@ -52,6 +52,10 @@ AI_DATA_SCOPES = {
             'messages.tool_calls.custom.input', 'tools.function.description',
             'functions.description', 'tools.custom.description',
             'tools.custom.format.grammar.definition',
+            'messages.refusal', 'messages.content.refusal',
+            'messages.reasoning_content',
+            'prediction.content', 'prediction.content.text',
+            'response_format.json_schema.description',
         }),
         'schemas': frozenset({
             'response_format.json_schema.schema.', 'tools.function.parameters.',
@@ -66,10 +70,19 @@ AI_DATA_SCOPES = {
             'input.arguments', 'input.output', 'input.output.text', 'input.input',
             'tools.description', 'input.tools.tools.description',
             'input.tools.tools.format.definition',
+            'input.tools.description', 'input.tools.format.definition',
+            'input.summary.text', 'input.content.refusal',
+            'text.format.description',
+            'input.action.command', 'input.action.commands',
+            'input.operation.diff', 'input.output.stdout', 'input.output.stderr',
         }),
         'schemas': frozenset({
-            'text.format.schema.', 'tools.parameters.', 'input.tools.tools.parameters.',
+            'text.format.schema.', 'tools.parameters.', 'tools.output_schema.',
+            'input.tools.parameters.', 'input.tools.output_schema.',
+            'input.tools.tools.parameters.', 'input.tools.tools.output_schema.',
         }),
+        # 関数引数のオブジェクト形式はSchemaとは別のJSONデータです。
+        'json_data': frozenset({'input.arguments.'}),
     },
     'g-images': {
         'scope': 'gateway',
@@ -114,7 +127,7 @@ def _allows_ai_group(profile, item):
                                     ('matchVariable', 'selectorMatchOperator', 'selector'))
     return ((variable == 'RequestArgValues' and operator == 'Equals' and selector in scope['values'])
             or (variable in ('RequestArgValues', 'RequestArgKeys') and operator == 'StartsWith'
-                and selector in scope['schemas']))
+                and selector in scope['schemas'] | scope.get('json_data', frozenset())))
 
 
 def exclusion(selector, group, rules, variable='RequestArgValues'):
@@ -306,7 +319,7 @@ def data_scope_exclusions(profile):
 def exclusion_is_covered(existing, desired):
     """Accept an existing scope only when every old rule remains excluded.
 
-    A whole group covers its individual IDs. A delimited schema prefix also
+    A whole group covers its individual IDs. A delimited JSON data prefix also
     covers exact descendants or narrower prefixes of the same variable. A
     sibling field, another variable, an omitted rule set or an unknown object
     shape is not silently treated as equivalent.
