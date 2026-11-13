@@ -95,7 +95,9 @@ PortalのHTTPSセッションCookie値は、`apps/portal/waf-session-exclusions.
 
 raw SSML/WAVと正本の文書受付では、正規本文の相対パス`../`が930110に一致しました。AzureはXML/raw本文の項目単位除外に対応しないため、Speechの2パス・Gateway文書受付・Portalの`/api/tools/documents`の計4完全パスだけ920420／930110を調整し、URI・query・全header・cookieには4本のcustom Blockを合成します。930100・920470等の他の管理規則と本文検査は残します。正本は`apps/gateway/waf-raw-body-controls.json`、Python生成は共通の`waf_body.raw_body_policy`です。CRSの全正規化処理と完全に同等の代替ではなく、本文内のパス文字列を許容する限定した判断です。Portalはrawストリーミングを使い、互換用multipartの`input`に対する既存5 SQL規則の値除外も維持します。Portalの状態確認・隣接パスへraw本文の調整は広げません。
 
-Log4j/JNDIの例文で検知した`Known-CVEs / 800100`も、実測した正規データ欄だけへ限定します。未知のfield・query・headerの攻撃対照と、同名queryへの影響を独立して検証します。
+Log4j/JNDIの例文で検知する`Known-CVEs / 800100`は、ResponsesとChat Completionsの上表の同じ用途のデータ欄へそろえます。会話・指示・文字列／配列形式のツール結果・呼び出し引数・ツール説明・grammar定義の値、および承認済みの区切り付きSchema prefixの値とキーが対象です。Decisionの`questions.`と`state.`も、任意の質問名・判断対象JSONのキーを値と同じデータとして扱います。画像prompt、埋め込み本文、リランク本文、Portalのmessage等の既存800100除外は保持します。これは確認済みの誤検知を同義のデータ構造へ展開する構成判断であり、Microsoftがこの個別ルールやselectorを指定したものではありません。
+
+`Known-CVEs`全体の除外や800100の無効化は行いません。model等の制御欄、取得先URL、暗号化履歴、metadata、binaryには追加せず、既存の個別例外も変更しません。DecisionのGateway／Portal入口はPOST・JSON・queryなしに限定し、認証後・本文読取り前に拒否します。未知のfield・query・header・隣接パスの攻撃対照と、同名queryの入口検証を独立して確認します。Prevention、本文検査、集計949110/980130とプロトコル規則は維持します。
 
 Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。toolの動的JSON Schemaキーは、承認された引数Schema prefixの`RequestArgKeys / StartsWith`に限り、上記6カテゴリのグループ除外へ統合します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
 

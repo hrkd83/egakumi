@@ -22,8 +22,8 @@ function dependencies(overrides: Partial<DecisionGatewayDependencies> = {}): Dec
 }
 
 /** 任意の追加入力でも、送信前の検証を省略せず通します。 */
-function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal): Request {
-  return new Request(`${origin}/api/models/decision`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
+function request(value: unknown = input, headers: Record<string, string> = {}, signal?: AbortSignal, query = ""): Request {
+  return new Request(`${origin}/api/models/decision${query}`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json", ...headers }, body: JSON.stringify({ apiKeyId, ...(value as Record<string, unknown>) }), signal });
 }
 
 test("本人・同一オリジン・JSON形式を確認できない要求は送信しない", async () => {
@@ -37,6 +37,60 @@ test("本人・同一オリジン・JSON形式を確認できない要求は送�
   assert.equal((await handleDecision(request(), { ...context, readSession: async () => { throw new Error(key); } })).status, 503);
   assert.equal((await handleDecision(request(input, { "Content-Type": "text/plain" }), context)).status, 415);
   assert.equal(calls, 0);
+});
+
+test("Decisionの同名query・未知queryは本文・モデル・購読・上流処理の前に拒否する", async () => {
+  let models = 0, keys = 0, calls = 0;
+  const context = dependencies({
+    readModels: () => { models++; return [model]; },
+    resolveSubscriptionKey: async () => { keys++; return key; },
+    fetch: async () => { calls++; throw new Error("not called"); },
+  });
+  for (const query of ["?state.message=synthetic", "?questions.q.instructions=synthetic", "?%73tate.message=synthetic", "?state.message=one&state.message=two", "?api-version=v1", "?unexpected", "?=synthetic"]) {
+    const incoming = request(input, {}, undefined, query);
+    const response = await handleDecision(incoming, context);
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+    assert.equal(incoming.bodyUsed, false);
+  }
+  const malformed = new Request(`${origin}/api/models/decision?state.message=synthetic`, {
+    method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: "{",
+  });
+  assert.equal((await handleDecision(malformed, context)).status, 400);
+  assert.equal(malformed.bodyUsed, false);
+  assert.deepEqual([models, keys, calls], [0, 0, 0]);
+});
+
+test("query拒否を追加してもmethod・同一オリジン・本人認証・中止・JSONの判定順序を維持する", async () => {
+  let sessions = 0;
+  const context = dependencies({ readSession: async () => { sessions++; return actor; } });
+  const query = "?state.message=synthetic";
+  const get = new Request(`${origin}/api/models/decision${query}`, { headers: { Origin: origin } });
+  assert.equal((await handleDecision(get, context)).status, 403);
+  assert.equal((await handleDecision(request(input, { Origin: "https://other.invalid" }, undefined, query), context)).status, 403);
+  assert.equal(sessions, 0);
+  assert.equal((await handleDecision(request(input, {}, undefined, query), { ...context, readSession: async () => null })).status, 401);
+  assert.equal((await handleDecision(request(input, {}, undefined, query), { ...context, readSession: async () => { throw new Error("synthetic session failure"); } })).status, 503);
+  const cancelled = new AbortController(); cancelled.abort();
+  assert.equal((await handleDecision(request(input, {}, cancelled.signal, query), context)).status, 499);
+  assert.equal((await handleDecision(request(input, { "Content-Type": "text/plain" }, undefined, query), context)).status, 415);
+  assert.equal((await handleDecision(request(input, {}, undefined, query), context)).status, 400);
+  assert.equal(sessions, 3);
+});
+
+test("queryなしのJSONはMIMEの大小文字やcharsetで拒否せず一度だけ転送する", async () => {
+  for (const contentType of ["application/json", "Application/JSON; charset=UTF-8"]) {
+    let calls = 0;
+    const response = await handleDecision(request(input, { "Content-Type": contentType }), dependencies({
+      fetch: async (_url, options) => {
+        calls++;
+        assert.deepEqual(JSON.parse(String(options?.body)), { model: model.id, state: input.state, questions: input.questions });
+        return Response.json(body());
+      },
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(calls, 1);
+  }
 });
 
 test("入力制約、モデル固定先、要求バイト上限を外部送信前に検証する", async () => {

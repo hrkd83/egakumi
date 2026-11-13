@@ -359,12 +359,14 @@ class WafProbeTests(unittest.TestCase):
         data = [case for case in cases if case.category == "extended-content-jndi-all-fields"]
         collisions = [case for case in cases if case.category == "data-query-name-collision-jndi"]
         self.assertEqual({(case.target, case.path, case.payload_field) for case in data}, expected)
+        expected.update((case.target, case.path, case.payload_field) for case in cases
+                        if case.category == "extended-content-jndi-ai-history")
         self.assertEqual({(case.target, case.path, case.payload_field) for case in collisions}, expected)
         for case in cases:
             self.assertEqual(case.auth_mode, "anonymous")
             self.assertNotIn(case.path, {"/models/azure-speech/v1/synthesize", "/models/azure-speech/v1/recognize", "/tools/documents/v1/analyze", "/api/tools/documents"})
             self.assertFalse({name.lower() for name, _ in case.headers} & {"api-key", "authorization", "cookie"})
-            if case.category == "extended-content-jndi-all-fields":
+            if case.category.startswith("extended-content-jndi-"):
                 self.assertEqual(case.intent, "compatibility")
                 self.assertIn(literal.encode(), case.body)
                 self.assertFalse(case.query)
@@ -373,6 +375,11 @@ class WafProbeTests(unittest.TestCase):
                 self.assertEqual(case.query[0][1], literal)
                 self.assertNotIn("[]", case.query[0][0])
                 self.assertNotIn("*", case.query[0][0])
+                self.assertNotIn(literal.encode(), case.body)
+            elif case.category == "data-query-key-collision-jndi":
+                self.assertEqual(case.intent, "validation")
+                self.assertIn(literal, case.query[0][0])
+                self.assertEqual(case.query[0][1], "Synthetic value")
                 self.assertNotIn(literal.encode(), case.body)
             else:
                 self.assertEqual(case.intent, "attack_control")
@@ -385,6 +392,88 @@ class WafProbeTests(unittest.TestCase):
             if case.category == "jndi-field-control-unknown" and dict(case.headers)["Content-Type"] == "application/json":
                 self.assertEqual(json.loads(case.body)["_attack"], literal)
         self.assertEqual({case.payload_field for case in cases if case.path == "/waf-probe/jndi-nonexistent"}, {"query:metadata", "header:X-Attack"})
+
+    def test_jndi_history_covers_equivalent_tools_and_missing_free_text_fields(self):
+        literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
+        cases = [case for case in probe.jndi_field_probes(self.routes)
+                 if case.category == "extended-content-jndi-ai-history"]
+        self.assertLessEqual(len(cases), 20)
+        expected = {
+            "/models/openai/v1/responses": {"input[].arguments", "input[].output[].text", "input[].input",
+                "input[].content", "tools[].parameters", "input[].tools[].tools[].description",
+                "input[].tools[].tools[].parameters", "input[].tools[].tools[].format.definition"},
+            "/models/openai/v1/chat/completions": {"functions[].description", "functions[].parameters",
+                "messages[].function_call.arguments", "messages[].tool_calls[].custom.input",
+                "tools[].custom.description", "tools[].custom.format.grammar.definition",
+                "response_format.json_schema.schema", "messages[].content", "messages[].content[].text"},
+        }
+        for path, fields in expected.items():
+            self.assertTrue(fields <= {case.payload_field for case in cases if case.path == path})
+        output = next(case for case in cases if case.payload_field == "input[].output[].text")
+        history = json.loads(output.body)["input"]
+        self.assertEqual(history[1]["call_id"], history[2]["call_id"])
+        self.assertEqual(history[2]["output"], [{"type": "input_text", "text": literal}])
+        arguments = next(case for case in cases if case.payload_field == "input[].arguments")
+        history = json.loads(arguments.body)["input"]
+        self.assertEqual(json.loads(history[1]["arguments"]), {"source": literal})
+        self.assertNotIn(literal, history[2]["output"])
+        for field in ("messages[].content", "messages[].content[].text"):
+            output = next(case for case in cases if case.payload_field == field)
+            history = json.loads(output.body)["messages"]
+            self.assertEqual(history[2]["role"], "tool")
+            self.assertEqual(history[1]["tool_calls"][0]["id"], history[2]["tool_call_id"])
+            expected_content = literal if field == "messages[].content" else [{"type": "text", "text": literal}]
+            self.assertEqual(history[2]["content"], expected_content)
+        for case in cases:
+            self.assertEqual(json.loads(case.body)["model"], probe.INVALID_MODEL)
+            self.assertEqual(case.auth_mode, "anonymous")
+        legacy = next(case for case in cases if case.payload_field == "functions[].description")
+        self.assertEqual(json.loads(legacy.body)["functions"][0]["parameters"], {"type": "object", "properties": {}})
+        response_route = next(route for route in self.routes if route.path == "/models/openai/v1/responses")
+        self.assertTrue(probe.jndi_field_probes([response_route]))
+
+    def test_jndi_dynamic_keys_are_data_keys_in_all_schemas_and_decision_objects(self):
+        literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
+        corpus = probe.jndi_field_probes(self.routes)
+        cases = [case for case in corpus
+                 if case.category == "extended-content-jndi-dynamic-keys"]
+        expected = {
+            "/models/openai/v1/responses": {"keys:text.format.schema.properties", "keys:tools[].parameters.properties",
+                "keys:input[].tools[].tools[].parameters.properties"},
+            "/models/openai/v1/chat/completions": {"keys:response_format.json_schema.schema.properties",
+                "keys:tools[].function.parameters.properties", "keys:functions[].parameters.properties"},
+            "/models/microsoft-decision/v1/systemone": {"keys:questions", "keys:state"},
+            "/api/models/decision": {"keys:questions", "keys:state"},
+        }
+        self.assertEqual(len(cases), 10)
+        for path, fields in expected.items():
+            self.assertEqual({case.payload_field for case in cases if case.path == path}, fields)
+        collisions = [case for case in corpus if case.category == "data-query-key-collision-jndi"]
+        self.assertEqual({(case.path, case.payload_field) for case in collisions},
+                         {(case.path, case.payload_field) for case in cases})
+        def literal_locations(value, path=""):
+            keys, values = [], []
+            if isinstance(value, dict):
+                for name, child in value.items():
+                    if name == literal:
+                        keys.append(path)
+                    child_keys, child_values = literal_locations(child, path + "." + name if path else name)
+                    keys.extend(child_keys)
+                    values.extend(child_values)
+            elif isinstance(value, list):
+                for child in value:
+                    child_keys, child_values = literal_locations(child, path + "[]")
+                    keys.extend(child_keys)
+                    values.extend(child_values)
+            elif value == literal:
+                values.append(path)
+            return keys, values
+        for case in cases:
+            keys, values = literal_locations(json.loads(case.body))
+            self.assertEqual(keys, [case.payload_field.removeprefix("keys:")])
+            self.assertFalse(values)
+            self.assertEqual(case.auth_mode, "anonymous")
+            self.assertFalse(case.query)
 
     def test_jndi_cli_dry_run_selects_only_the_standalone_corpus(self):
         with tempfile.TemporaryDirectory() as directory:

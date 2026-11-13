@@ -43,6 +43,8 @@ export async function handleDecision(request: Request, dependencies: DecisionGat
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
+  // WAFのデータ欄除外が同名queryにも作用するため、本文以外の入力を受け付けません。
+  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input;
   try { input = decisionExecutionSchema.parse(JSON.parse(await readEmbeddingBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); }

