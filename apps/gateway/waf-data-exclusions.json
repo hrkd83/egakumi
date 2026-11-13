@@ -231,6 +231,9 @@
                       "ruleId": "920230"
                     },
                     {
+                      "ruleId": "920270"
+                    },
+                    {
                       "ruleId": "920271"
                     }
                   ]
@@ -434,6 +437,14 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -469,6 +480,20 @@
                   "rules": [
                     {
                       "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -512,6 +537,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -547,6 +586,20 @@
                   "rules": [
                     {
                       "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -590,6 +643,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -629,6 +696,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -668,6 +749,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -703,6 +798,332 @@
                   "rules": [
                     {
                       "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.content.refusal",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.refusal",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "prediction.content",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "prediction.content.text",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "response_format.json_schema.description",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.reasoning_content",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -976,6 +1397,9 @@
                   "rules": [
                     {
                       "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
                     },
                     {
                       "ruleId": "920271"
@@ -1508,6 +1932,12 @@
                   "rules": [
                     {
                       "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -1566,6 +1996,12 @@
                   "rules": [
                     {
                       "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -1624,6 +2060,12 @@
                   "rules": [
                     {
                       "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -1674,6 +2116,20 @@
                   "rules": [
                     {
                       "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },
@@ -1758,6 +2214,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1797,6 +2267,20 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1832,6 +2316,1044 @@
                   "rules": [
                     {
                       "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.content.refusal",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.summary.text",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "text.format.description",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgKeys",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.tools.description",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.tools.format.definition",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.arguments.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.parameters.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgKeys",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.arguments.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgKeys",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgKeys",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.parameters.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgKeys",
+          "selectorMatchOperator": "StartsWith",
+          "selector": "input.tools.tools.output_schema.",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921150"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.action.command",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.action.commands",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.operation.diff",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.output.stdout",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.output.stderr",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+                  "rules": [
+                    {
+                      "ruleId": "920230"
+                    },
+                    {
+                      "ruleId": "920270"
+                    },
+                    {
+                      "ruleId": "920271"
                     }
                   ]
                 },

