@@ -137,6 +137,28 @@ test("RealtimeのJSONに似た別MIMEと未指定MIMEは本文・キー・上流
   assert.equal(sideEffects, 0);
 });
 
+test("停止handleと同名を含むqueryは本文・購読・モデルを読む前に拒否し、認証順を保つ", async () => {
+  let sideEffects = 0;
+  const context = dependencies({
+    readModels: () => { sideEffects++; return [realtime]; },
+    resolveSubscriptionKey: async () => { sideEffects++; return key; },
+    fetch: async () => { sideEffects++; throw new Error("Unexpected request"); },
+  });
+  for (const query of ["?handle=synthetic", "?call_id=synthetic", "?unused=one&unused=two"]) {
+    const input = new Request(`${portalOrigin}/api/models/realtime/stop${query}`, {
+      method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: "invalid-json",
+    });
+    const response = await handleRealtimeStop(input, context);
+    assert.equal(response.status, 400); assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+    assert.equal(input.bodyUsed, false);
+  }
+  const unauthenticated = new Request(`${portalOrigin}/api/models/realtime/stop?handle=synthetic`, {
+    method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: "{}",
+  });
+  assert.equal((await handleRealtimeStop(unauthenticated, { ...context, readSession: async () => null })).status, 401);
+  assert.equal(unauthenticated.bodyUsed, false); assert.equal(sideEffects, 0);
+});
+
 test("WebRTCの未知音声と別系列の音声はキー取得・上流接続前に拒否する", async () => {
   let sideEffects = 0;
   const context = dependencies({

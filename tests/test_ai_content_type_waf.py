@@ -91,9 +91,9 @@ class AiContentTypeWafTests(unittest.TestCase):
                     self.assertEqual(self.header_is_blocked(value, name), name not in ("g-images", "p-speech"))
             self.assertTrue(self.header_is_blocked("audio/wav", name))
 
-    def test_only_the_17_canonical_profiles_and_published_subsets_are_selected(self):
-        self.assertEqual(set(self.selected), set(self.profiles) - {"g-transcribe", "p-document-upload"})
-        self.assertEqual(sum(len(p["paths"]) for p in self.selected.values()), 25)
+    def test_only_the_18_canonical_profiles_and_published_subsets_are_selected(self):
+        self.assertEqual(set(self.selected), set(self.profiles) - {"g-transcribe", "p-document-upload", "g-document-status", "g-realtime-ticket"})
+        self.assertEqual(sum(len(p["paths"]) for p in self.selected.values()), 26)
         for name in self.selected:
             profile = self.profiles[name]
             self.assertTrue(ai_content_type_profile(profile))

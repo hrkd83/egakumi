@@ -4,13 +4,14 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 コマンドはリポジトリルートで実行し、[第1章](../setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で設定した`DEPLOY_PARAMS_FILE`と絶対パスの`DEPLOY_LOCAL_DIRECTORY`を使います。計画・実測記録は同じ環境の領域へ保存します。
 
-モデル等のデータ欄除外の正本は `apps/gateway/waf-data-exclusions.json` です。各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。`StartsWith`は`state.`、`questions.`、JSON Schemaやobject形式の引数配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
+モデル等のデータ欄除外の正本は `apps/gateway/waf-data-exclusions.json` です。各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。署名付き文書状態参照・通話終了だけは既存operationの可変ID位置を限定patternへ写し、その専用profileで正確なticket名の`RequestHeaderValues / Equals`を使います。任意のAPI templateやheaderを対象にしません。`StartsWith`は`state.`、`questions.`、JSON Schemaやobject形式の引数配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
 
 ## 受付容量と検査範囲
 
 | 対象 | 現行資材の制御 |
 | --- | --- |
-| manifestのGateway／Portal AI完全パス、正本Speech・文書受付 | Prevention・本文検査を維持。先頭2000 KiBまで検査し、本文・ファイルのサイズ強制は解除。超過部分は検査せず受け付ける |
+| manifestのGateway／Portal AI完全パス、正本Speech・文書受付（次行の制御用途を除く） | Prevention・本文検査を維持。先頭2000 KiBまで検査し、本文・ファイルのサイズ強制は解除。超過部分は検査せず受け付ける |
+| `g-document-status`・`g-realtime-ticket`・`p-document-status` | Prevention・本文検査とbaseの容量・サイズ強制を維持。Portal文書状態参照のアプリ側32 KiB上限も維持 |
 | base・認証callback・管理系など上記以外 | 既定Prevention。configの本文検査枠・本文／ファイルサイズ強制を維持 |
 | 外部管理WAF | 自動変更しない |
 
@@ -20,7 +21,7 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 名前はGatewayが`wafpol-g-<用途>-<ID>`、Portalが`wafpol-p-<用途>-<ID>`です。`<ID>`にはparamsの`services.apimInstanceId`に保存した6文字の構築識別子を共通利用します。Bicepと個別配備は同じ名前を計算し、更新や途中再開で識別子を生成し直しません。APIのURLは変更しません。
 
-ポリシーの用途はGatewayが14個、Portalが11個の計25個です。Gatewayは公開対象に選んだ完全パスだけを関連付け、条件付きで別用途のポリシーを追加生成しません。
+ポリシーの用途はGatewayが16個、Portalが12個の計28個です。Gatewayは公開対象に選んだ経路だけを関連付け、APIの登録だけで未知の用途のポリシーを追加生成しません。
 
 | 用途 | Gatewayの用途名 | Portalの用途名 |
 | --- | --- | --- |
@@ -35,21 +36,25 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 | 音声 | `speech`（Azure Speech） | `speech`（Portalの音声入口） |
 | 音声文字起こし | `transcribe` | 上記`speech` |
 | Realtime | `realtime`（HTTP calls） | `realtime`（停止用handle） |
+| Realtimeの署名付き制御 | `realtime-ticket`（hangup・observer） | 上記`realtime` |
 | Live | `live`（HTTP sessions） | 個別のデータ欄除外なし |
 | PIIのAPI・MCP | `pii-redact` | `pii-redact` |
 | 文書アップロード | `document-upload` | `document-upload` |
+| 文書の状態参照 | `document-status` | `document-status` |
 
 Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシーへまとめ、各パスに必要な除外の集合和を適用します。画像の`input_image`、埋め込みの`input`と`texts`、PIIの`text`と`params.arguments.text`の除外は、同じポリシーの全経路に作用します。PortalのPIIは両入口とも`text`と同じCookie除外なので、除外範囲を追加せず共有します。
 
-用途名は検査するHTTP入口を表します。Realtime／LiveのWebSocket入口など、個別のデータ欄除外がない経路は`base`を使います。データ欄の除外はmanifestに明記した条件から生成し、APIのMIMEや機能名によって別の除外を自動追加しません。外部管理ポリシーの指定時は、そのポリシーを再利用します。
+用途名は検査するHTTP入口を表します。署名ticketを使うRealtime observer以外のRealtime／Live WebSocket入口など、個別のデータ欄除外がない経路は`base`を使います。データ欄の除外はmanifestに明記した条件から生成し、APIのMIMEや機能名によって別の除外を自動追加しません。外部管理ポリシーの指定時は、そのポリシーを再利用します。
 
 ## 保護条件の共通化
 
 OpenAIのResponsesとChat Completionsは、同じ用途のデータ欄に同じアプリケーション攻撃グループ除外を適用します。[MicrosoftのAIチャット向けWAFチューニング指針](https://learn.microsoft.com/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning)に沿って、会話・指示・コード・ツール結果・引数・説明・宣言的Schemaの欄だけを選びます。SQLやコードの構文をモデルへ渡すことは、Gatewayでその構文を実行することとは別の処理です。WAFの評価はHTTP要求単位であり、履歴やツール結果が後続要求の本文に含まれることで検出対象が増えます。
 
-manifest version 2は、限定した`g-responses`・`g-chat-completions`と、下記の画像・埋め込みprofileの完全パス・セレクターだけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、その他用途へのグループ除外は許可しません。既存の921120・921130・921150等の個別例外は保持し、プロトコル系グループを一括除外しません。
+manifest version 2は、validatorに列挙したprofile・経路・データ欄だけで、LFI（930）・RFI（931）・RCE（932）・PHP（933）・XSS（941）・SQLi（942）のグループ除外を許可します。Azureへは`ruleGroupName`を指定し`rules`を省略した除外を渡します。version 1の個別ID形式は引き続き読み取れます。全managed ruleの除外、集計949110/980130の除外、列挙外の用途・欄へのグループ除外は許可しません。既存の921120・921130・921150等の個別例外は保持し、プロトコル系グループを一括除外しません。
 
 Responses／Chat Completionsの承認済み自由文Valuesと、Schema・構造化引数prefixのValuesは、この6グループに`800100`・`920230`・`920270`・`920271`を加えた共通セットにそろえます。従来の欄ごとの920系の差を統一し、summary、refusal、予測出力、形式説明など同じ性質の正規データにも適用します。これはMicrosoftが指定したルール一覧ではなく、AIチャット向けの指針をこのAPI契約へ適用する構成判断です。
+
+このR/Cの通常本文Valuesには、HTTP要求の例文やログを文字列として含められるため、`921120`・`921130`も個別IDでそろえます。上記共通セットを使うexact自由文と、Schema・構造化引数の値prefixだけが対象です。JSONキー、不透明な暗号化・Base64・音声ID、画像URL、metadata、SDPや他profileへ、この2 IDを追加しません。本文中のHTTP構文と、実際のHTTP要求のheader・URI・query・framingは区別し、921グループ全体の除外やruleの無効化は行いません。
 
 Schema・構造化引数のKeysは、下表の11個の承認prefixすべてに6グループと`800100`・`921150`を適用します。JSONのプロパティ名はエスケープした改行やコードを含められ、モデルへ渡すデータ名がpayload中のCR/LF検知に一致することがあります。このため`921150`は`RequestArgKeys / StartsWith`の有限prefixに限って除外します。既存Keysの`920270`・`920271`等の追加例外は保持し、`920230`等を全キーへ一律に追加しません。921のグループ全体、header、兄弟fieldへこの個別例外を広げません。引数除外は同名queryにも作用するため、APIMのquery禁止を維持して拒否します。
 
@@ -66,7 +71,28 @@ Schema・構造化引数のKeysは、下表の11個の承認prefixすべてに6�
 
 これは用途の対応表で、許可する実際のselectorの正本はmanifestとvalidatorです。値は明示した`Equals`、動的Schemaとobject形式の引数は区切り付き`StartsWith`で値とキーを選びます。`input.arguments`の文字列形式と`input.arguments.`のobject形式を分け、近い名前の兄弟fieldを含めません。tool search履歴で返る直置きのtool定義とnamespace内のtool定義は、それぞれ明示した説明・grammar・Schemaだけを対象にします。
 
-`StartsWith`はAzureが抽出した引数名の文字列prefixであり、JSONPathや型検証ではありません。配列を含む正規本文と抽出後の引数名を対応させ、たとえば`input[].summary[].text`を`input.summary.text`で確認します。`input.`・`messages.`・`tools.`全体には広げません。この共通化は2つのprofileの列挙済みselectorだけに限定し、他profile、画像・ファイル・暗号化履歴・metadataの既存個別除外を保持します。制御項目や取得先URLにグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
+`StartsWith`はAzureが抽出した引数名の文字列prefixであり、JSONPathや型検証ではありません。配列を含む正規本文と抽出後の引数名を対応させ、たとえば`input[].summary[].text`を`input.summary.text`で確認します。`input.`・`messages.`・`tools.`全体には広げません。通常本文・不透明値・URL兼用欄・metadataを下記の用途で分け、制御項目や取得先URLへグループ除外を自動追加しません。Schemaのプロパティ名をモデルや操作の制御項目と誤認せず、nativeのoptional fieldとclient-held Itemsの互換性を維持します。
+
+| 種類 | 対象 | 除外の方針 |
+| --- | --- | --- |
+| 通常自由文・動的データ | rerankの`documents`・`query`、Decisionの`state`・`questions.`・`state.`、transcribeの`prompt`、Liveの`instructions`、PIIの`text`・`params.arguments.text`、Portalの`message`・speechの`text` | Valuesは上記6群＋800100・920230・920270・920271へ統一。Decision Keysは6群＋800100・921150と旧920系例外を保持 |
+| SDP | `g-realtime`・`g-live`のexact `sdp` | 6群と既存の個別例外を保持。URI・ICE接続先の受付制御を緩める指定ではない |
+| 不透明な履歴・ファイル値 | Responsesの`input.encrypted_content`・`input.content.file_data`、Chatの`messages.content.input_audio.data`・`messages.content.file.file_data`・`messages.audio.id` | exact Valuesへ6群。暗号化・Base64・参照IDを自然文と区別し、Known-CVEsや920の新規例外は追加せず、旧例外だけ保持 |
+| Portalの封印handle | `p-realtime`・`p-document-status`のexact `handle` | 6群と旧例外だけ。復号・本人／購読の束縛・期限をアプリで検証 |
+| URLとdata URLの兼用欄 | Responses／Chatの画像URL、FLUXの`input_image` | 既存個別IDを維持。R/Cの画像URL2exactに931130だけ追加し、FLUXの`input_image_2`には既存と同じSQL3規則だけ追加。URL兼用欄を6群へ一律統合しない |
+| metadata・設定JSON | `client_metadata.x-codex-turn-metadata`、Portal speech／文書multipartの`input` | 旧個別IDを維持。設定内のmodel・台帳ID・制御値へ自然文用除外を広げない |
+
+`encrypted_content`は[Responsesのreasoning履歴](https://platform.openai.com/docs/guides/reasoning)として後続要求へ返す正規値です。Chatの音声・ファイル・音声IDも[公式入力型](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)の区別を保ちます。WAF除外はHTTP入力の誤検知対策であり、そのmodalityが個別モデルで利用可能であることや、ファイル取得・推論成功の証明にはしません。
+
+署名付き制御は次の既存入口に分離します。文書アップロード用のraw本文調整を状態参照へ流用しません。
+
+| profile | 現行経路 | 限定selectorと入口条件 |
+| --- | --- | --- |
+| `p-document-status` | POST `/api/tools/documents/status` | JSON `handle`、queryなし、同一Origin・本人・購読・封印内容を照合。JSON MIMEの大小文字対応だけを合成 |
+| `g-document-status` | GET `/tools/documents/v1/operations/{operationId}` | header `X-Core-Document-Ticket`、queryなし、UUID形式と署名・購読・対象・期限をAPIMで照合 |
+| `g-realtime-ticket` | POST `/models/openai-realtime/v1/calls/{callId}/hangup`、GET `/models/openai-realtime/v1/observer/` | header `X-Core-Call-Ticket`、hangupはqueryなし、observerは単一`call_id`だけ。署名・購読・call ID・期限をAPIMで照合 |
+
+この3profileは6群だけをexact値・headerから除外し、baseの本文容量設定を維持します。Portal停止入口も未知のqueryを認証後・本文読取り前に拒否します。AppGWのpatternは上記2operationのAPI名・操作名・method・template・kind・bodyFormatが正本と一致した場合だけ生成し、他templateを展開しません。observerの完全パスも正本のAPI名・GET操作・WebSocket・署名observer設定に一致する場合だけを選び、同じURLのcustom APIへ除外を追加しません。[AppGWのPathPattern](https://learn.microsoft.com/en-us/azure/application-gateway/url-route-overview#pathpattern)は途中のwildcardを扱えないため、関連付けは`/tools/documents/v1/operations/*`と`/models/openai-realtime/v1/calls/*`です。`/calls`作成の完全パスは既存`g-realtime`のままです。AppGW自体はmethodやIDの構文を判定しないため、未知の子経路・他verb・余分なpath成分は既存APIのoperation照合・APIMの検証で拒否します。一般header、他Cookie、query全体への除外は追加しません。
 
 native toolの履歴は[Responsesの公式入力型](https://developers.openai.com/api/reference/resources/responses/methods/create)に基づき、local shellの`action.command`配列、shellの`action.commands`配列、patchの`operation.diff`、shell結果の`output[].stdout`・`stderr`だけを上表のexact Valuesで選びます。local shell／patchの文字列形式の結果は既存の`input.output`で扱います。Gatewayが実行しない会話データに対する除外であり、Responsesのtop-level `tools`をfunctionに限定する既存APIM制約、認証・API権限を変更しません。`env`、`user`、`working_directory`、`path`、timeout、outcome、exit code、type、IDや、媒体と衝突する`input.result`へ除外を追加しません。ツールを実行するクライアントの権限・承認・sandboxは別途維持します。
 
@@ -74,7 +100,7 @@ Chat Completionsの`messages.reasoning_content`も、モデルが生成した推
 
 同名queryにも引数除外が効くため、標準OpenAIの2操作にはAPIMの入口制約を組み合わせます。認証済み購読を確認した後、POST、単一の`application/json`のContent-Type、query引数がないことを検査します。`charset`等のmedia typeパラメーターは許容し、`api-version`を含めてquery引数は全拒否します。APIMのモデル許可、受信byte制約、Responsesのstateless制約、下流認証は維持します。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
 
-画像生成・編集では、`g-images`・`p-images`の`RequestArgValues / Equals / prompt`だけに同じ6カテゴリを適用します。各profileの既存prompt除外のうち、この6カテゴリに属する41個別IDをグループへ統合し、`800100`・`920230`・`920270`・`920271`の個別除外は保持します。`input_image`のSQL規則`942340`・`942390`・`942450`と、PortalセッションCookieの除外は変更しません。画像データ、mask、model等の制御欄へグループ除外を追加しません。これは画像APIの正規データ欄に限定した構成判断であり、画像生成モデル専用のMicrosoft推奨ルール一覧を採用したものではありません。
+画像生成・編集では、`g-images`・`p-images`の`RequestArgValues / Equals / prompt`だけに同じ6カテゴリを適用します。各profileの既存prompt除外のうち、この6カテゴリに属する41個別IDをグループへ統合し、`800100`・`920230`・`920270`・`920271`の個別除外は保持します。`input_image`のSQL規則`942340`・`942390`・`942450`を維持し、同型の`input_image_2`にもこの3規則だけを適用します。PortalセッションCookieの除外は変更しません。画像データ、mask、model等の制御欄へグループ除外を追加しません。これは画像APIの正規データ欄に限定した構成判断であり、画像生成モデル専用のMicrosoft推奨ルール一覧を採用したものではありません。
 
 | 用途 | 完全パス | 正規の本文形式 |
 | --- | --- | --- |
@@ -92,7 +118,7 @@ Chat Completionsの`messages.reasoning_content`も、モデルが生成した推
 
 埋め込みの入口制約は、公開契約のAPI名・操作・パスと`textEmbeddings`/JSON契約に一致する2操作だけを対象とし、共通認証の後にPOST、単一の`application/json`を検査します。OpenAIはqueryなし、または単一の`api-version=v1`/`preview`だけを許可し、元の値を転送します。未知名・同名input/texts・重複・不正なversionは拒否します。CohereとPortalはqueryを全拒否し、Cohereのrerank等の別操作へ広げません。Portalの既存のOrigin・セッション・JSON・入力schemaの検査を保ちます。OpenAIの単一文字列、文字列配列、token配列・二重token配列とCohereの文字列配列を変更せず、モデル・次元・provider固有オプションの検査を維持します。検査先頭2000 KiBと既存の受信byte制約は変更せず、検査枠を超えた本文を全検査したとは扱いません。これはチャット向け指針を本文の文書データに適用する構成判断であり、embedding専用のMicrosoft推奨ルール一覧ではありません。[公式APIの任意api-versionと入力型](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/embeddings)を維持します。
 
-JSONを受ける既存の用途別WAF 17 profileでは、MIMEの大小文字による誤検知を避けるため、そのpath policy内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ有限のprofile・scope・完全パス・MIME形式を使います。対象はGatewayの`g-transcribe`を除く9 profileと、Portalの`p-document-upload`を除く8 profileです。基底・認証・正本にないJSON入口へは自動展開しません。
+JSONを受ける用途別WAF 18 profileでは、MIMEの大小文字による誤検知を避けるため、そのpath policy内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ有限のprofile・scope・完全パス・MIME形式を使います。対象はGatewayの既存9 profileと、`p-document-status`を含むPortalの9 profileです。`g-document-status`・`g-realtime-ticket`、基底・認証・正本にないJSON入口へは自動展開しません。
 
 `Content-Type`が非空の場合だけ照合用に小文字化し、単一の`application/json`と正規のtoken／quoted-stringパラメーターを許可します。`Application/JSON; charset=UTF-8`は同じJSONとして扱い、`application/jsonp`、`text/plain`、カンマで結合した複数のMIME、不正なパラメーターは許可しません。共有の`g-images`と`p-speech`はJSONと`multipart/form-data`の集合和を許可し、各操作のAPIM／Portalでの形式検査を維持します。MCPの本文なしGET/DELETE等に新たなMIME必須条件を追加せず、欠落ヘッダーは既存の920340等のプロトコル規則とアプリ側受付条件に従います。[HTTP仕様のMIME比較](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)に沿うAPI契約上の構成判断です。
 
@@ -100,7 +126,7 @@ custom Allowは使わず、920470等の他の管理規則・JSON本文検査・�
 
 受入確認では、大小文字両方のMIMEで同じ本文を試し、正規のデータ欄が通ることと、除外外fieldの攻撃対照が遮断されることを独立して照合します。画像編集・音声のmultipartと、本文なしMCP操作を別に確認します。匿名canaryでのWAF通過、認証付きの不正入力拒否、有効モデルによる埋め込み応答を区別し、通常MIMEと大小文字混在MIMEの推論結果は件数・数値配列・次元を検査します。APIキー、入力本文、埋め込みvectorは公開記録へ残しません。
 
-既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema・構造化引数prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去、認証・callback・他のAI用途への波及は許可しません。管理規則の変更は上記の完全パス限定のMIME判定置換等を正本に明示し、それ以外へ追加しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・企業のcustomRulesを維持します。
+既存除外をグループ除外へ統合する際は、同じvariable・ルールセットで既存の各rule/groupを包含することを照合します。selectorは同一範囲、または承認された区切り付きSchema・構造化引数prefixがexact子field・より狭いprefixを覆う場合だけを認めます。無関係なselectorの撤去や、認証・callbackへの波及は許可しません。管理規則の変更は上記の完全パス限定のMIME判定置換等を正本に明示し、それ以外へ追加しません。IaCと運用CLIは同じmanifestを使用し、Prevention、本文検査、既存の検査容量・マスク・企業のcustomRulesを維持します。
 
 Azureがグループ全体の除外を読み戻す際に省略した`rules`を空配列へ補完する場合は、承認済みOWASP 3.2グループの除外に限り、比較上だけ同じ状態として扱います。manifestでは引き続き`rules`を省略し、空配列の入力を拒否します。個別ルール、管理規則のoverride、未知の属性や他の設定差は同一視せず、再実行で不要なPUTを避けます。
 
@@ -112,7 +138,7 @@ Log4j/JNDIの例文で検知する`Known-CVEs / 800100`は、ResponsesとChat Co
 
 `Known-CVEs`全体の除外や800100の無効化は行いません。model等の制御欄、取得先URL、暗号化履歴、metadata、binaryには追加せず、既存の個別例外も変更しません。DecisionのGateway／Portal入口はPOST・JSON・queryなしに限定し、認証後・本文読取り前に拒否します。未知のfield・query・header・隣接パスの攻撃対照と、同名queryの入口検証を独立して確認します。Prevention、本文検査、集計949110/980130とプロトコル規則は維持します。
 
-Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。toolの動的JSON Schemaキーは、承認された引数Schema prefixの`RequestArgKeys / StartsWith`に限り、上記6カテゴリのグループ除外へ統合します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
+Chat Completionsの画像data URLは、`RequestArgValues / Equals / messages.content.image_url.url`だけをXSS規則941130・941170とSQL規則942340・942450から除外します。Responsesの画像data URLは、完全パス`/models/openai/v1/responses`の`RequestArgValues / Equals / input.content.image_url`だけをXSS規則941130・941170から除外します。このURL兼用2欄には、正規の画像URLに一致するRFI規則931130だけを個別追加し、RFIグループ全体へ広げません。取得先URLの形式・実際の取得先・アクセス権の検証を代替する除外ではありません。toolの動的JSON Schemaキーは、承認された引数Schema prefixの`RequestArgKeys / StartsWith`に限り、上記6カテゴリのグループ除外へ統合します。隣接する別fieldや制御情報、headerへ広げず、集計規則949110と共通の保護条件は維持します。
 
 SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/speech-ssml-guard.xml`です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。独自の8192byte枠は撤廃し、継承した認証・受信byte検査の後、上流へ転送する前に宣言を検査します。元本文と上流URIは保持します。匿名401だけではガード成功とせず、認証付きの正常音声生成と明示400応答も確認します。SSML全体のschema検証は下流Speech側の責務です。
 
@@ -131,12 +157,31 @@ ResponsesとChat Completionsの対応するデータ欄を、PHPの変数関数�
 
 `waf_probe.py`は公開API契約・Portalの実ハンドラーから入口を列挙します。JSON／配列／Schema／関数引数／動的キー、Unicode・記号・コード・Base64、画像・PDF・音声、SSML、multipart、SDP、WebSocket Upgrade、callback、query・header、サイズ境界、攻撃対照を合成入力で試します。
 
+既定corpusに含む`typed-`ケースは、証跡の`data_type`で次のデータ型を区別します。既存ケースは保持し、型を明示していない旧ケースだけで新しい型の検証を済ませません。
+
+| 型 | fixtureと確認事項 |
+| --- | --- |
+| `conversation` | Responses／Chatそれぞれ614,400 bytesの正しいUTF-8 JSON。複数turn、3関数のSchema、引数・結果、HTTPログのCR/LF、SQL・HTML・シェル・Unicodeを同時に含み、Responsesは非空summaryと暗号化履歴欄も含む |
+| `opaque-base64`／`opaque-base64url` | 複数の長さ・seedによる未選別の合成値と、942450のhex patternへ明示一致する値。文字種・実長・decode後の再encode一致を確認。Portalのhandleは`r1.`の有無と長さも区別 |
+| `opaque-id`／`opaque-ticket` | 前回音声応答ID、JSONをBase64url化したpayloadと32-byte MAC枠からなるticket。ID／署名headerの正規な外形と、暗号・MAC・本人・期限の正当性は別に評価 |
+| `media-base64`／`media-data-url`／`media-binary` | CRC付きPNG、object/xref付きPDF、PCMフレーム入りWAVを生成し、実際の媒体構造を確認。媒体のBase64文字列を直接書き換えて壊す試験とは分ける |
+| `url`／`sdp`／`metadata` | URL、CR/LFを持つSDP、設定JSONを本文・媒体と区別。FLUXのURL受理は未確認なので、そのURLケースは入口検証用でありモデル互換性の合格にしない |
+
+これらのopaque・handle・ID・ticketは独立した合成値で、実際の暗号鍵・暗号文・発行済み参照を使いません。復号や署名が成功する値だとは扱いません。Chatの音声／ファイル入力も正規fieldの外形を試すもので、全公開モデルがそのmodalityを受理するという主張ではありません。匿名要求がWAFを通過したこと、アプリの受付、提供元による入力受理、モデル推論成功を分けて記録します。
+
+`exclusion_coverage`は、caseの`payload_field`ラベルから合格を作らず、実際のJSON、multipartのfield、header、Cookieを読み、profile・variable・operator・selectorごとの存在を照合します。値や動的キーの実文字列はcoverage記録へ保存しません。query対照を本文coverageへ加算せず、raw本文やJSONでないサイズblobもJSON selectorの検証に数えません。配列indexの省略やmultipart内JSONの展開はローカルの候補投影であり、`waf_extraction_verified`は常に`false`です。Azureが同じ項目を抽出した証明は、相関した実WAFログで別途確認します。
+
+同じhex patternは、承認欄に近い名前の兄弟field、同名query、未知header、隣接パスへも移します。同名queryはWAFの値除外にも作用し得るため、WAF403を一律の期待値にせず、認証済み入口でqueryが拒否されることを別に確認します。匿名401だけではその入口検証に合格を付けません。従来の`size-boundary`の大容量`p`反復は形式検証用の不正JSONであり、600 KiBの正規履歴とは区別します。
+
+実通信前に`--dry-run`と`--case-filter`で対象を絞り、経路・データ型・対照をレビューします。既定corpusの全件を一括送信した結果だけで、新規selectorや型の検証を置き換えません。
+
 ```sh
 python3 scripts/waf_probe.py --dry-run --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-plan.json"
 python3 scripts/waf_probe.py \
   --gateway-base-url https://gateway.example.com \
   --portal-base-url https://portal.example.com \
   --transport curl --workers 4 --requests-per-second 4 \
+  --case-filter 'typed-reasoning-' \
   --phase verification --output "$DEPLOY_LOCAL_DIRECTORY/evidence/waf-verification.json"
 
 # Responses／Chatの正規本文・Schemaと、除外範囲の対照を独立して確認

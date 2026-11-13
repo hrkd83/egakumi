@@ -38,6 +38,7 @@ def managed_ai_paths(config):
     """
     manifest = json.loads((REPOSITORY / "apps/gateway/waf-data-exclusions.json").read_text(encoding="utf-8"))
     standard = {path for profile in manifest["profiles"] if profile["scope"] == "gateway"
+                and profile["name"] not in ("g-document-status", "g-realtime-ticket")
                 for path in profile["paths"]}
     selected = set()
     for api in config.get("apiDefinitions", []):

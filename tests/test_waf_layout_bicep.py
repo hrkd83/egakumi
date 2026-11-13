@@ -18,8 +18,10 @@ DOCUMENT_PATH = "/tools/documents/v1/analyze"
 DATA_PURPOSES = {
     "g-chat-completions", "g-responses", "g-embeddings", "g-rerank", "g-decision",
     "g-images", "g-transcribe", "g-realtime", "g-live", "g-pii-redact",
+    "g-document-status", "g-realtime-ticket",
     "p-generate", "p-embeddings", "p-rerank", "p-decision", "p-images", "p-speech",
     "p-realtime", "p-document-upload", "p-pii-redact",
+    "p-document-status",
 }
 
 
@@ -111,7 +113,7 @@ class WafLayoutBicepTests(unittest.TestCase):
     def name(self, purpose):
         return f"wafpol-{purpose}-{IDENTIFIER}"
 
-    def test_identifier_contract_is_shared_with_apim_and_standard_layout_has_25_policies(self):
+    def test_identifier_contract_is_shared_with_apim_and_standard_layout_has_28_policies(self):
         identifier = self.template["parameters"]["wafPolicyIdentifier"]
         self.assertEqual((identifier["minLength"], identifier["maxLength"]), (6, 6))
         self.assertNotIn("defaultValue", identifier)
@@ -125,8 +127,8 @@ class WafLayoutBicepTests(unittest.TestCase):
         policies = self.policies(self.parameters())
         expected = DATA_PURPOSES | {"g-base", "p-base", "p-auth", "g-auth", "g-speech", "g-document-upload"}
         self.assertEqual(set(policies), {self.name(purpose) for purpose in expected})
-        self.assertEqual(sum(name.startswith("wafpol-g-") for name in policies), 14)
-        self.assertEqual(sum(name.startswith("wafpol-p-") for name in policies), 11)
+        self.assertEqual(sum(name.startswith("wafpol-g-") for name in policies), 16)
+        self.assertEqual(sum(name.startswith("wafpol-p-") for name in policies), 12)
 
     def test_merged_profiles_bind_each_exact_path_once_to_the_complete_policy(self):
         parameters = self.parameters()
@@ -165,8 +167,10 @@ class WafLayoutBicepTests(unittest.TestCase):
                 self.assertEqual(policy["managedRules"]["exclusions"].count(self.cookie), 1)
                 if name not in {self.name(p) for p in set(self.content_profiles) | {"p-document-upload"}}:
                     self.assertEqual(policy["managedRules"]["managedRuleSets"], baseline["managedRules"]["managedRuleSets"])
-            if name in {self.name(purpose) for purpose in DATA_PURPOSES | {"g-speech", "g-document-upload"}}:
+            if name in {self.name(purpose) for purpose in (DATA_PURPOSES - {"g-document-status", "g-realtime-ticket", "p-document-status"}) | {"g-speech", "g-document-upload"}}:
                 self.assertEqual(policy["policySettings"], ai_body_settings({**baseline["policySettings"], "mode": "Prevention"}))
+            elif name in {self.name(purpose) for purpose in {"g-document-status", "g-realtime-ticket", "p-document-status"}}:
+                self.assertEqual(policy["policySettings"], {**baseline["policySettings"], "mode": "Prevention"})
             else:
                 self.assertEqual(policy["policySettings"], baseline["policySettings"])
             if name in {self.name(purpose) for purpose in DATA_PURPOSES - {"p-document-upload"} - set(self.content_profiles)}:
@@ -175,14 +179,14 @@ class WafLayoutBicepTests(unittest.TestCase):
         for purpose in ("p-base", "p-auth", "g-auth"):
             self.assertEqual(policies[self.name(purpose)]["policySettings"]["mode"], "Detection")
 
-    def test_ai_content_controls_match_python_and_change_only_the_17_policies(self):
+    def test_ai_content_controls_match_python_and_change_only_the_18_policies(self):
         custom = [{"name": "fixture-one", "priority": 1, "action": "Block"},
                   {"name": "fixture-three", "priority": 3, "action": "Block"}]
         policies = self.policies(self.parameters(wafCustomRules=custom))
         baseline = policies[self.name("g-base")]
         source = {"location": "japaneast", "properties": copy.deepcopy(baseline)}
         owned_name = self.json_controls["rule"]["name"]
-        self.assertEqual(set(self.content_profiles), DATA_PURPOSES - {"g-transcribe", "p-document-upload"})
+        self.assertEqual(set(self.content_profiles), DATA_PURPOSES - {"g-transcribe", "p-document-upload", "g-document-status", "g-realtime-ticket"})
         for purpose in self.content_profiles:
             profile = next(p for p in self.profiles if p["name"] == purpose)
             actual = policies[self.name(purpose)]
@@ -268,7 +272,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         parameters = self.parameters()
         parameters["publishedApiPaths"] += ["/enterprise/custom-binary", "/enterprise/mcp/messages", "/enterprise/chat"]
         policies = self.policies(parameters)
-        self.assertEqual(len(policies), 25)
+        self.assertEqual(len(policies), 28)
         for profile in self.profiles:
             expected = [*parameters["wafExclusions"]]
             if profile["scope"] == "portal":
@@ -294,8 +298,15 @@ class WafLayoutBicepTests(unittest.TestCase):
             groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
                        "rules": [{"ruleId": "941130"}, {"ruleId": "941170"}]}]
             if purpose == "g-chat-completions":
+                groups.insert(0, {"ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                                  "rules": [{"ruleId": "931130"}]})
                 groups.append({"ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
                                "rules": [{"ruleId": "942340"}, {"ruleId": "942450"}]})
+            else:
+                groups = [{"ruleGroupName": name} for name in (
+                    "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
+                    "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
+                    "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
             self.assertEqual(entry["exclusionManagedRuleSets"][0]["ruleGroups"], groups)
 
     def test_external_policy_boundary_remains_readonly(self):

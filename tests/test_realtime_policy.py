@@ -100,6 +100,11 @@ public static class TicketFixture {
     var body = JObject.Parse(SecretRequest(context));
     var checks = new JObject();
     checks["owner"] = Check(ticket);
+    foreach (var queryName in new [] {"handle", "X-Core-Call-Ticket", "call_id"}) {
+      var withQuery = NewContext(); withQuery.Request.Headers["X-Core-Call-Ticket"] = new string[] {ticket};
+      withQuery.Request.Url.Query[queryName] = new string[] {"synthetic-unused"};
+      checks["hangupQuery-" + queryName] = Verify(withQuery);
+    }
     checks["otherCaller"] = Check(ticket,"caller-b");
     var sameLabels = NewContext(principal:"33333333-3333-4333-8333-333333333333");
     sameLabels.Request.Headers["X-Core-Call-Ticket"] = new string[]{ticket};
@@ -450,6 +455,12 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertTrue(self.checks["otherContract"])
         for name in ("otherCaller", "otherCall", "pathInjection"):
             with self.subTest(name=name): self.assertFalse(self.checks[name])
+
+    def test_hangup_rejects_all_query_aliases_even_with_the_valid_owner_ticket(self):
+        self.assertTrue(self.checks["owner"])
+        for name in ("handle", "X-Core-Call-Ticket", "call_id"):
+            with self.subTest(query=name):
+                self.assertFalse(self.checks["hangupQuery-" + name])
 
     def test_optional_person_tokens_do_not_change_subscription_ownership(self):
         """購読が同じなら、API固有の追加tokenは音声ticketの所有者を変更しない。"""

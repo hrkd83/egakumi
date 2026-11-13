@@ -7,10 +7,12 @@ from .apim_naming import apim_instance_id
 GATEWAY_DATA_POLICY_KEYS = frozenset({
     "g-chat-completions", "g-responses", "g-embeddings", "g-rerank", "g-decision",
     "g-images", "g-transcribe", "g-realtime", "g-live", "g-pii-redact",
+    "g-document-status", "g-realtime-ticket",
 })
 PORTAL_DATA_POLICY_KEYS = frozenset({
     "p-generate", "p-embeddings", "p-rerank", "p-decision", "p-images", "p-speech",
     "p-realtime", "p-document-upload", "p-pii-redact",
+    "p-document-status",
 })
 DATA_POLICY_KEYS = GATEWAY_DATA_POLICY_KEYS | PORTAL_DATA_POLICY_KEYS
 POLICY_KEYS = DATA_POLICY_KEYS | {

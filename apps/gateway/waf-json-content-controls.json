@@ -137,6 +137,14 @@
       "format": "json"
     },
     {
+      "name": "p-document-status",
+      "scope": "portal",
+      "paths": [
+        "/api/tools/documents/status"
+      ],
+      "format": "json"
+    },
+    {
       "name": "p-pii-redact",
       "scope": "portal",
       "paths": [

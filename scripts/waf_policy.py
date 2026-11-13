@@ -42,6 +42,31 @@ AI_DATA_RULE_GROUPS = frozenset({
     'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
     'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
 })
+# Only these existing signed control operations need an unbounded identifier.
+# API publication and the exact operation contract must still match; this is not
+# a general conversion of API templates into WAF wildcard paths.
+SIGNED_OPERATION_ROUTES = (
+    ('document-analysis-v1', 'tools/documents/v1', 'get_document_operation', 'GET',
+     '/operations/{operationId}', 'documentAnalysisStatus', 'none', '/tools/documents/v1/operations/*'),
+    ('openai-realtime-control-v1', 'models/openai-realtime/v1', 'realtime-hangup', 'POST',
+     '/calls/{callId}/hangup', 'realtimeHangup', 'none', '/models/openai-realtime/v1/calls/*'),
+)
+OBSERVER_PATH = '/models/openai-realtime/v1/observer/'
+CONTROL_DATA_SCOPES = {
+    'g-document-status': {
+        'scope': 'gateway', 'paths': frozenset({'/tools/documents/v1/operations/*'}),
+        'headers': frozenset({'X-Core-Document-Ticket'}),
+    },
+    'g-realtime-ticket': {
+        'scope': 'gateway', 'paths': frozenset({
+            '/models/openai-realtime/v1/calls/*', '/models/openai-realtime/v1/observer/'}),
+        'headers': frozenset({'X-Core-Call-Ticket'}),
+    },
+    'p-document-status': {
+        'scope': 'portal', 'paths': frozenset({'/api/tools/documents/status'}),
+        'values': frozenset({'handle'}),
+    },
+}
 AI_DATA_SCOPES = {
     'g-chat-completions': {
         'scope': 'gateway',
@@ -54,6 +79,7 @@ AI_DATA_SCOPES = {
             'tools.custom.format.grammar.definition',
             'messages.refusal', 'messages.content.refusal',
             'messages.reasoning_content',
+            'messages.content.input_audio.data', 'messages.content.file.file_data', 'messages.audio.id',
             'prediction.content', 'prediction.content.text',
             'response_format.json_schema.description',
         }),
@@ -75,6 +101,7 @@ AI_DATA_SCOPES = {
             'text.format.description',
             'input.action.command', 'input.action.commands',
             'input.operation.diff', 'input.output.stdout', 'input.output.stderr',
+            'input.encrypted_content', 'input.content.file_data',
         }),
         'schemas': frozenset({
             'text.format.schema.', 'tools.parameters.', 'tools.output_schema.',
@@ -115,7 +142,59 @@ AI_DATA_SCOPES = {
         'values': frozenset({'texts'}),
         'schemas': frozenset(),
     },
+    'g-rerank': {
+        'scope': 'gateway', 'paths': frozenset({'/models/cohere/v1/rerank'}),
+        'values': frozenset({'documents', 'query'}), 'schemas': frozenset(),
+    },
+    'p-rerank': {
+        'scope': 'portal', 'paths': frozenset({'/api/models/rerank'}),
+        'values': frozenset({'documents', 'query'}), 'schemas': frozenset(),
+    },
+    'g-decision': {
+        'scope': 'gateway', 'paths': frozenset({'/models/microsoft-decision/v1/systemone'}),
+        'values': frozenset({'state'}), 'schemas': frozenset(),
+        'json_data': frozenset({'questions.', 'state.'}),
+    },
+    'p-decision': {
+        'scope': 'portal', 'paths': frozenset({'/api/models/decision'}),
+        'values': frozenset({'state'}), 'schemas': frozenset(),
+        'json_data': frozenset({'questions.', 'state.'}),
+    },
+    'g-transcribe': {
+        'scope': 'gateway', 'paths': frozenset({'/models/openai-audio/v1/deployments/gpt-transcribe/transcriptions'}),
+        'values': frozenset({'prompt'}), 'schemas': frozenset(),
+    },
+    'g-realtime': {
+        'scope': 'gateway', 'paths': frozenset({'/models/openai-realtime/v1/calls'}),
+        'values': frozenset({'sdp'}), 'schemas': frozenset(),
+    },
+    'g-live': {
+        'scope': 'gateway', 'paths': frozenset({'/models/openai-live/v1/sessions'}),
+        'values': frozenset({'instructions', 'sdp'}), 'schemas': frozenset(),
+    },
+    'g-pii-redact': {
+        'scope': 'gateway', 'paths': frozenset({'/tools/pii-v1-mcp/mcp', '/tools/pii/v1/redact'}),
+        'values': frozenset({'params.arguments.text', 'text'}), 'schemas': frozenset(),
+    },
+    'p-generate': {
+        'scope': 'portal', 'paths': frozenset({'/api/models/generate'}),
+        'values': frozenset({'message'}), 'schemas': frozenset(),
+    },
+    'p-speech': {
+        'scope': 'portal', 'paths': frozenset({'/api/models/speech'}),
+        'values': frozenset({'text'}), 'schemas': frozenset(),
+    },
+    'p-realtime': {
+        'scope': 'portal', 'paths': frozenset({'/api/models/realtime/stop'}),
+        'values': frozenset({'handle'}), 'schemas': frozenset(),
+    },
+    'p-pii-redact': {
+        'scope': 'portal', 'paths': frozenset({'/api/tools/pii', '/api/tools/pii-mcp'}),
+        'values': frozenset({'text'}), 'schemas': frozenset(),
+    },
 }
+AI_DATA_SCOPES.update({name: {'values': frozenset(), 'schemas': frozenset(), **scope}
+                       for name, scope in CONTROL_DATA_SCOPES.items()})
 
 
 def _allows_ai_group(profile, item):
@@ -126,8 +205,25 @@ def _allows_ai_group(profile, item):
     variable, operator, selector = (item[key] for key in
                                     ('matchVariable', 'selectorMatchOperator', 'selector'))
     return ((variable == 'RequestArgValues' and operator == 'Equals' and selector in scope['values'])
+            or (variable == 'RequestHeaderValues' and operator == 'Equals' and selector in scope.get('headers', ()))
             or (variable in ('RequestArgValues', 'RequestArgKeys') and operator == 'StartsWith'
                 and selector in scope['schemas'] | scope.get('json_data', frozenset())))
+
+
+def control_data_profile(profile):
+    """Keep the original body limits on the finite handle/ticket control routes."""
+    scope = CONTROL_DATA_SCOPES.get(profile.get('name'))
+    paths = profile.get('paths')
+    return bool(scope and profile.get('scope') == scope['scope'] and isinstance(paths, list)
+                and paths and set(paths) <= scope['paths'])
+
+
+def _approved_header(profile, item):
+    scope = CONTROL_DATA_SCOPES.get(profile['name'])
+    return bool(scope and profile['scope'] == scope['scope']
+                and frozenset(profile['paths']) == scope['paths']
+                and item.get('selectorMatchOperator') == 'Equals'
+                and item.get('selector') in scope.get('headers', ()))
 
 
 def exclusion(selector, group, rules, variable='RequestArgValues'):
@@ -157,13 +253,17 @@ def _validate_manifest(data):
         names.add(profile['name'])
         for path_value in profile['paths']:
             key = (profile['scope'], str(path_value).casefold())
-            if (not isinstance(path_value, str) or not re.fullmatch(r'/[A-Za-z0-9_./-]+', path_value)
+            control = CONTROL_DATA_SCOPES.get(profile['name'], {})
+            signed_path = (isinstance(path_value, str) and profile['scope'] == control.get('scope')
+                           and path_value in control.get('paths', ()))
+            if (not isinstance(path_value, str) or not (re.fullmatch(r'/[A-Za-z0-9_./-]+', path_value) or signed_path)
                     or any(part in ('', '.', '..') for part in path_value[1:].rstrip('/').split('/')) or key in paths):
-                raise ValueError('WAF manifest paths must be unique exact paths')
+                raise ValueError('WAF manifest paths must be unique exact or approved signed-operation paths')
             paths.add(key)
         selectors = set()
         for item in profile['exclusions']:
-            if (not isinstance(item, dict) or item.get('matchVariable') not in ('RequestArgValues', 'RequestArgKeys')
+            if (not isinstance(item, dict) or item.get('matchVariable') not in ('RequestArgValues', 'RequestArgKeys', 'RequestHeaderValues')
+                    or (item.get('matchVariable') == 'RequestHeaderValues' and not _approved_header(profile, item))
                     or item.get('selectorMatchOperator') not in ('Equals', 'StartsWith')
                     or not isinstance(item.get('selector'), str) or not item['selector']
                     or item['selector'] == '*'
@@ -215,8 +315,18 @@ def _apis(config):
     return config.get('apiDefinitions', [])
 
 
+def _approved_observer(api, operation, constraint):
+    """A same-URL custom API must not receive the signed-header exception."""
+    return ((api.get('name'), api.get('path'), api.get('apiType'), operation.get('name'),
+             operation.get('method'), operation.get('urlTemplate'), constraint.get('kind'),
+             constraint.get('bodyFormat')) == (
+                'openai-realtime-observer-v1', 'models/openai-realtime/v1/observer', 'websocket',
+                'invoke', 'GET', '/', 'registeredOperation', 'none')
+            and isinstance(api.get('websocket', {}).get('realtimeObserver'), dict))
+
+
 def published_paths(config):
-    """Exclude templated/unpublished endpoints rather than widening a finite manifest."""
+    """Publish exact routes and only two signed-operation identifier patterns."""
     result = set()
     for api in _apis(config):
         mcp_path = api.get('mcp', {}).get('path')
@@ -230,7 +340,14 @@ def published_paths(config):
                 constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
                 candidates = [path.replace('{deployment}', name) for name in constraint.get('allowedModels', [])
                               if isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', name)]
-            result.update(value for value in candidates if re.fullmatch(r'/[A-Za-z0-9_./-]+', value))
+            result.update(value for value in candidates
+                          if value != OBSERVER_PATH and re.fullmatch(r'/[A-Za-z0-9_./-]+', value))
+            constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
+            if _approved_observer(api, operation, constraint):
+                result.add(OBSERVER_PATH)
+            signature = (api.get('name'), api.get('path'), operation.get('name'), operation.get('method'),
+                         operation.get('urlTemplate'), constraint.get('kind'), constraint.get('bodyFormat'))
+            result.update(route[-1] for route in SIGNED_OPERATION_ROUTES if signature == route[:-1])
     return result
 
 
@@ -264,12 +381,64 @@ def _unique(items):
 
 
 def canonical_gateway(body):
-    """Ignore ARM-generated identity metadata on named inline subresources only.
+    """Ignore ARM identity metadata and three validated GET backlink arrays.
 
     Reference objects such as firewallPolicy/backendAddressPool keep their IDs,
     so comparisons still detect changed policies, backends and rewrite bindings.
     The PUT body is unchanged; this normalization is only for comparison.
     """
+    result = _writable(body)
+    properties = result.get('properties', {})
+    roots = set()
+    def root_from(identifier, suffix=''):
+        if not isinstance(identifier, str) or not identifier.casefold().endswith(suffix.casefold()):
+            return
+        candidate = identifier[:-len(suffix)] if suffix else identifier
+        if re.fullmatch(r'/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft.Network/applicationGateways/[^/]+', candidate, re.I):
+            roots.add(candidate.casefold())
+    root_from(body.get('id'))
+    collections = ('backendAddressPools', 'backendHttpSettingsCollection', 'rewriteRuleSets')
+    for collection in (*collections, 'urlPathMaps'):
+        items = properties.get(collection, [])
+        for item in items if isinstance(items, list) else []:
+            if isinstance(item, dict) and isinstance(item.get('name'), str):
+                root_from(item.get('id'), '/' + collection + '/' + item['name'])
+    maps = properties.get('urlPathMaps', [])
+    maps = maps if isinstance(maps, list) else []
+    map_names = {item['name'] for item in maps if isinstance(item, dict) and isinstance(item.get('name'), str)}
+    # PUT bodies omit the root id; a route's owned map reference can identify it.
+    routes = properties.get('requestRoutingRules', [])
+    for route in routes if isinstance(routes, list) else []:
+        reference = route.get('properties', {}).get('urlPathMap', {}) if isinstance(route, dict) else {}
+        if isinstance(reference, dict):
+            for name in map_names:
+                root_from(reference.get('id'), '/urlPathMaps/' + name)
+    owned_rules = set()
+    if len(roots) == 1:
+        root = next(iter(roots))
+        for mapping in maps:
+            if not isinstance(mapping, dict) or not isinstance(mapping.get('name'), str):
+                continue
+            rules = mapping.get('properties', {}).get('pathRules', [])
+            for rule in rules if isinstance(rules, list) else []:
+                if (isinstance(rule, dict) and isinstance(rule.get('name'), str)
+                        and isinstance(rule.get('properties'), dict)):
+                    owned_rules.add((root + '/urlPathMaps/' + mapping['name'] + '/pathRules/' + rule['name']).casefold())
+    # Azure derives these reverse references from urlPathMaps.pathRules. Never
+    # normalize the actual path rules or similarly named fields in other places.
+    for collection in collections:
+        items = properties.get(collection, [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str):
+                continue
+            props = item.get('properties')
+            links = props.get('pathRules') if isinstance(props, dict) else None
+            if len(roots) == 1 and isinstance(links, list) and all(
+                    isinstance(link, dict) and set(link) == {'id'}
+                    and isinstance(link['id'], str) and link['id'].casefold() in owned_rules for link in links):
+                props.pop('pathRules')
     def clean(value):
         if isinstance(value, list):
             return [clean(item) for item in value]
@@ -278,7 +447,7 @@ def canonical_gateway(body):
             return {key: clean(item) for key, item in value.items()
                     if not (named_resource and key in ('id', 'type'))}
         return value
-    return clean(_writable(body))
+    return clean(result)
 
 
 def canonical_policy(body):
@@ -392,7 +561,7 @@ def desired_policy(base, profile, config, sources=()):
     if (settings.get('state') != 'Enabled' or settings.get('mode') != 'Prevention'
             or settings.get('requestBodyCheck') is not True):
         raise ValueError('Data WAF requires enabled Prevention mode with request body inspection')
-    properties['policySettings'] = ai_body_settings(settings)
+    properties['policySettings'] = copy.deepcopy(settings) if control_data_profile(profile) else ai_body_settings(settings)
     managed = properties.get('managedRules', {})
     sets = managed.get('managedRuleSets', [])
     if len([item for item in sets if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']) != 1:
@@ -588,11 +757,22 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         outcome = 'failed' if state in ('Failed', 'Canceled', 'Deleting') else 'pending'
         raise ValueError(f'Data WAF update is {outcome}; provisioningState={state_label}; configurationMismatch={mismatch}')
     gateway_changed = canonical_gateway(update) != canonical_gateway(source)
-    gateway_headers = {'If-Match': _etag(response)} if gateway_changed else None
+    # Reject an unverifiable initial read before changing any owned policy.
+    if gateway_changed:
+        _etag(response)
     for identifier, desired, headers in changes:
         apply(identifier, desired, headers, True)
     if gateway_changed:
-        apply(expected, update, gateway_headers, False)
+        # Updating an associated WAF policy can advance the Gateway ETag without
+        # changing its configuration. Rebind only after a complete drift check;
+        # an external configuration change must never be overwritten.
+        fresh_response = transport.request('GET', target)
+        fresh = _ok(fresh_response, 'reread data WAF routing')
+        if (str(fresh.get('id', '')).casefold() != expected.casefold()
+                or fresh.get('properties', {}).get('provisioningState') != 'Succeeded'
+                or canonical_gateway(fresh) != canonical_gateway(source)):
+            raise ValueError('Application Gateway changed before WAF routing update; inspect current state before retrying')
+        apply(expected, update, {'If-Match': _etag(fresh_response)}, False)
     return {**receipt, 'status': 'reconciled', 'azureWrites': len(changes) + int(gateway_changed),
             'policyUpdates': len(changes), 'gatewayUpdated': gateway_changed}
 

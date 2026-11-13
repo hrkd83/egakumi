@@ -94,7 +94,7 @@ param wafExclusions array = []
 param documentUploadPaths array = []
 @description('Azure Speech正本の完全POSTパス。raw SSML/WAVの930110誤検知だけを調整し、URI/query/header/cookieは専用Block規則で検査します。')
 param speechRawBodyPaths array = []
-@description('公開API契約から有限値へ展開した完全パス。データ欄の除外はこの一覧に存在するURIだけに適用します。')
+@description('公開APIの完全パスと、既存の署名付き状態参照・通話終了operationに限定したID pattern。データ欄の除外はこの一覧だけに適用します。')
 param publishedApiPaths array = []
 @description('WAF ログから除去する情報の追加規則。既定の認証情報除去は維持します。')
 param additionalWafLogScrubbingRules array = []
@@ -356,7 +356,8 @@ var dataBaseProperties = [for (profile, index) in dataProfiles: profile.name == 
 
 // データ欄とMIMEの正本を使い、用途外の例外を動的に足しません。
 var dataPolicyProperties = [for (profile, index) in dataProfiles: union(dataBaseProperties[index], {
-  policySettings: aiWafPolicySettings
+  // 状態参照・署名チケットの制御入口には、AI本文用の容量緩和を追加しません。
+  policySettings: contains(['g-document-status', 'g-realtime-ticket', 'p-document-status'], profile.name) ? union(sharedWafProperties.policySettings, { mode: 'Prevention' }) : aiWafPolicySettings
   managedRules: union(dataBaseProperties[index].managedRules, {
     exclusions: union(wafExclusions,
       profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions)

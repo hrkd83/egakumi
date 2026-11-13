@@ -218,8 +218,15 @@ class SsmlWafTests(unittest.TestCase):
                 groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
                            "rules": [{"ruleId": "941130"}, {"ruleId": "941170"}]}]
                 if purpose == "g-chat-completions":
+                    groups.insert(0, {"ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                                      "rules": [{"ruleId": "931130"}]})
                     groups.append({"ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
                                    "rules": [{"ruleId": "942340"}, {"ruleId": "942450"}]})
+                else:
+                    groups = [{"ruleGroupName": name} for name in (
+                        "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
+                        "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
+                        "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
                 self.assertEqual(values, [{"matchVariable": "RequestArgValues", "selectorMatchOperator": "Equals", "selector": selector,
                     "exclusionManagedRuleSets": [{"ruleSetType": "OWASP", "ruleSetVersion": "3.2", "ruleGroups": groups}]}])
 

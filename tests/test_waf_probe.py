@@ -68,6 +68,213 @@ class WafProbeTests(unittest.TestCase):
             "binary-mime", "size-boundary", "inspection-boundary", "websocket-upgrade", "multipart-audio",
             "attack-sqli", "attack-traversal", "attack-xss"}.issubset(categories))
 
+    def test_typed_corpus_is_bounded_deterministic_and_keeps_auth_and_data_classes_separate(self):
+        cases = probe.typed_data_probes(self.routes)
+        self.assertLessEqual(len(cases), 128)
+        self.assertEqual(len(cases), len({case.case_id for case in cases}))
+        self.assertEqual(cases, probe.typed_data_probes(self.routes))
+        self.assertEqual({case.data_type for case in cases}, probe.DATA_TYPES)
+        for case in cases:
+            with self.subTest(case=case.case_id):
+                self.assertEqual(case.auth_mode, "anonymous")
+                self.assertNotIn("api-key", {name.lower() for name, _ in case.headers})
+                self.assertNotIn("authorization", {name.lower() for name, _ in case.headers})
+                self.assertEqual(probe.metadata(case)["data_type"], case.data_type)
+                for _, value in case.headers:
+                    self.assertFalse(any(char in value for char in "\r\n\x00"))
+                if case.body and dict(case.headers).get("Content-Type") == "application/json":
+                    value = json.loads(case.body)
+                    if "model" in value:
+                        self.assertEqual(value["model"], probe.INVALID_MODEL)
+                if case.data_type == "opaque-ticket":
+                    self.assertIsNone(case.body)
+                    self.assertNotIn("Content-Type", dict(case.headers))
+
+    def test_large_history_is_real_utf8_json_with_tools_results_reasoning_and_http_log_text(self):
+        for case in (case for case in probe.typed_data_probes(self.routes) if case.data_type == "conversation"):
+            with self.subTest(path=case.path):
+                self.assertEqual(len(case.body), 614400)
+                self.assertLess(len(case.body.decode("utf-8")), len(case.body))
+                value = json.loads(case.body)
+                self.assertEqual(probe.json_bytes(value), case.body)
+                self.assertEqual(value["model"], probe.INVALID_MODEL)
+                history = value.get("input", value.get("messages"))
+                self.assertGreaterEqual(len(history), 33)
+                self.assertEqual(len(value["tools"]), 3)
+                self.assertIn(b"SYNTHETIC_REQUEST_START", case.body[:16384])
+                middle = case.body.index(b"SYNTHETIC_HISTORY_MIDDLE")
+                self.assertTrue(len(case.body) // 3 < middle < len(case.body) * 2 // 3)
+                self.assertIn(b"SYNTHETIC_REQUEST_END", case.body[-16384:])
+                self.assertIn(b"HTTP/1.1 200 OK\\r\\nContent-Type", case.body)
+                self.assertIn(b"SELECT id", case.body)
+                self.assertIn(b"<script>", case.body)
+                self.assertIn(b"$(printf synthetic)", case.body)
+                if "input" in value:
+                    self.assertFalse(value["store"])
+                    reasoning = [item for item in history if item.get("type") == "reasoning"]
+                    self.assertEqual(len(reasoning), 1)
+                    self.assertEqual(reasoning[0]["summary"][0]["type"], "summary_text")
+                    self.assertTrue(probe.OPAQUE_HEX_SIGNATURE.search(reasoning[0]["encrypted_content"]))
+                    calls = {item["call_id"] for item in history if item.get("type") == "function_call"}
+                    outputs = {item["call_id"] for item in history if item.get("type") == "function_call_output"}
+                else:
+                    calls = {call["id"] for item in history for call in item.get("tool_calls", [])}
+                    outputs = {item["tool_call_id"] for item in history if item["role"] == "tool"}
+                self.assertEqual(calls, outputs)
+                self.assertEqual(len(calls), 8)
+
+    def test_opaque_history_has_canonical_encoding_multiple_seeds_and_exact_hex_signature(self):
+        cases = [case for case in probe.typed_data_probes(self.routes)
+                 if case.payload_field == "input[].encrypted_content" and case.intent == "compatibility"]
+        self.assertEqual(len(cases), 24)
+        tokens = set()
+        for case in cases:
+            token = json.loads(case.body)["input"][0]["encrypted_content"]
+            self.assertIn(len(token), (512, 4096, 16384))
+            alphabet = "base64url" if case.data_type.endswith("base64url") else "base64"
+            encode = base64.urlsafe_b64encode if alphabet == "base64url" else base64.b64encode
+            decoded = base64.b64decode(token, altchars=b"-_" if alphabet == "base64url" else None, validate=True)
+            self.assertEqual(encode(decoded).decode(), token)
+            self.assertEqual(len(decoded), len(token) * 3 // 4)
+            self.assertRegex(token, r"^[A-Za-z0-9_-]+$" if alphabet == "base64url" else r"^[A-Za-z0-9+/]+$")
+            if "-hex-" in case.case_id:
+                self.assertIsNotNone(re.search(r"(?i:(?:\A|[^\d])0x[a-f\d]{3,})", token))
+            tokens.add(token)
+        self.assertEqual(len(tokens), 24)
+        self.assertEqual(probe.opaque_fixture("base64url", 512, 0), probe.opaque_fixture("base64url", 512, 0))
+        with self.assertRaises(ValueError):
+            probe.opaque_fixture("base64url", 127, 0)
+
+    def test_typed_handles_and_tickets_use_local_contract_shapes_without_claiming_valid_crypto(self):
+        cases = probe.typed_data_probes(self.routes)
+        handles = [case for case in cases if case.payload_field == "handle" and case.intent == "compatibility"]
+        self.assertEqual(len(handles), 24)
+        for case in handles:
+            value = json.loads(case.body)
+            handle = value["handle"]
+            if case.path.endswith("/stop"):
+                self.assertEqual(set(value), {"handle"})
+                self.assertTrue(handle.startswith("r1."))
+                token = handle[3:]
+            else:
+                self.assertEqual(set(value), {"apiKeyId", "handle"})
+                token = handle
+            self.assertTrue(40 <= len(token) <= 15997)
+            self.assertRegex(token, r"^[A-Za-z0-9_-]+$")
+            self.assertGreater(len(base64.urlsafe_b64decode(token)), 28)
+        tickets = [case for case in cases if case.data_type == "opaque-ticket" and case.intent == "compatibility"]
+        self.assertEqual(len(tickets), 12)
+        self.assertEqual(len({case.path for case in tickets}), 3)
+        for case in tickets:
+            name, ticket = next((name, value) for name, value in case.headers if name.startswith("X-Core-"))
+            self.assertIn(name, ("X-Core-Document-Ticket", "X-Core-Call-Ticket"))
+            self.assertLessEqual(len(ticket), 4096)
+            payload, mac = ticket.split(".")
+            self.assertTrue(json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["synthetic"])
+            self.assertEqual(len(mac), 43)
+            decoded = base64.urlsafe_b64decode(mac + "=")
+            self.assertEqual(len(decoded), 32)
+            self.assertEqual(base64.urlsafe_b64encode(decoded).decode().rstrip("="), mac)
+            if "-hex-" in case.case_id:
+                self.assertIsNotNone(probe.OPAQUE_HEX_SIGNATURE.search(ticket))
+            if case.path.endswith("/observer/"):
+                self.assertEqual(case.query, (("call_id", probe.PARAMETER_VALUES["callId"]),))
+
+    def test_typed_media_are_actual_png_pdf_and_pcm_wav_containers(self):
+        cases = probe.typed_data_probes(self.routes)
+        fixtures = []
+        for case in cases:
+            if case.data_type not in {"media-base64", "media-data-url", "media-binary"}:
+                continue
+            if case.data_type == "media-binary":
+                fixtures.append((dict(case.headers)["Content-Type"], case.body))
+                continue
+            value = json.loads(case.body)
+            if "input_image" in value:
+                fields = [value[name] for name in ("input_image", "input_image_2") if name in value]
+            else:
+                part = value.get("input", value.get("messages"))[0]["content"][1]
+                fields = [part.get("image_url", part.get("file_data", part.get("input_audio", part.get("file"))))]
+                fields = [field.get("url", field.get("data", field.get("file_data"))) if isinstance(field, dict) else field for field in fields]
+            for field in fields:
+                mime, encoded = field.split(",", 1) if field.startswith("data:") else ("audio/wav" if case.payload_field.endswith("input_audio.data") else "image/png", field)
+                fixtures.append((mime.removeprefix("data:").removesuffix(";base64"), base64.b64decode(encoded, validate=True)))
+        self.assertEqual(len(fixtures), 10)
+        for mime, content in fixtures:
+            if mime == "audio/wav":
+                with wave.open(io.BytesIO(content), "rb") as audio:
+                    self.assertEqual((audio.getnchannels(), audio.getsampwidth(), audio.getframerate()), (1, 2, 16000))
+                    self.assertEqual(len(audio.readframes(160)), 320)
+            elif mime == "application/pdf":
+                self.assertTrue(content.startswith(b"%PDF-1.4"))
+                xref = int(content.rsplit(b"startxref\n", 1)[1].splitlines()[0])
+                self.assertTrue(content[xref:].startswith(b"xref\n0 6\n"))
+                self.assertTrue(content.endswith(b"%%EOF\n"))
+            else:
+                self.assertEqual(mime, "image/png")
+                self.assertTrue(content.startswith(b"\x89PNG\r\n\x1a\n"))
+                offset = 8
+                while offset < len(content):
+                    length = int.from_bytes(content[offset:offset + 4], "big")
+                    chunk = content[offset + 4:offset + 8 + length]
+                    self.assertEqual(zlib.crc32(chunk) & 0xffffffff, int.from_bytes(content[offset + 8 + length:offset + 12 + length], "big"))
+                    offset += length + 12
+                self.assertEqual(offset, len(content))
+
+    def test_all_manifest_selectors_have_actual_offline_field_coverage_separate_from_waf_extraction(self):
+        manifest = json.loads((ROOT / "apps/gateway/waf-data-exclusions.json").read_text())
+        cases = self.cases + probe.ai_coding_probes(self.routes) + probe.jndi_field_probes(self.routes)
+        coverage = probe.exclusion_coverage(cases, manifest)
+        self.assertEqual(len(coverage), sum(len(profile["exclusions"]) for profile in manifest["profiles"]))
+        self.assertTrue(all(row["offline_field_present"] for row in coverage),
+                        [(row["profile"], row["selector"]) for row in coverage if not row["offline_field_present"]])
+        self.assertTrue(all(not row["waf_extraction_verified"] for row in coverage))
+        self.assertTrue(all(row["case_ids"] and row["channels"] for row in coverage))
+        self.assertTrue(any("header" in row["channels"] for row in coverage))
+        self.assertTrue(any("multipart" in row["channels"] for row in coverage))
+        route = next(route for route in self.routes if route.path == "/models/openai/v1/responses")
+        false_label = probe._probe(route, "false-coverage-label", "test", body=probe.json_bytes({"model": probe.INVALID_MODEL}),
+            headers=[("Content-Type", "application/json")], payload_field="input[].encrypted_content")
+        rows = probe.exclusion_coverage([false_label], manifest)
+        self.assertFalse(any(row["offline_field_present"] for row in rows))
+
+    def test_field_coverage_keeps_prefix_neighbors_headers_cookies_and_non_json_separate(self):
+        route = next(route for route in self.routes if route.path == "/models/openai/v1/responses")
+        selectors = [("RequestArgValues", "StartsWith", "input.arguments."),
+                     ("RequestArgKeys", "StartsWith", "input.arguments."),
+                     ("RequestArgValues", "StartsWith", "input.argumentsExtra."),
+                     ("RequestHeaderValues", "Equals", "X-Core-Synthetic"),
+                     ("RequestCookieValues", "Equals", "synthetic_session")]
+        manifest = {"profiles": [{"name": "synthetic", "scope": "gateway", "paths": [route.path],
+            "exclusions": [dict(zip(("matchVariable", "selectorMatchOperator", "selector"), fields)) for fields in selectors]}]}
+        case = probe._probe(route, "synthetic-field-coverage", "test", body=probe.json_bytes({
+            "input": [{"arguments": {"query": "synthetic"}}]}), headers=[("Content-Type", "application/json"),
+            ("x-core-synthetic", "synthetic"), ("Cookie", "synthetic_session=synthetic; other=other")])
+        rows = probe.exclusion_coverage([case], manifest)
+        self.assertEqual([row["offline_field_present"] for row in rows], [True, True, False, True, True])
+        self.assertEqual(rows[3]["channels"], ["header"])
+        self.assertEqual(rows[4]["channels"], ["cookie"])
+        self.assertNotIn("synthetic_session=", json.dumps(rows))
+        malformed = replace(case, body=b"p" * 614400, headers=(("Content-Type", "application/json"),),
+                            payload_field="input[].arguments.query")
+        self.assertFalse(any(row["offline_field_present"] for row in probe.exclusion_coverage([malformed], manifest)))
+
+    def test_typed_opaque_controls_move_the_signature_out_of_the_approved_field(self):
+        cases = probe.typed_data_probes(self.routes)
+        sibling = next(case for case in cases if "typed-reasoning-sibling-" in case.case_id)
+        item = json.loads(sibling.body)["input"][0]
+        self.assertIsNotNone(probe.OPAQUE_HEX_SIGNATURE.search(item["encrypted_content_extra"]))
+        self.assertNotEqual(item["encrypted_content_extra"], item["encrypted_content"])
+        self.assertEqual(sibling.intent, "attack_control")
+        for case in cases:
+            if "typed-" not in case.case_id:
+                continue
+            if case.payload_field and case.payload_field.startswith("query:"):
+                self.assertEqual(case.intent, "validation")
+                self.assertTrue(any(probe.OPAQUE_HEX_SIGNATURE.search(value) for _, value in case.query))
+            if case.intent == "attack_control":
+                self.assertTrue("sibling" in case.case_id or "header" in case.case_id or "neighbor" in case.case_id)
+
     def test_deployment_routes_use_every_model_in_the_canonical_allowlist(self):
         for path in (ROOT / "apps/gateway/apim/apis").glob("*.json"):
             api = json.loads(path.read_text(encoding="utf-8"))
