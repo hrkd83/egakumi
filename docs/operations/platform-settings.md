@@ -10,6 +10,7 @@
 | 作業 | 既存の入口 | 正本・確認先 |
 | --- | --- | --- |
 | データ項目に対するWAF誤検知 | `scripts/operations/waf.py` | WAF manifestと対象パスの実ポリシー |
+| 4 NSGの通信範囲・優先度 | 対象の規則に限定した操作を決める | [共通採番と規則の用途](network-security-groups.md)、params、Core state |
 | APIバックエンド追加に伴う外向き許可 | Gateway個別配備（G） | API定義、対象Firewall規則、APIM実設定 |
 | 通知先・監視条件 | `scripts/operations/monitoring.py` | params・対応Bicep、実通知設定・条件・ログ |
 | AppGW・Container Appの容量 | 対象資源の構成／スケール画面 | 対応config／Bicep、実設定・revision・稼働状態 |

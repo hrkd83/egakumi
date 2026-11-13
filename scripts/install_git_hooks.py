@@ -103,7 +103,11 @@ def run_check(
             input=input_bytes, capture_output=True, env=environment,
             timeout=PROCESS_TIMEOUT_SECONDS, check=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        raise HookError(
+            "Public-data guard: scanner exceeded the time limit."
+        ) from error
+    except OSError as error:
         raise HookError(
             "Public-data guard: scanner startup failed."
         ) from error
@@ -144,11 +148,11 @@ def run_hook(root: Path, hook: str, arguments: list[str]) -> int:
             ) from error
         if len(updates) > MAX_PUSH_INPUT_BYTES:
             raise HookError("Public-data guard: push input exceeds the limit.")
-        # 削除前のコミットも検査する。明示OIDのpushは標準入力の検査で補う。
-        if run_check(root, scanner, ["--all-history"], "repository history"):
-            return 1
+        # 同じ検査プロセスで全履歴と送信OIDを確認し、重複履歴の再読込を避ける。
+        # 削除前のコミットも検査し、明示OIDのpushは標準入力の検査で補う。
         return run_check(
-            root, scanner, ["--pre-push-refs"], "push references", updates,
+            root, scanner, ["--all-history", "--pre-push-refs"],
+            "repository history and push references", updates,
         )
     raise HookError("Public-data guard: invalid hook invocation.")
 

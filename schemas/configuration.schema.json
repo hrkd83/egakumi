@@ -169,7 +169,7 @@
               "10.20.30.0/24"
             ]
           ],
-          "description": "管理VMへ接続する運用者の送信元IPv4/CIDR。既定はTCP22をNSGで許可し、空配列は許可しません。管理VMへの経路やpublic IPを作成する設定ではありません。"
+          "description": "管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できます。指定時だけNSGのAllow・220（既定TCP22）を作成し、空配列・省略時は作成しません。設定を外した場合は構築前処理で現行Allow・220を削除します。未許可通信は4096で拒否します。Bastion利用時は通常AzureBastionSubnetのCIDRを指定します。管理VMへの経路やpublic IPを作成する設定ではありません。"
         },
         "operatorProtocol": {
           "type": "string",

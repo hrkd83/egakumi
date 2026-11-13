@@ -118,7 +118,7 @@ class FixedGrpcInfrastructureTests(unittest.TestCase):
             groups = resolver.resolve("[variables('rulesByNsg')]", parameters)
             rules = {item["name"]: item["properties"] for group in groups for item in group}
             with self.subTest(clients=clients):
-                self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (150, "Allow"))
+                self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (125, "Allow"))
                 self.assertEqual(rules["allow-client-grpc"]["sourceAddressPrefix"],
                                  (clients or ["0.0.0.0/0"])[0])
                 self.assertEqual(rules["allow-client-grpc"]["destinationPortRange"], "8443")

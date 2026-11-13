@@ -75,7 +75,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         apim, = [group for group in network["variables"]["nsgDefinitions"] if group["key"] == "apim"]
         event_hubs, = [rule for rule in apim["rules"] if "'allow-monitor-event-hubs'" in rule]
         self.assertEqual(event_hubs,
-                         "[__bicep.allowRule('allow-monitor-event-hubs', 235, 'Outbound', 'Tcp', "
+                         "[__bicep.allowRule('allow-monitor-event-hubs', variables('nsgPriorities').groups.apim.rules['allow-monitor-event-hubs'].priority, 'Outbound', 'Tcp', "
                          "createArray(variables('subnetPrefixes').apim), createArray('EventHub'), "
                          "createArray('443', '5671', '5672'))]")
         dependency, = [item for item in network["variables"]["apimPlatformDependencies"]

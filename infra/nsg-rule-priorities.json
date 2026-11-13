@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "groups": {
+    "agw": {
+      "suffix": "agw",
+      "rules": {
+        "allow-client-web": {
+          "direction": "Inbound",
+          "priority": 120
+        },
+        "allow-client-grpc": {
+          "direction": "Inbound",
+          "priority": 125
+        },
+        "allow-certificate-observer": {
+          "direction": "Inbound",
+          "priority": 220
+        },
+        "allow-gateway-manager": {
+          "direction": "Inbound",
+          "priority": 225
+        },
+        "allow-load-balancer": {
+          "direction": "Inbound",
+          "priority": 230
+        },
+        "deny-other-inbound": {
+          "direction": "Inbound",
+          "priority": 4096
+        },
+        "allow-apim-http": {
+          "direction": "Outbound",
+          "priority": 120
+        },
+        "allow-apim-grpc": {
+          "direction": "Outbound",
+          "priority": 125
+        },
+        "allow-key-vault": {
+          "direction": "Outbound",
+          "priority": 220
+        },
+        "allow-dns-tcp": {
+          "direction": "Outbound",
+          "priority": 225
+        },
+        "allow-dns-udp": {
+          "direction": "Outbound",
+          "priority": 230
+        }
+      }
+    },
+    "apim": {
+      "suffix": "apim",
+      "rules": {
+        "allow-agw-api": {
+          "direction": "Inbound",
+          "priority": 120
+        },
+        "allow-agw-grpc": {
+          "direction": "Inbound",
+          "priority": 125
+        },
+        "allow-apim-management": {
+          "direction": "Inbound",
+          "priority": 220
+        },
+        "allow-load-balancer": {
+          "direction": "Inbound",
+          "priority": 225
+        },
+        "allow-counter-sync-inbound": {
+          "direction": "Inbound",
+          "priority": 230
+        },
+        "allow-management-grpc": {
+          "direction": "Inbound",
+          "priority": 235
+        },
+        "deny-other-inbound": {
+          "direction": "Inbound",
+          "priority": 4096
+        },
+        "allow-private-backends": {
+          "direction": "Outbound",
+          "priority": 120
+        },
+        "allow-credential-broker": {
+          "direction": "Outbound",
+          "priority": 125
+        },
+        "allow-key-vault-pe": {
+          "direction": "Outbound",
+          "priority": 220
+        },
+        "allow-storage": {
+          "direction": "Outbound",
+          "priority": 225
+        },
+        "allow-sql-platform": {
+          "direction": "Outbound",
+          "priority": 230
+        },
+        "allow-key-vault-platform": {
+          "direction": "Outbound",
+          "priority": 235
+        },
+        "allow-monitor": {
+          "direction": "Outbound",
+          "priority": 240
+        },
+        "allow-monitor-event-hubs": {
+          "direction": "Outbound",
+          "priority": 245
+        },
+        "allow-entra": {
+          "direction": "Outbound",
+          "priority": 250
+        },
+        "allow-credential-manager": {
+          "direction": "Outbound",
+          "priority": 255
+        },
+        "allow-web-dependencies": {
+          "direction": "Outbound",
+          "priority": 260
+        },
+        "allow-time-sync": {
+          "direction": "Outbound",
+          "priority": 265
+        },
+        "allow-counter-sync-outbound": {
+          "direction": "Outbound",
+          "priority": 270
+        },
+        "allow-dns-tcp": {
+          "direction": "Outbound",
+          "priority": 275
+        },
+        "allow-dns-udp": {
+          "direction": "Outbound",
+          "priority": 280
+        },
+        "deny-other-outbound": {
+          "direction": "Outbound",
+          "priority": 4096
+        }
+      }
+    },
+    "pep": {
+      "suffix": "pep",
+      "rules": {
+        "allow-apim-foundry": {
+          "direction": "Inbound",
+          "priority": 120
+        },
+        "allow-key-vault": {
+          "direction": "Inbound",
+          "priority": 220
+        },
+        "allow-vm-https": {
+          "direction": "Inbound",
+          "priority": 225
+        },
+        "allow-aca-acr": {
+          "direction": "Inbound",
+          "priority": 230
+        },
+        "allow-credential-broker-sql": {
+          "direction": "Inbound",
+          "priority": 235
+        },
+        "allow-credential-broker-vault": {
+          "direction": "Inbound",
+          "priority": 240
+        },
+        "deny-other-inbound": {
+          "direction": "Inbound",
+          "priority": 4096
+        }
+      }
+    },
+    "management": {
+      "suffix": "vm",
+      "rules": {
+        "allow-operator-management": {
+          "direction": "Inbound",
+          "priority": 220
+        },
+        "deny-other-inbound": {
+          "direction": "Inbound",
+          "priority": 4096
+        },
+        "allow-private-services": {
+          "direction": "Outbound",
+          "priority": 220
+        },
+        "allow-apim-grpc-comparison": {
+          "direction": "Outbound",
+          "priority": 225
+        },
+        "allow-runner-acr": {
+          "direction": "Outbound",
+          "priority": 230
+        },
+        "allow-approved-entra": {
+          "direction": "Outbound",
+          "priority": 235
+        },
+        "allow-approved-management-api": {
+          "direction": "Outbound",
+          "priority": 240
+        },
+        "allow-approved-monitor": {
+          "direction": "Outbound",
+          "priority": 245
+        },
+        "allow-approved-agent-storage": {
+          "direction": "Outbound",
+          "priority": 250
+        },
+        "allow-web-dependencies": {
+          "direction": "Outbound",
+          "priority": 255
+        },
+        "allow-time-sync": {
+          "direction": "Outbound",
+          "priority": 260
+        },
+        "allow-dns-tcp": {
+          "direction": "Outbound",
+          "priority": 265
+        },
+        "allow-dns-udp": {
+          "direction": "Outbound",
+          "priority": 270
+        },
+        "deny-other-outbound": {
+          "direction": "Outbound",
+          "priority": 4096
+        }
+      }
+    }
+  }
+}

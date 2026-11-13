@@ -131,6 +131,69 @@ def git(repository: Path, *args: str, input_data: bytes | None = None) -> bytes:
     return result.stdout
 
 
+def git_objects(repository: Path, oids: list[str],
+                object_type: str = "blob") -> dict[str, bytes]:
+    """Read exact objects in one Git process and reject incomplete batch framing."""
+    if (object_type not in {"blob", "commit", "tag", "tree"}
+            or any(not isinstance(oid, str)
+                   or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid)
+                   for oid in oids)):
+        raise InspectionError("invalid-git-object-request")
+    requested = list(dict.fromkeys(oids))
+    if not requested:
+        return {}
+    output = git(repository, "cat-file", "--batch",
+                 input_data=("\n".join(requested) + "\n").encode("ascii"))
+    result, position = {}, 0
+    for oid in requested:
+        end = output.find(b"\n", position, position + 256)
+        if end < 0:
+            raise InspectionError("invalid-git-object-batch")
+        header = output[position:end]
+        match = re.fullmatch(rb"([0-9a-f]{40}|[0-9a-f]{64}) ([a-z]+) (0|[1-9][0-9]*)", header)
+        if (match is None or match[1] != oid.encode("ascii")
+                or match[2] != object_type.encode("ascii")):
+            raise InspectionError("invalid-git-object-batch")
+        size = int(match[3])
+        start, position = end + 1, end + 1 + size
+        if position >= len(output) or output[position:position + 1] != b"\n":
+            raise InspectionError("invalid-git-object-batch")
+        value = output[start:position]
+        digest = hashlib.new("sha1" if len(oid) == 40 else "sha256",
+                             object_type.encode("ascii") + b" "
+                             + str(size).encode("ascii") + b"\0" + value,
+                             usedforsecurity=False).hexdigest()
+        if digest != oid:
+            raise InspectionError("invalid-git-object-batch")
+        result[oid] = value
+        position += 1
+    if position != len(output):
+        raise InspectionError("invalid-git-object-batch")
+    return result
+
+
+def git_commit_metadata(repository: Path, oids: list[str]) -> dict[str, str]:
+    """Keep Git's metadata decoding while reading all requested commits together."""
+    if any(not isinstance(oid, str)
+           or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid) for oid in oids):
+        raise InspectionError("invalid-commit-metadata")
+    if not oids:
+        return {}
+    output = git(repository, "log", "--no-walk=unsorted",
+                 "--format=format:%H%x00%an%n%ae%n%cn%n%ce%n%B%x00", "--stdin",
+                 input_data=("\n".join(oids) + "\n").encode("ascii"))
+    records = output.split(b"\0")
+    if len(records) != 2 * len(oids) + 1 or records[-1] != b"":
+        raise InspectionError("invalid-commit-metadata")
+    result = {}
+    for index, oid in enumerate(oids):
+        expected = (b"\n" if index else b"") + oid.encode("ascii")
+        if records[2 * index] != expected:
+            raise InspectionError("invalid-commit-metadata")
+        result[oid] = records[2 * index + 1].decode("utf-8", "strict")
+    return result
+
+
 def synthetic(value: str) -> bool:
     """実環境から独立した明示的プレースホルダーだけを認める。"""
     value = value.strip()
@@ -192,6 +255,7 @@ class Guard:
         self.checked: set[tuple[str, str, str]] = set()
         self.text_checked: set[tuple[str, str, int, bool, int]] = set()
         self.blobs: dict[str, bytes] = {}
+        self.history_checked: set[str] = set()
         self.files = 0
         self.commits = 0
         self.private_terms: list[str] = []
@@ -446,6 +510,7 @@ class Guard:
     def index(self) -> None:
         """作業ファイルではなくステージされた実際のバイト列を調べる。"""
         records = git(self.repository, "ls-files", "--stage", "-z")
+        entries = []
         for record in records.split(b"\0"):
             if not record:
                 continue
@@ -457,8 +522,10 @@ class Guard:
                 continue
             if self.local_only_path(os.fsdecode(name)):
                 self.record(os.fsdecode(name), "local-only-path-tracked", "")
-            self.scan_blob(os.fsdecode(name), self.blob(oid.decode()),
-                           mode.decode())
+            entries.append((os.fsdecode(name), oid.decode(), mode.decode()))
+        self.prefetch_blobs([oid for _, oid, _ in entries])
+        for name, oid, mode in entries:
+            self.scan_blob(name, self.blob(oid), mode)
         self.current_metadata()
 
     def tracked(self) -> None:
@@ -558,8 +625,14 @@ class Guard:
     def blob(self, oid: str) -> bytes:
         """同じGitオブジェクトは再読込せず、内容を外へ表示しない。"""
         if oid not in self.blobs:
-            self.blobs[oid] = git(self.repository, "cat-file", "blob", oid)
+            self.prefetch_blobs([oid])
         return self.blobs[oid]
+
+    def prefetch_blobs(self, oids: list[str]) -> None:
+        """Bound each batch while caching only object bytes in this process."""
+        pending = list(dict.fromkeys(oid for oid in oids if oid not in self.blobs))
+        for start in range(0, len(pending), 256):
+            self.blobs.update(git_objects(self.repository, pending[start:start + 256]))
 
     def scan_tag(self, oid: str) -> None:
         """注釈付きタグのメッセージとtaggerを、参照外オブジェクトでも調べる。"""
@@ -602,19 +675,13 @@ class Guard:
         else:
             self.check_local_only_tip("HEAD")
             revision_args = ["HEAD", *self.public_refs()]
-        commits = git(self.repository, "rev-list", *revision_args).splitlines()
-        for commit in commits:
-            oid = commit.decode("ascii")
-            self.commits += 1
-            metadata = git(self.repository, "show", "-s", "--format=%an%n%ae%n%cn%n%ce%n%B", oid)
-            metadata_text = metadata.decode("utf-8", "strict")
-            self.scan_text("@commit", metadata_text)
-            fields = metadata_text.splitlines()
-            if len(fields) < 4:
-                raise InspectionError("invalid-commit-metadata")
-            for name in (fields[0], fields[2]):
-                if name not in self.authors:
-                    self.record("@commit", "unapproved-author-name", "")
+        commits = [commit.decode("ascii") for commit in
+                   git(self.repository, "rev-list", *revision_args).splitlines()]
+        pending = [oid for oid in commits if oid not in self.history_checked]
+        metadata = git_commit_metadata(self.repository, pending)
+        trees = {}
+        for oid in pending:
+            entries = []
             for record in git(self.repository, "ls-tree", "-r", "-z", oid).split(b"\0"):
                 if not record:
                     continue
@@ -626,7 +693,22 @@ class Guard:
                 if object_type != b"blob":
                     self.record(path, "unsupported-git-object", "")
                     continue
-                self.scan_blob(path, self.blob(blob.decode()), mode.decode())
+                entries.append((path, blob.decode(), mode.decode()))
+            trees[oid] = entries
+        self.prefetch_blobs([blob for entries in trees.values() for _, blob, _ in entries])
+        for oid in pending:
+            self.commits += 1
+            metadata_text = metadata[oid]
+            self.scan_text("@commit", metadata_text)
+            fields = metadata_text.splitlines()
+            if len(fields) < 4:
+                raise InspectionError("invalid-commit-metadata")
+            for name in (fields[0], fields[2]):
+                if name not in self.authors:
+                    self.record("@commit", "unapproved-author-name", "")
+            for path, blob, mode in trees[oid]:
+                self.scan_blob(path, self.blob(blob), mode)
+            self.history_checked.add(oid)
         for name in self.public_refs():
             self.scan_text("@refs", name)
             kind = git(self.repository, "cat-file", "-t", name).strip()

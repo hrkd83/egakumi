@@ -193,8 +193,8 @@ paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須
 | `network.subnetPrefixes.management` | `"10.40.2.128/26"` | Linux管理VM用サブネット。 |
 | `network.subnetPrefixes.aca` | `"10.40.2.192/26"` | Core管理ポータルのACA専用サブネット。基本/26、最小/27。他の5区画と同じ一覧で指定。 |
 | `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
-| `network.clientAddressPrefixes` | `["0.0.0.0/0"]` | API利用者の送信元IPv4/CIDRを1件以上指定。省略時の0.0.0.0/0は全IPv4、特定CIDRはその範囲を許可。明示した`[]`はAzure変更前の入力検査で拒否。Web受信100・gRPC受信150のAllowを使い、認証・認可は別に維持。 |
-| `network.operatorAddressPrefixes` | `[]` | 管理VMへSSH接続する運用者の送信元IPv4/CIDR。[]は許可なし。API利用元とは別で、VPN等の経路を自動作成する設定ではない。 |
+| `network.clientAddressPrefixes` | `["0.0.0.0/0"]` | API利用者の送信元IPv4/CIDRを1件以上指定。省略時の0.0.0.0/0は全IPv4、特定CIDRはその範囲を許可。明示した`[]`はAzure変更前の入力検査で拒否。Web受信120・gRPC受信125のAllowを使い、認証・認可は別に維持。 |
+| `network.operatorAddressPrefixes` | `[]` | 管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できる。指定ありの場合だけAllow・220を作成し、[]または省略時は作成しない。設定を外した場合は構築前処理で現行Allow・220を削除し、未許可通信は4096で拒否。接続経路は別途必要。 |
 | `network.dnsServers` | `[]` | DNSサーバーのIPv4アドレス配列。[]はAzure提供DNS（168.63.129.16）。指定時は中央DNSへの経路・TCP/UDP53・private/publicの名前解決を別途確保。 |
 | `network.ntpAddressPrefixes` | `["Internet"]` | Linux管理VMの時刻同期宛先範囲／サービス・タグ。空配列は不可。 |
 | `network.ntpFqdns` | `["ntp.ubuntu.com"]` | Linux管理VMに設定する外部NTP先FQDN。既存Chrony/PTPは保持し、外部通信をFWでも制限する。 |
@@ -212,6 +212,15 @@ paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須
 | `monitoring.auditAllowedIpAddresses` | `[]` | 監査Storageへの公開アクセス許可元IPv4/CIDR。[]は公開IP許可を追加しない。API入口の制限とは別。 |
 
 予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、接続元CIDRを指定しただけではインターネットからSSH接続できません。
+
+管理VMのNICにpublic IPはありません。この資材はBastion・VPN・ExpressRoute・管理VMへのDNAT入口を自動構築しません。
+公開入口のあるBastionを別途利用する場合は「管理者PC → Bastion → 管理VMのprivate IP」の経路になり、
+`operatorAddressPrefixes` には通常AzureBastionSubnetのCIDRを指定します。管理者PCやBastionのpublic IPをVM側の送信元として指定するものではありません。
+VPN・既存踏み台・NATを利用する場合も、VMに届く実際の送信元IPv4/CIDRと往復経路を確認します。
+[MicrosoftのBastion対象VM側NSG要件](https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg#target-vm-subnet)
+
+資材の証明書処理などは、VM Agent経由のManaged Run Commandを使います。これらの標準処理のためにSSHの受信許可を追加する必要はありません。
+[MicrosoftのManaged Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)
 
 IP制限は、設定済みCIDRの許可／拒否を[動作テスト](../testing/integration-tests.md)で、全IPv4許可・省略・有効なCIDR間の再配備と、clientの空配列をAzure変更前に拒否する入力検査を[構築テスト](../testing/construction-tests.md)で確認します。`operatorAddressPrefixes:[]`による管理VMの拒否は別の有効な条件です。APIの認証・認可は全IPv4許可時も維持します。
 

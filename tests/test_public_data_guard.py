@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import uuid
 from urllib.parse import quote
 
@@ -19,6 +21,14 @@ SCANNER = Path(os.environ.get(
     "PUBLIC_DATA_GUARD_SCRIPT",
     str(Path(__file__).resolve().parents[1] / "scripts/check_public_data.py"),
 )).resolve()
+
+
+def load_scanner():
+    """CLIを実行せず、標準ライブラリーだけの検査モジュールを読み込む。"""
+    spec = importlib.util.spec_from_file_location("public_data_guard_test_subject", SCANNER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class PublicDataGuardTests(unittest.TestCase):
@@ -267,6 +277,59 @@ class PublicDataGuardTests(unittest.TestCase):
         self.outcome(self.check("--tracked"), 0)
         self.outcome(self.check("--all-history"), 1, "unknown-uuid")
 
+    def test_same_blob_at_a_historical_unapproved_path_is_not_hidden_by_a_later_exception(self) -> None:
+        value = self.identifier()
+        self.stage(value, "prior.txt")
+        self.git("commit", "--quiet", "-m", "Add synthetic path boundary fixture")
+        self.git("mv", "prior.txt", "approved.txt")
+        self.git("commit", "--quiet", "-m", "Move synthetic path boundary fixture")
+        self.policy_data["literal_exceptions"] = [{
+            "path": "approved.txt", "rule": "unknown-uuid", "value": value,
+            "reason": "Independently generated synthetic path exception",
+        }]
+        self.save_policy()
+        self.outcome(self.check("--tracked"), 0)
+        self.outcome(self.check("--all-history"), 1, "unknown-uuid")
+
+    def test_same_blob_and_path_with_a_historical_symlink_mode_is_still_checked(self) -> None:
+        self.stage("Independent synthetic mode fixture.\n")
+        oid = self.git("rev-parse", ":candidate.txt").strip().decode()
+        self.git("update-index", "--cacheinfo", "120000," + oid + ",candidate.txt")
+        self.git("commit", "--quiet", "-m", "Add synthetic unsupported mode fixture")
+        self.git("update-index", "--cacheinfo", "100644," + oid + ",candidate.txt")
+        self.git("commit", "--quiet", "-m", "Restore synthetic regular mode fixture")
+        self.outcome(self.check("--tracked"), 0)
+        self.outcome(self.check("--all-history"), 1, "unsupported-file-mode")
+
+    def test_deleted_credential_and_old_commit_metadata_survive_batch_history_inspection(self) -> None:
+        token = "gh" + "p_" + uuid.uuid4().hex + uuid.uuid4().hex
+        metadata = self.identifier()
+        original = self.environment.copy()
+        self.environment["GIT_AUTHOR_NAME"] = "Independent synthetic historical contributor"
+        self.stage(token)
+        self.git("commit", "--quiet", "-m", "Synthetic historical metadata " + metadata)
+        self.environment = original
+        self.git("rm", "--quiet", "candidate.txt")
+        self.git("commit", "--quiet", "-m", "Remove synthetic historical credential")
+        self.outcome(self.check("--tracked"), 0)
+        result = self.check("--all-history")
+        self.outcome(result, 1, "credential-pattern")
+        self.assertIn("unknown-uuid", result.stdout)
+        self.assertIn("unapproved-author-name", result.stdout)
+        self.assertTrue(token not in result.stdout + result.stderr
+                        and metadata not in result.stdout + result.stderr,
+                        "history inspection disclosed synthetic input")
+
+    def test_combined_history_does_not_skip_a_public_branch_when_push_tip_is_clean(self) -> None:
+        self.stage(self.identifier())
+        self.git("commit", "--quiet", "-m", "Add synthetic public branch rejection fixture")
+        self.git("branch", "public-review")
+        self.git("reset", "--hard", self.initial_commit)
+        data = "HEAD " + self.initial_commit + " refs/heads/main " + "0" * 40 + "\n"
+        self.outcome(self.check("--pre-push-refs", stdin=data), 0)
+        self.outcome(self.check("--all-history", "--pre-push-refs", stdin=data),
+                     1, "unknown-uuid")
+
     def test_pending_commit_message_is_checked(self) -> None:
         message = self.directory / "message.txt"
         message.write_text("Synthetic message " + self.identifier())
@@ -284,11 +347,15 @@ class PublicDataGuardTests(unittest.TestCase):
         self.outcome(self.check("--all-history"), 0)
         data = "HEAD " + revision + " refs/heads/main " + "0" * 40 + "\n"
         self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
+        self.outcome(self.check("--all-history", "--pre-push-refs", stdin=data),
+                     1, "unknown-uuid")
 
     def test_push_destination_name_is_checked(self) -> None:
         destination = "refs/heads/synthetic-" + self.identifier()
         data = "HEAD " + self.initial_commit + " " + destination + " " + "0" * 40 + "\n"
         self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
+        self.outcome(self.check("--all-history", "--pre-push-refs", stdin=data),
+                     1, "unknown-uuid")
 
     def test_runtime_checkpoint_does_not_expand_default_public_history(self) -> None:
         self.stage(self.identifier())
@@ -522,6 +589,9 @@ class PublicDataGuardTests(unittest.TestCase):
         data = "HEAD " + previous + " refs/heads/review " + "0" * 40 + "\n"
         self.outcome(self.check("--pre-push-refs", stdin=data),
                      1, "local-only-path-tracked")
+        # 全履歴で検査済みのcommitでも、送信tipの禁止path判定は省略しない。
+        self.outcome(self.check("--all-history", "--pre-push-refs", stdin=data),
+                     1, "local-only-path-tracked")
 
     def test_push_checks_dangling_annotated_tag_message(self) -> None:
         self.git("tag", "-a", "synthetic-review", "-m",
@@ -531,6 +601,8 @@ class PublicDataGuardTests(unittest.TestCase):
         self.outcome(self.check("--all-history"), 0)
         data = "HEAD " + tag_object + " refs/tags/review " + "0" * 40 + "\n"
         self.outcome(self.check("--pre-push-refs", stdin=data), 1, "unknown-uuid")
+        self.outcome(self.check("--all-history", "--pre-push-refs", stdin=data),
+                     1, "unknown-uuid")
 
     def test_nested_base64_cannot_escape_the_depth_limit(self) -> None:
         payload = self.identifier().encode()
@@ -596,6 +668,129 @@ class PublicDataGuardTests(unittest.TestCase):
         environment["EGAKUMI_PRIVATE_TERMS_FILE"] = str(local_terms)
         self.outcome(self.check("--staged", environment=environment),
                      2, "private-terms-must-stay-outside-checkout")
+
+
+class GitObjectBatchTests(unittest.TestCase):
+    """Git batch境界は不正入力を通さず、本文をサイズ付きバイト列として扱う。"""
+
+    def setUp(self):
+        self.scanner = load_scanner()
+        self.repository = Path("synthetic-repository")
+        self.oid = self.object_id(b"abc")
+
+    @staticmethod
+    def object_id(payload, kind="blob", algorithm="sha1"):
+        content = kind.encode("ascii") + b" " + str(len(payload)).encode("ascii") + b"\0" + payload
+        return hashlib.new(algorithm, content, usedforsecurity=False).hexdigest()
+
+    def frame(self, oid, payload, kind="blob"):
+        return (oid + " " + kind + " " + str(len(payload)) + "\n").encode() + payload + b"\n"
+
+    def test_valid_multiple_objects_preserve_binary_framing_with_one_git_invocation(self):
+        first, second = b"one\n\x00two\n", b"independent public fixture"
+        first_oid, other = self.object_id(first), self.object_id(second)
+        output = self.frame(first_oid, first) + self.frame(other, second)
+        with mock.patch.object(self.scanner, "git", return_value=output) as git:
+            result = self.scanner.git_objects(self.repository, [first_oid, other])
+        self.assertEqual(result, {first_oid: first, other: second})
+        git.assert_called_once()
+
+    def test_sha256_object_id_is_verified(self):
+        payload = b"Independent synthetic SHA-256 repository object.\n"
+        oid = self.object_id(payload, algorithm="sha256")
+        with mock.patch.object(self.scanner, "git", return_value=self.frame(oid, payload)):
+            self.assertEqual(self.scanner.git_objects(self.repository, [oid]), {oid: payload})
+
+    def test_valid_frame_with_modified_payload_fails_closed(self):
+        for algorithm in ("sha1", "sha256"):
+            oid = self.object_id(b"abc", algorithm=algorithm)
+            with self.subTest(algorithm=algorithm), mock.patch.object(
+                    self.scanner, "git", return_value=self.frame(oid, b"abd")):
+                with self.assertRaises(self.scanner.InspectionError):
+                    self.scanner.git_objects(self.repository, [oid])
+
+    def test_empty_requests_do_not_invoke_git(self):
+        with mock.patch.object(self.scanner, "git") as git:
+            self.assertEqual(self.scanner.git_objects(self.repository, []), {})
+            self.assertEqual(self.scanner.git_commit_metadata(self.repository, []), {})
+            git.assert_not_called()
+
+    def test_invalid_requested_oid_is_refused_before_git(self):
+        for oid in ("short", "a" * 39, "a" * 41, "g" * 40, "a" * 40 + "\n"):
+            with self.subTest(shape=len(oid)), mock.patch.object(self.scanner, "git") as git:
+                with self.assertRaises(self.scanner.InspectionError):
+                    self.scanner.git_objects(self.repository, [oid])
+                git.assert_not_called()
+
+    def test_missing_mismatched_type_size_and_truncated_frames_fail_closed(self):
+        header = self.oid.encode()
+        cases = {
+            "missing": header + b" missing\n",
+            "wrong-oid": self.frame("b" * 40, b"abc"),
+            "abbreviated-oid": self.frame("a" * 39, b"abc"),
+            "wrong-type": self.frame(self.oid, b"abc", "commit"),
+            "unknown-type": self.frame(self.oid, b"abc", "unknown"),
+            "negative-size": header + b" blob -1\nabc\n",
+            "leading-zero-size": header + b" blob 03\nabc\n",
+            "fractional-size": header + b" blob 3.0\nabc\n",
+            "nonnumeric-size": header + b" blob three\nabc\n",
+            "extra-field": header + b" blob 3 extra\nabc\n",
+            "truncated-header": header + b" blob 3",
+            "truncated-body": header + b" blob 5\nabc\n",
+            "missing-delimiter": header + b" blob 3\nabc",
+            "wrong-delimiter": header + b" blob 3\nabcX",
+            "trailing-data": self.frame(self.oid, b"abc") + b"unrequested",
+            "unrequested-object": self.frame(self.oid, b"abc") + self.frame("b" * 40, b"other"),
+        }
+        for label, output in cases.items():
+            with self.subTest(case=label), mock.patch.object(self.scanner, "git", return_value=output):
+                with self.assertRaises(self.scanner.InspectionError):
+                    self.scanner.git_objects(self.repository, [self.oid])
+
+    def test_reordered_or_missing_responses_fail_closed(self):
+        other = self.object_id(b"other")
+        for output in (self.frame(other, b"other") + self.frame(self.oid, b"abc"),
+                       self.frame(self.oid, b"abc")):
+            with mock.patch.object(self.scanner, "git", return_value=output):
+                with self.assertRaises(self.scanner.InspectionError):
+                    self.scanner.git_objects(self.repository, [self.oid, other])
+
+    def test_metadata_batch_preserves_multiline_messages_with_one_git_invocation(self):
+        other = self.object_id(b"other")
+        first = "Synthetic author\n\nSynthetic committer\n\nFirst synthetic message\n\nMessage body.\n"
+        second = "Synthetic author\n\nSynthetic committer\n\nSecond synthetic message\n"
+        output = (self.oid.encode() + b"\0" + first.encode() + b"\0\n" +
+                  other.encode() + b"\0" + second.encode() + b"\0")
+        with mock.patch.object(self.scanner, "git", return_value=output) as git:
+            result = self.scanner.git_commit_metadata(self.repository, [self.oid, other])
+        self.assertEqual(result, {self.oid: first, other: second})
+        git.assert_called_once()
+
+    def test_invalid_metadata_request_is_refused_before_git(self):
+        with mock.patch.object(self.scanner, "git") as git:
+            with self.assertRaises(self.scanner.InspectionError):
+                self.scanner.git_commit_metadata(self.repository, ["short"])
+            git.assert_not_called()
+
+    def test_malformed_metadata_framing_order_and_encoding_fail_closed(self):
+        first = self.oid.encode() + b"\0Synthetic public metadata\0"
+        other = self.object_id(b"other").encode()
+        second = other + b"\0More synthetic metadata\0"
+        cases = {
+            "missing-record": first,
+            "missing-final-delimiter": first + b"\n" + second[:-1],
+            "extra-delimiter": first + b"\n" + second + b"\0",
+            "extra-record": first + b"\n" + second + b"\n" + first,
+            "wrong-order": second + b"\n" + first,
+            "missing-record-separator": first + second,
+            "wrong-record-separator": first + b"\r\n" + second,
+            "wrong-oid": first + b"\n" + b"b" * 40 + b"\0Synthetic public metadata\0",
+            "invalid-utf8": first + b"\n" + other + b"\0\xff\0",
+        }
+        for label, output in cases.items():
+            with self.subTest(case=label), mock.patch.object(self.scanner, "git", return_value=output):
+                with self.assertRaises((self.scanner.InspectionError, UnicodeError)):
+                    self.scanner.git_commit_metadata(self.repository, [self.oid, other.decode()])
 
 
 if __name__ == "__main__":

@@ -50,6 +50,8 @@ Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化
 
 基盤の更新は、所有確認済みのNSG規則・UDR・APIMホスト／証明書参照、追加済みのAPIM外向け許可先を読み取り、構築入力へ引き継ぎます。企業ネットワーク変更時は [ハブ接続手順](setup/07-hub-spoke.md)も確認します。変更後の公開API実行・Portalログイン・本人接続・ログ到達は [動作テスト](testing/integration-tests.md)で別途確認します。Gatewayの`status: deployed`は業務APIの`runtimeVerified`を合格へ変更するものではありません。
 
+[4 NSGの構成と優先度](operations/network-security-groups.md)は共通採番JSONとBicepで管理します。新規構築で同じ定義を使用し、構築後は上表に従って対象に限定して更新します。
+
 ### API・ポリシー・購読を変更する
 
 資材で管理するAPIは [登録定義](../apps/gateway/apim/apis/)を変更し、Gatewayを再配備します。`apiDefinitions: []`は同ディレクトリの標準定義を解決し、明示した配列はその定義を対象にします。解決したAPIや環境固有URLを元のparamsへ書き戻しません。

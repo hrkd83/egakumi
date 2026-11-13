@@ -16,6 +16,7 @@ param managementPrefix string
 param keyVaultPrivateIps array
 @description('CM未使用時はAPIMから認証窓口への経路を追加しません。')
 param enableCredentialBroker bool = true
+var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.database.windows.net'
   location: 'global'
@@ -50,19 +51,19 @@ resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = 
 resource sqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   name: 'allow-credential-broker-sql'
-  properties: { priority: 175, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: ips, sourcePortRange: '*', destinationPortRange: '1433' }
+  properties: { priority: nsgPriorities.groups.pep.rules['allow-credential-broker-sql'].priority, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: ips, sourcePortRange: '*', destinationPortRange: '1433' }
 }
 // 認証窓口のIDが、Private Endpoint経由でKey Vaultの秘密参照を解決します。
 resource vaultIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   name: 'allow-credential-broker-vault'
-  properties: { priority: 177, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: keyVaultPrivateIps, sourcePortRange: '*', destinationPortRange: '443' }
+  properties: { priority: nsgPriorities.groups.pep.rules['allow-credential-broker-vault'].priority, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: keyVaultPrivateIps, sourcePortRange: '*', destinationPortRange: '443' }
 }
 resource apimNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: apimNsgName }
 resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = if (enableCredentialBroker) {
   parent: apimNsg
   name: 'allow-credential-broker'
-  properties: { priority: 176, direction: 'Outbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: apimPrefix, destinationAddressPrefix: acaPrivateIp, sourcePortRange: '*', destinationPortRange: '443' }
+  properties: { priority: nsgPriorities.groups.apim.rules['allow-credential-broker'].priority, direction: 'Outbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: apimPrefix, destinationAddressPrefix: acaPrivateIp, sourcePortRange: '*', destinationPortRange: '443' }
 }
 resource firewall 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
 resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
