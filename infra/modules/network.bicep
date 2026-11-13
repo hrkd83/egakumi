@@ -165,7 +165,7 @@ resource nsgTagUpdates 'Microsoft.Resources/tags@2021-04-01' = [for (nsgName, i)
 // Azure-provided DNS is platform traffic; AzurePlatformDNS must not be used in
 // an Allow rule. Keep the two named children even with default DNS so moving
 // back from custom DNS replaces (and revokes) the former custom-server allow.
-// dnsServers=[] は Azure 提供 DNS。独自 IP を指定する企業構成では、その DNS に Private Link 名の解決先も用意します。
+// 構築入力ではVNetとFirewallのdnsServersを空配列に固定し、Azure提供DNSを使います。
 var effectiveDnsServers = empty(dnsServers) ? ['168.63.129.16'] : dnsServers
 var staticNsgRules = flatten(map(range(0, length(nsgDefinitions)), i => map(concat(nsgDefinitions[i].rules,
   nsgDefinitions[i].key == 'pep' ? [] : [

@@ -181,7 +181,9 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須です。全サブネットをVNet範囲内へ重複なく割り当て、企業の既存IP計画・接続予定先と照合して指定します。公開例の10.40系CIDRを、導入先でも未使用と推測しません。
 
-選択項目も公開params例に配列で記載しています。`[]`はDNSではAzure提供DNS、`operatorAddressPrefixes`では管理者の許可元なし、追加規則では追加なしを表します。利用者の`clientAddressPrefixes`は1件以上が必要で、`[]`はAzure変更前の入力検査で拒否します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。外部NTP先と追加接続先FQDNも、企業の接続先に合わせる値なのでparamsへ記載します。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+選択項目も公開params例に配列で記載しています。`[]`は`operatorAddressPrefixes`では管理者の許可元なし、追加規則では追加なしを表します。利用者の`clientAddressPrefixes`は1件以上が必要で、`[]`はAzure変更前の入力検査で拒否します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。外部NTP先と追加接続先FQDNも、企業の接続先に合わせる値なのでparamsへ記載します。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+
+VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標準config](05-config.md#ネットワークの通信機能network)でどちらも`[]`に固定し、Azure提供DNSを使います。paramsには指定できず、残っていると入力検査で拒否します。以前のparamsにこれらの項目がある場合は、両方とも削除してください。既存の独自DNSを使う環境では、Azure提供DNSへの切り替えによる影響を確認してから移行します。実ファイルの自動移行は行いません。
 
 | パラメタ名 | 指定値・公開例 | 意味 |
 | --- | --- | --- |
@@ -195,13 +197,11 @@ paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須
 | `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
 | `network.clientAddressPrefixes` | `["0.0.0.0/0"]` | API利用者の送信元IPv4/CIDRを1件以上指定。省略時の0.0.0.0/0は全IPv4、特定CIDRはその範囲を許可。明示した`[]`はAzure変更前の入力検査で拒否。Web受信120・gRPC受信125のAllowを使い、認証・認可は別に維持。 |
 | `network.operatorAddressPrefixes` | `[]` | 管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できる。指定ありの場合だけAllow・220を作成し、[]または省略時は作成しない。設定を外した場合は構築前処理で現行Allow・220を削除し、未許可通信は4096で拒否。接続経路は別途必要。 |
-| `network.dnsServers` | `[]` | DNSサーバーのIPv4アドレス配列。[]はAzure提供DNS（168.63.129.16）。指定時は中央DNSへの経路・TCP/UDP53・private/publicの名前解決を別途確保。 |
 | `network.ntpAddressPrefixes` | `["Internet"]` | Linux管理VMの時刻同期宛先範囲／サービス・タグ。空配列は不可。 |
 | `network.ntpFqdns` | `["ntp.ubuntu.com"]` | Linux管理VMに設定する外部NTP先FQDN。既存Chrony/PTPは保持し、外部通信をFWでも制限する。 |
 | `network.firewall.apimAllowedFqdns` | `[]` | APIMから追加で接続するHTTPS宛先。標準のplatform通信は別に作成。 |
 | `network.firewall.managementAllowedFqdns` | `[]` | 管理VMから追加で接続するHTTPS宛先。証明書取得・PowerShell導入に必要な共通宛先は資材が追加。 |
 | `network.managementAdditionalSecurityRules` | `[]` | 管理VM用NSGに追加するAzure形式の規則配列。名前・優先度の重複を避ける。 |
-| `network.firewall.dnsServers` | `[]` | Firewall自身がFQDNの解決に使うDNSサーバー。[]はAzure提供DNS。VNetクライアントのDNS設定とは別。 |
 | `network.firewall.snatPrivateRanges` | `["IANAPrivateRanges"]` | SNATせずprivate宛先とみなす範囲。API往復の送信元保持も考慮。 |
 | `network.firewall.idpsPrivateRanges` | `[]` | Premium IDPSのprivate判定範囲を上書き。[]は独自の範囲を指定しない。 |
 | `network.firewall.bypassTrafficSettings` | `[]` | Premium IDPSの検査除外。[]は追加除外なし。Standardでは指定しない。 |
@@ -223,8 +223,6 @@ VPN・既存踏み台・NATを利用する場合も、VMに届く実際の送信
 [MicrosoftのManaged Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)
 
 IP制限は、設定済みCIDRの許可／拒否を[動作テスト](../testing/integration-tests.md)で、全IPv4許可・省略・有効なCIDR間の再配備と、clientの空配列をAzure変更前に拒否する入力検査を[構築テスト](../testing/construction-tests.md)で確認します。`operatorAddressPrefixes:[]`による管理VMの拒否は別の有効な条件です。APIの認証・認可は全IPv4許可時も維持します。
-
-`dnsServers:[]`はAzure提供DNSを使います。カスタムDNSではPrivate Endpoint名も解決できる転送・ゾーン参照が必要です。[Azureの名前解決](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-name-resolution-for-vms-and-role-instances)
 
 ### API・権限の記述形式
 

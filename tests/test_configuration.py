@@ -142,11 +142,15 @@ class PublicSampleTests(unittest.TestCase):
             addresses = parameters["network"]
             self.assertTrue(network["certificatePublicProbeEnabled"])
             self.assertEqual(network["dnsTtl"], 300)
+            self.assertEqual(network["dnsServers"], [])
+            self.assertEqual(network["firewall"]["dnsServers"], [])
+            self.assertNotIn("dnsServers", addresses)
+            self.assertNotIn("dnsServers", addresses["firewall"])
             self.assertEqual(addresses["managementAdditionalSecurityRules"], [])
             self.assertEqual(network["operatorPorts"], ["22"])
             self.assertEqual(addresses["firewall"]["snatPrivateRanges"], ["IANAPrivateRanges"])
             self.assertEqual(network["firewall"]["signatureOverrides"], [])
-            for key in ("idpsPrivateRanges", "bypassTrafficSettings", "dnsServers",
+            for key in ("idpsPrivateRanges", "bypassTrafficSettings",
                         "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
                         "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
                 self.assertEqual(addresses["firewall"][key], [])

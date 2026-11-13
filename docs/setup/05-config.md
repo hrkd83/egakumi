@@ -41,7 +41,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・IP計画・許可元・DNS・追加接続先・権限は前節のparamsへ記載します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・IP計画・許可元・追加接続先・権限は前節のparamsへ記載します。VNetとFirewallのDNS設定は標準configの空配列に固定し、Azure提供DNSを使います。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
@@ -55,6 +55,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 | --- | --- | --- |
 | `network.operatorProtocol` | `"Tcp"` | 管理VMへ許可するプロトコル。Tcp/Udp/*。 |
 | `network.operatorPorts` | `["22"]` | 管理VMへ許可する宛先ポート。Linux SSHは22。 |
+| `network.dnsServers` | `[]`（固定） | VNetはAzure提供DNS（168.63.129.16）を使用する。空配列以外は入力検査で拒否し、paramsからも指定できない。 |
 | `network.bgpRoutePropagation.agw` | `true` | AppGW用RTへGateway由来経路を伝搬。true=伝搬する、false=しない。 |
 | `network.bgpRoutePropagation.apim` | `true` | APIM用RTのルート伝搬。 |
 | `network.bgpRoutePropagation.management` | `true` | 管理VM用RTのルート伝搬。デフォルトルートのnext hopやピアリングとは別。 |
@@ -77,6 +78,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 | `network.firewall.threatIntelMode` | `"Alert"` | 脅威情報のAlert=検知、Deny=遮断、Off=無効。 |
 | `network.firewall.idpsMode` | テスト：`"Off"`／本番：`"Alert"` | PremiumのIDPSはAlert/Deny。Standardの見本はOffを明記し、Bicepでは対応しないIDPS設定自体を作らない。 |
 | `network.firewall.zones` | テスト：`[]`／本番：`["1","2","3"]` | Firewallと公開IPの可用性ゾーン。 |
+| `network.firewall.dnsServers` | `[]`（固定） | Firewall自身の名前解決もAzure提供DNSを使う。空配列以外は入力検査で拒否し、paramsからも指定できない。 |
 | `network.firewall.signatureOverrides` | `[]` | Premium IDPSの署名ごとの設定。 |
 
 #### サービス（services）

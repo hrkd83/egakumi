@@ -2,6 +2,7 @@
   "$schema": "../schemas/options.schema.json",
   "$comment": "標準動作設定の正本です。コピー不要です。企業固有の入力はparamsへ記載し、任意の動作変更だけこのファイルで管理します。",
   "network": {
+    "dnsServers": [],
     "bgpRoutePropagation": {
       "agw": true,
       "apim": true,
@@ -9,6 +10,7 @@
     },
     "appGatewayZones": [],
     "firewall": {
+      "dnsServers": [],
       "sku": "Standard",
       "threatIntelMode": "Alert",
       "zones": [],

@@ -19,8 +19,8 @@ from deployment.helpers.configuration import (ConfigurationError, build_bicep_co
 
 
 NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "operatorAddressPrefixes",
-                   "dnsServers", "ntpAddressPrefixes", "managementAdditionalSecurityRules")
-FIREWALL_IP_KEYS = ("dnsServers", "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
+                   "ntpAddressPrefixes", "managementAdditionalSecurityRules")
+FIREWALL_IP_KEYS = ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
                     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
                     "apimAdditionalApplicationRules", "managementAdditionalApplicationRules")
 
@@ -171,16 +171,29 @@ class SplitConfigurationTests(unittest.TestCase):
 
     def test_ip_parameters_merge_with_operational_config_and_partial_loader_inputs_stay_supported(self):
         # loaderは小さい部分入力にも使う。完全設定の必須CIDRはschemaとnormalizeで検査します。
-        result = self.sources({"network": {"operatorPorts": ["22"], "firewall": {"sku": "Premium", "idpsMode": "Deny"}}},
-                              {"network": {"dnsServers": [], "firewall": {"dnsServers": ["10.1.1.4"],
+        result = self.sources({"network": {"operatorPorts": ["22"], "dnsServers": [],
+                                            "firewall": {"sku": "Premium", "idpsMode": "Deny", "dnsServers": []}}},
+                              {"network": {"firewall": {
                                 "apimAdditionalNetworkRules": [{"name": "approved", "destinationAddresses": ["192.0.2.1"]}]}},
                                "monitoring": {"auditAllowedIpAddresses": ["198.51.100.10/32"]}})
         self.assertEqual(result["network"]["operatorPorts"], ["22"])
         self.assertEqual(result["network"]["firewall"]["sku"], "Premium")
-        self.assertEqual(result["network"]["firewall"]["dnsServers"], ["10.1.1.4"])
+        self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
         self.assertEqual(len(result["network"]["firewall"]["apimAdditionalNetworkRules"]), 1)
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], ["198.51.100.10/32"])
         self.assertEqual(self.sources(parameters={"network": {}})["network"], {})
+
+    def test_azure_dns_belongs_to_config_and_cannot_be_overridden_in_params(self):
+        options = {"network": {"dnsServers": [], "firewall": {"dnsServers": []}}}
+        result = self.sources(options, {"network": {}})
+        self.assertEqual(result["network"]["dnsServers"], [])
+        self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
+        for nested in (False, True):
+            for override in ([], ["168.63.129.16"], ["10.1.1.4"]):
+                network = {"firewall": {"dnsServers": override}} if nested else {"dnsServers": override}
+                with self.subTest(firewall=nested, override=override), self.assertRaisesRegex(
+                        ConfigurationError, r"network.*unsupported field.*dnsServers"):
+                    self.sources(options, {"network": network})
 
     def test_ip_fields_in_config_are_rejected_even_when_empty_or_overridden_by_params(self):
         # 誤った環境のIPを隠して継承しない。値そのものを例外へ表示しません。
@@ -208,7 +221,7 @@ class SplitConfigurationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigurationError, "network." + key): normalize_configuration(merged)
 
     def test_combined_internal_ip_configuration_is_not_subject_to_split_ownership_rules(self):
-        internal = {"network": {"addressSpaces": ["10.0.0.0/16"], "firewall": {"dnsServers": ["10.0.0.4"]}},
+        internal = {"network": {"addressSpaces": ["10.0.0.0/16"], "firewall": {"snatPrivateRanges": ["10.0.0.0/16"]}},
                     "monitoring": {"auditAllowedIpAddresses": ["198.51.100.1/32"]}}
         self.write(self.parameters, internal)
         self.assertEqual(load_configuration_source(self.parameters), internal)
@@ -221,8 +234,9 @@ class SplitConfigurationTests(unittest.TestCase):
         adopt_azure_dns_references(parameters)
         result = normalize_configuration(self.sources(options, parameters))
         self.assertEqual(result["network"]["clientAddressPrefixes"], ["0.0.0.0/0"])
-        for key in ("operatorAddressPrefixes", "dnsServers", "managementAdditionalSecurityRules"):
+        for key in ("operatorAddressPrefixes", "managementAdditionalSecurityRules"):
             self.assertEqual(result["network"][key], [])
+        self.assertEqual(result["network"]["dnsServers"], options["network"]["dnsServers"])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
 
     def test_client_sources_are_nonempty_after_loading_real_split_files(self):
@@ -253,7 +267,7 @@ class SplitConfigurationTests(unittest.TestCase):
         expected = {"addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
                     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24", "firewall": "10.40.2.0/26",
                                        "apim": "10.40.2.64/26", "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
-                    "clientAddressPrefixes": ["0.0.0.0/0"], "operatorAddressPrefixes": [], "dnsServers": [],
+                    "clientAddressPrefixes": ["0.0.0.0/0"], "operatorAddressPrefixes": [],
                     "ntpAddressPrefixes": ["Internet"], "managementAdditionalSecurityRules": [],
                     "firewall": {key: (["IANAPrivateRanges"] if key == "snatPrivateRanges" else []) for key in FIREWALL_IP_KEYS}}
         for name in ("test", "production"):
@@ -264,7 +278,11 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertEqual({key: parameters["network"]["firewall"][key] for key in FIREWALL_IP_KEYS}, expected["firewall"])
                 self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
                 self.assertFalse(set(NETWORK_IP_KEYS) & set(options["network"]))
+                self.assertEqual(options["network"]["dnsServers"], [])
+                self.assertNotIn("dnsServers", parameters["network"])
                 self.assertFalse(set(FIREWALL_IP_KEYS) & set(options["network"]["firewall"]))
+                self.assertEqual(options["network"]["firewall"]["dnsServers"], [])
+                self.assertNotIn("dnsServers", parameters["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
                 self.assertEqual(options["network"]["firewall"]["sku"], "Standard" if name == "test" else "Premium")
                 self.assertEqual(options["network"]["operatorPorts"], ["22"])
@@ -322,6 +340,35 @@ class SplitConfigurationTests(unittest.TestCase):
 class SplitSchemaTests(unittest.TestCase):
     """paramsと標準configの読込・合成とSchemaを検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
 
+    def test_dns_schemas_fix_both_config_settings_to_azure_dns_and_reject_params_fields(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is available in the integration venv")
+        parameters = json.loads((CORE / "params/test.example.json").read_text())
+        for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
+            parameters[key] = fixture()[key]
+        adopt_azure_dns_references(parameters)
+        params_validator = local_schema_validator(json.loads((CORE / "schemas/params.schema.json").read_text()))
+        params_validator.validate(parameters)
+        for nested in (False, True):
+            for dns in ([], ["168.63.129.16"], ["10.1.1.4"]):
+                selected_parameters = copy.deepcopy(parameters)
+                target = selected_parameters["network"]["firewall"] if nested else selected_parameters["network"]
+                target["dnsServers"] = dns
+                with self.subTest(firewall=nested, params_dns=dns):
+                    self.assertFalse(params_validator.is_valid(selected_parameters))
+        for filename in ("options.schema.json", "configuration.schema.json"):
+            schema = json.loads((CORE / "schemas" / filename).read_text())
+            network = schema["properties"]["network"]["properties"]
+            for scope, fields in (("vnet", network), ("firewall", network["firewall"]["properties"])):
+                validator = jsonschema.Draft202012Validator(fields["dnsServers"])
+                with self.subTest(schema=filename, scope=scope, dns=[]):
+                    validator.validate([])
+                for dns in (["168.63.129.16"], ["10.1.1.4"], "168.63.129.16"):
+                    with self.subTest(schema=filename, scope=scope, dns=dns):
+                        self.assertFalse(validator.is_valid(dns))
+
     def test_client_source_schemas_reject_empty_arrays_and_keep_optional_defaults(self):
         try:
             import jsonschema
@@ -344,7 +391,8 @@ class SplitSchemaTests(unittest.TestCase):
                 else:
                     selected["network"]["clientAddressPrefixes"] = prefixes
                 selected["network"]["operatorAddressPrefixes"] = []
-                selected["network"]["dnsServers"] = []
+                if name == "configuration":
+                    selected["network"]["dnsServers"] = []
                 with self.subTest(schema=name, prefixes=prefixes):
                     validator.validate(selected)
             document["network"]["clientAddressPrefixes"] = []

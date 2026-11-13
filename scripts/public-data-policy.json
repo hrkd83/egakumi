@@ -2355,7 +2355,7 @@
     {
       "rule": "nonpublic-ip",
       "value": "168.63.129.16",
-      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "reason": "Microsoft-documented shared Azure platform virtual IP used for Azure-provided DNS; not an environment-specific address. https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16 . Exact path/value only.",
       "paths": [
         "docs/setup/04-params.md",
         "docs/study/01-network-control.html",
@@ -2372,7 +2372,10 @@
         "infra/modules/network.bicep",
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
-        "tests/test_parameter_ip_ownership.py"
+        "tests/test_parameter_ip_ownership.py",
+        "docs/setup/05-config.md",
+        "schemas/options.schema.json",
+        "tests/test_split_configuration.py"
       ]
     },
     {

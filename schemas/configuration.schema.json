@@ -198,13 +198,8 @@
             "format": "ipv4"
           },
           "default": [],
-          "examples": [
-            [
-              "10.10.0.4",
-              "10.10.0.5"
-            ]
-          ],
-          "description": "VNetが使うDNSサーバーのIPv4アドレス配列。FQDNやCIDRは不可。省略/空配列はAzure提供DNS（168.63.129.16）。指定した場合は到達経路・TCP/UDP53とPrivate DNSの転送を別途確保します。"
+          "description": "VNetのDNSはAzure提供DNS（168.63.129.16）に固定するため、空配列だけを受け付けます。",
+          "maxItems": 0
         },
         "bgpRoutePropagation": {
           "type": "object",
@@ -289,7 +284,8 @@
               },
               "uniqueItems": true,
               "default": [],
-              "description": "Firewall DNSプロキシの上位DNSサーバーIPv4。空配列はAzure提供DNS。"
+              "description": "FirewallのDNSもAzure提供DNSに固定するため、空配列だけを受け付けます。",
+              "maxItems": 0
             },
             "idpsPrivateRanges": {
               "type": "array",

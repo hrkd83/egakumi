@@ -39,6 +39,16 @@
           ],
           "description": "Linux管理VMへ許可する宛先ポート。既定はSSHの22です。管理VMへの経路は別途必要です。"
         },
+        "dnsServers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "ipv4"
+          },
+          "default": [],
+          "description": "VNetのDNSはAzure提供DNS（168.63.129.16）に固定します。空配列だけを受け付け、paramsからは指定できません。",
+          "maxItems": 0
+        },
         "bgpRoutePropagation": {
           "type": "object",
           "additionalProperties": false,
@@ -122,6 +132,12 @@
               },
               "default": [],
               "description": "Premium IDPSの署名ごとの動作変更。追加しない場合は空配列。"
+            },
+            "dnsServers": {
+              "type": "array",
+              "maxItems": 0,
+              "default": [],
+              "description": "FirewallのDNSもVNetと同じAzure提供DNSに固定します。空配列だけを受け付け、paramsからは指定できません。"
             }
           },
           "allOf": [
