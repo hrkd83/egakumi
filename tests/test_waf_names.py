@@ -36,13 +36,13 @@ class WafNamesTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 policy_name(self.configuration(), key)
 
-    def test_only_the_defined_25_purposes_can_produce_a_policy_name(self):
-        self.assertEqual(len(POLICY_KEYS), 25)
-        self.assertEqual(len(DATA_POLICY_KEYS), 19)
-        self.assertEqual(sum(key.startswith("g-") for key in POLICY_KEYS), 14)
-        self.assertEqual(sum(key.startswith("p-") for key in POLICY_KEYS), 11)
+    def test_only_the_defined_28_purposes_can_produce_a_policy_name(self):
+        self.assertEqual(len(POLICY_KEYS), 28)
+        self.assertEqual(len(DATA_POLICY_KEYS), 22)
+        self.assertEqual(sum(key.startswith("g-") for key in POLICY_KEYS), 16)
+        self.assertEqual(sum(key.startswith("p-") for key in POLICY_KEYS), 12)
         generated = {policy_name(self.configuration(), key) for key in POLICY_KEYS}
-        self.assertEqual(len(generated), 25)
+        self.assertEqual(len(generated), 28)
         for key in ("g-other", "p-other", "g-unlisted-purpose", "p-unlisted-purpose"):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 policy_name(self.configuration(), key)

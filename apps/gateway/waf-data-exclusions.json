@@ -18,6 +18,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [
+                    {
+                      "ruleId": "931130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
                   "rules": [
                     {
@@ -133,6 +141,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -182,6 +201,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -239,6 +269,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -288,6 +329,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -345,6 +397,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -394,6 +457,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -498,6 +572,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -547,6 +632,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -604,6 +700,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -653,6 +760,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -710,6 +828,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -759,6 +888,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -863,6 +1003,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -912,6 +1063,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -969,6 +1131,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1018,6 +1191,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -1075,6 +1259,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1128,6 +1323,110 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.content.input_audio.data",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.content.file.file_data",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "messages.audio.id",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1168,6 +1467,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [
+                    {
+                      "ruleId": "931130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
                   "rules": [
                     {
@@ -1192,15 +1499,22 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941170"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -1354,6 +1668,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1403,6 +1728,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -1460,6 +1796,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1505,141 +1852,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -1673,6 +1901,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -1730,6 +1969,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1779,6 +2029,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -1836,6 +2097,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1885,6 +2157,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2134,6 +2417,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2228,6 +2522,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2277,6 +2582,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2381,6 +2697,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2430,6 +2757,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2487,6 +2825,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2536,6 +2885,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2640,6 +3000,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2689,6 +3060,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2746,6 +3128,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2795,6 +3188,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -2852,6 +3256,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -2901,6 +3316,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -3146,6 +3572,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -3195,6 +3632,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -3252,6 +3700,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -3305,6 +3764,17 @@
                   ]
                 },
                 {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -3354,6 +3824,17 @@
                     },
                     {
                       "ruleId": "920271"
+                    }
+                  ]
+                },
+                {
+                  "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                  "rules": [
+                    {
+                      "ruleId": "921120"
+                    },
+                    {
+                      "ruleId": "921130"
                     }
                   ]
                 },
@@ -3536,141 +4017,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -3708,152 +4070,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -3905,141 +4137,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -4082,141 +4195,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -4232,6 +4226,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -4246,141 +4248,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -4418,141 +4301,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -4590,152 +4354,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -4834,6 +4468,33 @@
               ]
             }
           ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input_image_2",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+                  "rules": [
+                    {
+                      "ruleId": "942340"
+                    },
+                    {
+                      "ruleId": "942390"
+                    },
+                    {
+                      "ruleId": "942450"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -4876,152 +4537,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5068,149 +4599,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5257,152 +4661,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5440,135 +4714,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5616,152 +4777,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5799,152 +4830,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -5991,152 +4892,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -6245,141 +5016,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -6417,152 +5069,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -6614,141 +5136,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -6791,141 +5194,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -6941,6 +5225,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -6955,141 +5247,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -7127,141 +5300,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -7299,152 +5353,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -7716,152 +5640,22 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -7886,15 +5680,22 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }
@@ -7984,152 +5785,143 @@
                   ]
                 },
                 {
-                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI",
-                  "rules": [
-                    {
-                      "ruleId": "930120"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
-                  "rules": [
-                    {
-                      "ruleId": "932100"
-                    },
-                    {
-                      "ruleId": "932105"
-                    },
-                    {
-                      "ruleId": "932110"
-                    },
-                    {
-                      "ruleId": "932115"
-                    },
-                    {
-                      "ruleId": "932120"
-                    },
-                    {
-                      "ruleId": "932130"
-                    },
-                    {
-                      "ruleId": "932160"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
                 },
                 {
-                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
-                  "rules": [
-                    {
-                      "ruleId": "933151"
-                    },
-                    {
-                      "ruleId": "933210"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
                 },
                 {
-                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                  "rules": [
-                    {
-                      "ruleId": "941100"
-                    },
-                    {
-                      "ruleId": "941110"
-                    },
-                    {
-                      "ruleId": "941120"
-                    },
-                    {
-                      "ruleId": "941130"
-                    },
-                    {
-                      "ruleId": "941140"
-                    },
-                    {
-                      "ruleId": "941150"
-                    },
-                    {
-                      "ruleId": "941160"
-                    },
-                    {
-                      "ruleId": "941170"
-                    },
-                    {
-                      "ruleId": "941210"
-                    },
-                    {
-                      "ruleId": "941320"
-                    },
-                    {
-                      "ruleId": "941340"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
                 },
                 {
-                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                  "rules": [
-                    {
-                      "ruleId": "942100"
-                    },
-                    {
-                      "ruleId": "942110"
-                    },
-                    {
-                      "ruleId": "942120"
-                    },
-                    {
-                      "ruleId": "942130"
-                    },
-                    {
-                      "ruleId": "942150"
-                    },
-                    {
-                      "ruleId": "942180"
-                    },
-                    {
-                      "ruleId": "942190"
-                    },
-                    {
-                      "ruleId": "942200"
-                    },
-                    {
-                      "ruleId": "942210"
-                    },
-                    {
-                      "ruleId": "942260"
-                    },
-                    {
-                      "ruleId": "942300"
-                    },
-                    {
-                      "ruleId": "942330"
-                    },
-                    {
-                      "ruleId": "942340"
-                    },
-                    {
-                      "ruleId": "942370"
-                    },
-                    {
-                      "ruleId": "942380"
-                    },
-                    {
-                      "ruleId": "942390"
-                    },
-                    {
-                      "ruleId": "942410"
-                    },
-                    {
-                      "ruleId": "942430"
-                    },
-                    {
-                      "ruleId": "942440"
-                    },
-                    {
-                      "ruleId": "942480"
-                    }
-                  ]
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "g-document-status",
+      "scope": "gateway",
+      "paths": [
+        "/tools/documents/v1/operations/*"
+      ],
+      "exclusions": [
+        {
+          "matchVariable": "RequestHeaderValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "X-Core-Document-Ticket",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "g-realtime-ticket",
+      "scope": "gateway",
+      "paths": [
+        "/models/openai-realtime/v1/calls/*",
+        "/models/openai-realtime/v1/observer/"
+      ],
+      "exclusions": [
+        {
+          "matchVariable": "RequestHeaderValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "X-Core-Call-Ticket",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p-document-status",
+      "scope": "portal",
+      "paths": [
+        "/api/tools/documents/status"
+      ],
+      "exclusions": [
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "handle",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI"
+                },
+                {
+                  "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE"
+                },
+                {
+                  "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP"
+                },
+                {
+                  "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS"
+                },
+                {
+                  "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI"
                 }
               ]
             }

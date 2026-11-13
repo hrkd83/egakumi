@@ -140,6 +140,7 @@ async function stopCall(call: RealtimeCallHandle, model: RealtimeModel, origin: 
 /** 本人に束縛された停止参照を復号し、現在も使える同じ購読で通話の停止を再確認します。 */
 export async function handleRealtimeStop(request: Request, dependencies: RealtimeWebRtcDependencies): Promise<Response> {
   const actor = await authorize(request, dependencies); if (actor instanceof Response) return actor;
+  if (new URL(request.url).search) return failure("InvalidRequest", 400);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   let call: RealtimeCallHandle; let model: RealtimeModel; let origin: string;
   try {

@@ -11,7 +11,7 @@
         try {
             var ticket = context.Request.Headers.GetValueOrDefault(&quot;X-Core-Call-Ticket&quot;, &quot;&quot;);
             var callId = context.Request.MatchedParameters.GetValueOrDefault(&quot;callId&quot;, &quot;&quot;);
-            if (ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(callId, @&quot;^[A-Za-z0-9_-]{1,160}$&quot;)) { return false; }
+            if (context.Request.Url.Query.Count != 0 || ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(callId, @&quot;^[A-Za-z0-9_-]{1,160}$&quot;)) { return false; }
             var parts = ticket.Split('.');
             if (parts.Length != 2) { return false; }
             var key = System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;);

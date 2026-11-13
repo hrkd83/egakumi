@@ -49,8 +49,12 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from email import policy as email_policy
+from email.parser import BytesParser
+from fnmatch import fnmatchcase
 import hashlib
 from http.client import HTTPException
+from http.cookies import CookieError, SimpleCookie
 import io
 import json
 from pathlib import Path
@@ -81,6 +85,10 @@ CANARY_ROUTES = frozenset({
     ("POST", "/models/openai/v1/responses"),
 })
 MAX_RESPONSE_BYTES = 65536
+OPAQUE_HEX_SIGNATURE = re.compile(r"(?i:(?:\A|[^\d])0x[a-f\d]{3,})")
+TYPED_HISTORY_BYTES = 600 * 1024
+DATA_TYPES = frozenset({"conversation", "opaque-base64", "opaque-base64url", "opaque-id", "opaque-ticket", "media-base64",
+    "media-data-url", "media-binary", "url", "sdp", "metadata"})
 METHODS = r"GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD"
 PARAMETER_VALUES = {
     "deployment": "waf-probe-invalid-model", "callId": "waf-probe-nonexistent-call",
@@ -116,6 +124,7 @@ class Probe:
     query: tuple[tuple[str, str], ...] = field(default=(), repr=False)
     auth_mode: str = "anonymous"
     payload_field: str | None = None
+    data_type: str | None = None
 
 
 def json_bytes(value) -> bytes:
@@ -429,12 +438,15 @@ def _body(route: Route, text: str, canary: bool = False) -> tuple[bytes | None, 
 
 
 def _probe(route: Route, suffix: str, category: str, *, intent: str = "compatibility",
-           body: bytes | None = None, headers=(), query=(), auth_mode: str = "anonymous", payload_field: str | None = None) -> Probe:
+           body: bytes | None = None, headers=(), query=(), auth_mode: str = "anonymous", payload_field: str | None = None,
+           data_type: str | None = None) -> Probe:
+    if data_type is not None and data_type not in DATA_TYPES:
+        raise ValueError("unknown synthetic fixture data type")
     stable = f"{route.target}:{route.method}:{route.path}:{suffix}"
     slug = re.sub(r"[^a-z0-9]+", "-", route.operation.lower()).strip("-")[:64]
     case_id = f"{route.target}-{slug}-{suffix}-{hashlib.sha256(stable.encode()).hexdigest()[:8]}"
     return Probe(case_id, route.target, route.method, route.path, category, intent, route.source,
-                 body, tuple(headers), tuple(query), auth_mode, payload_field)
+                 body, tuple(headers), tuple(query), auth_mode, payload_field, data_type)
 
 
 def boundary_controls(routes: list[Route]) -> list[Probe]:
@@ -1401,6 +1413,334 @@ def image_prompt_probes(routes: list[Route]) -> list[Probe]:
     return cases
 
 
+def opaque_fixture(alphabet: str, length: int, seed: int, *, hex_signature: bool = False) -> str:
+    """Produce canonical encoded synthetic bytes, never real reasoning ciphertext.
+
+    Normal seeds are unfiltered. The targeted variant deliberately includes the
+    SQL hex signature using legal encoding characters; it still decodes exactly.
+    This construction proves encoding/shape only, not encryption or a valid MAC.
+    """
+    if alphabet not in {"base64", "base64url"} or length < 128 or length % 4 or seed not in (0, 1):
+        raise ValueError("bounded synthetic opaque encoding required")
+    size = length * 3 // 4
+    label = f"synthetic-waf-opaque:{alphabet}:{length}:{seed}:".encode()
+    raw = b"".join(hashlib.sha256(label + str(index).encode()).digest()
+                   for index in range((size + 31) // 32))[:size]
+    encode = base64.b64encode if alphabet == "base64" else base64.urlsafe_b64encode
+    value = encode(raw).decode()
+    if hex_signature:
+        marker = "G0x" + ("abc" if seed == 0 else "1234567890abcdef" * 4)
+        value = value[:64] + marker + value[64 + len(marker):]
+    pattern = r"[A-Za-z0-9+/]+" if alphabet == "base64" else r"[A-Za-z0-9_-]+"
+    decoded = base64.b64decode(value, altchars=None if alphabet == "base64" else b"-_", validate=True)
+    if (len(value) != length or not re.fullmatch(pattern, value)
+            or len(decoded) != size or encode(decoded).decode() != value
+            or hex_signature and not OPAQUE_HEX_SIGNATURE.search(value)):
+        raise ValueError("synthetic opaque encoding failed its round-trip check")
+    return value
+
+
+def large_conversation_fixture(is_responses: bool) -> dict:
+    """Build an exact 600 KiB UTF-8 JSON conversation, not a non-JSON size blob."""
+    source = ("Synthetic source review 文書 😀\nSELECT id FROM example WHERE value='safe';\n"
+              '<script>console.log("synthetic")</script>\n'
+              "$(printf synthetic); $values=@(1,2); ../example/source.txt\n"
+              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+              '{"message":"synthetic", "escaped":"\\r\\n\\u0000"}\n')
+    schema = {"type": "object", "properties": {"source": {"type": "string", "description": source},
+              "options": {"type": "array", "items": {"type": "string", "enum": [source, "synthetic"]}}},
+              "required": ["source"], "additionalProperties": False}
+    functions = [{"name": "synthetic_review_" + str(index), "description": source,
+                  "parameters": schema, "strict": False} for index in range(3)]
+    history = []
+    if is_responses:
+        history.append({"id": "rs_waf_synthetic_history", "type": "reasoning",
+                        "summary": [{"type": "summary_text", "text": source}],
+                        "encrypted_content": opaque_fixture("base64url", 4096, 0, hex_signature=True)})
+    target = None
+    for turn in range(8):
+        user_text = ("SYNTHETIC_REQUEST_START " if turn == 0 else "Synthetic follow-up ") + source
+        call_id = "call_waf_synthetic_" + str(turn)
+        name = functions[turn % len(functions)]["name"]
+        arguments = json_bytes({"source": source, "options": ["synthetic", "文書"]}).decode()
+        if is_responses:
+            history.extend([{"role": "user", "content": [{"type": "input_text", "text": user_text}]},
+                {"type": "function_call", "call_id": call_id, "name": name, "arguments": arguments},
+                {"type": "function_call_output", "call_id": call_id, "output": source},
+                {"role": "assistant", "content": [{"type": "output_text", "text": source, "annotations": []}]}])
+            if turn == 3:
+                target, key = history[-2], "output"
+        else:
+            history.extend([{"role": "user", "content": user_text},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": call_id, "type": "function",
+                    "function": {"name": name, "arguments": arguments}}]},
+                {"role": "tool", "tool_call_id": call_id, "content": source},
+                {"role": "assistant", "content": source}])
+            if turn == 3:
+                target, key = history[-2], "content"
+    history.append({"role": "user", "content": "SYNTHETIC_REQUEST_END Continue the synthetic review. 文書"})
+    value = {"model": INVALID_MODEL, "stream": False,
+             "input" if is_responses else "messages": history,
+             "tools": [{"type": "function", **function} if is_responses else
+                       {"type": "function", "function": function} for function in functions]}
+    value.update({"store": False, "max_output_tokens": 1} if is_responses else {"max_completion_tokens": 1})
+    target[key] = source + "SYNTHETIC_HISTORY_MIDDLE " + source
+    missing = TYPED_HISTORY_BYTES - len(json_bytes(value))
+    chunk_size = len(json_bytes(source)) - 2
+    repeats, remainder = divmod(missing, chunk_size)
+    if missing < 0 or repeats < 2:
+        raise ValueError("synthetic conversation exceeds its fixed byte budget")
+    target[key] = (source + source * (repeats // 2) + "SYNTHETIC_HISTORY_MIDDLE "
+                   + source * (repeats - repeats // 2) + source + " " * remainder)
+    if len(json_bytes(value)) != TYPED_HISTORY_BYTES:
+        raise ValueError("synthetic UTF-8 conversation byte count differs")
+    return value
+
+
+def ticket_fixture(seed: int, *, hex_signature: bool = False) -> str:
+    """Use a JSON Base64url payload plus a canonical 32-byte synthetic MAC slot."""
+    payload = base64.urlsafe_b64encode(json_bytes({"synthetic": True, "nonce": seed})).decode().rstrip("=")
+    signature = base64.urlsafe_b64encode(hashlib.sha256(f"synthetic-ticket:{seed}".encode()).digest()).decode().rstrip("=")
+    if hex_signature:
+        marker = "G0x" + ("abc" if seed == 0 else "1234567890abcdef")
+        signature = signature[:4] + marker + signature[4 + len(marker):]
+    decoded = base64.urlsafe_b64decode(signature + "=")
+    if len(signature) != 43 or len(decoded) != 32 or base64.urlsafe_b64encode(decoded).decode().rstrip("=") != signature:
+        raise ValueError("synthetic ticket signature slot must decode canonically")
+    return payload + "." + signature
+
+
+def typed_data_probes(routes: list[Route]) -> list[Probe]:
+    """Separate real data types, large valid history, and exclusion controls.
+
+    These anonymous, synthetic fixtures validate WAF transit only. Encoded bytes,
+    tickets, handles and audio IDs are deliberately not issued by a provider or
+    signed by an application secret. A 401/400 is not model or application success.
+    """
+    indexed = {(route.target, route.method, route.path): route for route in routes}
+    cases = []
+
+    def add(route, label, data_type, field_name, value=None, *, body=None,
+            mime="application/json", headers=(), query=(), intent="compatibility", path=None):
+        target = replace(route, path=path) if path else route
+        if body is None and value is not None:
+            body = json_bytes(value)
+        cases.append(_probe(target, "typed-" + label, "typed-" + data_type,
+            intent=intent, body=body, headers=([("Content-Type", mime)] if mime else []) + list(headers),
+            query=query, payload_field=field_name, data_type=data_type))
+
+    responses = indexed.get(("gateway", "POST", "/models/openai/v1/responses"))
+    chat = indexed.get(("gateway", "POST", "/models/openai/v1/chat/completions"))
+
+    def reasoning(token):
+        return {"model": INVALID_MODEL, "store": False, "max_output_tokens": 1,
+                "input": [{"id": "rs_waf_synthetic_opaque", "type": "reasoning", "summary": [],
+                           "encrypted_content": token}, {"role": "user", "content": "Synthetic continuation"}]}
+
+    if responses:
+        for alphabet in ("base64", "base64url"):
+            for length in (512, 4096, 16384):
+                for seed in (0, 1):
+                    for targeted in (False, True):
+                        label = f"reasoning-{alphabet}-{length}-seed{seed}-" + ("hex" if targeted else "normal")
+                        add(responses, label, "opaque-" + alphabet, "input[].encrypted_content",
+                            reasoning(opaque_fixture(alphabet, length, seed, hex_signature=targeted)))
+        baseline = reasoning(opaque_fixture("base64url", 512, 0))
+        signature = opaque_fixture("base64url", 512, 1, hex_signature=True)
+        sibling = json.loads(json_bytes(baseline))
+        sibling["input"][0]["encrypted_content_extra"] = signature
+        add(responses, "reasoning-sibling", "opaque-base64url", "input[].encrypted_content_extra",
+            sibling, intent="attack_control")
+        add(responses, "reasoning-query", "opaque-base64url", "query:input.encrypted_content",
+            baseline, query=[("input.encrypted_content", signature)], intent="validation")
+        add(responses, "reasoning-header", "opaque-base64url", "header:X-Waf-Unknown",
+            baseline, headers=[("X-Waf-Unknown", signature)], intent="attack_control")
+        add(responses, "reasoning-neighbor", "opaque-base64url", "input[].encrypted_content",
+            reasoning(signature), path=responses.path + "/neighbor", intent="attack_control")
+        add(responses, "client-metadata", "metadata", "client_metadata.x-codex-turn-metadata",
+            {**baseline, "client_metadata": {"x-codex-turn-metadata": json_bytes({
+                "turn_id": "synthetic-turn", "client": "synthetic-waf-fixture"}).decode()}})
+    for route, is_responses in ((responses, True), (chat, False)):
+        if route:
+            add(route, "large-responses-history" if is_responses else "large-chat-history",
+                "conversation", "input+tools" if is_responses else "messages+tools",
+                large_conversation_fixture(is_responses))
+
+    # Actual media structures are encoded without overwriting Base64 text.
+    # The PDF has object/xref tables; WAV has PCM frames; PNG has CRC-checked chunks.
+    png = base64.b64encode(_binary_fixture("image/png", "Synthetic media fixture")).decode()
+    pdf = base64.b64encode(_raw_guard_pdf("Synthetic document fixture")).decode()
+    wav = base64.b64encode(_binary_fixture("audio/wav", "Synthetic audio fixture")).decode()
+    if responses:
+        for label, part, field_name in (
+            ("response-png", {"type": "input_image", "image_url": "data:image/png;base64," + png}, "input[].content[].image_url"),
+            ("response-pdf", {"type": "input_file", "filename": "synthetic.pdf", "file_data": "data:application/pdf;base64," + pdf}, "input[].content[].file_data"),
+            ("response-url", {"type": "input_image", "image_url": "https://example.invalid/synthetic.png"}, "input[].content[].image_url"),
+        ):
+            add(responses, label, "url" if label.endswith("url") else "media-data-url", field_name,
+                {"model": INVALID_MODEL, "store": False, "max_output_tokens": 1,
+                 "input": [{"role": "user", "content": [{"type": "input_text", "text": "Synthetic media"}, part]}]})
+    if chat:
+        for label, part, field_name, kind in (
+            ("chat-png", {"type": "image_url", "image_url": {"url": "data:image/png;base64," + png}}, "messages[].content[].image_url.url", "media-data-url"),
+            ("chat-audio", {"type": "input_audio", "input_audio": {"data": wav, "format": "wav"}}, "messages[].content[].input_audio.data", "media-base64"),
+            ("chat-file", {"type": "file", "file": {"filename": "synthetic.pdf", "file_data": "data:application/pdf;base64," + pdf}}, "messages[].content[].file.file_data", "media-data-url"),
+        ):
+            add(chat, label, kind, field_name, {"model": INVALID_MODEL, "max_completion_tokens": 1,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "Synthetic media"}, part]}]})
+        for seed in (0, 1):
+            for targeted in (False, True):
+                audio_id = "audio_" + opaque_fixture("base64url", 512, seed, hex_signature=targeted)
+                add(chat, f"chat-audio-id-seed{seed}-" + ("hex" if targeted else "normal"), "opaque-id",
+                    "messages[].audio.id", {"model": INVALID_MODEL, "max_completion_tokens": 1, "messages": [
+                        {"role": "assistant", "content": None, "audio": {"id": audio_id}},
+                        {"role": "user", "content": "Synthetic audio continuation"}]})
+    for path, prefix in (("/api/models/realtime/stop", "r1."), ("/api/tools/documents/status", "")):
+        route = indexed.get(("portal", "POST", path))
+        if not route:
+            continue
+        def handle_body(token):
+            return {"handle": prefix + token, **({"apiKeyId": "portal-00000000-0000-4000-8000-000000000001"} if not prefix else {})}
+        for length in (512, 4096, 12000):
+            for seed in (0, 1):
+                for targeted in (False, True):
+                    add(route, f"handle-{length}-seed{seed}-" + ("hex" if targeted else "normal"),
+                        "opaque-base64url", "handle", handle_body(opaque_fixture("base64url", length, seed, hex_signature=targeted)))
+        signature = opaque_fixture("base64url", 512, 1, hex_signature=True)
+        baseline = handle_body(opaque_fixture("base64url", 512, 0))
+        add(route, "handle-sibling", "opaque-base64url", "handle_extra", {**baseline, "handle_extra": signature}, intent="attack_control")
+        add(route, "handle-query", "opaque-base64url", "query:handle", baseline, query=[("handle", signature)], intent="validation")
+        add(route, "handle-header", "opaque-base64url", "header:X-Waf-Unknown", baseline, headers=[("X-Waf-Unknown", signature)], intent="attack_control")
+        add(route, "handle-neighbor", "opaque-base64url", "handle", handle_body(signature), path=route.path + "/neighbor", intent="attack_control")
+
+    for route in routes:
+        ticket_name = ("X-Core-Document-Ticket" if route.target == "gateway" and route.constraint.get("kind") == "documentAnalysisStatus"
+                       else "X-Core-Call-Ticket" if route.target == "gateway" and ("/calls/" in route.path and route.path.endswith("/hangup")
+                           or route.path == "/models/openai-realtime/v1/observer/") else None)
+        if not ticket_name:
+            continue
+        if ticket_name == "X-Core-Document-Ticket":
+            route = replace(route, path=route.path.rsplit("/", 1)[0] + "/00000000-0000-4000-8000-000000000000")
+            neighbor = route.path.replace("/operations/", "/operation-neighbor/")
+        else:
+            neighbor = route.path.replace("/calls/", "/call-neighbor/") if route.path.endswith("/hangup") else route.path + "neighbor"
+        query = [("call_id", PARAMETER_VALUES["callId"])] if route.path.endswith("/observer/") else []
+        for seed in (0, 1):
+            for targeted in (False, True):
+                add(route, f"ticket-seed{seed}-" + ("hex" if targeted else "normal"), "opaque-ticket",
+                    "header:" + ticket_name, mime="", headers=[(ticket_name, ticket_fixture(seed, hex_signature=targeted))], query=query)
+        signature, baseline = ticket_fixture(1, hex_signature=True), ticket_fixture(0)
+        add(route, "ticket-sibling", "opaque-ticket", "header:" + ticket_name + "-Extra", mime="",
+            headers=[(ticket_name, baseline), (ticket_name + "-Extra", signature)], query=query, intent="attack_control")
+        add(route, "ticket-query", "opaque-ticket", "query:" + ticket_name, mime="",
+            headers=[(ticket_name, baseline)], query=[*query, (ticket_name, signature)], intent="validation")
+        add(route, "ticket-neighbor", "opaque-ticket", "header:" + ticket_name, mime="",
+            headers=[(ticket_name, signature)], query=query, path=neighbor, intent="attack_control")
+        if route.path.endswith("/hangup"):
+            # The AppGW family pattern also selects unknown children; API route
+            # rejection, rather than WAF blocking, is their required boundary.
+            add(route, "ticket-family-unknown-operation", "opaque-ticket", "header:" + ticket_name, mime="",
+                headers=[(ticket_name, signature)], path=route.path.rsplit("/", 1)[0] + "/neighbor", intent="validation")
+    flux = indexed.get(("gateway", "POST", "/models/blackforestlabs/v1/flux-2/edits"))
+    if flux:
+        for label, image, kind in (("base64", png, "media-base64"),
+                                   ("url", "https://example.invalid/synthetic.png", "url")):
+            add(flux, "flux-image-" + label, kind, "input_image", {"model": INVALID_MODEL,
+                "prompt": "Synthetic image edit", "input_image": image, "width": 512, "height": 512},
+                intent="validation" if label == "url" else "compatibility")
+        add(flux, "flux-image-2-base64", "media-base64", "input_image_2", {"model": INVALID_MODEL,
+            "prompt": "Synthetic two-image edit", "input_image": png, "input_image_2": png, "width": 512, "height": 512})
+    for route in routes:
+        if route.target == "gateway" and route.method == "POST":
+            if route.constraint.get("kind") == "realtimeCreate" or "live-control" in route.operation:
+                value = _json_variants(route, "Synthetic SDP attribute")[0][1]
+                add(route, "sdp", "sdp", "sdp", value)
+            elif route.path in {"/models/azure-speech/v1/recognize", "/tools/documents/v1/analyze"}:
+                body, mime = _raw_guard_body(route, "Synthetic typed media")
+                add(route, "raw-media", "media-binary", "raw-body:data", body=body, mime=mime)
+    return cases
+
+
+def exclusion_coverage(cases: Iterable[Probe], manifest: dict) -> list[dict]:
+    """Project actual fixture fields, never trust their payload_field labels.
+
+    JSON array indexes are elided as a *synthetic candidate* for Azure argument
+    flattening. This is offline field-presence coverage, not proof that a WAF
+    parser evaluated a rule. Actual extraction/403 attribution needs WAF logs.
+    No field values or dynamic names are returned in the coverage records.
+    """
+    def json_names(value, prefix=""):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                name = prefix + "." + key if prefix else key
+                yield from json_names(child, name)
+        elif isinstance(value, list):
+            for child in value:
+                yield from json_names(child, prefix)
+        else:
+            yield prefix
+
+    observed = []
+    for case in cases:
+        if case.intent != "compatibility":
+            continue
+        names = []
+        headers = dict(case.headers)
+        mime = next((value for name, value in case.headers if name.casefold() == "content-type"), "")
+        if mime.split(";", 1)[0].casefold() == "application/json":
+            try:
+                names.extend(("json", name) for name in json_names(json.loads(case.body or b"")))
+            except (ValueError, UnicodeError):
+                pass  # A fake size blob does not cover any JSON selector.
+        elif mime.split(";", 1)[0].casefold() == "multipart/form-data":
+            message = BytesParser(policy=email_policy.default).parsebytes(
+                ("Content-Type: " + mime + "\r\nMIME-Version: 1.0\r\n\r\n").encode() + (case.body or b""))
+            if message.is_multipart():
+                for part in message.iter_parts():
+                    name = part.get_param("name", header="content-disposition")
+                    if isinstance(name, str) and part.get_filename() is None:
+                        names.append(("multipart", name))
+                        try:
+                            names.extend(("multipart-json-projection", child) for child in json_names(json.loads(part.get_payload(decode=True)), name))
+                        except (ValueError, UnicodeError, TypeError):
+                            pass
+        cookies = SimpleCookie()
+        try:
+            cookies.load(next((value for name, value in case.headers if name.casefold() == "cookie"), ""))
+        except CookieError:
+            cookies = SimpleCookie()
+        observed.append((case, names, {name.casefold() for name in headers}, set(cookies)))
+    result = []
+    for profile in manifest["profiles"]:
+        for exclusion in profile["exclusions"]:
+            variable, operator, selector = (exclusion[key] for key in ("matchVariable", "selectorMatchOperator", "selector"))
+            matches, channels, data_types = [], set(), set()
+            for case, names, headers, cookies in observed:
+                if case.target != profile["scope"] or not any(fnmatchcase(case.path.casefold(), path.casefold()) for path in profile["paths"]):
+                    continue
+                if variable == "RequestHeaderValues":
+                    candidate = [("header", name) for name in headers]
+                    selected = selector.casefold()
+                elif variable in {"RequestArgValues", "RequestArgKeys"}:
+                    candidate, selected = names, selector
+                elif variable == "RequestCookieValues":
+                    candidate, selected = [("cookie", name) for name in cookies], selector
+                else:
+                    continue
+                if operator == "Equals":
+                    found = {channel for channel, name in candidate if name == selected}
+                else:
+                    found = {channel for channel, name in candidate if operator == "StartsWith" and name.startswith(selected)}
+                if found:
+                    matches.append(case.case_id)
+                    channels.update(found)
+                    data_types.add(case.data_type or "legacy-unclassified")
+            result.append({"profile": profile["name"], "match_variable": variable, "operator": operator,
+                "selector": selector, "case_ids": sorted(set(matches)), "channels": sorted(channels), "data_types": sorted(data_types),
+                "offline_field_present": bool(matches), "waf_extraction_verified": False})
+    return result
+
+
 def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[Probe]:
     """Build deterministic, finite cases; synthetic attacks always remain anonymous."""
     routes = load_routes(root) if routes is None else routes
@@ -1510,6 +1850,7 @@ def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[P
     cases.extend(extended_content(routes))
     cases.extend(adversarial_content(routes))
     cases.extend(decision_question_keys(routes))
+    cases.extend(typed_data_probes(routes))
     ids = [case.case_id for case in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate case IDs")
@@ -1522,6 +1863,7 @@ def metadata(case: Probe) -> dict:
         "path": case.path, "category": case.category, "intent": case.intent,
         "source": case.source, "auth_mode": case.auth_mode,
         "payload_field": case.payload_field,
+        "data_type": case.data_type,
         "request_bytes": len(case.body or b""), "query_names": [name for name, _ in case.query],
         "header_names": [name for name, _ in case.headers]}
 

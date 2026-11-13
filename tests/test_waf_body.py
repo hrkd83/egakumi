@@ -63,6 +63,11 @@ class AiWafBodyTests(unittest.TestCase):
         self.assertEqual(selected, expected)
         self.assertTrue(all("{" not in path and "*" not in path for path in selected))
 
+    def test_signed_status_and_realtime_control_do_not_acquire_ai_body_capacity(self):
+        config = {"apiDefinitions": [api("document-analysis-v1"), api("openai-realtime-control-v1"),
+                                     api("openai-realtime-observer-v1")]}
+        self.assertEqual(managed_ai_paths(config), {"/tools/documents/v1/analyze", "/models/openai-realtime/v1/calls"})
+
 
 if __name__ == "__main__":
     unittest.main()
