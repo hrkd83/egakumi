@@ -25,6 +25,8 @@ param existingRouteTableRoutes object = {}
 // route-table,private-dns-zone,azure-firewall,firewall-policy}. The core owns
 // five base subnets, four NSGs and three base route tables. The required
 // core sample portal adds a delegated ACA subnet and its own route table.
+var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
+
 var addressSpaces = config.?addressSpaces ?? ['10.40.0.0/24', '10.40.1.0/24', '10.40.2.0/24', '10.40.3.0/24']
 var subnetPrefixes = config.?subnetPrefixes ?? {
   agw: '10.40.0.0/24'
@@ -74,39 +76,38 @@ var nsgDefinitions = [
     key: 'agw'
     suffix: 'agw'
     rules: [
-      allowRule('allow-client-web', 100, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
-      allowRule('allow-gateway-manager', 110, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
-      allowRule('allow-load-balancer', 120, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
-      // The normal AGW v2 deployment requires direct Internet egress and no
-      // custom outbound Deny. Its backend-specific allow is bound afterwards.
-      allowRule('allow-internet', 200, 'Outbound', '*', [subnetPrefixes.agw], ['Internet'], ['*'])
+      allowRule('allow-client-web', nsgPriorities.groups.agw.rules['allow-client-web'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
+      allowRule('allow-gateway-manager', nsgPriorities.groups.agw.rules['allow-gateway-manager'].priority, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
+      allowRule('allow-load-balancer', nsgPriorities.groups.agw.rules['allow-load-balancer'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
+      // Required Internet egress uses Azure default rule 65001; no custom
+      // outbound Deny is added. Backend-specific allows are bound afterwards.
     ]
   }
   {
     key: 'apim'
     suffix: 'apim'
     rules: [
-      allowRule('allow-agw-api', 100, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
-      allowRule('allow-apim-management', 110, 'Inbound', 'Tcp', ['ApiManagement'], [subnetPrefixes.apim], ['3443'])
-      allowRule('allow-load-balancer', 120, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.apim], ['6390'])
-      allowRule('allow-counter-sync-inbound', 130, 'Inbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
-      allowRule('allow-storage', 200, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Storage'], ['443'])
+      allowRule('allow-agw-api', nsgPriorities.groups.apim.rules['allow-agw-api'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
+      allowRule('allow-apim-management', nsgPriorities.groups.apim.rules['allow-apim-management'].priority, 'Inbound', 'Tcp', ['ApiManagement'], [subnetPrefixes.apim], ['3443'])
+      allowRule('allow-load-balancer', nsgPriorities.groups.apim.rules['allow-load-balancer'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.apim], ['6390'])
+      allowRule('allow-counter-sync-inbound', nsgPriorities.groups.apim.rules['allow-counter-sync-inbound'].priority, 'Inbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
+      allowRule('allow-storage', nsgPriorities.groups.apim.rules['allow-storage'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Storage'], ['443'])
       // This is APIM's platform dependency, not a provisioned SQL Database.
-      allowRule('allow-sql-platform', 210, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Sql'], ['1433'])
-      allowRule('allow-key-vault-platform', 220, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureKeyVault'], ['443'])
-      allowRule('allow-monitor', 230, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureMonitor'], ['1886', '443'])
+      allowRule('allow-sql-platform', nsgPriorities.groups.apim.rules['allow-sql-platform'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Sql'], ['1433'])
+      allowRule('allow-key-vault-platform', nsgPriorities.groups.apim.rules['allow-key-vault-platform'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureKeyVault'], ['443'])
+      allowRule('allow-monitor', nsgPriorities.groups.apim.rules['allow-monitor'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureMonitor'], ['1886', '443'])
       // Azure Monitor の APIM 監査ログは Event Hubs 側にも送信します。
       // AzureMonitor タグだけではこの宛先を含まないため、APIM から必要な TCP ポートだけを許可します。
       // https://learn.microsoft.com/azure/api-management/virtual-network-reference#required-ports
-      allowRule('allow-monitor-event-hubs', 235, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['EventHub'], ['443', '5671', '5672'])
-      allowRule('allow-entra', 240, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureActiveDirectory'], ['443'])
-      allowRule('allow-credential-manager', 250, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureConnectors'], ['443'])
+      allowRule('allow-monitor-event-hubs', nsgPriorities.groups.apim.rules['allow-monitor-event-hubs'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['EventHub'], ['443', '5671', '5672'])
+      allowRule('allow-entra', nsgPriorities.groups.apim.rules['allow-entra'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-credential-manager', nsgPriorities.groups.apim.rules['allow-credential-manager'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureConnectors'], ['443'])
       // Firewall application rules enforce the reviewed FQDN allowlist.
-      allowRule('allow-web-dependencies', 260, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Internet'], ['80', '443'])
+      allowRule('allow-web-dependencies', nsgPriorities.groups.apim.rules['allow-web-dependencies'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Internet'], ['80', '443'])
       // The managed APIM platform has a separate time dependency; a private
       // Linux NTP override must not remove its required platform egress.
-      allowRule('allow-time-sync', 270, 'Outbound', 'Udp', [subnetPrefixes.apim], ['Internet'], ['123'])
-      allowRule('allow-counter-sync-outbound', 280, 'Outbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
+      allowRule('allow-time-sync', nsgPriorities.groups.apim.rules['allow-time-sync'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], ['Internet'], ['123'])
+      allowRule('allow-counter-sync-outbound', nsgPriorities.groups.apim.rules['allow-counter-sync-outbound'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
     ]
   }
   {
@@ -118,12 +119,12 @@ var nsgDefinitions = [
     key: 'management'
     suffix: 'vm'
     rules: concat([
-      allowRule('allow-approved-entra', 300, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureActiveDirectory'], ['443'])
-      allowRule('allow-approved-management-api', 310, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureResourceManager'], ['443'])
-      allowRule('allow-approved-monitor', 320, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureMonitor'], ['443'])
-      allowRule('allow-approved-agent-storage', 330, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Storage'], ['443'])
-      allowRule('allow-web-dependencies', 350, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Internet'], ['80', '443'])
-      allowRule('allow-time-sync', 360, 'Outbound', 'Udp', [subnetPrefixes.management], ntpAddressPrefixes, ['123'])
+      allowRule('allow-approved-entra', nsgPriorities.groups.management.rules['allow-approved-entra'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-approved-management-api', nsgPriorities.groups.management.rules['allow-approved-management-api'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureResourceManager'], ['443'])
+      allowRule('allow-approved-monitor', nsgPriorities.groups.management.rules['allow-approved-monitor'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureMonitor'], ['443'])
+      allowRule('allow-approved-agent-storage', nsgPriorities.groups.management.rules['allow-approved-agent-storage'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Storage'], ['443'])
+      allowRule('allow-web-dependencies', nsgPriorities.groups.management.rules['allow-web-dependencies'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Internet'], ['80', '443'])
+      allowRule('allow-time-sync', nsgPriorities.groups.management.rules['allow-time-sync'].priority, 'Outbound', 'Udp', [subnetPrefixes.management], ntpAddressPrefixes, ['123'])
     ], config.?managementAdditionalSecurityRules ?? [])
   }
 
@@ -168,8 +169,8 @@ resource nsgTagUpdates 'Microsoft.Resources/tags@2021-04-01' = [for (nsgName, i)
 var effectiveDnsServers = empty(dnsServers) ? ['168.63.129.16'] : dnsServers
 var staticNsgRules = flatten(map(range(0, length(nsgDefinitions)), i => map(concat(nsgDefinitions[i].rules,
   nsgDefinitions[i].key == 'pep' ? [] : [
-    allowRule('allow-dns-tcp', 400, 'Outbound', 'Tcp', ['*'], effectiveDnsServers, ['53'])
-    allowRule('allow-dns-udp', 410, 'Outbound', 'Udp', ['*'], effectiveDnsServers, ['53'])
+    allowRule('allow-dns-tcp', nsgPriorities.groups[nsgDefinitions[i].key].rules['allow-dns-tcp'].priority, 'Outbound', 'Tcp', ['*'], effectiveDnsServers, ['53'])
+    allowRule('allow-dns-udp', nsgPriorities.groups[nsgDefinitions[i].key].rules['allow-dns-udp'].priority, 'Outbound', 'Udp', ['*'], effectiveDnsServers, ['53'])
   ]), rule => { nsgIndex: i, rule: rule })))
 
 // IP 確定を待たずに設定できる Azure 基盤向け通信や DNS の許可を登録します。

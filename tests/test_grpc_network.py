@@ -519,19 +519,19 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
         core = Path(__file__).resolve().parents[1]
         network = (core / "infra/modules/network-bindings.bicep").read_text()
         expected = {
-            "allow-agw-grpc": (140, "Inbound", "subnetPrefixes.agw"),
-            "allow-management-grpc": (150, "Inbound", "managementPrivateIp"),
-            "allow-apim-grpc-comparison": (120, "Outbound", "managementPrivateIp"),
+            "allow-agw-grpc": ("apim", "Inbound", "subnetPrefixes.agw"),
+            "allow-management-grpc": ("apim", "Inbound", "managementPrivateIp"),
+            "allow-apim-grpc-comparison": ("management", "Outbound", "managementPrivateIp"),
         }
-        for name, (priority, direction, source) in expected.items():
+        for name, (group, direction, source) in expected.items():
             with self.subTest(rule=name):
                 self.assertIn(
-                    f"withAccess(allowRule('{name}', {priority}, '{direction}', 'Tcp', "
+                    f"withAccess(allowRule('{name}', nsgPriorities.groups.{group}.rules['{name}'].priority, '{direction}', 'Tcp', "
                     f"[{source}], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')",
                     network,
                 )
-        self.assertIn("allowRule('allow-apim-http', 100, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])", network)
-        self.assertIn("allowRule('allow-apim-grpc', 120, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])", network)
+        self.assertIn("allowRule('allow-apim-http', nsgPriorities.groups.agw.rules['allow-apim-http'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])", network)
+        self.assertIn("allowRule('allow-apim-grpc', nsgPriorities.groups.agw.rules['allow-apim-grpc'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])", network)
         self.assertNotIn("withAccess(allowRule('allow-apim-grpc'", network)
         # NSG の宛先を変えても、Firewall を迂回する経路や別ノード宛ての FW 許可は追加しない。
         self.assertIn("addressPrefix: '${apimPrivateIp}/32'", network)

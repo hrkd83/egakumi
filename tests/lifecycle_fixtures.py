@@ -130,6 +130,12 @@ class LifecycleFixture:
         privacy_link = mock.patch.object(lifecycle, "ensure_workspace_link", return_value="/subscriptions/fixture/dataCollectionRules/dcr-fixture-workspace")
         privacy_link.start()
         self.addCleanup(privacy_link.stop)
+        # Operator-rule retirement has its own transport and ordering tests.
+        # Unrelated lifecycle fixtures keep their exact scripted ARM inventory.
+        operator = mock.patch.object(lifecycle, "cleanup_disabled_operator",
+                                     return_value={"status": "rule-absent", "azureWrites": 0})
+        self.operator_cleanup = operator.start()
+        self.addCleanup(operator.stop)
         # APIMの固定名確認は別の専用試験でARM応答を再現する。hook試験では
         # 実Azureを呼ばず、有料段階より前に呼び出される順序を検査する。
         apim_name = mock.patch.object(lifecycle, "verify_apim_name",

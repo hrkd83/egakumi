@@ -121,6 +121,7 @@ from .helpers.apim_generations import assert_current_instance, verify_state as v
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
+from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
 
 ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
@@ -1058,6 +1059,11 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     # azdと同じ所有タグを付け、前処理で中断しても通常のdownが対象を認識できるようにする。
     path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
     transport = ArmTransport(config)
+    if phase == "core":
+        try:
+            cleanup_disabled_operator(config, transport)
+        except OperatorAccessError as error:
+            raise DeploymentError(str(error)) from None
     # monitoring はネットワークを配備しない。core の直接呼出しでも native azd と
     # 同じ既存確認を行い、途中まで作成済みの場合にも残った動的規則を維持する。
     existing_nsg_names = discover_existing_network_security_groups(config, transport) if phase == "core" else []
@@ -1427,6 +1433,10 @@ def _preprovision(config: dict) -> None:
     })
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
+    try:
+        cleanup_disabled_operator(config, transport)
+    except OperatorAccessError as error:
+        raise DeploymentError(str(error)) from None
     existing_nsg_names = discover_existing_network_security_groups(config, transport)
     existing_routes = discover_existing_route_table_routes(config, transport)
     existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)

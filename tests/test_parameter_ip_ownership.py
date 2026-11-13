@@ -396,8 +396,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                     self.assertIn(rule, actual)
 
     def test_client_sources_keep_web_and_grpc_children_with_fixed_allow_priorities(self):
-        # 許可元を評価する前のARMにも、Webの4080分岐を残さない。
-        self.assertNotIn("4080", json.dumps(self.templates["network"]["variables"]["nsgDefinitions"]))
         for clients in (None, ["0.0.0.0/0"], ["203.0.113.70/32"],
                         ["192.0.2.0/24", "198.51.100.0/24"]):
             options, parameters = custom_documents()
@@ -412,8 +410,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 # 公開入力の省略値と、直接ARM入力で省略した場合の既定値を両方確認する。
                 config["network"].pop("clientAddressPrefixes")
             for module, collection, resource_name, rule_name, priority in (
-                ("network", "staticNsgRules", "staticSecurityRules", "allow-client-web", 100),
-                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-client-grpc", 150),
+                ("network", "staticNsgRules", "staticSecurityRules", "allow-client-web", 120),
+                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-client-grpc", 125),
             ):
                 expression, supplied = self.resolver(module, config)
                 entries = expression.resolve("[variables('" + collection + "')]", supplied)
@@ -427,8 +425,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                     source_key = "sourceAddressPrefix" if len(expected) == 1 else "sourceAddressPrefixes"
                     self.assertEqual(properties[source_key], expected[0] if len(expected) == 1 else expected)
                     self.assertEqual(properties["destinationAddressPrefix"], "10.70.0.0/24")
-                    self.assertFalse(any(entry["nsgIndex"] == 0 and entry["rule"]["properties"]["priority"] == 4080
-                                         for entry in entries))
                     child = self.templates[module]["resources"][resource_name]
                     self.assertEqual(child["type"], "Microsoft.Network/networkSecurityGroups/securityRules")
                     self.assertNotIn("condition", child)
@@ -436,12 +432,12 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                     child_name = NetworkArmExpression(child["name"], self.templates[module]).evaluate(supplied, index)
                     self.assertEqual(child_name, "nsg-test-fixture-agw/" + rule_name)
 
-    def test_empty_operator_ranges_revoke_management_access_and_dns_uses_azure_defaults(self):
+    def test_empty_operator_ranges_omit_management_allow_and_dns_uses_azure_defaults(self):
         config = self.configuration(empty_optional=True)
         expression, parameters = self.resolver("network", config)
         rules = expression.resolve("[variables('staticNsgRules')]", parameters)
         by_name = {entry["rule"]["name"]: entry["rule"]["properties"] for entry in rules}
-        self.assertEqual((by_name["allow-client-web"]["priority"], by_name["allow-client-web"]["access"]), (100, "Allow"))
+        self.assertEqual((by_name["allow-client-web"]["priority"], by_name["allow-client-web"]["access"]), (120, "Allow"))
         self.assertEqual(by_name["allow-dns-tcp"]["destinationAddressPrefix"], "168.63.129.16")
         vnet = self.templates["network"]["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(vnet["dhcpOptions"], parameters), {"dnsServers": []})
@@ -450,8 +446,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         expression, parameters = self.resolver("network-bindings", config)
         groups = expression.resolve("[variables('rulesByNsg')]", parameters)
         rules = {item["name"]: item["properties"] for group in groups for item in group}
-        self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (150, "Allow"))
-        self.assertEqual((rules["allow-operator-management"]["priority"], rules["allow-operator-management"]["access"]), (4080, "Deny"))
+        self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (125, "Allow"))
+        self.assertNotIn("allow-operator-management", rules)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ param firewallPolicyName string
 param pepNsgName string
 // 環境の認証URLからホスト部分を取り出して、Firewallの宛先に使います。
 var entraLoginHost = split(az.environment().authentication.loginEndpoint, '/')[2]
+var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.azurecr.io'
@@ -53,7 +54,7 @@ resource allowPull 'Microsoft.Network/networkSecurityGroups/securityRules@2025-0
   parent: pepNsg
   name: 'allow-aca-acr'
   properties: {
-    priority: 160
+    priority: nsgPriorities.groups.pep.rules['allow-aca-acr'].priority
     direction: 'Inbound'
     access: 'Allow'
     protocol: 'Tcp'
@@ -68,7 +69,7 @@ resource runnerRegistryAccess 'Microsoft.Network/networkSecurityGroups/securityR
   parent: managementNsg
   name: 'allow-runner-acr'
   properties: {
-    priority: 170
+    priority: nsgPriorities.groups.management.rules['allow-runner-acr'].priority
     direction: 'Outbound'
     access: 'Allow'
     protocol: 'Tcp'

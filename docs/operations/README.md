@@ -15,6 +15,7 @@
 | secretの期限更新・TLS証明書更新 | [認証情報・証明書の更新](secrets-and-certificates.md) | `operations/entra_secret.py`・`certificate.py`、新規認証・公開TLS確認 |
 | 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | `operations/api_key.py`、P／G、Entra・Portalの正規管理操作、既存job |
 | WAF・外向き許可・監視・サービス容量を変える | [基盤設定の通常変更](platform-settings.md) | `operations/waf.py`・`monitoring.py`、G等の対象限定反映 |
+| NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと4モジュールのBicep |
 
 運用テストはこの業務のまとまりから選び、各作業の必要な検査・変更・確認・戻し方を一連で確認する。権限組合せ・全モデル・全入力の網羅は構築・統合テストに分ける。
 
