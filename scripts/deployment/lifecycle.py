@@ -48,6 +48,8 @@ azd provision単独でも実行されるため、preupと共通する前提確�
   7. 既存のNSG・ルート・APIM設定・PortalのCAの実在を再確認する。API公開時に
      追加されたFirewallの宛先も読み、今回の構築入力へ引き継ぐ。秘密情報を含む
      一時ファイルとして、アクセスを制限した.local/<environment>/generated/main.parameters.jsonを再生成する。
+     保持確認の前にAzure提供DNSを照合し、不要な既知のDNS用NSG子規則だけを
+     回収する。独自DNSや意味の異なる同名規則がある場合は変更せず停止する。
 正常終了すると、azd provisionが続いてVM・VNetなどの本体構築を行う。
 この処理の途中で失敗した場合は、生成済みのmain.parameters.jsonを削除して停止する。
 
@@ -122,6 +124,7 @@ from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
 from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
+from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 
 ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
@@ -137,6 +140,19 @@ PROVIDERS = (
 class DeploymentError(RuntimeError):
     """構築の停止理由を、秘密値を含めず呼出元へ返す例外。"""
     pass
+
+
+def cleanup_dns_nsg_rules(config: dict, transport) -> dict:
+    """通常構築でも不要な DNS 子規則を回収し、保護記録を残す。"""
+    def record(event, value):
+        path = (local_paths(config, ROOT).state / "dns-nsg-retirement"
+                / (str(time.time_ns()) + "-" + event + ".json"))
+        protected_json(path, value)
+    try:
+        return retire_dns_rules(config, transport, execute=True, record=record)
+    except DnsNsgError as error:
+        record("failed", {"status": "stopped", "responseMayBeUnknown": True})
+        raise DeploymentError(str(error)) from None
 
 
 def same_azure_location(actual: str, expected: str) -> bool:
@@ -1060,6 +1076,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
     transport = ArmTransport(config)
     if phase == "core":
+        cleanup_dns_nsg_rules(config, transport)
         try:
             cleanup_disabled_operator(config, transport)
         except OperatorAccessError as error:
@@ -1433,6 +1450,7 @@ def _preprovision(config: dict) -> None:
     })
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
+    cleanup_dns_nsg_rules(config, transport)
     try:
         cleanup_disabled_operator(config, transport)
     except OperatorAccessError as error:

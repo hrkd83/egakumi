@@ -39,14 +39,6 @@
         "allow-key-vault": {
           "direction": "Outbound",
           "priority": 220
-        },
-        "allow-dns-tcp": {
-          "direction": "Outbound",
-          "priority": 225
-        },
-        "allow-dns-udp": {
-          "direction": "Outbound",
-          "priority": 230
         }
       }
     },
@@ -133,14 +125,6 @@
           "direction": "Outbound",
           "priority": 270
         },
-        "allow-dns-tcp": {
-          "direction": "Outbound",
-          "priority": 275
-        },
-        "allow-dns-udp": {
-          "direction": "Outbound",
-          "priority": 280
-        },
         "deny-other-outbound": {
           "direction": "Outbound",
           "priority": 4096
@@ -226,14 +210,6 @@
         "allow-time-sync": {
           "direction": "Outbound",
           "priority": 260
-        },
-        "allow-dns-tcp": {
-          "direction": "Outbound",
-          "priority": 265
-        },
-        "allow-dns-udp": {
-          "direction": "Outbound",
-          "priority": 270
         },
         "deny-other-outbound": {
           "direction": "Outbound",

@@ -407,7 +407,6 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(rules[1, "allow-agw-api"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(rules[3, "allow-time-sync"]["destinationAddressPrefix"], "192.0.2.123/32")
         self.assertEqual(rules[3, "allow-enterprise-support"]["sourceAddressPrefix"], "10.70.2.128/26")
-        self.assertEqual(rules[0, "allow-dns-tcp"]["destinationAddressPrefix"], "168.63.129.16")
         expression, parameters = self.resolver("network-bindings", config)
         groups = expression.resolve("[variables('rulesByNsg')]", parameters)
         dynamic = {item["name"]: item["properties"] for group in groups for item in group}
@@ -415,7 +414,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "203.0.113.70/32")
         self.assertEqual(dynamic["allow-apim-http"]["destinationAddressPrefix"], "10.70.2.64/26")
 
-    def test_fixed_azure_dns_reaches_vnet_nsg_rules_and_firewall(self):
+    def test_fixed_azure_dns_reaches_vnet_and_firewall_without_nsg_dns_allows(self):
         options, parameters = custom_documents()
         config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
         expression, supplied = self.resolver("network", config)
@@ -427,9 +426,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         for nsg_index in (0, 1, 3):
             for rule_name in ("allow-dns-tcp", "allow-dns-udp"):
                 with self.subTest(nsg=nsg_index, rule=rule_name):
-                    self.assertEqual(rules[nsg_index, rule_name]["destinationAddressPrefix"],
-                                     "168.63.129.16")
-                    self.assertEqual(rules[nsg_index, rule_name]["destinationPortRange"], "53")
+                    self.assertNotIn((nsg_index, rule_name), rules)
         firewall = expression.resolve(resources["firewallPolicy"]["properties"], supplied)
         self.assertEqual(firewall["dnsSettings"]["servers"], [])
 
@@ -493,7 +490,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         rules = expression.resolve("[variables('staticNsgRules')]", parameters)
         by_name = {entry["rule"]["name"]: entry["rule"]["properties"] for entry in rules}
         self.assertEqual((by_name["allow-client-web"]["priority"], by_name["allow-client-web"]["access"]), (120, "Allow"))
-        self.assertEqual(by_name["allow-dns-tcp"]["destinationAddressPrefix"], "168.63.129.16")
+        self.assertNotIn("allow-dns-tcp", by_name)
+        self.assertNotIn("allow-dns-udp", by_name)
         vnet = self.templates["network"]["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(vnet["dhcpOptions"], parameters), {"dnsServers": []})
         firewall = expression.resolve(self.templates["network"]["resources"]["firewallPolicy"]["properties"], parameters)

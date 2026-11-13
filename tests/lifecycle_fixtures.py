@@ -136,6 +136,10 @@ class LifecycleFixture:
                                      return_value={"status": "rule-absent", "azureWrites": 0})
         self.operator_cleanup = operator.start()
         self.addCleanup(operator.stop)
+        dns_nsg = mock.patch.object(lifecycle, "cleanup_dns_nsg_rules",
+                                   return_value={"status": "completed", "azureWrites": 0})
+        self.dns_nsg_cleanup = dns_nsg.start()
+        self.addCleanup(dns_nsg.stop)
         # APIMの固定名確認は別の専用試験でARM応答を再現する。hook試験では
         # 実Azureを呼ばず、有料段階より前に呼び出される順序を検査する。
         apim_name = mock.patch.object(lifecycle, "verify_apim_name",

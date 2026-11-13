@@ -98,7 +98,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                     low, high = (120, 200) if (group, name) in business else (220, 300)
                     self.assertTrue(low <= rule["priority"] < high)
                     self.assertEqual((rule["priority"] - low) % 5, 0)
-        self.assertEqual((count, terminal), (55, 6))
+        self.assertEqual((count, terminal), (49, 6))
 
     def test_every_compiled_rule_matches_exact_contract_without_new_outbound_deny(self):
         rules = self.compiled_rules(self.parameters())
@@ -121,8 +121,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                             "allow-certificate-observer": 220, "allow-gateway-manager": 225,
                             "allow-load-balancer": 230, "deny-other-inbound": 4096},
                 "Outbound": {"allow-apim-http": 120, "allow-apim-grpc": 125,
-                             "allow-key-vault": 220, "allow-dns-tcp": 225,
-                             "allow-dns-udp": 230}}.items():
+                             "allow-key-vault": 220}}.items():
             self.assertEqual({name: rule["priority"] for name, rule in rules.items()
                               if rule["direction"] == direction}, expected)
 
@@ -158,15 +157,15 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(operator["destinationAddressPrefix"], parameters["managementPrivateIp"])
         self.assertEqual(operator["destinationPortRange"], "22")
 
-    def test_custom_management_rule_is_not_renumbered_and_dns_is_group_specific(self):
+    def test_custom_management_rule_is_not_renumbered_and_default_dns_needs_no_allow(self):
         parameters = self.parameters()
         custom = copy.deepcopy(ip_fixtures.custom_documents()[1]["network"]["managementAdditionalSecurityRules"][0])
         parameters["config"]["managementAdditionalSecurityRules"] = [custom]
         rules = self.compiled_rules(parameters)
         self.assertEqual(rules["management"][custom["name"]], custom["properties"])
-        for group, priority in (("agw", 225), ("apim", 275), ("management", 265)):
-            self.assertEqual(rules[group]["allow-dns-tcp"]["priority"], priority)
-            self.assertEqual(rules[group]["allow-dns-udp"]["priority"], priority + 5)
+        for group in GROUPS:
+            self.assertNotIn("allow-dns-tcp", rules[group])
+            self.assertNotIn("allow-dns-udp", rules[group])
         broker = self.resource("credential-broker-network", "brokerOut", "allow-credential-broker")
         self.assertFalse(self.resolve("credential-broker-network", broker["condition"],
                                       {"enableCredentialBroker": False}))

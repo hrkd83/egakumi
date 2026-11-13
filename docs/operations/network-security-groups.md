@@ -13,7 +13,7 @@ Bicepの各モジュールが同じJSONを読み、送信元・宛先・ポー�
 
 | 定義 | 担当する規則 |
 | --- | --- |
-| [network.bicep](../../infra/modules/network.bicep) | 静的な入口・Azure基盤依存・DNS |
+| [network.bicep](../../infra/modules/network.bicep) | 静的な入口・Azure基盤依存 |
 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) | 作成後のIPを使う通信・管理者接続・最後の拒否 |
 | [portal-network.bicep](../../infra/modules/portal-network.bicep) | 管理VMとContainer AppsからACRへの通信 |
 | [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) | APIMから認証窓口、Container AppsからSQL・Vaultへの通信 |
@@ -42,8 +42,6 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 | Outbound | 120 | `allow-apim-http` | AppGWからAPIMへHTTP |
 | Outbound | 125 | `allow-apim-grpc` | AppGWからAPIMへgRPC |
 | Outbound | 220 | `allow-key-vault` | AppGWからVault PE |
-| Outbound | 225 | `allow-dns-tcp` | DNS/TCP |
-| Outbound | 230 | `allow-dns-udp` | DNS/UDP |
 
 ### APIM（apim）
 
@@ -69,8 +67,6 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 | Outbound | 260 | `allow-web-dependencies` | 許可済みWeb依存先 |
 | Outbound | 265 | `allow-time-sync` | 時刻同期 |
 | Outbound | 270 | `allow-counter-sync-outbound` | APIM内のカウンター同期 |
-| Outbound | 275 | `allow-dns-tcp` | DNS/TCP |
-| Outbound | 280 | `allow-dns-udp` | DNS/UDP |
 | Outbound | 4096 | `deny-other-outbound` | その他の送信を拒否 |
 
 ### Private Endpoint（pep）
@@ -100,9 +96,19 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 | Outbound | 250 | `allow-approved-agent-storage` | 管理VMのagent用Storage |
 | Outbound | 255 | `allow-web-dependencies` | 許可済みWeb依存先 |
 | Outbound | 260 | `allow-time-sync` | 時刻同期 |
-| Outbound | 265 | `allow-dns-tcp` | DNS/TCP |
-| Outbound | 270 | `allow-dns-udp` | DNS/UDP |
 | Outbound | 4096 | `deny-other-outbound` | その他の送信を拒否 |
+
+## Azure提供DNS
+
+VNetとFirewallの`dnsServers`は空配列に固定し、Azure提供DNSを使用する。
+Azure提供DNSへの通信は通常のNSG規則で制限されず、明示的に`AzurePlatformDNS`を対象とする規則で制御する。
+この資材はその拒否規則を作らないため、AppGW・APIM・管理VMの送信にDNS用のカスタムAllowは作成しない。
+既存のDNS用規則を削除しても、DNS設定、他の送受信規則と優先度は変更しない。
+[MicrosoftのAzure提供DNSとNSGの扱い](https://learn.microsoft.com/en-us/azure/virtual-network/what-is-ip-address-168-63-129-16#scope-of-azure-platform-virtual-ip)
+
+Incremental配備は省略した子規則を自動削除しないため、既存環境では対象NSGの所有と規則の内容を照合し、
+AppGW・APIM・管理VMの`allow-dns-tcp`と`allow-dns-udp`だけを削除する。
+反映後はAzure提供DNSの設定と、新しい接続での名前解決・必要な通信を確認する。
 
 ## 管理VMへの接続
 
@@ -147,7 +153,7 @@ AppGWとPEPに送信4096の全拒否は作成しないが、理由は異なる�
 
 | NSG | 判断 | 根拠と影響 |
 | --- | --- | --- |
-| AppGW | 現資材の標準構成では追加しない | 通常のApplication Gateway v2はInternet宛ての全送信許可を必要とする。バックエンド・Key Vault・DNS向けの個別Allowだけでは代替できず、送信全拒否を追加すると基盤通信や規則の適用に問題が生じる。既定65001を維持する。 |
+| AppGW | 現資材の標準構成では追加しない | 通常のApplication Gateway v2はInternet宛ての全送信許可を必要とする。バックエンド・Key Vault向けの個別Allowだけでは代替できず、送信全拒否を追加すると基盤通信や規則の適用に問題が生じる。既定65001を維持する。 |
 | PEP | PE専用サブネットでは追加防御のために必要ない | Private Endpointはサービス側から新規通信を開始できない。PE宛ての接続を受信Allowと4096で制限する。同じサブネットに別のNICを置く場合は、そのNICの送信を別途評価する。 |
 
 [MicrosoftのAppGW NSG要件](https://learn.microsoft.com/en-us/azure/application-gateway/configuration-infrastructure#network-security-groups)

@@ -16,6 +16,7 @@
 | 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | `operations/api_key.py`、P／G、Entra・Portalの正規管理操作、既存job |
 | WAF・外向き許可・監視・サービス容量を変える | [基盤設定の通常変更](platform-settings.md) | `operations/waf.py`・`monitoring.py`、G等の対象限定反映 |
 | NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと4モジュールのBicep |
+| 不要なDNS用NSG子規則を回収する | [DNS規則の限定回収](platform-settings.md#不要なdns用nsg子規則を回収する) | `operations/nsg_dns.py`で計画・限定DELETE |
 
 運用テストはこの業務のまとまりから選び、各作業の必要な検査・変更・確認・戻し方を一連で確認する。権限組合せ・全モデル・全入力の網羅は構築・統合テストに分ける。
 
