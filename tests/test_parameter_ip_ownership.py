@@ -1,4 +1,4 @@
-"""IP入力の所有元と、paramsから生成ARMまでの値の伝達を検証する。
+"""環境IP入力・標準DNSの所有元と、生成ARMまでの値の伝達を検証する。
 
 合成した企業用CIDRでローカルのloader・正規化・Bicepを通す。Azureの
 到達性やNSG/Firewallの実際の適用結果を、ここで合格と扱うことはしない。
@@ -28,11 +28,11 @@ NETWORK_INPUTS = {
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
                        "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
     "clientAddressPrefixes": ["0.0.0.0/0"], "operatorAddressPrefixes": [],
-    "dnsServers": [], "ntpAddressPrefixes": ["Internet"],
+    "ntpAddressPrefixes": ["Internet"],
     "managementAdditionalSecurityRules": [],
 }
 FIREWALL_INPUTS = {
-    "dnsServers": [], "snatPrivateRanges": ["IANAPrivateRanges"],
+    "snatPrivateRanges": ["IANAPrivateRanges"],
     "idpsPrivateRanges": [], "bypassTrafficSettings": [],
     "apimAdditionalNetworkRules": [], "managementAdditionalNetworkRules": [],
     "apimAdditionalApplicationRules": [], "managementAdditionalApplicationRules": [],
@@ -62,14 +62,16 @@ def custom_documents():
                                   for key, value in network["subnetPrefixes"].items()}
     network.update(clientAddressPrefixes=["203.0.113.70/32"],
                    operatorAddressPrefixes=["198.51.100.70/32"],
-                   dnsServers=["10.70.2.4"], ntpAddressPrefixes=["192.0.2.123/32"])
+                   ntpAddressPrefixes=["192.0.2.123/32"])
+    options["network"]["dnsServers"] = []
+    options["network"]["firewall"]["dnsServers"] = []
     network["managementAdditionalSecurityRules"] = [{
         "name": "allow-enterprise-support", "properties": {
             "priority": 370, "direction": "Outbound", "access": "Allow", "protocol": "Tcp",
             "sourcePortRange": "*", "destinationPortRange": "443",
             "sourceAddressPrefix": "10.70.2.128/26", "destinationAddressPrefix": "192.0.2.70/32"}}]
     firewall = copy.deepcopy(FIREWALL_INPUTS)
-    firewall.update(dnsServers=["10.70.2.5"], snatPrivateRanges=["10.70.0.0/16"],
+    firewall.update(snatPrivateRanges=["10.70.0.0/16"],
                     idpsPrivateRanges=["10.70.0.0/16"], bypassTrafficSettings=[{
                         "name": "reviewed-support", "protocol": "TCP",
                         "sourceAddresses": ["10.70.2.128/26"],
@@ -104,7 +106,7 @@ def load_documents(options, parameters):
 
 
 class ParameterIpOwnershipTests(unittest.TestCase):
-    def test_public_samples_move_every_ip_value_without_changing_the_values(self):
+    def test_public_samples_keep_environment_inputs_and_default_dns_in_their_owners(self):
         """移動元の既知値を独立期待値にし、空配列も移動漏れと区別する。"""
         for name in ("test", "production"):
             options, parameters = public_documents(name)
@@ -113,7 +115,11 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertEqual({key: parameters["network"]["firewall"][key] for key in FIREWALL_INPUTS}, FIREWALL_INPUTS)
                 self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
                 self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
+                self.assertEqual(options["network"]["dnsServers"], [])
+                self.assertNotIn("dnsServers", parameters["network"])
                 self.assertFalse(set(options["network"]["firewall"]) & set(FIREWALL_INPUTS))
+                self.assertEqual(options["network"]["firewall"]["dnsServers"], [])
+                self.assertNotIn("dnsServers", parameters["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
                 self.assertIn("rateLimits", options["gateway"])
                 self.assertIn("operatorPorts", options["network"])
@@ -137,7 +143,9 @@ class ParameterIpOwnershipTests(unittest.TestCase):
 
     def test_parameter_network_rejects_unknown_and_platform_only_fields(self):
         cases = [("network", "addressSpace"), ("network", "operatorPorts"),
+                 ("network", "dnsServers"),
                  ("network", "firewall", "sku"), ("network", "firewall", "dnsServer"),
+                 ("network", "firewall", "dnsServers"),
                  ("monitoring", "auditAllowdIpAddresses")]
         for path in cases:
             options, parameters = custom_documents()
@@ -165,10 +173,11 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         result = build_bicep_configuration(normalized)
         for key in NETWORK_INPUTS:
             self.assertEqual(result["network"][key], parameters["network"][key])
+        self.assertEqual(result["network"]["dnsServers"], options["network"]["dnsServers"])
         firewall = result["network"]["firewall"]
         for key in FIREWALL_INPUTS:
             self.assertEqual(firewall[key], parameters["network"]["firewall"][key])
-        for key in ("sku", "idpsMode", "zones"):
+        for key in ("sku", "idpsMode", "zones", "dnsServers"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
         # 正規化で証明書取得等の基盤FQDNを追加するが、paramsの明示値は失わない。
         for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
@@ -182,9 +191,9 @@ class ParameterIpOwnershipTests(unittest.TestCase):
 
     def test_explicit_empty_dns_and_operator_ranges_survive_normalization(self):
         options, parameters = custom_documents()
-        for key in ("dnsServers", "operatorAddressPrefixes"):
-            parameters["network"][key] = []
-        parameters["network"]["firewall"]["dnsServers"] = []
+        options["network"]["dnsServers"] = []
+        parameters["network"]["operatorAddressPrefixes"] = []
+        options["network"]["firewall"]["dnsServers"] = []
         parameters["monitoring"]["auditAllowedIpAddresses"] = []
         result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
         for key in ("dnsServers", "operatorAddressPrefixes"):
@@ -192,6 +201,35 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         self.assertEqual(result["network"]["clientAddressPrefixes"], parameters["network"]["clientAddressPrefixes"])
         self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
+
+    def test_parameter_dns_cannot_override_the_config_even_with_matching_values(self):
+        for nested in (False, True):
+            for value in ([], ["168.63.129.16"], ["10.70.2.4"]):
+                options, parameters = custom_documents()
+                target = parameters["network"]["firewall"] if nested else parameters["network"]
+                target["dnsServers"] = value
+                with self.subTest(firewall=nested, value=value), self.assertRaisesRegex(
+                        ConfigurationError, r"network.*unsupported field.*dnsServers"):
+                    load_documents(options, parameters)
+
+    def test_config_dns_is_fixed_before_any_template_is_emitted(self):
+        for nested in (False, True):
+            for value in (["168.63.129.16"], ["10.70.2.4"], ["10.70.2.4/32"],
+                          ["dns.example.com"], ["2001:db8::53"], "10.70.2.4"):
+                options, parameters = custom_documents()
+                target = options["network"]["firewall"] if nested else options["network"]
+                target["dnsServers"] = value
+                with self.subTest(firewall=nested, value=value), self.assertRaisesRegex(
+                        ConfigurationError, r"network\.(?:firewall\.)?dnsServers"):
+                    normalize_configuration(load_documents(options, parameters))
+
+    def test_omitted_config_dns_keeps_azure_provided_dns_for_both_consumers(self):
+        options, parameters = custom_documents()
+        options["network"].pop("dnsServers")
+        options["network"]["firewall"].pop("dnsServers")
+        result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
+        self.assertEqual(result["network"]["dnsServers"], [])
+        self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
 
     def test_empty_client_ranges_are_rejected_before_bicep_configuration(self):
         options, parameters = custom_documents()
@@ -217,7 +255,6 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             ("too-small", lambda n: n["subnetPrefixes"].update(agw="10.70.0.0/25")),
             ("host-bits", lambda n: n["addressSpaces"].__setitem__(0, "10.70.0.1/24")),
             ("ipv6", lambda n: n["addressSpaces"].__setitem__(0, "2001:db8::/64")),
-            ("dns-is-cidr", lambda n: n.update(dnsServers=["10.70.2.4/32"])),
         ]
         for label, change in cases:
             options, parameters = custom_documents()
@@ -327,9 +364,9 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
     def configuration(self, empty_optional=False):
         options, parameters = custom_documents()
         if empty_optional:
-            for key in ("dnsServers", "operatorAddressPrefixes"):
-                parameters["network"][key] = []
-            parameters["network"]["firewall"]["dnsServers"] = []
+            options["network"]["dnsServers"] = []
+            parameters["network"]["operatorAddressPrefixes"] = []
+            options["network"]["firewall"]["dnsServers"] = []
         return build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
 
     def resolver(self, module, config):
@@ -347,7 +384,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         expression, parameters = self.resolver("network", config)
         properties = self.templates["network"]["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(properties["addressSpace"], parameters), {"addressPrefixes": config["network"]["addressSpaces"]})
-        self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": ["10.70.2.4"]})
+        self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
         self.assertEqual([expression.resolve(item["properties"]["addressPrefix"], parameters) for item in expression.resolve(properties["subnets"], parameters)],
                          [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca")])
 
@@ -370,7 +407,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(rules[1, "allow-agw-api"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(rules[3, "allow-time-sync"]["destinationAddressPrefix"], "192.0.2.123/32")
         self.assertEqual(rules[3, "allow-enterprise-support"]["sourceAddressPrefix"], "10.70.2.128/26")
-        self.assertEqual(rules[0, "allow-dns-tcp"]["destinationAddressPrefix"], "10.70.2.4")
+        self.assertEqual(rules[0, "allow-dns-tcp"]["destinationAddressPrefix"], "168.63.129.16")
         expression, parameters = self.resolver("network-bindings", config)
         groups = expression.resolve("[variables('rulesByNsg')]", parameters)
         dynamic = {item["name"]: item["properties"] for group in groups for item in group}
@@ -378,13 +415,31 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "203.0.113.70/32")
         self.assertEqual(dynamic["allow-apim-http"]["destinationAddressPrefix"], "10.70.2.64/26")
 
+    def test_fixed_azure_dns_reaches_vnet_nsg_rules_and_firewall(self):
+        options, parameters = custom_documents()
+        config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
+        expression, supplied = self.resolver("network", config)
+        resources = self.templates["network"]["resources"]
+        self.assertEqual(expression.resolve(resources["vnet"]["properties"]["dhcpOptions"], supplied),
+                         {"dnsServers": []})
+        static = expression.resolve("[variables('staticNsgRules')]", supplied)
+        rules = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in static}
+        for nsg_index in (0, 1, 3):
+            for rule_name in ("allow-dns-tcp", "allow-dns-udp"):
+                with self.subTest(nsg=nsg_index, rule=rule_name):
+                    self.assertEqual(rules[nsg_index, rule_name]["destinationAddressPrefix"],
+                                     "168.63.129.16")
+                    self.assertEqual(rules[nsg_index, rule_name]["destinationPortRange"], "53")
+        firewall = expression.resolve(resources["firewallPolicy"]["properties"], supplied)
+        self.assertEqual(firewall["dnsSettings"]["servers"], [])
+
     def test_firewall_arm_keeps_platform_sku_and_parameter_ip_settings_together(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
         resources = self.templates["network"]["resources"]
         firewall = expression.resolve(resources["firewallPolicy"]["properties"], parameters)
         self.assertEqual(firewall["sku"]["tier"], "Premium")
-        self.assertEqual(firewall["dnsSettings"]["servers"], ["10.70.2.5"])
+        self.assertEqual(firewall["dnsSettings"]["servers"], [])
         self.assertEqual(firewall["snat"]["privateRanges"], ["10.70.0.0/16"])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["privateRanges"], ["10.70.0.0/16"])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["bypassTrafficSettings"], config["network"]["firewall"]["bypassTrafficSettings"])

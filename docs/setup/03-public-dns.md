@@ -43,7 +43,7 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | `_acme-challenge`のTXT | 証明書の取得・更新時に管理VMが自動作成・回収 | DNS-01認証 |
 | Gateway・PortalのAエイリアス | CoreのAppGW Public IP作成後にhookが設定 | 対象環境の公開入口へ接続 |
 
-DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも証明書を取得できます。VNet内部の名前解決や`network.dnsServers`とは別の準備です。
+DNS-01はTXTで検証するため、AレコードをAppGWへ向ける前でも証明書を取得できます。config側でAzure提供DNSに固定する、VNetやFirewallの名前解決とは別の準備です。
 
 ## 3. DNS更新用UAMIを準備する
 

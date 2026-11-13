@@ -73,12 +73,13 @@ PARAMETER_KEYS = {
     "credentialProviders", "publishApis", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
 # IP条件と不可分な規則配列も、環境ごとにparamsで全体を選びます。
+# VNetとFirewallのdnsServersはAzure提供DNSに固定し、config側で管理します。
 PARAMETER_NETWORK_IP_KEYS = {
     "addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "operatorAddressPrefixes",
-    "dnsServers", "ntpAddressPrefixes", "managementAdditionalSecurityRules",
+    "ntpAddressPrefixes", "managementAdditionalSecurityRules",
 }
 PARAMETER_FIREWALL_IP_KEYS = {
-    "dnsServers", "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
+    "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
     "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
 }
@@ -339,13 +340,9 @@ def _network(raw: Any) -> dict:
     # 運用者の空配列は引き続き許可元なしを表し、APIの認証は別途必要です。
     n["clientAddressPrefixes"] = _cidrs(n.get("clientAddressPrefixes", ["0.0.0.0/0"]), "network.clientAddressPrefixes", minimum=1)
     n["operatorAddressPrefixes"] = _cidrs(n.get("operatorAddressPrefixes", []), "network.operatorAddressPrefixes")
-    n["dnsServers"] = _strings(n.get("dnsServers", []), "network.dnsServers")
-    for address in n["dnsServers"]:
-        try:
-            if ipaddress.ip_address(address).version != 4:
-                raise ValueError
-        except ValueError:
-            _fail("network.dnsServers", "must contain IPv4 server addresses")
+    n["dnsServers"] = _list(n.get("dnsServers", []), "network.dnsServers")
+    if n["dnsServers"]:
+        _fail("network.dnsServers", "must remain empty to use Azure-provided DNS")
     # 公開設定ではtrue=伝播、false=非伝播と読む。ARMのdisable指定への反転は
     # Bicep側で行い、利用者が否定の否定を読み解く必要をなくす。
     routes = _object(n.get("bgpRoutePropagation", {}), "network.bgpRoutePropagation", {"agw", "apim", "management"})
@@ -377,12 +374,15 @@ def _network(raw: Any) -> dict:
         f.pop("idpsMode", None)
     if tier == "Standard" and any(f.get(key) for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings")):
         _fail("network.firewall", "IDPS configuration requires Premium")
+    _list(f.setdefault("dnsServers", []), "network.firewall.dnsServers")
+    if f["dnsServers"]:
+        _fail("network.firewall.dnsServers", "must remain empty to use Azure-provided DNS")
     _strings(f.setdefault("zones", []), "network.firewall.zones")
     for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
         if key in f:
             for fqdn in _strings(f[key], "network.firewall." + key):
                 _host(fqdn, "network.firewall." + key, wildcard=True)
-    for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges", "dnsServers", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules", "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
+    for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules", "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
         if key in f:
             _list(f[key], "network.firewall." + key)
     _list(n.setdefault("managementAdditionalSecurityRules", []), "network.managementAdditionalSecurityRules")
