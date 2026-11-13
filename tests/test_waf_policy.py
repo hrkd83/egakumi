@@ -1082,6 +1082,8 @@ class DataWafTests(unittest.TestCase):
                 if groups:
                     with self.subTest(profile=name, selector=entry['selector']):
                         self.assertEqual({g['ruleGroupName'] for g in groups}, expected_groups)
+                        self.assertIn({'ruleGroupName': 'Known-CVEs', 'rules': [{'ruleId': '800100'}]},
+                                      entry['exclusionManagedRuleSets'][0]['ruleGroups'])
                     actual.add((entry['matchVariable'], entry['selectorMatchOperator'], entry['selector']))
             self.assertEqual(actual, expected)
             configured = desired_policy(policy(), profile, configuration())['properties']
@@ -1109,6 +1111,7 @@ class DataWafTests(unittest.TestCase):
         rules = {g['ruleGroupName']: g.get('rules') for g in output['exclusionManagedRuleSets'][0]['ruleGroups']}
         self.assertEqual(rules['REQUEST-920-PROTOCOL-ENFORCEMENT'], [{'ruleId': '920230'}])
         self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
+        self.assertEqual(rules['Known-CVEs'], [{'ruleId': '800100'}])
         self.assertIsNone(rules['REQUEST-933-APPLICATION-ATTACK-PHP'])
         for selector in ('input.encrypted_content', 'input.content.file_data', 'input.content.image_url',
                          'client_metadata.x-codex-turn-metadata'):
@@ -1119,6 +1122,21 @@ class DataWafTests(unittest.TestCase):
                       chat['exclusionManagedRuleSets'][0]['ruleGroups'])
         self.assertFalse(any(e['selector'] in ('input.', 'messages.', 'tools.')
                              for p in profiles.values() for e in p['exclusions']))
+
+    def test_decision_jndi_excludes_data_keys_and_values_without_widening_state_root(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        for name in ('g-decision', 'p-decision'):
+            profile = profiles[name]
+            selected = {(e['matchVariable'], e['selectorMatchOperator'], e['selector'])
+                        for e in profile['exclusions']
+                        if any(g['ruleGroupName'] == 'Known-CVEs' and g.get('rules') == [{'ruleId': '800100'}]
+                               for rs in e['exclusionManagedRuleSets'] for g in rs['ruleGroups'])}
+            with self.subTest(profile=name):
+                self.assertEqual(selected, {(variable, 'StartsWith', selector)
+                                            for variable in ('RequestArgValues', 'RequestArgKeys')
+                                            for selector in ('questions.', 'state.')})
+                self.assertTrue(all('rules' in g for e in profile['exclusions']
+                                    for rs in e['exclusionManagedRuleSets'] for g in rs['ruleGroups']))
 
     def test_compiled_bicep_retains_group_exclusion_objects_from_the_manifest(self):
         from bicep_helpers import compile_bicep

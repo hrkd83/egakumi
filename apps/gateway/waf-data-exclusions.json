@@ -53,6 +53,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -312,6 +320,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -410,6 +426,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -440,6 +464,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
@@ -472,6 +504,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -502,6 +542,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
@@ -534,6 +582,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -565,6 +621,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -596,6 +660,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -626,6 +698,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
@@ -715,6 +795,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -764,6 +852,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
@@ -867,6 +963,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
@@ -1339,6 +1443,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -1383,6 +1495,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
@@ -1434,6 +1554,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -1484,6 +1612,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -1533,6 +1669,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
@@ -1606,6 +1750,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1637,6 +1789,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
                 {
@@ -1667,6 +1827,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-930-APPLICATION-ATTACK-LFI"
                 },
@@ -2188,6 +2356,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -2356,6 +2532,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
@@ -4881,6 +5065,14 @@
               "ruleSetVersion": "3.2",
               "ruleGroups": [
                 {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
+                {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
                     {
@@ -5049,6 +5241,14 @@
               "ruleSetType": "OWASP",
               "ruleSetVersion": "3.2",
               "ruleGroups": [
+                {
+                  "ruleGroupName": "Known-CVEs",
+                  "rules": [
+                    {
+                      "ruleId": "800100"
+                    }
+                  ]
+                },
                 {
                   "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
                   "rules": [
