@@ -2370,6 +2370,7 @@
         "docs/study/video-sample/episodes/03/versions/diagram-v1/production.md",
         "docs/study/video-sample/episodes/03/versions/diagram-v1/script.json",
         "infra/modules/network.bicep",
+        "scripts/deployment/helpers/dns_nsg.py",
         "schemas/configuration.schema.json",
         "schemas/params.schema.json",
         "tests/test_parameter_ip_ownership.py",

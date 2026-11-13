@@ -162,18 +162,11 @@ resource nsgTagUpdates 'Microsoft.Resources/tags@2021-04-01' = [for (nsgName, i)
   dependsOn: [createdNsgs]
 }]
 
-// Azure-provided DNS is platform traffic; AzurePlatformDNS must not be used in
-// an Allow rule. Keep the two named children even with default DNS so moving
-// back from custom DNS replaces (and revokes) the former custom-server allow.
-// 構築入力ではVNetとFirewallのdnsServersを空配列に固定し、Azure提供DNSを使います。
-var effectiveDnsServers = empty(dnsServers) ? ['168.63.129.16'] : dnsServers
-var staticNsgRules = flatten(map(range(0, length(nsgDefinitions)), i => map(concat(nsgDefinitions[i].rules,
-  nsgDefinitions[i].key == 'pep' ? [] : [
-    allowRule('allow-dns-tcp', nsgPriorities.groups[nsgDefinitions[i].key].rules['allow-dns-tcp'].priority, 'Outbound', 'Tcp', ['*'], effectiveDnsServers, ['53'])
-    allowRule('allow-dns-udp', nsgPriorities.groups[nsgDefinitions[i].key].rules['allow-dns-udp'].priority, 'Outbound', 'Udp', ['*'], effectiveDnsServers, ['53'])
-  ]), rule => { nsgIndex: i, rule: rule })))
+// 構築入力はAzure提供DNSに固定します。この基盤通信にNSGの明示Allowは不要です。
+var staticNsgRules = flatten(map(range(0, length(nsgDefinitions)), i => map(nsgDefinitions[i].rules,
+  rule => { nsgIndex: i, rule: rule })))
 
-// IP 確定を待たずに設定できる Azure 基盤向け通信や DNS の許可を登録します。
+// IP 確定を待たずに設定できる Azure 基盤向け通信の許可を登録します。
 @batchSize(1)
 resource staticSecurityRules 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = [for entry in staticNsgRules: {
   // 作成分と既存分の両方を参照するため、共通の親名を含めた子リソース名を使います。

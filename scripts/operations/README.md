@@ -12,6 +12,7 @@
 | `certificate.py` | `--stage check/renew/sync`で既存workerと参照先・公開TLSを確認する。期限前の計画更新は`--stage renew --rotate` | 既定計画は通信なし。実際の確認にも`--execute`を使う |
 | `api_key.py` | 通常購読の主副の片側を再生成し、指定した新規秘密ファイルへ保存 | なし。実行時に現物の購読を照合する |
 | `waf.py` | 既存の用途別WAFのreconcilerを`--scope gateway/portal/all`で利用 | なし |
+| `nsg_dns.py` | Azure提供DNSを確認し、不要な既知のDNS用NSG子規則だけを回収 | 現物のDNS設定・所有・全対象規則を読む |
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
 
 ```sh
