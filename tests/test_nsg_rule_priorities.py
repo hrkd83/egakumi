@@ -115,14 +115,21 @@ class NsgRulePriorityTests(unittest.TestCase):
                                     for name in GROUPS])
 
     def test_app_gateway_uses_the_requested_exact_sequence(self):
-        rules = self.compiled_rules(self.parameters())["agw"]
+        parameters = self.parameters()
+        rules = self.compiled_rules(parameters)["agw"]
         for direction, expected in {
                 "Inbound": {"allow-client-web": 120, "allow-client-grpc": 125,
-                            "allow-certificate-observer": 220, "allow-gateway-manager": 225,
+                            "allow-firewall-public-ingress": 220, "allow-gateway-manager": 225,
                             "allow-load-balancer": 230, "deny-other-inbound": 4096},
                 "Outbound": {}}.items():
             self.assertEqual({name: rule["priority"] for name, rule in rules.items()
                               if rule["direction"] == direction}, expected)
+        self.assertEqual(rules["allow-firewall-public-ingress"], {
+            "priority": 220, "direction": "Inbound", "access": "Allow", "protocol": "Tcp",
+            "sourcePortRange": "*", "destinationPortRange": "443",
+            "sourceAddressPrefix": parameters["firewallPublicIpAddress"] + "/32",
+            "destinationAddressPrefix": parameters["subnetPrefixes"]["agw"],
+        })
 
     def test_gateway_egress_uses_defaults_without_rewriting_existing_parent_nsgs(self):
         parameters = self.parameters()
@@ -167,10 +174,10 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(terminal["destinationAddressPrefix"], "*")
         self.assertEqual((rules["apim"]["allow-key-vault-pe"]["priority"],
                           rules["apim"]["allow-key-vault-pe"]["access"]), (220, "Deny"))
-        observer = rules["agw"]["allow-certificate-observer"]
-        self.assertEqual((observer["priority"], observer["access"]), (220, "Deny"))
-        self.assertLess(rules["agw"]["allow-client-web"]["priority"], observer["priority"])
-        self.assertEqual(observer["sourceAddressPrefix"], parameters["firewallPublicIpAddress"] + "/32")
+        ingress = rules["agw"]["allow-firewall-public-ingress"]
+        self.assertEqual((ingress["priority"], ingress["access"]), (220, "Deny"))
+        self.assertLess(rules["agw"]["allow-client-web"]["priority"], ingress["priority"])
+        self.assertEqual(ingress["sourceAddressPrefix"], parameters["firewallPublicIpAddress"] + "/32")
         self.assertEqual(rules["pep"]["allow-key-vault"]["sourceAddressPrefix"],
                          parameters["subnetPrefixes"]["agw"])
 
