@@ -28,7 +28,9 @@ APP_GROUPS = frozenset({
     'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
     'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
     'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+    'REQUEST-944-APPLICATION-ATTACK-JAVA',
 })
+APP_RULES = {'REQUEST-921-PROTOCOL-ATTACK': frozenset({'921110', '921130'})}
 
 
 def _read(path):
@@ -41,7 +43,10 @@ def load_contracts(root=ROOT):
     if data.get('version') != 1 or not isinstance(data.get('profiles'), list):
         raise ValueError('WAF input catalog requires version 1 and profiles')
     if set(data.get('groupSets', {}).get('ai-data', [])) != APP_GROUPS:
-        raise ValueError('Semantic AI types may exclude only the six application attack groups')
+        raise ValueError('AI data types require the seven reviewed application attack groups')
+    if data.get('groupSetRuleExclusions') != {
+            'ai-data': {group: sorted(rules) for group, rules in APP_RULES.items()}}:
+        raise ValueError('AI data types require only the reviewed individual protocol rule exclusions')
     names = set()
     for profile in data['profiles']:
         if profile['name'] in names or profile['scope'] not in ('gateway', 'portal'):
@@ -210,8 +215,11 @@ def generated_manifest(root=ROOT, apis=None):
                 key = (field['matchVariable'], field['selectorMatchOperator'], field['selector'])
                 entries.setdefault(key, [])
                 _merge_groups(entries[key], [{'ruleGroupName': group} for group in field['groups']])
+                _merge_groups(entries[key], [
+                    {'ruleGroupName': group, 'rules': [{'ruleId': rule} for rule in rules]}
+                    for group, rules in catalog['groupSetRuleExclusions']['ai-data'].items()])
         # Compatibility exceptions are explicit, finite and independent of the
-        # semantic six-group decision. They never turn control fields into data.
+        # common AI data exclusions. They never turn control fields into data.
         for override in source.get('legacy', []):
             key = (override['variable'], override['operator'], override['selector'])
             entries.setdefault(key, [])

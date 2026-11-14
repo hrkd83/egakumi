@@ -20,6 +20,7 @@ from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
 from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
+from test_waf_contracts import common_data_before_manifest
 
 CHAT = '/models/openai/v1/chat/completions'
 
@@ -41,7 +42,8 @@ def manifest():
 def media_data_exclusion(selector):
     value = exclusion(selector, 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130'])
     value['exclusionManagedRuleSets'][0]['ruleGroups'] = [
-        {'ruleGroupName': name} for name in sorted(APP_GROUPS)]
+        {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK', 'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]},
+        *({'ruleGroupName': name} for name in sorted(APP_GROUPS))]
     return value
 
 
@@ -249,8 +251,7 @@ class DataWafTests(unittest.TestCase):
                          if e['selector'] == selector)
             self.assertEqual((entry['matchVariable'], entry['selectorMatchOperator']),
                              ('RequestArgValues', 'Equals'))
-            self.assertTrue(all('rules' not in group
-                                for group in entry['exclusionManagedRuleSets'][0]['ruleGroups']))
+            self.assertEqual(entry, media_data_exclusion(selector))
 
     def test_responses_image_exception_changes_only_its_exact_payload_field(self):
         profiles = {item['name']: item for item in load_manifest()['profiles']}
@@ -324,7 +325,7 @@ class DataWafTests(unittest.TestCase):
                 selected_profiles(configuration(), manifest=value)
         for group in ('REQUEST-920-PROTOCOL-ENFORCEMENT', 'REQUEST-921-PROTOCOL-ATTACK',
                       'REQUEST-949-BLOCKING-EVALUATION', 'REQUEST-980-CORRELATION', 'Known-CVEs',
-                      'REQUEST-944-APPLICATION-ATTACK-JAVA', 'REQUEST-942-UNAPPROVED'):
+                      'REQUEST-943-UNAPPROVED', 'REQUEST-942-UNAPPROVED'):
             value = copy.deepcopy(good)
             value['profiles'][0]['exclusions'][0]['exclusionManagedRuleSets'][0]['ruleGroups'] = [{'ruleGroupName': group}]
             with self.subTest(group=group), self.assertRaises(ValueError):
@@ -350,6 +351,43 @@ class DataWafTests(unittest.TestCase):
             else: group['unapproved'] = True
             with self.subTest(change=change), self.assertRaises(ValueError):
                 selected_profiles(configuration(), manifest=value)
+
+    def test_common_compatibility_exclusions_reject_new_fields_and_whole_protocol_group(self):
+        profile = next(p for p in load_manifest()['profiles'] if p['name'] == 'g-responses')
+        original = next(e for e in profile['exclusions']
+                        if e['selector'] == 'input.output.image_url')
+        for group in ({'ruleGroupName': 'REQUEST-944-APPLICATION-ATTACK-JAVA'},
+                      {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK',
+                       'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]}):
+            entry = copy.deepcopy(original)
+            entry['exclusionManagedRuleSets'][0]['ruleGroups'] = [copy.deepcopy(group)]
+            good = {'version': 2, 'profiles': [{**copy.deepcopy(profile), 'exclusions': [entry]}]}
+            selected_profiles(configuration(), manifest=good)
+            for change in ('control', 'neighbor', 'variable', 'parent', 'route', 'whole-protocol'):
+                value = copy.deepcopy(good)
+                current = value['profiles'][0]['exclusions'][0]
+                if change == 'control':
+                    current['selector'] = 'model'
+                elif change == 'neighbor':
+                    current['selector'] += '_extra'
+                elif change == 'variable':
+                    current['matchVariable'] = 'RequestArgKeys'
+                elif change == 'parent':
+                    current.update(selector='input.', selectorMatchOperator='StartsWith')
+                elif change == 'route':
+                    value['profiles'][0]['paths'][0] += '/neighbor'
+                else:
+                    current['exclusionManagedRuleSets'][0]['ruleGroups'] = [
+                        {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK'}]
+                with self.subTest(group=group['ruleGroupName'], change=change), self.assertRaises(ValueError):
+                    selected_profiles(configuration(), manifest=value)
+
+    def test_legacy_version_one_http_splitting_exception_remains_accepted(self):
+        legacy = manifest()
+        legacy['profiles'][0]['exclusions'] = [exclusion(
+            'messages.content', 'REQUEST-921-PROTOCOL-ATTACK', ['921130'])]
+        self.assertEqual(legacy['version'], 1)
+        self.assertEqual(selected_profiles(configuration(), manifest=legacy), legacy['profiles'])
 
     def test_group_coverage_never_silently_changes_an_existing_scope(self):
         old = exclusion('input.output.text', 'REQUEST-933-APPLICATION-ATTACK-PHP', ['933151', '933180'])
@@ -1060,7 +1098,8 @@ class DataWafTests(unittest.TestCase):
             self.assertEqual((prompt['matchVariable'], prompt['selectorMatchOperator']), ('RequestArgValues', 'Equals'))
             self.assertTrue(exclusion_is_covered(legacy, prompt))
             individual = [g for g in prompt['exclusionManagedRuleSets'][0]['ruleGroups'] if 'rules' in g]
-            self.assertEqual(individual, legacy['exclusionManagedRuleSets'][0]['ruleGroups'][:2])
+            self.assertEqual(individual, [*legacy['exclusionManagedRuleSets'][0]['ruleGroups'][:2],
+                {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK', 'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]}])
             previous = copy.deepcopy(profile)
             previous['exclusions'][previous['exclusions'].index(prompt)] = legacy
             old_policy = desired_policy(policy(), previous, configuration())
@@ -1122,7 +1161,8 @@ class DataWafTests(unittest.TestCase):
             for entry in profile['exclusions']:
                 self.assertEqual((entry['matchVariable'], entry['selectorMatchOperator']), ('RequestArgValues', 'Equals'))
                 individual = [g for g in entry['exclusionManagedRuleSets'][0]['ruleGroups'] if 'rules' in g]
-                self.assertEqual(individual, legacy_data_exclusion(entry['selector'])['exclusionManagedRuleSets'][0]['ruleGroups'][:2])
+                self.assertEqual(individual, [*legacy_data_exclusion(entry['selector'])['exclusionManagedRuleSets'][0]['ruleGroups'][:2],
+                    {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK', 'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]}])
             before = desired_policy(policy(), previous, configuration())
             after = desired_policy(policy(), profile, configuration(), sources=[before])
             for entry in before['properties']['managedRules']['exclusions']:
@@ -1181,6 +1221,7 @@ class DataWafTests(unittest.TestCase):
             'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
             'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
             'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+            'REQUEST-944-APPLICATION-ATTACK-JAVA',
         }
         fields = {}
         for name in profiles:
@@ -1237,7 +1278,9 @@ class DataWafTests(unittest.TestCase):
         rules = {g['ruleGroupName']: g.get('rules') for g in output['exclusionManagedRuleSets'][0]['ruleGroups']}
         self.assertEqual(rules['REQUEST-920-PROTOCOL-ENFORCEMENT'],
                          [{'ruleId': rule} for rule in ('920230', '920270', '920271')])
-        self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
+        self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'],
+                         [{'ruleId': rule} for rule in ('921110', '921120', '921130')])
+        self.assertIsNone(rules['REQUEST-944-APPLICATION-ATTACK-JAVA'])
         self.assertEqual(rules['Known-CVEs'], [{'ruleId': '800100'}])
         self.assertIsNone(rules['REQUEST-933-APPLICATION-ATTACK-PHP'])
         for selector in ('client_metadata.x-codex-turn-metadata',):
@@ -1248,6 +1291,26 @@ class DataWafTests(unittest.TestCase):
                       chat['exclusionManagedRuleSets'][0]['ruleGroups'])
         self.assertFalse(any(e['selector'] in ('input.', 'messages.', 'tools.')
                              for p in profiles.values() for e in p['exclusions']))
+
+    def test_common_compatibility_update_keeps_all_other_waf_settings(self):
+        profiles = {p['name']: p for p in load_manifest()['profiles']}
+        for previous in common_data_before_manifest()['profiles']:
+            with self.subTest(profile=previous['name']):
+                profile = profiles[previous['name']]
+                base = policy()
+                old_policy = desired_policy(base, previous, configuration())
+                updated = desired_policy(base, profile, configuration(), sources=(old_policy,))
+                properties = updated['properties']
+                self.assertEqual(properties['policySettings'], old_policy['properties']['policySettings'])
+                self.assertEqual(properties['policySettings']['mode'], 'Prevention')
+                self.assertIs(properties['policySettings']['requestBodyCheck'], True)
+                self.assertEqual(properties['managedRules']['managedRuleSets'],
+                                 old_policy['properties']['managedRules']['managedRuleSets'])
+                self.assertEqual(properties.get('customRules', []),
+                                 old_policy['properties'].get('customRules', []))
+                exclusions = properties['managedRules']['exclusions']
+                self.assertTrue(all(any(exclusion_is_covered(old, new) for new in exclusions)
+                                    for old in old_policy['properties']['managedRules']['exclusions']))
 
     def test_text_sdp_and_opaque_upgrades_cover_the_individual_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
@@ -1289,12 +1352,14 @@ class DataWafTests(unittest.TestCase):
                 with self.subTest(profile=name, opaque=selector):
                     self.assertEqual((entry['matchVariable'], entry['selectorMatchOperator']),
                                      ('RequestArgValues', 'Equals'))
-                    self.assertEqual(sum('rules' not in g for g in groups), 6)
+                    self.assertEqual(sum('rules' not in g for g in groups), 7)
                     retained = [g for g in groups if 'rules' in g]
                     self.assertEqual(retained, [{
                         'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT',
                         'rules': [{'ruleId': r} for r in ('920230', '920270', '920271')],
-                    }] if selector == 'input.encrypted_content' else [])
+                    }, {'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK',
+                        'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]}] if selector == 'input.encrypted_content' else [{
+                        'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK', 'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}]}])
                     group, ids = ('REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170'])
                     if selector == 'handle':
                         group, ids = 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942430', '942440']
@@ -1464,7 +1529,7 @@ class DataWafTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         selected_profiles(configuration(), manifest=invalid)
 
-    def test_json_data_keys_share_only_the_individual_header_injection_exception(self):
+    def test_json_data_keys_keep_legacy_header_and_common_request_line_exceptions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
         legacy_protocol = {
             'g-chat-completions': {'response_format.json_schema.schema.'},
@@ -1482,7 +1547,7 @@ class DataWafTests(unittest.TestCase):
                     self.assertEqual(entry['selectorMatchOperator'], 'StartsWith')
                     self.assertEqual(groups['REQUEST-921-PROTOCOL-ATTACK'], {
                         'ruleGroupName': 'REQUEST-921-PROTOCOL-ATTACK',
-                        'rules': [{'ruleId': '921150'}],
+                        'rules': [{'ruleId': '921110'}, {'ruleId': '921130'}, {'ruleId': '921150'}],
                     })
                     self.assertEqual(groups['Known-CVEs']['rules'],
                                      [{'ruleId': '800100'}])
@@ -1518,9 +1583,9 @@ class DataWafTests(unittest.TestCase):
                 with self.subTest(variable=variable, selector=selector):
                     self.assertEqual(exclusion_is_covered(old, prefix), covered)
 
-    def test_http_log_ids_are_confined_to_chat_and_responses_natural_values(self):
+    def test_legacy_http_splitting_rule_remains_confined_to_chat_and_responses_natural_values(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
-        http_ids = {'921120', '921130'}
+        http_ids = {'921120'}
         selected = {}
         for name, profile in profiles.items():
             for entry in profile['exclusions']:
@@ -1531,10 +1596,11 @@ class DataWafTests(unittest.TestCase):
                 with self.subTest(profile=name, selector=entry['selector']):
                     self.assertIn(name, ('g-responses', 'g-chat-completions'))
                     self.assertEqual(entry['matchVariable'], 'RequestArgValues')
-                    self.assertEqual(sum('rules' not in g for g in groups), 6)
+                    self.assertEqual(sum('rules' not in g for g in groups), 7)
                     self.assertTrue({'800100', '920230', '920270', '920271'} <= ids)
                     protocol = next(g for g in groups if g['ruleGroupName'] == 'REQUEST-921-PROTOCOL-ATTACK')
-                    self.assertEqual(protocol['rules'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
+                    expected = ['921110', '921120', '921130']
+                    self.assertEqual(protocol['rules'], [{'ruleId': rule} for rule in expected])
                 selected[name] = selected.get(name, 0) + 1
         self.assertEqual(selected, {'g-chat-completions': 18, 'g-responses': 29})
         original = profiles['g-responses']
@@ -1560,7 +1626,7 @@ class DataWafTests(unittest.TestCase):
                                             for selector in ('questions.', 'state.')}
                                  | {('RequestArgValues', 'Equals', 'state')})
                 self.assertTrue(all(sum('rules' not in g for rs in e['exclusionManagedRuleSets']
-                                        for g in rs['ruleGroups']) == 6 for e in profile['exclusions']))
+                                        for g in rs['ruleGroups']) == 7 for e in profile['exclusions']))
 
     def test_compiled_bicep_retains_group_exclusion_objects_from_the_manifest(self):
         from bicep_helpers import compile_bicep

@@ -146,7 +146,7 @@ class WafControlRouteTests(unittest.TestCase):
                     selected = selected_profiles(config, scopes=('gateway',))
                     self.assertEqual(any(p['name'] == 'g-realtime-ticket' for p in selected), name == 'standard')
 
-    def test_only_six_application_groups_are_added_to_each_exact_control_value(self):
+    def test_shared_compatibility_rules_include_existing_exact_ticket_headers_and_handle(self):
         expected = {
             "g-document-status": ("RequestHeaderValues", "X-Core-Document-Ticket"),
             "g-realtime-ticket": ("RequestHeaderValues", "X-Core-Call-Ticket"),
@@ -158,8 +158,14 @@ class WafControlRouteTests(unittest.TestCase):
             self.assertEqual((item["matchVariable"], item["selector"]), selector)
             self.assertEqual(item["selectorMatchOperator"], "Equals")
             groups = item["exclusionManagedRuleSets"][0]["ruleGroups"]
-            self.assertEqual({g["ruleGroupName"] for g in groups}, AI_DATA_RULE_GROUPS)
-            self.assertTrue(all(set(g) == {"ruleGroupName"} for g in groups))
+            application = [group for group in groups if "rules" not in group]
+            self.assertEqual({g["ruleGroupName"] for g in application}, AI_DATA_RULE_GROUPS)
+            self.assertEqual(len(application), 7)
+            self.assertIn({"ruleGroupName": "REQUEST-944-APPLICATION-ATTACK-JAVA"}, application)
+            self.assertTrue(all(set(g) == {"ruleGroupName"} for g in application))
+            self.assertEqual([group for group in groups if "rules" in group], [{
+                "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK", "rules": [{"ruleId": "921110"}, {"ruleId": "921130"}],
+            }])
 
     def test_control_policies_keep_base_body_limits_custom_rules_and_cookie_union(self):
         source = policy()
