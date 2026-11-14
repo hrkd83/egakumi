@@ -13,6 +13,7 @@
 | `api_key.py` | 通常購読の主副の片側を再生成し、指定した新規秘密ファイルへ保存 | なし。実行時に現物の購読を照合する |
 | `waf.py` | 既存の用途別WAFのreconcilerを`--scope gateway/portal/all`で利用 | なし |
 | `nsg_dns.py` | Azure提供DNSを確認し、不要な既知のDNS用NSG子規則だけを回収 | 現物のDNS設定・所有・全対象規則を読む |
+| `nsg_appgw_egress.py` | 既定許可と重複するAppGWの送信3子規則だけを回収 | AppGWサブネット・対向宛先・既定規則・所有と実規則を読む |
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
 
 ```sh

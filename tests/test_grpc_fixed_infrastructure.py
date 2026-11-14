@@ -122,8 +122,8 @@ class FixedGrpcInfrastructureTests(unittest.TestCase):
                 self.assertEqual(rules["allow-client-grpc"]["sourceAddressPrefix"],
                                  (clients or ["0.0.0.0/0"])[0])
                 self.assertEqual(rules["allow-client-grpc"]["destinationPortRange"], "8443")
-                self.assertEqual(rules["allow-apim-grpc"]["access"], "Allow")
-                for name in ("allow-apim-grpc", "allow-agw-grpc", "allow-management-grpc", "allow-apim-grpc-comparison"):
+                self.assertTrue(all(item["properties"]["direction"] == "Inbound" for item in groups[0]))
+                for name in ("allow-agw-grpc", "allow-management-grpc", "allow-apim-grpc-comparison"):
                     self.assertEqual(rules[name]["access"], "Allow")
                     self.assertEqual(rules[name]["destinationPortRange"], "443")
                     self.assertEqual(rules[name]["destinationAddressPrefix"], "198.51.100.0/26")

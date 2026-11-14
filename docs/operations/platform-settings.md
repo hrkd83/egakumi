@@ -12,6 +12,7 @@
 | データ項目に対するWAF誤検知 | `scripts/operations/waf.py` | WAF manifestと対象パスの実ポリシー |
 | 4 NSGの通信範囲・優先度 | 対象の規則に限定した操作を決める | [共通採番と規則の用途](network-security-groups.md)、params、Core state |
 | 不要なDNS用NSG子規則の回収 | `scripts/operations/nsg_dns.py` | Azure提供DNS、所有する3 NSGの既知の6子規則 |
+| AppGWの重複する送信規則の回収 | `scripts/operations/nsg_appgw_egress.py` | 同じVNetのAPIM・Vault PE宛ての既知の3子規則 |
 | APIバックエンド追加に伴う外向き許可 | Gateway個別配備（G） | API定義、対象Firewall規則、APIM実設定 |
 | 通知先・監視条件 | `scripts/operations/monitoring.py` | params・対応Bicep、実通知設定・条件・ログ |
 | AppGW・Container Appの容量 | 対象資源の構成／スケール画面 | 対応config／Bicep、実設定・revision・稼働状態 |
@@ -100,6 +101,49 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 通常hookの保護記録は環境別`state/dns-nsg-retirement/`に置く。
 切戻しが必要なら保存した対象規則と現在のDNS・他設定を確認し、今回の6子だけを
 個別に復元する。古いNSG全体のJSONをPUTしたり、DNS設定を変更したりしない。
+
+## AppGWの重複する送信規則を回収する
+
+AppGWの送信にはカスタム規則を作成せず、既定65000・65001・65500を使う。
+同じVNetのAPIMとKey Vault PEへの通信は65000で許可されるため、次の3本を
+個別に許可する必要はない。対向NSGの受信Allowと4096のDenyは維持する。
+
+| 方向 | 優先度 | 規則名 | プロトコル・宛先 |
+| --- | --- | --- | --- |
+| Outbound | 120 | `allow-apim-http` | TCP80・APIMサブネット |
+| Outbound | 125 | `allow-apim-grpc` | TCP443・APIMサブネット |
+| Outbound | 220 | `allow-key-vault` | TCP443・Key Vault PEのIP |
+
+Incremental配備だけでは既存の子規則が残るため、構築済み環境では次の入口を使う。
+基盤全体を再配備せず、指定した環境のこの3子規則だけをDELETEする。
+
+```sh
+python3 -B scripts/operations/nsg_appgw_egress.py --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/operations/nsg_appgw_egress.py --config "$DEPLOY_PARAMS_FILE" --execute
+```
+
+1. 同じ環境の保護params・Core stateを選択し、所有するAppGW用NSG、
+   VNet内のAppGW・APIMサブネット、Vault PEと実IP、既定の送信許可を確認する。
+   送信Denyや意味の違う同名規則等があれば停止する。
+2. 計画で規則名・優先度・Outbound・Allow・TCP・送信元・宛先・ポートを
+   全3本照合する。同番号のInbound、PEの同名`allow-key-vault`は削除しない。
+3. 実行直前にも現物を再読取し、子規則だけを削除する。親NSGのPUT、
+   サブネット関連付け、UDR、Firewall、DNSの変更は行わない。
+   各子の不存在と親のSucceededを待ち、他規則・既定規則・関連付けの保持を照合する。
+4. 再実行で残存削除0件・Azure書込0件を確認する。4 NSGの他規則と関連付け、
+   UDR・Firewall・DNSを変更前と比較する。新しい接続で通常API、gRPC経路、
+   公開Portalと転送先の応答を確認し、AppGWのVault証明書参照と公開TLSも照合する。
+   TLSハンドシェイクや認証拒否だけを、gRPCの実モデル推論成功として報告しない。
+
+計画・試行・各削除・結果は環境別`state/operations/`に保護保存する。
+応答不明・競合・未完了時は自動再送せず、現物と記録を確認して残件を計画し直す。
+ローカルロックとETagの直前照合は、別端末からの同時更新を完全には防がない。
+切戻す場合も保存した対象3子だけを個別に復元し、古い親NSG全体をPUTしない。
+
+通常の`azd up`／`azd provision`と直接core配備でも、同じ限定回収を
+既存規則の保持確認より先に実行する。新規構築・回収済み環境ではDELETEしない。
+通常hookの記録は環境別`state/appgw-egress-nsg-retirement/`へ保存する。
+この入口は既存DNSルール廃止処理とは独立しており、DNS用6子の削除を同時実行しない。
 
 ## APIバックエンドに必要な外向き許可を追加する
 

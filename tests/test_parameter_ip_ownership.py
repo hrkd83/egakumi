@@ -412,7 +412,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         dynamic = {item["name"]: item["properties"] for group in groups for item in group}
         self.assertEqual(dynamic["allow-operator-management"]["sourceAddressPrefix"], "198.51.100.70/32")
         self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "203.0.113.70/32")
-        self.assertEqual(dynamic["allow-apim-http"]["destinationAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(dynamic["allow-agw-grpc"]["destinationAddressPrefix"], "10.70.2.64/26")
 
     def test_fixed_azure_dns_reaches_vnet_and_firewall_without_nsg_dns_allows(self):
         options, parameters = custom_documents()
