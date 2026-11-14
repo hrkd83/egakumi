@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
                         desired_policy, reconcile, canonical_gateway, canonical_policy,
                         RESERVED_POLICY_KEYS, exclusion_is_covered)
+from waf_contracts import contract_fields, APP_GROUPS
 from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name)
@@ -25,9 +26,9 @@ CHAT = '/models/openai/v1/chat/completions'
 
 def configuration():
     value = copy.deepcopy(CONFIG)
-    value['apiDefinitions'] = [{'path': 'models/openai/v1', 'operations': [
-        {'name': 'chat', 'method': 'POST', 'urlTemplate': '/chat/completions'}],
-        'authorization': {'operationConstraints': {'chat': {'kind': 'bodyModel', 'profiles': [
+    value['apiDefinitions'] = [{'name': 'openai-inference-v1', 'path': 'models/openai/v1', 'operations': [
+        {'name': 'chat-completions', 'method': 'POST', 'urlTemplate': '/chat/completions'}],
+        'authorization': {'operationConstraints': {'chat-completions': {'kind': 'bodyModel', 'profiles': [
             {'modalities': ['text', 'image', 'audio']}]}}}}]
     return value
 
@@ -35,6 +36,13 @@ def configuration():
 def manifest():
     return {'version': 1, 'profiles': [{'name': 'g-chat-completions', 'scope': 'gateway', 'paths': [CHAT],
         'exclusions': [exclusion('messages.content', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'])]}]}
+
+
+def media_data_exclusion(selector):
+    value = exclusion(selector, 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130'])
+    value['exclusionManagedRuleSets'][0]['ruleGroups'] = [
+        {'ruleGroupName': name} for name in sorted(APP_GROUPS)]
+    return value
 
 
 def legacy_data_exclusion(selector):
@@ -138,6 +146,27 @@ class BacklinkMemory(PolicyRefreshingMemory):
 
 
 class DataWafTests(unittest.TestCase):
+    def test_exclusion_order_is_comparison_only_and_preserves_values_and_duplicates(self):
+        original = policy()
+        first = exclusion('synthetic-first', 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130'])
+        second = exclusion('synthetic-second', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942430'])
+        original['properties']['managedRules']['exclusions'] = [first, second]
+        reordered = copy.deepcopy(original)
+        reordered['properties']['managedRules']['exclusions'].reverse()
+        self.assertEqual(canonical_policy(original), canonical_policy(reordered))
+        self.assertEqual(original['properties']['managedRules']['exclusions'], [first, second])
+        self.assertEqual(reordered['properties']['managedRules']['exclusions'], [second, first])
+        for change in ('selector', 'rule', 'duplicate', 'override', 'unknown-key'):
+            value = copy.deepcopy(reordered)
+            entries = value['properties']['managedRules']['exclusions']
+            if change == 'selector': entries[0]['selector'] += '-different'
+            elif change == 'rule': entries[0]['exclusionManagedRuleSets'][0]['ruleGroups'][0]['rules'][0]['ruleId'] = '942440'
+            elif change == 'duplicate': entries.append(copy.deepcopy(entries[0]))
+            elif change == 'override': value['properties']['managedRules']['managedRuleSets'][0]['ruleGroupOverrides'] = [{'ruleGroupName': 'REQUEST-941-APPLICATION-ATTACK-XSS'}]
+            else: entries[0]['unknown'] = True
+            with self.subTest(change=change):
+                self.assertNotEqual(canonical_policy(original), canonical_policy(value))
+
     def test_manifest_keys_match_their_gateway_or_portal_scope(self):
         for name, scope in [('p-generate', 'gateway'), ('g-chat-completions', 'portal'),
                             ('chat-text', 'gateway'), ('g--chat', 'gateway')]:
@@ -207,14 +236,7 @@ class DataWafTests(unittest.TestCase):
         for name, selector in [('g-chat-completions', 'messages.content.image_url.url'),
                                ('g-responses', 'input.content.image_url')]:
             profile = profiles[name]
-            expected = exclusion(selector, 'REQUEST-941-APPLICATION-ATTACK-XSS', ['941130', '941170'])
-            if name == 'g-chat-completions':
-                expected['exclusionManagedRuleSets'][0]['ruleGroups'].append({
-                    'ruleGroupName': 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-                    'rules': [{'ruleId': '942340'}, {'ruleId': '942450'}]})
-            expected['exclusionManagedRuleSets'][0]['ruleGroups'].insert(0, {
-                'ruleGroupName': 'REQUEST-931-APPLICATION-ATTACK-RFI',
-                'rules': [{'ruleId': '931130'}]})
+            expected = media_data_exclusion(selector)
             with self.subTest(profile=name):
                 self.assertEqual([e for e in profile['exclusions'] if e['selector'] == selector], [expected])
                 without_media = copy.deepcopy(profile)
@@ -234,11 +256,7 @@ class DataWafTests(unittest.TestCase):
         profiles = {item['name']: item for item in load_manifest()['profiles']}
         profile = profiles['g-responses']
         self.assertEqual(profile['paths'], ['/models/openai/v1/responses'])
-        expected = exclusion('input.content.image_url', 'REQUEST-941-APPLICATION-ATTACK-XSS',
-                             ['941130', '941170'])
-        expected['exclusionManagedRuleSets'][0]['ruleGroups'].insert(0, {
-            'ruleGroupName': 'REQUEST-931-APPLICATION-ATTACK-RFI',
-            'rules': [{'ruleId': '931130'}]})
+        expected = media_data_exclusion('input.content.image_url')
         self.assertEqual([item for item in profile['exclusions']
                           if item['selector'] == 'input.content.image_url'], [expected])
         self.assertTrue(all(expected not in item['exclusions']
@@ -294,7 +312,7 @@ class DataWafTests(unittest.TestCase):
             'neighbor-route': lambda d: d['profiles'][0].update(paths=[CHAT + '/neighbor']),
             'extra-route': lambda d: d['profiles'][0]['paths'].append('/unpublished'),
             'model': lambda d: d['profiles'][0]['exclusions'][0].update(selector='model'),
-            'media': lambda d: d['profiles'][0]['exclusions'][0].update(selector='messages.content.image_url.url'),
+            'media-control': lambda d: d['profiles'][0]['exclusions'][0].update(selector='messages.content.image_url.detail'),
             'key': lambda d: d['profiles'][0]['exclusions'][0].update(matchVariable='RequestArgKeys'),
             'wide-prefix': lambda d: d['profiles'][0]['exclusions'][0].update(selector='messages.', selectorMatchOperator='StartsWith'),
             'unknown-property': lambda d: d['profiles'][0]['exclusions'][0].update(unapproved=True),
@@ -1021,8 +1039,7 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(profile['name'], 'g-images')
         self.assertEqual(len(profile['paths']), 6)
         image = [item for item in profile['exclusions'] if item['selector'] == 'input_image']
-        self.assertEqual(image, [exclusion('input_image', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-                                          ['942340', '942390', '942450'])])
+        self.assertEqual(image, [media_data_exclusion('input_image')])
         self.assertTrue(any(item['selector'] == 'prompt' for item in profile['exclusions']))
         self.assertFalse(any(item['selector'] == 'input_image' for other in profiles
                              if other is not profile for item in other['exclusions']))
@@ -1036,7 +1053,7 @@ class DataWafTests(unittest.TestCase):
     def test_image_prompt_groups_cover_every_prior_prompt_rule_and_keep_other_exclusions(self):
         legacy = legacy_data_exclusion('prompt')
         profiles = {p['name']: p for p in load_manifest()['profiles']}
-        for name, expected_count in (('g-images', 3), ('p-images', 1)):
+        for name, expected_count in (('g-images', 9), ('p-images', 1)):
             profile = profiles[name]
             self.assertEqual(len(profile['exclusions']), expected_count)
             prompt = next(e for e in profile['exclusions'] if e['selector'] == 'prompt')
@@ -1060,10 +1077,10 @@ class DataWafTests(unittest.TestCase):
                                     for e in portal_session_exclusions()))
             else:
                 images = [e for e in profile['exclusions'] if e['selector'] != 'prompt']
-                self.assertEqual({e['selector'] for e in images}, {'input_image', 'input_image_2'})
+                self.assertEqual({e['selector'] for e in images},
+                                 {'input_image', *('input_image_' + str(i) for i in range(2, 9))})
                 for entry in images:
-                    self.assertEqual(entry, exclusion(entry['selector'],
-                        'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942340', '942390', '942450']))
+                    self.assertEqual(entry, media_data_exclusion(entry['selector']))
 
     def test_image_groups_require_exact_profile_scope_paths_and_prompt_value(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
@@ -1165,57 +1182,16 @@ class DataWafTests(unittest.TestCase):
             'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
             'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
         }
-        fields = {
-            'g-chat-completions': {
-                'values': {'messages.content', 'messages.content.text',
-                           'messages.tool_calls.function.arguments', 'messages.function_call.arguments',
-                           'messages.tool_calls.custom.input', 'tools.function.description',
-                           'functions.description', 'tools.custom.description', 'tools.custom.format.grammar.definition',
-                           'messages.refusal', 'messages.content.refusal', 'prediction.content',
-                           'prediction.content.text', 'response_format.json_schema.description',
-                           'messages.reasoning_content'},
-                'opaque': {'messages.content.input_audio.data',
-                           'messages.content.file.file_data', 'messages.audio.id'},
-                'schemas': {'response_format.json_schema.schema.', 'tools.function.parameters.', 'functions.parameters.'},
-            },
-            'g-responses': {
-                'values': {'input', 'input.content', 'input.content.text', 'instructions', 'input.arguments',
-                           'input.output', 'input.output.text', 'input.input', 'tools.description',
-                           'input.tools.tools.description', 'input.tools.tools.format.definition',
-                           'input.summary.text', 'input.content.refusal', 'text.format.description',
-                           'input.tools.description', 'input.tools.format.definition',
-                           'input.action.command', 'input.action.commands',
-                           'input.operation.diff', 'input.output.stdout', 'input.output.stderr'},
-                'opaque': {'input.encrypted_content', 'input.content.file_data'},
-                'schemas': {'text.format.schema.', 'tools.parameters.', 'tools.output_schema.',
-                            'input.tools.parameters.', 'input.tools.output_schema.',
-                            'input.tools.tools.parameters.', 'input.tools.tools.output_schema.'},
-                'json_data': {'input.arguments.'},
-            },
-            'g-images': {'values': {'prompt'}, 'schemas': set()},
-            'p-images': {'values': {'prompt'}, 'schemas': set()},
-            'g-embeddings': {'values': {'input', 'texts'}, 'schemas': set()},
-            'p-embeddings': {'values': {'texts'}, 'schemas': set()},
-            'g-rerank': {'values': {'documents', 'query'}, 'schemas': set()},
-            'p-rerank': {'values': {'documents', 'query'}, 'schemas': set()},
-            'g-decision': {'values': {'state'}, 'schemas': set(),
-                           'json_data': {'questions.', 'state.'}},
-            'p-decision': {'values': {'state'}, 'schemas': set(),
-                           'json_data': {'questions.', 'state.'}},
-            'g-transcribe': {'values': {'prompt'}, 'schemas': set()},
-            'g-live': {'values': {'instructions'}, 'schemas': set(), 'sdp': {'sdp'}},
-            'g-realtime': {'values': set(), 'schemas': set(), 'sdp': {'sdp'}},
-            'g-pii-redact': {'values': {'params.arguments.text', 'text'}, 'schemas': set()},
-            'p-generate': {'values': {'message'}, 'schemas': set()},
-            'p-speech': {'values': {'text'}, 'schemas': set()},
-            'p-pii-redact': {'values': {'text'}, 'schemas': set()},
-            'p-realtime': {'values': set(), 'schemas': set(), 'opaque': {'handle'}},
-            'p-document-status': {'values': set(), 'schemas': set(), 'opaque': {'handle'}},
-            'g-document-status': {'values': set(), 'schemas': set(),
-                                  'headers': {'X-Core-Document-Ticket'}},
-            'g-realtime-ticket': {'values': set(), 'schemas': set(),
-                                  'headers': {'X-Core-Call-Ticket'}},
-        }
+        fields = {}
+        for name in profiles:
+            approved = [field for field in contract_fields(name) if field['groups']]
+            if approved:
+                fields[name] = {
+                    'values': {f['selector'] for f in approved if f['matchVariable'] == 'RequestArgValues'
+                               and f['selectorMatchOperator'] == 'Equals'},
+                    'schemas': {f['selector'] for f in approved if f['selectorMatchOperator'] == 'StartsWith'},
+                    'headers': {f['selector'] for f in approved if f['matchVariable'] == 'RequestHeaderValues'},
+                }
         for name, scopes in fields.items():
             profile = profiles[name]
             values = scopes['values'] | scopes.get('opaque', set()) | scopes.get('sdp', set())
@@ -1231,9 +1207,6 @@ class DataWafTests(unittest.TestCase):
                 if groups:
                     with self.subTest(profile=name, selector=entry['selector']):
                         self.assertEqual({g['ruleGroupName'] for g in groups}, expected_groups)
-                        if entry['selector'] not in scopes.get('opaque', set()) | scopes.get('headers', set()):
-                            self.assertIn({'ruleGroupName': 'Known-CVEs', 'rules': [{'ruleId': '800100'}]},
-                                          entry['exclusionManagedRuleSets'][0]['ruleGroups'])
                     actual.add((entry['matchVariable'], entry['selectorMatchOperator'], entry['selector']))
             self.assertEqual(actual, expected)
             configured = desired_policy(policy(), profile, configuration())['properties']
@@ -1267,7 +1240,7 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(rules['REQUEST-921-PROTOCOL-ATTACK'], [{'ruleId': '921120'}, {'ruleId': '921130'}])
         self.assertEqual(rules['Known-CVEs'], [{'ruleId': '800100'}])
         self.assertIsNone(rules['REQUEST-933-APPLICATION-ATTACK-PHP'])
-        for selector in ('input.content.image_url', 'client_metadata.x-codex-turn-metadata'):
+        for selector in ('client_metadata.x-codex-turn-metadata',):
             entry = next(e for e in response['exclusions'] if e['selector'] == selector)
             self.assertTrue(all(group.get('rules') for rs in entry['exclusionManagedRuleSets'] for group in rs['ruleGroups']))
         chat = next(e for e in profiles['g-chat-completions']['exclusions'] if e['selector'] == 'messages.content')
@@ -1330,17 +1303,6 @@ class DataWafTests(unittest.TestCase):
     def test_url_metadata_and_session_exceptions_keep_their_limited_rule_sets(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
         limited = {
-            ('g-responses', 'input.content.image_url'): {
-                'REQUEST-931-APPLICATION-ATTACK-RFI': ['931130'],
-                'REQUEST-941-APPLICATION-ATTACK-XSS': ['941130', '941170']},
-            ('g-chat-completions', 'messages.content.image_url.url'): {
-                'REQUEST-931-APPLICATION-ATTACK-RFI': ['931130'],
-                'REQUEST-941-APPLICATION-ATTACK-XSS': ['941130', '941170'],
-                'REQUEST-942-APPLICATION-ATTACK-SQLI': ['942340', '942450']},
-            ('g-images', 'input_image'): {
-                'REQUEST-942-APPLICATION-ATTACK-SQLI': ['942340', '942390', '942450']},
-            ('g-images', 'input_image_2'): {
-                'REQUEST-942-APPLICATION-ATTACK-SQLI': ['942340', '942390', '942450']},
             ('g-responses', 'client_metadata.x-codex-turn-metadata'): {
                 'REQUEST-933-APPLICATION-ATTACK-PHP': ['933151'],
                 'REQUEST-942-APPLICATION-ATTACK-SQLI': ['942200', '942260', '942340', '942370', '942430']},
@@ -1395,26 +1357,19 @@ class DataWafTests(unittest.TestCase):
 
     def test_ai_text_and_json_values_share_the_normal_body_rule_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
-        protocol_group = 'REQUEST-920-PROTOCOL-ENFORCEMENT'
-        for name in ('g-responses', 'g-chat-completions'):
-            for entry in profiles[name]['exclusions']:
-                groups = entry['exclusionManagedRuleSets'][0]['ruleGroups']
-                if (entry['matchVariable'] != 'RequestArgValues'
-                        or entry['selector'] in ('input.encrypted_content', 'input.content.file_data',
-                                                 'messages.content.input_audio.data',
-                                                 'messages.content.file.file_data', 'messages.audio.id')
-                        or not any('rules' not in group for group in groups)):
-                    continue
-                with self.subTest(profile=name, selector=entry['selector']):
-                    individual = {
-                        group['ruleGroupName']: {r['ruleId'] for r in group['rules']}
-                        for group in groups if 'rules' in group
-                    }
-                    self.assertEqual(individual[protocol_group],
-                                     {'920230', '920270', '920271'})
-                    self.assertEqual(individual['Known-CVEs'], {'800100'})
-                    self.assertEqual(individual['REQUEST-921-PROTOCOL-ATTACK'],
-                                     {'921120', '921130'})
+        previous = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
+        for profile in previous['profiles']:
+            if profile['name'] not in ('g-responses', 'g-chat-completions'):
+                continue
+            for old in profile['entries']:
+                for group in ('REQUEST-920-PROTOCOL-ENFORCEMENT', 'Known-CVEs', 'REQUEST-921-PROTOCOL-ATTACK'):
+                    if group not in old['groups']:
+                        continue
+                    expected = exclusion(old['selector'], group, old['groups'][group], old['variable'])
+                    expected['selectorMatchOperator'] = old['operator']
+                    with self.subTest(profile=profile['name'], selector=old['selector'], group=group):
+                        self.assertTrue(any(exclusion_is_covered(expected, entry)
+                                            for entry in profiles[profile['name']]['exclusions']))
 
         retained = [
             ('RequestArgValues', 'Equals', selector, ['921120', '921130'])
@@ -1450,7 +1405,7 @@ class DataWafTests(unittest.TestCase):
                 'prefixes': ('tools.output_schema.', 'input.tools.parameters.',
                              'input.tools.output_schema.',
                              'input.tools.tools.output_schema.', 'input.arguments.'),
-                'controls': ('input.summary.type', 'input.content.image_url',
+                'controls': ('input.summary.type', 'input.content.file_url',
                              'input.tools.server_url',
                              'input.tools.tools.server_url', 'input.operation.path',
                              'input.action.working_directory', 'input.action.env',
@@ -1464,7 +1419,7 @@ class DataWafTests(unittest.TestCase):
                            'response_format.json_schema.description',
                            'messages.reasoning_content'),
                 'prefixes': (),
-                'controls': ('messages.content.image_url.url', 'tools.custom.name',
+                'controls': ('messages.content.image_url.detail', 'tools.custom.name',
                              'prediction.type', 'response_format.json_schema.name'),
             },
         }

@@ -19,6 +19,8 @@ import re
 import time
 
 from deployment.helpers.paths import REPOSITORY
+from waf_contracts import (APP_GROUPS, approved_group_scopes, generated_manifest,
+                           require_source_routes, render as check_contract_manifest)
 from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
                                                 NETWORK_API, portal_session_exclusions)
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_KEYS,
@@ -37,11 +39,7 @@ RESERVED_POLICY_KEYS = frozenset(key for keys in PROTOCOL_POLICY_KEYS.values() f
 
 # These groups inspect application source syntax that is legitimate AI data.
 # Protocol, parser, anomaly-scoring and Known-CVE groups are deliberately absent.
-AI_DATA_RULE_GROUPS = frozenset({
-    'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
-    'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
-    'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
-})
+AI_DATA_RULE_GROUPS = APP_GROUPS
 # Only these existing signed control operations need an unbounded identifier.
 # API publication and the exact operation contract must still match; this is not
 # a general conversion of API templates into WAF wildcard paths.
@@ -67,147 +65,14 @@ CONTROL_DATA_SCOPES = {
         'values': frozenset({'handle'}),
     },
 }
-AI_DATA_SCOPES = {
-    'g-chat-completions': {
-        'scope': 'gateway',
-        'paths': frozenset({'/models/openai/v1/chat/completions'}),
-        'values': frozenset({
-            'messages.content', 'messages.content.text',
-            'messages.tool_calls.function.arguments', 'messages.function_call.arguments',
-            'messages.tool_calls.custom.input', 'tools.function.description',
-            'functions.description', 'tools.custom.description',
-            'tools.custom.format.grammar.definition',
-            'messages.refusal', 'messages.content.refusal',
-            'messages.reasoning_content',
-            'messages.content.input_audio.data', 'messages.content.file.file_data', 'messages.audio.id',
-            'prediction.content', 'prediction.content.text',
-            'response_format.json_schema.description',
-        }),
-        'schemas': frozenset({
-            'response_format.json_schema.schema.', 'tools.function.parameters.',
-            'functions.parameters.',
-        }),
-    },
-    'g-responses': {
-        'scope': 'gateway',
-        'paths': frozenset({'/models/openai/v1/responses'}),
-        'values': frozenset({
-            'input', 'input.content', 'input.content.text', 'instructions',
-            'input.arguments', 'input.output', 'input.output.text', 'input.input',
-            'tools.description', 'input.tools.tools.description',
-            'input.tools.tools.format.definition',
-            'input.tools.description', 'input.tools.format.definition',
-            'input.summary.text', 'input.content.refusal',
-            'text.format.description',
-            'input.action.command', 'input.action.commands',
-            'input.operation.diff', 'input.output.stdout', 'input.output.stderr',
-            'input.encrypted_content', 'input.content.file_data',
-        }),
-        'schemas': frozenset({
-            'text.format.schema.', 'tools.parameters.', 'tools.output_schema.',
-            'input.tools.parameters.', 'input.tools.output_schema.',
-            'input.tools.tools.parameters.', 'input.tools.tools.output_schema.',
-        }),
-        # 関数引数のオブジェクト形式はSchemaとは別のJSONデータです。
-        'json_data': frozenset({'input.arguments.'}),
-    },
-    'g-images': {
-        'scope': 'gateway',
-        'paths': frozenset({
-            '/models/blackforestlabs/v1/flux-2/edits',
-            '/models/blackforestlabs/v1/flux-2/generations',
-            '/models/openai-images/v1/deployments/gpt-image-2.5-flare/edits',
-            '/models/openai-images/v1/deployments/gpt-image-2.5-sunburst/edits',
-            '/models/openai-images/v1/deployments/gpt-image-2/edits',
-            '/models/openai-images/v1/generations',
-        }),
-        'values': frozenset({'prompt'}),
-        'schemas': frozenset(),
-    },
-    'p-images': {
-        'scope': 'portal',
-        'paths': frozenset({'/api/models/images'}),
-        'values': frozenset({'prompt'}),
-        'schemas': frozenset(),
-    },
-    'g-embeddings': {
-        'scope': 'gateway',
-        'paths': frozenset({'/models/cohere/v1/embed', '/models/openai-embeddings/v1/embeddings'}),
-        'values': frozenset({'input', 'texts'}),
-        'schemas': frozenset(),
-    },
-    'p-embeddings': {
-        'scope': 'portal',
-        'paths': frozenset({'/api/models/embeddings'}),
-        'values': frozenset({'texts'}),
-        'schemas': frozenset(),
-    },
-    'g-rerank': {
-        'scope': 'gateway', 'paths': frozenset({'/models/cohere/v1/rerank'}),
-        'values': frozenset({'documents', 'query'}), 'schemas': frozenset(),
-    },
-    'p-rerank': {
-        'scope': 'portal', 'paths': frozenset({'/api/models/rerank'}),
-        'values': frozenset({'documents', 'query'}), 'schemas': frozenset(),
-    },
-    'g-decision': {
-        'scope': 'gateway', 'paths': frozenset({'/models/microsoft-decision/v1/systemone'}),
-        'values': frozenset({'state'}), 'schemas': frozenset(),
-        'json_data': frozenset({'questions.', 'state.'}),
-    },
-    'p-decision': {
-        'scope': 'portal', 'paths': frozenset({'/api/models/decision'}),
-        'values': frozenset({'state'}), 'schemas': frozenset(),
-        'json_data': frozenset({'questions.', 'state.'}),
-    },
-    'g-transcribe': {
-        'scope': 'gateway', 'paths': frozenset({'/models/openai-audio/v1/deployments/gpt-transcribe/transcriptions'}),
-        'values': frozenset({'prompt'}), 'schemas': frozenset(),
-    },
-    'g-realtime': {
-        'scope': 'gateway', 'paths': frozenset({'/models/openai-realtime/v1/calls'}),
-        'values': frozenset({'sdp'}), 'schemas': frozenset(),
-    },
-    'g-live': {
-        'scope': 'gateway', 'paths': frozenset({'/models/openai-live/v1/sessions'}),
-        'values': frozenset({'instructions', 'sdp'}), 'schemas': frozenset(),
-    },
-    'g-pii-redact': {
-        'scope': 'gateway', 'paths': frozenset({'/tools/pii-v1-mcp/mcp', '/tools/pii/v1/redact'}),
-        'values': frozenset({'params.arguments.text', 'text'}), 'schemas': frozenset(),
-    },
-    'p-generate': {
-        'scope': 'portal', 'paths': frozenset({'/api/models/generate'}),
-        'values': frozenset({'message'}), 'schemas': frozenset(),
-    },
-    'p-speech': {
-        'scope': 'portal', 'paths': frozenset({'/api/models/speech'}),
-        'values': frozenset({'text'}), 'schemas': frozenset(),
-    },
-    'p-realtime': {
-        'scope': 'portal', 'paths': frozenset({'/api/models/realtime/stop'}),
-        'values': frozenset({'handle'}), 'schemas': frozenset(),
-    },
-    'p-pii-redact': {
-        'scope': 'portal', 'paths': frozenset({'/api/tools/pii', '/api/tools/pii-mcp'}),
-        'values': frozenset({'text'}), 'schemas': frozenset(),
-    },
-}
-AI_DATA_SCOPES.update({name: {'values': frozenset(), 'schemas': frozenset(), **scope}
-                       for name, scope in CONTROL_DATA_SCOPES.items()})
-
-
-def _allows_ai_group(profile, item):
-    scope = AI_DATA_SCOPES.get(profile['name'])
+def _allows_ai_group(profile, item, approved=None):
+    # Permission to use a whole group and the rendered exclusion come from the
+    # same reviewed wire type. There is no second hand-maintained selector list.
+    scope = (approved_group_scopes() if approved is None else approved).get(profile['name'])
     if (not scope or profile['scope'] != scope['scope'] or frozenset(profile['paths']) != scope['paths']
             or set(item) != {'matchVariable', 'selectorMatchOperator', 'selector', 'exclusionManagedRuleSets'}):
         return False
-    variable, operator, selector = (item[key] for key in
-                                    ('matchVariable', 'selectorMatchOperator', 'selector'))
-    return ((variable == 'RequestArgValues' and operator == 'Equals' and selector in scope['values'])
-            or (variable == 'RequestHeaderValues' and operator == 'Equals' and selector in scope.get('headers', ()))
-            or (variable in ('RequestArgValues', 'RequestArgKeys') and operator == 'StartsWith'
-                and selector in scope['schemas'] | scope.get('json_data', frozenset())))
+    return tuple(item[key] for key in ('matchVariable', 'selectorMatchOperator', 'selector')) in scope['fields']
 
 
 def control_data_profile(profile):
@@ -233,6 +98,8 @@ def exclusion(selector, group, rules, variable='RequestArgValues'):
 
 
 def load_manifest(path=MANIFEST):
+    if Path(path).resolve() == MANIFEST.resolve():
+        check_contract_manifest(check=True)
     return _validate_manifest(json.loads(Path(path).read_text(encoding='utf-8')))
 
 
@@ -240,6 +107,7 @@ def _validate_manifest(data):
     if not isinstance(data, dict) or data.get('version') not in (1, 2) or not isinstance(data.get('profiles'), list):
         raise ValueError('WAF manifest requires version 1 or 2 and profiles')
     names, paths = set(), set()
+    approved = approved_group_scopes()
     for profile in data['profiles']:
         if (not isinstance(profile, dict) or not re.fullmatch(r'[gp]-[a-z][a-z0-9]*(?:-[a-z0-9]+)*', str(profile.get('name', '')))
                 or len(profile['name']) > 42
@@ -292,7 +160,7 @@ def _validate_manifest(data):
                 groups.add(group_name)
                 if 'rules' not in group:
                     if (data['version'] != 2 or group_name not in AI_DATA_RULE_GROUPS
-                            or not _allows_ai_group(profile, item)):
+                            or not _allows_ai_group(profile, item, approved)):
                         raise ValueError('Whole WAF groups require an approved AI data field, exact route and manifest version 2')
                     continue
                 rules = group.get('rules')
@@ -354,11 +222,18 @@ def published_paths(config):
 def selected_profiles(config, scopes=('gateway', 'portal'), manifest=None):
     data = load_manifest() if manifest is None else _validate_manifest(manifest)
     available = published_paths(config)
+    # Canonical API operation signatures authorize tuning; model identifiers
+    # only expand {deployment} URLs. Custom APIs sharing a URL do not inherit it.
+    canonical = manifest is None or data == generated_manifest()
+    dynamic = {p['name']: p for p in require_source_routes(_apis(config))['profiles']} if canonical else {}
     selected = []
     for profile in data['profiles']:
         if profile['scope'] not in scopes:
             continue
-        paths = [path for path in profile['paths'] if profile['scope'] == 'portal' or path in available]
+        declared_paths = profile['paths']
+        if canonical and profile['scope'] == 'gateway':
+            declared_paths = dynamic.get(profile['name'], {}).get('paths', [])
+        paths = [path for path in declared_paths if profile['scope'] == 'portal' or path in available]
         if paths:
             selected.append({**copy.deepcopy(profile), 'paths': paths})
     return selected
@@ -454,8 +329,9 @@ def canonical_policy(body):
     """Compare Azure's empty whole-group rule lists with omitted rule lists.
 
     This is comparison-only: manifest validation and the PUT body retain their
-    explicit forms. Do not normalize overrides, nonempty lists, other rule sets
-    or group objects with unknown properties.
+    explicit forms. Exclusions have set membership semantics, so compare the
+    order of fully recognized exclusions independently while preserving every
+    value, duplicate, key and nested override. Unknown shapes stay conservative.
     """
     result = _writable_policy(body)
     exclusions = result.get('properties', {}).get('managedRules', {}).get('exclusions', [])
@@ -477,6 +353,28 @@ def canonical_policy(body):
                             and group['ruleGroupName'] in AI_DATA_RULE_GROUPS
                             and isinstance(group['rules'], list) and not group['rules']):
                         group.pop('rules')
+        def known_exclusion(item):
+            if (not isinstance(item, dict) or set(item) != {
+                    'matchVariable', 'selectorMatchOperator', 'selector', 'exclusionManagedRuleSets'}
+                    or not all(isinstance(item.get(key), str)
+                               for key in ('matchVariable', 'selectorMatchOperator', 'selector'))):
+                return False
+            rule_sets = item['exclusionManagedRuleSets']
+            if not isinstance(rule_sets, list) or len(rule_sets) != 1:
+                return False
+            rule_set = rule_sets[0]
+            if (not isinstance(rule_set, dict) or set(rule_set) != {'ruleSetType', 'ruleSetVersion', 'ruleGroups'}
+                    or (rule_set['ruleSetType'], rule_set['ruleSetVersion']) != ('OWASP', '3.2')
+                    or not isinstance(rule_set['ruleGroups'], list) or not rule_set['ruleGroups']):
+                return False
+            return all(isinstance(group, dict) and set(group) in ({'ruleGroupName'}, {'ruleGroupName', 'rules'})
+                       and isinstance(group['ruleGroupName'], str)
+                       and ('rules' not in group or isinstance(group['rules'], list)
+                            and all(isinstance(rule, dict) and set(rule) == {'ruleId'}
+                                    and isinstance(rule['ruleId'], str) for rule in group['rules']))
+                       for group in rule_set['ruleGroups'])
+        if all(known_exclusion(item) for item in exclusions):
+            exclusions.sort(key=lambda item: json.dumps(item, sort_keys=True, separators=(',', ':')))
     return result
 
 
@@ -567,6 +465,8 @@ def desired_policy(base, profile, config, sources=()):
     if len([item for item in sets if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']) != 1:
         raise ValueError('Data WAF requires the existing OWASP 3.2 rule set')
     known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile) + profile['exclusions'])
+    if len(known) > 200:
+        raise ValueError('Composed WAF policy exceeds the 200 exclusion limit')
     for source in sources:
         current = _writable_policy(source)['properties']
         if (current.get('policySettings') not in (settings, properties['policySettings'])
@@ -633,8 +533,8 @@ def _scope_mapping(body, expected, scope):
 def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None, execute=True,
               timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
     data = load_manifest() if manifest is None else _validate_manifest(manifest)
-    profiles = selected_profiles(config, scopes, data)
-    receipt = plan(config, scopes, data)
+    profiles = selected_profiles(config, scopes, manifest)
+    receipt = plan(config, scopes, manifest)
     if not execute or receipt['status'] == 'external-policy-skipped' or not profiles:
         return receipt
     expected = gateway_id(config)

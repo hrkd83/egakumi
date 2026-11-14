@@ -157,6 +157,22 @@ test("本人認証と同一オリジンを確認し、拒否時は課金対象�
   assert.equal((await handleSpeech(request(tts, {}, { "Content-Type": "audio/wav" }), context)).status, 415); assert.equal(calls, 0);
 });
 
+test("音声のJSONとmultipartはqueryを本文読込・購読キー取得より前に拒否する", async () => {
+  let keys = 0, calls = 0;
+  const context = dependencies({ resolveSubscriptionKey: async () => { keys++; return secret; }, fetch: async () => { calls++; throw new Error("not expected"); } });
+  for (const type of ["Application/JSON; charset=UTF-8", "multipart/form-data; boundary=synthetic-audio-boundary"]) {
+    for (const query of ["text=synthetic", "input=synthetic", "file=synthetic", "input=one&input=two", "arbitrary=synthetic"]) {
+      const incoming = new Request(`${portalOrigin}/api/models/speech?${query}`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": type }, body: "{" });
+      const response = await handleSpeech(incoming, context);
+      assert.equal(response.status, 400); assert.equal(incoming.bodyUsed, false);
+      assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+    }
+  }
+  const anonymous = new Request(`${portalOrigin}/api/models/speech?input=synthetic`, { method: "POST", headers: { origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
+  assert.equal((await handleSpeech(anonymous, { ...context, readSession: async () => null })).status, 401);
+  assert.equal(anonymous.bodyUsed, false); assert.equal(keys, 0); assert.equal(calls, 0);
+});
+
 test("パス・配備名・サイズ・設定の改変をキーの取得より先に拒否する", async () => {
   let keys = 0; const context = dependencies({ resolveSubscriptionKey: async () => { keys++; return secret; } });
   for (const extra of [{ modelId: "unknown" }, { text: "" }, { rate: "100%" }, { voice: "unapproved" }]) assert.equal((await handleSpeech(request(tts, extra), context)).status, 400);

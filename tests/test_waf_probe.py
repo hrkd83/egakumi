@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import copy
 import unittest
 import wave
 import zipfile
@@ -226,10 +227,14 @@ class WafProbeTests(unittest.TestCase):
         cases = self.cases + probe.ai_coding_probes(self.routes) + probe.jndi_field_probes(self.routes)
         coverage = probe.exclusion_coverage(cases, manifest)
         self.assertEqual(len(coverage), sum(len(profile["exclusions"]) for profile in manifest["profiles"]))
-        self.assertTrue(all(row["offline_field_present"] for row in coverage),
-                        [(row["profile"], row["selector"]) for row in coverage if not row["offline_field_present"]])
+        # The legacy exact Portal state selector remains included for backward
+        # coverage, but today's Portal accepts an object root, not scalar state.
+        legacy_only = {("p-decision", "state")}
+        required = [row for row in coverage if (row["profile"], row["selector"]) not in legacy_only]
+        self.assertTrue(all(row["offline_field_present"] for row in required),
+                        [(row["profile"], row["selector"]) for row in required if not row["offline_field_present"]])
         self.assertTrue(all(not row["waf_extraction_verified"] for row in coverage))
-        self.assertTrue(all(row["case_ids"] and row["channels"] for row in coverage))
+        self.assertTrue(all(row["case_ids"] and row["channels"] for row in required))
         self.assertTrue(any("header" in row["channels"] for row in coverage))
         self.assertTrue(any("multipart" in row["channels"] for row in coverage))
         route = next(route for route in self.routes if route.path == "/models/openai/v1/responses")
@@ -313,7 +318,7 @@ class WafProbeTests(unittest.TestCase):
         self.assertEqual(value["model"], probe.CONTROL_SQL)
         self.assertEqual(value["messages"][0]["content"], "Synthetic exclusion boundary baseline")
         header_case = next(case for case in controls if case.path == model_case.path and case.category == "control-header")
-        self.assertEqual(dict(header_case.headers)["X-Attack"], probe.CONTROL_SQL)
+        self.assertEqual(dict(header_case.headers)["Referer"], probe.CONTROL_REFERER_XSS)
         self.assertNotEqual(json.loads(header_case.body)["model"], probe.CONTROL_SQL)
         result = probe.classify_response(403, {}, b"403 Forbidden Microsoft-Azure-Application-Gateway/v2", intent="attack_control")
         self.assertTrue(result["attack_block_evidence"])
@@ -441,7 +446,9 @@ class WafProbeTests(unittest.TestCase):
         for case in extended:
             self.assertTrue(case.category.startswith("extended-content-"))
             self.assertEqual(case.auth_mode, "anonymous")
-            self.assertEqual(case.intent, "compatibility")
+            portal_invalid_state = case.target == "portal" and case.path == "/api/models/decision" and (
+                "state-scalar" in case.category or "state-array" in case.category)
+            self.assertEqual(case.intent, "validation" if portal_invalid_state else "compatibility")
             self.assertIsNotNone(case.payload_field)
         fields = {case.payload_field for case in extended}
         self.assertTrue({"response_format.json_schema.schema.properties.value.pattern",
@@ -498,6 +505,9 @@ class WafProbeTests(unittest.TestCase):
                     self.assertEqual(case.intent, "compatibility")
                     self.assertFalse(case.query)
                     self.assertEqual([name for name, _ in case.headers], ["Content-Type"])
+                elif case.category == "raw-guard-ssml-external-entity":
+                    self.assertEqual(case.intent, "validation")
+                    self.assertEqual(probe.expected_boundary(case), "application_reject")
                 else:
                     self.assertEqual(case.intent, "attack_control")
                 if case.category in {"raw-guard-query", "raw-guard-header", "raw-guard-cookie", "raw-guard-query-null", "raw-guard-casepath-query", "raw-guard-neighbor-query"}:
@@ -598,7 +608,7 @@ class WafProbeTests(unittest.TestCase):
         for case in cases:
             if case.category == "jndi-field-control-unknown" and dict(case.headers)["Content-Type"] == "application/json":
                 self.assertEqual(json.loads(case.body)["_attack"], literal)
-        self.assertEqual({case.payload_field for case in cases if case.path == "/waf-probe/jndi-nonexistent"}, {"query:metadata", "header:X-Attack"})
+        self.assertEqual({case.payload_field for case in cases if case.path == "/waf-probe/jndi-nonexistent"}, {"query:metadata", "header:Referer"})
 
     def test_jndi_history_covers_equivalent_tools_and_missing_free_text_fields(self):
         literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
@@ -720,7 +730,7 @@ class WafProbeTests(unittest.TestCase):
             controls = {case.category for case in selected if case.intent == "attack_control"}
             expected_controls = {"ai-coding-control-unknown-sqli", "ai-coding-control-unknown-xss",
                 "ai-coding-control-query-sqli", "ai-coding-control-neighbor-xss",
-                "ai-coding-control-model-sqli", "ai-coding-control-header-sqli"}
+                "ai-coding-control-model-sqli", "ai-coding-control-header-xss"}
             if path.endswith("/responses"):
                 expected_controls |= {"ai-coding-control-arguments-sibling", "ai-coding-control-schema-sibling"}
                 expected_controls |= {"ai-coding-control-native-" + name + "-sibling"
@@ -1407,11 +1417,208 @@ class WafProbeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "plan.json"
             with patch.object(probe, "run_probe", side_effect=AssertionError("network attempted")):
-                code = probe.main(["--dry-run", "--case-filter", "baseline", "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
+                code = probe.main(["--suite", "legacy", "--dry-run", "--case-filter", "baseline", "--key-file", str(Path(directory) / "missing-secret"), "--output", str(output)])
             self.assertEqual(code, 0)
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertTrue(report["dry_run"])
             self.assertEqual(report["selected_case_count"], len(self.routes))
+
+    def test_independent_wire_shapes_reuse_media_types_at_message_and_tool_result_locations(self):
+        variants = probe.wire_shape_variants()
+        fields = {variant[2] for variant in variants}
+        for location in ("input[].content[]", "input[].output[]"):
+            self.assertTrue({location + "." + field for field in (
+                "image_url", "audio_url", "encrypted_content", "file_data", "text")} <= fields)
+        self.assertTrue({"input[].encrypted_function_args", "input[].result", "input[].revised_prompt",
+                         "tools[].input_image_mask.image_url"} <= fields)
+        audit = probe.audit_wire_shapes(variants)
+        self.assertTrue(all(item["classified"] for item in audit), audit)
+        self.assertTrue(all(item["waf_extraction_verified"] is False and item["provider_acceptance"] == "not-run" for item in audit))
+        by_label = {label: value for _, label, _, _, value in variants}
+        self.assertIsInstance(by_label["tool-result-string"]["input"][1]["output"], str)
+        self.assertIsInstance(by_label["tool-result-image"]["input"][1]["output"], list)
+        self.assertIsInstance(by_label["agent-message-image"]["input"][0]["content"], list)
+        self.assertIsInstance(by_label["native-local-output-string"]["input"][0]["output"], str)
+        for _, _, _, _, value in variants:
+            self.assertEqual(value["model"], probe.INVALID_MODEL)
+
+    def test_unclassified_independent_wire_leaf_fails_even_when_other_data_fields_are_covered(self):
+        variants = copy.deepcopy(probe.wire_shape_variants())
+        variants[0][4]["input"][0]["content"][0]["unreviewed_media_data"] = "Synthetic new source leaf"
+        row = probe.audit_wire_shapes(variants)[0]
+        self.assertFalse(row["classified"])
+        self.assertEqual(row["unclassified_fields"], ["input.content.unreviewed_media_data"])
+        with patch.object(probe, "wire_shape_variants", return_value=variants), self.assertRaisesRegex(ValueError, "unclassified"):
+            probe.wire_shape_probes(self.routes)
+
+    def test_wire_media_have_valid_png_wav_pdf_and_seed_variation(self):
+        first, second = probe.wire_shape_variants(0), probe.wire_shape_variants(1)
+        self.assertNotEqual(first[0][4], second[0][4])
+        for _, label, _, _, value in first:
+            if label not in {"agent-message-image", "agent-message-audio", "agent-message-file"}:
+                continue
+            part = value["input"][0]["content"][0]
+            encoded = next(part[name] for name in ("image_url", "audio_url", "file_data") if name in part)
+            data = base64.b64decode(encoded.split(",", 1)[1], validate=True)
+            if "audio" in label:
+                with wave.open(io.BytesIO(data), "rb") as audio:
+                    self.assertEqual((audio.getnchannels(), audio.getframerate()), (1, 16000))
+            elif "file" in label:
+                xref = int(data.rsplit(b"startxref\n", 1)[1].splitlines()[0])
+                self.assertTrue(data[xref:].startswith(b"xref\n"))
+            else:
+                self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_flux_named_slots_and_portal_stt_shapes_come_from_contracts(self):
+        cases = probe.wire_shape_probes(self.routes)
+        slots = [case for case in cases if case.category == "wire-shape-flux-slot"]
+        self.assertEqual({case.payload_field for case in slots}, {"input_image", *("input_image_" + str(i) for i in range(2, 9))})
+        self.assertFalse(any("input_image_9" in (case.payload_field or "") or "input_image_10" in (case.payload_field or "") for case in cases))
+        uploads = [case for case in cases if case.category == "wire-shape-stt-upload"]
+        models = set()
+        for case in uploads:
+            message = BytesParser(policy=policy.default).parsebytes(
+                b"MIME-Version: 1.0\r\nContent-Type: multipart/form-data; boundary=waf-probe-fixed-boundary\r\n\r\n" + case.body)
+            parts = {part.get_param("name", header="content-disposition"): part for part in message.iter_parts()}
+            metadata = json.loads(parts["input"].get_payload(decode=True))
+            models.add(metadata["modelId"])
+            self.assertEqual(set(metadata), {"modelId", "text", "voice", "rate", "apiKeyId"})
+            self.assertNotEqual(metadata["modelId"], "azure-speech-tts")
+            with wave.open(io.BytesIO(parts["file"].get_payload(decode=True)), "rb") as audio:
+                self.assertEqual(audio.getframerate(), 16000)
+        self.assertIn("azure-speech-stt", models)
+        self.assertGreaterEqual(len(models), 2)
+
+    def test_published_model_acceptance_plan_is_dynamic_and_does_not_send_inference(self):
+        matrix = probe.published_model_matrix()
+        actual = {(row["api"], row["operation"], row["profile"], row["model"]) for row in matrix}
+        for path in (ROOT / "apps/gateway/apim/apis").glob("*.json"):
+            api = json.loads(path.read_text(encoding="utf-8"))
+            if not api.get("released"):
+                continue
+            for operation, constraint in api.get("authorization", {}).get("operationConstraints", {}).items():
+                for profile in constraint.get("profiles") or [constraint]:
+                    models = profile.get("allowedModels") or ([profile["model"]] if profile.get("model") else [])
+                    for model in models:
+                        self.assertIn((api["name"], operation, profile.get("profileId", "default"), model), actual)
+        self.assertTrue(all(row["acceptance"] == row["inference"] == "not-run" for row in matrix))
+        self.assertTrue(all(row["model_reference_resolved"] for row in matrix))
+        self.assertFalse(any(isinstance(row["model"], str) and row["model"].startswith("__") for row in matrix))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "apps/gateway/apim/apis/synthetic.json"
+            path.parent.mkdir(parents=True)
+            api = {"released": True, "name": "synthetic", "path": "models/synthetic", "operations": [
+                {"name": "create", "method": "POST", "urlTemplate": "/create"}], "authorization": {
+                "operationConstraints": {"create": {"profiles": [{"profileId": "text", "allowedModels": ["synthetic-next-model"]}]}}}}
+            path.write_text(json.dumps(api), encoding="utf-8")
+            self.assertEqual(probe.published_model_matrix(root)[0]["model"], "synthetic-next-model")
+
+    def test_default_required_suite_includes_special_suites_and_incident_subset_is_bounded(self):
+        cases = probe.required_corpus(self.routes)
+        self.assertLess(len(cases), 1200)
+        self.assertTrue(all(case.auth_mode == "anonymous" for case in cases))
+        self.assertTrue({"wire-shape-tool-result-image", "wire-shape-agent-message-encrypted", "typed-conversation"} <= {case.category for case in cases})
+        self.assertTrue(any("jndi" in case.category for case in cases))
+        self.assertTrue(any("image-prompts" in case.category for case in cases))
+        incident = probe.incident_corpus(self.routes)
+        self.assertLess(len(incident), 80)
+        self.assertTrue({case.case_id for case in probe.wire_shape_probes(self.routes)} <= {case.case_id for case in incident})
+        exhaustive = probe.required_corpus(self.routes, exhaustive=True)
+        self.assertGreater(len(exhaustive), len(cases))
+        self.assertTrue(any("wire-tool-result-image-seed1" in case.case_id for case in exhaustive))
+
+    def test_boundary_verdict_fails_false_positives_false_negatives_and_unresolved_required_cases(self):
+        allowed = next(case for case in probe.wire_shape_probes(self.routes) if case.category == "wire-shape-tool-result-image")
+        blocked = next(case for case in probe.wire_shape_probes(self.routes) if case.category == "wire-boundary-header")
+        query = next(case for case in probe.wire_shape_probes(self.routes) if case.category == "wire-boundary-query")
+        self.assertEqual(probe.boundary_verdict(allowed, {"classification": "waf_block"})["verdict"], "fail")
+        self.assertEqual(probe.boundary_verdict(blocked, {"classification": "application_rejected"})["verdict"], "fail")
+        self.assertEqual(probe.boundary_verdict(blocked, {"classification": "waf_block"})["verdict"], "pass")
+        self.assertEqual(probe.boundary_verdict(allowed, {"classification": "forbidden_unattributed"})["verdict"], "unresolved")
+        self.assertEqual(probe.boundary_verdict(query, {"classification": "application_rejected", "status": 401})["verdict"], "unresolved")
+        self.assertEqual(probe.boundary_verdict(query, {"classification": "application_validation_or_route_response", "evidence": "correlated-application-rejection"})["verdict"], "pass")
+        results, _, code = probe.evaluate_results([allowed], [])
+        self.assertEqual(code, 2)
+        self.assertEqual(results[0]["classification"], "not_run")
+        results, _, code = probe.evaluate_results([allowed], [{"case_id": allowed.case_id, "classification": "application_rejected"}])
+        self.assertEqual(code, 0)
+        self.assertFalse(results[0]["functional_success"])
+
+    def test_wire_boundary_controls_identify_the_real_model_field_and_crs_targeted_header(self):
+        cases = probe.wire_shape_probes(self.routes)
+        controls = [case for case in cases if case.category == "wire-boundary-control"]
+        self.assertEqual(len(controls), 2)
+        for case in controls:
+            self.assertEqual(case.payload_field, "model")
+            self.assertEqual(json.loads(case.body)["model"], probe.CONTROL_SQL)
+            # Private runners can invalidate other model inputs without erasing
+            # this case's selected attack field.
+            body = json.loads(case.body)
+            for field in ("model", "modelId"):
+                if field in body and case.payload_field != field:
+                    body[field] = probe.INVALID_MODEL
+            self.assertEqual(body["model"], probe.CONTROL_SQL)
+        headers = [case for case in cases if case.category == "wire-boundary-header"]
+        self.assertEqual(len(headers), 2)
+        for case in headers:
+            self.assertEqual(case.payload_field, "header:Referer")
+            self.assertEqual(dict(case.headers)["Referer"], probe.CONTROL_REFERER_XSS)
+            self.assertNotIn("X-Attack", dict(case.headers))
+            self.assertEqual(probe.expected_boundary(case), "waf_block")
+
+    def test_required_header_attack_controls_use_reviewed_crs_inspection_targets(self):
+        cases = probe.required_corpus(self.routes)
+        headers = [case for case in cases if case.intent == "attack_control" and (case.payload_field or "").startswith("header:")]
+        self.assertTrue(headers)
+        for case in headers:
+            values = dict(case.headers)
+            if case.category == "raw-guard-header":
+                # CRS 930 includes arbitrary request headers except Referer.
+                self.assertEqual(case.payload_field, "header:X-Header")
+                self.assertIn("X-Header", values)
+            else:
+                self.assertEqual(case.payload_field, "header:Referer", case.case_id)
+                self.assertEqual(values["Referer"], probe.CONTROL_REFERER_XSS)
+                self.assertNotIn("X-Attack", values)
+                self.assertNotIn("X-Waf-Unknown", values)
+
+    def test_opaque_ticket_header_scope_is_a_selector_invariant_not_an_invented_attack(self):
+        from waf_contracts import contract_fields
+        for profile, name in (("g-document-status", "X-Core-Document-Ticket"),
+                              ("g-realtime-ticket", "X-Core-Call-Ticket")):
+            fields = [field for field in contract_fields(profile) if field["matchVariable"] == "RequestHeaderValues" and field["groups"]]
+            self.assertEqual({(field["selectorMatchOperator"], field["selector"]) for field in fields}, {("Equals", name)})
+            self.assertTrue(all(field["selector"] != name + "-Extra" for field in fields))
+        observations = [case for case in probe.typed_data_probes(self.routes) if case.expected_boundary == "observation"]
+        self.assertEqual(len(observations), 6)
+        for case in observations:
+            self.assertFalse(case.mandatory)
+            self.assertEqual(probe.boundary_verdict(case, {"classification": "application_rejected"})["verdict"], "observed")
+        required_ids = {case.case_id for case in probe.required_corpus(self.routes)}
+        self.assertFalse(required_ids & {case.case_id for case in observations})
+        active = [case for case in probe.typed_data_probes(self.routes) if "ticket-header-referer-active-control" in case.case_id]
+        self.assertEqual(len(active), 3)
+        self.assertTrue({case.case_id for case in active} <= required_ids)
+        for case in active:
+            self.assertTrue(case.mandatory)
+            self.assertEqual(dict(case.headers)["Referer"], probe.CONTROL_REFERER_XSS)
+            self.assertEqual(probe.expected_boundary(case), "waf_block")
+
+    def test_live_cli_returns_nonzero_for_a_compatibility_waf_block_without_raw_payloads(self):
+        case = next(case for case in probe.wire_shape_probes(self.routes) if case.category == "wire-shape-tool-result-image")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "synthetic-results.json"
+            def blocked(selected, *_args):
+                return {**probe.metadata(selected), "classification": "waf_block", "status": 403}
+            with patch.object(probe, "run_probe", side_effect=blocked):
+                code = probe.main(["--wire-shapes-only", "--case-filter", case.case_id, "--gateway-base-url",
+                                   "https://example.invalid", "--output", str(output)])
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(code, 2)
+            self.assertFalse(report["required_boundary_checks_passed"])
+            self.assertEqual(report["verdict_counts"], {"fail": 1})
+            self.assertNotIn("data:image/png;base64,", output.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

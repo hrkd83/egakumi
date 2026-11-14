@@ -135,8 +135,16 @@ class WafControlRouteTests(unittest.TestCase):
             with self.subTest(contract=name):
                 self.assertEqual(set(actual), published_paths(config))
                 self.assertEqual('/models/openai-realtime/v1/observer/' in actual, name == 'standard')
-                selected = selected_profiles(config, scopes=('gateway',))
-                self.assertEqual(any(p['name'] == 'g-realtime-ticket' for p in selected), name == 'standard')
+                if name not in ('standard', 'websocket'):
+                    # Deployment now stops before compiling a changed API on a
+                    # tuned URI. The pure published-path expressions above
+                    # must still agree; a rejected contract cannot inherit the
+                    # ticket exception by reaching Bicep through another path.
+                    with self.assertRaisesRegex(ValueError, 'changed API input contract'):
+                        selected_profiles(config, scopes=('gateway',))
+                else:
+                    selected = selected_profiles(config, scopes=('gateway',))
+                    self.assertEqual(any(p['name'] == 'g-realtime-ticket' for p in selected), name == 'standard')
 
     def test_only_six_application_groups_are_added_to_each_exact_control_value(self):
         expected = {

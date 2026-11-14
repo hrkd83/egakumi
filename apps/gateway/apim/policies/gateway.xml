@@ -26,7 +26,8 @@
       var api = context.Api.Id.Split(';')[0];
       if (api != &quot;openai-inference-v1&quot; &amp;&amp; api != &quot;openai-images-v1&quot; &amp;&amp; api != &quot;blackforest-images-v1&quot;
           &amp;&amp; api != &quot;openai-embeddings-v1&quot; &amp;&amp; api != &quot;cohere-inference-v1&quot;
-          &amp;&amp; api != &quot;microsoft-decision-v1&quot;) { return true; }
+          &amp;&amp; api != &quot;microsoft-decision-v1&quot; &amp;&amp; api != &quot;openai-audio-v1&quot;
+          &amp;&amp; api != &quot;azure-speech-v1&quot;) { return true; }
       var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
       var constraint = config[&quot;operationConstraints&quot;]?[context.Operation.Id];
       var kind = (string)constraint?[&quot;kind&quot;];
@@ -54,12 +55,27 @@
       var decisionOperation = api == &quot;microsoft-decision-v1&quot; &amp;&amp; operation == &quot;systemone&quot;;
       var decision = decisionOperation &amp;&amp; path == &quot;/systemone&quot; &amp;&amp; kind == &quot;bodyModel&quot; &amp;&amp; format == &quot;json&quot;;
       if (decisionOperation &amp;&amp; !decision) { return false; }
-      if (!inference &amp;&amp; !imageJson &amp;&amp; !imageMultipart &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding &amp;&amp; !decision) { return true; }
+      var rerankOperation = api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;rerank&quot;;
+      var rerank = rerankOperation &amp;&amp; path == &quot;/rerank&quot; &amp;&amp; kind == &quot;rerank&quot; &amp;&amp; format == &quot;json&quot;;
+      if (rerankOperation &amp;&amp; !rerank) { return false; }
+      var transcriptionOperation = api == &quot;openai-audio-v1&quot; &amp;&amp; operation == &quot;audio-transcriptions&quot;;
+      var transcription = transcriptionOperation &amp;&amp; path == &quot;/deployments/{deployment}/transcriptions&quot;
+        &amp;&amp; kind == &quot;pathModel&quot; &amp;&amp; format == &quot;multipart&quot;;
+      if (transcriptionOperation &amp;&amp; !transcription) { return false; }
+      var speechOperation = api == &quot;azure-speech-v1&quot; &amp;&amp; (operation == &quot;tts&quot; || operation == &quot;stt&quot;);
+      var speechTts = api == &quot;azure-speech-v1&quot; &amp;&amp; operation == &quot;tts&quot; &amp;&amp; path == &quot;/synthesize&quot;
+        &amp;&amp; kind == &quot;registeredOperation&quot; &amp;&amp; format == &quot;text&quot;;
+      var speechStt = api == &quot;azure-speech-v1&quot; &amp;&amp; operation == &quot;stt&quot; &amp;&amp; path == &quot;/recognize&quot;
+        &amp;&amp; kind == &quot;registeredOperation&quot; &amp;&amp; format == &quot;binary&quot;;
+      if (speechOperation &amp;&amp; !speechTts &amp;&amp; !speechStt) { return false; }
+      if (!inference &amp;&amp; !imageJson &amp;&amp; !imageMultipart &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding
+          &amp;&amp; !decision &amp;&amp; !rerank &amp;&amp; !transcription &amp;&amp; !speechTts &amp;&amp; !speechStt) { return true; }
       var queryAllowed = openaiEmbedding
         ? context.Request.Url.Query.Count &lt;= 1 &amp;&amp; context.Request.Url.Query.All(q =&gt; q.Key == &quot;api-version&quot;
           &amp;&amp; q.Value.Length == 1 &amp;&amp; (q.Value[0] == &quot;v1&quot; || q.Value[0] == &quot;preview&quot;))
         : context.Request.Url.Query.Count == 0;
-      var contentType = imageMultipart ? &quot;multipart/form-data&quot; : &quot;application/json&quot;;
+      var contentType = imageMultipart || transcription ? &quot;multipart/form-data&quot;
+        : speechTts ? &quot;application/ssml+xml&quot; : speechStt ? &quot;audio/wav&quot; : &quot;application/json&quot;;
       return context.Request.Method == &quot;POST&quot; &amp;&amp; queryAllowed
         &amp;&amp; context.Request.Headers.ContainsKey(&quot;Content-Type&quot;)
         &amp;&amp; context.Request.Headers[&quot;Content-Type&quot;].Length == 1

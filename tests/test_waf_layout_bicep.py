@@ -291,22 +291,17 @@ class WafLayoutBicepTests(unittest.TestCase):
                 expected_overrides = []
             self.assertEqual(actual["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], expected_overrides)
         for purpose, selector in (("g-chat-completions", "messages.content.image_url.url"),
-                                  ("g-responses", "input.content.file_data")):
+                                  ("g-responses", "input.content.file_data"),
+                                  ("g-responses", "input.output.image_url"),
+                                  ("g-responses", "input.content.encrypted_content"),
+                                  ("g-images", "input_image_8")):
             profile = next(p for p in self.profiles if p["name"] == purpose)
             entry, = [e for e in profile["exclusions"] if e["selector"] == selector]
             self.assertEqual((entry["matchVariable"], entry["selectorMatchOperator"]), ("RequestArgValues", "Equals"))
-            groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                       "rules": [{"ruleId": "941130"}, {"ruleId": "941170"}]}]
-            if purpose == "g-chat-completions":
-                groups.insert(0, {"ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
-                                  "rules": [{"ruleId": "931130"}]})
-                groups.append({"ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                               "rules": [{"ruleId": "942340"}, {"ruleId": "942450"}]})
-            else:
-                groups = [{"ruleGroupName": name} for name in (
-                    "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
-                    "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
-                    "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
+            groups = [{"ruleGroupName": name} for name in (
+                "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
+                "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
+                "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
             self.assertEqual(entry["exclusionManagedRuleSets"][0]["ruleGroups"], groups)
 
     def test_external_policy_boundary_remains_readonly(self):
