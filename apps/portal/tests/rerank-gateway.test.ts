@@ -32,6 +32,20 @@ test("同一オリジンとログイン本人を確認できない要求は転�
   assert.equal(calls, 0);
 });
 
+test("除外本文欄と同名のqueryを本文読込・購読キー取得より前に拒否する", async () => {
+  let keys = 0, calls = 0;
+  const deps = dependencies({ resolveSubscriptionKey: async () => { keys++; return key; }, fetch: async () => { calls++; throw new Error("not expected"); } });
+  for (const query of ["query=synthetic", "documents=synthetic", "documents=one&documents=two", "arbitrary=synthetic", "%64ocuments=synthetic"]) {
+    const incoming = new Request(`${portalOrigin}/api/models/rerank?${query}`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "Application/JSON; charset=UTF-8" }, body: "{" });
+    const response = await handleRerank(incoming, deps);
+    assert.equal(response.status, 400); assert.equal(incoming.bodyUsed, false);
+    assert.deepEqual(await response.json(), { error: { code: "InvalidRequest" } });
+  }
+  const anonymous = new Request(`${portalOrigin}/api/models/rerank?query=synthetic`, { method: "POST", headers: { Origin: portalOrigin, "Content-Type": "application/json" }, body: "{" });
+  assert.equal((await handleRerank(anonymous, { ...deps, readSession: async () => null })).status, 401);
+  assert.equal(anonymous.bodyUsed, false); assert.equal(keys, 0); assert.equal(calls, 0);
+});
+
 test("選択した購読を本人とAPIで再認可し、固定パスへ一回だけ送る", async () => {
   let calls = 0;
   const response = await handleRerank(request(), dependencies({

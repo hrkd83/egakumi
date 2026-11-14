@@ -30,11 +30,12 @@ class AiWafBodyTests(unittest.TestCase):
         self.assertEqual(strict, before)
 
     def test_standard_ai_paths_do_not_relax_auth_admin_custom_or_neighbor_paths(self):
-        contract = {"path": "models/openai/v1", "operations": [
-            {"name": "response", "method": "POST", "urlTemplate": "/responses"},
+        contract = api("openai-inference-v1")
+        contract["operations"] = [
+            next(o for o in contract["operations"] if o["name"] == "responses-create"),
             {"name": "neighbor", "method": "POST", "urlTemplate": "/responses/other"},
             {"name": "admin", "method": "POST", "urlTemplate": "/admin"},
-            {"name": "unknown", "method": "POST", "urlTemplate": "/{operation}"}]}
+            {"name": "unknown", "method": "POST", "urlTemplate": "/{operation}"}]
         custom = copy.deepcopy(contract)
         custom["path"] = "custom/openai/v1"
         auth = {"path": "auth/connections/browser", "operations": [
@@ -58,10 +59,13 @@ class AiWafBodyTests(unittest.TestCase):
         allowed = constraints["image-edit"]["allowedModels"]
         expected = {"/models/openai-images/v1/generations",
                     *("/models/openai-images/v1/deployments/" + model + "/edits" for model in allowed)}
-        allowed.extend(["unlisted-model", "../escape"])
+        allowed.append("../escape")
         selected = managed_ai_paths({"apiDefinitions": [images]})
         self.assertEqual(selected, expected)
         self.assertTrue(all("{" not in path and "*" not in path for path in selected))
+        allowed.append("unlisted-model")
+        with self.assertRaisesRegex(ValueError, "canonical API definition"):
+            managed_ai_paths({"apiDefinitions": [images]})
 
     def test_signed_status_and_realtime_control_do_not_acquire_ai_body_capacity(self):
         config = {"apiDefinitions": [api("document-analysis-v1"), api("openai-realtime-control-v1"),

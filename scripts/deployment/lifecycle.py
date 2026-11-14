@@ -735,6 +735,13 @@ def discover_existing_apim_hostnames(config: dict, transport: ArmTransport) -> d
 
 def local_preflight(config: dict, *, check_power_shell: bool = True, configuration_source: Path | None = None) -> None:
     """選択環境・依存関係を検査し、必要な秘密とSSH鍵をAzure操作前にローカル準備する。"""
+    # Bicep consumes the reviewed static rendering. Stop before any Azure write
+    # if input types/API routes changed without regenerating that source asset.
+    from waf_contracts import render as check_waf_contract_manifest
+    try:
+        check_waf_contract_manifest(check=True)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        raise DeploymentError("Regenerate and review the WAF input-contract manifest before deployment") from error
     # 選択先の食い違いはプロセス起動より先に検出する。誤った環境での
     # Azure要求だけでなく、不要なpackage buildも開始させない。
     environment_name = os.environ.get("AZURE_ENV_NAME")

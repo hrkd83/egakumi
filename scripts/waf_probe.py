@@ -80,6 +80,7 @@ from integration_client import private_write
 ROOT = Path(__file__).resolve().parents[1]
 INVALID_MODEL = "__waf_probe_invalid_model__"
 CONTROL_SQL = "1 OR 1=1 UNION SELECT NULL,NULL-- synthetic-waf-probe"
+CONTROL_REFERER_XSS = "https://example.invalid/?q=<script>alert('synthetic-waf-control')</script>"
 CANARY_ROUTES = frozenset({
     ("POST", "/models/openai/v1/chat/completions"),
     ("POST", "/models/openai/v1/responses"),
@@ -125,6 +126,8 @@ class Probe:
     auth_mode: str = "anonymous"
     payload_field: str | None = None
     data_type: str | None = None
+    expected_boundary: str = "infer"
+    mandatory: bool = True
 
 
 def json_bytes(value) -> bytes:
@@ -439,14 +442,15 @@ def _body(route: Route, text: str, canary: bool = False) -> tuple[bytes | None, 
 
 def _probe(route: Route, suffix: str, category: str, *, intent: str = "compatibility",
            body: bytes | None = None, headers=(), query=(), auth_mode: str = "anonymous", payload_field: str | None = None,
-           data_type: str | None = None) -> Probe:
+           data_type: str | None = None, expected_boundary: str = "infer", mandatory: bool = True) -> Probe:
     if data_type is not None and data_type not in DATA_TYPES:
         raise ValueError("unknown synthetic fixture data type")
     stable = f"{route.target}:{route.method}:{route.path}:{suffix}"
     slug = re.sub(r"[^a-z0-9]+", "-", route.operation.lower()).strip("-")[:64]
     case_id = f"{route.target}-{slug}-{suffix}-{hashlib.sha256(stable.encode()).hexdigest()[:8]}"
     return Probe(case_id, route.target, route.method, route.path, category, intent, route.source,
-                 body, tuple(headers), tuple(query), auth_mode, payload_field, data_type)
+                 body, tuple(headers), tuple(query), auth_mode, payload_field, data_type,
+                 expected_boundary, mandatory and auth_mode != "invalid-model-canary")
 
 
 def boundary_controls(routes: list[Route]) -> list[Probe]:
@@ -483,8 +487,8 @@ def boundary_controls(routes: list[Route]) -> list[Probe]:
                 cases.append(_probe(route, f"control-{label}-sqli", f"control-field-{label}", intent="attack_control",
                     body=normal_body, headers=headers, query=[(name, CONTROL_SQL)], payload_field="query:" + name))
             neighbor_body, neighbor_query, neighbor_field = normal_body, (("id", CONTROL_SQL),), "query:id"
-        cases.append(_probe(route, "control-header-sqli", "control-header", intent="attack_control",
-            body=normal_body, headers=headers + [("X-Attack", CONTROL_SQL)], payload_field="header:X-Attack"))
+        cases.append(_probe(route, "control-header-xss", "control-header", intent="attack_control",
+            body=normal_body, headers=headers + [("Referer", CONTROL_REFERER_XSS)], payload_field="header:Referer"))
         cases.append(_probe(route, "control-query-sqli", "control-query", intent="attack_control",
             body=normal_body, headers=headers, query=[("id", CONTROL_SQL)], payload_field="query:id"))
         neighbor = replace(route, path=route.path.rstrip("/") + "/neighbor")
@@ -588,16 +592,18 @@ def extended_content(routes: list[Route]) -> list[Probe]:
                     ("array", "state[]", [text, 1, True, None]),
                 ):
                     cases.append(_probe(route, "extended-decision-state-" + variant + "-" + label, "extended-content-decision-state-" + variant,
-                        body=json_bytes({**base, "state": state}), headers=[("Content-Type", "application/json")], payload_field=payload_field))
+                        body=json_bytes({**base, "state": state}), headers=[("Content-Type", "application/json")], payload_field=payload_field,
+                        intent="validation" if route.target == "portal" and variant != "dynamic-key" else "compatibility"))
             if route.target == "portal" and route.path == "/api/models/speech":
-                portal_input = _json_variants(route, text)[0][1]
+                portal_input = _portal_stt_input(routes, text)
                 cases.append(_probe(route, "extended-speech-multipart-input-" + label, "extended-content-speech-multipart-input",
                     body=_multipart("Synthetic audio fixture", portal_input=portal_input), headers=[("Content-Type", "multipart/form-data; boundary=waf-probe-fixed-boundary")], payload_field="input.text"))
         if is_decision:
             base = _json_variants(route, "Synthetic scalar state")[0][1]
             for label, value in (("zero", 0), ("negative", -1), ("float", 1.5), ("true", True), ("false", False), ("null", None)):
                 cases.append(_probe(route, "extended-decision-state-scalar-" + label, "extended-content-decision-state-scalar-json",
-                    body=json_bytes({**base, "state": value}), headers=[("Content-Type", "application/json")], payload_field="state"))
+                    body=json_bytes({**base, "state": value}), headers=[("Content-Type", "application/json")], payload_field="state",
+                    intent="validation" if route.target == "portal" else "compatibility"))
         if route.target == "gateway" and route.path == "/models/blackforestlabs/v1/flux-2/edits":
             # The edit operation takes raw Base64, unlike generation's
             # prompt-only contract. Exercise that field so media false positives
@@ -777,8 +783,9 @@ def raw_body_guard_controls(routes: list[Route]) -> list[Probe]:
         if route.path == "/models/azure-speech/v1/synthesize":
             declaration = '<!DOCTYPE speak [<!ENTITY raw_guard SYSTEM "https://example.invalid/raw-guard-entity.txt">]>'
             body = b'<?xml version="1.0" encoding="UTF-8"?>\n' + declaration.encode() + b"\n" + baseline
-            cases.append(_probe(route, "raw-guard-ssml-unused-external-entity", "raw-guard-ssml-external-entity", intent="attack_control",
-                body=body, headers=headers, payload_field="raw-body:doctype-external-entity-declaration"))
+            cases.append(_probe(route, "raw-guard-ssml-unused-external-entity", "raw-guard-ssml-external-entity", intent="validation",
+                body=body, headers=headers, payload_field="raw-body:doctype-external-entity-declaration",
+                expected_boundary="application_reject"))
     ids = [case.case_id for case in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate raw guard case IDs")
@@ -962,7 +969,7 @@ def jndi_field_probes(routes: list[Route]) -> list[Probe]:
         cases.append(_probe(route, "jndi-logging-query-metadata", "jndi-logging-control-query", intent="attack_control",
             query=[("metadata", literal)], payload_field="query:metadata"))
         cases.append(_probe(route, "jndi-logging-header", "jndi-logging-control-header", intent="attack_control",
-            headers=[("X-Attack", literal)], payload_field="header:X-Attack"))
+            headers=[("Referer", CONTROL_REFERER_XSS)], payload_field="header:Referer"))
     ids = [case.case_id for case in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate JNDI field case IDs")
@@ -1281,10 +1288,10 @@ def _coding_content_probes(routes: list[Route], values: tuple[tuple[str, str], .
         add("control-model-sqli", "model", {**base, "model": CONTROL_SQL},
             intent="attack_control")
         cases.append(_probe(
-            route, "ai-coding-control-header-sqli", "ai-coding-control-header-sqli",
+            route, "ai-coding-control-header-xss", "ai-coding-control-header-xss",
             intent="attack_control", body=json_bytes(base),
-            headers=[("Content-Type", "application/json"), ("X-Attack", CONTROL_SQL)],
-            payload_field="header:X-Attack"))
+            headers=[("Content-Type", "application/json"), ("Referer", CONTROL_REFERER_XSS)],
+            payload_field="header:Referer"))
         if is_responses:
             add("control-arguments-sibling", "input[].argumentsExtra", {
                 **base, "input": [{"type": "tool_search_call",
@@ -1521,13 +1528,15 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
     cases = []
 
     def add(route, label, data_type, field_name, value=None, *, body=None,
-            mime="application/json", headers=(), query=(), intent="compatibility", path=None):
+            mime="application/json", headers=(), query=(), intent="compatibility", path=None,
+            expected_boundary="infer", mandatory=True):
         target = replace(route, path=path) if path else route
         if body is None and value is not None:
             body = json_bytes(value)
         cases.append(_probe(target, "typed-" + label, "typed-" + data_type,
             intent=intent, body=body, headers=([("Content-Type", mime)] if mime else []) + list(headers),
-            query=query, payload_field=field_name, data_type=data_type))
+            query=query, payload_field=field_name, data_type=data_type,
+            expected_boundary=expected_boundary, mandatory=mandatory))
 
     responses = indexed.get(("gateway", "POST", "/models/openai/v1/responses"))
     chat = indexed.get(("gateway", "POST", "/models/openai/v1/chat/completions"))
@@ -1553,8 +1562,8 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
             sibling, intent="attack_control")
         add(responses, "reasoning-query", "opaque-base64url", "query:input.encrypted_content",
             baseline, query=[("input.encrypted_content", signature)], intent="validation")
-        add(responses, "reasoning-header", "opaque-base64url", "header:X-Waf-Unknown",
-            baseline, headers=[("X-Waf-Unknown", signature)], intent="attack_control")
+        add(responses, "reasoning-header", "metadata", "header:Referer",
+            baseline, headers=[("Referer", CONTROL_REFERER_XSS)], intent="attack_control")
         add(responses, "reasoning-neighbor", "opaque-base64url", "input[].encrypted_content",
             reasoning(signature), path=responses.path + "/neighbor", intent="attack_control")
         add(responses, "client-metadata", "metadata", "client_metadata.x-codex-turn-metadata",
@@ -1610,7 +1619,7 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
         baseline = handle_body(opaque_fixture("base64url", 512, 0))
         add(route, "handle-sibling", "opaque-base64url", "handle_extra", {**baseline, "handle_extra": signature}, intent="attack_control")
         add(route, "handle-query", "opaque-base64url", "query:handle", baseline, query=[("handle", signature)], intent="validation")
-        add(route, "handle-header", "opaque-base64url", "header:X-Waf-Unknown", baseline, headers=[("X-Waf-Unknown", signature)], intent="attack_control")
+        add(route, "handle-header", "metadata", "header:Referer", baseline, headers=[("Referer", CONTROL_REFERER_XSS)], intent="attack_control")
         add(route, "handle-neighbor", "opaque-base64url", "handle", handle_body(signature), path=route.path + "/neighbor", intent="attack_control")
 
     for route in routes:
@@ -1631,11 +1640,16 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
                     "header:" + ticket_name, mime="", headers=[(ticket_name, ticket_fixture(seed, hex_signature=targeted))], query=query)
         signature, baseline = ticket_fixture(1, hex_signature=True), ticket_fixture(0)
         add(route, "ticket-sibling", "opaque-ticket", "header:" + ticket_name + "-Extra", mime="",
-            headers=[(ticket_name, baseline), (ticket_name + "-Extra", signature)], query=query, intent="attack_control")
+            headers=[(ticket_name, baseline), (ticket_name + "-Extra", signature)], query=query, intent="validation",
+            expected_boundary="observation", mandatory=False)
         add(route, "ticket-query", "opaque-ticket", "query:" + ticket_name, mime="",
             headers=[(ticket_name, baseline)], query=[*query, (ticket_name, signature)], intent="validation")
         add(route, "ticket-neighbor", "opaque-ticket", "header:" + ticket_name, mime="",
-            headers=[(ticket_name, signature)], query=query, path=neighbor, intent="attack_control")
+            headers=[(ticket_name, signature)], query=query, path=neighbor, intent="validation",
+            expected_boundary="observation", mandatory=False)
+        add(route, "ticket-header-referer-active-control", "metadata", "header:Referer", mime="",
+            headers=[(ticket_name, baseline), ("Referer", CONTROL_REFERER_XSS)], query=query,
+            intent="attack_control")
         if route.path.endswith("/hangup"):
             # The AppGW family pattern also selects unknown children; API route
             # rejection, rather than WAF blocking, is their required boundary.
@@ -1658,6 +1672,226 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
             elif route.path in {"/models/azure-speech/v1/recognize", "/tools/documents/v1/analyze"}:
                 body, mime = _raw_guard_body(route, "Synthetic typed media")
                 add(route, "raw-media", "media-binary", "raw-body:data", body=body, mime=mime)
+    return cases
+
+
+def published_model_matrix(root: Path = ROOT) -> list[dict]:
+    """Inventory published operation/profile/model tuples, never WAF inputs.
+
+    This inventory is an acceptance-test plan only. It does not authorize this
+    anonymous WAF probe runner to attach credentials or execute real inference.
+    Models are read dynamically so a model lifecycle change cannot alter field
+    selection or require a duplicated list in the WAF policy.
+    """
+    result = []
+    bindings_path = root / "apps/gateway/apim/public-bindings.json"
+    public_bindings = json.loads(bindings_path.read_text(encoding="utf-8")).get("bindings", {}) if bindings_path.exists() else {}
+    for path in sorted((root / "apps/gateway/apim/apis").glob("*.json")):
+        api = json.loads(path.read_text(encoding="utf-8"))
+        if not api.get("released"):
+            continue
+        constraints = api.get("authorization", {}).get("operationConstraints", {})
+        for operation in api.get("operations", []):
+            constraint = constraints.get(operation["name"], {})
+            profiles = constraint.get("profiles") or [constraint]
+            for profile in profiles:
+                websocket = api.get("websocket", {})
+                models = (profile.get("allowedModels") or ([profile["model"]] if profile.get("model") else [])
+                          or websocket.get("allowedModels") or websocket.get("session", {}).get("models")
+                          or [websocket.get("queryParameters", {}).get("model")])
+                for model in models:
+                    if isinstance(model, str) and model.startswith("__") and model.endswith("__"):
+                        model = public_bindings.get(model[2:-2], model)
+                    result.append({"api": api["name"], "operation": operation["name"],
+                        "profile": profile.get("profileId", "default"), "model": model,
+                        "method": operation["method"],
+                        "path_template": "/" + api["path"].strip("/") + "/" + operation["urlTemplate"].lstrip("/"),
+                        "body_format": profile.get("bodyFormat", constraint.get("bodyFormat", "json")),
+                        "modalities": profile.get("modalities", []),
+                        "model_reference_resolved": not isinstance(model, str) or not model.startswith("__"),
+                        "acceptance": "not-run", "inference": "not-run"})
+    return result
+
+
+def _portal_stt_input(routes: list[Route], text: str = "") -> dict:
+    """Use the same STT selection shape as Portal's current upload builder."""
+    transcribe = next((route for route in routes if route.operation.endswith(":audio-transcriptions")), None)
+    if transcribe is None or not transcribe.constraint.get("allowedModels"):
+        raise ValueError("published STT model inventory is missing")
+    return {"modelId": transcribe.constraint["allowedModels"][0], "text": text,
+        "voice": "ja-JP-NanamiNeural", "rate": "0%",
+        "apiKeyId": "portal-00000000-0000-4000-8000-000000000001"}
+
+
+def wire_shape_variants(seed: int = 0) -> list[tuple[str, str, str, str, dict]]:
+    """Independent wire-shape oracle authored from reviewed public input types.
+
+    These fixtures are intentionally NOT generated from the WAF manifest or
+    contract selector list. Reusing a content type under both AgentMessage and
+    FunctionCallOutputPayload is what discovers missing nested selectors.
+    Source revisions are recorded in the input-contract catalog. Output uses
+    the string/array serde forms, never an invented single output object.
+    """
+    text = "Review synthetic source: <script>console.log('fixture')</script>; SELECT id FROM example; " + str(seed)
+    png = "data:image/png;base64," + base64.b64encode(_binary_fixture("image/png", "Synthetic wire PNG " + str(seed))).decode()
+    wav = "data:audio/wav;base64," + base64.b64encode(_binary_fixture("audio/wav", "Synthetic wire WAV " + str(seed))).decode()
+    pdf = "data:application/pdf;base64," + base64.b64encode(_raw_guard_pdf("Synthetic wire PDF " + str(seed))).decode()
+    opaque = opaque_fixture("base64url", 512, seed, hex_signature=True)
+    base = {"model": INVALID_MODEL, "store": False, "max_output_tokens": 1}
+    variants = []
+
+    def response(label, field_name, kind, items, **extra):
+        variants.append(("g-responses", label, field_name, kind, {**base, "input": items, **extra}))
+
+    def tool_output(label, part, field_name, kind):
+        response(label, field_name, kind, [
+            {"type": "function_call", "call_id": "call_synthetic_wire", "name": "synthetic_tool", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call_synthetic_wire", "output": [part]},
+            {"role": "user", "content": "Continue the synthetic result."}])
+
+    for label, part, suffix, kind in (
+        ("image", {"type": "input_image", "image_url": png}, "image_url", "media-data-url"),
+        ("audio", {"type": "input_audio", "audio_url": wav}, "audio_url", "media-data-url"),
+        ("encrypted", {"type": "encrypted_content", "encrypted_content": opaque}, "encrypted_content", "opaque-base64url"),
+        ("file", {"type": "input_file", "filename": "synthetic.pdf", "file_data": pdf}, "file_data", "media-data-url"),
+        ("text", {"type": "input_text", "text": text}, "text", "conversation"),
+    ):
+        response("agent-message-" + label, "input[].content[]." + suffix, kind,
+                 [{"type": "message", "role": "user", "content": [part]}])
+        tool_output("tool-result-" + label, part, "input[].output[]." + suffix, kind)
+    response("tool-result-string", "input[].output", "conversation", [
+        {"type": "function_call", "call_id": "call_synthetic_wire", "name": "synthetic_tool", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_synthetic_wire", "output": text}])
+    tool_output("tool-result-refusal", {"type": "refusal", "refusal": text}, "input[].output[].refusal", "conversation")
+    response("encrypted-function-args", "input[].encrypted_function_args", "opaque-base64url", [
+        {"type": "function_call", "call_id": "call_synthetic_wire", "name": "synthetic_tool", "arguments": "{}", "encrypted_function_args": opaque}])
+    response("image-generation-result", "input[].result", "media-base64", [
+        {"type": "image_generation_call", "id": "ig_synthetic_wire", "status": "completed", "result": png.split(",", 1)[1]}])
+    response("image-generation-revised-prompt", "input[].revised_prompt", "conversation", [
+        {"type": "image_generation_call", "id": "ig_synthetic_wire", "status": "completed", "result": png.split(",", 1)[1], "revised_prompt": text}])
+    response("image-tool-mask", "tools[].input_image_mask.image_url", "media-data-url", [],
+             tools=[{"type": "image_generation", "input_image_mask": {"image_url": png}}])
+    response("custom-tool-grammar", "tools[].format.definition", "conversation", [],
+             tools=[{"type": "custom", "name": "synthetic_tool", "format": {"type": "grammar", "syntax": "regex", "definition": text}}])
+    response("native-local-output-string", "input[].output", "conversation", [
+        {"type": "local_shell_call_output", "id": "call_synthetic_shell", "output": text}])
+    chat_base = {"model": INVALID_MODEL, "max_completion_tokens": 1}
+    for label, part, suffix, kind in (
+        ("image", {"type": "image_url", "image_url": {"url": png}}, "image_url.url", "media-data-url"),
+        ("audio", {"type": "input_audio", "input_audio": {"data": wav.split(",", 1)[1], "format": "wav"}}, "input_audio.data", "media-base64"),
+        ("file", {"type": "file", "file": {"filename": "synthetic.pdf", "file_data": pdf}}, "file.file_data", "media-data-url"),
+    ):
+        variants.append(("g-chat-completions", "message-" + label, "messages[].content[]." + suffix, kind,
+                         {**chat_base, "messages": [{"role": "user", "content": [part]}]}))
+    return variants
+
+
+def _wire_leaves(value, prefix="") -> set[str]:
+    if isinstance(value, dict):
+        return {name for key, child in value.items() for name in _wire_leaves(child, prefix + "." + key if prefix else key)}
+    if isinstance(value, list):
+        return {name for child in value for name in _wire_leaves(child, prefix)}
+    return {prefix}
+
+
+def audit_wire_shapes(variants=None, root: Path = ROOT) -> list[dict]:
+    """Reject unclassified independent fixture leaves, including new controls.
+
+    Exact paths and delimiter-bounded dynamic prefixes come from the reviewed
+    type catalog, not the exclusion manifest. A new fixture field cannot pass
+    merely because an old broad text field remains present elsewhere.
+    """
+    from waf_contracts import contract_fields
+    variants = wire_shape_variants() if variants is None else variants
+    rows = []
+    for profile, label, field_name, kind, value in variants:
+        fields = [field for field in contract_fields(profile, root=root) if field["matchVariable"] == "RequestArgValues"]
+        unknown = sorted(name for name in _wire_leaves(value) if not any(
+            name == field["selector"] if field["selectorMatchOperator"] == "Equals" else name.startswith(field["selector"])
+            for field in fields))
+        rows.append({"profile": profile, "shape": label, "payload_field": field_name,
+                     "unclassified_fields": unknown, "classified": not unknown,
+                     "waf_extraction_verified": False, "provider_acceptance": "not-run"})
+    return rows
+
+
+def wire_shape_probes(routes: list[Route], *, exhaustive: bool = False, root: Path = ROOT) -> list[Probe]:
+    """Required independent nesting regressions plus adjacent boundary controls."""
+    from waf_contracts import contract_fields
+    routes_by_path = {(route.target, route.path): route for route in routes if route.method == "POST"}
+    paths = {"g-responses": "/models/openai/v1/responses", "g-chat-completions": "/models/openai/v1/chat/completions"}
+    cases = []
+    for seed in ((0, 1) if exhaustive else (0,)):
+        variants = wire_shape_variants(seed)
+        audit = audit_wire_shapes(variants, root=root)
+        if any(not row["classified"] for row in audit):
+            raise ValueError("independent wire fixture has unclassified fields: " + "; ".join(
+                row["shape"] + ":" + ",".join(row["unclassified_fields"]) for row in audit if not row["classified"]))
+        for profile, label, field_name, kind, value in variants:
+            route = routes_by_path.get(("gateway", paths[profile]))
+            if route:
+                cases.append(_probe(route, f"wire-{label}-seed{seed}", "wire-shape-" + label,
+                    body=json_bytes(value), headers=[("Content-Type", "application/json")], payload_field=field_name, data_type=kind))
+    flux = routes_by_path.get(("gateway", "/models/blackforestlabs/v1/flux-2/edits"))
+    if flux:
+        slots = {field["selector"] for field in contract_fields("g-images", root=root)
+                 if field["matchVariable"] == "RequestArgValues" and field["selectorMatchOperator"] == "Equals"
+                 and re.fullmatch(r"input_image(?:_[2-8])?", field["selector"])}
+        for slot in sorted(slots):
+            image = base64.b64encode(_binary_fixture("image/png", "Synthetic FLUX " + slot)).decode()
+            value = {"model": INVALID_MODEL, "prompt": "Combine synthetic images.", "input_image": image,
+                     slot: image, "width": 512, "height": 512}
+            cases.append(_probe(flux, "wire-flux-" + slot, "wire-shape-flux-slot", body=json_bytes(value),
+                headers=[("Content-Type", "application/json")], payload_field=slot, data_type="media-base64"))
+    portal_speech = routes_by_path.get(("portal", "/api/models/speech"))
+    if portal_speech:
+        stt_models = {route.constraint["allowedModels"][0] for route in routes
+                      if route.operation.endswith(":audio-transcriptions") and route.constraint.get("allowedModels")}
+        stt_models.update("azure-speech-" + route.operation.rsplit(":", 1)[-1] for route in routes
+                          if route.operation == "azure-speech-v1:stt")
+        for model in sorted(stt_models):
+            metadata_input = {**_portal_stt_input(routes), "modelId": model}
+            cases.append(_probe(portal_speech, "wire-stt-" + model, "wire-shape-stt-upload",
+                body=_multipart("Synthetic WAV upload", portal_input=metadata_input),
+                headers=[("Content-Type", "multipart/form-data; boundary=waf-probe-fixed-boundary")],
+                payload_field="input", data_type="metadata"))
+    # Strong known signatures make the boundary controls independent of random
+    # Base64 coincidences. No credential is ever attached to these probes.
+    for profile, path in paths.items():
+        route = routes_by_path.get(("gateway", path))
+        if not route:
+            continue
+        value = {"model": INVALID_MODEL, "input": "Synthetic boundary"} if profile == "g-responses" else {
+            "model": INVALID_MODEL, "messages": [{"role": "user", "content": "Synthetic boundary"}]}
+        for suffix, body, headers, query, expected in (
+            ("sibling", {**value, "_unclassified_data_sibling": CONTROL_SQL}, [], [], "waf_block"),
+            ("control", {**value, "model": CONTROL_SQL}, [], [], "waf_block"),
+            # CRS 3.2 XSS rules explicitly inspect Referer. Arbitrary X-Attack
+            # headers are not a general SQL/XSS inspection target, so accepting
+            # one cannot demonstrate an exclusion-boundary regression.
+            ("header", value, [("Referer", CONTROL_REFERER_XSS)], [], "waf_block"),
+            ("query", value, [], [("input.output.image_url" if profile == "g-responses" else "messages.content.image_url.url", CONTROL_SQL)], "application_reject"),
+        ):
+            cases.append(_probe(route, "wire-boundary-" + suffix, "wire-boundary-" + suffix,
+                intent="validation" if expected == "application_reject" else "attack_control",
+                body=json_bytes(body), headers=[("Content-Type", "application/json"), *headers], query=query,
+                payload_field="model" if suffix == "control" else "header:Referer" if suffix == "header" else suffix,
+                expected_boundary=expected))
+        cases.append(_probe(replace(route, path=path + "/neighbor"), "wire-boundary-neighbor", "wire-boundary-neighbor",
+            intent="attack_control", body=json_bytes({**value, "_attack": CONTROL_SQL}),
+            headers=[("Content-Type", "application/json")], payload_field="_attack"))
+        if profile == "g-responses":
+            for label, item, field_name in (
+                ("output-image-sibling", {"type": "function_call_output", "call_id": "call_synthetic_wire", "output": [
+                    {"type": "input_image", "image_url": "https://example.invalid/synthetic.png", "image_url_extra": CONTROL_SQL}]},
+                 "input[].output[].image_url_extra"),
+                ("content-encrypted-sibling", {"role": "user", "content": [
+                    {"type": "encrypted_content", "encrypted_content": opaque_fixture("base64url", 512, 0),
+                     "encrypted_content_extra": CONTROL_SQL}]}, "input[].content[].encrypted_content_extra"),
+            ):
+                cases.append(_probe(route, "wire-boundary-" + label, "wire-boundary-" + label, intent="attack_control",
+                    body=json_bytes({"model": INVALID_MODEL, "input": [item]}),
+                    headers=[("Content-Type", "application/json")], payload_field=field_name))
     return cases
 
 
@@ -1774,7 +2008,7 @@ def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[P
                     cases.append(_probe(route, label, label, body=json_bytes(value), headers=[("Content-Type", "application/json")]))
                 cases.append(_probe(route, "json-charset", "content-type", body=json_bytes({"input": values[2][1]}), headers=[("Content-Type", "application/json; charset=utf-8")]))
             if route.target == "portal" and route.path == "/api/models/speech":
-                speech_input = {"modelId": "azure-speech-tts", "text": "Synthetic speech input", "voice": "ja-JP-NanamiNeural", "rate": "0%", "apiKeyId": "portal-00000000-0000-4000-8000-000000000001"}
+                speech_input = _portal_stt_input(routes, "Synthetic speech input")
                 cases.append(_probe(route, "speech-multipart", "multipart-audio", body=_multipart("probe", portal_input=speech_input), headers=[("Content-Type", "multipart/form-data; boundary=waf-probe-fixed-boundary")], payload_field="input.text"))
         # Small URL/header matrix on every route, including GET routes and all Portal pages.
         for label, text in (values[0], values[3], values[7], values[15], values[21], values[24]):
@@ -1851,9 +2085,63 @@ def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[P
     cases.extend(adversarial_content(routes))
     cases.extend(decision_question_keys(routes))
     cases.extend(typed_data_probes(routes))
+    cases.extend(wire_shape_probes(routes, root=root))
     ids = [case.case_id for case in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate case IDs")
+    return cases
+
+
+def required_corpus(routes: list[Route] | None = None, *, exhaustive: bool = False, root: Path = ROOT) -> list[Probe]:
+    """Bounded default gate includes every field/type and boundary family.
+
+    The exhaustive mode keeps the full older content corpus plus the formerly
+    opt-in suites. Smoke selects one representative per field/type/category
+    boundary, rather than letting a successful message hide an untested media
+    leaf. The selector-presence report remains separate from Azure extraction.
+    """
+    routes = load_routes(root) if routes is None else routes
+    corpus = build_corpus(routes, root=root)
+    corpus += ai_coding_probes(routes) + jndi_field_probes(routes) + image_prompt_probes(routes) + raw_body_guard_controls(routes)
+    if exhaustive:
+        corpus += wire_shape_probes(routes, exhaustive=True, root=root)
+    unique = {case.case_id: case for case in corpus}
+    if exhaustive:
+        return list(unique.values())
+    selected, covered = [], set()
+    for case in unique.values():
+        if case.auth_mode != "anonymous":
+            continue
+        if case.expected_boundary == "observation":
+            continue
+        if case.category == "baseline" or case.category.startswith("wire-"):
+            selected.append(case)
+            continue
+        # Keep suites covering explicit fields/types, mandatory query guards
+        # and strong attack controls. Legacy arbitrary HTTP/size fuzz remains
+        # available in exhaustive mode, rather than claiming it is valid input.
+        if not case.payload_field or case.category in {"size-boundary", "inspection-boundary"}:
+            continue
+        family = (case.target, case.method, case.path, case.payload_field, case.intent,
+                  case.data_type, "jndi" if "jndi" in case.category else "typed" if case.category.startswith("typed-") else "content")
+        if family not in covered:
+            covered.add(family)
+            selected.append(case)
+    return selected
+
+
+def incident_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[Probe]:
+    """Short anonymous incident gate; full model acceptance stays a separate plan."""
+    routes = load_routes(root) if routes is None else routes
+    cases = wire_shape_probes(routes, root=root)
+    # Each WAF profile/raw MIME/Portal handler has a representative boundary;
+    # this fast subset does not claim selector or published-model completeness.
+    covered = set()
+    for case in typed_data_probes(routes):
+        family = (case.target, case.path, case.data_type)
+        if case.intent == "compatibility" and family not in covered:
+            covered.add(family)
+            cases.append(case)
     return cases
 
 
@@ -1864,8 +2152,79 @@ def metadata(case: Probe) -> dict:
         "source": case.source, "auth_mode": case.auth_mode,
         "payload_field": case.payload_field,
         "data_type": case.data_type,
+        "expected_boundary": expected_boundary(case), "mandatory": case.mandatory,
         "request_bytes": len(case.body or b""), "query_names": [name for name, _ in case.query],
         "header_names": [name for name, _ in case.headers]}
+
+
+def expected_boundary(case: Probe) -> str:
+    """State the required boundary separately from the observed HTTP status."""
+    if case.expected_boundary != "infer":
+        return case.expected_boundary
+    if case.intent in {"attack_control", "attack-control"}:
+        return "waf_block"
+    if case.intent == "validation":
+        return "application_reject"
+    return "waf_transit"
+
+
+def boundary_verdict(case: Probe, result: dict) -> dict:
+    """Never turn missing evidence or an anonymous 401 into inference success.
+
+    Status-only 400/404/405 can originate at a gateway or an application. They
+    therefore require log attribution, rather than silently passing a required
+    compatibility or application-guard test. A WAF body marker is sufficient
+    for a negative control; an unattributed 403 is never sufficient.
+    """
+    expected = expected_boundary(case)
+    classification = result.get("classification")
+    evidence = result.get("evidence", "")
+    if expected == "observation":
+        verdict, reason = "observed", "not-a-known-active-signature-control"
+    elif classification in {"transport_error", "canary_unexpected_success"}:
+        verdict, reason = "fail", classification
+    elif classification == "skipped_key_required" and not case.mandatory:
+        verdict, reason = "optional_not_run", "credential-canary-not-requested"
+    elif classification in {"forbidden_unattributed", "skipped_key_required", "server_error", "rate_limited"}:
+        verdict, reason = "unresolved", "requires-log-correlation-or-rerun"
+    elif expected == "waf_block":
+        verdict = "pass" if classification == "waf_block" else "fail"
+        reason = "attack-control-blocked" if verdict == "pass" else "attack-control-not-blocked-by-waf"
+    elif expected == "application_reject":
+        confirmed = evidence in {
+            "apim-ssml-dtd-rejection", "correlated-application-rejection"}
+        verdict = "pass" if confirmed else "fail" if classification == "response_received" else "unresolved"
+        reason = "application-boundary-rejected" if confirmed else "application-guard-not-proven"
+    elif expected == "waf_transit":
+        if classification == "waf_block":
+            verdict, reason = "fail", "legitimate-data-blocked-by-waf"
+        elif classification in {"application_rejected", "response_received", "redirect_not_followed"} or evidence == "correlated-waf-transit":
+            verdict, reason = "pass", "waf-transit-only"
+        else:
+            verdict, reason = "unresolved", "requires-appgw-log-correlation"
+    else:
+        raise ValueError("unknown expected probe boundary")
+    return {"verdict": verdict, "verdict_reason": reason, "functional_success": False}
+
+
+def evaluate_results(cases: Iterable[Probe], results: Iterable[dict]) -> tuple[list[dict], dict, int]:
+    """Missing, duplicate and unresolved mandatory results fail the CLI gate."""
+    indexed = {case.case_id: case for case in cases}
+    evaluated, seen = [], set()
+    for result in results:
+        case_id = result.get("case_id")
+        if case_id not in indexed or case_id in seen:
+            raise ValueError("unexpected or duplicate probe result")
+        seen.add(case_id)
+        evaluated.append({**result, **boundary_verdict(indexed[case_id], result)})
+    for case_id in sorted(set(indexed) - seen):
+        case = indexed[case_id]
+        evaluated.append({**metadata(case), "classification": "not_run", "verdict": "unresolved",
+                          "verdict_reason": "mandatory-case-not-run" if case.mandatory else "case-not-run",
+                          "functional_success": False})
+    counts = dict(Counter(item["verdict"] for item in evaluated))
+    failed = any(indexed[item["case_id"]].mandatory and item["verdict"] != "pass" for item in evaluated)
+    return evaluated, counts, 2 if failed else 0
 
 
 def classify_response(status: int, headers: dict, body: bytes, *, auth_mode: str = "anonymous", intent: str = "compatibility") -> dict:
@@ -2051,6 +2410,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--transport", choices=("urllib", "curl"), default="urllib", help="curl uses the local TLS backend (Schannel on Windows); certificate verification stays enabled.")
     parser.add_argument("--list", action="store_true", help="Print metadata only, without any network traffic.")
     parser.add_argument("--dry-run", action="store_true", help="Write a metadata-only plan without network traffic.")
+    parser.add_argument("--suite", choices=("incident", "smoke", "exhaustive", "legacy"), default="smoke",
+                        help="Default bounded required field/type/boundary suite; exhaustive includes all content and controls.")
+    parser.add_argument("--wire-shapes-only", action="store_true", help="Run independent reviewed SDK/Codex nesting fixtures and controls.")
     parser.add_argument("--raw-body-guards-only", action="store_true", help="Use the separate raw SSML/WAV/PDF traversal boundary corpus.")
     parser.add_argument("--jndi-fields-only", action="store_true", help="Use the standalone anonymous JNDI data-field/control corpus.")
     parser.add_argument("--ai-coding-only", action="store_true", help="Use the bounded anonymous Responses/Chat coding-content and exclusion-control corpus.")
@@ -2061,11 +2423,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not 0 < args.requests_per_second <= 4 or not 1 <= args.timeout <= 60:
         parser.error("rate must be > 0 and <= 4; timeout must be 1 to 60")
-    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only, args.image_prompts_only)) > 1:
+    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only, args.image_prompts_only, args.wire_shapes_only)) > 1:
         parser.error("select only one standalone corpus")
     try:
         pattern = re.compile(args.case_filter)
-        corpus = image_prompt_probes(load_routes()) if args.image_prompts_only else ai_coding_probes(load_routes()) if args.ai_coding_only else jndi_field_probes(load_routes()) if args.jndi_fields_only else raw_body_guard_controls(load_routes()) if args.raw_body_guards_only else build_corpus()
+        routes = load_routes()
+        corpus = (wire_shape_probes(routes, exhaustive=args.suite == "exhaustive") if args.wire_shapes_only else
+                  image_prompt_probes(routes) if args.image_prompts_only else ai_coding_probes(routes) if args.ai_coding_only else
+                  jndi_field_probes(routes) if args.jndi_fields_only else raw_body_guard_controls(routes) if args.raw_body_guards_only else
+                  build_corpus(routes) if args.suite == "legacy" else incident_corpus(routes) if args.suite == "incident" else
+                  required_corpus(routes, exhaustive=args.suite == "exhaustive"))
         cases = [case for case in corpus if pattern.search(" ".join((case.case_id, case.category, case.intent, case.path)))]
         bases = {name: validate_base_url(value) for name, value in (("gateway", args.gateway_base_url), ("portal", args.portal_base_url)) if value}
     except (ValueError, re.error) as error:
@@ -2082,13 +2449,16 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, OSError):
             parser.error("output requires a protected runtime destination; no probes were sent")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:6]
-    report = {"schema_version": 1, "run_id": run_id, "phase": args.phase,
+    report = {"schema_version": 2, "run_id": run_id, "phase": args.phase,
         "started_at": datetime.now(timezone.utc).isoformat(), "dry_run": args.list or args.dry_run,
         "limitations": ["Finite synthetic corpus; not exhaustive.", "Anonymous application rejections demonstrate WAF transit, not feature success.",
             "403 attribution and matched rules require AppGW firewall log correlation.", "WebSocket handshake only; no frame or authenticated browser workflow coverage.",
             "Synthetic media signatures/containers test the WAF boundary, not downstream document/audio decoding.",
             "Same-name query validation probes measure whether Values exclusions also cover query arguments; they do not approve those application inputs."],
-        "selected_case_count": len(cases)}
+        "selected_case_count": len(cases), "suite": args.suite,
+        "wire_shape_audit": audit_wire_shapes(),
+        "published_model_acceptance_plan": published_model_matrix(),
+        "exclusion_presence": exclusion_coverage(cases, json.loads((ROOT / "apps/gateway/waf-data-exclusions.json").read_text(encoding="utf-8")))}
     if args.list or args.dry_run:
         report["results"] = [metadata(case) for case in cases]
         if args.output:
@@ -2121,8 +2491,10 @@ def main(argv: list[str] | None = None) -> int:
             _write(args.output, report)
             print(json.dumps({"completed": len(report["results"]), "selected": len(cases), "counts": report["counts"]}), flush=True)
     report["completed_at"] = datetime.now(timezone.utc).isoformat()
+    report["results"], report["verdict_counts"], exit_code = evaluate_results(cases, report["results"])
+    report["required_boundary_checks_passed"] = exit_code == 0
     _write(args.output, report)
-    return 2 if report["counts"].get("transport_error") or report["counts"].get("canary_unexpected_success") else 0
+    return exit_code
 
 
 if __name__ == "__main__":

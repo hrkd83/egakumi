@@ -65,9 +65,16 @@ def private_text(path: str | Path) -> str:
 def private_write(path: str | Path, value: str) -> None:
     """リンクをたどらず、所有者だけが読める権限でローカルファイルを保存する。"""
     path = private_parent(Path(path))
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    # private_parent already rejects links for every component. Keep the
+    # additional atomic no-follow flag on platforms providing it; Windows does
+    # not expose O_NOFOLLOW and must use the checked protected parent instead.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
     try:
-        os.fchmod(fd, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        else:
+            os.chmod(path, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(value)
     except BaseException:

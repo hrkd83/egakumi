@@ -1,0 +1,3716 @@
+{
+  "version": 1,
+  "description": "Reviewed HTTP wire types. Arrays flatten without numeric indexes as observed by AppGW CRS 3.2. Model identifiers are resolved only from canonical API definitions; they are never WAF tuning inputs.",
+  "sources": {
+    "codex": {
+      "provider": "OpenAI",
+      "api": "Codex Desktop wire protocol",
+      "version": "336b19ab26e0d4e36b16d8a21d668632cd800207",
+      "url": "https://github.com/openai/codex/blob/336b19ab26e0d4e36b16d8a21d668632cd800207/codex-rs/protocol/src/models.rs",
+      "notes": "Public source compatibility, not proof of the installed Desktop build or Foundry acceptance."
+    },
+    "openai": {
+      "provider": "OpenAI / Azure OpenAI",
+      "api": "OpenAI v1",
+      "version": "v1; reviewed 2026-11-14",
+      "url": "https://platform.openai.com/docs/api-reference/responses/create",
+      "notes": "Azure exposes a provider subset. WAF wire compatibility does not enable new application features."
+    },
+    "chat": {
+      "provider": "OpenAI / Azure Foundry",
+      "api": "Chat Completions",
+      "version": "v1; reviewed 2026-11-14",
+      "url": "https://platform.openai.com/docs/api-reference/chat/create"
+    },
+    "flux": {
+      "provider": "Black Forest Labs / Azure Foundry",
+      "api": "FLUX.2 image edit",
+      "version": "FLUX.2; reviewed 2026-11-14",
+      "url": "https://docs.bfl.ai/api-reference/models/generate-or-edit-an-image-with-flux2-[pro]",
+      "notes": "Official named image slots 1 through 8. Azure flex advertises 10 images; wire names for 9/10 not confirmed and not guessed."
+    },
+    "gateway": {
+      "provider": "egakumi",
+      "api": "Published gateway / Portal contracts",
+      "version": "repository source; checked by operation signature",
+      "url": "https://github.com/hrkd83/egakumi",
+      "notes": "The HTTP input at the WAF boundary, not downstream payloads synthesized by APIM/BFF."
+    },
+    "waf": {
+      "provider": "Microsoft",
+      "api": "Application Gateway WAF",
+      "version": "OWASP CRS 3.2",
+      "url": "https://learn.microsoft.com/en-us/azure/architecture/ai-ml/architecture/baseline-microsoft-foundry-chat#web-application-firewall-tuning"
+    }
+  },
+  "groupSets": {
+    "ai-data": [
+      "REQUEST-930-APPLICATION-ATTACK-LFI",
+      "REQUEST-931-APPLICATION-ATTACK-RFI",
+      "REQUEST-932-APPLICATION-ATTACK-RCE",
+      "REQUEST-933-APPLICATION-ATTACK-PHP",
+      "REQUEST-941-APPLICATION-ATTACK-XSS",
+      "REQUEST-942-APPLICATION-ATTACK-SQLI"
+    ]
+  },
+  "types": {
+    "text": {
+      "kind": "leaf",
+      "data_type": "text",
+      "groups": "ai-data"
+    },
+    "schema-json": {
+      "kind": "leaf",
+      "data_type": "schema-json",
+      "groups": "ai-data",
+      "descendants": true
+    },
+    "tool-arguments": {
+      "kind": "leaf",
+      "data_type": "tool-arguments",
+      "groups": "ai-data",
+      "descendants": true
+    },
+    "opaque": {
+      "kind": "leaf",
+      "data_type": "opaque",
+      "groups": "ai-data"
+    },
+    "media-url": {
+      "kind": "leaf",
+      "data_type": "media-url",
+      "groups": "ai-data"
+    },
+    "control": {
+      "kind": "leaf",
+      "data_type": "control",
+      "groups": null
+    },
+    "response-media": {
+      "kind": "object",
+      "properties": {
+        "image_url": {
+          "ref": "media-url"
+        },
+        "audio_url": {
+          "ref": "media-url"
+        },
+        "file_data": {
+          "ref": "opaque"
+        },
+        "encrypted_content": {
+          "ref": "opaque"
+        }
+      }
+    },
+    "response-content": {
+      "kind": "union",
+      "variants": [
+        {
+          "ref": "response-media"
+        },
+        {
+          "kind": "object",
+          "properties": {
+            "type": {
+              "ref": "control"
+            },
+            "text": {
+              "ref": "text"
+            },
+            "refusal": {
+              "ref": "text"
+            },
+            "file_id": {
+              "ref": "control"
+            },
+            "file_url": {
+              "ref": "control"
+            },
+            "filename": {
+              "ref": "control"
+            },
+            "detail": {
+              "ref": "control"
+            },
+            "format": {
+              "ref": "control"
+            }
+          }
+        }
+      ]
+    },
+    "response-tool": {
+      "kind": "object",
+      "properties": {
+        "type": {
+          "ref": "control"
+        },
+        "name": {
+          "ref": "control"
+        },
+        "description": {
+          "ref": "text"
+        },
+        "parameters": {
+          "ref": "schema-json"
+        },
+        "output_schema": {
+          "ref": "schema-json"
+        },
+        "format": {
+          "kind": "object",
+          "properties": {
+            "definition": {
+              "ref": "text"
+            },
+            "type": {
+              "ref": "control"
+            },
+            "syntax": {
+              "ref": "control"
+            }
+          }
+        }
+      }
+    },
+    "response-toolbox": {
+      "kind": "union",
+      "variants": [
+        {
+          "ref": "response-tool"
+        },
+        {
+          "kind": "object",
+          "properties": {
+            "tools": {
+              "kind": "array",
+              "items": {
+                "ref": "response-tool"
+              }
+            },
+            "namespace": {
+              "ref": "control"
+            }
+          }
+        }
+      ]
+    },
+    "response-item": {
+      "kind": "object",
+      "properties": {
+        "type": {
+          "ref": "control"
+        },
+        "id": {
+          "ref": "control"
+        },
+        "role": {
+          "ref": "control"
+        },
+        "status": {
+          "ref": "control"
+        },
+        "call_id": {
+          "ref": "control"
+        },
+        "name": {
+          "ref": "control"
+        },
+        "content": {
+          "kind": "union",
+          "variants": [
+            {
+              "ref": "text"
+            },
+            {
+              "kind": "array",
+              "items": {
+                "ref": "response-content"
+              }
+            }
+          ]
+        },
+        "output": {
+          "kind": "union",
+          "variants": [
+            {
+              "ref": "text"
+            },
+            {
+              "kind": "array",
+              "items": {
+                "ref": "response-content"
+              }
+            },
+            {
+              "kind": "object",
+              "properties": {
+                "stdout": {
+                  "ref": "text"
+                },
+                "stderr": {
+                  "ref": "text"
+                }
+              }
+            }
+          ]
+        },
+        "arguments": {
+          "kind": "union",
+          "variants": [
+            {
+              "ref": "text"
+            },
+            {
+              "ref": "tool-arguments"
+            }
+          ]
+        },
+        "input": {
+          "ref": "text"
+        },
+        "encrypted_content": {
+          "ref": "opaque"
+        },
+        "encrypted_function_args": {
+          "ref": "opaque"
+        },
+        "summary": {
+          "kind": "array",
+          "items": {
+            "kind": "object",
+            "properties": {
+              "type": {
+                "ref": "control"
+              },
+              "text": {
+                "ref": "text"
+              }
+            }
+          }
+        },
+        "tools": {
+          "kind": "array",
+          "items": {
+            "ref": "response-toolbox"
+          }
+        },
+        "action": {
+          "kind": "object",
+          "properties": {
+            "type": {
+              "ref": "control"
+            },
+            "command": {
+              "ref": "text"
+            },
+            "commands": {
+              "kind": "array",
+              "items": {
+                "ref": "text"
+              }
+            },
+            "env": {
+              "kind": "leaf",
+              "data_type": "control",
+              "groups": null,
+              "descendants": true
+            }
+          }
+        },
+        "operation": {
+          "kind": "object",
+          "properties": {
+            "type": {
+              "ref": "control"
+            },
+            "path": {
+              "ref": "control"
+            },
+            "diff": {
+              "ref": "text"
+            }
+          }
+        },
+        "result": {
+          "ref": "opaque"
+        },
+        "revised_prompt": {
+          "ref": "text"
+        }
+      }
+    },
+    "responses-request": {
+      "kind": "object",
+      "properties": {
+        "model": {
+          "ref": "control"
+        },
+        "stream": {
+          "ref": "control"
+        },
+        "store": {
+          "ref": "control"
+        },
+        "input": {
+          "kind": "union",
+          "variants": [
+            {
+              "ref": "text"
+            },
+            {
+              "kind": "array",
+              "items": {
+                "ref": "response-item"
+              }
+            }
+          ]
+        },
+        "instructions": {
+          "ref": "text"
+        },
+        "tools": {
+          "kind": "array",
+          "items": {
+            "kind": "union",
+            "variants": [
+              {
+                "ref": "response-tool"
+              },
+              {
+                "kind": "object",
+                "properties": {
+                  "input_image_mask": {
+                    "kind": "object",
+                    "properties": {
+                      "image_url": {
+                        "ref": "media-url"
+                      },
+                      "file_id": {
+                        "ref": "control"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "text": {
+          "kind": "object",
+          "properties": {
+            "format": {
+              "kind": "object",
+              "properties": {
+                "type": {
+                  "ref": "control"
+                },
+                "name": {
+                  "ref": "control"
+                },
+                "description": {
+                  "ref": "text"
+                },
+                "strict": {
+                  "ref": "control"
+                },
+                "schema": {
+                  "ref": "schema-json"
+                }
+              }
+            }
+          }
+        },
+        "client_metadata": {
+          "kind": "object",
+          "properties": {
+            "x-codex-turn-metadata": {
+              "ref": "control"
+            }
+          }
+        },
+        "max_output_tokens": {
+          "ref": "control"
+        },
+        "max_completion_tokens": {
+          "ref": "control"
+        },
+        "temperature": {
+          "ref": "control"
+        },
+        "top_p": {
+          "ref": "control"
+        },
+        "parallel_tool_calls": {
+          "ref": "control"
+        },
+        "user": {
+          "ref": "control"
+        },
+        "service_tier": {
+          "ref": "control"
+        },
+        "previous_response_id": {
+          "ref": "control"
+        },
+        "include": {
+          "ref": "control"
+        },
+        "metadata": {
+          "ref": "control"
+        },
+        "reasoning": {
+          "ref": "control"
+        },
+        "truncation": {
+          "ref": "control"
+        }
+      }
+    },
+    "chat-content": {
+      "kind": "object",
+      "properties": {
+        "type": {
+          "ref": "control"
+        },
+        "text": {
+          "ref": "text"
+        },
+        "refusal": {
+          "ref": "text"
+        },
+        "image_url": {
+          "kind": "object",
+          "properties": {
+            "url": {
+              "ref": "media-url"
+            },
+            "detail": {
+              "ref": "control"
+            }
+          }
+        },
+        "input_audio": {
+          "kind": "object",
+          "properties": {
+            "data": {
+              "ref": "opaque"
+            },
+            "format": {
+              "ref": "control"
+            }
+          }
+        },
+        "file": {
+          "kind": "object",
+          "properties": {
+            "file_data": {
+              "ref": "opaque"
+            },
+            "file_id": {
+              "ref": "control"
+            },
+            "filename": {
+              "ref": "control"
+            }
+          }
+        }
+      }
+    },
+    "chat-function": {
+      "kind": "object",
+      "properties": {
+        "name": {
+          "ref": "control"
+        },
+        "description": {
+          "ref": "text"
+        },
+        "parameters": {
+          "ref": "schema-json"
+        },
+        "strict": {
+          "ref": "control"
+        }
+      }
+    },
+    "chat-request": {
+      "kind": "object",
+      "properties": {
+        "model": {
+          "ref": "control"
+        },
+        "stream": {
+          "ref": "control"
+        },
+        "messages": {
+          "kind": "array",
+          "items": {
+            "kind": "object",
+            "properties": {
+              "role": {
+                "ref": "control"
+              },
+              "name": {
+                "ref": "control"
+              },
+              "tool_call_id": {
+                "ref": "control"
+              },
+              "content": {
+                "kind": "union",
+                "variants": [
+                  {
+                    "ref": "text"
+                  },
+                  {
+                    "kind": "array",
+                    "items": {
+                      "ref": "chat-content"
+                    }
+                  }
+                ]
+              },
+              "refusal": {
+                "ref": "text"
+              },
+              "reasoning_content": {
+                "ref": "text"
+              },
+              "function_call": {
+                "kind": "object",
+                "properties": {
+                  "name": {
+                    "ref": "control"
+                  },
+                  "arguments": {
+                    "ref": "text"
+                  }
+                }
+              },
+              "tool_calls": {
+                "kind": "array",
+                "items": {
+                  "kind": "object",
+                  "properties": {
+                    "type": {
+                      "ref": "control"
+                    },
+                    "id": {
+                      "ref": "control"
+                    },
+                    "function": {
+                      "kind": "object",
+                      "properties": {
+                        "name": {
+                          "ref": "control"
+                        },
+                        "arguments": {
+                          "ref": "text"
+                        }
+                      }
+                    },
+                    "custom": {
+                      "kind": "object",
+                      "properties": {
+                        "name": {
+                          "ref": "control"
+                        },
+                        "input": {
+                          "ref": "text"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "audio": {
+                "kind": "object",
+                "properties": {
+                  "id": {
+                    "ref": "opaque"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tools": {
+          "kind": "array",
+          "items": {
+            "kind": "object",
+            "properties": {
+              "type": {
+                "ref": "control"
+              },
+              "function": {
+                "ref": "chat-function"
+              },
+              "custom": {
+                "kind": "object",
+                "properties": {
+                  "name": {
+                    "ref": "control"
+                  },
+                  "description": {
+                    "ref": "text"
+                  },
+                  "format": {
+                    "kind": "object",
+                    "properties": {
+                      "grammar": {
+                        "kind": "object",
+                        "properties": {
+                          "definition": {
+                            "ref": "text"
+                          },
+                          "syntax": {
+                            "ref": "control"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "functions": {
+          "kind": "array",
+          "items": {
+            "ref": "chat-function"
+          }
+        },
+        "prediction": {
+          "kind": "object",
+          "properties": {
+            "type": {
+              "ref": "control"
+            },
+            "content": {
+              "kind": "union",
+              "variants": [
+                {
+                  "ref": "text"
+                },
+                {
+                  "kind": "array",
+                  "items": {
+                    "kind": "object",
+                    "properties": {
+                      "text": {
+                        "ref": "text"
+                      },
+                      "type": {
+                        "ref": "control"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "response_format": {
+          "kind": "object",
+          "properties": {
+            "type": {
+              "ref": "control"
+            },
+            "json_schema": {
+              "kind": "object",
+              "properties": {
+                "name": {
+                  "ref": "control"
+                },
+                "strict": {
+                  "ref": "control"
+                },
+                "description": {
+                  "ref": "text"
+                },
+                "schema": {
+                  "ref": "schema-json"
+                }
+              }
+            }
+          }
+        },
+        "max_output_tokens": {
+          "ref": "control"
+        },
+        "max_completion_tokens": {
+          "ref": "control"
+        },
+        "temperature": {
+          "ref": "control"
+        },
+        "top_p": {
+          "ref": "control"
+        },
+        "parallel_tool_calls": {
+          "ref": "control"
+        },
+        "user": {
+          "ref": "control"
+        },
+        "service_tier": {
+          "ref": "control"
+        },
+        "previous_response_id": {
+          "ref": "control"
+        },
+        "include": {
+          "ref": "control"
+        },
+        "metadata": {
+          "ref": "control"
+        },
+        "reasoning": {
+          "ref": "control"
+        },
+        "truncation": {
+          "ref": "control"
+        }
+      }
+    },
+    "json-data": {
+      "kind": "leaf",
+      "data_type": "json-data",
+      "groups": "ai-data",
+      "descendants": true
+    }
+  },
+  "profiles": [
+    {
+      "name": "g-chat-completions",
+      "scope": "gateway",
+      "sources": [
+        "chat",
+        "codex",
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "ref": "chat-request"
+      },
+      "legacy": [
+        {
+          "selector": "messages.content.image_url.url",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-01"
+        },
+        {
+          "selector": "response_format.json_schema.schema.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "messages.content",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.content.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.tool_calls.function.arguments",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.function.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "response_format.json_schema.schema.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.function.parameters.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.function.parameters.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "functions.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.function_call.arguments",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.tool_calls.custom.input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.custom.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.custom.format.grammar.definition",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "functions.parameters.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "functions.parameters.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "messages.content.refusal",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.refusal",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "prediction.content",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "prediction.content.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "response_format.json_schema.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "messages.reasoning_content",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "openai-inference-v1",
+          "path": "models/openai/v1",
+          "operation": "chat-completions",
+          "method": "POST",
+          "urlTemplate": "/chat/completions",
+          "kind": "bodyModel",
+          "bodyFormat": null,
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-responses",
+      "scope": "gateway",
+      "sources": [
+        "openai",
+        "codex",
+        "gateway"
+      ],
+      "acceptance": "wire-compatible; provider acceptance tested separately",
+      "shape": {
+        "ref": "responses-request"
+      },
+      "legacy": [
+        {
+          "selector": "input.content.image_url",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-05"
+        },
+        {
+          "selector": "text.format.schema.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "tools.parameters.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.arguments",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.content.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.encrypted_content",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-06"
+        },
+        {
+          "selector": "input.output",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "instructions",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "text.format.schema.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.parameters.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.output.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.tools.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.tools.format.definition",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "client_metadata.x-codex-turn-metadata",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-07"
+        },
+        {
+          "selector": "input.content",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.tools.parameters.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.tools.parameters.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.content.refusal",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.summary.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "text.format.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.output_schema.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "tools.output_schema.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.tools.description",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.format.definition",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.arguments.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.output_schema.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.parameters.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.tools.tools.output_schema.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.arguments.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.tools.output_schema.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.tools.parameters.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.tools.tools.output_schema.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-04"
+        },
+        {
+          "selector": "input.action.command",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.action.commands",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.operation.diff",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.output.stdout",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.output.stderr",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-03"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "openai-inference-v1",
+          "path": "models/openai/v1",
+          "operation": "responses-create",
+          "method": "POST",
+          "urlTemplate": "/responses",
+          "kind": "statelessResponses",
+          "bodyFormat": null,
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-embeddings",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "texts": {
+            "ref": "text"
+          },
+          "input": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "texts",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "cohere-inference-v1",
+          "path": "models/cohere/v1",
+          "operation": "cohere-embeddings",
+          "method": "POST",
+          "urlTemplate": "/embed",
+          "kind": "textEmbeddings",
+          "bodyFormat": "json",
+          "apiType": "http"
+        },
+        {
+          "api": "openai-embeddings-v1",
+          "path": "models/openai-embeddings/v1",
+          "operation": "embeddings",
+          "method": "POST",
+          "urlTemplate": "/embeddings",
+          "kind": "textEmbeddings",
+          "bodyFormat": "json",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-rerank",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "documents": {
+            "ref": "text"
+          },
+          "query": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "documents",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "query",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "cohere-inference-v1",
+          "path": "models/cohere/v1",
+          "operation": "rerank",
+          "method": "POST",
+          "urlTemplate": "/rerank",
+          "kind": "rerank",
+          "bodyFormat": "json",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-decision",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "questions": {
+            "ref": "json-data"
+          },
+          "state": {
+            "kind": "union",
+            "variants": [
+              {
+                "ref": "text"
+              },
+              {
+                "ref": "json-data"
+              }
+            ]
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "questions.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "state.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "state",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "questions.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "state.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "microsoft-decision-v1",
+          "path": "models/microsoft-decision/v1",
+          "operation": "systemone",
+          "method": "POST",
+          "urlTemplate": "/systemone",
+          "kind": "bodyModel",
+          "bodyFormat": "json",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-images",
+      "scope": "gateway",
+      "sources": [
+        "flux",
+        "openai",
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "prompt": {
+            "ref": "text"
+          },
+          "input_image": {
+            "ref": "opaque"
+          },
+          "input_image_2": {
+            "ref": "opaque"
+          },
+          "input_image_3": {
+            "ref": "opaque"
+          },
+          "input_image_4": {
+            "ref": "opaque"
+          },
+          "input_image_5": {
+            "ref": "opaque"
+          },
+          "input_image_6": {
+            "ref": "opaque"
+          },
+          "input_image_7": {
+            "ref": "opaque"
+          },
+          "input_image_8": {
+            "ref": "opaque"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          },
+          "width": {
+            "ref": "control"
+          },
+          "height": {
+            "ref": "control"
+          },
+          "seed": {
+            "ref": "control"
+          },
+          "safety_tolerance": {
+            "ref": "control"
+          },
+          "output_format": {
+            "ref": "control"
+          },
+          "steps": {
+            "ref": "control"
+          },
+          "guidance": {
+            "ref": "control"
+          },
+          "aspect_ratio": {
+            "ref": "control"
+          },
+          "n": {
+            "ref": "control"
+          },
+          "size": {
+            "ref": "control"
+          },
+          "quality": {
+            "ref": "control"
+          },
+          "background": {
+            "ref": "control"
+          },
+          "moderation": {
+            "ref": "control"
+          },
+          "response_format": {
+            "ref": "control"
+          },
+          "user": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "prompt",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "input_image",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-09"
+        },
+        {
+          "selector": "input_image_2",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-09"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "blackforest-images-v1",
+          "path": "models/blackforestlabs/v1",
+          "operation": "flux2-generate",
+          "method": "POST",
+          "urlTemplate": "/flux-2/generations",
+          "kind": "bodyModel",
+          "bodyFormat": "json",
+          "apiType": "http"
+        },
+        {
+          "api": "blackforest-images-v1",
+          "path": "models/blackforestlabs/v1",
+          "operation": "flux2-edit",
+          "method": "POST",
+          "urlTemplate": "/flux-2/edits",
+          "kind": "bodyModel",
+          "bodyFormat": "json",
+          "apiType": "http"
+        },
+        {
+          "api": "openai-images-v1",
+          "path": "models/openai-images/v1",
+          "operation": "image-generate",
+          "method": "POST",
+          "urlTemplate": "/generations",
+          "kind": "bodyModel",
+          "bodyFormat": "json",
+          "apiType": "http"
+        },
+        {
+          "api": "openai-images-v1",
+          "path": "models/openai-images/v1",
+          "operation": "image-edit",
+          "method": "POST",
+          "urlTemplate": "/deployments/{deployment}/edits",
+          "kind": "pathModel",
+          "bodyFormat": "multipart",
+          "apiType": "http",
+          "contentTypes": [
+            "multipart/form-data"
+          ]
+        }
+      ],
+      "unverified": [
+        {
+          "wireField": null,
+          "feature": "FLUX flex image slots 9 and 10",
+          "status": "wire-name-unconfirmed; no exclusion generated"
+        }
+      ]
+    },
+    {
+      "name": "g-transcribe",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "prompt": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "prompt",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "openai-audio-v1",
+          "path": "models/openai-audio/v1",
+          "operation": "audio-transcriptions",
+          "method": "POST",
+          "urlTemplate": "/deployments/{deployment}/transcriptions",
+          "kind": "pathModel",
+          "bodyFormat": "multipart",
+          "apiType": "http",
+          "contentTypes": [
+            "multipart/form-data"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "g-realtime",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "sdp": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "sdp",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "openai-realtime-control-v1",
+          "path": "models/openai-realtime/v1",
+          "operation": "realtime-create",
+          "method": "POST",
+          "urlTemplate": "/calls",
+          "kind": "realtimeCreate",
+          "bodyFormat": "json",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-live",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "instructions": {
+            "ref": "text"
+          },
+          "sdp": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "instructions",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "sdp",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "openai-live-control-v1",
+          "path": "models/openai-live/v1",
+          "operation": "live-create",
+          "method": "POST",
+          "urlTemplate": "/sessions",
+          "kind": "liveCreate",
+          "bodyFormat": "json",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-pii-redact",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "params": {
+            "kind": "object",
+            "properties": {
+              "arguments": {
+                "kind": "object",
+                "properties": {
+                  "text": {
+                    "ref": "text"
+                  }
+                }
+              }
+            }
+          },
+          "text": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "params.arguments.text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "pii-v1",
+          "path": "tools/pii/v1",
+          "operation": "pii_redact_text",
+          "method": "POST",
+          "urlTemplate": "/redact",
+          "kind": "pii",
+          "bodyFormat": null,
+          "apiType": "http"
+        },
+        {
+          "api": "pii-v1",
+          "mcpPath": "tools/pii-v1-mcp",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "p-generate",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "message": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "message",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/generate"
+      ]
+    },
+    {
+      "name": "p-embeddings",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "texts": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "texts",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/embeddings"
+      ]
+    },
+    {
+      "name": "p-rerank",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "documents": {
+            "ref": "text"
+          },
+          "query": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "documents",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "query",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/rerank"
+      ]
+    },
+    {
+      "name": "p-decision",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "questions": {
+            "ref": "json-data"
+          },
+          "state": {
+            "kind": "union",
+            "variants": [
+              {
+                "ref": "text"
+              },
+              {
+                "ref": "json-data"
+              }
+            ]
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "questions.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "state.",
+          "variable": "RequestArgKeys",
+          "operator": "StartsWith",
+          "rules": "reviewed-02"
+        },
+        {
+          "selector": "state",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "questions.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-08"
+        },
+        {
+          "selector": "state.",
+          "variable": "RequestArgValues",
+          "operator": "StartsWith",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/decision"
+      ]
+    },
+    {
+      "name": "p-images",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "prompt": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "prompt",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/images"
+      ]
+    },
+    {
+      "name": "p-speech",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "input": {
+            "ref": "control"
+          },
+          "text": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-10"
+        },
+        {
+          "selector": "text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/speech"
+      ]
+    },
+    {
+      "name": "p-realtime",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "handle": {
+            "ref": "opaque"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [],
+      "bindings": [],
+      "portalPaths": [
+        "/api/models/realtime/stop"
+      ]
+    },
+    {
+      "name": "p-document-upload",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "input": {
+            "ref": "control"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "input",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-11"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/tools/documents"
+      ]
+    },
+    {
+      "name": "p-pii-redact",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "text": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [],
+      "portalPaths": [
+        "/api/tools/pii",
+        "/api/tools/pii-mcp"
+      ]
+    },
+    {
+      "name": "g-document-status",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [],
+      "headers": {
+        "X-Core-Document-Ticket": {
+          "ref": "opaque"
+        }
+      },
+      "bindings": [
+        {
+          "api": "document-analysis-v1",
+          "path": "tools/documents/v1",
+          "operation": "get_document_operation",
+          "method": "GET",
+          "urlTemplate": "/operations/{operationId}",
+          "kind": "documentAnalysisStatus",
+          "bodyFormat": "none",
+          "signedPattern": "/tools/documents/v1/operations/*",
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-realtime-ticket",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [],
+      "headers": {
+        "X-Core-Call-Ticket": {
+          "ref": "opaque"
+        }
+      },
+      "bindings": [
+        {
+          "api": "openai-realtime-control-v1",
+          "path": "models/openai-realtime/v1",
+          "operation": "realtime-hangup",
+          "method": "POST",
+          "urlTemplate": "/calls/{callId}/hangup",
+          "kind": "realtimeHangup",
+          "bodyFormat": "none",
+          "signedPattern": "/models/openai-realtime/v1/calls/*",
+          "apiType": "http"
+        },
+        {
+          "api": "openai-realtime-observer-v1",
+          "path": "models/openai-realtime/v1/observer",
+          "operation": "invoke",
+          "method": "GET",
+          "urlTemplate": "/",
+          "kind": "registeredOperation",
+          "bodyFormat": "none",
+          "wafPath": "/models/openai-realtime/v1/observer/",
+          "apiType": "websocket"
+        }
+      ]
+    },
+    {
+      "name": "p-document-status",
+      "scope": "portal",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "handle": {
+            "ref": "opaque"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [],
+      "bindings": [],
+      "portalPaths": [
+        "/api/tools/documents/status"
+      ]
+    }
+  ],
+  "legacyRuleSets": {
+    "reviewed-01": [
+      {
+        "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+        "rules": [
+          {
+            "ruleId": "931130"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
+        "rules": [
+          {
+            "ruleId": "941130"
+          },
+          {
+            "ruleId": "941170"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942340"
+          },
+          {
+            "ruleId": "942450"
+          }
+        ]
+      }
+    ],
+    "reviewed-02": [
+      {
+        "ruleGroupName": "Known-CVEs",
+        "rules": [
+          {
+            "ruleId": "800100"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+        "rules": [
+          {
+            "ruleId": "920270"
+          },
+          {
+            "ruleId": "920271"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+        "rules": [
+          {
+            "ruleId": "921150"
+          }
+        ]
+      }
+    ],
+    "reviewed-03": [
+      {
+        "ruleGroupName": "Known-CVEs",
+        "rules": [
+          {
+            "ruleId": "800100"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+        "rules": [
+          {
+            "ruleId": "920230"
+          },
+          {
+            "ruleId": "920270"
+          },
+          {
+            "ruleId": "920271"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+        "rules": [
+          {
+            "ruleId": "921120"
+          },
+          {
+            "ruleId": "921130"
+          }
+        ]
+      }
+    ],
+    "reviewed-04": [
+      {
+        "ruleGroupName": "Known-CVEs",
+        "rules": [
+          {
+            "ruleId": "800100"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+        "rules": [
+          {
+            "ruleId": "921150"
+          }
+        ]
+      }
+    ],
+    "reviewed-05": [
+      {
+        "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+        "rules": [
+          {
+            "ruleId": "931130"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
+        "rules": [
+          {
+            "ruleId": "941130"
+          },
+          {
+            "ruleId": "941170"
+          }
+        ]
+      }
+    ],
+    "reviewed-06": [
+      {
+        "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+        "rules": [
+          {
+            "ruleId": "920230"
+          },
+          {
+            "ruleId": "920270"
+          },
+          {
+            "ruleId": "920271"
+          }
+        ]
+      }
+    ],
+    "reviewed-07": [
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942200"
+          },
+          {
+            "ruleId": "942260"
+          },
+          {
+            "ruleId": "942340"
+          },
+          {
+            "ruleId": "942370"
+          },
+          {
+            "ruleId": "942430"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
+        "rules": [
+          {
+            "ruleId": "933151"
+          }
+        ]
+      }
+    ],
+    "reviewed-08": [
+      {
+        "ruleGroupName": "Known-CVEs",
+        "rules": [
+          {
+            "ruleId": "800100"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+        "rules": [
+          {
+            "ruleId": "920230"
+          },
+          {
+            "ruleId": "920270"
+          },
+          {
+            "ruleId": "920271"
+          }
+        ]
+      }
+    ],
+    "reviewed-09": [
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942340"
+          },
+          {
+            "ruleId": "942390"
+          },
+          {
+            "ruleId": "942450"
+          }
+        ]
+      }
+    ],
+    "reviewed-10": [
+      {
+        "ruleGroupName": "Known-CVEs",
+        "rules": [
+          {
+            "ruleId": "800100"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
+        "rules": [
+          {
+            "ruleId": "920230"
+          },
+          {
+            "ruleId": "920271"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-932-APPLICATION-ATTACK-RCE",
+        "rules": [
+          {
+            "ruleId": "932100"
+          },
+          {
+            "ruleId": "932105"
+          },
+          {
+            "ruleId": "932110"
+          },
+          {
+            "ruleId": "932120"
+          },
+          {
+            "ruleId": "932130"
+          },
+          {
+            "ruleId": "932160"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-933-APPLICATION-ATTACK-PHP",
+        "rules": [
+          {
+            "ruleId": "933151"
+          },
+          {
+            "ruleId": "933210"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
+        "rules": [
+          {
+            "ruleId": "941100"
+          },
+          {
+            "ruleId": "941110"
+          },
+          {
+            "ruleId": "941130"
+          },
+          {
+            "ruleId": "941140"
+          },
+          {
+            "ruleId": "941150"
+          },
+          {
+            "ruleId": "941160"
+          },
+          {
+            "ruleId": "941170"
+          },
+          {
+            "ruleId": "941210"
+          },
+          {
+            "ruleId": "941320"
+          },
+          {
+            "ruleId": "941330"
+          },
+          {
+            "ruleId": "941340"
+          }
+        ]
+      },
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942120"
+          },
+          {
+            "ruleId": "942130"
+          },
+          {
+            "ruleId": "942150"
+          },
+          {
+            "ruleId": "942180"
+          },
+          {
+            "ruleId": "942190"
+          },
+          {
+            "ruleId": "942200"
+          },
+          {
+            "ruleId": "942210"
+          },
+          {
+            "ruleId": "942260"
+          },
+          {
+            "ruleId": "942300"
+          },
+          {
+            "ruleId": "942330"
+          },
+          {
+            "ruleId": "942340"
+          },
+          {
+            "ruleId": "942370"
+          },
+          {
+            "ruleId": "942380"
+          },
+          {
+            "ruleId": "942390"
+          },
+          {
+            "ruleId": "942410"
+          },
+          {
+            "ruleId": "942430"
+          },
+          {
+            "ruleId": "942440"
+          },
+          {
+            "ruleId": "942480"
+          }
+        ]
+      }
+    ],
+    "reviewed-11": [
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942200"
+          },
+          {
+            "ruleId": "942260"
+          },
+          {
+            "ruleId": "942340"
+          },
+          {
+            "ruleId": "942370"
+          },
+          {
+            "ruleId": "942430"
+          }
+        ]
+      }
+    ]
+  },
+  "transportContracts": [
+    {
+      "api": "azure-voice-live-webrtc-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    },
+    {
+      "api": "azure-voice-live-ws-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    },
+    {
+      "api": "openai-live-ws-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    },
+    {
+      "api": "openai-realtime-observer-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    },
+    {
+      "api": "openai-realtime-ws-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    },
+    {
+      "api": "openai-transcription-ws-v1",
+      "transport": "websocket-frame",
+      "waf_applicable": false,
+      "sources": [
+        "gateway"
+      ],
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "type": {
+            "ref": "control"
+          },
+          "session": {
+            "kind": "object",
+            "properties": {
+              "instructions": {
+                "ref": "text"
+              },
+              "tools": {
+                "kind": "array",
+                "items": {
+                  "ref": "response-tool"
+                }
+              }
+            }
+          },
+          "audio": {
+            "ref": "opaque"
+          },
+          "sdp_offer": {
+            "ref": "text"
+          }
+        }
+      }
+    }
+  ],
+  "notes": [
+    "Protocol/CVE individual exceptions below are grandfathered explicitly, not broadened by semantic type.",
+    "Media URL fields are model content references. Actual fetch/control URL fields remain controls; excluding them requires a separate review.",
+    "HTTP payload compatibility does not change provider acceptance, schema validation, size, MIME, query, authentication, signature or WSS checks."
+  ],
+  "protocolOperations": [
+    {
+      "api": "azure-speech-v1",
+      "path": "models/azure-speech/v1",
+      "operation": "tts",
+      "method": "POST",
+      "urlTemplate": "/synthesize",
+      "kind": "registeredOperation",
+      "bodyFormat": "text",
+      "sources": [
+        "gateway"
+      ],
+      "handling": "raw-body-or-control; no JSON data exclusion",
+      "apiType": "http",
+      "contentTypes": [
+        "application/ssml+xml"
+      ]
+    },
+    {
+      "api": "azure-speech-v1",
+      "path": "models/azure-speech/v1",
+      "operation": "stt",
+      "method": "POST",
+      "urlTemplate": "/recognize",
+      "kind": "registeredOperation",
+      "bodyFormat": "binary",
+      "sources": [
+        "gateway"
+      ],
+      "handling": "raw-body-or-control; no JSON data exclusion",
+      "apiType": "http",
+      "contentTypes": [
+        "audio/wav"
+      ]
+    },
+    {
+      "api": "document-analysis-v1",
+      "path": "tools/documents/v1",
+      "operation": "analyze_document",
+      "method": "POST",
+      "urlTemplate": "/analyze",
+      "kind": "documentAnalysis",
+      "bodyFormat": "binary",
+      "sources": [
+        "gateway"
+      ],
+      "handling": "raw-body-or-control; no JSON data exclusion",
+      "apiType": "http",
+      "contentTypes": [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/tiff",
+        "image/bmp",
+        "image/heif",
+        "image/heic",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/html"
+      ]
+    },
+    {
+      "api": "graph-profile-v1",
+      "path": "tools/graph/v1",
+      "operation": "graph_profile_self",
+      "method": "GET",
+      "urlTemplate": "/me",
+      "kind": "registeredOperation",
+      "bodyFormat": null,
+      "sources": [
+        "gateway"
+      ],
+      "handling": "raw-body-or-control; no JSON data exclusion",
+      "apiType": "http"
+    }
+  ]
+}

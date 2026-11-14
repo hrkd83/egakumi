@@ -36,7 +36,11 @@ def managed_ai_paths(config):
     Authentication, administration, custom and unexpanded routes never receive the
     standard AI exception merely because they share an API prefix.
     """
-    manifest = json.loads((REPOSITORY / "apps/gateway/waf-data-exclusions.json").read_text(encoding="utf-8"))
+    # Import lazily: the public contract renderer has no configuration-loader
+    # dependency. Resolve deployment URLs from selected canonical operations,
+    # so adding a model does not require another WAF selector/model allowlist.
+    from waf_contracts import require_source_routes
+    manifest = require_source_routes(config.get("apiDefinitions", []))
     standard = {path for profile in manifest["profiles"] if profile["scope"] == "gateway"
                 and profile["name"] not in ("g-document-status", "g-realtime-ticket")
                 for path in profile["paths"]}
