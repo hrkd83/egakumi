@@ -530,9 +530,6 @@ class GrpcInfrastructureSourceTests(unittest.TestCase):
                     f"[{source}], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')",
                     network,
                 )
-        self.assertIn("allowRule('allow-apim-http', nsgPriorities.groups.agw.rules['allow-apim-http'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])", network)
-        self.assertIn("allowRule('allow-apim-grpc', nsgPriorities.groups.agw.rules['allow-apim-grpc'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])", network)
-        self.assertNotIn("withAccess(allowRule('allow-apim-grpc'", network)
         # NSG の宛先を変えても、Firewall を迂回する経路や別ノード宛ての FW 許可は追加しない。
         self.assertIn("addressPrefix: '${apimPrivateIp}/32'", network)
         self.assertIn("nextHopIpAddress: firewallPrivateIp", network)

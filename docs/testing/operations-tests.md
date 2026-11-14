@@ -51,6 +51,22 @@
 
 `OPS-04`は容量変更を実測の代表とする。追加モデルや版変更の全組合せを実行する項目ではない。実モデルとconfigの不一致検出は、`tests/test_publish_apis.py`の`PublicationTests.test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes`等の偽ARM応答でローカル確認する。Gの計画は実モデルを読み取らず、G実行のAPI公開検査までにBroker・SQL等も配備されるため、不一致入力を実環境へ渡して全書込0の試験にしない。
 
+### AppGWの重複送信規則を回収する場合の確認
+
+[限定回収の手順](../operations/platform-settings.md#appgwの重複する送信規則を回収する)
+に従い、実施前後の結果を環境別の保護実施票へ記録する。
+次は受入条件であり、各環境で実測する前にPASSとはしない。
+
+- ソースのコンパイル結果はAppGWのカスタム受信6本・送信0本。
+  APIM・PEの受信Allow、他NSGの規則と優先度を維持する。
+- 合成ARMで、全3本の照合が終わる前の書込0、誤った所有・方向・優先度・
+  条件の拒否、既定許可や宛先の不一致、送信Deny、競合、応答不明、
+  部分完了からの再計画、再実行0書込を確認する。
+- 実Azureの変更はAppGWの既知の3子DELETEだけ。他3 NSG、AppGW受信6本、
+  既定規則・関連付け、UDR・Firewall・DNSが不変であることを読戻し比較する。
+- 新しい接続で通常API、gRPC経路、Portal転送、公開TLSとVault証明書参照を
+  確認する。認証拒否・TLSのみ・実推論成功を区別し、未測定の層を記録する。
+
 ## 実施順とまとめ方
 
 1. 共通準備、ソース・設定変更、ローカル検査、秘密・証明書更新の前提を先にまとめる。不具合は一覧にして同系統ごとに直し、独立した確認は続ける。

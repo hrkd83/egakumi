@@ -39,9 +39,15 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 | Inbound | 225 | `allow-gateway-manager` | GatewayManager制御 |
 | Inbound | 230 | `allow-load-balancer` | Azure LBのヘルス監視 |
 | Inbound | 4096 | `deny-other-inbound` | その他の受信を拒否 |
-| Outbound | 120 | `allow-apim-http` | AppGWからAPIMへHTTP |
-| Outbound | 125 | `allow-apim-grpc` | AppGWからAPIMへgRPC |
-| Outbound | 220 | `allow-key-vault` | AppGWからVault PE |
+
+AppGWのカスタム送信規則は0本とし、既定65000・65001・65500を維持する。
+APIMとKey Vault PEは同じVNet内にあり、追加の送信Denyを置かないため、
+これらへの送信は既定65000の`AllowVnetOutBound`で許可される。
+個別Allowを削除しても通信制限は強まらない。対向APIM・PEの受信Allowは、
+各NSGの4096のDenyより先に必要なため維持する。
+
+既存環境の3子規則の回収には、[AppGW送信規則の限定回収](platform-settings.md#appgwの重複する送信規則を回収する)
+を使う。同番号の受信規則や、PEの同名`allow-key-vault`は対象にしない。
 
 ### APIM（apim）
 

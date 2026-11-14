@@ -79,8 +79,8 @@ var nsgDefinitions = [
       allowRule('allow-client-web', nsgPriorities.groups.agw.rules['allow-client-web'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
       allowRule('allow-gateway-manager', nsgPriorities.groups.agw.rules['allow-gateway-manager'].priority, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
       allowRule('allow-load-balancer', nsgPriorities.groups.agw.rules['allow-load-balancer'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
-      // Required Internet egress uses Azure default rule 65001; no custom
-      // outbound Deny is added. Backend-specific allows are bound afterwards.
+      // VNet内とInternetへの送信は既定65000・65001を使います。
+      // AppGWのカスタム送信規則は作成しません。
     ]
   }
   {

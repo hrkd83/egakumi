@@ -27,18 +27,6 @@
         "deny-other-inbound": {
           "direction": "Inbound",
           "priority": 4096
-        },
-        "allow-apim-http": {
-          "direction": "Outbound",
-          "priority": 120
-        },
-        "allow-apim-grpc": {
-          "direction": "Outbound",
-          "priority": 125
-        },
-        "allow-key-vault": {
-          "direction": "Outbound",
-          "priority": 220
         }
       }
     },

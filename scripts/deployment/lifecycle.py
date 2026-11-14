@@ -125,6 +125,7 @@ from .helpers.powershell_runtime import locate_powershell, powershell_environmen
 from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as configure_grpc_endpoint, prepare_secret as prepare_grpc_secret, remove_secret as remove_grpc_secret
 from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
 from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
+from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 
 ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
@@ -151,6 +152,20 @@ def cleanup_dns_nsg_rules(config: dict, transport) -> dict:
     try:
         return retire_dns_rules(config, transport, execute=True, record=record)
     except DnsNsgError as error:
+        record("failed", {"status": "stopped", "responseMayBeUnknown": True})
+        raise DeploymentError(str(error)) from None
+
+
+def cleanup_appgw_egress_nsg_rules(config: dict, transport) -> dict:
+    """通常構築でも AppGW の不要な 3 子規則だけを保護記録付きで回収する。"""
+    def record(event, value):
+        path = (local_paths(config, ROOT).state / "appgw-egress-nsg-retirement"
+                / (str(time.time_ns()) + "-" + event + ".json"))
+        protected_json(path, value)
+    try:
+        return retire_appgw_egress_rules(
+            config, transport, execute=True, record=record)
+    except AppgwEgressNsgError as error:
         record("failed", {"status": "stopped", "responseMayBeUnknown": True})
         raise DeploymentError(str(error)) from None
 
@@ -1077,6 +1092,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     transport = ArmTransport(config)
     if phase == "core":
         cleanup_dns_nsg_rules(config, transport)
+        cleanup_appgw_egress_nsg_rules(config, transport)
         try:
             cleanup_disabled_operator(config, transport)
         except OperatorAccessError as error:
@@ -1451,6 +1467,7 @@ def _preprovision(config: dict) -> None:
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
     cleanup_dns_nsg_rules(config, transport)
+    cleanup_appgw_egress_nsg_rules(config, transport)
     try:
         cleanup_disabled_operator(config, transport)
     except OperatorAccessError as error:

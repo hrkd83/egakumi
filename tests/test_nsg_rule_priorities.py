@@ -8,6 +8,7 @@ from pathlib import Path
 import unittest
 
 from bicep_helpers import compile_bicep
+from arm_helpers import DiscoveryExpression
 import test_parameter_ip_ownership as ip_fixtures
 from test_parameter_ip_ownership import NetworkArmExpression
 
@@ -75,7 +76,6 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(set(self.contract["groups"]), set(GROUPS))
         business = {
             ("agw", "allow-client-web"), ("agw", "allow-client-grpc"),
-            ("agw", "allow-apim-http"), ("agw", "allow-apim-grpc"),
             ("apim", "allow-agw-api"), ("apim", "allow-agw-grpc"),
             ("apim", "allow-private-backends"), ("apim", "allow-credential-broker"),
             ("pep", "allow-apim-foundry")}
@@ -98,7 +98,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                     low, high = (120, 200) if (group, name) in business else (220, 300)
                     self.assertTrue(low <= rule["priority"] < high)
                     self.assertEqual((rule["priority"] - low) % 5, 0)
-        self.assertEqual((count, terminal), (49, 6))
+        self.assertEqual((count, terminal), (46, 6))
 
     def test_every_compiled_rule_matches_exact_contract_without_new_outbound_deny(self):
         rules = self.compiled_rules(self.parameters())
@@ -109,7 +109,7 @@ class NsgRulePriorityTests(unittest.TestCase):
                 self.assertEqual({key: rule[key] for key in ("direction", "priority")}, expected[name])
             if group in ("agw", "pep"):
                 self.assertNotIn("deny-other-outbound", actual)
-        self.assertNotIn("allow-internet", rules["agw"])
+        self.assertTrue(all(rule["direction"] == "Inbound" for rule in rules["agw"].values()))
         suffixes = self.resolve("network", "[variables('nsgResourceNames')]", self.parameters())
         self.assertEqual(suffixes, ["nsg-test-fixture-" + self.contract["groups"][name]["suffix"]
                                     for name in GROUPS])
@@ -120,10 +120,38 @@ class NsgRulePriorityTests(unittest.TestCase):
                 "Inbound": {"allow-client-web": 120, "allow-client-grpc": 125,
                             "allow-certificate-observer": 220, "allow-gateway-manager": 225,
                             "allow-load-balancer": 230, "deny-other-inbound": 4096},
-                "Outbound": {"allow-apim-http": 120, "allow-apim-grpc": 125,
-                             "allow-key-vault": 220}}.items():
+                "Outbound": {}}.items():
             self.assertEqual({name: rule["priority"] for name, rule in rules.items()
                               if rule["direction"] == direction}, expected)
+
+    def test_gateway_egress_uses_defaults_without_rewriting_existing_parent_nsgs(self):
+        parameters = self.parameters()
+        names = self.resolve("network", "[variables('nsgResourceNames')]", parameters)
+        parameters["existingNetworkSecurityGroupNames"] = names
+        template = self.templates["network"]
+        expression = DiscoveryExpression("[variables('newNsgResourceNames')]", template["variables"],
+                                         functions=template.get("functions", []))
+        self.assertEqual(expression.evaluate(parameters), [])
+        resources = self.templates["network"]["resources"]
+        self.assertEqual(resources["createdNsgs"]["properties"], {})
+        self.assertEqual(resources["nsgTagUpdates"]["type"], "Microsoft.Resources/tags")
+        for module in ("network", "network-bindings"):
+            items = self.templates[module]["resources"]
+            items = list(items.values()) if isinstance(items, dict) else items
+            self.assertFalse(any(item["type"].endswith("/defaultSecurityRules") for item in items))
+        rules = self.compiled_rules(parameters)
+        self.assertEqual(sum(rule["direction"] == "Inbound" for rule in rules["agw"].values()), 6)
+        self.assertFalse(any(rule["direction"] == "Outbound" for rule in rules["agw"].values()))
+        for name, port in (("allow-agw-api", "80"), ("allow-agw-grpc", "443")):
+            with self.subTest(receiver=name):
+                self.assertEqual(rules["apim"][name]["access"], "Allow")
+                self.assertEqual(rules["apim"][name]["sourceAddressPrefix"], parameters["subnetPrefixes"]["agw"])
+                self.assertEqual(rules["apim"][name]["destinationAddressPrefix"], parameters["subnetPrefixes"]["apim"])
+                self.assertEqual(rules["apim"][name]["destinationPortRange"], port)
+        vault = rules["pep"]["allow-key-vault"]
+        self.assertEqual(vault["sourceAddressPrefixes"], [parameters["subnetPrefixes"]["agw"], parameters["subnetPrefixes"]["apim"]])
+        self.assertEqual(vault["destinationAddressPrefix"], parameters["keyVaultPrivateIps"][0])
+        self.assertEqual((vault["access"], vault["destinationPortRange"]), ("Allow", "443"))
 
     def test_disabled_operator_is_absent_and_other_optional_denies_keep_their_scope(self):
         parameters = self.parameters()

@@ -99,20 +99,16 @@ var clientAddressPrefixes = config.?clientAddressPrefixes ?? ['0.0.0.0/0']
 // 配列の順番は agw / apim / pep / management。宛先は Azure の実出力を使い、PE の複数 IP を全て扱います。
 var rulesByNsg = [
   [
-    // 内部ロードバランサーの背後で変わる APIM ノードも含め、送受信 NSG の宛先を専用サブネットへ限定します。
-    // 接続先 URL、Firewall の許可先、Firewall へ送る UDR は引き続き APIM の VIP を使います。
-    allowRule('allow-apim-http', nsgPriorities.groups.agw.rules['allow-apim-http'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
-    allowRule('allow-key-vault', nsgPriorities.groups.agw.rules['allow-key-vault'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], keyVaultPrivateIps, ['443'])
+    // AppGW の送信は NSG の既定規則を使い、受信規則だけを追加します。
     withAccess(allowRule('allow-certificate-observer', nsgPriorities.groups.agw.rules['allow-certificate-observer'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
     // gRPC は常設し、入力検査を通った1件以上の利用者許可範囲から接続を受けます。
     allowRule('allow-client-grpc', nsgPriorities.groups.agw.rules['allow-client-grpc'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)])
-    allowRule('allow-apim-grpc', nsgPriorities.groups.agw.rules['allow-apim-grpc'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)])
   ]
   [
     allowRule('allow-private-backends', nsgPriorities.groups.apim.rules['allow-private-backends'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], foundryPrivateIps, ['443'])
     withAccess(allowRule('allow-key-vault-pe', nsgPriorities.groups.apim.rules['allow-key-vault-pe'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], keyVaultPrivateIps, ['443']), permitApimKeyVault ? 'Allow' : 'Deny')
     // APIM は内部ロードバランサーの VIP で受けます。NSG の許可範囲は APIM 専用サブネットに揃えます。
-    // 宛先は送信側 NSG と同じ APIM 専用サブネットへ限定し、送信元と TCP ポートは広げません。
+    // 宛先を APIM 専用サブネットへ限定し、送信元と TCP ポートは広げません。
     // https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview
     withAccess(allowRule('allow-agw-grpc', nsgPriorities.groups.apim.rules['allow-agw-grpc'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
     withAccess(allowRule('allow-management-grpc', nsgPriorities.groups.apim.rules['allow-management-grpc'].priority, 'Inbound', 'Tcp', [managementPrivateIp], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
