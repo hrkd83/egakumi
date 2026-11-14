@@ -31,6 +31,28 @@ class ApiContractConfigurationTests(unittest.TestCase):
         return _apis([api],TENANT,{'text-model','vision-model'},'https://gateway.example.com',
             {'subscriptionKeyHeader':'api-key'})[0]
 
+    def test_profile_model_alias_targets_existing_allowed_deployment(self):
+        api = contract()
+        api['authorization']['operationConstraints']['chat-completions']['profiles'][0]['modelAliases'] = {'synthetic-review': 'text-model'}
+        result = self.normalize(api)['authorization']['operationConstraints']['chat-completions']
+        self.assertEqual(result['profiles'][0]['modelAliases'], {'synthetic-review': 'text-model'})
+        self.assertEqual(result['allowedModels'], ['text-model', 'vision-model'])
+        self.assertNotIn('modelAliases', result)
+        self.assertNotIn('modelAliases', result['profiles'][1])
+
+    def test_profile_model_alias_rejects_shadowing_chains_unallowed_targets_and_nonprofile_scope(self):
+        for aliases in ({}, [], {'bad*': 'text-model'}, {'text-model': 'text-model'}, {'vision-model': 'text-model'},
+                {'synthetic-review': 'vision-model'}, {'synthetic-review': 'unregistered'}, {'synthetic-review': 1},
+                {'first': 'second', 'second': 'text-model'}, {'self': 'self'}):
+            api = contract()
+            api['authorization']['operationConstraints']['chat-completions']['profiles'][0]['modelAliases'] = aliases
+            with self.subTest(aliases=aliases), self.assertRaises(ConfigurationError):
+                self.normalize(api)
+        api = contract()
+        api['authorization']['operationConstraints']['chat-completions']['modelAliases'] = {'synthetic-review': 'text-model'}
+        with self.assertRaisesRegex(ConfigurationError, 'modelAliases'):
+            self.normalize(api)
+
     def test_profiles_preserve_limits_while_outer_envelope_bounds_bytes(self):
         result=self.normalize(contract())['authorization']['operationConstraints']['chat-completions']
         self.assertEqual(result['maxRequestBytes'],262144)

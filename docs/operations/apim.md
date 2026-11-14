@@ -23,6 +23,16 @@ authorization.operationConstraints["chat-completions"]
 
 `profiles`を持つoperationの外側の`maxRequestBytes`は、読込時に全profileの最大値から組み立てられる。外側だけを4096にしてもChatの上限変更にはならない。Visionの大きい上限が残るため、外側とChatの値が同じになるとも限らない。
 
+## モデル名の別名を設定する
+
+JSON本文に`model`を持つFoundry OpenAIのChat／Responsesでは、個別profileの`modelAliases`に別名と実配備名の対応表を定義できる。XMLへ対応表を直接書かない。標準定義ではResponsesの`response`だけに`{"codex-auto-review":"gpt-5.6-luna"}`を設定する。これはGateway側のモデル選択であり、OpenAI側の内部モデルが同一という意味ではない。
+
+対応先は、そのprofileの`allowedModels`にある構築済みモデルに限る。既存モデル名の上書き、別名の連鎖・循環、ワイルドカード、別profileへの引継ぎは許可しない。別名を`allowedModels`やFoundryのモデル配備一覧へ追加しない。
+
+処理順はprofile選択と別名解決、購読認可、元の受信byte数と実モデルの出力上限、操作の対象検査、`model`の変換、既存の監査・購読上限・native token制限、転送とする。Responsesの既存`store:false`変換は維持する。別名は認証・権限・利用上限の免除条件ではない。SSE応答を書き換えない。
+
+監査の`targetModel`は転送先の実配備名とし、設定済み別名を変換した場合だけ`requestedModel`と`modelAliasApplied:true`も記録する。任意の未許可モデル名・本文・資格情報は記録しない。共通変換処理を初めて導入するときはAPIポリシーと関連fragmentの更新が必要で、その後の対応表はJSONを正本として生成・配備する。
+
 ## 変更前の準備
 
 1. 同じ環境のparams・state・APIM識別子と、同時実行中の配備がないことを確認する。

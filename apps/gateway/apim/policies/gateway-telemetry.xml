@@ -1,12 +1,6 @@
 <fragment>
-  <!--
-    各ポリシーが共通利用する監査メタデータ出力です。要求 ID・許可判定・所要時間・状態コード等だけを記録します。
-    本文、URL の自由な query、Authorization、subscription key、OAuth 接続 token をログへ出しません。
-    監査項目は明示的な allowlist で組み立てます。新しい値を追加するときも個人情報や秘密情報を含まないか確認します。
-  -->
-  <!-- 診断の詳細レベルをinformation、samplingを100%にすると、Azure MonitorのTraceRecordsへ記録します。
-       https://learn.microsoft.com/azure/api-management/trace-policy
-       値はサーバーの実行情報と検証済みの認可結果から選択します。 -->
+  <!-- Allowlisted audit metadata only; never read bodies or credentials. -->
+
   <trace source="core-gateway" severity="information">
     <message>@{
       var phase = context.Variables.ContainsKey(&quot;gatewayAuditPhase&quot;) ? (string)context.Variables[&quot;gatewayAuditPhase&quot;] : &quot;unknown&quot;;
@@ -62,6 +56,19 @@
           var model = context.Variables.ContainsKey("gatewayAuditModel") ? (string)context.Variables["gatewayAuditModel"] : "";
           if (!String.IsNullOrEmpty(model)) {
             record["targetModel"] = model;
+            /* Only a configured alias in the selected profile is recorded.
+               Never log an arbitrary rejected request model or request body. */
+            if (context.Variables.ContainsKey("gatewayProfileSelection")) {
+              var selected = JObject.Parse((string)context.Variables["gatewayProfileSelection"]);
+              var requested = (string)selected["requestedModel"];
+              var aliases = selected["constraint"]?["modelAliases"] as JObject;
+              if ((bool?)selected["allowed"] == true &amp;&amp; (string)selected["effectiveModel"] == model
+                  &amp;&amp; requested != model &amp;&amp; System.Text.RegularExpressions.Regex.IsMatch(requested ?? "", "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+                  &amp;&amp; (string)aliases?[requested] == model) {
+                record["requestedModel"] = requested;
+                record["modelAliasApplied"] = true;
+              }
+            }
             var operation = String.IsNullOrEmpty((string)settings["operationId"]) ? context.Operation.Id : (string)settings["operationId"];
             if (((JArray)settings["llmOperationIds"]).Any(o =&gt; (string)o == operation)) {
               record["usageStatus"] = "native-log-join-required";

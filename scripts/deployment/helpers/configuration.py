@@ -443,7 +443,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     """Validate each JSON profile with the same limits as an ordinary operation."""
     p, op_name = q, operation["name"]
     backend, api_type, mode = api["backendService"], api["apiType"], api["authorization"]["mode"]
-    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel", "embeddingInputField"})
+    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel", "embeddingInputField", "modelAliases"})
     kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis", "documentAnalysisStatus"))
     # profileの上流URIは、登録時に検査した固定表としてBicepへ渡します。
     # 選択済みprofileのモデルと転送先を一体で扱います。
@@ -601,6 +601,21 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         allowed = _strings(constraint.get("allowedModels"), q + ".allowedModels", minimum=1)
         if backend in ("foundryOpenAi", "foundryServices") and not set(allowed) <= deployed_models:
             _fail(q + ".allowedModels", "must reference explicitly configured model deployments")
+    # Aliases are profile-owned names for existing deployments, never new
+    # permissions, deployments or a chain of routing instructions.
+    if "modelAliases" in constraint:
+        if allow_profiles or api_type != "http" or backend != "foundryOpenAi" or kind not in ("bodyModel", "statelessResponses") or body_format != "json":
+            _fail(q + ".modelAliases", "requires a Foundry OpenAI JSON model profile")
+        aliases = _object(constraint["modelAliases"], q + ".modelAliases")
+        if not 1 <= len(aliases) <= 32:
+            _fail(q + ".modelAliases", "must contain 1 through 32 exact aliases")
+        for alias, target in aliases.items():
+            if not isinstance(alias, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", alias):
+                _fail(q + ".modelAliases", "must use exact safe model identifiers")
+            if alias in deployed_models or alias in allowed:
+                _fail(q + ".modelAliases", "aliases must not shadow deployed or allowed models")
+            if not isinstance(target, str) or target not in allowed or target not in deployed_models or target in aliases:
+                _fail(q + ".modelAliases", "targets must be directly allowed existing deployments; alias chains are prohibited")
     if kind == "pathModel":
         param = _string(constraint.get("parameter"), q + ".parameter")
         if param not in {item["name"] for item in operation["templateParameters"]}:
@@ -660,7 +675,7 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     profile_ids = set()
     normalized = []
     # Individual profiles may carry the complete ordinary constraint contract.
-    ordinary_fields = {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "backendUrlTemplate"}
+    ordinary_fields = {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "backendUrlTemplate", "modelAliases"}
     for index, entry in enumerate(profiles):
         label = f"{q}.profiles[{index}]"
         _object(entry, label, ordinary_fields | {"profileId", "modalities"})
