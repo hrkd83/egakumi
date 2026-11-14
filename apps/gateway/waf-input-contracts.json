@@ -50,8 +50,17 @@
       "REQUEST-932-APPLICATION-ATTACK-RCE",
       "REQUEST-933-APPLICATION-ATTACK-PHP",
       "REQUEST-941-APPLICATION-ATTACK-XSS",
-      "REQUEST-942-APPLICATION-ATTACK-SQLI"
+      "REQUEST-942-APPLICATION-ATTACK-SQLI",
+      "REQUEST-944-APPLICATION-ATTACK-JAVA"
     ]
+  },
+  "groupSetRuleExclusions": {
+    "ai-data": {
+      "REQUEST-921-PROTOCOL-ATTACK": [
+        "921110",
+        "921130"
+      ]
+    }
   },
   "types": {
     "text": {

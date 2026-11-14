@@ -298,10 +298,13 @@ class WafLayoutBicepTests(unittest.TestCase):
             profile = next(p for p in self.profiles if p["name"] == purpose)
             entry, = [e for e in profile["exclusions"] if e["selector"] == selector]
             self.assertEqual((entry["matchVariable"], entry["selectorMatchOperator"]), ("RequestArgValues", "Equals"))
-            groups = [{"ruleGroupName": name} for name in (
+            groups = [{"ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                       "rules": [{"ruleId": "921110"}, {"ruleId": "921130"}]}]
+            groups += [{"ruleGroupName": name} for name in (
                 "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
                 "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
-                "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
+                "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI",
+                "REQUEST-944-APPLICATION-ATTACK-JAVA")]
             self.assertEqual(entry["exclusionManagedRuleSets"][0]["ruleGroups"], groups)
 
     def test_external_policy_boundary_remains_readonly(self):

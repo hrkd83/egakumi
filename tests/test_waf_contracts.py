@@ -15,6 +15,24 @@ from waf_contracts import (APP_GROUPS, CATALOG, MANIFEST, approved_group_scopes,
                            generated_manifest, load_contracts, render, require_source_routes)
 
 
+def common_data_before_manifest():
+    """Expand the frozen pre-change oracle without consulting the current catalog."""
+    value = json.loads((ROOT / 'tests/fixtures/waf-common-data-before.json').read_text())
+    profiles = []
+    for source in value['profiles']:
+        profile = {key: source[key] for key in ('name', 'scope', 'paths')}
+        profile['exclusions'] = [
+            {'matchVariable': entry['variable'], 'selectorMatchOperator': entry['operator'],
+             'selector': entry['selector'], 'exclusionManagedRuleSets': [{
+                 'ruleSetType': 'OWASP', 'ruleSetVersion': '3.2', 'ruleGroups': [
+                     {'ruleGroupName': name, **({} if rules is None else {
+                         'rules': [{'ruleId': rule} for rule in rules]})}
+                     for name, rules in entry['groups'].items()]}]}
+            for entry in source['entries']]
+        profiles.append(profile)
+    return {'version': 2, 'profiles': profiles}
+
+
 class WireContractTests(unittest.TestCase):
     def tree(self, folder):
         root = Path(folder)
@@ -97,6 +115,64 @@ class WireContractTests(unittest.TestCase):
                         self.assertIn(group['ruleGroupName'], APP_GROUPS)
                     else:
                         self.assertFalse({'949110', '980130'} & {r['ruleId'] for r in group['rules']})
+
+    def test_common_compatibility_expansion_preserves_all_prior_scopes_and_rules(self):
+        before = common_data_before_manifest()
+        after = generated_manifest()
+        old_groups = {
+            'REQUEST-930-APPLICATION-ATTACK-LFI', 'REQUEST-931-APPLICATION-ATTACK-RFI',
+            'REQUEST-932-APPLICATION-ATTACK-RCE', 'REQUEST-933-APPLICATION-ATTACK-PHP',
+            'REQUEST-941-APPLICATION-ATTACK-XSS', 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+        }
+
+        def scopes(manifest):
+            return {(p['name'], p['scope'], tuple(p['paths']), e['matchVariable'],
+                     e['selectorMatchOperator'], e['selector']): {
+                         g['ruleGroupName']: None if 'rules' not in g else {
+                             r['ruleId'] for r in g['rules']}
+                         for g in e['exclusionManagedRuleSets'][0]['ruleGroups']}
+                    for p in manifest['profiles'] for e in p['exclusions']}
+
+        previous, current = scopes(before), scopes(after)
+        self.assertEqual(len(before['profiles']), 22)
+        self.assertEqual(len(after['profiles']), 22)
+        self.assertEqual(len(previous), 120)
+        self.assertEqual(sum(len(p['exclusions']) for p in after['profiles']), 120)
+        self.assertEqual(set(previous), set(current))
+        expected_scopes = {key for key, groups in previous.items()
+                           if {name for name, rules in groups.items() if rules is None} == old_groups}
+        self.assertEqual(len(expected_scopes), 117)
+        self.assertEqual(len({key[0] for key in expected_scopes}), 21)
+        java = 'REQUEST-944-APPLICATION-ATTACK-JAVA'
+        protocol = 'REQUEST-921-PROTOCOL-ATTACK'
+        self.assertEqual({key for key, groups in current.items()
+                          if java in groups and groups[java] is None}, expected_scopes)
+        for rule in ('921110', '921130'):
+            self.assertEqual({key for key, groups in current.items()
+                              if rule in (groups.get(protocol) or set())}, expected_scopes)
+        for key, groups in previous.items():
+            expected = copy.deepcopy(groups)
+            if key in expected_scopes:
+                expected[java] = None
+                expected.setdefault(protocol, set()).update({'921110', '921130'})
+            with self.subTest(profile=key[0], variable=key[3], selector=key[5]):
+                self.assertEqual(current[key], expected)
+        frozen = json.loads((ROOT / 'tests/fixtures/waf-common-data-before.json').read_text())
+        self.assertEqual(check_legacy_coverage(frozen, after), [])
+
+    def test_catalog_rejects_unreviewed_common_protocol_rules_and_whole_protocol_group(self):
+        for change in ('rule', 'group'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                root = self.tree(folder)
+                value = load_contracts(root)
+                if change == 'rule':
+                    value['groupSetRuleExclusions']['ai-data'][
+                        'REQUEST-921-PROTOCOL-ATTACK'].append('921120')
+                else:
+                    value['groupSets']['ai-data'].append('REQUEST-921-PROTOCOL-ATTACK')
+                (root / CATALOG).write_text(json.dumps(value))
+                with self.assertRaises(ValueError):
+                    generated_manifest(root)
 
     def test_control_envelopes_retain_only_their_explicit_legacy_exceptions(self):
         for profile in ('p-document-upload', 'p-speech'):

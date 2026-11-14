@@ -19,7 +19,7 @@ import re
 import time
 
 from deployment.helpers.paths import REPOSITORY
-from waf_contracts import (APP_GROUPS, approved_group_scopes, generated_manifest,
+from waf_contracts import (APP_GROUPS, APP_RULES, approved_group_scopes, generated_manifest,
                            require_source_routes, render as check_contract_manifest)
 from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
                                                 NETWORK_API, portal_session_exclusions)
@@ -38,7 +38,8 @@ SCOPED_DATA_POLICY_KEYS = {'gateway': GATEWAY_DATA_POLICY_KEYS, 'portal': PORTAL
 RESERVED_POLICY_KEYS = frozenset(key for keys in PROTOCOL_POLICY_KEYS.values() for key in keys)
 
 # These groups inspect application source syntax that is legitimate AI data.
-# Protocol, parser, anomaly-scoring and Known-CVE groups are deliberately absent.
+# Protocol groups stay active; only the shared individual rule below is scoped
+# to the same existing AI data fields. Parser, anomaly and CVE groups stay active.
 AI_DATA_RULE_GROUPS = APP_GROUPS
 # Only these existing signed control operations need an unbounded identifier.
 # API publication and the exact operation contract must still match; this is not
@@ -173,6 +174,13 @@ def _validate_manifest(data):
                     raise ValueError('WAF exclusions require individual contributing rule IDs')
                 if len({rule['ruleId'] for rule in rules}) != len(rules):
                     raise ValueError('WAF exclusion rule IDs must be unique within their group')
+                for rule in rules:
+                    # Keep legacy 921130 individual manifests readable, including
+                    # version 1. Only the new 921110 scope guard is enforced here.
+                    if rule['ruleId'] == '921110' and (
+                            rule['ruleId'] not in APP_RULES.get(group_name, ())
+                            or data['version'] != 2 or not _allows_ai_group(profile, item, approved)):
+                        raise ValueError('Common individual WAF rules require the existing approved AI data scope')
     return data
 
 

