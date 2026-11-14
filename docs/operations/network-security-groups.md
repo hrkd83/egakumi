@@ -35,10 +35,14 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 | --- | --- | --- | --- |
 | Inbound | 120 | `allow-client-web` | 利用者のHTTP/HTTPS |
 | Inbound | 125 | `allow-client-grpc` | 利用者のgRPC |
-| Inbound | 220 | `allow-certificate-observer` | 証明書の公開到達確認 |
+| Inbound | 220 | `allow-firewall-public-ingress` | 自VNetのFirewall公開IPからAppGW公開入口443への受信 |
 | Inbound | 225 | `allow-gateway-manager` | GatewayManager制御 |
 | Inbound | 230 | `allow-load-balancer` | Azure LBのヘルス監視 |
 | Inbound | 4096 | `deny-other-inbound` | その他の受信を拒否 |
+
+`allow-firewall-public-ingress`の送信元は、同じVNetのFirewallの公開IP `/32`、
+宛先はAppGWサブネットのTCP443に限定する。既存の`certificatePublicProbeEnabled`で
+Allow／Denyを切り替え、未指定時はAllowとする。
 
 AppGWのカスタム送信規則は0本とし、既定65000・65001・65500を維持する。
 APIMとKey Vault PEは同じVNet内にあり、追加の送信Denyを置かないため、

@@ -12,7 +12,7 @@
           "direction": "Inbound",
           "priority": 125
         },
-        "allow-certificate-observer": {
+        "allow-firewall-public-ingress": {
           "direction": "Inbound",
           "priority": 220
         },

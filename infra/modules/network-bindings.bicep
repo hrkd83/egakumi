@@ -22,7 +22,7 @@ param routeTableNames object
 param firewallPolicyName string
 @description('Firewall の確定済みプライベート IP。UDR の next hop として使います。')
 param firewallPrivateIp string
-@description('Firewall の公開 IP。管理 VM から公開入口を確認した際の送信元 IP に使います。')
+@description('同じ VNet の Firewall の公開 IP。AppGW の公開入口 443 へ入る通信の送信元 IP に使います。')
 param firewallPublicIpAddress string
 @minLength(1)
 @description('内部 APIM の作成後に割り当てられたプライベート IP。UDR・許可規則の宛先に使います。')
@@ -100,7 +100,7 @@ var clientAddressPrefixes = config.?clientAddressPrefixes ?? ['0.0.0.0/0']
 var rulesByNsg = [
   [
     // AppGW の送信は NSG の既定規則を使い、受信規則だけを追加します。
-    withAccess(allowRule('allow-certificate-observer', nsgPriorities.groups.agw.rules['allow-certificate-observer'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
+    withAccess(allowRule('allow-firewall-public-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
     // gRPC は常設し、入力検査を通った1件以上の利用者許可範囲から接続を受けます。
     allowRule('allow-client-grpc', nsgPriorities.groups.agw.rules['allow-client-grpc'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)])
   ]
