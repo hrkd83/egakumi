@@ -75,7 +75,7 @@ PARAMETER_KEYS = {
 # IP条件と不可分な規則配列も、環境ごとにparamsで全体を選びます。
 # VNetとFirewallのdnsServersはAzure提供DNSに固定し、config側で管理します。
 PARAMETER_NETWORK_IP_KEYS = {
-    "addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "operatorAddressPrefixes",
+    "addressSpaces", "subnetPrefixes", "operatorAddressPrefixes",
     "ntpAddressPrefixes", "managementAdditionalSecurityRules",
 }
 PARAMETER_FIREWALL_IP_KEYS = {
@@ -312,10 +312,10 @@ def _network(raw: Any) -> dict:
     個々の値だけでは分からない組合せもここで確認する。
     """
     n = _object(copy.deepcopy(raw), "network", {
-        "addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "operatorAddressPrefixes",
+        "addressSpaces", "subnetPrefixes", "operatorAddressPrefixes",
         "operatorProtocol", "operatorPorts", "dnsServers", "bgpRoutePropagation", "firewall",
         "appGatewayZones", "ntpAddressPrefixes", "ntpFqdns", "dnsTtl", "apimKeyVaultAccessEnabled",
-        "certificatePublicProbeEnabled", "managementAdditionalSecurityRules",
+        "managementAdditionalSecurityRules",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
     prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(SUBNET_KINDS))
@@ -336,9 +336,7 @@ def _network(raw: Any) -> dict:
         subnet_networks.append(subnet)
     if any(left.overlaps(right) for i, left in enumerate(subnet_networks) for right in subnet_networks[i + 1:]):
         _fail("network.subnetPrefixes", "subnets overlap")
-    # 利用者の送信元は1件以上を指定し、空配列[]は拒否します。省略時は全IPv4許可。
-    # 運用者の空配列は引き続き許可元なしを表し、APIの認証は別途必要です。
-    n["clientAddressPrefixes"] = _cidrs(n.get("clientAddressPrefixes", ["0.0.0.0/0"]), "network.clientAddressPrefixes", minimum=1)
+    # 利用者の受信許可はBicep内の固定値を使い、運用者の接続元だけを入力から受け取ります。
     n["operatorAddressPrefixes"] = _cidrs(n.get("operatorAddressPrefixes", []), "network.operatorAddressPrefixes")
     n["dnsServers"] = _list(n.get("dnsServers", []), "network.dnsServers")
     if n["dnsServers"]:
@@ -349,8 +347,7 @@ def _network(raw: Any) -> dict:
     n["bgpRoutePropagation"] = {key: _bool(routes.get(key, True), "network.bgpRoutePropagation." + key) for key in ("agw", "apim", "management")}
     _choice(n.setdefault("operatorProtocol", "Tcp"), "network.operatorProtocol", ("Tcp", "Udp", "*"))
     n["operatorPorts"] = _strings(n.get("operatorPorts", ["22"]), "network.operatorPorts", minimum=1)
-    for key, default in (("apimKeyVaultAccessEnabled", True), ("certificatePublicProbeEnabled", True)):
-        _bool(n.setdefault(key, default), "network." + key)
+    _bool(n.setdefault("apimKeyVaultAccessEnabled", True), "network.apimKeyVaultAccessEnabled")
     _integer(n.setdefault("dnsTtl", 300), "network.dnsTtl", 1, 86400)
     _strings(n.setdefault("appGatewayZones", ["1", "2", "3"]), "network.appGatewayZones")
     _strings(n.setdefault("ntpAddressPrefixes", ["Internet"]), "network.ntpAddressPrefixes", minimum=1)
@@ -1523,7 +1520,7 @@ def _merge_configuration(base: dict, overrides: dict) -> dict:
 
 
 def _reject_config_environment_inputs(standard: dict) -> None:
-    """分離configへ混入した企業固有項目を、空値やparams上書きがあっても拒否する。
+    """分離configの企業固有項目とBicep固定項目を、値やparams上書きによらず拒否する。
 
     合成済み内部JSONは分離前の全体を持つため、この境界はconfigFileから
     読む標準configだけに適用します。実値はエラーへ含めません。
@@ -1541,6 +1538,11 @@ def _reject_config_environment_inputs(standard: dict) -> None:
     gateway = standard.get("gateway", {})
     if isinstance(gateway, dict) and "grpc" in gateway:
         _fail("config.gateway", "contains unsupported field(s): grpc")
+    network = standard.get("network", {})
+    if isinstance(network, dict):
+        unsupported = {"clientAddressPrefixes", "certificatePublicProbeEnabled"}.intersection(network)
+        if unsupported:
+            _fail("config.network", "contains unsupported field(s): " + ", ".join(sorted(unsupported)))
 
 
 def load_configuration_source(path: Path | str) -> dict:

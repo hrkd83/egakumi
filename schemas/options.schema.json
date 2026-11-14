@@ -201,10 +201,6 @@
           "minimum": 1,
           "maximum": 86400,
           "default": 300
-        },
-        "certificatePublicProbeEnabled": {
-          "type": "boolean",
-          "default": true
         }
       },
       "additionalProperties": false,

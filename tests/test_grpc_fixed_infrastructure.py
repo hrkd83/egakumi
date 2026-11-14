@@ -106,22 +106,37 @@ class FixedGrpcInfrastructureTests(unittest.TestCase):
                     for path in pathmap["pathRules"]:
                         self.assertEqual(path["properties"]["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
 
-    def test_valid_client_sources_keep_public_and_internal_grpc_ingress_allowed(self):
+    def test_public_grpc_ingress_stays_fixed_with_direct_config_overrides(self):
         template = self.templates["network"]
-        for clients in (None, ["0.0.0.0/0"], ["203.0.113.10/32"]):
+        for config in ({}, {"clientAddressPrefixes": []},
+                       {"clientAddressPrefixes": ["203.0.113.10/32"],
+                        "certificatePublicProbeEnabled": False}):
             parameters = self.defaults("network")
-            parameters.update(config={} if clients is None else {"clientAddressPrefixes": clients},
-                              subnetPrefixes={"agw": "192.0.2.0/26", "apim": "198.51.100.0/26", "management": "203.0.113.0/26"},
-                              foundryPrivateIps=["192.0.2.132"], keyVaultPrivateIps=["192.0.2.133"],
-                              managementPrivateIp="203.0.113.4", firewallPublicIpAddress="192.0.2.250")
+            parameters.update(
+                config=config,
+                subnetPrefixes={"agw": "192.0.2.0/26",
+                                "apim": "198.51.100.0/26",
+                                "management": "203.0.113.0/26"},
+                foundryPrivateIps=["192.0.2.132"],
+                keyVaultPrivateIps=["192.0.2.133"],
+                managementPrivateIp="203.0.113.4",
+                firewallPublicIpAddress="192.0.2.250",
+            )
             resolver = NetworkArmExpression("[true()]", template)
             groups = resolver.resolve("[variables('rulesByNsg')]", parameters)
             rules = {item["name"]: item["properties"] for group in groups for item in group}
-            with self.subTest(clients=clients):
-                self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (125, "Allow"))
-                self.assertEqual(rules["allow-client-grpc"]["sourceAddressPrefix"],
-                                 (clients or ["0.0.0.0/0"])[0])
-                self.assertEqual(rules["allow-client-grpc"]["destinationPortRange"], "8443")
+            with self.subTest(config=config):
+                public = rules["allow-client-grpc"]
+                self.assertEqual((public["priority"], public["access"]),
+                                 (125, "Allow"))
+                self.assertEqual(public["sourceAddressPrefix"], "0.0.0.0/0")
+                self.assertEqual(public["destinationPortRange"], "8443")
+                ingress = rules["allow-firewall-public-ingress"]
+                self.assertEqual((ingress["priority"], ingress["access"]),
+                                 (220, "Allow"))
+                self.assertEqual(ingress["sourceAddressPrefix"],
+                                 "192.0.2.250/32")
+                self.assertEqual(ingress["destinationPortRange"], "443")
                 self.assertTrue(all(item["properties"]["direction"] == "Inbound" for item in groups[0]))
                 for name in ("allow-agw-grpc", "allow-management-grpc", "allow-apim-grpc-comparison"):
                     self.assertEqual(rules[name]["access"], "Allow")

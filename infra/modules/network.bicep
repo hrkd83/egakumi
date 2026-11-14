@@ -68,8 +68,8 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-// 利用者の接続元は入力検査で1件以上を必須にします。省略時は全IPv4を使います。
-var clientAddressPrefixes = config.?clientAddressPrefixes ?? ['0.0.0.0/0']
+// 初期構築の利用者受信は全IPv4に固定し、params・configから変更しません。
+var clientAddressPrefixes = ['0.0.0.0/0']
 // 小さい priority の規則から評価されます。接続元を許可しても別段階の token/key 認証と API 認可は必要です。
 var nsgDefinitions = [
   {

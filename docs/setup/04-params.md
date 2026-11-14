@@ -39,7 +39,7 @@ test -f "$DEPLOY_PARAMS_FILE"
 コピーしたファイルをエディターで開き、次の順に編集します。
 
 1. `subscriptionId`・`azureTenantId`・`entraTenantId`・`productName`・`environmentName`・3つのリージョンを、第1章の確定値へ揃える。
-2. `network.addressSpaces`と全`network.subnetPrefixes`を自社のIP計画へ設定する。接続元CIDR、運用者CIDR、DNS・追加宛先も確認する。
+2. `network.addressSpaces`と全`network.subnetPrefixes`を自社のIP計画へ設定する。管理接続元CIDR、Azure提供DNSの採用条件・追加宛先も確認する。
 3. `gateway.publicHostName`と`gateway.grpc.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
 4. `certificate.plugin`は`Azure`とし、第3章で確認したDNS側Subscription IDとUAMIのリソースIDを`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`へ必ず記入する。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止する。
 5. Azure RBACの対象Object IDを設定する。CM providerの`clientId`を第2章で作成したEntraアプリのIDへ置き換え、本人接続の有効期間等を確認する。
@@ -181,7 +181,9 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須です。全サブネットをVNet範囲内へ重複なく割り当て、企業の既存IP計画・接続予定先と照合して指定します。公開例の10.40系CIDRを、導入先でも未使用と推測しません。
 
-選択項目も公開params例に配列で記載しています。`[]`は`operatorAddressPrefixes`では管理者の許可元なし、追加規則では追加なしを表します。利用者の`clientAddressPrefixes`は1件以上が必要で、`[]`はAzure変更前の入力検査で拒否します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。外部NTP先と追加接続先FQDNも、企業の接続先に合わせる値なのでparamsへ記載します。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+選択項目も公開params例に配列で記載しています。`[]`は`operatorAddressPrefixes`では管理者の許可元なし、追加規則では追加なしを表します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。外部NTP先と追加接続先FQDNも、企業の接続先に合わせる値なのでparamsへ記載します。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+
+AppGW用NSGの初期構築ルールはBicepで固定します。利用者の送信元は全IPv4（`0.0.0.0/0`）で、WebのTCP80/443とgRPCのTCP8443を許可します。`network.clientAddressPrefixes`は入力項目ではなく、params・config・合成設定ファイルに残っていると、固定値と同じ配列でもAzure変更前の入力検査で拒否します。以前の入力から削除してください。管理VMの接続元は`network.operatorAddressPrefixes`で指定します。APIの認証・認可は別途維持します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
 VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標準config](05-config.md#ネットワークの通信機能network)でどちらも`[]`に固定し、Azure提供DNSを使います。paramsには指定できず、残っていると入力検査で拒否します。以前のparamsにこれらの項目がある場合は、両方とも削除してください。既存の独自DNSを使う環境では、Azure提供DNSへの切り替えによる影響を確認してから移行します。実ファイルの自動移行は行いません。
 
@@ -195,7 +197,6 @@ VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標
 | `network.subnetPrefixes.management` | `"10.40.2.128/26"` | Linux管理VM用サブネット。 |
 | `network.subnetPrefixes.aca` | `"10.40.2.192/26"` | Core管理ポータルのACA専用サブネット。基本/26、最小/27。他の5区画と同じ一覧で指定。 |
 | `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
-| `network.clientAddressPrefixes` | `["0.0.0.0/0"]` | API利用者の送信元IPv4/CIDRを1件以上指定。省略時の0.0.0.0/0は全IPv4、特定CIDRはその範囲を許可。明示した`[]`はAzure変更前の入力検査で拒否。Web受信120・gRPC受信125のAllowを使い、認証・認可は別に維持。 |
 | `network.operatorAddressPrefixes` | `[]` | 管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できる。指定ありの場合だけAllow・220を作成し、[]または省略時は作成しない。設定を外した場合は構築前処理で現行Allow・220を削除し、未許可通信は4096で拒否。接続経路は別途必要。 |
 | `network.ntpAddressPrefixes` | `["Internet"]` | Linux管理VMの時刻同期宛先範囲／サービス・タグ。空配列は不可。 |
 | `network.ntpFqdns` | `["ntp.ubuntu.com"]` | Linux管理VMに設定する外部NTP先FQDN。既存Chrony/PTPは保持し、外部通信をFWでも制限する。 |
@@ -222,7 +223,7 @@ VPN・既存踏み台・NATを利用する場合も、VMに届く実際の送信
 資材の証明書処理などは、VM Agent経由のManaged Run Commandを使います。これらの標準処理のためにSSHの受信許可を追加する必要はありません。
 [MicrosoftのManaged Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)
 
-IP制限は、設定済みCIDRの許可／拒否を[動作テスト](../testing/integration-tests.md)で、全IPv4許可・省略・有効なCIDR間の再配備と、clientの空配列をAzure変更前に拒否する入力検査を[構築テスト](../testing/construction-tests.md)で確認します。`operatorAddressPrefixes:[]`による管理VMの拒否は別の有効な条件です。APIの認証・認可は全IPv4許可時も維持します。
+AppGWの固定入口での到達・API認証と、管理VMの設定済みCIDRによる許可／拒否は[動作テスト](../testing/integration-tests.md)で確認します。固定NSG規則の初期構築・再配備と、廃止入力のAzure変更前の拒否は[構築テスト](../testing/construction-tests.md)で確認します。`operatorAddressPrefixes:[]`は管理VMの接続許可元なしを表します。
 
 ### API・権限の記述形式
 

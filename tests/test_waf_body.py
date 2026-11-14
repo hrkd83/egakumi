@@ -43,6 +43,30 @@ class AiWafBodyTests(unittest.TestCase):
         self.assertEqual(managed_ai_paths({"apiDefinitions": [contract, custom, auth]}),
                          {"/models/openai/v1/responses"})
 
+    def test_flat_responses_requires_canonical_identity_and_path(self):
+        contract = api("openai-inference-v1")
+        contract["operations"] = [next(
+            operation for operation in contract["operations"]
+            if operation["name"] == "responses-create"
+        )]
+        constraint = contract["authorization"]["operationConstraints"][
+            "responses-create"]
+        constraint.pop("defaultProfile", None)
+        constraint.pop("profiles", None)
+        contract["authorization"]["operationConstraints"] = {
+            "responses-create": constraint,
+        }
+        self.assertEqual(managed_ai_paths({"apiDefinitions": [contract]}),
+                         {"/models/openai/v1/responses"})
+
+        custom = copy.deepcopy(contract)
+        custom.update(name="models", path="models/custom/v1")
+        self.assertEqual(managed_ai_paths({"apiDefinitions": [custom]}), set())
+
+        custom["path"] = contract["path"]
+        with self.assertRaisesRegex(ValueError, "changed API input contract"):
+            managed_ai_paths({"apiDefinitions": [custom]})
+
     def test_document_and_speech_scope_follows_the_canonical_start_contract_not_capacity(self):
         document, speech = api("document-analysis-v1"), api("azure-speech-v1")
         document["authorization"]["operationConstraints"]["analyze_document"]["maxRequestBytes"] = 500000000

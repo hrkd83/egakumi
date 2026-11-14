@@ -22,7 +22,6 @@
       "22"
     ],
     "apimKeyVaultAccessEnabled": true,
-    "certificatePublicProbeEnabled": true,
     "dnsTtl": 300
   },
   "services": {

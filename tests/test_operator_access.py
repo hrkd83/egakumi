@@ -26,7 +26,7 @@ class ArmFixture:
         self.child_id = self.parent_id + "/securityRules/" + operator.RULE_NAME
         subnet = ipaddress.ip_network(self.config["network"]["subnetPrefixes"]["management"])
         self.address = str(subnet.network_address + 4)
-        source = self.config["network"]["clientAddressPrefixes"][0]
+        source = "198.51.100.10/32"
         properties = {"priority": 220, "direction": "Inbound", "access": "Allow",
                       "protocol": self.config["network"]["operatorProtocol"], "sourcePortRange": "*",
                       "destinationPortRange": self.config["network"]["operatorPorts"][0],

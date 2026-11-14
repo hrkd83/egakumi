@@ -42,7 +42,7 @@ def ssh_fixture_key():
 
 
 def api_fixture():
-    """認証・操作・モデル制約を含むAPI定義の正常例を作る。"""
+    """標準WAFの公開ルートと独立した、認証・操作・モデル制約付きカスタムAPIを作る。"""
     value = fixture()
     value["services"]["modelDeployments"] = [{
         "name": "gpt-approved", "modelName": "gpt-approved", "modelFormat": "OpenAI",
@@ -50,7 +50,7 @@ def api_fixture():
         "versionUpgradeOption": "NoAutoUpgrade",
     }]
     value["apiDefinitions"] = [{
-        "name": "models", "displayName": "Approved Models", "path": "models/openai/v1",
+        "name": "models", "displayName": "Approved Models", "path": "models/custom/v1",
         "backendService": "foundryOpenAi", "backendAudience": "https://cognitiveservices.azure.com",
         "productId": "model-users", "subscriptionKeyHeader": "api-key",
         "operations": [{"name": "responses-create", "displayName": "Create stateless response", "method": "POST", "urlTemplate": "/responses", "templateParameters": []}],
@@ -68,7 +68,7 @@ def profiled_api_fixture():
     """Responses操作のtext/PDF契約を作る。"""
     raw = api_fixture()
     api = raw["apiDefinitions"][0]
-    api.update(name="openai-inference-v1", serviceClass="platform")
+    api.update(name="openai-inference-v1", path="models/openai/v1", serviceClass="platform")
     authorization = api["authorization"]
     constraint = authorization["operationConstraints"]["responses-create"]
     text = {**copy.deepcopy(constraint), "profileId": "response", "modalities": ["text"]}

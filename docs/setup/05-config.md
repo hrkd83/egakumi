@@ -61,8 +61,9 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 | `network.bgpRoutePropagation.management` | `true` | 管理VM用RTのルート伝搬。デフォルトルートのnext hopやピアリングとは別。 |
 | `network.appGatewayZones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW用公開IPの可用性ゾーン番号。gateway.zonesと一致させる。[]は番号の明示なし。 |
 | `network.apimKeyVaultAccessEnabled` | `true` | APIM→Key Vault PEの通信許可。常設gRPCの証明書・入口証明のためtrueが必須。Azure RBACは別設定。 |
-| `network.certificatePublicProbeEnabled` | `true` | この環境のFW公開IPからAppGW:443を通す規則。実際のHTTP／TLS／API検査の実行は別。 |
 | `network.dnsTtl` | `300` | 作成するPrivate DNSレコードのTTL、秒。1〜86400。 |
+
+AppGW用NSGは、全IPv4（`0.0.0.0/0`）からのWeb TCP80/443・gRPC TCP8443と、同じVNetのFirewall公開IP `/32`からのTCP443をBicepで固定して許可します。`network.certificatePublicProbeEnabled`と`network.clientAddressPrefixes`は入力項目ではありません。params・config・合成設定ファイルに指定すると、固定条件と同じ`true`・`["0.0.0.0/0"]`でもAzure変更前の入力検査で拒否します。以前の入力から削除してください。HTTP／TLS／API検査は別途実行します。管理VMの接続元・プロトコル・ポートは従来の設定項目です。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
 ルート伝搬はGateway由来経路だけを対象とし、UDR・ピアリング・デフォルトルート変更とは別です。独立VNetには伝搬元Gatewayがないため、既定trueでもGateway由来の経路はありません。Azureの否定形属性へはBicep内部で反転します。[ルート伝搬](https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table)
 
@@ -147,7 +148,7 @@ APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Den
 
 gRPCの入口は基盤の共通仕様として、常に有効・公開TCP8443・APIM側TCP443に固定します。configやparamsで無効化・ポート変更する調整項目ではありません。標準configからこれらの指定を除き、構築処理が固定値を補完して既存の配備処理へ渡します。公開ホスト名は従来どおりparamsで指定します。
 
-`gateway.grpc.enabled`・`publicPort`・`backendPort`は入力項目ではありません。config・params・合成設定ファイルで指定すると、固定値と同じ`true`・`8443`・`443`でも構築前に拒否します。公開ホスト名だけをparamsで指定でき、検査後に構築処理が内部用の固定値を生成します。`clientAddressPrefixes`による利用者の接続元制限と、Realtime・文書ジョブの署名鍵の準備条件は別の設定です。
+`gateway.grpc.enabled`・`publicPort`・`backendPort`は入力項目ではありません。config・params・合成設定ファイルで指定すると、固定値と同じ`true`・`8443`・`443`でも構築前に拒否します。公開ホスト名だけをparamsで指定でき、検査後に構築処理が内部用の固定値を生成します。Realtime・文書ジョブの署名鍵の準備条件は別の設定です。
 
 API公開では、基盤の配備出力が共通仕様の公開ホスト名・TCP8443・入口証明の準備状態と一致することを確認します。一致しない基盤へは公開せず、先にCoreを配備してください。入口を常設することと、登録した各gRPCサービスの実通信が検証済みであることは別です。
 
