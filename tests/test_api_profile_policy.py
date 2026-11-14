@@ -35,6 +35,7 @@ public static class IntegratedProfileFixture {
  public static string Limits(Context context) { __LIMITS__ }
  public static bool Target(Context context) { __TARGET__ }
  public static string Model(Context context) { __MODEL__ }
+ public static string NormalizeModel(Context context) { __NORMALIZE_MODEL__ }
  public static string ProtocolAuth(Context context) { __PROTOCOL_AUTH__ }
  public static bool Query(Context context) { __QUERY__ }
  public static string Run(string input) {
@@ -73,8 +74,14 @@ public static class IntegratedProfileFixture {
     if((bool)selection["allowed"]) {
      result["decision"]=JObject.Parse(Auth(c));
      c.Variables["gatewayOperationConstraint"]=selection["constraint"].ToString(Formatting.None);
+     c.Variables["gatewayEffectiveModel"]=(string)selection["effectiveModel"]??"";
      result["limits"]=JObject.Parse(Limits(c));
      result["targetAllowed"]=Target(c);
+     result["bodyBeforeNormalization"]=c.Request.Body.Data;
+     if ((bool)result["decision"]["allowed"] && (bool)result["limits"]["allowed"] && (bool)result["targetAllowed"]
+         && !String.IsNullOrEmpty((string)selection["effectiveModel"]) && (string)selection["requestedModel"]!=(string)selection["effectiveModel"]) {
+      c.Request.Body.Data=NormalizeModel(c);
+     }
     }
    }
    result["reads"]=c.Request.Body.Reads;
@@ -149,6 +156,33 @@ class ProfilePolicyTests(unittest.TestCase):
         image_body = {"model": "gpt-6.1-sol", "input": [{"role": "user", "content": [{"type": "input_image", "image_url": "data:image/png;base64,AA=="}]}]}
         cases.append(case("responses-default-image", config=responses, body=image_body))
         cases.append(case("responses-image-unknown-model", config=responses, body={**image_body, "model": "unapproved-synthetic-model"}))
+        # Execute the shipped alias through profile, auth, original-byte limits,
+        # target checks and the actual model-only normalization expression.
+        alias_body = {"model": "codex-auto-review", "input": [{"type": "reasoning", "encrypted_content": "synthetic opaque"},
+            {"type": "function_call_output", "call_id": "synthetic_call", "output": "synthetic output"}],
+            "stream": True, "max_output_tokens": 32, "text": {"format": {"type": "json_schema", "name": "synthetic_review",
+            "schema": {"type": "object", "properties": {"approved": {"type": "boolean"}}, "required": ["approved"], "additionalProperties": False}}}}
+        cls.alias_body = alias_body
+        alias_base = {"config": inference, "api": "openai-inference-v1", "operation": "responses-create", "path": "/responses",
+            "headers": {"Content-Type": "application/json"}, "body": alias_body}
+        cases.append(case("alias-default", **alias_base))
+        cases.append(case("alias-explicit", **{**alias_base, "headers": {"Content-Type": "application/json", "X-Egakumi-Profile": "response"}}))
+        cases.append(case("alias-direct", **{**alias_base, "body": {**alias_body, "model": "gpt-5.6-luna"}}))
+        cases.append(case("alias-unknown", **{**alias_base, "body": {**alias_body, "model": "unknown-alias"}}))
+        cases.append(case("alias-pdf", **{**alias_base, "headers": {"Content-Type": "application/json", "X-Egakumi-Profile": "pdf"}}))
+        cases.append(case("alias-chat", config=inference, api="openai-inference-v1", path="/chat/completions",
+            headers={"Content-Type": "application/json"}, body={"model": "codex-auto-review", "messages": []}))
+        cases.append(case("alias-no-key", **{**alias_base, "key": None}))
+        for label, patch in (("state", {"previous_response_id": "synthetic"}), ("token-limit", {"max_output_tokens": 9223372036854775807}),
+                ("wrong-token", {"max_tokens": 1})):
+            cases.append(case("alias-reject-" + label, **{**alias_base, "body": {**alias_body, **patch}}))
+        bounded = json.loads(json.dumps(inference))
+        for profile in bounded["operationConstraints"]["responses-create"]["profiles"]:
+            profile["maxRequestBytes"] = 2048
+        # Whitespace must count before any JSON compaction/model rewrite.
+        cases.append(case("alias-wire-overflow", **{**alias_base, "config": bounded, "rawBody": " " * 2048 + json.dumps(alias_body)}))
+        bounded["operationConstraints"]["responses-create"]["profiles"][0]["maxRequestBytes"] = 256
+        cases.append(case("alias-profile-overflow", **{**alias_base, "config": bounded}))
         cases.append(case("selected-size", body={"model": "shared", "messages": [{"content": "x" * 600}], "max_completion_tokens": 16}))
         native_body = {"model": "gpt-6.1-sol", "stream": True,
             "provider_extension": {"arbitrary": ["SELECT * FROM synthetic;", "<?php $function(); ?>"]},
@@ -327,6 +361,8 @@ class ProfilePolicyTests(unittest.TestCase):
             item = case(name, mode="ws", query=query, websocket={"allowedModels": models, "defaultModel": "standard", "queryParameters": {"api-version": "fixed"}})
             cases.append(item)
         source = SOURCE.replace("__PROFILE__", actual_expression("gateway.xml", "gatewayProfileSelection"))
+        normalize = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").find("./inbound/choose[@id='core-model-alias']/when/set-body").text.strip()
+        source = source.replace("__NORMALIZE_MODEL__", normalize[2:-1])
         source = source.replace("__INFERENCE_REQUEST__", actual_expression("gateway.xml", "gatewayInferenceRequestAllowed"))
         source = source.replace("__AUTH__", actual_expression("gateway.xml", "gatewayDecision")).replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed"))
         model = actual_expression("protocol.xml", "gatewayProtocolModel").replace(
@@ -349,6 +385,40 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             if run.returncode:
                 raise AssertionError("Actual integrated policy execution failed:\n" + run.stderr)
             cls.results = json.loads(run.stdout)
+
+    def test_model_alias_resolves_only_within_its_selected_profile(self):
+        for name in ("alias-default", "alias-explicit"):
+            result = self.results[name]
+            self.assertEqual(result["profile"]["requestedModel"], "codex-auto-review")
+            self.assertEqual(result["profile"]["effectiveModel"], "gpt-5.6-luna")
+            for stage in ("profile", "decision", "limits"):
+                self.assertTrue(result[stage]["allowed"], (name, stage))
+            self.assertTrue(result["targetAllowed"])
+            self.assertEqual(json.loads(result["bodyBeforeNormalization"]), self.alias_body)
+            self.assertEqual(json.loads(result["bodyAfter"]), {**self.alias_body, "model": "gpt-5.6-luna"})
+        direct = self.results["alias-direct"]
+        self.assertEqual(direct["bodyBeforeNormalization"], direct["bodyAfter"])
+        for name in ("alias-unknown", "alias-pdf", "alias-chat"):
+            self.assertFalse(self.results[name]["profile"]["allowed"], name)
+            self.assertEqual(json.loads(self.results[name]["bodyAfter"])["model"], "unknown-alias" if name == "alias-unknown" else "codex-auto-review")
+
+    def test_alias_cannot_bypass_auth_original_wire_bounds_or_target_model_limits(self):
+        self.assertFalse(self.results["alias-no-key"]["decision"]["allowed"])
+        self.assertFalse(self.results["alias-reject-state"]["targetAllowed"])
+        self.assertEqual(self.results["alias-wire-overflow"]["profile"]["status"], 413)
+        self.assertEqual(self.results["alias-profile-overflow"]["limits"]["status"], 413)
+        self.assertEqual(self.results["alias-reject-token-limit"]["limits"]["code"], "OUTPUT_LIMIT_EXCEEDED")
+        self.assertEqual(self.results["alias-reject-wrong-token"]["limits"]["code"], "INVALID_OUTPUT_LIMIT")
+        for name in ("alias-no-key", "alias-reject-state", "alias-profile-overflow", "alias-reject-token-limit", "alias-reject-wrong-token"):
+            self.assertEqual(json.loads(self.results[name]["bodyAfter"])["model"], "codex-auto-review", name)
+
+    def test_alias_normalization_order_preserves_original_byte_and_token_checks(self):
+        inbound = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").getroot().find("inbound")
+        nodes = list(inbound)
+        normalize = inbound.find("choose[@id='core-model-alias']")
+        self.assertLess(nodes.index(inbound.find("include-fragment[@fragment-id='core-model-limits']")), nodes.index(normalize))
+        self.assertLess(nodes.index(inbound.find("set-variable[@name='gatewayTargetAllowed']")), nodes.index(normalize))
+        self.assertLess(nodes.index(normalize), nodes.index(inbound.find("include-fragment[@fragment-id='core-audit-body-model']")))
 
     def test_profile_selection_preserves_the_authenticated_caller(self):
         self.assertTrue(self.results["default"]["decision"]["allowed"])

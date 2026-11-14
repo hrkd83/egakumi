@@ -139,7 +139,10 @@
             "profileId": "response",
             "modalities": [
               "text"
-            ]
+            ],
+            "modelAliases": {
+              "codex-auto-review": "gpt-5.6-luna"
+            }
           },
           {
             "kind": "statelessResponses",

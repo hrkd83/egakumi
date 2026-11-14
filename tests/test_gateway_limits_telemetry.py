@@ -106,6 +106,8 @@ public static class PolicyFixture {
       }
       if (item["decision"] != null) context.Variables["gatewayDecision"] = item["decision"].Type == JTokenType.String ? (string)item["decision"] : item["decision"].ToString(Formatting.None);
       if (item["settings"] != null) context.Variables["gatewayAuditSettings"] = item["settings"].ToString(Formatting.None);
+      if (item["selection"] != null) context.Variables["gatewayProfileSelection"] = item["selection"].ToString(Formatting.None);
+      if (item["auditModel"] != null) context.Variables["gatewayAuditModel"] = (string)item["auditModel"];
       if (item["connectionExpiry"] != null) context.Variables["gatewayConnectionExpiresOn"] = ((JValue)item["connectionExpiry"]).Value;
       if (item["claims"] != null) {
         var jwt = new Jwt();
@@ -279,6 +281,17 @@ for _field in ("arrayLimits", "integerLimits"):
                            {k: v for k, v in RERANK_LIMITS.items() if k != _field}))
 
 
+for label, requested, effective, aliases in (
+    ("valid", "synthetic-review", "synthetic-model", {"synthetic-review": "synthetic-model"}),
+    ("unknown", "SENTINEL_RAW_MODEL", "synthetic-model", {}),
+    ("wrong-target", "synthetic-review", "other-model", {"synthetic-review": "synthetic-model"}),
+    ("unsafe", "SENTINEL_RAW_MODEL/secret", "synthetic-model", {"SENTINEL_RAW_MODEL/secret": "synthetic-model"})):
+    CASES.append({"id": "audit-alias-" + label, "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
+        "auditModel": "synthetic-model", "settings": {"llmOperationIds": ["responses-create"]},
+        "selection": {"allowed": True, "requestedModel": requested, "effectiveModel": effective,
+            "constraint": {"modelAliases": aliases}}})
+
+
 class GatewayExpressionTests(unittest.TestCase):
     """APIMの入力上限・生成token上限・安全な利用量記録を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     @classmethod
@@ -450,6 +463,19 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 record = self.decision("audit-connection-expiry-" + suffix)
                 self.assertNotIn("connectionExpiresOn", record)
                 self.assertNotIn("SENTINEL", json.dumps(record))
+
+    def test_alias_audit_records_only_configured_matching_alias_without_reading_body(self):
+        record = self.decision("audit-alias-valid")
+        self.assertEqual(record["requestedModel"], "synthetic-review")
+        self.assertTrue(record["modelAliasApplied"])
+        self.assertEqual(record["targetModel"], "synthetic-model")
+        for label in ("unknown", "wrong-target", "unsafe"):
+            record = self.decision("audit-alias-" + label)
+            self.assertNotIn("requestedModel", record)
+            self.assertNotIn("modelAliasApplied", record)
+            self.assertNotIn("SENTINEL", json.dumps(record))
+        for label in ("valid", "unknown", "wrong-target", "unsafe"):
+            self.assertEqual(self.results["audit-alias-" + label]["reads"], 0)
 
     def test_audit_is_allowlisted_and_never_reads_a_body(self):
         for case_id in ("audit-accepted", "audit-no-token", "audit-caller-mismatch", "audit-subscription-absent", "audit-denied", "audit-policy-error", "audit-untrusted-values"):

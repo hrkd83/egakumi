@@ -1982,6 +1982,21 @@
           "type": "integer",
           "minimum": 1,
           "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
+        },
+        "modelAliases": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "description": "Profile-owned exact aliases targeting directly allowed existing model deployments. No chains or shadowing.",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
         }
       }
     },

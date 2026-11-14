@@ -77,7 +77,11 @@
         var byModel = constraint[&quot;maxOutputTokensByModel&quot;] as JObject;
         var automatic = false;
         if (byModel != null) {
-          var model = body[&quot;model&quot;];
+          JToken model = body[&quot;model&quot;];
+          if (context.Variables.ContainsKey(&quot;gatewayEffectiveModel&quot;)
+              &amp;&amp; !String.IsNullOrEmpty((string)context.Variables[&quot;gatewayEffectiveModel&quot;])) {
+            model = new JValue((string)context.Variables[&quot;gatewayEffectiveModel&quot;]);
+          }
           if (model?.Type != JTokenType.String || byModel.Property((string)model) == null) { return result.ToString(Newtonsoft.Json.Formatting.None); }
           maxTokens = byModel[(string)model];
           automatic = maxTokens == null || maxTokens.Type == JTokenType.Null;

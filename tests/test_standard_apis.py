@@ -184,8 +184,11 @@ class StandardApiTests(unittest.TestCase):
                 mock.patch.object(Path, "write_bytes", side_effect=AssertionError("unexpected write")):
             standard_apis.resolve_publication_configuration(self.raw, self.state)
         capabilities = CORE / "apps/gateway/apim/model-capabilities.json"
-        self.assertEqual([path for path in reads if path != capabilities], list(standard_apis.DEFINITION_FILES))
-        self.assertTrue(all(path in standard_apis.DEFINITION_FILES or path == capabilities for path in reads))
+        # Normalization also validates the standard WAF manifest. Both are
+        # static public contracts, not environment inputs or generated output.
+        contracts = {capabilities, CORE / "apps/gateway/waf-data-exclusions.json"}
+        self.assertEqual([path for path in reads if path not in contracts], list(standard_apis.DEFINITION_FILES))
+        self.assertTrue(all(path in standard_apis.DEFINITION_FILES or path in contracts for path in reads))
 
     def test_each_canonical_file_owns_only_its_named_api(self):
         for path in standard_apis.DEFINITION_FILES:

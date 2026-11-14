@@ -105,7 +105,15 @@
         if (matches.Length != 1) { return result.ToString(Newtonsoft.Json.Formatting.None); }
         var selected = (JObject)matches[0];
         var body = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
-        if (body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)selected[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        if (body[&quot;model&quot;]?.Type != JTokenType.String) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        var requestedModel = (string)body[&quot;model&quot;];
+        var aliases = selected[&quot;modelAliases&quot;] as JObject;
+        var effectiveModel = aliases?.Property(requestedModel) == null ? requestedModel : (string)aliases[requestedModel];
+        if (!((JArray)selected[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == effectiveModel)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
+        /* Resolve only the selected profile's exact alias. Preserve original
+           bytes until authorization, input limits and target checks all pass. */
+        result[&quot;requestedModel&quot;] = requestedModel;
+        result[&quot;effectiveModel&quot;] = effectiveModel;
         /* Profile selection binds a fixed route and approved model. Native
            modality support belongs to the provider; arbitrary tool JSON Schema
            property names and nested type values must not classify the request. */
@@ -153,6 +161,7 @@
     <set-variable name="gatewayOperationConstraint" value="@{
       return JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None);
     }" />
+    <set-variable name="gatewayEffectiveModel" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;effectiveModel&quot;] ?? &quot;&quot;)" />
     <!-- Bound JSON bytes before any target-specific parsing. -->
     <include-fragment fragment-id="core-model-limits" />
     <choose>
@@ -195,12 +204,16 @@
         }
         if (kind == &quot;bodyModel&quot; || kind == &quot;textEmbeddings&quot; || kind == &quot;rerank&quot;) {
           var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
-          return body != null &amp;&amp; ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;]);
+          var model = context.Variables.ContainsKey(&quot;gatewayEffectiveModel&quot;) ? (string)context.Variables[&quot;gatewayEffectiveModel&quot;] : &quot;&quot;;
+          if (String.IsNullOrEmpty(model)) { model = (string)body?[&quot;model&quot;]; }
+          return body?[&quot;model&quot;]?.Type == JTokenType.String &amp;&amp; ((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model);
         }
         if (kind == &quot;statelessResponses&quot;) {
           if (context.Request.Method != &quot;POST&quot; || context.Operation.UrlTemplate != &quot;/responses&quot;) { return false; }
           var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
-          if (body == null || body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)body[&quot;model&quot;])) { return false; }
+          var model = context.Variables.ContainsKey(&quot;gatewayEffectiveModel&quot;) ? (string)context.Variables[&quot;gatewayEffectiveModel&quot;] : &quot;&quot;;
+          if (String.IsNullOrEmpty(model)) { model = (string)body?[&quot;model&quot;]; }
+          if (body == null || body[&quot;model&quot;]?.Type != JTokenType.String || !((JArray)constraint[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == model)) { return false; }
           /* This contract forwards complete client-held Items and never looks up saved server state. */
           /* Native optional fields and provider extensions are forwarded. Only
              stored-state lookups are blocked on this shared stateless endpoint. */
@@ -282,6 +295,17 @@
       settings[&quot;operationConstraints&quot;][context.Operation.Id] = JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
       return settings.ToString(Newtonsoft.Json.Formatting.None);
     }" />
+    <!-- Normalize only after original-byte limits and authorization succeed.
+         Existing audit and native token limits then see the actual deployment. -->
+    <choose id="core-model-alias">
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayEffectiveModel&quot;]) &amp;&amp; (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;requestedModel&quot;] != (string)context.Variables[&quot;gatewayEffectiveModel&quot;])">
+        <set-body>@{
+          var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
+          body[&quot;model&quot;] = (string)context.Variables[&quot;gatewayEffectiveModel&quot;];
+          return body.ToString(Newtonsoft.Json.Formatting.None);
+        }</set-body>
+      </when>
+    </choose>
     <include-fragment fragment-id="core-audit-body-model" />
     <include-fragment fragment-id="core-audit-context" />
     <!-- Foundryの独自header透過を仮定せず、Responses正式metadataへ固定GUIDを注入。
