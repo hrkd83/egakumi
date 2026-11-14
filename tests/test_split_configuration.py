@@ -18,7 +18,7 @@ from deployment.helpers.configuration import (ConfigurationError, build_bicep_co
                            normalize_configuration, PARAMETER_OWNED_PATHS)
 
 
-NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes", "clientAddressPrefixes", "operatorAddressPrefixes",
+NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes", "operatorAddressPrefixes",
                    "ntpAddressPrefixes", "managementAdditionalSecurityRules")
 FIREWALL_IP_KEYS = ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
                     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
@@ -226,48 +226,66 @@ class SplitConfigurationTests(unittest.TestCase):
         self.write(self.parameters, internal)
         self.assertEqual(load_configuration_source(self.parameters), internal)
 
-    def test_explicit_non_client_empty_ip_selections_survive_merge_and_normalization(self):
+    def test_explicit_empty_ip_selections_survive_merge_and_normalization(self):
         options = json.loads((CORE / "config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         parameters.pop("configFile")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"): parameters[key] = "11111111-1111-4111-8111-111111111111"
         adopt_azure_dns_references(parameters)
         result = normalize_configuration(self.sources(options, parameters))
-        self.assertEqual(result["network"]["clientAddressPrefixes"], ["0.0.0.0/0"])
+        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+            self.assertNotIn(key, result["network"])
         for key in ("operatorAddressPrefixes", "managementAdditionalSecurityRules"):
             self.assertEqual(result["network"][key], [])
         self.assertEqual(result["network"]["dnsServers"], options["network"]["dnsServers"])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
 
-    def test_client_sources_are_nonempty_after_loading_real_split_files(self):
+    def test_appgw_rule_inputs_are_rejected_in_split_files_even_with_fixed_values(self):
         options = json.loads((CORE / "config/test.json").read_text())
         parameters = json.loads((CORE / "params/test.example.json").read_text())
         parameters.pop("configFile")
         for key in ("azureTenantId", "entraTenantId", "subscriptionId"):
             parameters[key] = fixture()[key]
         adopt_azure_dns_references(parameters)
-        for prefixes in (None, ["0.0.0.0/0"], ["203.0.113.10/32", "198.51.100.0/24"], ["203.0.113.10"], []):
-            selected = copy.deepcopy(parameters)
-            if prefixes is None:
-                selected["network"].pop("clientAddressPrefixes")
-            else:
-                selected["network"]["clientAddressPrefixes"] = prefixes
-            self.sources(options, selected)
-            with self.subTest(prefixes=prefixes):
-                if prefixes == []:
-                    with self.assertRaisesRegex(ConfigurationError, r"network\.clientAddressPrefixes.*at least 1"):
+        self.sources(options, parameters)
+        loaded = load_configuration(self.parameters)
+        for output in (loaded, build_bicep_configuration(loaded)):
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                self.assertNotIn(key, output["network"])
+        cases = (
+            {"clientAddressPrefixes": ["0.0.0.0/0"]},
+            {"clientAddressPrefixes": ["203.0.113.10/32", "198.51.100.0/24"]},
+            {"clientAddressPrefixes": []},
+            {"clientAddressPrefixes": "PRIVATE-INPUT-SENTINEL"},
+            {"certificatePublicProbeEnabled": True},
+            {"certificatePublicProbeEnabled": False},
+            {"certificatePublicProbeEnabled": None},
+            {"clientAddressPrefixes": ["0.0.0.0/0"],
+             "certificatePublicProbeEnabled": True},
+        )
+        for owner in ("params", "config"):
+            for settings in cases:
+                selected_options = copy.deepcopy(options)
+                selected_parameters = copy.deepcopy(parameters)
+                target = selected_parameters if owner == "params" else selected_options
+                target["network"].update(settings)
+                self.write(self.options, selected_options)
+                self.write(self.parameters, {
+                    "configFile": "../defaults/config.json", **selected_parameters,
+                })
+                with self.subTest(owner=owner, settings=settings):
+                    with self.assertRaisesRegex(ConfigurationError,
+                                                r"network.*unsupported field") as caught:
                         load_configuration(self.parameters)
-                else:
-                    loaded = load_configuration(self.parameters)
-                    expected = ["0.0.0.0/0"] if prefixes is None else prefixes
-                    self.assertEqual(loaded["network"]["clientAddressPrefixes"], expected)
-                    self.assertEqual(build_bicep_configuration(loaded)["network"]["clientAddressPrefixes"], expected)
+                    for key in settings:
+                        self.assertIn(key, str(caught.exception))
+                    self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
 
     def test_public_sample_ip_values_move_unchanged_and_operational_defaults_stay_in_config(self):
         expected = {"addressSpaces": ["10.40.0.0/24", "10.40.1.0/24", "10.40.2.0/24", "10.40.3.0/24"],
                     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24", "firewall": "10.40.2.0/26",
                                        "apim": "10.40.2.64/26", "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
-                    "clientAddressPrefixes": ["0.0.0.0/0"], "operatorAddressPrefixes": [],
+                    "operatorAddressPrefixes": [],
                     "ntpAddressPrefixes": ["Internet"], "managementAdditionalSecurityRules": [],
                     "firewall": {key: (["IANAPrivateRanges"] if key == "snatPrivateRanges" else []) for key in FIREWALL_IP_KEYS}}
         for name in ("test", "production"):
@@ -287,6 +305,9 @@ class SplitConfigurationTests(unittest.TestCase):
                 self.assertEqual(options["network"]["firewall"]["sku"], "Standard" if name == "test" else "Premium")
                 self.assertEqual(options["network"]["operatorPorts"], ["22"])
                 self.assertIn("rateLimits", options["gateway"])
+                for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                    self.assertNotIn(key, options["network"])
+                    self.assertNotIn(key, parameters["network"])
 
     def test_every_environment_field_is_rejected_in_config_even_if_parameters_override_it(self):
         for path in PARAMETER_OWNED_PATHS:
@@ -369,38 +390,46 @@ class SplitSchemaTests(unittest.TestCase):
                     with self.subTest(schema=filename, scope=scope, dns=dns):
                         self.assertFalse(validator.is_valid(dns))
 
-    def test_client_source_schemas_reject_empty_arrays_and_keep_optional_defaults(self):
+    def test_all_input_schemas_reject_appgw_rule_settings_including_fixed_values(self):
         try:
             import jsonschema
         except ImportError:
             self.skipTest("jsonschema is available in the integration venv")
-        for name in ("params", "configuration"):
+        for name in ("params", "options", "configuration"):
             schema = json.loads((CORE / "schemas" / (name + ".schema.json")).read_text())
             if name == "params":
                 document = json.loads((CORE / "params/test.example.json").read_text())
                 for key in ("subscriptionId", "azureTenantId", "entraTenantId"):
                     document[key] = fixture()[key]
                 adopt_azure_dns_references(document)
+            elif name == "options":
+                document = json.loads((CORE / "config/test.json").read_text())
             else:
                 document = fixture()
             validator = local_schema_validator(schema)
-            for prefixes in (None, ["0.0.0.0/0"], ["203.0.113.10/32", "198.51.100.0/24"], ["203.0.113.10"]):
+            validator.validate(document)
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                self.assertNotIn(key, schema["properties"]["network"]["properties"])
+                self.assertNotIn(key, document["network"])
+            for settings in (
+                {"clientAddressPrefixes": ["0.0.0.0/0"]},
+                {"clientAddressPrefixes": ["203.0.113.10/32", "198.51.100.0/24"]},
+                {"clientAddressPrefixes": ["203.0.113.10"]},
+                {"clientAddressPrefixes": []},
+                {"clientAddressPrefixes": None},
+                {"clientAddressPrefixes": "synthetic"},
+                {"certificatePublicProbeEnabled": True},
+                {"certificatePublicProbeEnabled": False},
+                {"certificatePublicProbeEnabled": None},
+                {"certificatePublicProbeEnabled": []},
+                {"certificatePublicProbeEnabled": "synthetic"},
+                {"clientAddressPrefixes": ["0.0.0.0/0"],
+                 "certificatePublicProbeEnabled": True},
+            ):
                 selected = copy.deepcopy(document)
-                if prefixes is None:
-                    selected["network"].pop("clientAddressPrefixes")
-                else:
-                    selected["network"]["clientAddressPrefixes"] = prefixes
-                selected["network"]["operatorAddressPrefixes"] = []
-                if name == "configuration":
-                    selected["network"]["dnsServers"] = []
-                with self.subTest(schema=name, prefixes=prefixes):
-                    validator.validate(selected)
-            document["network"]["clientAddressPrefixes"] = []
-            with self.subTest(schema=name, prefixes=[]):
-                errors = list(validator.iter_errors(document))
-                self.assertTrue(any(error.validator == "minItems"
-                                    and list(error.absolute_path) == ["network", "clientAddressPrefixes"]
-                                    for error in errors))
+                selected["network"].update(settings)
+                with self.subTest(schema=name, settings=settings):
+                    self.assertFalse(validator.is_valid(selected))
 
     def test_schema_editor_defaults_match_the_files_that_use_them(self):
         # エディターが挿入するschema既定値も、JSON利用元から新配置へ解決します。

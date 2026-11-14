@@ -27,22 +27,29 @@ Azureのカスタム規則は100～4096で、低い番号から最初に一致�
 
 ## 現行の規則
 
-条件付き規則を含む定義の一覧である。管理者の接続元や各機能の設定により、規則の有無・Allow/Denyを決める。
+AppGWの初期構築ルールは固定する。その他のNSGでは、管理者の接続元や各機能の設定により、規則の有無・Allow/Denyを決める。
 
 ### AppGW（agw）
 
 | 方向 | priority | 規則名 | 用途 |
 | --- | --- | --- | --- |
-| Inbound | 120 | `allow-client-web` | 利用者のHTTP/HTTPS |
-| Inbound | 125 | `allow-client-grpc` | 利用者のgRPC |
-| Inbound | 220 | `allow-firewall-public-ingress` | 自VNetのFirewall公開IPからAppGW公開入口443への受信 |
+| Inbound | 120 | `allow-client-web` | 全IPv4（0.0.0.0/0）からAppGWサブネットのTCP80/443への受信をAllow |
+| Inbound | 125 | `allow-client-grpc` | 全IPv4（0.0.0.0/0）からAppGWサブネットのTCP8443への受信をAllow |
+| Inbound | 220 | `allow-firewall-public-ingress` | 自VNetのFirewall公開IP /32からAppGWサブネットのTCP443への受信をAllow |
 | Inbound | 225 | `allow-gateway-manager` | GatewayManager制御 |
 | Inbound | 230 | `allow-load-balancer` | Azure LBのヘルス監視 |
 | Inbound | 4096 | `deny-other-inbound` | その他の受信を拒否 |
 
-`allow-firewall-public-ingress`の送信元は、同じVNetのFirewallの公開IP `/32`、
-宛先はAppGWサブネットのTCP443に限定する。既存の`certificatePublicProbeEnabled`で
-Allow／Denyを切り替え、未指定時はAllowとする。
+この6本は、Bicepで固定条件として定義する。利用者の送信元は全IPv4とし、
+`allow-firewall-public-ingress`も常にAllowとする。AppGWサブネットのCIDRは
+ネットワーク配置入力、Firewall公開IPはAzureの配備出力を参照する。
+`network.clientAddressPrefixes`と`network.certificatePublicProbeEnabled`は入力項目ではなく、
+params・config・合成設定ファイルで指定すると、固定条件と同じ値でもAzure変更前に拒否する。
+旧入力からはこれらを削除する。管理VMの`operatorAddressPrefixes`は設定項目として維持する。
+APIの認証・認可と、HTTP／TLS／API検査の実行は別に管理する。
+
+同一環境への再配備では、上表の同名規則に固定条件を再適用する。
+既存NSG本体を再PUTせず子規則を更新するため、別名の追加規則は保持する。
 
 AppGWのカスタム送信規則は0本とし、既定65000・65001・65500を維持する。
 APIMとKey Vault PEは同じVNet内にあり、追加の送信Denyを置かないため、

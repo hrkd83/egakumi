@@ -27,7 +27,7 @@ NETWORK_INPUTS = {
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
                        "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
-    "clientAddressPrefixes": ["0.0.0.0/0"], "operatorAddressPrefixes": [],
+    "operatorAddressPrefixes": [],
     "ntpAddressPrefixes": ["Internet"],
     "managementAdditionalSecurityRules": [],
 }
@@ -60,8 +60,7 @@ def custom_documents():
     network["addressSpaces"] = [item.replace("10.40.", "10.70.") for item in network["addressSpaces"]]
     network["subnetPrefixes"] = {key: value.replace("10.40.", "10.70.")
                                   for key, value in network["subnetPrefixes"].items()}
-    network.update(clientAddressPrefixes=["203.0.113.70/32"],
-                   operatorAddressPrefixes=["198.51.100.70/32"],
+    network.update(operatorAddressPrefixes=["198.51.100.70/32"],
                    ntpAddressPrefixes=["192.0.2.123/32"])
     options["network"]["dnsServers"] = []
     options["network"]["firewall"]["dnsServers"] = []
@@ -125,6 +124,9 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertIn("operatorPorts", options["network"])
                 self.assertNotIn("apimAllowedFqdns", options["network"]["firewall"])
                 self.assertIn("apimAllowedFqdns", parameters["network"]["firewall"])
+                for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                    self.assertNotIn(key, options["network"])
+                    self.assertNotIn(key, parameters["network"])
 
     def test_config_cannot_supply_moved_fields_even_when_empty_or_overridden(self):
         """paramsが正しくても、configへの二重記載は黙って上書きしない。"""
@@ -198,7 +200,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
         for key in ("dnsServers", "operatorAddressPrefixes"):
             self.assertEqual(result["network"][key], [])
-        self.assertEqual(result["network"]["clientAddressPrefixes"], parameters["network"]["clientAddressPrefixes"])
+        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+            self.assertNotIn(key, result["network"])
         self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
 
@@ -231,12 +234,21 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         self.assertEqual(result["network"]["dnsServers"], [])
         self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
 
-    def test_empty_client_ranges_are_rejected_before_bicep_configuration(self):
-        options, parameters = custom_documents()
-        parameters["network"]["clientAddressPrefixes"] = []
-        raw = load_documents(options, parameters)
-        with self.assertRaisesRegex(ConfigurationError, r"network\.clientAddressPrefixes"):
-            normalize_configuration(raw)
+    def test_appgw_rule_settings_are_not_owned_by_parameters_or_config(self):
+        for owner in ("parameters", "config"):
+            for settings in ({"clientAddressPrefixes": ["0.0.0.0/0"]},
+                             {"clientAddressPrefixes": []},
+                             {"certificatePublicProbeEnabled": True},
+                             {"certificatePublicProbeEnabled": False},
+                             {"clientAddressPrefixes": ["203.0.113.70/32"],
+                              "certificatePublicProbeEnabled": True}):
+                options, parameters = custom_documents()
+                target = parameters if owner == "parameters" else options
+                target["network"].update(settings)
+                with self.subTest(owner=owner, settings=settings):
+                    with self.assertRaisesRegex(ConfigurationError,
+                                                r"network.*unsupported field"):
+                        normalize_configuration(load_documents(options, parameters))
 
     def test_combined_internal_json_still_accepts_the_full_network(self):
         options, parameters = custom_documents()
@@ -246,6 +258,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             path.write_text(json.dumps(merged))
             normalized = normalize_configuration(load_configuration_source(path))
         self.assertEqual(normalized["network"]["subnetPrefixes"], parameters["network"]["subnetPrefixes"])
+        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+            self.assertNotIn(key, normalized["network"])
 
     def test_custom_ranges_are_validated_before_any_template_is_emitted(self):
         cases = [
@@ -402,7 +416,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         expression, parameters = self.resolver("network", config)
         static = expression.resolve("[variables('staticNsgRules')]", parameters)
         rules = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in static}
-        self.assertEqual(rules[0, "allow-client-web"]["sourceAddressPrefix"], "203.0.113.70/32")
+        self.assertEqual(rules[0, "allow-client-web"]["sourceAddressPrefix"], "0.0.0.0/0")
         self.assertEqual(rules[0, "allow-client-web"]["destinationAddressPrefix"], "10.70.0.0/24")
         self.assertEqual(rules[1, "allow-agw-api"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(rules[3, "allow-time-sync"]["destinationAddressPrefix"], "192.0.2.123/32")
@@ -411,7 +425,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         groups = expression.resolve("[variables('rulesByNsg')]", parameters)
         dynamic = {item["name"]: item["properties"] for group in groups for item in group}
         self.assertEqual(dynamic["allow-operator-management"]["sourceAddressPrefix"], "198.51.100.70/32")
-        self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "203.0.113.70/32")
+        self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "0.0.0.0/0")
         self.assertEqual(dynamic["allow-agw-grpc"]["destinationAddressPrefix"], "10.70.2.64/26")
 
     def test_fixed_azure_dns_reaches_vnet_and_firewall_without_nsg_dns_allows(self):
@@ -447,35 +461,34 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 for rule in config["network"]["firewall"][owner + "Additional" + suffix]:
                     self.assertIn(rule, actual)
 
-    def test_client_sources_keep_web_and_grpc_children_with_fixed_allow_priorities(self):
-        for clients in (None, ["0.0.0.0/0"], ["203.0.113.70/32"],
-                        ["192.0.2.0/24", "198.51.100.0/24"]):
-            options, parameters = custom_documents()
-            if clients is None:
-                parameters["network"].pop("clientAddressPrefixes")
-            else:
-                parameters["network"]["clientAddressPrefixes"] = clients
-            config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
-            expected = clients if clients is not None else ["0.0.0.0/0"]
-            self.assertEqual(config["network"]["clientAddressPrefixes"], expected)
-            if clients is None:
-                # 公開入力の省略値と、直接ARM入力で省略した場合の既定値を両方確認する。
-                config["network"].pop("clientAddressPrefixes")
+    def test_appgw_arm_rules_stay_fixed_when_raw_config_supplies_old_fields(self):
+        for settings in ({}, {"clientAddressPrefixes": []},
+                         {"clientAddressPrefixes": ["203.0.113.70/32"]},
+                         {"clientAddressPrefixes": ["192.0.2.0/24", "198.51.100.0/24"],
+                          "certificatePublicProbeEnabled": False},
+                         {"certificatePublicProbeEnabled": True}):
+            config = self.configuration()
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                self.assertNotIn(key, config["network"])
+            # loaderを経由しない直接モジュール入力も、固定規則を変えない。
+            config["network"].update(settings)
             for module, collection, resource_name, rule_name, priority in (
                 ("network", "staticNsgRules", "staticSecurityRules", "allow-client-web", 120),
                 ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-client-grpc", 125),
+                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-firewall-public-ingress", 220),
             ):
                 expression, supplied = self.resolver(module, config)
                 entries = expression.resolve("[variables('" + collection + "')]", supplied)
                 matches = [(index, entry["rule"]) for index, entry in enumerate(entries)
                            if entry["nsgIndex"] == 0 and entry["rule"]["name"] == rule_name]
-                with self.subTest(clients=clients, module=module):
+                with self.subTest(settings=settings, module=module, rule=rule_name):
                     self.assertEqual(len(matches), 1)
                     index, rule = matches[0]
                     properties = rule["properties"]
                     self.assertEqual((properties["priority"], properties["access"]), (priority, "Allow"))
-                    source_key = "sourceAddressPrefix" if len(expected) == 1 else "sourceAddressPrefixes"
-                    self.assertEqual(properties[source_key], expected[0] if len(expected) == 1 else expected)
+                    expected_source = ("192.0.2.10/32" if rule_name == "allow-firewall-public-ingress"
+                                       else "0.0.0.0/0")
+                    self.assertEqual(properties["sourceAddressPrefix"], expected_source)
                     self.assertEqual(properties["destinationAddressPrefix"], "10.70.0.0/24")
                     child = self.templates[module]["resources"][resource_name]
                     self.assertEqual(child["type"], "Microsoft.Network/networkSecurityGroups/securityRules")

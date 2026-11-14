@@ -173,7 +173,7 @@ class StandardApiTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "standard API file inventory"):
                     standard_apis.resolve_publication_configuration(self.raw, self.state)
 
-    def test_only_api_templates_are_read_and_no_file_is_written(self):
+    def test_reads_public_api_contracts_without_writing_files(self):
         original = Path.read_text
         reads = []
         def read(path, *args, **kwargs):
@@ -183,12 +183,15 @@ class StandardApiTests(unittest.TestCase):
                 mock.patch.object(Path, "write_text", side_effect=AssertionError("unexpected write")), \
                 mock.patch.object(Path, "write_bytes", side_effect=AssertionError("unexpected write")):
             standard_apis.resolve_publication_configuration(self.raw, self.state)
-        capabilities = CORE / "apps/gateway/apim/model-capabilities.json"
-        # Normalization also validates the standard WAF manifest. Both are
-        # static public contracts, not environment inputs or generated output.
-        contracts = {capabilities, CORE / "apps/gateway/waf-data-exclusions.json"}
-        self.assertEqual([path for path in reads if path not in contracts], list(standard_apis.DEFINITION_FILES))
-        self.assertTrue(all(path in standard_apis.DEFINITION_FILES or path in contracts for path in reads))
+        templates = set(standard_apis.DEFINITION_FILES)
+        # 正規化はモデル能力とWAF入力契約も検査します。読込回数・順序に
+        # 依存せず、すべてのAPIと必要な公開正本だけを読む境界を守ります。
+        contracts = {
+            CORE / "apps/gateway/apim/model-capabilities.json",
+            CORE / "apps/gateway/waf-input-contracts.json",
+        }
+        self.assertEqual(set(reads).intersection(templates), templates)
+        self.assertFalse(set(reads) - templates - contracts)
 
     def test_each_canonical_file_owns_only_its_named_api(self):
         for path in standard_apis.DEFINITION_FILES:

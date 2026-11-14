@@ -23,9 +23,6 @@
       "management": "10.40.2.128/26",
       "aca": "10.40.2.192/26"
     },
-    "clientAddressPrefixes": [
-      "0.0.0.0/0"
-    ],
     "operatorAddressPrefixes": [],
     "ntpAddressPrefixes": [
       "Internet"

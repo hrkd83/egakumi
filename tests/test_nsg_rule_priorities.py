@@ -130,6 +130,36 @@ class NsgRulePriorityTests(unittest.TestCase):
             "sourceAddressPrefix": parameters["firewallPublicIpAddress"] + "/32",
             "destinationAddressPrefix": parameters["subnetPrefixes"]["agw"],
         })
+        for name, priority, port_properties in (
+                ("allow-client-web", 120,
+                 {"destinationPortRanges": ["80", "443"]}),
+                ("allow-client-grpc", 125,
+                 {"destinationPortRange": "8443"})):
+            with self.subTest(rule=name):
+                self.assertEqual(rules[name], {
+                    "priority": priority, "direction": "Inbound",
+                    "access": "Allow", "protocol": "Tcp",
+                    "sourcePortRange": "*",
+                    "sourceAddressPrefix": "0.0.0.0/0",
+                    "destinationAddressPrefix":
+                        parameters["subnetPrefixes"]["agw"],
+                    **port_properties,
+                })
+
+    def test_direct_config_overrides_cannot_change_app_gateway_rules(self):
+        parameters = self.parameters()
+        expected = self.compiled_rules(parameters)["agw"]
+        for override in (
+                {"clientAddressPrefixes": []},
+                {"clientAddressPrefixes":
+                    ["203.0.113.10/32", "198.51.100.0/26"]},
+                {"certificatePublicProbeEnabled": False},
+                {"clientAddressPrefixes": ["203.0.113.10/32"],
+                 "certificatePublicProbeEnabled": False}):
+            direct = copy.deepcopy(parameters)
+            direct["config"].update(override)
+            with self.subTest(override=override):
+                self.assertEqual(self.compiled_rules(direct)["agw"], expected)
 
     def test_gateway_egress_uses_defaults_without_rewriting_existing_parent_nsgs(self):
         parameters = self.parameters()
@@ -160,10 +190,9 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(vault["destinationAddressPrefix"], parameters["keyVaultPrivateIps"][0])
         self.assertEqual((vault["access"], vault["destinationPortRange"]), ("Allow", "443"))
 
-    def test_disabled_operator_is_absent_and_other_optional_denies_keep_their_scope(self):
+    def test_optional_apim_and_operator_settings_preserve_fixed_gateway_rules(self):
         parameters = self.parameters()
-        parameters["config"].update(operatorAddressPrefixes=[], apimKeyVaultAccessEnabled=False,
-                                     certificatePublicProbeEnabled=False)
+        parameters["config"].update(operatorAddressPrefixes=[], apimKeyVaultAccessEnabled=False)
         rules = self.compiled_rules(parameters)
         self.assertNotIn("allow-operator-management", rules["management"])
         terminal = rules["management"]["deny-other-inbound"]
@@ -175,7 +204,7 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual((rules["apim"]["allow-key-vault-pe"]["priority"],
                           rules["apim"]["allow-key-vault-pe"]["access"]), (220, "Deny"))
         ingress = rules["agw"]["allow-firewall-public-ingress"]
-        self.assertEqual((ingress["priority"], ingress["access"]), (220, "Deny"))
+        self.assertEqual((ingress["priority"], ingress["access"]), (220, "Allow"))
         self.assertLess(rules["agw"]["allow-client-web"]["priority"], ingress["priority"])
         self.assertEqual(ingress["sourceAddressPrefix"], parameters["firewallPublicIpAddress"] + "/32")
         self.assertEqual(rules["pep"]["allow-key-vault"]["sourceAddressPrefix"],

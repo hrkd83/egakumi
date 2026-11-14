@@ -95,13 +95,15 @@ var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 var nsgKeys = ['agw', 'apim', 'pep', 'management']
 var permitApimKeyVault = config.?apimKeyVaultAccessEnabled ?? true
 var operatorAddressPrefixes = config.?operatorAddressPrefixes ?? []
-var clientAddressPrefixes = config.?clientAddressPrefixes ?? ['0.0.0.0/0']
+// 初期構築の利用者受信は全IPv4に固定し、params・configから変更しません。
+var clientAddressPrefixes = ['0.0.0.0/0']
 // 配列の順番は agw / apim / pep / management。宛先は Azure の実出力を使い、PE の複数 IP を全て扱います。
 var rulesByNsg = [
   [
     // AppGW の送信は NSG の既定規則を使い、受信規則だけを追加します。
-    withAccess(allowRule('allow-firewall-public-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443']), config.?certificatePublicProbeEnabled ?? true ? 'Allow' : 'Deny')
-    // gRPC は常設し、入力検査を通った1件以上の利用者許可範囲から接続を受けます。
+    // 自環境のFirewall公開IPからのHTTPS受信は常に許可します。
+    allowRule('allow-firewall-public-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443'])
+    // gRPC は常設し、固定の全IPv4許可で接続を受けます。
     allowRule('allow-client-grpc', nsgPriorities.groups.agw.rules['allow-client-grpc'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)])
   ]
   [
