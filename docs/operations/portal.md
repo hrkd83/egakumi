@@ -4,6 +4,23 @@
 
 対象は既存Portalの画面・文言・ガイド・入力や結果表示の修正である。新しい管理機能やDB変更を、この手順の試験のために追加しない。手順の机上確認と、実環境への更新・受入は別に記録する。
 
+## 業務APIのquery拒否
+
+Portalの業務APIは、認証済みの要求で未許可のquery名・空名・重複した引数をHTTP 400／`InvalidRequest`で拒否する。共通の`lib/portal-query.ts`をHTTP入口で使い、本文読取りや業務処理より前に検査する。既存のOrigin・キャンセル・本文形式の検査も維持する。匿名要求の401だけでは、この検査を確認したことにならない。
+
+正常利用で必要なqueryは次の入口だけで許可する。値の形式や必須条件は各入口の既存検査に従う。
+
+| 入口 | 許可するquery名 |
+| --- | --- |
+| `GET /api/models/keys` | `apiId` |
+| `GET /api/api-key-administration` | `cursor` |
+| `GET /api/api-keys/{id}/owner` | `search`、`cursor` |
+| `POST /api/tools/documents`のraw本文 | `model`、`apiKeyId` |
+
+その他の業務APIではquery引数を受け付けない。文書のmultipart送信と状態確認もqueryなしで使う。ログイン・OAuthコールバック・ページの検索条件・Next.js内部要求はこの共通検査の対象外である。APIM専用の内部認可やRealtimeのWebSocket境界は、既存の専用検査を維持する。
+
+共通検査はquery名や値、URL、本文、認証情報を記録・書換えしない。query付き負例は有効な認証と正常本文で送り、400／`InvalidRequest`、業務処理未呼出、queryなしの対照を確認する。WAFの403、認証の401、別の入力エラーだけではPortalのquery拒否を合格にしない。ローカルの依存差替え試験と、Azure反映後の実HTTP試験を分けて記録する。
+
 ## 1. 変更対象と復旧先を決める
 
 1. 共通手順で同じ環境のparams・state・Tenant・Subscription・APIM識別子を確認する。別の構築・更新・撤去が実行中なら開始しない。

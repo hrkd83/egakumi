@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 
 import { ApiKeyError, apiKeyActionSchema, apiKeyIdSchema, createApiKeySchema } from "./contracts.ts";
 import type { ApiKeyActor, ApiKeyOverview, ApiKeyRecord, ApiKeySecrets, CreateApiKeyInput } from "./contracts.ts";
@@ -62,6 +63,7 @@ export async function handleApiKeys(request: Request, dependencies: ApiKeyHttpDe
     if (request.method === "POST" && request.headers.get("origin") !== dependencies.readOrigin()) {
       throw new ApiKeyError("OriginNotAllowed", 403);
     }
+    if (!isAllowedPortalQuery(request)) throw new ApiKeyError("InvalidRequest", 400);
     if (id && !apiKeyIdSchema.safeParse(id).success) throw new ApiKeyError("NotFound", 404);
     if (request.method === "GET") {
       return Response.json(await dependencies.getService().overview(actor), { headers });

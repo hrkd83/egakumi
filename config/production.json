@@ -347,6 +347,11 @@
     "wafRequestBodyInspectLimitInKb": 2000,
     "wafFileUploadLimitInMb": 4,
     "realtimeControlEnabled": true,
+    "queryGuards": {
+      "liveCreate": "observe",
+      "realtimeCreate": "observe",
+      "piiMcp": "observe"
+    },
     "rateLimits": {
       "user": {
         "enabled": false,

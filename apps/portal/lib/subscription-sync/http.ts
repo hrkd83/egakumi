@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 import { ApiKeyError, type ApiKeyActor } from "../api-keys/contracts.ts";
 import { syncRequestSchema } from "./contracts.ts";
 import type { SubscriptionSyncService } from "./service.ts";
@@ -33,7 +34,7 @@ export async function handleSubscriptionSync(request: Request, dependencies: Syn
     const actor = await dependencies.readActor();
     if (!actor) throw new ApiKeyError("AuthenticationRequired", 401);
     if (request.headers.get("sec-fetch-site") === "cross-site" || (request.method === "POST" && request.headers.get("origin") !== dependencies.readOrigin())) throw new ApiKeyError("OriginNotAllowed", 403);
-    if (new URL(request.url).search) throw new ApiKeyError("InvalidRequest", 400);
+    if (!isAllowedPortalQuery(request)) throw new ApiKeyError("InvalidRequest", 400);
     if (request.method === "GET") return Response.json(await dependencies.getService().overview(actor), { headers });
     const input = await readInput(request), service = dependencies.getService();
     return Response.json(input.action === "preview" ? await service.preview(actor, input.ids) : await service.apply(actor, input.token), { headers });

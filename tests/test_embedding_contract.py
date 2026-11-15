@@ -178,7 +178,8 @@ class EmbeddingExpressionTests(unittest.TestCase):
             if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
                 continue
             api["backendUrl"] = "https://provider.example.com/openai/v1" if api["name"] == "openai-embeddings-v1" else "https://provider.example.com"
-            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
+            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"},
+                          "queryGuards": template["parameters"]["queryGuards"]["defaultValue"]}
 
             def evaluate(value):
                 return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)

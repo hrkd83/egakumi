@@ -31,7 +31,8 @@ class WebSocketPublicationTests(unittest.TestCase):
                    "apiType": kind, "authorization": {"mode": "entraOnly"},
                    "subscriptionKeyHeader": "Ocp-Apim-Subscription-Key",
                    "backendUrl": "wss://backend.example.com/voice", "grpc": {"definition": "fixture"}}
-            actual = expression.evaluate({"apiDefinitions": [api]}, 0)
+            actual = expression.evaluate({"apiDefinitions": [api],
+                                          "queryGuards": self.template["parameters"]["queryGuards"]["defaultValue"]}, 0)
             self.assertEqual(actual["protocols"], expected)
 
     def test_compiled_protocol_policies_select_the_registered_backend(self):
@@ -39,7 +40,8 @@ class WebSocketPublicationTests(unittest.TestCase):
         config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "config")
         definitions = config["apiDefinitions"]
         policy_array = PolicyExpression("[variables('policyValues')]", self.template["variables"], functions=self.template['functions'])
-        parameters = {"apiDefinitions": definitions, "publicHostName": "gateway.example.com"}
+        parameters = {"apiDefinitions": definitions, "publicHostName": "gateway.example.com",
+                      "queryGuards": config["gateway"]["queryGuards"]}
         policies = policy_array.evaluate(parameters)
         api_properties = ArmExpression(self.template["resources"]["apis"]["properties"])
         kinds = set()
@@ -50,7 +52,8 @@ class WebSocketPublicationTests(unittest.TestCase):
             with self.subTest(api=api["name"]):
                 if api["apiType"] == "websocket":
                     self.assertEqual(selection, [])
-                    properties = api_properties.evaluate({"apiDefinitions": definitions}, index)
+                    properties = api_properties.evaluate({"apiDefinitions": definitions,
+                                                          "queryGuards": config["gateway"]["queryGuards"]}, index)
                     self.assertEqual(properties["serviceUrl"], api["backendUrl"])
                     self.assertTrue(properties["serviceUrl"].startswith("wss://"))
                     self.assertIsNotNone(root.find("./inbound//authentication-managed-identity"))

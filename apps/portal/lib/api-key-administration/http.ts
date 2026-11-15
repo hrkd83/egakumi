@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 
 import { z } from "zod";
 import { ApiKeyError, type ApiKeyActor } from "../api-keys/contracts.ts";
@@ -55,6 +56,7 @@ export async function handleApiKeyAdministration(request: Request, dependencies:
         || (request.method === "POST" && request.headers.get("origin") !== dependencies.readOrigin())) {
       throw new ApiKeyError("OriginNotAllowed", 403);
     }
+    if (!isAllowedPortalQuery(request, !accessOnly && request.method === "GET" ? ["cursor"] : [])) throw new ApiKeyError("InvalidRequest", 400);
     if (accessOnly) return Response.json({ isAdmin: await dependencies.getService().isAdmin(actor) }, { headers });
     if (request.method === "GET") {
       const parameters = new URL(request.url).searchParams;

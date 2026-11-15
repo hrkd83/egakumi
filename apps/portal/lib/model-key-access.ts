@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor, type ApiKeyOverview } from "./api-keys/contracts.ts";
 import { modelKeyChoicesSchema } from "./model-key-choices.ts";
@@ -21,6 +22,7 @@ export async function handleModelKeyChoices(request: Request, dependencies: Mode
     if (request.headers.get("sec-fetch-site") === "cross-site") return Response.json({ error: { code: "RequestNotAllowed" } }, { status: 403, headers: responseHeaders });
     const actor = await dependencies.readActor();
     if (!actor) return Response.json({ error: { code: "AuthenticationRequired" } }, { status: 401, headers: responseHeaders });
+    if (!isAllowedPortalQuery(request, ["apiId"])) return Response.json({ error: { code: "InvalidRequest" } }, { status: 400, headers: responseHeaders });
     const parameters = new URL(request.url).searchParams;
     const apiId = parameters.get("apiId");
     if (!apiId || parameters.getAll("apiId").length !== 1

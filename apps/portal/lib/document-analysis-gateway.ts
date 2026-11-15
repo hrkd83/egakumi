@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 import { z } from "zod";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, apiKeyIdSchema, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -43,8 +44,12 @@ async function authenticated(request: Request, dependencies: DocumentAnalysisDep
   try { origin = new URL(dependencies.readPortalOrigin()).origin; } catch { return failure("GatewayNotConfigured", 503); }
   const site = request.headers.get("sec-fetch-site");
   if (request.method !== "POST" || request.headers.get("origin") !== origin || site && site !== "same-origin") return failure("RequestNotAllowed", 403);
-  if (!allowQuery && new URL(request.url).search) return failure("InvalidRequest", 400);
-  try { return await dependencies.readSession() ?? failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
+  try {
+    const actor = await dependencies.readSession();
+    if (!actor) return failure("AuthenticationRequired", 401);
+    if (!isAllowedPortalQuery(request, allowQuery ? ["model", "apiKeyId"] : [])) return failure("InvalidRequest", 400);
+    return actor;
+  } catch { return failure("AuthenticationUnavailable", 503); }
 }
 
 /** 接続先は構成済みHTTPS originに限り、ジョブの入力値で変更させません。 */
@@ -173,7 +178,7 @@ export async function handleDocumentAnalysis(request: Request, dependencies: Doc
   const contentType = request.headers.get("content-type") ?? "";
   const mediaTypeInput = contentType.split(";", 1)[0].trim().toLowerCase();
   if (mediaTypeInput !== "multipart/form-data") return handleRawDocument(request, dependencies, actor, mediaTypeInput);
-  if (new URL(request.url).search) return failure("InvalidRequest", 400);
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("DocumentTooLarge", 413);
   let input: ReturnType<typeof documentAnalysisInputSchema.parse>; let bytes: Uint8Array; let mediaType: string;
   try {

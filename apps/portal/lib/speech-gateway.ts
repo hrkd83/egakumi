@@ -1,6 +1,7 @@
 import { inspectSpeechUpload } from "./speech-upload.ts";
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -42,7 +43,7 @@ export async function handleSpeech(request: Request, dependencies: SpeechDepende
   const multipart = incomingContentType.split(";", 1)[0].trim().toLowerCase() === "multipart/form-data";
   if (!multipart && incomingContentType.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   // 音声と設定は本文からだけ受け取り、WAFで除外される同名queryを拒否します。
-  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   const maximumBody = MAX_BUFFERED_BODY_BYTES;
   if (Number(request.headers.get("content-length") ?? 0) > maximumBody) return failure("InvalidRequest", 413);
   let input: SpeechInput & { apiKeyId: string }; let uploadedAudio: Uint8Array | undefined;

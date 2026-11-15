@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 import { ApiKeyError, type ApiKeyActor } from "../api-keys/contracts.ts";
 import { createCompanySchema, updateCompanySchema, type PortalCompany, type CreateCompanyInput, type UpdateCompanyInput } from "./contracts.ts";
 
@@ -28,7 +29,7 @@ export async function handleCompanies(request:Request,dependencies:CompanyHttpDe
     if(!allowed.includes(request.method)) return Response.json({error:{code:"MethodNotAllowed"}},{status:405,headers:{...headers,Allow:allowed.join(", ")}});
     const actor=await dependencies.readActor(); if(!actor)throw new ApiKeyError("AuthenticationRequired",401);
     if(request.headers.get("sec-fetch-site")==="cross-site" || (request.method!=="GET" && request.headers.get("origin")!==dependencies.readOrigin())) throw new ApiKeyError("OriginNotAllowed",403);
-    if(new URL(request.url).search)throw new ApiKeyError("InvalidRequest",400);
+    if(!isAllowedPortalQuery(request))throw new ApiKeyError("InvalidRequest",400);
     const service=dependencies.getService();
     if(request.method==="GET")return Response.json(await (management?service.overview(actor):service.available(actor)),{headers});
     const body=await readJson(request);
