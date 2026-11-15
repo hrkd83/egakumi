@@ -42,6 +42,22 @@
         </return-response>
       </when>
     </choose>
+    <!-- native PII MCPは認可後、tools/callの本文解析前にqueryを検査します。GET・DELETEに本文は不要です。 -->
+    <set-variable name="gatewayQueryGuardModes" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__QUERY_GUARD_MODES_BASE64__&quot;)))" />
+    <include-fragment fragment-id="core-query-guard" />
+    <set-variable name="gatewayQueryPhase" value="received" />
+    <include-fragment fragment-id="core-query-telemetry" />
+    <choose id="core-query-rejection"><when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;allowed&quot;])">
+      <set-variable name="gatewayQueryPhase" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;] == 400 ? &quot;query-rejected&quot; : &quot;guard-error&quot;)" />
+      <include-fragment fragment-id="core-query-telemetry" />
+      <return-response>
+        <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;])" reason="Query parameters are not allowed" />
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+        <set-body>@{ return new JObject(new JProperty("error", new JObject(new JProperty("code", (int)JObject.Parse((string)context.Variables["gatewayQueryGuardDecision"])["status"] == 400 ? "QUERY_PARAMETERS_NOT_ALLOWED" : "QUERY_GUARD_NOT_CONFIGURED"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None); }</set-body>
+      </return-response>
+    </when></choose>
     <!-- native MCPはRESTの400応答もisError:falseで包むため、引数不正は実行前にJSON-RPCエラーへ確定します。 -->
     <set-variable name="gatewayMcpArgumentError" value="@{
       try {
@@ -94,6 +110,8 @@
     <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
     <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
     <include-fragment fragment-id="core-gateway-telemetry" />
+    <set-variable name="gatewayQueryPhase" value="backend-response" />
+    <include-fragment fragment-id="core-query-telemetry" />
   </outbound>
   <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
   <on-error>
@@ -105,5 +123,7 @@
          Responseの既定値200を成功と誤記せず、実際の400以上のエラー値だけを残します。 -->
     <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
     <include-fragment fragment-id="core-gateway-telemetry" />
+    <set-variable name="gatewayQueryPhase" value="policy-error" />
+    <include-fragment fragment-id="core-query-telemetry" />
   </on-error>
 </policies>

@@ -33,7 +33,8 @@ class ContractRatePublicationTests(unittest.TestCase):
             "publicHostName":cls.config["gateway"]["publicHostName"],
             "entraTenantId":cls.config["entraTenantId"],
             "entraTenantId":cls.config["entraTenantId"],
-            "rateLimits":cls.config["gateway"]["rateLimits"]}
+            "rateLimits":cls.config["gateway"]["rateLimits"],
+            "queryGuards":cls.config["gateway"]["queryGuards"]}
 
     def setUp(self):
         """設定変更の試験が、別ケースの中央設定へ残らないようにする。"""

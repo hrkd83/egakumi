@@ -51,6 +51,7 @@ class DnsProviderMismatchError(ConfigurationError):
 
 RG_KINDS = ("id", "nw", "monitor", "svc", "maint")
 SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca")
+QUERY_GUARD_DEFAULTS = {"liveCreate": "observe", "realtimeCreate": "observe", "piiMcp": "observe"}
 TOP_KEYS = {
     "$schema", "$comment",
     "schemaVersion", "productName", "environmentName", "subscriptionId",
@@ -87,7 +88,7 @@ PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
     "network": PARAMETER_NETWORK_IP_KEYS | {"firewall", "ntpFqdns"},
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
-    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "grpc", "rateLimits"},
+    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "grpc", "rateLimits", "queryGuards"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
     "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
     "certificate": {"contactEmail", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
@@ -103,6 +104,7 @@ PARAMETER_GATEWAY_NESTED_KEYS = {
     "authentication": {"subscriptionKeyHeader", "credentialLogin"},
     "grpc": {"publicHostName"},
     "rateLimits": {"subscriptionKey", "application"},
+    "queryGuards": set(QUERY_GUARD_DEFAULTS),
 }
 PARAMETER_OWNED_PATHS = (
     *((key,) for key in ("schemaVersion", "productName", "environmentName", "subscriptionId", "azureTenantId", "entraTenantId",
@@ -190,6 +192,14 @@ def _choice(value: Any, path: str, choices: tuple[str, ...]) -> str:
     if value not in choices:
         _fail(path, "must be one of " + ", ".join(choices))
     return value
+
+
+def normalize_query_guards(raw: Any) -> dict:
+    """固定した3入口のquery動作だけを選び、省略時は観測を維持する。"""
+    modes = copy.deepcopy(_object(raw, "gateway.queryGuards", set(QUERY_GUARD_DEFAULTS)))
+    for entry, default in QUERY_GUARD_DEFAULTS.items():
+        _choice(modes.setdefault(entry, default), "gateway.queryGuards." + entry, ("observe", "reject"))
+    return modes
 
 
 def _guid(value: Any, path: str) -> str:
@@ -1139,7 +1149,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["services"] = s
     # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限、
     # gRPCで使う証明書のホスト名も、独立した値のまま矛盾させない。
-    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "grpc", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits"})
+    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "grpc", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
     # 共通入口はサーバーが保持する購読キーで認可します。
     authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin"})
@@ -1183,6 +1193,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _list(g.setdefault(key, []), "gateway." + key)
     g.setdefault("existingWafPolicyId", "")
     _bool(g.setdefault("realtimeControlEnabled", False), "gateway.realtimeControlEnabled")
+    g["queryGuards"] = normalize_query_guards(g.get("queryGuards", {}))
     # 本人とアプリ単独は検証済み tid+oid、共有キーは APIM 購読 ID ごとに計数します。
     # overrides はこの計数枠の上限を個別調整します。
     limits_path = "gateway.rateLimits"

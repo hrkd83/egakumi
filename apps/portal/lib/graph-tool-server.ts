@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor, type ApiKeyOverview } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -88,7 +89,7 @@ async function actor(dependencies: GraphToolDependencies): Promise<ApiKeyActor |
 }
 
 /** 更新を伴うBFF要求は、認証Cookieに加えて同一Originを必須とします。 */
-async function input(request: Request, dependencies: GraphToolDependencies, poll: boolean): Promise<{ apiKeyId: string } | Response> {
+async function input(request: Request, dependencies: GraphToolDependencies, poll: boolean): Promise<{ apiKeyId: string; owner: ApiKeyActor } | Response> {
   let origin: string;
   try { origin = new URL(dependencies.readPortalOrigin()).origin; }
   catch { return failure("GatewayNotConfigured", 503); }
@@ -96,12 +97,14 @@ async function input(request: Request, dependencies: GraphToolDependencies, poll
   if (request.method !== "POST" || request.headers.get("origin") !== origin || (fetchSite && fetchSite !== "same-origin")) {
     return failure("RequestNotAllowed", 403);
   }
-  if (new URL(request.url).search) return failure("InvalidRequest", 400);
+  const owner = await actor(dependencies);
+  if (owner instanceof Response) return owner;
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   if (Number(request.headers.get("content-length") ?? 0) > maximumBodyBytes) return failure("InvalidRequest", 413);
   try {
     const value = await readBody(request.body, maximumBodyBytes);
-    return (poll ? graphToolConnectionInputSchema : graphToolInputSchema).parse(value);
+    return { ...(poll ? graphToolConnectionInputSchema : graphToolInputSchema).parse(value), owner };
   } catch { return failure("InvalidRequest", 400); }
 }
 
@@ -126,9 +129,9 @@ async function client(dependencies: GraphToolDependencies, owner: ApiKeyActor, a
 export async function handleGraphToolKeys(request: Request, dependencies: GraphToolDependencies): Promise<Response> {
   if (request.method !== "GET") return new Response(null, { status: 405, headers: { ...responseHeaders, Allow: "GET" } });
   if (request.headers.get("sec-fetch-site") === "cross-site") return failure("RequestNotAllowed", 403);
-  if (new URL(request.url).search) return failure("InvalidRequest", 400);
   const owner = await actor(dependencies);
   if (owner instanceof Response) return owner;
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   try {
     const overview = await (dependencies.readChoices ?? ((person, target) => getApiKeyService().executionChoices(person, target)))(owner, apiId);
     const groups = new Map(overview.groups.map((group) => [group.id.toLowerCase(), group.displayName]));
@@ -146,8 +149,7 @@ export async function handleGraphToolKeys(request: Request, dependencies: GraphT
 export async function handleGraphToolProfile(request: Request, dependencies: GraphToolDependencies): Promise<Response> {
   const value = await input(request, dependencies, false);
   if (value instanceof Response) return value;
-  const owner = await actor(dependencies);
-  if (owner instanceof Response) return owner;
+  const owner = value.owner;
   const gateway = await client(dependencies, owner, value.apiKeyId);
   if (gateway instanceof Response) return gateway;
   const started = performance.now();
@@ -180,8 +182,7 @@ export async function handleGraphToolProfile(request: Request, dependencies: Gra
 export async function handleGraphToolConnection(request: Request, dependencies: GraphToolDependencies): Promise<Response> {
   const value = await input(request, dependencies, true);
   if (value instanceof Response) return value;
-  const owner = await actor(dependencies);
-  if (owner instanceof Response) return owner;
+  const owner = value.owner;
   const gateway = await client(dependencies, owner, value.apiKeyId);
   if (gateway instanceof Response) return gateway;
   try { return Response.json(graphToolStatusSchema.parse({ status: await gateway.poll() }), { headers: responseHeaders }); }

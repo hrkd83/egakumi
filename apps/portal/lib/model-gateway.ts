@@ -1,5 +1,6 @@
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { z } from "zod";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
@@ -180,6 +181,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
     actor = await dependencies.readSession();
     if (!actor) return failure("AuthenticationRequired", 401);
   } catch { return failure("AuthenticationUnavailable", 503); }
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
     return failure("InvalidRequest", 415);
   }

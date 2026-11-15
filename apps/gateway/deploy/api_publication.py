@@ -22,7 +22,7 @@ import time
 from urllib.parse import parse_qsl, urlsplit
 import uuid
 
-from deployment.helpers.configuration import API_NAME, entra_tenant_id
+from deployment.helpers.configuration import API_NAME, entra_tenant_id, normalize_query_guards
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.catalog_descriptions import with_catalog_descriptions
 from deployment.helpers.apim_authentication import (
@@ -168,6 +168,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "apiDefinitions": resolved, "publishApis": True,
         "subscriptionKeyHeader": authentication["core-subscription-key-header"],
         "credentialLogin": credential_login.settings(config) or {},
+        "queryGuards": normalize_query_guards(config["gateway"].get("queryGuards", {})),
         "rateLimits": config["gateway"].get("rateLimits", {
             "user": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60},
             "subscriptionKey": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []},

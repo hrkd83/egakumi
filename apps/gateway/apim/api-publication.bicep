@@ -14,6 +14,8 @@ param credentialLogin object = {}
 param subscriptionKeyHeader string = 'api-key'
 @description('APIMが検証した購読IDごとの共通要求回数制限。')
 param rateLimits object = { user: { enabled: false, calls: 60, renewalPeriodSeconds: 60 }, subscriptionKey: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] }, application: { enabled: false, calls: 60, renewalPeriodSeconds: 60, overrides: [] } }
+@description('Live・Realtimeの作成とnative PII MCPのquery処理。入口ごとに観測から拒否へ切り替えます。')
+param queryGuards object = { liveCreate: 'observe', realtimeCreate: 'observe', piiMcp: 'observe' }
 @description('この明示的な API 登録処理の指定です。APIM 全体の公開・停止スイッチではありません。')
 param publishApis bool = false
 @description('実行前検査で基盤の準備済み Key Vault 参照を照合する URI。登録処理は共通 Named Value を更新しません。')
@@ -181,7 +183,7 @@ resource credentialLoginDiagnostics 'Microsoft.ApiManagement/service/apis/diagno
 // ポリシー本文は読みやすい XML ファイルで管理し、契約固有の箇所だけを Bicep が置換します。
 // cache-lookup-valueはfragmentに置けないため、固定の照会本文をAPIポリシーへ展開します。
 var subscriptionProfileXml = replace(replace(loadTextContent('policies/subscription-profile.xml'), '<fragment>', ''), '</fragment>', '')
-var gatewayPolicyTemplate = replace(loadTextContent('policies/gateway.xml'), '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml)
+var gatewayPolicyTemplate = replace(replace(loadTextContent('policies/gateway.xml'), '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml), '__QUERY_GUARD_MODES_BASE64__', base64(string(queryGuards)))
 var protocolPolicyTemplate = replace(loadTextContent('policies/protocol.xml'), '__SUBSCRIPTION_PROFILE_XML__', subscriptionProfileXml)
 var piiPolicyTemplate = replace(loadTextContent('policies/pii.xml'), '__RATE_LIMIT_ERROR_XML__', rateLimitErrorXml)
 var documentAnalysisPolicyTemplate = replace(loadTextContent('policies/document-analysis.xml'), '__RATE_LIMIT_ERROR_XML__', rateLimitErrorXml)
@@ -189,7 +191,7 @@ var documentAnalysisStatusPolicyTemplate = replace(loadTextContent('policies/doc
 var realtimeCreatePolicyTemplate = loadTextContent('policies/realtime-create.xml')
 var realtimeHangupPolicyTemplate = loadTextContent('policies/realtime-hangup.xml')
 var liveCreatePolicyTemplate = loadTextContent('policies/live-create.xml')
-var mcpPolicyTemplate = loadTextContent('policies/mcp.xml')
+var mcpPolicyTemplate = replace(loadTextContent('policies/mcp.xml'), '__QUERY_GUARD_MODES_BASE64__', base64(string(queryGuards)))
 // APIM fragments cannot include another fragment. Reuse the reviewed trace
 // body by inlining it at deployment time in Credential Manager failures.
 var gatewayTelemetryBody = replace(replace(loadTextContent('policies/gateway-telemetry.xml'), '<fragment>', ''), '</fragment>', '')
@@ -304,6 +306,17 @@ resource gatewayTelemetryFragment 'Microsoft.ApiManagement/service/policyFragmen
   parent: apim
   name: 'core-gateway-telemetry'
   properties: { format: 'rawxml', description: 'Allowlisted gateway audit metadata; no text, credentials or raw diagnostics.', value: loadTextContent('policies/gateway-telemetry.xml') }
+}
+// 固定入口のquery概要と判定だけを扱い、本文やquery名・値を保持しません。
+resource queryGuardFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-query-guard'
+  properties: { format: 'rawxml', description: 'Fixed-entry query presence and rejection decisions without body reads.', value: loadTextContent('policies/query-guard.xml') }
+}
+resource queryTelemetryFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-query-telemetry'
+  properties: { format: 'rawxml', description: 'Fixed query summaries only; no query names, values, request IDs or identities.', value: loadTextContent('policies/query-telemetry.xml') }
 }
 // 要求サイズと出力トークン上限を検査する共通部品です。
 resource modelLimitsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
@@ -487,7 +500,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
   parent: apis[index]
   name: 'policy'
   properties: { format: 'rawxml', value: policyValues[index] }
-  dependsOn: [auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, modelLimitsFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
+  dependsOn: [auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, modelLimitsFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -622,7 +635,7 @@ resource mcpPolicies 'Microsoft.ApiManagement/service/apis/policies@2025-09-01-p
   parent: mcpServers[index]
   name: 'policy'
   properties: { format: 'rawxml', value: mcpPolicyValues[index] }
-  dependsOn: [auditContextFragment, backendAuditFragment, gatewayTelemetryFragment, mcpTools]
+  dependsOn: [auditContextFragment, backendAuditFragment, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, mcpTools]
 }]
 // Azure Monitorへの送信を表すAPIM内のloggerを先に作成します。
 // 診断設定のloggerIdを文字列で書くだけでは、この送信先は作成されません。

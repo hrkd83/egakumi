@@ -151,7 +151,8 @@ class RerankPublicationTests(unittest.TestCase):
         api = configuration.normalize_configuration(rerank_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
         # The deployment stage resolves Foundry's owned endpoint before Bicep.
         api["backendUrl"] = "https://provider.example.com"
-        parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
+        parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"},
+                      "queryGuards": template["parameters"]["queryGuards"]["defaultValue"]}
 
         def evaluate(value):
             return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)

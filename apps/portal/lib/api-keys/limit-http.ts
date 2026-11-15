@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 
 import { ApiKeyError, apiKeyIdSchema, type ApiKeyActor } from "./contracts.ts";
 import { updateApiKeyLimitsSchema, type ApiKeyLimitProfile, type UpdateApiKeyLimits } from "./limit-contracts.ts";
@@ -55,6 +56,7 @@ export async function handleApiKeyLimits(request: Request, dependencies: ApiKeyL
       throw new ApiKeyError("OriginNotAllowed", 403);
     }
     if (!apiKeyIdSchema.safeParse(id).success) throw new ApiKeyError("NotFound", 404);
+    if (!isAllowedPortalQuery(request)) throw new ApiKeyError("InvalidRequest", 400);
     if (request.method === "GET") {
       return Response.json(await dependencies.getService().get(actor, id), { headers: responseHeaders });
     }

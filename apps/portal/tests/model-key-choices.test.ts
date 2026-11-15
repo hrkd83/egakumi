@@ -105,9 +105,12 @@ test("標準のカタログは埋め込み・画像・音声APIでも本人所�
 
 test("本人は認証依存だけから取得し、サーバーカタログのAPI識別子だけを所属サービスへ渡す", async () => {
   const calls: unknown[][] = [];
-  const result = await handleModelKeyChoices(request(`apiId=${model.apiId}&tenantId=forged-tenant&objectId=forged-user`, "GET", {
+  const boundary = dependencies({ readChoices: async (...input) => { calls.push(input); return { groups: [], keys: [] }; } });
+  await expectServerFailure(await handleModelKeyChoices(request(`apiId=${model.apiId}&tenantId=forged-tenant&objectId=forged-user`), boundary), 400, "InvalidRequest");
+  assert.deepEqual(calls, []);
+  const result = await handleModelKeyChoices(request(`apiId=${model.apiId}`, "GET", {
     "X-Entra-Object-Id": "forged-user", "X-Entra-Tenant-Id": "forged-tenant",
-  }), dependencies({ readChoices: async (...input) => { calls.push(input); return { groups: [], keys: [] }; } }));
+  }), boundary);
   assert.deepEqual(calls, [[actor, model.apiId]]);
   assert.equal(calls[0][0], actor);
   assert.equal(result.status, 200);

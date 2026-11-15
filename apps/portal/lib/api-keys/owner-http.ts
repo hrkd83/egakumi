@@ -1,4 +1,5 @@
 import "server-only";
+import { isAllowedPortalQuery } from "../portal-query.ts";
 import { z } from "zod";
 import { ApiKeyError, apiKeyIdSchema, transferApiKeyOwnershipSchema,
   type ApiKeyActor, type ApiKeyOwnerTarget, type ApiKeyRecord, type TransferApiKeyOwnershipInput } from "./contracts.ts";
@@ -40,6 +41,7 @@ export async function handleApiKeyOwner(request: Request, dependencies: ApiKeyOw
     if (request.headers.get("sec-fetch-site") === "cross-site"
         || (request.method === "POST" && request.headers.get("origin") !== dependencies.readOrigin())) throw new ApiKeyError("OriginNotAllowed", 403);
     if (!apiKeyIdSchema.safeParse(id).success) throw new ApiKeyError("NotFound", 404);
+    if (!isAllowedPortalQuery(request, request.method === "GET" ? ["search", "cursor"] : [])) throw new ApiKeyError("InvalidRequest", 400);
     if (request.method === "GET") {
       const parameters = new URL(request.url).searchParams;
       const search = z.string().trim().min(2).max(80).safeParse(parameters.get("search"));

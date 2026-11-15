@@ -25,7 +25,8 @@ class OperationBackendPublicationTests(unittest.TestCase):
 
     def evaluate(self, expression, api):
         return PolicyExpression(expression, self.template["variables"], functions=self.template["functions"]).evaluate(
-            {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}})
+            {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"},
+             "queryGuards": self.template["parameters"]["queryGuards"]["defaultValue"]})
 
     def test_operation_backend_branch_does_not_execute_api_default_authentication_first(self):
         api = self.fixture()

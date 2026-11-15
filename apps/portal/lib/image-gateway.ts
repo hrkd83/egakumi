@@ -1,5 +1,6 @@
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -55,7 +56,7 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
   try { actor = await dependencies.readSession(); if (!actor) return failure("AuthenticationRequired", 401); } catch { return failure("AuthenticationUnavailable", 503); }
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   // WAFの引数値除外は同名queryにも作用するため、本文以外の入力を受け付けません。
-  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: ImageGenerationInput & { apiKeyId: string };
   try { input = imageGenerationExecutionSchema.parse(JSON.parse(await readBody(request.body, MAX_BUFFERED_BODY_BYTES, request.signal))); } catch { return failure("InvalidRequest", 400); }

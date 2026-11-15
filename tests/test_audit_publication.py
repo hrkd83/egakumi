@@ -145,8 +145,10 @@ class AuditPublicationTests(unittest.TestCase):
   branch,=[node for node in facade.findall('inbound/choose/when')
            if 'gatewayMcpArgumentError' in node.attrib.get('condition','')]
   self.assertEqual(branch.find('return-response/set-status').attrib['code'],'400')
-  body,=facade.findall('.//set-body')
-  self.assertIs(body,branch.find('return-response/set-body'))
+  body=branch.find('return-response/set-body')
+  query_error=facade.find("inbound/choose[@id='core-query-rejection']/when/return-response/set-body")
+  self.assertIsNotNone(query_error)
+  self.assertEqual(facade.findall('.//set-body'),[query_error,body])
   self.assertEqual(body.text,'@((string)context.Variables["gatewayMcpArgumentError"])')
 
  def test_native_diagnostics_only_select_chat_and_never_enable_message_capture(self):

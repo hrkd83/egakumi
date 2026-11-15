@@ -51,40 +51,50 @@ class Transport:
         raise AssertionError("Unexpected ARM method")
 
 
+def publication_fixture():
+    """API配備計画を検査する独立した合成設定と状態を返す。"""
+    config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
+        "azureTenantId": "22222222-2222-4222-8222-222222222222", "resourceStem": "test-fixture",
+        "productName": "fixture", "environmentName": "test", "location": "japaneast", "foundryLocation": "eastus2",
+        "services": {"apimInstanceId": "abc123"},
+        "resourceGroupNames": {layer: "rg-test-fixture-" + layer for layer in publish.LAYERS},
+        "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True}, "realtimeControlEnabled": True,
+            "authentication": {"subscriptionKeyHeader": "api-key"}},
+        "network": {"subnetPrefixes": {"apim": "10.40.2.64/26"}}, "publishApis": True,
+        "apiDefinitions": [{"name": "model", "backendService": "foundryOpenAi"},
+            {"name": "sample", "backendService": "external", "backendUrl": "https://sample.azurecontainerapps.io"}]}
+    # 本番と同じ公開契約を持たせる。接続説明の生成に内部URLや試験固有IDは使わない。
+    for api in config["apiDefinitions"]:
+        api.update(displayName=api["name"].title(), path="tools/" + api["name"], apiType="http",
+            productId="tool-users", subscriptionKeyHeader="api-key",
+            operations=[{"name": "invoke", "method": "POST", "urlTemplate": "/invoke"}],
+            authorization={"mode": "subscriptionKey",
+                "operationConstraints": {"invoke": {"kind": "registeredOperation", "maxRequestBytes": 32768}}})
+    names = {"apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
+        "foundry": "aif-test-fixture", "project": "proj-test-fixture", "apiCenter": "apic-test-fixture"}
+    svc = publish._scope(config, "svc")
+    ids = {key: svc + "/providers/" + value + "/" + names[key] for key, value in {
+        "apim": "Microsoft.ApiManagement/service", "keyVault": "Microsoft.KeyVault/vaults", "foundry": "Microsoft.CognitiveServices/accounts"}.items()}
+    identity_id = publish._scope(config, "id") + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test-fixture-certificate"
+    client_id = "33333333-3333-4333-8333-333333333333"
+    state = {**{key: config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem", "resourceGroupNames")},
+        "apimInstanceId": "abc123", "serviceResourceIds": ids, "outputs": {"names": names, "resourceGroups": config["resourceGroupNames"],
+            "cleanup": {"serviceResourceIds": ids}, "services": ids,
+            "endpoints": {"public": "https://fixture.example.com", "foundry": "https://aif-test-fixture.services.ai.azure.com"},
+            "certificateIdentity": {"id": identity_id, "clientId": client_id},
+            "grpc": {"enabled": True, "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443"},
+            "ingressSecrets": {"enabled": True, "grpcEnabled": True, "realtimeEnabled": True}}}
+    return config, state
+
+
 class PublicationTests(unittest.TestCase):
     """構築済み基盤へAPIの差分だけを反映する計画を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
-        self.config = {"subscriptionId": "11111111-1111-4111-8111-111111111111",
-            "azureTenantId": "22222222-2222-4222-8222-222222222222", "resourceStem": "test-fixture",
-            "productName": "fixture", "environmentName": "test", "location": "japaneast", "foundryLocation": "eastus2",
-            "services": {"apimInstanceId": "abc123"},
-            "resourceGroupNames": {layer: "rg-test-fixture-" + layer for layer in publish.LAYERS},
-            "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True}, "realtimeControlEnabled": True,
-                "authentication": {"subscriptionKeyHeader": "api-key"}},
-            "network": {"subnetPrefixes": {"apim": "10.40.2.64/26"}}, "publishApis": True,
-            "apiDefinitions": [{"name": "model", "backendService": "foundryOpenAi"},
-                {"name": "sample", "backendService": "external", "backendUrl": "https://sample.azurecontainerapps.io"}]}
-        # 本番と同じ公開契約を持たせる。接続説明の生成に内部URLや試験固有IDは使わない。
-        for api in self.config["apiDefinitions"]:
-            api.update(displayName=api["name"].title(), path="tools/" + api["name"], apiType="http",
-                productId="tool-users", subscriptionKeyHeader="api-key",
-                operations=[{"name": "invoke", "method": "POST", "urlTemplate": "/invoke"}],
-                authorization={"mode": "subscriptionKey",
-                    "operationConstraints": {"invoke": {"kind": "registeredOperation", "maxRequestBytes": 32768}}})
-        names = {"apim": "apim-test-fixture-abc123", "keyVault": "kv-test-fixture",
-            "foundry": "aif-test-fixture", "project": "proj-test-fixture", "apiCenter": "apic-test-fixture"}
-        svc = publish._scope(self.config, "svc")
-        ids = {key: svc + "/providers/" + value + "/" + names[key] for key, value in {
-            "apim": "Microsoft.ApiManagement/service", "keyVault": "Microsoft.KeyVault/vaults", "foundry": "Microsoft.CognitiveServices/accounts"}.items()}
-        identity_id = publish._scope(self.config, "id") + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test-fixture-certificate"
-        client_id = "33333333-3333-4333-8333-333333333333"
-        self.state = {**{key: self.config[key] for key in ("subscriptionId", "azureTenantId", "resourceStem", "resourceGroupNames")},
-            "apimInstanceId": "abc123", "serviceResourceIds": ids, "outputs": {"names": names, "resourceGroups": self.config["resourceGroupNames"],
-                "cleanup": {"serviceResourceIds": ids}, "services": ids,
-                "endpoints": {"public": "https://fixture.example.com", "foundry": "https://aif-test-fixture.services.ai.azure.com"},
-                "certificateIdentity": {"id": identity_id, "clientId": client_id},
-                "grpc": {"enabled": True, "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443"},
-                "ingressSecrets": {"enabled": True, "grpcEnabled": True, "realtimeEnabled": True}}}
+        self.config, self.state = publication_fixture()
+        names = self.state["outputs"]["names"]
+        ids = self.state["serviceResourceIds"]
+        identity_id = self.state["outputs"]["certificateIdentity"]["id"]
+        client_id = self.state["outputs"]["certificateIdentity"]["clientId"]
         self.plan = publish.prepare_plan(self.config, self.state)
         self.tags = {"product": "fixture", "environment": "test"}
         self.inventory = {}

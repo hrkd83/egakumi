@@ -40,7 +40,8 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
 
     def parameters(self, definitions=None):
         return {"apiDefinitions": self.definitions if definitions is None else definitions,
-                "publishApis": True, "l7IngressSecretIdentifier": ""}
+                "publishApis": True, "l7IngressSecretIdentifier": "",
+                "queryGuards": self.config["gateway"]["queryGuards"]}
 
     def value(self, expression, definitions=None, index=0):
         return DiscoveryExpression(expression, self.template["variables"], functions=self.template["functions"]).evaluate(self.parameters(definitions), index)

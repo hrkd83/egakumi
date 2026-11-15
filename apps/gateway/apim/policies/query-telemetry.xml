@@ -1,0 +1,40 @@
+<fragment>
+  <!-- 固定schemaで独立した観測を記録します。識別子・URL・query名や値・ヘッダー・本文は含めません。 -->
+  <choose><when condition="@{
+    try {
+      if (!context.Variables.ContainsKey(&quot;gatewayQueryGuardDecision&quot;)) { return false; }
+      var decision = JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;]);
+      return (new string[] { &quot;liveCreate&quot;, &quot;realtimeCreate&quot;, &quot;piiMcp&quot; }).Contains((string)decision[&quot;route&quot;]);
+    } catch { return false; }
+  }">
+    <trace source="core-query-guard" severity="information"><message>@{
+      try {
+        var decision = JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;]);
+        var route = (string)decision[&quot;route&quot;];
+        if (!(new string[] { &quot;liveCreate&quot;, &quot;realtimeCreate&quot;, &quot;piiMcp&quot; }).Contains(route)) { route = &quot;unknown&quot;; }
+        var method = (string)decision[&quot;httpMethod&quot;];
+        if (!(new string[] { &quot;POST&quot;, &quot;GET&quot;, &quot;DELETE&quot; }).Contains(method)) { method = &quot;unknown&quot;; }
+        var mode = (string)decision[&quot;mode&quot;];
+        if (mode != &quot;observe&quot; &amp;&amp; mode != &quot;reject&quot;) { mode = &quot;unknown&quot;; }
+        var phase = context.Variables.ContainsKey(&quot;gatewayQueryPhase&quot;) ? (string)context.Variables[&quot;gatewayQueryPhase&quot;] : &quot;unknown&quot;;
+        if (!(new string[] { &quot;received&quot;, &quot;query-rejected&quot;, &quot;guard-error&quot;, &quot;backend-response&quot;, &quot;policy-error&quot; }).Contains(phase)) { phase = &quot;unknown&quot;; }
+        var presence = (string)decision[&quot;presence&quot;];
+        if (presence != &quot;none&quot; &amp;&amp; presence != &quot;present&quot;) { presence = &quot;unknown&quot;; }
+        var count = (string)decision[&quot;countBucket&quot;];
+        if (!(new string[] { &quot;0&quot;, &quot;1&quot;, &quot;2-4&quot;, &quot;5+&quot; }).Contains(count)) { count = &quot;unknown&quot;; }
+        var duplicate = (string)decision[&quot;duplicates&quot;];
+        if (duplicate != &quot;yes&quot; &amp;&amp; duplicate != &quot;no&quot;) { duplicate = &quot;unknown&quot;; }
+        var status = phase == &quot;query-rejected&quot; ? 400 : phase == &quot;guard-error&quot; ? 503
+          : phase == &quot;backend-response&quot; || phase == &quot;policy-error&quot; ? (context.Variables.ContainsKey(&quot;gatewayAuditStatus&quot;) ? (int)context.Variables[&quot;gatewayAuditStatus&quot;] : 0) : 0;
+        var statusClass = status &gt;= 200 &amp;&amp; status &lt; 300 ? &quot;2xx&quot; : status &gt;= 300 &amp;&amp; status &lt; 400 ? &quot;3xx&quot;
+          : status &gt;= 400 &amp;&amp; status &lt; 500 ? &quot;4xx&quot; : status &gt;= 500 &amp;&amp; status &lt; 600 ? &quot;5xx&quot; : &quot;unknown&quot;;
+        return new JObject(new JProperty(&quot;schemaVersion&quot;, 1), new JProperty(&quot;event&quot;, &quot;query-guard&quot;),
+          new JProperty(&quot;route&quot;, route), new JProperty(&quot;httpMethod&quot;, method), new JProperty(&quot;mode&quot;, mode),
+          new JProperty(&quot;phase&quot;, phase), new JProperty(&quot;presence&quot;, presence), new JProperty(&quot;countBucket&quot;, count),
+          new JProperty(&quot;duplicates&quot;, duplicate), new JProperty(&quot;statusClass&quot;, statusClass)).ToString(Newtonsoft.Json.Formatting.None);
+      } catch {
+        return &quot;{\&quot;schemaVersion\&quot;:1,\&quot;event\&quot;:\&quot;query-guard\&quot;,\&quot;route\&quot;:\&quot;unknown\&quot;,\&quot;httpMethod\&quot;:\&quot;unknown\&quot;,\&quot;mode\&quot;:\&quot;unknown\&quot;,\&quot;phase\&quot;:\&quot;unknown\&quot;,\&quot;presence\&quot;:\&quot;unknown\&quot;,\&quot;countBucket\&quot;:\&quot;unknown\&quot;,\&quot;duplicates\&quot;:\&quot;unknown\&quot;,\&quot;statusClass\&quot;:\&quot;unknown\&quot;}&quot;;
+      }
+    }</message></trace>
+  </when></choose>
+</fragment>

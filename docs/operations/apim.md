@@ -10,6 +10,40 @@
 
 API別制約はJSON定義を変更してGで反映する。XMLは定義から生成するため、この手順でXMLを手編集する必要はない。共通認証・監査等の処理自体を変更する場合は、[開発者向けの共通ポリシー改修](../../DEVELOPMENT.md#apim共通ポリシーを改修する)として扱う。以下はAPI別制約の変更例である。
 
+## Live・Realtime・PII MCPのquery拒否
+
+次の3入口は、`gateway.queryGuards`で個別に観測・拒否を選ぶ。実装先はAPIMのAPIポリシーと共通fragmentであり、PortalのサーバーコードやWAFポリシーの変更ではない。
+
+| 設定キー | 対象 |
+| --- | --- |
+| `liveCreate` | `POST /models/openai-live/v1/sessions` |
+| `realtimeCreate` | `POST /models/openai-realtime/v1/calls` |
+| `piiMcp` | `/tools/pii-v1-mcp/mcp`のPOST・GET/SSE・DELETE。末尾の`/`も対象 |
+
+入口は固定公開path・HTTP method・選択済みの操作制約で識別する。Live・Realtimeでは操作templateも照合するため、内部API名や操作名だけの変更で検査が無効にならず、別の公開pathへ対象も広げない。
+
+```json
+{
+  "gateway": {
+    "queryGuards": {
+      "liveCreate": "observe",
+      "realtimeCreate": "observe",
+      "piiMcp": "observe"
+    }
+  }
+}
+```
+
+省略時・標準設定は`observe`で、既存の受付動作を維持する。paramsでは対象キーだけを上書きできる。`reject`へ切り替えた入口では、query引数が1件以上ある要求をHTTP 400／`QUERY_PARAMETERS_NOT_ALLOWED`で拒否する。名前・値・重複の内容による許可は追加しない。末尾の`?`だけで解析済み引数が0件なら拒否しない。query形状を取得できない場合、観測では`unknown`として受付動作を維持し、拒否では400にする。不正なモード設定は正規化で拒否し、実行時に不正設定があれば503／`QUERY_GUARD_NOT_CONFIGURED`となる。
+
+共通認証の完了後に検査する。Live・Realtimeはprofile選択や本文読取りより前、native PII MCPは購読認可後の本文引数検査より前で拒否する。本文なしのGET/SSE・DELETEへMIME条件は追加しない。別APIの正規query（WebSocketの固定パラメーター、Realtime observerの`call_id`、外部MCPの`session_id`、embeddingの限定`api-version`等）はこの切替の対象外である。
+
+観測は独立した`query-guard` traceへ固定schemaで記録する。入口・HTTP method・mode・段階・queryの有無・件数bucket・重複の有無・応答classだけを記録し、query名・値、URL、認証情報、本文、要求ID・購読IDを含めない。`received`を分母とし、`query-rejected`・`guard-error`・`backend-response`・`policy-error`を区別する。後続の別検査で早期終了した要求やログ未着では、終端記録が欠け得る。未着・`unknown`を「queryなし」や正常成功と数えない。SSEのHTTP 200やMCPの2xxも機能完了の証明にはしない。
+
+**実環境で拒否を有効にする前の確認：** 全3入口とMCPの各methodについて、有効な正常要求を観測し、必要なqueryがないことを呼出し元と照合する。queryありの正常利用があれば用途確認まで`observe`を維持する。新traceの固定schemaだけで、既存診断のURL非保持まで保証したとは扱わない。APIMの標準診断は既知query名のマスクのみで、Log AnalyticsとStorageへの配送もあるため、任意query名・値の非保持は保証しない。既存診断設定は保持し、試験のquery名・値は独立した合成入力だけを使う。キー・Cookie等の機密値はqueryへ入れない。この設定の追加だけでWAF除外を拡大しない。
+
+ローカルでは実XMLのC#式、認証後・本文前の順序、生成XMLへの設定反映を検証する。APIMによるURL解析、実際の下流呼出し停止、ログ到達、正常利用への無影響は別途実環境で確認する。復旧は対象キーを`observe`へ戻すことで行い、認証や他の既存入力検査は維持する。
+
 ## 変更する箇所
 
 paramsの`apiDefinitions`が空配列の場合は、標準の `apps/gateway/apim/apis/openai-inference-v1.json` の次の1箇所を変更する。明示した定義を使う環境では、実際に読まれる同じAPI定義を対象とし、標準ファイルを変えただけで反映されると考えない。

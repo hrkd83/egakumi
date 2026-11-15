@@ -1,5 +1,6 @@
 import { MAX_BUFFERED_BODY_BYTES, modelDeadline } from "./model-runtime-limits.ts";
 import "server-only";
+import { isAllowedPortalQuery } from "./portal-query.ts";
 import { containsModelCredential } from "./model-credential.ts";
 import { ApiKeyError, type ApiKeyActor } from "./api-keys/contracts.ts";
 import { getApiKeyService } from "./api-keys/service.ts";
@@ -44,7 +45,7 @@ export async function handleRerank(request: Request, dependencies: RerankGateway
   if (request.signal.aborted) return failure("RequestCancelled", 499);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return failure("InvalidRequest", 415);
   // 本文欄のWAF除外を同名queryへ流用させず、BFFの入力を本文に限定します。
-  if (new URL(request.url).searchParams.size > 0) return failure("InvalidRequest", 400);
+  if (!isAllowedPortalQuery(request)) return failure("InvalidRequest", 400);
   // 台帳IDなどBFF用のフィールド分を含めた受信上限です。転送本文は別途API上限で検査します。
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BUFFERED_BODY_BYTES) return failure("InvalidRequest", 413);
   let input: RerankInput & { apiKeyId: string };
