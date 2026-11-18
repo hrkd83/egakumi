@@ -354,6 +354,7 @@
       "value": "private-key",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
+        "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
         "tests/test_credential_client_v2.py"
       ]
@@ -716,6 +717,7 @@
       "value": "subscription-1",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
+        "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts"
       ]
     },
@@ -2717,6 +2719,7 @@
       "value": "11111111-2222-4333-8444-555555555555",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
+        "apps/portal/tests/connection-session-client.test.ts",
         "apps/portal/tests/pii-mcp-guide.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
         "tests/test_credential_client.py",
@@ -3156,6 +3159,7 @@
       "value": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
+        "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
         "tests/test_credential_client_v2.py"
       ]

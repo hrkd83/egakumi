@@ -43,8 +43,7 @@ export async function GET() {
 
 // Your authenticated status route calls client.poll() with the same binding.
 // Send only pending/complete to the UI. Retry this read after completion.
-// Source: apps/portal/lib/connection-session/client.ts
-// SDK entry: clients/connection-session/typescript/connection-session.ts`;
+// Source: apps/portal/lib/connection-session/client.ts`;
   if (language === "fastapi") return `from fastapi import Depends
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
