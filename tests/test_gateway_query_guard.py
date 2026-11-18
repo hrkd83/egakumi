@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
 from test_gateway_limits_telemetry import PWSH
+from deployment.helpers.apim_audit import render_audit_policy
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -35,6 +36,7 @@ SHAPE_KEYS = {
 RECORD_KEYS = {
     "event", "schemaVersion", "route", "httpMethod", "mode", "phase",
     "presence", "countBucket", "duplicates", "statusClass",
+    "auditSchemaVersion", "requestId", "apiId", "operationId", "requestContext", "authenticatedSubject",
 }
 
 
@@ -105,6 +107,7 @@ public class Context {
  public Guid RequestId = Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
  public Named Api = new Named();
  public Named Operation = new Named();
+ public Named Subscription;
  public Request Request = new Request();
  public Response Response = new Response();
  public Dictionary<string,object> Variables = new Dictionary<string,object>();
@@ -146,12 +149,18 @@ public static class QueryFixture {
    if (item["authenticated"] != null && item["authenticated"].Type != JTokenType.Null) {
     c.Variables["gatewayCommonAuthenticationValidated"] = (bool)item["authenticated"];
    }
-   c.Variables["gatewayAuditSettings"] = new JObject(
+   c.Variables["gatewayControlSettings"] = new JObject(
     new JProperty("operationConstraints", item["constraints"]),
     new JProperty("callerId", "SYNTHETIC_PRIVATE_CALLER"),
     new JProperty("subscriptionId", "SYNTHETIC_PRIVATE_SUBSCRIPTION")
    ).ToString(Formatting.None);
-   if (item["auditRaw"] != null) { c.Variables["gatewayAuditSettings"] = (string)item["auditRaw"]; }
+   if (item["auditRaw"] != null) { c.Variables["gatewayControlSettings"] = (string)item["auditRaw"]; }
+   if ((bool?)item["legacySettings"] == true) {
+    c.Variables["gatewayAuditSettings"] = c.Variables["gatewayControlSettings"];
+    c.Variables.Remove("gatewayControlSettings");
+   }
+   if (item.Property("controlRaw") != null) { c.Variables["gatewayControlSettings"] =
+     item["controlRaw"].Type == JTokenType.Null ? null : (string)item["controlRaw"]; }
    if (item["modes"] != null) {
     c.Variables["gatewayQueryGuardModes"] = item["modes"].Type == JTokenType.String ?
      (string)item["modes"] : item["modes"].ToString(Formatting.None);
@@ -196,7 +205,7 @@ class GatewayQueryExpressionTests(unittest.TestCase):
         if not PWSH:
             raise unittest.SkipTest("PowerShell Roslyn is required; no Azure checks were performed")
         guard = ET.parse(POLICIES / "query-guard.xml").getroot()
-        telemetry = ET.parse(POLICIES / "query-telemetry.xml").getroot()
+        telemetry = ET.fromstring(render_audit_policy((POLICIES / "query-telemetry.xml").read_text(encoding="utf-8")))
         rejection = ET.parse(POLICIES / "gateway.xml").find("./inbound/choose[@id='core-query-rejection']/when")
         mcp_rejection = ET.parse(POLICIES / "mcp.xml").find("./inbound/choose[@id='core-query-rejection']/when")
         if rejection is None:
@@ -331,6 +340,14 @@ class GatewayQueryExpressionTests(unittest.TestCase):
         for status in (0, 199, 200, 299, 300, 399, 400, 499, 500, 599, 600):
             cases.append(query_case("status-" + str(status), phase="backend-response", responseStatus=status))
         cases.append(query_case("status-not-confirmed", phase="backend-response", omitAuditStatus=True))
+        cls.rolling_cases=[]
+        for route in MODES:
+            name='rolling-'+route
+            cases.append(query_case(name,route,modes={**MODES,route:'reject'},query={'synthetic':'value'}))
+            cases.append(query_case(name+'-legacy-mixed',route,modes={**MODES,route:'reject'},query={'synthetic':'value'},legacySettings=True))
+            for label, raw in (('malformed', '{broken'), ('null', None), ('blank', ''), ('array', '[]'), ('scalar', '42')):
+                cases.append(query_case(name+'-'+label+'-new',route,modes={**MODES,route:'reject'},query={'synthetic':'value'},legacySettings=True,controlRaw=raw))
+            cls.rolling_cases.append(name)
         cls.cases = {item["id"]: item for item in cases}
         with tempfile.TemporaryDirectory(prefix="core-query-policy-") as directory:
             folder = Path(directory)
@@ -372,6 +389,15 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             self.assertEqual(result["decision"]["route"], "piiMcp")
             self.assertEqual(result["decision"]["httpMethod"], method)
             self.assertEqual(result["responseStatus"], 400)
+
+    def test_query_guard_requires_current_control_settings_without_reading_unavailable_routes(self):
+        for name in self.rolling_cases:
+            with self.subTest(case=name):
+                for case in (name+'-legacy-mixed', *(name+'-'+suffix+'-new' for suffix in ('malformed', 'null', 'blank', 'array', 'scalar'))):
+                    invalid=self.results[case]
+                    self.assertEqual(invalid['decision']['route'],'none')
+                    self.assertEqual(invalid['queryReads'],0)
+                    self.assertEqual(invalid['bodyReads'],0)
 
     def test_observation_buckets_count_values_without_recording_names_or_values(self):
         for prefix in self.route_cases:
@@ -560,7 +586,7 @@ class GatewayQueryPublicationTests(unittest.TestCase):
             symbol, resource = matches[0]
             self.fragment_names[name] = symbol
             self.assertEqual(resource["properties"]["format"], "rawxml")
-            source = ET.parse(POLICIES / (name + ".xml")).getroot()
+            source = ET.fromstring(render_audit_policy((POLICIES / (name + ".xml")).read_text(encoding="utf-8")))
             resolver = PolicyExpression("[true()]", self.template["variables"], functions=self.template.get("functions"))
             generated = ET.fromstring(resolver.resolve(resource["properties"]["value"], {"queryGuards": MODES}))
             self.assertEqual(ET.tostring(generated), ET.tostring(source))

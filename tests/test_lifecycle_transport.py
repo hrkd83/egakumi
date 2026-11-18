@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import io
 import json
@@ -15,6 +16,7 @@ import stat
 import ssl
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 from urllib.error import HTTPError, URLError
@@ -125,6 +127,38 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
                     self.transport.request("GET", target)
         self.opener.open.assert_not_called()
 
+    def test_concurrent_reads_share_one_token_refresh_without_serializing_http(self):
+        self.transport.token, self.transport.expires = None, 0
+        begin = threading.Barrier(8)
+        http_overlap = threading.Barrier(8)
+        checked = set()
+        checked_lock = threading.Lock()
+        all_checked = threading.Event()
+        def now():
+            with checked_lock:
+                checked.add(threading.get_ident())
+                if len(checked) == 8:
+                    all_checked.set()
+            return 0
+        def fetch_token(subscription, tenant):
+            # 全workerが期限切れを観測するまで取得を止め、lockなしなら重複取得になる競合を再現します。
+            if not all_checked.wait(timeout=10):
+                raise AssertionError("Concurrent reads did not reach token freshness checks")
+            return {"accessToken": "CONCURRENT_TOKEN_FIXTURE", "expires_on": float("inf")}
+        self.opener.open.side_effect = lambda *args, **kwargs: (http_overlap.wait(timeout=10),
+                                                               self.response(body={"ready": True}))[1]
+        def read():
+            begin.wait(timeout=10)
+            return self.transport.request("GET", self.path)
+        with mock.patch.object(lifecycle.time, "time", side_effect=now), \
+             mock.patch.object(lifecycle, "arm_access_token", side_effect=fetch_token) as token:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                observed = list(pool.map(lambda unused: read(), range(8)))
+        token.assert_called_once_with(self.config["subscriptionId"], self.config["azureTenantId"])
+        self.assertEqual(self.opener.open.call_count, 8)
+        self.assertTrue(all(result["body"] == {"ready": True} for result in observed))
+        self.assertEqual(self.transport.token, "CONCURRENT_TOKEN_FIXTURE")
+
     def test_redirect_never_follows_or_sends_token_to_destination(self):
         handler = lifecycle.NoRedirect()
         self.assertIsNone(handler.redirect_request(mock.Mock(), None, 302, "Found", {}, "https://other.example.com/"))
@@ -143,6 +177,72 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
         response.status, response.headers = status, {}
         response.read.return_value = json.dumps(body or {}).encode()
         return response
+
+    def raw_policy_response(self, xml, content_type="application/vnd.ms-azure-apim.policy.raw+xml"):
+        response = self.response()
+        response.headers = {"Content-Type": content_type, "ETag": '"policy-version-fixture"'}
+        response.read.return_value = xml.encode("utf-8")
+        return response
+
+    def apim_path(self, suffix, query="api-version=2025-09-01-preview&format=rawxml"):
+        return (f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/resource-fixture/"
+                f"providers/Microsoft.ApiManagement/service/apim-fixture/{suffix}?{query}")
+
+    def test_explicit_apim_raw_policy_and_fragment_reads_preserve_xml_and_etag(self):
+        policy = '<policies><inbound><base /></inbound><backend /><outbound /><on-error /></policies>'
+        fragment = '<fragment><set-variable name="fixture" value="plain" /></fragment>'
+        for suffix, xml in (("policies/policy", policy), ("apis/model-fixture/policies/policy", policy),
+                            ("apis/model-fixture/operations/create/policies/policy", policy),
+                            ("products/product-fixture/policies/policy", policy),
+                            ("policyFragments/fragment-fixture", fragment)):
+            with self.subTest(suffix=suffix):
+                response = self.raw_policy_response(xml, "Application/Vnd.Ms-Azure-Apim.Policy.Raw+Xml; charset=utf-8")
+                self.opener.open.side_effect = [response]
+                observed = self.transport.request("GET", self.apim_path(suffix), headers={"Accept": "application/json"})
+                self.assertEqual(observed, {"statusCode": 200, "headers": response.headers,
+                    "body": {"properties": {"format": "rawxml", "value": xml}}})
+
+    def test_unrequested_xml_unrelated_paths_and_unknown_mime_are_not_raw_policy_reads(self):
+        xml = '<policies><inbound /><backend /><outbound /><on-error /></policies>'
+        cases = [("GET", self.path, None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("apis/model-fixture"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy", "api-version=fixture"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy", "format=rawxml&format=rawxml"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy"), None, "text/xml"),
+                 ("GET", self.apim_path("policies/policy"), None, "application/json"),
+                 ("PUT", self.apim_path("policies/policy"), None, "application/vnd.ms-azure-apim.policy.raw+xml"),
+                 ("GET", self.apim_path("policies/policy"), {}, "application/vnd.ms-azure-apim.policy.raw+xml")]
+        for method, target, body, mime in cases:
+            with self.subTest(method=method, mime=mime, has_body=body is not None):
+                self.opener.open.side_effect = [self.raw_policy_response(xml, mime)]
+                with self.assertRaises(json.JSONDecodeError):
+                    self.transport.request(method, target, body)
+
+    def test_explicit_raw_policy_rejects_dtd_entities_invalid_xml_and_wrong_root(self):
+        cases = ["", "<policies>", '<!DOCTYPE policies [<!ENTITY private "PRIVATE_ENTITY_FIXTURE">]><policies>&private;</policies>',
+                 '<!DOCTYPE policies SYSTEM "https://example.invalid/private"><policies />',
+                 '<fragment />', '<html>PRIVATE_BODY_FIXTURE</html>']
+        for xml in cases:
+            with self.subTest(case=cases.index(xml)):
+                self.opener.open.side_effect = [self.raw_policy_response(xml)]
+                output = io.StringIO()
+                with contextlib.redirect_stderr(output), self.assertRaises(lifecycle.DeploymentError) as error:
+                    self.transport.request("GET", self.apim_path("policies/policy"))
+                self.assertEqual(str(error.exception), "ARM returned invalid APIM raw policy XML")
+                self.assertNotIn("PRIVATE_", output.getvalue())
+        self.opener.open.side_effect = [self.raw_policy_response('<policies />')]
+        with self.assertRaises(lifecycle.DeploymentError):
+            self.transport.request("GET", self.apim_path("policyFragments/fragment-fixture"))
+
+    def test_normal_json_and_malformed_json_are_not_masked_by_raw_policy_support(self):
+        for target in (self.path, self.apim_path("policies/policy")):
+            self.opener.open.side_effect = [self.response(body={"properties": {"value": "json-fixture"}})]
+            self.assertEqual(self.transport.request("GET", target)["body"], {"properties": {"value": "json-fixture"}})
+            response = self.response()
+            response.read.return_value = b'{"properties":'
+            self.opener.open.side_effect = [response]
+            with self.assertRaises(json.JSONDecodeError):
+                self.transport.request("GET", target)
 
     def http_error(self, status, headers=None, body=None):
         return HTTPError("https://management.azure.com" + self.path,

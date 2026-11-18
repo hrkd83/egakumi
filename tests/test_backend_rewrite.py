@@ -27,9 +27,12 @@ class BackendRewriteDeploymentTests(unittest.TestCase):
                     if resource["type"] == "Microsoft.ApiManagement/service/apis/operations/policies"
                     and resource.get("copy", {}).get("name") == "operationPolicies"]
         self.assertEqual(len(policies), 1)
-        expression = policies[0]["properties"]["value"]
+        self.assertIn('__bicep.operationPolicyValue(', policies[0]["properties"]["value"])
+        functions = next(item for item in self.template["functions"] if item["namespace"] == "__bicep")
+        expression = functions["members"]["operationPolicyValue"]["output"]["value"]
         self.assertRegex(expression, r'<policies>(?:<!--[^>]*-->)*<inbound>')
-        self.assertLess(expression.index('__bicep.requiresSpeechSsmlGuard('), expression.index("'<base />'"))
+        # Inherit authentication before inspecting large SSML request bodies.
+        self.assertLess(expression.index("'<base />'"), expression.index('__bicep.requiresSpeechSsmlGuard('))
         self.assertIn('copy-unmatched-params="false"', expression)
         self.assertIn('<backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error>', expression)
 
@@ -39,11 +42,12 @@ class BackendRewriteDeploymentTests(unittest.TestCase):
         operation_policy = next(resource for resource in resources
             if resource["type"] == "Microsoft.ApiManagement/service/apis/operations/policies"
             and resource.get("copy", {}).get("name") == "operationPolicies")
-        expression = operation_policy["properties"]["value"]
+        self.assertIn('__bicep.operationPolicyValue(', operation_policy["properties"]["value"])
+        functions = next(item for item in self.template["functions"] if item["namespace"] == "__bicep")
+        expression = functions["members"]["operationPolicyValue"]["output"]["value"]
         for kind in ("pii", "realtimeCreate", "realtimeHangup"):
             self.assertIn(".constraint.kind, '" + kind + "'", expression)
-        self.assertIn("__bicep.xmlText(variables('operationEntries')[copyIndex()].operation.backendUrlTemplate)", expression)
-        functions = next(item for item in self.template["functions"] if item["namespace"] == "__bicep")
+        self.assertIn("__bicep.xmlText(parameters('entry').operation.backendUrlTemplate)", expression)
         escaping = functions["members"]["xmlText"]["output"]["value"]
         for pair in ("'&', '&amp;'", "'\"', '&quot;'", "'<', '&lt;'", "'>', '&gt;'"):
             self.assertIn(pair, escaping)

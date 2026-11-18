@@ -17,7 +17,6 @@ import json
 import stat
 import uuid
 
-from deployment.helpers.credential_pools import logical_profiles
 from operations.common import OperationContext, OperationError
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,22 +61,36 @@ def secret_path(ctx, path, scope, *, new=False):
     return target
 
 
-def selection(ctx, profile):
-    """同じアプリを使用する既存CM入力と共有KVの論理profileを選ぶ。"""
-    profiles = logical_profiles(ctx.config)
-    if profile not in profiles:
+def selection(ctx, profile, purpose='cm'):
+    """CMと本人確認を分けて選び、同じEntraアプリの資格情報消費先を漏らさない。"""
+    login = ctx.config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {})
+    selected = login.get('providerNames', [])
+    if profile not in selected or purpose not in ('cm', 'identity'):
         raise OperationError('Select an existing login credential profile')
-    client_id = guid(profiles[profile]['clientId'])
-    names = sorted(n for n, p in profiles.items() if guid(p['clientId']) == client_id)
+    configured = ctx.config['credentialProviders']
+    provider = next(p for p in configured if p['name'] == profile)
+    identity = login.get('identity')
+    if purpose == 'identity' and not identity:
+        raise OperationError('Independent identity configuration is required for identity credential rotation')
+    target = identity if purpose == 'identity' else provider
+    client_id = guid(target['clientId'])
     tenant = guid(ctx.config.get('entraTenantId', ctx.config['azureTenantId']))
-    if any(guid(profiles[name]['tenantId']) != tenant for name in names):
+    if guid(target.get('tenantId', target.get('oauthTenantId'))) != tenant:
         raise OperationError('The selected profiles must use the configured Entra application tenant')
-    providers = [p for p in ctx.config['credentialProviders'] if guid(p['clientId']) == client_id]
+    providers = [p for p in configured if guid(p['clientId']) == client_id
+                 and guid(p['oauthTenantId']) == tenant]
+    names = sorted(p['name'] for p in providers if p['name'] in selected)
+    files = {str(ctx.output_path(p['clientSecretFile'])) for p in providers}
+    identity_consumer = bool(identity and guid(identity['clientId']) == client_id and guid(identity['tenantId']) == tenant)
+    if identity_consumer:
+        files.add(str(ctx.output_path(identity['clientSecretFile'])))
     scope = {'subscriptionId': ctx.config['subscriptionId'],
              'apimInstanceId': ctx.config['services']['apimInstanceId'],
              'tenantId': tenant,
              'clientId': client_id, 'profiles': names,
-             'inputFiles': sorted({str(ctx.output_path(p['clientSecretFile'])) for p in providers})}
+             'inputFiles': sorted(files)}
+    if identity_consumer:
+        scope['identity'] = True
     return scope
 
 
@@ -141,6 +154,16 @@ def update_consumers(ctx, scope, receipt, receipt_path, values, label):
         raise OperationError('Key Vault does not match the selected environment')
     ctx.verify_resource(vault_id, '2023-07-01', 'Microsoft.KeyVault/vaults')
     ctx.verify_resource(ctx.service_id('apim'), '2024-05-01', 'Microsoft.ApiManagement/service')
+    if scope['profiles']:
+        update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, vault_id)
+    # 独立OIDCの専用KV参照はGateway配備が保護入力から更新します。
+    save(ctx, receipt_path, receipt, label + '-gateway-requested')
+    ctx.run_cli([sys.executable, '-B', str(ROOT / 'scripts/deploy_gateway.py'),
+                 '--config', str(ctx.config_path), '--execute'])
+
+
+def update_shared_cm_secrets(ctx, scope, receipt, receipt_path, values, label, vault_id):
+    """選択したCMアプリの共有KVだけを更新し、独立OIDCアプリをCMへ代入しない。"""
     parameter_file = ctx.save_private(ctx.workspace.root / 'generated' /
         ('entra-rotation-' + uuid.uuid4().hex + '.parameters.json'), {
             '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#',
@@ -157,13 +180,10 @@ def update_consumers(ctx, scope, receipt, receipt_path, values, label):
             '--parameters', '@' + str(parameter_file), '--only-show-errors', '--output', 'none'])
     finally:
         parameter_file.unlink(missing_ok=True)
-    save(ctx, receipt_path, receipt, label + '-gateway-requested')
-    ctx.run_cli([sys.executable, '-B', str(ROOT / 'scripts/deploy_gateway.py'),
-                 '--config', str(ctx.config_path), '--execute'])
 
 
 def operate(ctx, args):
-    scope = selection(ctx, args.profile)
+    scope = selection(ctx, args.profile, getattr(args, 'credential_purpose', 'cm'))
     path = ctx.output_path(args.receipt)
     if not path.is_relative_to(ctx.workspace.state / 'operations'):
         raise OperationError('The rotation receipt must belong to state/operations')
@@ -286,6 +306,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
     parser.add_argument('--profile', required=True)
+    parser.add_argument('--credential-purpose', choices=('cm', 'identity'), default='cm',
+                        help='CM接続か、独立したOIDC本人確認アプリの資格情報を選びます。')
     parser.add_argument('--receipt', required=True)
     parser.add_argument('--stage', choices=('create', 'switch', 'rollback', 'retire'), required=True)
     parser.add_argument('--new-secret-file')

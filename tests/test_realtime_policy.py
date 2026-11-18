@@ -94,12 +94,38 @@ public static class TicketFixture {
     context.Request.MatchedParameters["callId"] = call;
     return Verify(context);
   }
+  public static Context NewUser(string tenant="11111111-1111-4111-8111-111111111111",string principal="22222222-2222-4222-8222-222222222222") {
+    var context=NewContext(); context.Subscription=null;
+    var caller="user:"+tenant+":"+principal;
+    context.Variables["gatewayEntraAuthenticationValidated"]=true;
+    context.Variables["gatewayUserAuthentication"]=new JObject(new JProperty("tenantId",tenant),new JProperty("principalId",principal),new JProperty("callerId",caller)).ToString();
+    context.Variables["gatewayDecision"]=new JObject(new JProperty("allowed",true),new JProperty("method","user"),new JProperty("callerId",caller),new JProperty("verifiedTenantId",tenant),new JProperty("verifiedPrincipalId",principal)).ToString();
+    return context;
+  }
   public static string Run() {
     var context = NewContext();
     var ticket = Sign(context);
     var body = JObject.Parse(SecretRequest(context));
     var checks = new JObject();
     checks["owner"] = Check(ticket);
+    var userContext=NewUser(); var userTicket=Sign(userContext);
+    userContext=NewUser(); userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
+    checks["userOwner"]=Verify(userContext);
+    userContext.Request.Url.Query["call_id"]=new[]{"rtc_synthetic-a"};
+    checks["userObserver"]=Observe(userContext);
+    userContext=NewUser(principal:"33333333-3333-4333-8333-333333333333");
+    userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
+    checks["otherUser"]=Verify(userContext);
+    userContext=NewUser(tenant:"44444444-4444-4444-8444-444444444444");
+    userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
+    checks["otherUserTenant"]=Verify(userContext);
+    userContext=NewUser(); userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{ticket};
+    checks["keyTicketAsUser"]=Verify(userContext);
+    userContext=NewContext(); userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
+    checks["userTicketAsKey"]=Verify(userContext);
+    userContext=NewUser(); userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
+    userContext.Variables["gatewayEntraAuthenticationValidated"]=false;
+    checks["unvalidatedUser"]=Verify(userContext);
     foreach (var queryName in new [] {"handle", "X-Core-Call-Ticket", "call_id"}) {
       var withQuery = NewContext(); withQuery.Request.Headers["X-Core-Call-Ticket"] = new string[] {ticket};
       withQuery.Request.Url.Query[queryName] = new string[] {"synthetic-unused"};
@@ -455,6 +481,13 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertTrue(self.checks["otherContract"])
         for name in ("otherCaller", "otherCall", "pathInjection"):
             with self.subTest(name=name): self.assertFalse(self.checks[name])
+
+    def test_user_call_ticket_survives_new_context_and_rejects_other_owners(self):
+        """ユーザーの通話をtid+oidへ固定し、別人とキー方式への転用を拒否する。"""
+        for name in ("userOwner", "userObserver"):
+            self.assertTrue(self.checks[name])
+        for name in ("otherUser", "otherUserTenant", "keyTicketAsUser", "userTicketAsKey", "unvalidatedUser"):
+            self.assertFalse(self.checks[name])
 
     def test_hangup_rejects_all_query_aliases_even_with_the_valid_owner_ticket(self):
         self.assertTrue(self.checks["owner"])

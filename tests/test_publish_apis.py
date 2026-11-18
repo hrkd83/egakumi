@@ -87,6 +87,92 @@ def publication_fixture():
     return config, state
 
 
+class SubscriptionProductReadbackTests(unittest.TestCase):
+    """API関連付けの部分情報ではなく正規Productを読んで認可条件を検査する。"""
+    def setUp(self):
+        config, state = publication_fixture()
+        self.plan = publish.prepare_plan(config, state)
+        self.api_a, self.api_b = self.plan["publishedApiIds"][:2]
+        self.product = self.plan["apimId"] + "/products/tool-users"
+
+    def transport(self, *, association=None, properties=None, actual_id=None):
+        association = {"id": self.product} if association is None else association
+        inventory = {
+            self.api_a + "/products": ok({"value": [association]}),
+            self.product: ok({"id": actual_id or self.product,
+                              "properties": {"subscriptionRequired": True} if properties is None else properties}),
+        }
+        return Transport(inventory)
+
+    def test_root_and_nested_associations_read_canonical_product_when_properties_are_partial(self):
+        for nested in (False, True):
+            with self.subTest(nested=nested):
+                alias = self.api_a + "/products/tool-users" if nested else self.product
+                transport = self.transport(association={"id": alias, "properties": {"displayName": "Synthetic product"}})
+                publish.verify_subscription_products(self.plan, transport)
+                self.assertEqual([path.split("?", 1)[0] for method, path, _, _ in transport.calls
+                                  if path.split("?", 1)[0] == self.product], [self.product])
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+    def test_shared_product_readback_is_cached_across_root_and_nested_memberships(self):
+        transport = self.transport()
+        transport.inventory[self.api_b + "/products"] = ok({"value": [{"id": self.api_b + "/products/tool-users"}]})
+        publish.verify_subscription_products(self.plan, transport)
+        self.assertEqual(sum(path.split("?", 1)[0] == self.product for _, path, _, _ in transport.calls), 1)
+
+    def test_association_subscription_flag_cannot_override_the_canonical_product(self):
+        for observed_flag in (None, True, False):
+            with self.subTest(association_flag=observed_flag):
+                association = {"id": self.api_a + "/products/tool-users", "properties": {"subscriptionRequired": observed_flag}}
+                transport = self.transport(association=association, properties={"subscriptionRequired": False})
+                with self.assertRaisesRegex(ValueError, "subscription-free"):
+                    publish.verify_subscription_products(self.plan, transport)
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+    def test_wrong_api_or_service_association_and_wrong_direct_product_identity_are_rejected(self):
+        for alias in (self.api_b + "/products/tool-users", self.api_a + ";rev=2/products/tool-users",
+                      self.product + "/extra", self.plan["apimId"] + "/other/products/tool-users",
+                      self.product.replace("/service/", "/other-service/")):
+            with self.subTest(alias=alias):
+                transport = self.transport(association={"id": alias})
+                with self.assertRaises(ValueError):
+                    publish.verify_subscription_products(self.plan, transport)
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+        transport = self.transport(actual_id=self.product.replace("tool-users", "foreign-product"))
+        with self.assertRaisesRegex(ValueError, "selected environment"):
+            publish.verify_subscription_products(self.plan, transport)
+        self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+    def test_only_strict_native_subscription_required_true_is_accepted(self):
+        for properties in ({}, {"subscriptionRequired": None}, {"subscriptionRequired": "true"},
+                           {"subscriptionRequired": 1}, {"subscriptionRequired": False}):
+            with self.subTest(properties=properties):
+                transport = self.transport(properties=properties)
+                with self.assertRaisesRegex(ValueError, "subscription-free"):
+                    publish.verify_subscription_products(self.plan, transport)
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+    def test_dedicated_employee_product_requires_complete_owned_canonical_properties(self):
+        employee = self.plan["apimId"] + "/products/" + publish.ENTRA_OPEN_PRODUCT_ID
+        import entra_publication
+        for valid in (True, False):
+            with self.subTest(valid=valid):
+                properties = copy.deepcopy(entra_publication.OPEN_PRODUCT_PROPERTIES)
+                if not valid:
+                    properties["description"] = "foreign-owner"
+                transport = Transport({
+                    self.api_a + "/products": ok({"value": [{"id": self.api_a + "/products/" + publish.ENTRA_OPEN_PRODUCT_ID}]}),
+                    employee: ok({"id": employee, "properties": properties}),
+                })
+                if valid:
+                    publish.verify_subscription_products(self.plan, transport)
+                else:
+                    with self.assertRaisesRegex(ValueError, "conflicting"):
+                        publish.verify_subscription_products(self.plan, transport)
+                self.assertTrue(any(path.split("?", 1)[0] == employee for _, path, _, _ in transport.calls))
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+
 class PublicationTests(unittest.TestCase):
     """構築済み基盤へAPIの差分だけを反映する計画を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
@@ -206,7 +292,9 @@ class PublicationTests(unittest.TestCase):
 
     def test_open_product_membership_is_rejected_before_any_change(self):
         api_id=self.plan["publishedApiIds"][0]
-        self.inventory[api_id+"/products"]=ok({"value":[{"properties":{"subscriptionRequired":False}}]})
+        product_id=self.plan['apimId']+'/products/unreviewed-open'
+        self.inventory[api_id+"/products"]=ok({"value":[{"id":product_id}]})
+        self.inventory[product_id]=ok({'id':product_id,'properties':{'subscriptionRequired':False}})
         transport=Transport(self.inventory)
         with self.assertRaisesRegex(ValueError,"subscription-free"):
             publish.execute_plan(self.config,self.state,self.plan,self.template,transport)
@@ -251,10 +339,17 @@ class PublicationTests(unittest.TestCase):
         broker_principal="88888888-8888-4888-8888-888888888888"
         url="https://"+names["application"]+".internal.fixture.azurecontainerapps.io"
         inventory={identity_id:ok({"id":identity_id,"properties":{"principalId":broker_principal}}),
-          app_id:ok({"id":app_id,"identity":{"userAssignedIdentities":{identity_id:{}}},"properties":{"provisioningState":"Succeeded","latestReadyRevisionName":"ready-001","latestRevisionName":"ready-001","configuration":{"ingress":{"fqdn":url[8:]}},"template":{"containers":[{"image":"fixture.azurecr.io/credential-broker@sha256:"+"a"*64}]}}}),
+          app_id:ok({"id":app_id,"identity":{"userAssignedIdentities":{identity_id:{}}},"properties":{"provisioningState":"Succeeded","latestReadyRevisionName":"ready-001","latestRevisionName":"ready-001","configuration":{"ingress":{"fqdn":url[8:]}},"template":{"containers":[{"image":"fixture.azurecr.io/credential-broker@sha256:"+"a"*64,"probes":[{"type":"Readiness","httpGet":{"path":"/health/gateway-caller-v1","port":8000,"scheme":"HTTP"}}]}]}}}),
           plan["apimId"]+"/backends/credential-broker":ok({"properties":{"url":url}}),
           plan["apimId"]+"/namedValues/core-credential-broker-url":ok({"properties":{"displayName":"core-credential-broker-url","secret":False,"value":url}}),
           plan["apimId"]+"/namedValues/core-credential-broker-secret":ok({"properties":{"secret":True,"keyVault":{"secretIdentifier":"https://kv-"+config["resourceStem"]+".vault.azure.net/secrets/core-credential-broker-key"}}})}
+        revision_id = app_id + "/revisions/ready-001"
+        inventory[revision_id] = ok({"id": revision_id, "properties": {
+            "active": True, "healthState": "Healthy",
+            "provisioningState": "Provisioned", "runningState": "Running",
+            "template": copy.deepcopy(
+                inventory[app_id]["body"]["properties"]["template"]
+            )}})
         for suffix in ("a","b"):
             provider_id=plan["apimId"]+"/authorizationProviders/graph-delegated-"+suffix
             assignment_path=provider_id+"/providers/Microsoft.Authorization/roleAssignments"
@@ -272,7 +367,7 @@ class PublicationTests(unittest.TestCase):
                     properties[key] = properties[key].upper()
             transport = Transport(current)
             publish.verify_credential_login(config, plan, apim, transport)
-            self.assertEqual([method for method, _, _, _ in transport.calls], ["GET"]*9)
+            self.assertEqual([method for method, _, _, _ in transport.calls], ["GET"]*10)
             self.assertEqual([path.split("?")[0] for _, path, _, _ in transport.calls][-4:],
                              [plan["apimId"]+"/authorizationProviders/graph-delegated-a",assignment_path,plan["apimId"]+"/authorizationProviders/graph-delegated-b",assignment_path.replace("graph-delegated-a/","graph-delegated-b/")])
 
@@ -309,7 +404,79 @@ class PublicationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     publish.verify_credential_login(config, plan, apim, transport)
                 self.assertTrue(all(method == "GET" for method, _, _, _ in transport.calls))
-                self.assertEqual(len(transport.calls), 7)
+                self.assertEqual(len(transport.calls), 8)
+
+    def test_caller_capability_requires_exact_readiness_probe_and_live_revision(self):
+        """旧版・旧SQL・停止revisionへ新CM契約を公開しない。"""
+        failures = ("legacy-probe", "missing-probe", "duplicate-probe",
+                    "wrong-port", "wrong-scheme", "revision-probe",
+                    "revision-image", "revision-id", "inactive",
+                    "unhealthy", "not-provisioned", "not-running",
+                    "revision-unavailable")
+        for failure in failures:
+            config, plan, apim, inventory, _ = self.credential_role_fixture()
+            app_id = next(key for key in inventory
+                          if "/containerApps/" in key)
+            container = inventory[app_id]["body"]["properties"][
+                "template"]["containers"][0]
+            revision_id = app_id + "/revisions/ready-001"
+            revision = inventory[revision_id]["body"]
+            ready = revision["properties"]
+            if failure == "legacy-probe":
+                container["probes"][0]["httpGet"]["path"] = "/health"
+            elif failure == "missing-probe":
+                container.pop("probes")
+            elif failure == "duplicate-probe":
+                container["probes"] *= 2
+            elif failure == "wrong-port":
+                container["probes"][0]["httpGet"]["port"] = 8001
+            elif failure == "wrong-scheme":
+                container["probes"][0]["httpGet"]["scheme"] = "HTTPS"
+            elif failure == "revision-probe":
+                ready["template"]["containers"][0]["probes"][0][
+                    "httpGet"]["path"] = "/health"
+            elif failure == "revision-image":
+                ready["template"]["containers"][0]["image"] = (
+                    "fixture.azurecr.io/credential-broker@sha256:"
+                    + "b" * 64
+                )
+            elif failure == "revision-id":
+                revision["id"] += "-another"
+            elif failure == "inactive":
+                ready["active"] = False
+            elif failure == "unhealthy":
+                ready["healthState"] = "Unhealthy"
+            elif failure == "not-provisioned":
+                ready["provisioningState"] = "Failed"
+            elif failure == "not-running":
+                ready["runningState"] = "Stopped"
+            else:
+                inventory[revision_id] = ok({}, 404)
+            transport = Transport(inventory)
+            with self.subTest(failure=failure):
+                with self.assertRaises((ValueError, publish.DeploymentError)):
+                    publish.verify_credential_login(
+                        config, plan, apim, transport
+                    )
+                self.assertTrue(all(method == "GET"
+                                    for method, _, _, _ in transport.calls))
+                self.assertFalse(any("/backends/" in path
+                                     for _, path, _, _ in transport.calls))
+
+    def test_api_publication_stops_before_writes_for_legacy_broker(self):
+        config, plan, _, inventory, _ = self.credential_role_fixture()
+        app = next(value for key, value in inventory.items()
+                   if "/containerApps/" in key)
+        app["body"]["properties"]["template"]["containers"][0][
+            "probes"][0]["httpGet"]["path"] = "/health"
+        transport = Transport({**self.inventory, **inventory})
+        with mock.patch.object(publish, "prepare_plan", return_value=plan), \
+                mock.patch.object(publish, "verify_common_authentication"):
+            with self.assertRaises(ValueError):
+                publish.execute_plan(config, self.state, plan, self.template,
+                                     transport)
+        self.assertTrue(all(method == "GET"
+                            for method, _, _, _ in transport.calls))
 
     def test_broker_prerequisites_are_required_before_api_publication(self):
         for failure in ("bootstrap","not-ready","wrong-backend","wrong-secret","broker-role","second-pool-role"):
@@ -497,7 +664,10 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(xml, render_service_policy())
             self.assertNotIn("__AUTHENTICATION_TELEMETRY_XML__", xml)
             self.assertNotIn("__L7_INGRESS_", xml)
-            self.assertIn('{{core-l7-ingress-secret}}', xml)
+            # 入口検証はSTEP2の部品で行い、共通ポリシーからその部品を呼び出す。
+            ingress = ET.fromstring(xml).find('./inbound/include-fragment[@id="core-trusted-ingress"]')
+            self.assertIsNotNone(ingress)
+            self.assertEqual(ingress.get('fragment-id'), 'core-trusted-ingress')
             publish.validate_common_authentication_policy(xml)
             with self.assertRaises(FileExistsError):
                 render_apim_policy.main(["--output", str(output)])
@@ -770,6 +940,7 @@ class PublicationTests(unittest.TestCase):
                    {"resources": [{"type": "Microsoft.ApiManagement/service"}]},
                    {"resources": [{"type": "Microsoft.ApiManagement/service/"}]},
                    {"resources": [{"type": "Microsoft.Compute/virtualMachines"}]},
+                   {"resources": [{"type": "Microsoft.CognitiveServices/accounts/deployments"}]},
                    {"resources": [{"type": "Microsoft.ApiManagement/service/apis", "resources": []}]},
                    {"resources": {"apis": self.template["resources"][0]}},
                    {"languageVersion": "2.0", "resources": {"api": None}},
@@ -853,13 +1024,14 @@ class PublicationTests(unittest.TestCase):
                 publish.execute_plan(self.config, self.state, self.plan, self.template, transport)
             self.assertTrue(all(call[0] == "GET" for call in transport.calls))
 
-    def test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes(self):
+    def test_model_contract_and_scoped_roles_are_checked_while_gui_capacity_is_preserved(self):
+        """容量だけのGUI変更は保持し、モデル契約・稼働状態・権限の差は書込前に拒否する。"""
         config = copy.deepcopy(self.config)
         model = {"name": "gpt-6.1-sol", "modelName": "gpt-6.1-sol", "modelVersion": "1",
                  "modelFormat": "OpenAI", "skuName": "GlobalStandard", "capacity": 1}
         config["services"] = {**config["services"], "speechEnabled": True, "grantApimFoundryModelsAccess": True, "modelDeployments": [model]}
         plan = publish.prepare_plan(config, self.state)
-        for failure in (None, "model", "role", "localAuth"):
+        for failure in (None, "model-name", "model-version", "model-format", "sku", "state", "role", "localAuth"):
             inventory = copy.deepcopy(self.inventory)
             principal = "44444444-4444-4444-8444-444444444444"
             inventory[plan["apimId"]]["body"]["identity"]["principalId"] = principal
@@ -871,8 +1043,17 @@ class PublicationTests(unittest.TestCase):
                 {"properties": {"scope": foundry_id, "principalId": principal,
                     "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/" + role}} for role in roles]})
             rid = foundry_id + "/deployments/gpt-6.1-sol"
-            inventory[rid] = ok({"id": rid, "sku": {"name": "GlobalStandard", "capacity": 2 if failure == "model" else 1},
+            # The operator changed capacity after initial provisioning; the
+            # public configuration retains its original allocation of 1.
+            inventory[rid] = ok({"id": rid, "sku": {"name": "GlobalStandard", "capacity": 7},
                 "properties": {"provisioningState": "Succeeded", "model": {"name": "gpt-6.1-sol", "format": "OpenAI", "version": "1"}}})
+            actual = inventory[rid]["body"]
+            if failure == "model-name": actual["properties"]["model"]["name"] = "other-model"
+            elif failure == "model-version": actual["properties"]["model"]["version"] = "2"
+            elif failure == "model-format": actual["properties"]["model"]["format"] = "Cohere"
+            elif failure == "sku": actual["sku"]["name"] = "Standard"
+            elif failure == "state": actual["properties"]["provisioningState"] = "Updating"
+            prior_model = copy.deepcopy(inventory[rid])
             transport = Transport(inventory)
             with self.subTest(failure=failure):
                 if failure:
@@ -882,6 +1063,12 @@ class PublicationTests(unittest.TestCase):
                 else:
                     result = publish.execute_plan(config, self.state, plan, self.template, transport)
                     self.assertEqual(result["status"], "management-plane-published")
+                    self.assertTrue(any(call[0] != "GET" for call in transport.calls))
+                    self.assertEqual(inventory[rid], prior_model)
+                    self.assertEqual(config["services"]["modelDeployments"][0]["capacity"], 1)
+                    self.assertNotIn("modelDeployments", plan["parameters"])
+                    self.assertTrue(all(method == "GET" or not path.split("?")[0].startswith(foundry_id)
+                                        for method, path, _, _ in transport.calls))
 
 
     def test_default_sample_cleanup_follows_successful_publication_and_is_recorded(self):

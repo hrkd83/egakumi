@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from policy_fixture_paths import policy_fixture_path
 
 CORE = Path(__file__).resolve().parents[1]
 POLICIES = CORE / "apps/gateway/apim/policies"
@@ -24,7 +25,7 @@ if not PWSH:
 
 def expression(filename, xpath, attribute="value"):
     """実XMLの式を取り出す。設定placeholder以外の業務式は書き換えない。"""
-    node = ET.parse(POLICIES / filename).find(xpath)
+    node = ET.parse(policy_fixture_path(POLICIES, filename)).find(xpath)
     if node is None:
         raise AssertionError(f"Missing actual policy expression: {filename} {xpath}")
     value = (node.get(attribute) if attribute else node.text).strip()
@@ -36,7 +37,7 @@ def expression(filename, xpath, attribute="value"):
 
 
 def fragment_body(filename):
-    return (POLICIES / filename).read_text().replace("<fragment>", "").replace("</fragment>", "")
+    return policy_fixture_path(POLICIES, filename).read_text().replace("<fragment>", "").replace("</fragment>", "")
 
 
 TENANT = "11111111-aaaa-4111-8111-111111111111"
@@ -391,7 +392,7 @@ class ContractRateStructureTests(unittest.TestCase):
         self.assertIsNone(native.find('.//include-fragment[@fragment-id="core-rate-limit"]'))
 
     def test_safe_429_precedes_pii_and_other_generic_error_handling(self):
-        telemetry=fragment_body('gateway-telemetry.xml')
+        telemetry=fragment_body('core-gateway-telemetry.xml')
         error=fragment_body('rate-limit-error.xml').replace('__GATEWAY_TELEMETRY_XML__',telemetry)
         for filename in ('gateway.xml','protocol.xml','mcp.xml','pii.xml'):
             text=(POLICIES/filename).read_text().replace('__RATE_LIMIT_ERROR_XML__',error)
@@ -408,7 +409,7 @@ class ContractRateStructureTests(unittest.TestCase):
                 self.assertGreater(children.index(generic),first)
 
     def test_error_is_body_free_for_websocket_and_never_reflects_raw_diagnostics(self):
-        root=ET.fromstring((POLICIES/'rate-limit-error.xml').read_text().replace('__GATEWAY_TELEMETRY_XML__',fragment_body('gateway-telemetry.xml')))
+        root=ET.fromstring((POLICIES/'rate-limit-error.xml').read_text().replace('__GATEWAY_TELEMETRY_XML__',fragment_body('core-gateway-telemetry.xml')))
         branch=root.find('choose/when'); response=branch.find('return-response')
         self.assertIsNone(response.find('set-body'))
         self.assertIsNone(response.get('response-variable-name'))

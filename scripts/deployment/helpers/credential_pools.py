@@ -27,15 +27,17 @@ def physical_providers(configuration: dict) -> list[dict]:
 
 
 def logical_profiles(configuration: dict) -> dict:
-    selected = configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("providerNames", [])
+    login = configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin", {})
+    selected = login.get("providerNames", [])
+    identity = login.get("identity")
     physical = physical_providers(configuration)
     result = {}
     for index, name in enumerate(selected):
         provider = next(item for item in configuration["credentialProviders"] if item["name"] == name)
         result[name] = {
-            "tenantId": provider["oauthTenantId"],
-            "clientId": provider["clientId"],
-            "clientSecretEnv": f"OIDC_SECRET_{index}",
+            "tenantId": identity["tenantId"] if identity else provider["oauthTenantId"],
+            "clientId": identity["clientId"] if identity else provider["clientId"],
+            "clientSecretEnv": "OIDC_SECRET_IDENTITY" if identity else f"OIDC_SECRET_{index}",
             "identityEndpoint": provider["identityEndpoint"],
             "identityIdProperty": provider["identityIdProperty"],
             "pools": [{"name": item["name"], "capacity": item.get("poolCapacity", 8000)}

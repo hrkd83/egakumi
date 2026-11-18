@@ -5,7 +5,7 @@ import json
 import unittest
 import xml.etree.ElementTree as ET
 
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 from bicep_helpers import compile_bicep
 from test_api_protocols import CORE, bound_coverage, configuration
 import test_publish_apis as publication
@@ -47,10 +47,14 @@ class GeneratedQueryGuardPublicationTests(unittest.TestCase):
         cls.template = compile_bicep("apps/gateway/apim/api-publication.bicep")
         cls.config = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")
 
+    def parameters(self, modes):
+        return {"apiDefinitions": self.config["apiDefinitions"], "credentialLogin": {},
+                "subscriptionKeyHeader": self.config["gateway"]["authentication"]["subscriptionKeyHeader"],
+                "entraTenantId": self.config["entraTenantId"],
+                "queryGuards": modes, "rateLimits": self.config["gateway"]["rateLimits"]}
+
     def evaluate(self, value, modes, index=0):
-        parameters = {"apiDefinitions": self.config["apiDefinitions"], "credentialLogin": {},
-                      "queryGuards": modes, "rateLimits": self.config["gateway"]["rateLimits"]}
-        return PolicyExpression(value, self.template["variables"], functions=self.template.get("functions", [])).evaluate(parameters, index)
+        return PolicyExpression(value, self.template["variables"], functions=self.template.get("functions", [])).evaluate(self.parameters(modes), index)
 
     def test_module_default_preserves_observation_at_all_three_entries(self):
         self.assertEqual(self.template["parameters"]["queryGuards"]["defaultValue"], DEFAULT)
@@ -61,12 +65,12 @@ class GeneratedQueryGuardPublicationTests(unittest.TestCase):
             for index, api in enumerate(self.config["apiDefinitions"]):
                 if api["apiType"] != "http":
                     continue
-                xml = self.evaluate("[variables('policyValues')[copyIndex()]]", modes, index)
+                xml = compiled_policy_value(self.template, self.parameters(modes), index)
                 with self.subTest(modes=modes, api=api["name"]):
                     ET.fromstring(xml)
                     self.assertNotIn("__QUERY_GUARD_MODES_BASE64__", xml)
                     self.assertIn(expected, xml)
-            xml = self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]", modes)
+            xml = compiled_policy_value(self.template, self.parameters(modes), resource_name="mcpPolicies")
             ET.fromstring(xml)
             self.assertNotIn("__QUERY_GUARD_MODES_BASE64__", xml)
             self.assertIn(expected, xml)

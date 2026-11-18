@@ -109,7 +109,7 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
         if cursor.fetchone()[0]:
             cursor.execute("SELECT Version FROM broker.SchemaVersions")
             applied = {int(row[0]) for row in cursor.fetchall()}
-        if any(version > 3 for version in applied):
+        if any(version > 4 for version in applied):
             raise StoreConflict("Database schema is newer than this application")
         for path in migrations:
             if int(path.name[:3]) in applied:
@@ -141,7 +141,7 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
                     raise StoreConflict("New pool capacity is below its existing allocation")
                 cursor.execute("UPDATE broker.Pools SET Capacity=?,Enabled=1 WHERE ProfileName=? AND ProviderName=?", capacity, profile, provider)
     store.ensure_ready()
-    return {"status": "ready", "schemaVersion": 3, "poolCount": len(pools)}
+    return {"status": "ready", "schemaVersion": 4, "poolCount": len(pools)}
 
 
 def observe_schema_before_migration(store):
@@ -155,6 +155,29 @@ def observe_schema_before_migration(store):
             or type(row[1]) is not int or row[1] not in (0, 1)):
         raise StoreUnavailable("Initial schema metadata could not be verified")
     return {"stage": "before-migration", "userTableCount": row[0], "migrationTablePresent": bool(row[1])}
+
+
+def schema_snapshot(store):
+    """DDLを実行せず、移行前の版と主体列の有無だけを記録します。"""
+    result = observe_schema_before_migration(store)
+    result["stage"] = "schema-snapshot"
+    if not result["migrationTablePresent"]:
+        if result["userTableCount"]:
+            raise StoreUnavailable("Existing database schema is not recognized")
+        return {**result, "schemaVersion": 0, "transactionCallerColumn": False, "sessionCallerColumn": False}
+    with store._db() as cursor:
+        cursor.execute("SELECT MAX(Version) FROM broker.SchemaVersions;")
+        row = cursor.fetchone()
+        version = row[0] if row is not None and len(row) == 1 else None
+        cursor.execute("SELECT CASE WHEN COL_LENGTH(N'broker.Transactions',N'CallerId') IS NULL THEN 0 ELSE 1 END, "
+                       "CASE WHEN COL_LENGTH(N'broker.Sessions',N'CallerId') IS NULL THEN 0 ELSE 1 END")
+        columns = cursor.fetchone()
+    if (type(version) is not int or version not in (1, 2, 3, 4) or columns is None or len(columns) != 2
+            or any(type(value) is not int or value not in (0, 1) for value in columns)
+            or (version == 4) != bool(columns[0]) or (version == 4) != bool(columns[1])):
+        raise StoreUnavailable("Existing database schema metadata is inconsistent")
+    return {**result, "schemaVersion": version, "transactionCallerColumn": bool(columns[0]),
+            "sessionCallerColumn": bool(columns[1])}
 
 
 def _inventory(arm, path):
@@ -328,11 +351,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("migrate")
+    commands.add_parser("observe-schema")
     check = commands.add_parser("reconcile")
     check.add_argument("--execute", "--apply", action="store_true")
     args = parser.parse_args(argv)
     store = SqlStore.from_environment()
-    if args.command == "migrate":
+    if args.command == "observe-schema":
+        result = schema_snapshot(store)
+    elif args.command == "migrate":
         print(json.dumps(observe_schema_before_migration(store)), flush=True)
         result = migrate(store, runtime_client_id=os.environ["SQL_RUNTIME_CLIENT_ID"],
                          runtime_user_name=os.environ["SQL_RUNTIME_USER_NAME"],

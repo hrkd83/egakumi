@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, api_fixture, configuration
 from schema_helpers import local_schema_validator
@@ -158,10 +158,11 @@ class RerankPublicationTests(unittest.TestCase):
             return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)
 
         settings = evaluate("[__bicep.auditSettings(parameters('apiDefinitions')[0], '', false())]")
-        self.assertEqual(settings["operationConstraints"]["rerank"], api["authorization"]["operationConstraints"]["rerank"])
+        controls = evaluate("[__bicep.controlSettings(parameters('apiDefinitions')[0], '', false())]")
+        self.assertEqual(controls["operationConstraints"]["rerank"], api["authorization"]["operationConstraints"]["rerank"])
         self.assertEqual(settings["llmOperationIds"], [])
-        self.assertEqual(settings["tokenLimitOperationIds"], [])
-        root = ET.fromstring(evaluate("[variables('policyValues')]")[0])
+        self.assertEqual(controls["tokenLimitOperationIds"], [])
+        root = ET.fromstring(compiled_policy_value(template, parameters))
         inbound = list(root.find("inbound"))
         limit = root.find('./inbound/include-fragment[@fragment-id="core-model-limits"]')
         target = root.find('./inbound/set-variable[@name="gatewayTargetAllowed"]')

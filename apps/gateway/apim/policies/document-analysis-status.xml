@@ -1,5 +1,5 @@
 <policies>
-  <!-- 署名・現在の購読・API・接続先・モデル・ジョブ・期限を照合してから、固定の提供元GETへ転送します。 -->
+  <!-- 署名・検証済み所有者・API・接続先・モデル・ジョブ・期限を照合してから、固定の提供元GETへ転送します。 -->
   <inbound>
     <base />
     <set-variable name="documentSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__DOCUMENT_SETTINGS_BASE64__&quot;)))" />
@@ -23,10 +23,28 @@
         encoded += new string('=', (4 - encoded.Length % 4) % 4);
         var claims = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
         var settings = JObject.Parse((string)context.Variables[&quot;documentSettings&quot;]);
-        if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)) { return &quot;&quot;; }
+        var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+        if ((bool?)decision[&quot;allowed&quot;] != true) { return &quot;&quot;; }
+        string owner;
+        if ((string)decision[&quot;method&quot;] == &quot;subscriptionKey&quot;) {
+          if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+              || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return &quot;&quot;; }
+          owner = context.Subscription.Id;
+        } else if ((string)decision[&quot;method&quot;] == &quot;user&quot;) {
+          if (context.Subscription != null || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;)
+              || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return &quot;&quot;; }
+          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+          Guid tenant, principal;
+          if (!Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
+              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return &quot;&quot;; }
+          owner = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
+          if ((string)decision[&quot;callerId&quot;] != owner || (string)user[&quot;callerId&quot;] != owner
+              || (string)decision[&quot;verifiedTenantId&quot;] != tenant.ToString(&quot;D&quot;)
+              || (string)decision[&quot;verifiedPrincipalId&quot;] != principal.ToString(&quot;D&quot;)) { return &quot;&quot;; }
+        } else { return &quot;&quot;; }
         string scope;
         using (var hash = System.Security.Cryptography.SHA256.Create()) {
-          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + context.Subscription.Id)));
+          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + owner)));
         }
         if ((int?)claims[&quot;v&quot;] != 1 || (string)claims[&quot;aud&quot;] != &quot;document-analysis-v1&quot; || (string)claims[&quot;operationId&quot;] != operation.ToString(&quot;D&quot;) || (string)claims[&quot;scope&quot;] != scope || !((JArray)settings[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == (string)claims[&quot;model&quot;])) { return &quot;&quot;; }
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

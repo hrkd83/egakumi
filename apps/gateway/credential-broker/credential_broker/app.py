@@ -1,4 +1,4 @@
-"""APIM専用の内部HTTP入口。購読IDは共有鍵の検証後に利用する。"""
+"""APIM専用の内部HTTP入口。検証済み主体は共有鍵の検証後に利用する。"""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
+from .caller import UserCaller
 from .cm import CmClient
 from .identity import OidcClient
 from .service import BrokerError, BrokerService, COOKIE_NAME, browser_cookie
@@ -42,7 +43,9 @@ def create_app(service=None):
     async def boundary(request, call_next):
         request.state.request_id = str(uuid4())
         try:
-            if request.url.path != "/health":
+            if request.url.path not in (
+                "/health", "/health/gateway-caller-v1"
+            ):
                 values = [value.decode("latin-1") for key, value in request.scope["headers"] if key.lower() == b"x-core-broker-key"]
                 if len(values) != 1:
                     raise BrokerError("BrokerAuthenticationRequired", 401)
@@ -75,6 +78,18 @@ def create_app(service=None):
             raise BrokerError("ConnectionNotAuthorized", 403)
         return dict(request.query_params)
 
+    def trusted_caller(request):
+        """ユーザーと購読のヘッダーを混在させず、別の型で返す。"""
+        names = {key.lower() for key, _ in request.scope["headers"]}
+        if b"x-core-caller-id" in names:
+            if b"x-core-subscription-id" in names:
+                raise BrokerError("ConnectionNotAuthorized", 403)
+            try:
+                return UserCaller.parse(one_header(request, "X-Core-Caller-Id"))
+            except (TypeError, ValueError):
+                raise BrokerError("ConnectionNotAuthorized", 403) from None
+        return one_header(request, "X-Core-Subscription-Id")
+
     async def body(request, required):
         raw = bytearray()
         async for chunk in request.stream():
@@ -103,16 +118,22 @@ def create_app(service=None):
             raise BrokerError()
         return {"status": "ok"}
 
+    @app.get("/health/gateway-caller-v1")
+    def gateway_caller_health():
+        """検証済みユーザー主体を保存できるSQL版と列を毎回確認する。"""
+        app.state.broker.store.ensure_ready()
+        return {"status": "ok"}
+
     @app.post("/v1/start")
     async def start(request: Request):
         value = await body(request, ("providerName",))
-        return await run_in_threadpool(app.state.broker.start, value["providerName"], one_header(request, "X-Core-Subscription-Id"))
+        return await run_in_threadpool(app.state.broker.start, value["providerName"], trusted_caller(request))
 
     @app.post("/v1/challenge")
     async def challenge(request: Request):
         value = await body(request, ("providerName", "connectionSession", "reason"))
         return await run_in_threadpool(app.state.broker.challenge, value["providerName"],
-            one_header(request, "X-Core-Subscription-Id"), value["connectionSession"], value["reason"])
+            trusted_caller(request), value["connectionSession"], value["reason"])
 
     @app.post("/v1/launch")
     async def launch(request: Request):
@@ -136,7 +157,7 @@ def create_app(service=None):
         if set(query) != {"transactionId"}:
             raise BrokerError("InvalidRequest", 400)
         return app.state.broker.status(query["transactionId"], one_header(request, "X-Core-Connection-Poll"),
-            one_header(request, "X-Core-Subscription-Id"))
+            trusted_caller(request))
 
     @app.post("/v1/logout")
     async def logout(request: Request):
@@ -144,18 +165,17 @@ def create_app(service=None):
         return await run_in_threadpool(app.state.broker.logout, value["connectionSession"], sub)
 
     async def session_body(request, extra=()):
-        value = await body(request, ("connectionSession", "subscriptionId", *extra))
-        sub = one_header(request, "X-Core-Subscription-Id")
-        if value["subscriptionId"] != sub:
+        sub = trusted_caller(request)
+        field = "callerId" if isinstance(sub, UserCaller) else "subscriptionId"
+        value = await body(request, ("connectionSession", field, *extra))
+        expected = sub.caller_id if isinstance(sub, UserCaller) else sub
+        if value[field] != expected:
             raise BrokerError("ConnectionNotAuthorized", 403)
         return value, sub
 
     @app.post("/v2/session/authorize")
     async def authorize(request: Request):
-        value = await body(request, ("connectionSession", "subscriptionId", "profileName"))
-        sub = one_header(request, "X-Core-Subscription-Id")
-        if value["subscriptionId"] != sub:
-            raise BrokerError("ConnectionNotAuthorized", 403)
+        value, sub = await session_body(request, ("profileName",))
         return await run_in_threadpool(app.state.broker.authorize, value["connectionSession"], sub, value["profileName"])
 
     @app.post("/v2/session/use")

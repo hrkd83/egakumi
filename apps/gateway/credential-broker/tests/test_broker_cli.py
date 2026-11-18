@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 from credential_broker import cli
-from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier, grant_runtime_access, RUNTIME_TABLE_PERMISSIONS, observe_schema_before_migration
+from credential_broker.cli import migrate, pool_inventory, reconcile, _identifier, grant_runtime_access, RUNTIME_TABLE_PERMISSIONS, observe_schema_before_migration, schema_snapshot
 from credential_broker.store import StoreConflict, StoreUnavailable, SqlStore
 from _store_support import OWNER, TENANT, fixture, Connection
 
@@ -28,6 +28,71 @@ EXPECTED_RUNTIME_PERMISSIONS = {
     "SubjectSecurity": {"SELECT", "INSERT", "UPDATE"},
     "SessionRotationCandidates": {"SELECT", "INSERT", "DELETE"},
 }
+
+
+class SchemaSnapshotTests(unittest.TestCase):
+    def snapshot_store(self, *, version=3, columns=(0, 0)):
+        return fixture([
+            ('SELECT CASE WHEN HAS_PERMS_BY_NAME', {'tables': 9, 'present': 1}),
+            ('SELECT MAX(Version)', {'version': version}),
+            ('SELECT CASE WHEN COL_LENGTH', {'transactions': columns[0], 'sessions': columns[1]}),
+        ])
+
+    def test_empty_database_snapshot_has_no_schema_version_or_column_queries(self):
+        store, cursor = fixture([('SELECT CASE WHEN HAS_PERMS_BY_NAME', {'tables': 0, 'present': 0})])
+        self.assertEqual(schema_snapshot(store), {'stage': 'schema-snapshot', 'userTableCount': 0,
+            'migrationTablePresent': False, 'schemaVersion': 0, 'transactionCallerColumn': False, 'sessionCallerColumn': False})
+        self.assertEqual(len(cursor.calls), 1)
+        self.assertTrue(cursor.calls[0][0].startswith('SELECT '))
+
+    def test_schema_three_and_four_snapshot_use_only_reads_and_require_matching_caller_columns(self):
+        for version, columns in ((3, (0, 0)), (4, (1, 1))):
+            with self.subTest(version=version):
+                store, cursor = self.snapshot_store(version=version, columns=columns)
+                actual = schema_snapshot(store)
+                self.assertEqual(actual['schemaVersion'], version)
+                self.assertIs(actual['transactionCallerColumn'], version == 4)
+                self.assertIs(actual['sessionCallerColumn'], version == 4)
+                self.assertEqual(len(cursor.calls), 3)
+                self.assertTrue(all(query.startswith('SELECT ') for query, _ in cursor.calls))
+                self.assertFalse(any(statement in query.upper() for query, _ in cursor.calls
+                                     for statement in ('INSERT ', 'UPDATE ', 'DELETE ', 'ALTER ', 'CREATE ', 'GRANT ')))
+
+    def test_unknown_version_wrong_column_types_or_partial_migration_are_rejected(self):
+        for version, columns in ((5, (1, 1)), ('3', (0, 0)), (None, (0, 0)),
+                                 (3, (1, 0)), (4, (1, 0)), (4, ('1', 1))):
+            with self.subTest(version=version, columns=columns):
+                store, cursor = self.snapshot_store(version=version, columns=columns)
+                with self.assertRaises(StoreUnavailable):
+                    schema_snapshot(store)
+                self.assertTrue(all(query.startswith('SELECT ') for query, _ in cursor.calls))
+
+    def test_unrecognized_existing_database_is_not_observed_as_an_empty_database(self):
+        store, cursor = fixture([('SELECT CASE WHEN HAS_PERMS_BY_NAME', {'tables': 9, 'present': 0})])
+        with self.assertRaisesRegex(StoreUnavailable, 'not recognized'):
+            schema_snapshot(store)
+        self.assertEqual(len(cursor.calls), 1)
+
+    def test_observe_schema_command_cannot_run_migration_or_grant_runtime_access(self):
+        store, cursor = self.snapshot_store()
+        with mock.patch.object(cli.SqlStore, 'from_environment', return_value=store), \
+             mock.patch.object(cli, 'migrate') as migration, \
+             mock.patch.object(cli, 'grant_runtime_access') as grants, \
+             contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(cli.main(['observe-schema']), 0)
+        self.assertEqual(json.loads(stdout.getvalue())['schemaVersion'], 3)
+        self.assertTrue(all(query.startswith('SELECT ') for query, _ in cursor.calls))
+        migration.assert_not_called()
+        grants.assert_not_called()
+
+    def test_observe_schema_failure_prints_no_success_and_runs_no_migration(self):
+        store, _ = fixture([('SELECT CASE WHEN HAS_PERMS_BY_NAME', {'tables': None, 'present': 0})])
+        with mock.patch.object(cli.SqlStore, 'from_environment', return_value=store), \
+             mock.patch.object(cli, 'migrate') as migration, contextlib.redirect_stdout(io.StringIO()) as stdout:
+            with self.assertRaises(StoreUnavailable):
+                cli.main(['observe-schema'])
+        self.assertEqual(stdout.getvalue(), '')
+        migration.assert_not_called()
 
 
 class SchemaObservationTests(unittest.TestCase):
@@ -89,16 +154,17 @@ class MigrationTests(unittest.TestCase):
     def test_migration_creates_client_id_bound_runtime_with_limited_objects_and_proc_execute(self):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 0}), ("SELECT schemafixture", None),
-            ("SELECT secondfixture", None), ("SELECT thirdfixture", None), ("SELECT sid,type", []), ("CREATE USER", None),
+            ("SELECT secondfixture", None), ("SELECT thirdfixture", None), ("SELECT fourthfixture", None), ("SELECT sid,type", []), ("CREATE USER", None),
             *grant_replies(),
             ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", []), ("INSERT broker.Pools", None), ("COMMIT", None),
-            ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
+            ("SELECT MAX(Version)", {"version": 4}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
             schema = Path(folder) / "001_fixture.sql"
             schema.write_text("SELECT schemafixture;\nGO\n", encoding="utf-8")
             (Path(folder) / "002_fixture.sql").write_text("SELECT secondfixture;", encoding="utf-8")
             (Path(folder) / "003_fixture.sql").write_text("SELECT thirdfixture;", encoding="utf-8")
+            (Path(folder) / "004_fixture.sql").write_text("SELECT fourthfixture;", encoding="utf-8")
             result = migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
                 profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
         sql = "\n".join(query for query, _ in cursor.calls)
@@ -112,7 +178,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual({table: set(value.split(", ")) for table, value in RUNTIME_TABLE_PERMISSIONS.items()},
                          EXPECTED_RUNTIME_PERMISSIONS)
         self.assertEqual(result["poolCount"], 1)
-        self.assertEqual(result["schemaVersion"], 3)
+        self.assertEqual(result["schemaVersion"], 4)
 
     def test_existing_sql_user_bound_to_other_identity_stops_before_any_role_grant(self):
         store, cursor = fixture([("SELECT CASE WHEN OBJECT_ID", {"exists": 0}),
@@ -128,40 +194,42 @@ class MigrationTests(unittest.TestCase):
     def test_applied_migrations_are_not_replayed_on_a_later_deployment(self):
         import uuid
         store, cursor = fixture([
-            ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}, {"version": 3}]),
+            ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}, {"version": 3}, {"version": 4}]),
             ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}),
             *grant_replies((1, 1)),
             ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", [{"allocated": 0}]), ("UPDATE broker.Pools SET Capacity", None),
-            ("COMMIT", None), ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
+            ("COMMIT", None), ("SELECT MAX(Version)", {"version": 4}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
             schema = Path(folder) / "001_fixture.sql"
             schema.write_text("RAISE MUST_NOT_REPLAY_INITIAL;", encoding="utf-8")
             (Path(folder) / "002_fixture.sql").write_text("RAISE MUST_NOT_RESET_SESSION;", encoding="utf-8")
             (Path(folder) / "003_fixture.sql").write_text("RAISE MUST_NOT_REPEAT_CLEANUP_UPGRADE;", encoding="utf-8")
+            (Path(folder) / "004_fixture.sql").write_text("RAISE MUST_NOT_REPEAT_USER_UPGRADE;", encoding="utf-8")
             result = migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
                 profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)
-        self.assertEqual(3, result["schemaVersion"])
+        self.assertEqual(4, result["schemaVersion"])
         self.assertFalse(any("RAISE" in sql for sql, _ in cursor.calls))
 
     def test_version_two_applies_only_cleanup_migration_and_future_version_fails_closed(self):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 1}, {"version": 2}]),
-            ("SELECT cleanupfixture", None),
+            ("SELECT cleanupfixture", None), ("SELECT userfixture", None),
             ("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}),
             *grant_replies(), ("BEGIN TRANSACTION", None), ("UPDATE broker.Pools SET Enabled=0", None),
             ("SELECT Allocated", {"allocated": 0}), ("UPDATE broker.Pools SET Capacity", None), ("COMMIT", None),
-            ("SELECT MAX(Version)", {"version": 3}), ("SELECT TOP(0)", None)])
+            ("SELECT MAX(Version)", {"version": 4}), ("SELECT TOP(0)", None)])
         with tempfile.TemporaryDirectory() as folder:
             schema = Path(folder) / "001_fixture.sql"
             schema.write_text("RAISE MUST_NOT_REPLAY_INITIAL;", encoding="utf-8")
             (Path(folder) / "002_fixture.sql").write_text("RAISE MUST_NOT_RESET_SESSION;", encoding="utf-8")
             (Path(folder) / "003_fixture.sql").write_text("SELECT cleanupfixture;", encoding="utf-8")
+            (Path(folder) / "004_fixture.sql").write_text("SELECT userfixture;", encoding="utf-8")
             self.assertEqual(migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
-                profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)["schemaVersion"], 3)
+                profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)["schemaVersion"], 4)
             self.assertFalse(any("RAISE" in sql for sql, _ in cursor.calls))
             newer, newer_cursor = fixture([
-                ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 4}])])
+                ("SELECT CASE WHEN OBJECT_ID", {"exists": 1}), ("SELECT Version", [{"version": 5}])])
             with self.assertRaises(StoreConflict):
                 migrate(newer, runtime_client_id=TENANT, runtime_user_name="id-runtime",
                     profiles={"graph": {"pools": [{"name": "graph-a", "capacity": 8000}]}}, schema_path=schema)

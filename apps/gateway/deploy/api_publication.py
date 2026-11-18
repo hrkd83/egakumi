@@ -26,9 +26,12 @@ from deployment.helpers.configuration import API_NAME, entra_tenant_id, normaliz
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.catalog_descriptions import with_catalog_descriptions
 from deployment.helpers.apim_authentication import (
-    COMMON_NAMED_VALUES, MIGRATION_REQUIRED, common_authentication_settings,
+    COMMON_NAMED_VALUES, ENTRA_NAMED_VALUES, MIGRATION_REQUIRED, common_authentication_settings, entra_authentication_settings,
+    entra_named_value_settings, entra_authentication_named_values, validate_entra_named_values, validate_entra_named_value,
     validate_common_authentication_policy, validate_common_named_value, merge_common_authentication_policy,
+    read_managed_entra_authentication, transition_common_authentication_policy, ENTRA_OPEN_PRODUCT_ID,
 )
+from deployment.helpers.apim_common_authentication import AUTHENTICATION_FRAGMENT_IDS, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID
 from deployment.helpers.subscription_profiles import initialize_profile_settings
 from catalog_publication import finalize_descriptions
 from deployment.helpers import grpc_lifecycle
@@ -37,6 +40,7 @@ from deployment.helpers.credential_pools import physical_providers, resource_nam
 from deployment.helpers.apim_samples import cleanup_candidates, cleanup_default_samples
 from deployment.helpers.released_apis import RELEASED_PRODUCT_ID, selected_api_names, reconcile_unreleased_apis
 from deployment.lifecycle import DeploymentError, PROJECT_NAME, ROOT, require_success, state_from_outputs
+import entra_publication
 
 APIM_API = "2024-05-01"
 NETWORK_API = "2025-01-01"
@@ -75,6 +79,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
     内部サービスの実URLを解決し、外部バックエンドは資格情報を含まない固定TLS宛先に
     制限する。構築済みの5RG・APIM・MIと一致しない入力はここで拒否する。
     """
+    entra = entra_authentication_settings(config)
     expected_groups = {layer: f"rg-{config['resourceStem']}-{layer}" for layer in LAYERS}
     if config.get("resourceGroupNames") != expected_groups or state.get("resourceGroupNames") != expected_groups:
         raise ValueError("Exactly the five selected core groups are required")
@@ -175,11 +180,15 @@ def prepare_plan(config: dict, state: dict) -> dict:
             "application": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []}}),
         "l7IngressSecretIdentifier": vault_base + grpc_lifecycle.SECRET_NAME if grpc_on else "",
         "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
+    if entra["enabled"]:
+        params["entraAuthentication"] = entra
     policy_id = _scope(config, "nw") + "/providers/Microsoft.Network/firewallPolicies/afwp-" + stem
     result = {"schemaVersion": 1, "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
         "entraTenantId": entra_tenant_id(config),
         "resourceStem": stem, "resourceGroupNames": expected_groups, "azureRequests": 0,
         "commonAuthentication": authentication,
+        "entraAuthentication": entra,
+        "entraNamedValues": entra_named_value_settings(config),
         "defaultSampleCleanup": cleanup_candidates(resolved),
         "releasedProduct": {"productId": RELEASED_PRODUCT_ID,
             "releasedApiNames": selected_api_names(resolved, released=True),
@@ -196,6 +205,95 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "firewall": {"policyId": policy_id, "groupId": policy_id + "/ruleCollectionGroups/rcg-egress",
             "sourcePrefix": config["network"]["subnetPrefixes"]["apim"], "externalFqdns": sorted(external_hosts)},
         "note": "Publishes the selected APIs incrementally, verifies outputs, installs common key authorization, then removes unused default APIM samples. Preserves business APIs, custom global policy processing and existing Firewall rules."}
+    saved = state.get("apiPublicationSourceCheckpoint")
+    if saved is not None:
+        expected = checkpoint_authentication(saved, result)
+        if expected is not None:
+            result.update(previousEntraAuthentication=expected["entraAuthentication"],
+                          previousEntraNamedValues=expected["entraNamedValues"],
+                          previousGlobalPolicy=expected["globalPolicy"])
+    return result
+
+
+def _authentication_fragment_source(source):
+    """保護された生成元の2部品を明示的に取り出す。重複や欠落は後の完全照合で拒否する。"""
+    result = {}
+    for entry in source.get("policies", []) if isinstance(source, dict) else []:
+        name = entry.get("suffix", "").rsplit("/", 1)[-1]
+        if name in AUTHENTICATION_FRAGMENT_IDS and "/policyFragments/" in entry.get("suffix", ""):
+            if name in result or not isinstance(entry.get("value"), str):
+                raise ValueError("The authentication fragment source is not unique and complete")
+            result[name] = entry["value"]
+    return result
+
+
+def _read_authentication_fragments(xml, apim_id, transport):
+    """実Globalが呼ぶ認証部品をraw XMLで取得する。IDだけを検証済み本文の代わりにしない。"""
+    result = {}
+    from deployment.helpers.apim_authentication import _document
+    root = _document(xml)
+    for node in root.iter("include-fragment"):
+        name = node.get("fragment-id")
+        if name in AUTHENTICATION_FRAGMENT_IDS:
+            if name in result:
+                raise ValueError("Authentication fragments must be called once")
+            body = require_success(transport.request("GET", apim_id + "/policyFragments/" + name
+                + "?api-version=" + APIM_API + "&format=rawxml", headers={"Accept": "application/json"}),
+                "Read common authentication fragment")
+            result[name] = body.get("properties", {}).get("value")
+    return result
+
+
+def checkpoint_authentication(saved, plan):
+    """API生成元と別に保護したglobal/NV期待値を再検査する。旧checkpointは維持する。"""
+    if (not isinstance(saved, dict) or saved.get("schemaVersion") != 1
+            or not _same(saved.get("apimId"), plan["apimId"])
+            or not _same(saved.get("deploymentId"), plan["deploymentId"])):
+        raise ValueError("The protected API source checkpoint belongs to a different publication")
+    fields = {"globalPolicy", "entraAuthentication", "entraNamedValues"}
+    if not fields.intersection(saved):
+        return None
+    if not fields <= saved.keys() or not isinstance(saved.get("source"), dict):
+        raise ValueError("The protected authentication source checkpoint is incomplete")
+    entra = saved["entraAuthentication"]
+    expected = entra_authentication_named_values(entra)
+    observed = saved["entraNamedValues"]
+    if expected:
+        if validate_entra_named_values(observed) != expected:
+            raise ValueError("The protected authentication NamedValue expectations are inconsistent")
+    elif observed != {}:
+        raise ValueError("The disabled authentication source must not declare Entra NamedValues")
+    parsed = read_managed_entra_authentication(saved["globalPolicy"], plan.get("credentialLogin"), expected_entra=entra,
+                                              fragments=_authentication_fragment_source(saved["source"]))
+    if (parsed or {"enabled": False}) != entra:
+        raise ValueError("The protected global authentication source is inconsistent")
+    names = {entry.get("name") for entry in saved["source"].get("apis", []) if isinstance(entry, dict)}
+    if not set((parsed or {}).get("apiNames", [])) <= names:
+        raise ValueError("The protected authentication source authorizes an unrepresented API")
+    return {"globalPolicy": saved["globalPolicy"], "entraAuthentication": copy.deepcopy(entra),
+            "entraNamedValues": copy.deepcopy(expected)}
+
+
+def source_checkpoint(plan, source, global_policy, *, entra_authentication=None, browser_source=None):
+    """API再配備を要せず、独立した共通policy/NV期待値を保護checkpointへ保存できる形にする。"""
+    entra = plan.get("entraAuthentication") if entra_authentication is None else entra_authentication
+    expected = entra_authentication_named_values(entra)
+    fragments = _authentication_fragment_source(source)
+    parsed = read_managed_entra_authentication(global_policy, plan.get("credentialLogin"), expected_entra=entra, fragments=fragments)
+    validate_common_authentication_policy(global_policy, plan.get("credentialLogin"), entra=entra, fragments=fragments)
+    if (parsed or {"enabled": False}) != entra:
+        raise ValueError("The generated global authentication source is inconsistent")
+    names = [entry.get("name") for entry in source.get("apis", []) if isinstance(entry, dict)] if isinstance(source, dict) else []
+    if not set((parsed or {}).get("apiNames", [])) <= set(names):
+        raise ValueError("The generated authentication source authorizes an unrepresented API")
+    named = {plan["apimId"] + "/namedValues/" + name: {"displayName": name, "secret": False, "value": value}
+             for name, value in expected.items()}
+    entra_publication.source_manifest(source, plan["apimId"], names, global_policy, named_values=named)
+    result = {"schemaVersion": 1, "apimId": plan["apimId"], "deploymentId": plan["deploymentId"],
+              "source": copy.deepcopy(source), "globalPolicy": global_policy,
+              "entraAuthentication": copy.deepcopy(entra), "entraNamedValues": expected}
+    if browser_source is not None:
+        result["browserSource"] = copy.deepcopy(browser_source)
     return result
 
 
@@ -321,7 +419,7 @@ def validate_publication_template(template):
             raise ValueError("API publication must preserve the APIM global policy")
         if (resource_type == "microsoft.apimanagement/service/namedvalues"
                 and resource.get("existing") is not True
-                and any(name in json.dumps(resource).lower() for name in COMMON_NAMED_VALUES)):
+                and any(name in json.dumps(resource).lower() for name in (*COMMON_NAMED_VALUES, *ENTRA_NAMED_VALUES))):
             raise ValueError("API publication must preserve the foundation authentication NamedValues")
         if resource_type == "microsoft.apimanagement/service":
             if (not symbolic or resource.get("existing") is not True
@@ -435,6 +533,7 @@ def _prior_published_ids(prior, config, plan):
 
 def verify_subscription_products(plan, transport):
     """対象APIに購読不要Productが残る場合、共通キーへ移行する前に停止する。"""
+    products = {}
     for api_id in plan["publishedApiIds"]:
         if api_id.endswith("/credential-manager-browser"):
             continue
@@ -445,7 +544,28 @@ def verify_subscription_products(plan, transport):
         if body.get("nextLink") or not isinstance(body.get("value"), list):
             raise ValueError("API product membership must be reconciled before key authorization publication")
         for product in body["value"]:
-            if not isinstance(product, dict) or product.get("properties", {}).get("subscriptionRequired") is not True:
+            observed = product.get("id") if isinstance(product, dict) else None
+            if not isinstance(observed, str):
+                raise ValueError("API Product associations must have canonical identities")
+            name = observed.rsplit("/", 1)[-1]
+            if not API_NAME.fullmatch(name):
+                raise ValueError("API Product association identifier is invalid")
+            canonical = plan["apimId"] + "/products/" + name
+            if not any(_same(observed, alias) for alias in (canonical, api_id + "/products/" + name)):
+                raise ValueError("API Product association belongs to a different API Management scope")
+            if canonical not in products:
+                actual = require_success(transport.request("GET", canonical + "?api-version=" + APIM_API),
+                                         "Read canonical API Product authorization")
+                _assert_same(actual.get("id"), canonical, "API Product")
+                products[canonical] = actual.get("properties", {})
+            properties = products[canonical]
+            if name == ENTRA_OPEN_PRODUCT_ID:
+                # Its exact ownership/policy/full memberships are checked by the
+                # Entra transition preflight even when currently unlinked.
+                if not entra_publication._owned_open_product_properties(properties):
+                    raise ValueError("The dedicated employee Product has conflicting ownership/properties")
+                continue
+            if properties.get("subscriptionRequired") is not True:
                 raise ValueError("Remove the reviewed API association with subscription-free Products before key authorization publication; no changes were attempted")
 
 
@@ -456,8 +576,23 @@ def verify_common_authentication(plan, transport):
     missing = response.get("statusCode") == 404
     policy = None if missing else require_success(response, "Read APIM global policy")
     properties = policy.get("properties", {}) if isinstance(policy, dict) else {}
-    merged, changed = merge_common_authentication_policy(None if missing else properties.get("value"), plan.get("credentialLogin"),
-                                                       migrate_credential_broker=bool(plan.get("credentialLogin")))
+    current_xml = None if missing else properties.get("value")
+    if plan.get("previousGlobalPolicy") is not None:
+        entra_publication._same_xml(current_xml, plan["previousGlobalPolicy"])
+    prior_entra = None
+    fragments = _read_authentication_fragments(current_xml, plan["apimId"], transport) if current_xml is not None else {}
+    has_entra = current_xml is not None and ("validate-azure-ad-token" in current_xml or ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID in fragments)
+    if current_xml is not None and (has_entra or plan.get("entraAuthentication", {}).get("enabled")):
+        prior_entra = read_managed_entra_authentication(current_xml, plan.get("credentialLogin"),
+                                                       expected_entra=plan.get("previousEntraAuthentication"), fragments=fragments)
+        merged, changed = transition_common_authentication_policy(current_xml, plan.get("credentialLogin"),
+                                                                  previous_entra=prior_entra, entra=plan.get("entraAuthentication"))
+    else:
+        if current_xml is not None:
+            read_managed_entra_authentication(current_xml, plan.get("credentialLogin"), expected_entra=None, fragments=fragments)
+        merged, changed = merge_common_authentication_policy(current_xml, plan.get("credentialLogin"),
+                                                            entra=plan.get("entraAuthentication"),
+                                                            migrate_credential_broker=bool(plan.get("credentialLogin")))
     headers = {"If-None-Match": "*"} if missing else ({"If-Match": _etag(response)} if changed else {})
     for name, expected in plan["commonAuthentication"].items():
         response = transport.request("GET", plan["apimId"] + "/namedValues/" + name + "?api-version=" + APIM_API)
@@ -465,7 +600,42 @@ def verify_common_authentication(plan, transport):
             raise ValueError(MIGRATION_REQUIRED)
         named = require_success(response, "Read foundation common authentication NamedValue")
         validate_common_named_value(named, name, expected)
-    return {"path": path, "value": merged, "changed": changed, "headers": headers, "credentialLogin": plan.get("credentialLogin")}
+    # Settings deployment owns writes. The prior logical source verifies the
+    # old global structure; the explicitly prepared configuration owns these
+    # current values, including an intentional settings update before staging.
+    entra_values = plan.get("entraNamedValues") or plan.get("previousEntraNamedValues", {})
+    for name, expected in entra_values.items():
+        response = transport.request("GET", plan["apimId"] + "/namedValues/" + name + "?api-version=" + APIM_API)
+        if response.get("statusCode") == 404:
+            raise ValueError(MIGRATION_REQUIRED)
+        named = require_success(response, "Read foundation Entra authentication NamedValue")
+        validate_entra_named_value(named, name, expected)
+    return {"path": path, "value": merged, "changed": changed, "headers": headers,
+            "previousEntra": prior_entra, "previousValue": current_xml,
+            "credentialLogin": plan.get("credentialLogin"), "entraAuthentication": plan.get("entraAuthentication"),
+            "entraNamedValues": copy.deepcopy(entra_values)}
+
+
+def _has_gateway_caller_probe(containers):
+    """対応版BrokerのReadiness probeがSQL能力確認を要求しているか調べる。"""
+    if not isinstance(containers, list) or len(containers) != 1:
+        return False
+    container = containers[0]
+    if not isinstance(container, dict):
+        return False
+    probes = container.get("probes", [])
+    if not isinstance(probes, list):
+        return False
+    readiness = [probe for probe in probes
+                 if isinstance(probe, dict)
+                 and probe.get("type") == "Readiness"]
+    if len(readiness) != 1:
+        return False
+    http = readiness[0].get("httpGet")
+    return (isinstance(http, dict)
+            and http.get("path") == "/health/gateway-caller-v1"
+            and http.get("port") == 8000
+            and http.get("scheme") == "HTTP")
 
 
 def verify_credential_login(config, plan, apim, transport):
@@ -489,14 +659,35 @@ def verify_credential_login(config, plan, apim, transport):
         raise ValueError("Credential broker internal application address is invalid")
     app_properties = app.get("properties", {})
     containers = app_properties.get("template", {}).get("containers", [])
+    revision_name = app_properties.get("latestRevisionName")
     if (app_properties.get("provisioningState") != "Succeeded"
-            or not app_properties.get("latestReadyRevisionName")
-            or app_properties.get("latestReadyRevisionName") != app_properties.get("latestRevisionName")
-            or len(containers) != 1
+            or not isinstance(revision_name, str)
+            or not re.fullmatch(r"[A-Za-z0-9-]+", revision_name)
+            or app_properties.get("latestReadyRevisionName") != revision_name
+            or not _has_gateway_caller_probe(containers)
             or not re.fullmatch(r"[a-z0-9]+\.azurecr\.io/credential-broker@sha256:[a-f0-9]{64}", containers[0].get("image", ""))
             or not any(_same(identity_id, broker_identity_id)
                        for identity_id in app.get("identity", {}).get("userAssignedIdentities", {}))):
         raise ValueError("Deploy the credential broker image and database schema successfully before publishing its APIs")
+    revision_id = app_id + "/revisions/" + revision_name
+    revision = require_success(transport.request(
+        "GET", revision_id + "?api-version=2025-01-01"
+    ), "Read credential broker caller capability readiness")
+    _assert_same(revision.get("id"), revision_id,
+                 "Credential broker ready revision")
+    ready = revision.get("properties", {})
+    ready_containers = ready.get("template", {}).get("containers", [])
+    if (ready.get("active") is not True
+            or ready.get("healthState") != "Healthy"
+            or ready.get("provisioningState") != "Provisioned"
+            or ready.get("runningState") != "Running"
+            or not _has_gateway_caller_probe(ready_containers)
+            or ready_containers[0].get("image") != containers[0]["image"]):
+        raise ValueError(
+            "Credential broker caller capability is not healthy; "
+            "complete the matching SQL and broker deployment before "
+            "publishing APIs"
+        )
     broker_url = "https://" + host
     backend = require_success(transport.request("GET", plan["apimId"] + "/backends/credential-broker?api-version=" + APIM_API), "Read credential broker backend")
     if backend.get("properties", {}).get("url") != broker_url:
@@ -549,7 +740,9 @@ def install_common_authentication(prepared, transport, *, sleep, deadline):
         if properties.get("provisioningState") in ("Failed", "Canceled", "Cancelled"):
             raise DeploymentError("Common authentication policy update failed")
         if properties.get("provisioningState") not in ("Accepted", "Creating", "Updating", "InProgress"):
-            validate_common_authentication_policy(properties.get("value"), prepared.get("credentialLogin"))
+            validate_common_authentication_policy(properties.get("value"), prepared.get("credentialLogin"),
+                                                  entra=prepared.get("entraAuthentication"),
+                                                  fragments=_read_authentication_fragments(properties.get("value"), prepared["path"].split("/policies/policy", 1)[0], transport))
             # 保存した XML 全体を照合し、既存の追加処理も保持されたことを確認する。
             from deployment.helpers.apim_authentication import _document, _structure
             if _structure(_document(properties["value"])) != _structure(_document(prepared["value"])):
@@ -669,7 +862,8 @@ def enable_websocket_diagnostics(plan, state, transport, *, sleep, deadline):
     raise DeploymentError("WebSocket diagnostic update could not be confirmed; check Core audit settings before retrying")
 
 
-def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=1800):
+def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=1800, checkpoint=None,
+                 reconcile_existing_source=False, backup=None):
     """全所有資源と事前条件を読み合わせてから、FW宛先追加とAPI公開を実行する。
 
     既存モデルの作成・変更はここでは行わず、必要なRBACや秘密参照も準備済みか検査する。
@@ -679,6 +873,10 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     """
     if config.get("publishApis") is not True:
         raise ValueError("Set publishApis=true before executing API publication")
+    if type(reconcile_existing_source) is not bool:
+        raise ValueError("Existing-source reconciliation must be an explicit boolean operation")
+    if reconcile_existing_source and (not callable(checkpoint) or not callable(backup)):
+        raise ValueError("Existing-source reconciliation requires protected backup and source checkpoint callbacks")
     if prepare_plan(config, state) != plan:
         raise ValueError("The publication plan differs from the validated inputs")
     validate_publication_template(template)
@@ -745,9 +943,12 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         _assert_same(actual.get("id"), rid, "Model deployment")
         properties = actual.get("properties", {})
         expected_model = {"name": model["modelName"], "version": model["modelVersion"], "format": model["modelFormat"]}
+        # Capacity is operated independently after initial provisioning (for
+        # example in Foundry's GUI). API-only publication never deploys models
+        # and must preserve that allocation while verifying the model contract.
         if (properties.get("provisioningState") != "Succeeded" or not _contains(properties.get("model"), expected_model)
-            or actual.get("sku", {}).get("name") != model["skuName"] or actual.get("sku", {}).get("capacity") != model["capacity"]):
-            raise ValueError("API-only publication cannot create or change model deployments; reconcile foundation first")
+            or actual.get("sku", {}).get("name") != model["skuName"]):
+            raise ValueError("API-only publication cannot create or change model deployments; reconcile the model contract first")
     prior_response = transport.request("GET", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API)
     # 前回配備の所有者・状態だけを照合し、全 API 一覧の再提出は要求しない。
     # Incremental 配備は指定しない API を削除せず、全体 policy も変更しない。
@@ -778,40 +979,227 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     # FWを変更した場合は再読取で保持を確認し、その後にAPI公開を始める。
     snapshot = transport.request("GET", fw["groupId"] + "?api-version=" + NETWORK_API)
     body, changed, etag = merge_firewall(snapshot, plan)
+    if reconcile_existing_source and changed:
+        raise ValueError("Source reconciliation preserves Firewall rules; prepare required destinations separately")
     deadline = time.monotonic() + timeout_seconds
-    if changed:
-        response = transport.request("PUT", fw["groupId"] + "?api-version=" + NETWORK_API, body, headers={"If-Match": etag})
-        require_success(response, "Update APIM-only Firewall FQDNs", allowed=(200, 201, 202))
-        observed = _wait_resource(transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
-        if not _contains(observed.get("properties"), body["properties"]):
-            raise ValueError("Firewall readback did not preserve the approved rules; API publication was not attempted")
-    # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
-    initialize_profile_settings(plan["apimId"], transport)
-    deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
-        "properties": {"mode": "Incremental", "template": template, "parameters": plan["parameters"]}}
-    response = transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
-    require_success(response, "Start API-only publication", allowed=(200, 201, 202))
-    observed = _wait_resource(transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
-    published = observed.get("properties", {}).get("outputs", {}).get("publishedApiResourceIds", {}).get("value", [])
-    # 指定した業務APIとCM接続用APIのすべてが配備されたことを確認する。
-    expected = plan["publishedApiIds"]
-    if not isinstance(published, list) or {value.lower() for value in published} != {value.lower() for value in expected}:
-        raise ValueError("API publication output did not confirm the reviewed API set")
-    # Incremental配備では消えない関連を、今回明示した未リリースAPIに限って解除する。
-    # API本体・検証用Product・購読は保持し、指定外のAPIへは触れない。
-    released_product = reconcile_unreleased_apis(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
-    websocket_diagnostics = enable_websocket_diagnostics(plan, state, transport, sleep=sleep, deadline=deadline)
-    # API側のキー必須設定と出力を確認してから全体policyを切り替えます。
-    # 途中失敗時は共通入口を切り替えず、失敗配備記録から同じ計画を再実行できます。
-    install_common_authentication(authentication_policy, transport, sleep=sleep, deadline=deadline)
-    # 通常 up と同じ仕上げを行い、proto 再取り込み後も公開接続説明を保つ。
-    catalog_descriptions = finalize_descriptions(config, state["outputs"], transport)
-    # 正式APIの公開が完了してから、APIMが初期作成するサンプルだけを整理する。
-    # 未登録・削除済みは正常。業務用に転用した同名定義や、その購読は保持する。
-    try:
-        sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
-    except (ValueError, DeploymentError) as error:
-        raise DeploymentError("APIs were published, but default APIM sample cleanup did not finish: " + str(error)) from error
+    transition_needed = bool(plan["entraAuthentication"].get("enabled") or authentication_policy["previousEntra"])
+    prior_source = None
+    current_manifest = None
+    fresh_snapshot = None
+    new_api_ids = set()
+    stage_prerequisites = None
+    reconciliation = None
+    old_names = set((authentication_policy["previousEntra"] or {}).get("apiNames", []))
+    new_names = set(plan["entraAuthentication"].get("apiNames", [])) if plan["entraAuthentication"].get("enabled") else set()
+    if reconcile_existing_source and not transition_needed:
+        raise ValueError("Existing-source reconciliation requires the active dual authentication publication")
+    if transition_needed:
+        checkpoint_present = "apiPublicationSourceCheckpoint" in state
+        saved = state.get("apiPublicationSourceCheckpoint")
+        if checkpoint_present:
+            if (not isinstance(saved, dict) or saved.get("schemaVersion") != 1
+                    or not _same(saved.get("apimId"), plan["apimId"])
+                    or not _same(saved.get("deploymentId"), plan["deploymentId"])):
+                raise ValueError("The protected API source checkpoint belongs to a different publication")
+            prior_source = saved.get("source")
+            if not isinstance(prior_source, dict):
+                raise ValueError("The protected API source checkpoint is incomplete; reconcile it before publication")
+        else:
+            prior_source = prior_response.get("body", {}).get("properties", {}).get("outputs", {}).get("entraPublicationSource", {}).get("value")
+        if plan["entraAuthentication"].get("enabled") and isinstance(prior_source, dict):
+            # Incremental publication does not revoke existing business APIs.
+            # Preserve all source-represented owned APIs, then validate the full
+            # source graph before treating any of these names as authorized.
+            entries = prior_source.get("apis", [])
+            if isinstance(entries, list):
+                new_names |= {entry["name"] for entry in entries
+                              if isinstance(entry, dict) and isinstance(entry.get("name"), str)}
+            new_names |= old_names
+            if new_names != set(plan["entraAuthentication"].get("apiNames", [])):
+                effective_entra = {**plan["entraAuthentication"], "apiNames": sorted(new_names)}
+                merged, policy_changed = transition_common_authentication_policy(
+                    authentication_policy["previousValue"], plan.get("credentialLogin"),
+                    previous_entra=authentication_policy["previousEntra"], entra=effective_entra)
+                authentication_policy.update(value=merged, changed=policy_changed, entraAuthentication=effective_entra)
+        if reconcile_existing_source:
+            entries = prior_source.get("apis", []) if isinstance(prior_source, dict) else []
+            represented = {entry["name"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("name"), str)}
+            known = None
+            if prior_source is not None:
+                if not represented or not old_names <= represented:
+                    raise ValueError("Known old source must cover every previously authorized employee API")
+                known = entra_publication.source_manifest(prior_source, plan["apimId"], represented,
+                                                          authentication_policy["previousValue"])
+                known = entra_publication.complete_named_value_expectations(known, plan, transport)
+            reconciliation = entra_publication.read_reconciliation_inventory(plan, template, transport, known_manifest=known)
+            if new_names != {rid.rsplit("/", 1)[-1] for rid in reconciliation.protected_api_ids}:
+                raise ValueError("Source reconciliation must enable every configured protected API")
+        elif prior_source is None and prior_response.get("statusCode") == 404 and not checkpoint_present and not authentication_policy["previousEntra"]:
+            fresh_snapshot = entra_publication.read_fresh_publication(plan, transport)
+            global_id = plan["apimId"] + "/policies/policy"
+            # Existing global content is preserved. A missing global is created
+            # conditionally as the closed key baseline before any API stage.
+            if authentication_policy["previousValue"] is not None:
+                observed_global = fresh_snapshot[global_id][2].get("body", {}).get("properties", {}).get("value")
+                if observed_global != authentication_policy["previousValue"]:
+                    raise ValueError("The global policy changed during fresh publication preflight")
+        else:
+            entries = prior_source.get("apis", []) if isinstance(prior_source, dict) else []
+            represented_names = {entry["name"] for entry in entries
+                                 if isinstance(entry, dict) and isinstance(entry.get("name"), str)} if isinstance(entries, list) else set()
+            selected_names = {resource_id.rsplit("/", 1)[-1] for resource_id in plan["publishedApiIds"]}
+            if isinstance(prior_source, dict) and prior_source.get("schemaVersion") == 1 and represented_names - selected_names:
+                raise ValueError("Source v1 migration must republish every prior API with complete v2 source before any changes")
+            # Old authorized targets always require their existing source. Only
+            # APIs actually selected for this stage can be proven new additions.
+            addition_names = new_names - represented_names - old_names
+            new_api_ids = {plan["apimId"] + "/apis/" + name for name in addition_names}
+            if not new_api_ids <= set(plan["publishedApiIds"]):
+                raise ValueError("An API without protected source must be selected for explicit closed publication")
+            current_manifest = entra_publication.source_manifest(prior_source, plan["apimId"], old_names | (new_names & represented_names),
+                                                                authentication_policy["previousValue"])
+            current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
+            stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
+    stage_result = {}
+
+    def publish_closed_stage():
+        if changed:
+            response = transport.request("PUT", fw["groupId"] + "?api-version=" + NETWORK_API, body, headers={"If-Match": etag})
+            require_success(response, "Update APIM-only Firewall FQDNs", allowed=(200, 201, 202))
+            observed = _wait_resource(transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
+            if not _contains(observed.get("properties"), body["properties"]):
+                raise ValueError("Firewall readback did not preserve the approved rules; API publication was not attempted")
+        # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
+        initialize_profile_settings(plan["apimId"], transport)
+        deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
+            "properties": {"mode": "Incremental", "template": template, "parameters": plan["parameters"]}}
+        response = transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
+        require_success(response, "Start API-only publication", allowed=(200, 201, 202))
+        observed = _wait_resource(transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
+        published = observed.get("properties", {}).get("outputs", {}).get("publishedApiResourceIds", {}).get("value", [])
+        # 指定した業務APIとCM接続用APIのすべてが配備されたことを確認する。
+        expected = plan["publishedApiIds"]
+        if not isinstance(published, list) or {value.lower() for value in published} != {value.lower() for value in expected}:
+            raise ValueError("API publication output did not confirm the reviewed API set")
+        browser_source = observed.get("properties", {}).get("outputs", {}).get("credentialBrowserPublicationSource", {}).get("value")
+        browser_snapshot = entra_publication.verify_browser_publication_source(plan, browser_source, transport)
+        stage_result.update(browserSource=browser_source or {}, browserSnapshot=browser_snapshot)
+        # Incremental配備では消えない関連を、今回明示した未リリースAPIに限って解除する。
+        # API本体・検証用Product・購読は保持し、指定外のAPIへは触れない。
+        released_product = reconcile_unreleased_apis(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
+        websocket_diagnostics = enable_websocket_diagnostics(plan, state, transport, sleep=sleep, deadline=deadline)
+        # API側のキー必須設定と出力を確認してから全体policyを切り替えます。
+        # 途中失敗時は共通入口を切り替えず、失敗配備記録から同じ計画を再実行できます。
+        if not transition_needed:
+            install_common_authentication(authentication_policy, transport, sleep=sleep, deadline=deadline)
+        # 通常 up と同じ仕上げを行い、proto 再取り込み後も公開接続説明を保つ。
+        catalog_descriptions = finalize_descriptions(config, state["outputs"], transport)
+        # 正式APIの公開が完了してから、APIMが初期作成するサンプルだけを整理する。
+        # 未登録・削除済みは正常。業務用に転用した同名定義や、その購読は保持する。
+        try:
+            sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
+        except (ValueError, DeploymentError) as error:
+            raise DeploymentError("APIs were published, but default APIM sample cleanup did not finish: " + str(error)) from error
+        source = observed.get("properties", {}).get("outputs", {}).get("entraPublicationSource", {}).get("value")
+        stage_result.update(published=published, released_product=released_product, websocket_diagnostics=websocket_diagnostics,
+                            catalog_descriptions=catalog_descriptions, sample_cleanup=sample_cleanup, source=source)
+        if transition_needed:
+            source_entries = source.get("apis") if isinstance(source, dict) else None
+            selected_names = {resource_id.rsplit("/", 1)[-1] for resource_id in expected}
+            if (not isinstance(source_entries, list) or type(source.get("schemaVersion")) is not int
+                    or source["schemaVersion"] != 2 or any(
+                        not isinstance(entry, dict) or entry.get("name") not in selected_names for entry in source_entries)):
+                raise ValueError("Closed staging requires complete v2 source for the reviewed selected APIs")
+            staged_names = {entry["name"] for entry in source_entries}
+            if staged_names != selected_names - {"credential-manager-browser"}:
+                raise ValueError("Closed staging source must represent every selected protected API")
+            # Validate this generation independently before merging; a prior
+            # source must not hide duplicates or missing current source fields.
+            entra_publication.source_manifest(source, plan["apimId"], staged_names, authentication_policy["value"])
+            merged_source = source if prior_source is None or reconciliation is not None else entra_publication.merge_sources(prior_source, source)
+            stage_result["source"] = merged_source
+            desired = entra_publication.source_manifest(merged_source, plan["apimId"], old_names | new_names, authentication_policy["value"])
+            return entra_publication.complete_named_value_expectations(desired, plan, transport)
+        return None
+
+    def record_source():
+        if stage_result.get("browserSnapshot"):
+            entra_publication.verify_snapshot(stage_result["browserSnapshot"], transport)
+        if checkpoint is not None and stage_result.get("source") is not None:
+            value = source_checkpoint(plan, stage_result["source"], authentication_policy["value"],
+                                      entra_authentication=authentication_policy.get("entraAuthentication", plan["entraAuthentication"]),
+                                      browser_source=stage_result.get("browserSource"))
+            checkpoint(value)
+
+    entra_result = None
+    if transition_needed:
+        if reconciliation is not None:
+            entra_result = entra_publication.reconcile_closed_publication(reconciliation, authentication_policy["value"],
+                transport, publish_closed_stage,
+                desired_open_api_ids={plan["apimId"] + "/apis/" + name for name in new_names},
+                on_staged=record_source, backup=backup, sleep=sleep, timeout_seconds=timeout_seconds)
+        elif fresh_snapshot is not None:
+            entra_publication.verify_snapshot(fresh_snapshot, transport)
+            global_id = plan["apimId"] + "/policies/policy"
+            if authentication_policy["previousValue"] is None:
+                from deployment.helpers.apim_authentication import _render_inline_common_authentication_service_policy
+                closed_xml = _render_inline_common_authentication_service_policy(plan.get("credentialLogin"))
+                response = transport.request("PUT", authentication_policy["path"],
+                    {"properties": {"format": "rawxml", "value": closed_xml}}, headers={"If-None-Match": "*"})
+                require_success(response, "Create the closed initial global policy", allowed=(200, 201, 202))
+                observed = entra_publication._wait(transport, global_id, sleep=sleep, deadline=deadline, raw=True)
+                entra_publication._same_xml(observed.get("body", {}).get("properties", {}).get("value"), closed_xml)
+                authentication_policy["previousValue"] = closed_xml
+                # Refresh only this conditional creation; all other absence and
+                # dependency witnesses must still match immediately before stage.
+                fresh_snapshot[global_id] = (global_id + "?api-version=" + entra_publication.APIM_API + "&format=rawxml",
+                                             {"Accept": "application/json"}, observed)
+                entra_publication.verify_snapshot(fresh_snapshot, transport)
+            try:
+                desired = publish_closed_stage()
+                current_manifest = entra_publication.PolicyManifest(desired.apim_id,
+                    {**desired.policies, global_id: authentication_policy["previousValue"]}, desired.operations,
+                    desired.products, desired.backends, desired.named_values, desired.api_properties,
+                    desired.api_children, desired.source_version)
+                # The new ARM source becomes trustworthy only after exact graph
+                # readback, unchanged old global and an empty employee Product.
+                staged_snapshot = entra_publication.read_policy_graph(current_manifest, transport)
+                if entra_publication._signature(staged_snapshot[global_id][2]) != entra_publication._signature(fresh_snapshot[global_id][2]):
+                    raise ValueError("The global policy drifted during the closed initial stage")
+                product_snapshot, members = entra_publication.read_open_product(plan["apimId"], transport, allowed_api_ids=(), missing=False)
+                if members:
+                    raise ValueError("The initial API stage must leave employee membership empty")
+                staged_snapshot.update(product_snapshot)
+                entra_publication.verify_snapshot(staged_snapshot, transport)
+            except (ValueError, OSError, DeploymentError):
+                closed = False
+                try:
+                    _, members = entra_publication.read_open_product(plan["apimId"], transport, allowed_api_ids=(), missing=True)
+                    closed = not members
+                except (ValueError, DeploymentError):
+                    pass
+                raise entra_publication.TransitionError(employee_path_closed=closed, recovery_complete=False) from None
+            stage_callback = lambda: desired
+        elif reconciliation is None:
+            stage_callback = publish_closed_stage
+        if reconciliation is None:
+            entra_result = entra_publication.transition(current_manifest, authentication_policy["value"], transport, stage_callback,
+                previous_open_api_ids={plan["apimId"] + "/apis/" + name for name in old_names},
+                desired_open_api_ids={plan["apimId"] + "/apis/" + name for name in new_names},
+                new_api_ids=new_api_ids,
+                stage_prerequisites=stage_prerequisites,
+                on_staged=record_source, sleep=sleep, timeout_seconds=timeout_seconds)
+    else:
+        publish_closed_stage()
+        # Preserve the legacy key-only publication contract (custom Products,
+        # revisions, etc.). This code-generated baseline is not activation proof;
+        # a later enable performs the complete restrictive graph audit first.
+        record_source()
+    published = stage_result["published"]
+    released_product = stage_result["released_product"]
+    websocket_diagnostics = stage_result["websocket_diagnostics"]
+    catalog_descriptions = stage_result["catalog_descriptions"]
+    sample_cleanup = stage_result["sample_cleanup"]
     # 通常構築と同じ状態形式を使い、APIだけの更新でも撤去用IDが変わらないことを確認する。
     preserved_state = state_from_outputs(config, state["outputs"])
     return {"schemaVersion": 1, "subscriptionId": config["subscriptionId"], "azureTenantId": config["azureTenantId"],
@@ -819,6 +1207,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         "resourceStem": config["resourceStem"], "deploymentId": plan["deploymentId"], "apimId": plan["apimId"],
         "firewallUpdated": changed, "commonAuthenticationPolicyUpdated": authentication_policy["changed"],
         "webSocketDiagnostics": websocket_diagnostics,
+        "entraAuthentication": entra_result, "entraPublicationSource": stage_result["source"],
+        "credentialBrowserPublicationSource": stage_result.get("browserSource", {}),
         "releasedProduct": released_product,
         "publishedApiIds": published, "status": "management-plane-published",
         "runtimeVerified": False, "catalogDescriptions": catalog_descriptions,

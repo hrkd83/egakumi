@@ -24,7 +24,9 @@ APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。第1章の準�
 
 共通基盤は`infra/`、Gatewayの配備資材は[apps/gateway/](apps/gateway/)にあります。API定義・ポリシーは`apps/gateway/apim/`、認証窓口のアプリ・SQLは`apps/gateway/credential-broker/`、配備用Bicepは`apps/gateway/deploy/`に分けています。
 
-業務APIの共通入口はAPIM購読キーで認可します。Graph等の本人OAuth接続を使うAPIは、キー検証に続いて[Credential Managerの共通接続機能](docs/setup/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/gateway/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。
+業務APIの入口は、購読キーを提示した場合はAPIM購読キー、キーなしのBearer要求はEntraユーザートークンにより認可します。不正なキーをBearerで救済しません。Graph等の本人OAuth接続を使うAPIは、入口認可に続いて[Credential Managerの共通接続機能](docs/setup/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/gateway/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。
+
+HTTP・WebSocket・gRPC・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成し、ブラウザーの一時取引認証は専用経路に保持します。Entra設定を省略した旧構成はキー方式を維持します。この全API対応の変更はAzureへ再配備しておらず、実接続の受入は対象環境ごとに確認します。[認可設定と確認範囲](docs/setup/04-params.md)を参照してください。
 
 ## 新規クローンから構築する
 
@@ -33,7 +35,7 @@ APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。第1章の準�
 | 順番 | 手順 | この段階で用意するもの |
 | --- | --- | --- |
 | 1 | [前提要件の準備](docs/setup/01-prerequisites.md) | GitHubからのクローン、管理端末のツール、Azure権限、命名・公開名・IP計画 |
-| 2 | [Entraアプリの準備](docs/setup/02-entra.md) | Portalと、採用する本人接続に必要なアプリ・権限・同意・secret |
+| 2 | [Entraアプリの準備](docs/setup/02-entra.md) · [APIアプリ](docs/setup/02a-entra-api.md) · [Codexクライアント](docs/setup/02b-entra-codex.md) | 現行Portal・本人接続の共用構成と、APIトークン認可向けの追加登録 |
 | 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Azure Public DNSの公開ゾーン・NS委任・DNS用マネージドID |
 | 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・利用APIを記入したローカルparams |
 | 5 | [configの調整・リファレンス](docs/setup/05-config.md) | テスト／本番の標準構成、SKU・モデル・保護機能の選択 |

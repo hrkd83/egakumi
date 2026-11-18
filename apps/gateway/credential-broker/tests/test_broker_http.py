@@ -42,6 +42,19 @@ class BrokerHttpTests(BrokerTestCase):
             response = client.post("/v1/start", content='{"providerName":"x","providerName":"y"}', headers=self.headers())
             self.assertEqual(400, response.status_code)
 
+    def test_gateway_caller_health_checks_ledger_readiness_without_shared_key(self):
+        with self.client() as client:
+            response = client.get("/health/gateway-caller-v1")
+            self.assertEqual(200, response.status_code)
+            self.assertEqual({"status": "ok"}, response.json())
+            self.assertEqual("no-store", response.headers["cache-control"])
+            self.store.ready_error = True
+            response = client.get("/health/gateway-caller-v1")
+            self.assertEqual(503, response.status_code)
+            self.assertNotIn("secret-do-not-log", response.text)
+            self.assertEqual("ConnectionUnavailable",
+                             response.json()["error"]["code"])
+
     def test_session_body_cannot_override_trusted_subscription(self):
         with self.client() as client:
             response = client.post("/v2/session/authorize", json={"connectionSession": "cs2." + "0" * 64 + "." + "1" * 64,

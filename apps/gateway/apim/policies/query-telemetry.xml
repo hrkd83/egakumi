@@ -1,5 +1,5 @@
 <fragment>
-  <!-- 固定schemaで独立した観測を記録します。識別子・URL・query名や値・ヘッダー・本文は含めません。 -->
+  <!-- queryの要約と共通監査の識別情報だけを記録します。query名や値・資格情報・本文は含めません。 -->
   <choose><when condition="@{
     try {
       if (!context.Variables.ContainsKey(&quot;gatewayQueryGuardDecision&quot;)) { return false; }
@@ -8,6 +8,32 @@
     } catch { return false; }
   }">
     <trace source="core-query-guard" severity="information"><message>@{
+      var requestContext = new JObject(new JProperty(&quot;requestId&quot;, context.RequestId.ToString()),
+        new JProperty(&quot;apiId&quot;, context.Api == null ? null : context.Api.Id),
+        new JProperty(&quot;operationId&quot;, context.Operation == null ? null : context.Operation.Id));
+      if (context.Variables.ContainsKey(&quot;gatewayRequestContext&quot;)) {
+        try {
+          var snapshot = (string)context.Variables[&quot;gatewayRequestContext&quot;];
+          if (snapshot.Length &lt;= 4096) {
+            var stored = JObject.Parse(snapshot);
+            foreach (var field in new [] { &quot;requestReceivedAt&quot;, &quot;httpMethod&quot;, &quot;operationTemplate&quot;, &quot;apimPeerIp&quot;, &quot;reportedUserAgent&quot;, &quot;appGatewayTraceId&quot; }) {
+              var value = stored[field];
+              if (field == &quot;requestReceivedAt&quot; &amp;&amp; value?.Type == JTokenType.Date) { requestContext[field] = ((DateTime)value).ToString(&quot;O&quot;); }
+              else if (field == &quot;reportedUserAgent&quot; &amp;&amp; value?.Type == JTokenType.Date) {
+                var text = Newtonsoft.Json.JsonConvert.DeserializeObject&lt;System.Collections.Generic.Dictionary&lt;string,string&gt;&gt;(snapshot)[field];
+                requestContext[field] = text != null &amp;&amp; text.Length &lt;= 512 ? text : null;
+              }
+              else { requestContext[field] = value?.Type == JTokenType.String &amp;&amp; ((string)value).Length &lt;= 512 ? value : null; }
+            }
+          }
+        } catch { }
+      }
+      __AUDIT_SUBJECT_OBSERVATION_CSHARP__
+      var record = new JObject(new JProperty(&quot;schemaVersion&quot;, 1), new JProperty(&quot;auditSchemaVersion&quot;, 2),
+        new JProperty(&quot;event&quot;, &quot;query-guard&quot;), new JProperty(&quot;requestId&quot;, requestContext[&quot;requestId&quot;]),
+        new JProperty(&quot;apiId&quot;, requestContext[&quot;apiId&quot;]), new JProperty(&quot;operationId&quot;, requestContext[&quot;operationId&quot;]),
+        new JProperty(&quot;requestContext&quot;, requestContext), new JProperty(&quot;authenticatedSubject&quot;, authenticatedSubject));
+      foreach (var field in new [] { &quot;route&quot;, &quot;httpMethod&quot;, &quot;mode&quot;, &quot;phase&quot;, &quot;presence&quot;, &quot;countBucket&quot;, &quot;duplicates&quot;, &quot;statusClass&quot; }) { record[field] = &quot;unknown&quot;; }
       try {
         var decision = JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;]);
         var route = (string)decision[&quot;route&quot;];
@@ -28,13 +54,11 @@
           : phase == &quot;backend-response&quot; || phase == &quot;policy-error&quot; ? (context.Variables.ContainsKey(&quot;gatewayAuditStatus&quot;) ? (int)context.Variables[&quot;gatewayAuditStatus&quot;] : 0) : 0;
         var statusClass = status &gt;= 200 &amp;&amp; status &lt; 300 ? &quot;2xx&quot; : status &gt;= 300 &amp;&amp; status &lt; 400 ? &quot;3xx&quot;
           : status &gt;= 400 &amp;&amp; status &lt; 500 ? &quot;4xx&quot; : status &gt;= 500 &amp;&amp; status &lt; 600 ? &quot;5xx&quot; : &quot;unknown&quot;;
-        return new JObject(new JProperty(&quot;schemaVersion&quot;, 1), new JProperty(&quot;event&quot;, &quot;query-guard&quot;),
-          new JProperty(&quot;route&quot;, route), new JProperty(&quot;httpMethod&quot;, method), new JProperty(&quot;mode&quot;, mode),
-          new JProperty(&quot;phase&quot;, phase), new JProperty(&quot;presence&quot;, presence), new JProperty(&quot;countBucket&quot;, count),
-          new JProperty(&quot;duplicates&quot;, duplicate), new JProperty(&quot;statusClass&quot;, statusClass)).ToString(Newtonsoft.Json.Formatting.None);
-      } catch {
-        return &quot;{\&quot;schemaVersion\&quot;:1,\&quot;event\&quot;:\&quot;query-guard\&quot;,\&quot;route\&quot;:\&quot;unknown\&quot;,\&quot;httpMethod\&quot;:\&quot;unknown\&quot;,\&quot;mode\&quot;:\&quot;unknown\&quot;,\&quot;phase\&quot;:\&quot;unknown\&quot;,\&quot;presence\&quot;:\&quot;unknown\&quot;,\&quot;countBucket\&quot;:\&quot;unknown\&quot;,\&quot;duplicates\&quot;:\&quot;unknown\&quot;,\&quot;statusClass\&quot;:\&quot;unknown\&quot;}&quot;;
-      }
+        record[&quot;route&quot;] = route; record[&quot;httpMethod&quot;] = method; record[&quot;mode&quot;] = mode;
+        record[&quot;phase&quot;] = phase; record[&quot;presence&quot;] = presence; record[&quot;countBucket&quot;] = count;
+        record[&quot;duplicates&quot;] = duplicate; record[&quot;statusClass&quot;] = statusClass;
+      } catch { }
+      return record.ToString(Newtonsoft.Json.Formatting.None);
     }</message></trace>
   </when></choose>
 </fragment>

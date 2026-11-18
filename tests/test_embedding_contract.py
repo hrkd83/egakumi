@@ -9,7 +9,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, configuration
 from schema_helpers import local_schema_validator
@@ -160,9 +160,11 @@ class EmbeddingExpressionTests(unittest.TestCase):
             parameters = {"apiDefinitions": [api]}
             settings = PolicyExpression("[__bicep.auditSettings(parameters('apiDefinitions')[0], '', false())]",
                                         template["variables"], functions=template["functions"]).evaluate(parameters)
-            self.assertEqual(settings["operationConstraints"], api["authorization"]["operationConstraints"])
+            controls = PolicyExpression("[__bicep.controlSettings(parameters('apiDefinitions')[0], '', false())]",
+                                        template["variables"], functions=template["functions"]).evaluate(parameters)
+            self.assertEqual(controls["operationConstraints"], api["authorization"]["operationConstraints"])
             self.assertEqual(settings["llmOperationIds"], [])
-            self.assertEqual(settings["tokenLimitOperationIds"], [])
+            self.assertEqual(controls["tokenLimitOperationIds"], [])
 
     def test_compiled_embedding_policies_publish_the_guard_without_rewriting_native_queries(self):
         template = compile_bicep("apps/gateway/apim/api-publication.bicep")
@@ -184,7 +186,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
             def evaluate(value):
                 return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)
 
-            root = ET.fromstring(evaluate("[variables('policyValues')]")[0])
+            root = ET.fromstring(compiled_policy_value(template, parameters))
             authorization = base64.b64encode(json.dumps(api["authorization"], ensure_ascii=False, separators=(",", ":")).encode()).decode()
             self.assertEqual(root.find('./inbound/set-variable[@name="gatewayInferenceRequestAllowed"]').get("value"),
                              source_guard.replace("__AUTHORIZATION_BASE64__", authorization))

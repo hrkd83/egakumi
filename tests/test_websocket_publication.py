@@ -3,13 +3,15 @@
 APIスコープで拒否された実機不備を、Bicep生成結果とXMLの既知制約で防ぐ。
 WebSocketの実接続やAzure側のpolicy検証は、別の実機確認で行う。
 """
-from arm_helpers import PolicyExpression
+from arm_helpers import compiled_policy_value
 from bicep_helpers import compile_bicep
 
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
 from arm_helpers import ArmExpression
+from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
+from policy_fixture_paths import policy_fixture_path
 from test_api_protocols import bound_external_coverage, configuration
 
 
@@ -39,10 +41,9 @@ class WebSocketPublicationTests(unittest.TestCase):
         """WebSocketはWSSのserviceUrlを使い、HTTPは登録済みのbackendを選ぶ。"""
         config = configuration.normalize_configuration(bound_external_coverage(), base_directory=CORE / "config")
         definitions = config["apiDefinitions"]
-        policy_array = PolicyExpression("[variables('policyValues')]", self.template["variables"], functions=self.template['functions'])
         parameters = {"apiDefinitions": definitions, "publicHostName": "gateway.example.com",
                       "queryGuards": config["gateway"]["queryGuards"]}
-        policies = policy_array.evaluate(parameters)
+        policies = [compiled_policy_value(self.template, parameters, index) for index in range(len(definitions))]
         api_properties = ArmExpression(self.template["resources"]["apis"]["properties"])
         kinds = set()
         for index, (api, value) in enumerate(zip(definitions, policies)):
@@ -63,6 +64,8 @@ class WebSocketPublicationTests(unittest.TestCase):
                     self.assertIsNotNone(inbound.find("base"))
                     self.assertLess(list(inbound).index(inbound.find('set-variable[@name="gatewayAuditSettings"]')),
                                     list(inbound).index(inbound.find("base")))
+                    self.assertLess(list(inbound).index(inbound.find('set-variable[@name="gatewayControlSettings"]')),
+                                    list(inbound).index(inbound.find("base")))
                     self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
                     self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayProtocolQueryAllowed"]'))
                     for key, expected in api.get("websocket", {}).get("queryParameters", {}).items():
@@ -71,9 +74,9 @@ class WebSocketPublicationTests(unittest.TestCase):
                     self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-gateway-telemetry"]'))
                 elif any("backendOverride" in operation for operation in api["operations"]):
                     self.assertEqual(selection, [])
-                    branches = root.findall('./inbound/choose/otherwise/choose/when/set-backend-service')
+                    branches = root.findall('./inbound//when/set-backend-service')
                     self.assertEqual(len(branches), sum("backendOverride" in operation for operation in api["operations"]))
-                    self.assertIsNotNone(root.find('./inbound/choose/otherwise/choose/otherwise/set-backend-service'))
+                    self.assertIsNotNone(root.find('./inbound//otherwise/set-backend-service[@backend-id="' + api['name'] + '-backend"]'))
                 else:
                     self.assertEqual(len(selection), 1)
                     self.assertEqual(selection[0].get("backend-id"), api["name"] + "-backend")
@@ -98,8 +101,8 @@ class WebSocketPublicationTests(unittest.TestCase):
         unsupported = {"mock-response", "cache-lookup", "cache-store", "cross-domain", "cors", "jsonp",
                        "set-method", "set-body", "xml-to-json", "json-to-xml", "xsl-transform",
                        "validate-content", "validate-parameters", "validate-headers", "validate-status-code"}
-        for filename in ("protocol.xml", "service.xml", "gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
-            root = ET.parse(SERVICE_POLICY if filename == "service.xml" else POLICIES / filename).getroot()
+        for filename in ("protocol.xml", "service.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
+            root = ET.parse(SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)).getroot()
             with self.subTest(filename=filename):
                 self.assertFalse({node.tag for node in root.iter()} & unsupported)
                 self.assertFalse(any(node.get("name", "").lower() == "host"
@@ -120,7 +123,7 @@ class WebSocketPublicationTests(unittest.TestCase):
 
     def test_global_policy_preserves_ingress_proof_without_an_api_inventory(self):
         """全体のAPI ID制限を設けず、入口証明・転送・相関IDを保持する。"""
-        service = ET.parse(SERVICE_POLICY).getroot()
+        service = ET.fromstring(expand_trusted_ingress_fragment(SERVICE_POLICY.read_text(encoding="utf-8")))
         self.assertEqual([section.tag for section in service], ["inbound", "backend", "outbound", "on-error"])
         self.assertEqual(service.findall(".//base"), [])
         reasons = [status.get("reason") for status in service.findall("./inbound/choose/when/return-response/set-status")]

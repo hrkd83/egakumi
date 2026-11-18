@@ -26,6 +26,8 @@ param loginCallsPerMinute int = 10
 param minReplicas int = 2
 param maxReplicas int = 4
 param deployApplication bool = false
+@allowed(['migrate', 'observe-schema'])
+param schemaAction string = 'migrate'
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 var image = '${registry.properties.loginServer}/credential-broker@${imageDigest}'
@@ -76,7 +78,7 @@ resource migration 'Microsoft.App/jobs@2025-01-01' = {
       name: 'schema'
       image: image
       command: ['python', '-m', 'credential_broker.cli']
-      args: ['migrate']
+      args: [schemaAction]
       env: [for item in items(schemaEnvironment): { name: item.key, value: item.value }]
       resources: { cpu: json('0.5'), memory: '1Gi' }
     }] }
@@ -104,7 +106,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApplication) {
         resources: { cpu: json('0.5'), memory: '1Gi' }
         probes: [for type in ['Startup', 'Readiness', 'Liveness']: {
           type: type
-          httpGet: { path: '/health', port: 8000, scheme: 'HTTP' }
+          httpGet: { path: '/health/gateway-caller-v1', port: 8000, scheme: 'HTTP' }
           initialDelaySeconds: 10
           periodSeconds: 15
           failureThreshold: 20

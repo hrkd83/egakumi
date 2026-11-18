@@ -6,6 +6,7 @@ import json
 from xml.sax.saxutils import escape
 
 from .paths import REPOSITORY
+from .apim_audit import render_audit_policy
 from .apim_naming import apim_name
 from .credential_pools import physical_providers, logical_profiles
 
@@ -43,7 +44,9 @@ def settings(configuration: dict) -> dict | None:
     profiles = [{"name": name, "tenantId": profile["tenantId"]}
                 for name, profile in logical_profiles(configuration).items()]
     group = configuration["resourceGroupNames"]["svc"]
-    return {**login, "publicOrigin": "https://" + configuration["gateway"]["publicHostName"],
+    # OIDC本人確認アプリはbroker専用です。保護ファイル参照をAPIMへ公開しません。
+    public_login = {key: value for key, value in login.items() if key != "identity"}
+    return {**public_login, "publicOrigin": "https://" + configuration["gateway"]["publicHostName"],
             "azureTenantId": configuration["azureTenantId"],
             "keyHeader": configuration["gateway"]["authentication"]["subscriptionKeyHeader"],
             "apimResourceId": f"/subscriptions/{configuration['subscriptionId']}/resourceGroups/{group}/providers/Microsoft.ApiManagement/service/{apim_name(configuration)}",
@@ -69,12 +72,36 @@ def render(filename: str, login: dict) -> str:
     return value
 
 
+def key_only_gateway_telemetry(telemetry: str) -> str:
+    """APIのdecisionが未生成の共通拒否監査には購読の確認部だけを使う。"""
+    start, end = " /* core-user-audit-start */", " /* core-user-audit-end */"
+    if start not in telemetry and end not in telemetry:
+        return telemetry
+    if telemetry.count(start) != 1 or telemetry.count(end) != 1:
+        raise ValueError("Gateway telemetry user block must be uniquely bounded")
+    before, remaining = telemetry.split(start)
+    _, after = remaining.split(end)
+    return before + after
+
+
+def credential_gateway_telemetry(telemetry: str) -> str:
+    """CM内の拒否は短い監査を使い、主体を保持してfragment上限を守る。"""
+    if not telemetry:
+        return ""
+    path = POLICY_DIRECTORY.parent / "credential-telemetry.xml"
+    return path.read_text(encoding="utf-8").replace(
+        "<fragment>", ""
+    ).replace("</fragment>", "")
+
+
 def render_connection(filename: str, login: dict, telemetry: str = "") -> str:
     """業務APIの本人接続と認証案内を、同じ設定・監査処理で展開する。"""
     directory = POLICY_DIRECTORY.parent
     challenge = (directory / "credential-challenge.xml").read_text(encoding="utf-8").replace("<fragment>", "").replace("</fragment>", "")
     value = (directory / filename).read_text(encoding="utf-8").replace("__CREDENTIAL_CHALLENGE_XML__", challenge)
-    return value.replace("__CREDENTIAL_LOGIN_SETTINGS__", encode(login)).replace("__CREDENTIAL_LOGIN_ORIGIN_BASE64__", base64.b64encode(login["publicOrigin"].encode()).decode()).replace("__GATEWAY_TELEMETRY_XML__", telemetry)
+    return render_audit_policy(value.replace("__CREDENTIAL_LOGIN_SETTINGS__", encode(login))
+        .replace("__CREDENTIAL_LOGIN_ORIGIN_BASE64__", base64.b64encode(login["publicOrigin"].encode()).decode())
+        .replace("__GATEWAY_TELEMETRY_XML__", credential_gateway_telemetry(telemetry)), source_comments="compact")
 
 
 def anonymous_policy(login=None) -> str:
@@ -90,6 +117,9 @@ def anonymous_policy(login=None) -> str:
                  f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/callback") '
                  '|| (context.Operation.Id == "identity-callback" && context.Request.Method == "GET" '
                  f'&& context.Request.OriginalUrl.Path == "/{BROWSER_API_PATH}/identity-callback"))')
-    return ('<!-- 一時取引を提示するブラウザー操作だけを匿名公開し、各操作が秘密・Cookie・期限を確認します。 -->'
+    return ('<!-- 通常のブラウザー遷移は購読キーやBearerトークンを送れないため、進行中の接続ログインの確認へ進めます。\n'
+            '     API ID・操作・HTTPメソッド・パスが一致する4操作だけ共通認証を省略し、不一致は通常の認証へ進めます。\n'
+            '     各段階で起動秘密、Cookieとstate（開始と戻り先を結び付ける値）、期限、本人を確認し、不正なら拒否します。\n'
+            '     この例外を他の業務APIへ広げません。 -->'
             '<when condition="@(' + escape(condition, {'"': '&quot;'}) + ')">'
             '<set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" /></when>')

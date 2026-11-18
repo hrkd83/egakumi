@@ -1,15 +1,19 @@
 <policies>
   <!--
     WebSocket / gRPC / MCP proxy の接続開始時に全体の認証を継承し、API 固有の認可を実施します。
-    通常RESTと同じ購読キーを確認し、API定義にあるモデル名と接続先queryを入口で検査します。
+    通常RESTと同じ購読キーまたはBearerを確認し、API定義にあるモデル名と接続先queryを入口で検査します。
     gRPC は HTTP/2 と逐次転送を使用し、WebSocket は接続開始時にモデルと固定 query を検査します。
   -->
   <inbound>
     __GRPC_INGRESS_XML__
     <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
+    <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
     <!-- MCP型だけに、個別PRMの転送を止める固定guardを差し込みます。 -->
     __MCP_PRM_GUARD_XML__
+    <!-- native stream/MCPも共通入口で購読キーまたはBearerを検証します。 -->
     <base />
+    <set-header name="X-Core-Caller-Id" exists-action="delete" />
+    <set-header name="X-Core-Subscription-Id" exists-action="delete" />
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
     <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
     <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
@@ -29,18 +33,36 @@
         return allowed.Any(m =&gt; (string)m == model) ? model : &quot;!invalid-model!&quot;;
       } catch { return &quot;!invalid-model!&quot;; }
     }" />
-    <!-- 共通入口が検証した購読を、このAPIの操作制約と監査へ引き渡します。
-         呼出主体は購読IDで固定し、下流の本人認証はAPI固有の処理で確認します。 -->
+    <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
+    <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
     <set-variable name="gatewayDecision" value="@{
       var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
       var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
       var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
-      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot; || context.Subscription == null
-          || String.IsNullOrWhiteSpace(context.Subscription.Id) || !context.Request.Headers.ContainsKey(keyHeader)
-          || context.Request.Headers[keyHeader].Length != 1
-          || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return deny.ToString(); }
-      var decision = new JObject(new JProperty(&quot;allowed&quot;, true),
-        new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot;) { return deny.ToString(); }
+      JObject decision;
+      if (context.Request.Headers.ContainsKey(keyHeader)) {
+        /* 購読とキー用ヘッダーの形式は共通認証で確認済みです。検証済み購読IDを呼出主体へ引き継ぎます。 */
+        decision = new JObject(new JProperty(&quot;allowed&quot;, true),
+          new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      } else {
+        try {
+          if (context.Subscription != null
+              || !context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;]
+              || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return deny.ToString(); }
+          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+          Guid tenant, principal;
+          if ((int?)user[&quot;schemaVersion&quot;] != 1
+              || !Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
+              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return deny.ToString(); }
+          var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
+          if ((string)user[&quot;callerId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller) { return deny.ToString(); }
+          decision = new JObject(new JProperty(&quot;allowed&quot;, true), new JProperty(&quot;method&quot;, &quot;user&quot;),
+            new JProperty(&quot;callerId&quot;, caller), new JProperty(&quot;allocationId&quot;, caller),
+            new JProperty(&quot;verifiedTenantId&quot;, tenant.ToString(&quot;D&quot;)), new JProperty(&quot;verifiedPrincipalId&quot;, principal.ToString(&quot;D&quot;)),
+            new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
+        } catch { return deny.ToString(); }
+      }
       if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
         var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
         if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }

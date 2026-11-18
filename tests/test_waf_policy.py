@@ -1420,6 +1420,37 @@ class DataWafTests(unittest.TestCase):
                     with self.subTest(profile=name, selector=selector, change=change), self.assertRaises(ValueError):
                         selected_profiles(configuration(), manifest=invalid)
 
+    def test_responses_call_id_exception_preserves_other_rules_and_policy_settings(self):
+        profile = next(p for p in load_manifest()['profiles'] if p['name'] == 'g-responses')
+        expected = exclusion('input.call_id', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942450'])
+        entry = next(e for e in profile['exclusions'] if e['selector'] == 'input.call_id')
+        self.assertEqual(entry, expected)
+        for variable, selector, rule in (
+            ('RequestArgValues', 'input.id', '942450'),
+            ('RequestArgValues', 'input.call_idExtra', '942450'),
+            ('RequestArgValues', 'input.call_id.child', '942450'),
+            ('RequestArgKeys', 'input.call_id', '942450'),
+            ('RequestHeaderValues', 'input.call_id', '942450'),
+            ('RequestArgValues', 'input.call_id', '942100'),
+        ):
+            with self.subTest(variable=variable, selector=selector, rule=rule):
+                candidate = exclusion(selector, 'REQUEST-942-APPLICATION-ATTACK-SQLI', [rule], variable)
+                self.assertFalse(exclusion_is_covered(candidate, entry))
+        before = copy.deepcopy(profile)
+        before['exclusions'].remove(entry)
+        base, config = policy(), configuration()
+        prior = desired_policy(base, before, config)
+        updated = desired_policy(base, profile, config, sources=(prior,))
+        old_exclusions = prior['properties']['managedRules']['exclusions']
+        new_exclusions = updated['properties']['managedRules']['exclusions']
+        self.assertEqual([e for e in new_exclusions if e not in old_exclusions], [expected])
+        self.assertTrue(all(e in new_exclusions for e in old_exclusions))
+        old_properties, new_properties = copy.deepcopy(prior), copy.deepcopy(updated)
+        old_properties['properties']['managedRules'].pop('exclusions')
+        new_properties['properties']['managedRules'].pop('exclusions')
+        self.assertEqual(new_properties, old_properties)
+        self.assertEqual(desired_policy(base, profile, config, sources=(updated,)), updated)
+
     def test_ai_text_and_json_values_share_the_normal_body_rule_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
         previous = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())

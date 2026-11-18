@@ -20,6 +20,16 @@ CORE = Path(__file__).resolve().parents[1]
 SYNTHETIC_SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
 
 
+def source_without_identity_binding(template):
+    """Only the existing APIM identity may be read for generated CM settings.
+
+    Policy/routing expectations must remain assignment expressions; never adopt
+    a runtime API, policy, backend or NamedValue as the expected source.
+    """
+    value = json.dumps(template["outputs"]["entraPublicationSource"])
+    return value.replace("reference('apim', '2024-05-01', 'full').identity.principalId", "approved-apim-identity")
+
+
 class SizeExpression(DiscoveryExpression):
     """実コンパイルされたARM式を、Azure接続せずに展開する。
 
@@ -121,6 +131,151 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertLess(size, 3_500_000, "Expanded publication bytes: " + str(size))
         self.assertEqual(sum(resource["type"] == "Microsoft.ApiManagement/service/apis" for resource in expanded["resources"]), len(self.parameters["apiDefinitions"]) + sum("mcp" in api for api in self.parameters["apiDefinitions"]))
 
+    def test_entra_open_product_omits_subscription_only_approval_and_preserves_native_contracts(self):
+        parameters = copy.deepcopy(self.parameters)
+        parameters["entraAuthentication"] = {"enabled": True}
+        expanded = expand(self.template, parameters)
+        products = [resource for resource in expanded["resources"]
+                    if resource["type"] == "Microsoft.ApiManagement/service/products"]
+        dedicated = [product for product in products if product["name"].endswith("/core-entra-model-users")]
+        self.assertEqual(len(dedicated), 1)
+        self.assertEqual(dedicated[0]["properties"], {
+            "displayName": "Core Entra model users", "description": "core-owned-entra-model-users-v1",
+            "subscriptionRequired": False, "state": "notPublished"})
+        protected = [product for product in products if product not in dedicated]
+        self.assertTrue(protected)
+        self.assertTrue(all(product["properties"]["subscriptionRequired"] is True
+                            and product["properties"]["approvalRequired"] is True for product in protected))
+        self.assertTrue(all(resource["properties"]["subscriptionRequired"] is True for resource in expanded["resources"]
+                            if resource["type"] == "Microsoft.ApiManagement/service/apis"))
+        policy = next(resource for resource in expanded["resources"]
+                      if resource["type"] == "Microsoft.ApiManagement/service/products/policies"
+                      and resource["name"].endswith("/core-entra-model-users/policy"))
+        self.assertEqual(policy["properties"]["format"], "rawxml")
+        root = ET.fromstring(policy["properties"]["value"])
+        self.assertEqual([section.tag for section in root], ["inbound", "backend", "outbound", "on-error"])
+        self.assertTrue(all(len(section) == 1 and section[0].tag == "base" for section in root))
+        self.assertFalse(any(resource["type"] == "Microsoft.ApiManagement/service/products/apis"
+                             and "/core-entra-model-users/" in resource["name"] for resource in expanded["resources"]))
+
+    def test_protected_source_output_matches_resource_assignments_and_fits_expanded_budget(self):
+        expanded = expand(self.template, copy.deepcopy(self.parameters))
+        reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+        source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
+        actual = {}
+        actual_properties = {}
+        for resource in expanded["resources"]:
+            parts = resource["name"].split("/")
+            if "properties" in resource and resource["type"].startswith("Microsoft.ApiManagement/service/"):
+                kinds = resource["type"].split("/")[2:]
+                suffix = "/" + "/".join(part for pair in zip(kinds, parts[1:]) for part in pair)
+                actual_properties[suffix] = resource["properties"]
+            if resource["type"].endswith("/policyFragments"):
+                actual["/policyFragments/" + parts[1]] = resource["properties"]["value"]
+            elif resource["type"].endswith("/apis/operations/policies"):
+                actual["/apis/" + parts[1] + "/operations/" + parts[2] + "/policies/policy"] = resource["properties"]["value"]
+            elif resource["type"].endswith("/apis/policies"):
+                actual["/apis/" + parts[1] + "/policies/policy"] = resource["properties"]["value"]
+        self.assertTrue(source["apis"])
+        self.assertEqual(source["schemaVersion"], 2)
+        self.assertEqual({entry["name"] for entry in source["apis"]},
+                         {api["name"] for api in self.parameters["apiDefinitions"]}
+                         | {api["mcp"]["name"] for api in self.parameters["apiDefinitions"] if "mcp" in api})
+        for entry in source["apis"]:
+            observed = actual_properties["/apis/" + entry["name"]]
+            self.assertEqual({key: observed[key] for key in entry["properties"]}, entry["properties"])
+        for entry in source["policies"]:
+            self.assertEqual(entry["value"], actual[entry["suffix"]])
+            self.assertNotIn("__AUDIT_", entry["value"])
+            self.assertNotIn("__CORE_", entry["value"])
+        for key in ("backends", "namedValues", "apiChildren"):
+            for entry in source[key]:
+                self.assertEqual(entry["properties"], actual_properties[entry["suffix"]])
+        self.assertNotIn("reference(", source_without_identity_binding(self.template))
+        # 初期値のキー構成だけでなく、標準のCMとBearerを同時に使う構成も測る。
+        for credential_enabled, entra_enabled in ((False, False), (False, True), (True, False), (True, True)):
+            with self.subTest(credential_enabled=credential_enabled, entra_enabled=entra_enabled):
+                parameters = copy.deepcopy(self.parameters)
+                parameters["entraAuthentication"] = {"enabled": entra_enabled}
+                if credential_enabled:
+                    parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
+                expanded_case = expand(self.template, parameters)
+                # Each parameter set requires its own cache; otherwise the CM
+                # source policies may be omitted after the non-CM case.
+                case_reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+                source_case = case_reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded_case["parameters"])
+                self.assertEqual(any(entry["suffix"] == "/apis/credential-manager-login/policies/policy"
+                                     for entry in source_case["policies"]), credential_enabled)
+                for entry in source_case["policies"]:
+                    self.assertNotIn("__AUDIT_", entry["value"])
+                    self.assertNotIn("__CORE_", entry["value"])
+                size = len(json.dumps({**expanded_case, "protectedSourceOutput": source_case}, ensure_ascii=False, separators=(",", ":")).encode())
+                self.assertLess(size, 3_500_000, "Expanded publication including protected source bytes: " + str(size))
+
+    def test_full_source_contains_every_fragment_and_retains_non_cm_model_authentication(self):
+        for credential_enabled in (False, True):
+            with self.subTest(credential_enabled=credential_enabled):
+                parameters = copy.deepcopy(self.parameters)
+                if credential_enabled:
+                    parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
+                expanded = expand(self.template, parameters)
+                reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+                source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
+                raw_policies = {}
+                for resource in expanded["resources"]:
+                    if "properties" not in resource or not resource["type"].endswith(("/policies", "/policyFragments")):
+                        continue
+                    kinds = resource["type"].split("/")[2:]
+                    names = resource["name"].split("/")[1:]
+                    suffix = "/" + "/".join(part for pair in zip(kinds, names) for part in pair)
+                    raw_policies[suffix] = resource["properties"]["value"]
+                policies = {}
+                for entry in source["policies"]:
+                    value = raw_policies[entry["suffix"]]
+                    self.assertEqual(entry["value"], value)
+                    policies[entry["suffix"]] = value
+                model_names = {api["name"] for api in parameters["apiDefinitions"]
+                               if api["apiType"] == "http" and api["backendService"] == "foundryOpenAi"
+                               and api["backendAuthentication"]["mode"] == "managedIdentity" and "credentialConnection" not in api}
+                self.assertTrue(source["apis"])
+                for suffix, value in policies.items():
+                    root = ET.fromstring(value)
+                    for include in root.iter("include-fragment"):
+                        fragment = include.get("fragment-id")
+                        self.assertIn("/policyFragments/" + fragment, policies, (suffix, fragment))
+                    if suffix in {"/apis/" + name + "/policies/policy" for name in model_names}:
+                        self.assertFalse(any(node.get("fragment-id").startswith("core-credential-") for node in root.iter("include-fragment")))
+                        self.assertEqual(root.find('./inbound/set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
+                        self.assertIsNotNone(root.find("./inbound/authentication-managed-identity"))
+                        self.assertIsNone(root.find('./inbound/choose/otherwise/authentication-managed-identity'))
+                self.assertNotIn("reference(", source_without_identity_binding(self.template))
+
+    def test_http_without_cm_preserves_operation_backend_selection_and_header_cleanup(self):
+        parameters = copy.deepcopy(self.parameters)
+        api = next(api for api in parameters["apiDefinitions"] if api["name"] == "openai-inference-v1")
+        operation = api["operations"][0]
+        operation["backendOverride"] = {name: copy.deepcopy(api[name]) for name in (
+            "backendUrl", "backendService", "backendAudience", "backendAuthentication", "backendHeaders")}
+        operation["backendOverride"]["backendUrl"] += "/alternate"
+        expanded = expand(self.template, parameters)
+        policy = next(resource["properties"]["value"] for resource in expanded["resources"]
+                      if resource["type"] == "Microsoft.ApiManagement/service/apis/policies"
+                      and resource["name"].endswith("/" + api["name"] + "/policy"))
+        root = ET.fromstring(policy)
+        inbound = root.find("inbound")
+        selection = next(node for node in inbound.findall("choose")
+                         if node.find("when/set-backend-service") is not None)
+        self.assertIn(operation["name"], selection.find("when").get("condition"))
+        self.assertIsNotNone(selection.find("when/authentication-managed-identity"))
+        self.assertIsNotNone(selection.find("otherwise/set-backend-service"))
+        self.assertIsNotNone(selection.find("otherwise/authentication-managed-identity"))
+        self.assertEqual(inbound.find('set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
+        self.assertFalse(any(node.get("fragment-id").startswith("core-credential-")
+                             for node in root.iter("include-fragment")))
+        self.assertLess(list(inbound).index(inbound.find("base")), list(inbound).index(selection))
+        for header in ("Authorization", "X-Core-Connection-Session", "X-Core-Connection-Poll", "X-Core-Connection-Transaction"):
+            self.assertIsNotNone(inbound.find('set-header[@name="' + header + '"][@exists-action="delete"]'))
+
     def test_released_membership_uses_declared_business_apis_and_preserves_verification_products(self):
         parameters = copy.deepcopy(self.parameters)
         parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
@@ -165,7 +320,11 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertEqual(len(graph_policies), 1)
         for policy in graph_policies:
             root = ET.fromstring(policy)
-            self.assertIsNotNone(root.find('./inbound/choose/when/include-fragment[@fragment-id="core-credential-connection"]'))
+            connection = root.find('./inbound/choose/when/include-fragment[@fragment-id="core-credential-connection"]')
+            self.assertIsNotNone(connection)
+            self.assertIsNotNone(root.find('./inbound/choose/when/include-fragment[@fragment-id="core-credential-session-use"]'))
+            self.assertIsNotNone(root.find('./outbound/choose/when/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
+            self.assertNotEqual(root.find('./inbound/set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
             self.assertEqual(root.findall('.//validate-azure-ad-token'), [])
         fragment_names = {r["name"].rsplit('/', 1)[-1] for r in expanded["resources"]
                           if r["type"] == "Microsoft.ApiManagement/service/policyFragments"}
@@ -208,12 +367,28 @@ class ApiPublicationSizeTests(unittest.TestCase):
         parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
         expanded = expand(self.template, parameters)
         policies = [r for r in expanded["resources"] if r["type"].endswith("/policies") and "/credential-manager-" in r["name"]]
-        self.assertEqual(len(policies), len(credential_login.OPERATIONS) + len(credential_login.BROWSER_OPERATIONS))
-        for policy in policies:
+        api_policy = [policy for policy in policies if policy["type"].endswith("/apis/policies")]
+        self.assertEqual(len(api_policy), 1)
+        self.assertTrue(api_policy[0]["name"].endswith("/credential-manager-login/policy"))
+        api_root = ET.fromstring(api_policy[0]["properties"]["value"])
+        self.assertEqual([node.tag for node in api_root.find('inbound')], ['base'])
+        self.assertTrue(all(len(api_root.find(section)) == 1 and api_root.find(section)[0].tag == 'base'
+                            for section in ('backend', 'outbound', 'on-error')))
+        operation_policies = [policy for policy in policies if policy not in api_policy]
+        self.assertEqual(len(operation_policies), len(credential_login.OPERATIONS) + len(credential_login.BROWSER_OPERATIONS))
+        reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+        fixture_settings = {**parameters["credentialLogin"], "apimPrincipalId": reader.resolve(
+            "[reference('fixture').identity.principalId]", expanded["parameters"])}
+        for policy in operation_policies:
             value = policy["properties"]["value"]
             self.assertNotRegex(value, r"__[A-Z][A-Z0-9_]*__")
             self.assertNotIn("__ARM_", value)
             root = ET.fromstring(value)
+            operation_name = policy["name"].split("/")[-2]
+            raw_policy = (CORE / "apps/gateway/apim/policies/credential-login" / (operation_name + ".xml")).read_text()
+            expected = reader.resolve("[__bicep.renderCredentialLogin(parameters('fixturePolicy'), parameters('fixtureSettings'))]",
+                                      {**expanded["parameters"], "fixturePolicy": raw_policy, "fixtureSettings": fixture_settings})
+            self.assertEqual(ET.tostring(root), ET.tostring(ET.fromstring(expected)), operation_name)
             for response in root.findall(".//return-response"):
                 self.assertIsNotNone(response.find("set-header[@name='apim-request-id']"))
         self.assertLess(len(json.dumps(expanded, ensure_ascii=False).encode()), 3_500_000)
@@ -224,14 +399,32 @@ class ApiPublicationSizeTests(unittest.TestCase):
             self.assertEqual(diagnostic["properties"]["frontend"]["request"]["body"]["bytes"], 0)
         fragments=[r for r in expanded['resources'] if r['type'].endswith('/policyFragments') and r['name'].rsplit('/',1)[-1] in ('core-credential-connection','core-credential-session-use','core-credential-connection-outbound')]
         self.assertEqual(len(fragments),3)
+        oversized_fragments={fragment['name'].rsplit('/',1)[-1]:len(fragment['properties']['value'].encode('utf-8'))
+                             for fragment in fragments if len(fragment['properties']['value'].encode('utf-8'))>=32768}
+        self.assertFalse(oversized_fragments,'Credential fragment UTF-8 bytes exceed the publication budget: '+str(oversized_fragments))
+        credential_audit_messages = []
         for fragment in fragments:
             value=fragment['properties']['value']
             self.assertNotRegex(value,r'__[A-Z][A-Z0-9_]*__')
-            self.assertLess(len(value.encode('utf-8')),32768)
+            # Compact connection-failure audit retains both verified key/user
+            # subjects without embedding the full business telemetry body.
+            messages = [message.text or '' for message in ET.fromstring(value).findall('.//trace[@source="core-gateway"]/message')]
+            self.assertTrue(messages)
+            self.assertIn('context.Subscription', value)
+            credential_audit_messages.extend(messages)
+            user_messages = [message for message in messages if 'credentialCallerId' in message]
+            self.assertTrue(user_messages)
+            for message in user_messages:
+                self.assertIn('gatewayUserAuthentication', message)
+                self.assertIn('verifiedTenantId', message)
+                self.assertIn('verifiedPrincipalId', message)
+                self.assertIn('verifiedClientId', message)
+            self.assertTrue(all('core-user-audit-' not in message for message in messages))
             if fragment['name'].endswith('/core-credential-connection'):
                 self.assertIn('/v2/session/authorize',value)
             else:
                 self.assertIn('/v1/challenge',value)
+        self.assertTrue(any('context.Subscription' in message and '"subscriptionKey"' in message for message in credential_audit_messages))
         apis = {r["properties"]["path"]: r["properties"] for r in expanded["resources"] if r["type"] == "Microsoft.ApiManagement/service/apis"}
         self.assertTrue(apis['auth/connections']['subscriptionRequired'])
         self.assertFalse(apis['auth/connections/browser']['subscriptionRequired'])

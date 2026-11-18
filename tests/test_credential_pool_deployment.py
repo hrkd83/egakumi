@@ -162,6 +162,17 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 self.assertRegex(name, r'^[a-z][a-z0-9-]*[a-z0-9]$')
                 self.assertNotIn('--', name)
 
+    def test_broker_probes_require_verified_user_ledger_capability(self):
+        template = compile_bicep('apps/gateway/deploy/broker.bicep')
+        app, = [item for item in template['resources']
+                if item['type'].lower() == 'microsoft.app/containerapps']
+        container, = app['properties']['template']['containers']
+        probe, = [item for item in container['copy']
+                  if item['name'] == 'probes']
+        self.assertEqual(probe['input']['httpGet'], {
+            'path': '/health/gateway-caller-v1', 'port': 8000,
+            'scheme': 'HTTP'})
+
     def test_broker_application_and_apim_url_match_with_the_longest_supported_stem(self):
         """有効な最大長入力を短縮せず、ACA作成・出力・参照先・Pythonの名前を照合する。"""
         broker = compile_bicep('apps/gateway/deploy/broker.bicep')

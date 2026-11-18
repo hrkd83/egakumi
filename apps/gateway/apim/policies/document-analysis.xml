@@ -36,14 +36,33 @@
     <set-variable name="documentAccepted" value="@{
       try {
         var id = (string)context.Variables[&quot;documentOperationId&quot;];
-        if (String.IsNullOrEmpty(id) || context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)) { return &quot;&quot;; }
+        if (String.IsNullOrEmpty(id)) { return &quot;&quot;; }
+        var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+        if ((bool?)decision[&quot;allowed&quot;] != true) { return &quot;&quot;; }
+        string owner;
+        if ((string)decision[&quot;method&quot;] == &quot;subscriptionKey&quot;) {
+          if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+              || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return &quot;&quot;; }
+          owner = context.Subscription.Id;
+        } else if ((string)decision[&quot;method&quot;] == &quot;user&quot;) {
+          if (context.Subscription != null || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;)
+              || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return &quot;&quot;; }
+          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+          Guid tenant, principal;
+          if (!Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
+              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return &quot;&quot;; }
+          owner = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
+          if ((string)decision[&quot;callerId&quot;] != owner || (string)user[&quot;callerId&quot;] != owner
+              || (string)decision[&quot;verifiedTenantId&quot;] != tenant.ToString(&quot;D&quot;)
+              || (string)decision[&quot;verifiedPrincipalId&quot;] != principal.ToString(&quot;D&quot;)) { return &quot;&quot;; }
+        } else { return &quot;&quot;; }
         var model = (string)context.Variables[&quot;documentModel&quot;];
         var issued = (long)context.Variables[&quot;documentStartedAt&quot;];
         /* Analyze結果の保持は提供元の受付から24時間です。独自の短い処理期限は設けません。 */
         var expires = issued + 86400;
         string scope;
         using (var hash = System.Security.Cryptography.SHA256.Create()) {
-          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + context.Subscription.Id)));
+          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + owner)));
         }
         var claims = new JObject(new JProperty(&quot;v&quot;, 1), new JProperty(&quot;aud&quot;, &quot;document-analysis-v1&quot;), new JProperty(&quot;operationId&quot;, id), new JProperty(&quot;model&quot;, model), new JProperty(&quot;scope&quot;, scope), new JProperty(&quot;iat&quot;, issued), new JProperty(&quot;exp&quot;, expires));
         var encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(claims.ToString(Newtonsoft.Json.Formatting.None))).TrimEnd('=').Replace('+', '-').Replace('/', '_');

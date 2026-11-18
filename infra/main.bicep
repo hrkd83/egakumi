@@ -219,6 +219,18 @@ module services 'modules/services.bicep' = if (deployCore) {
   }
 }
 
+// 共通policyの設定はAPI公開より先に用意し、Gateway配備と同じ生成元を使います。
+module entraSettings '../apps/gateway/deploy/entra-named-values.bicep' = if (deployCore && contains(gatewayConfig.authentication, 'entra')) {
+  name: '${stem}-core-entra-settings'
+  scope: svcGroup
+  params: {
+    apimName: serviceNames.apim
+    tenantId: configuration.?entraTenantId ?? configuration.azureTenantId
+    entra: gatewayConfig.authentication.entra
+  }
+  dependsOn: [services]
+}
+
 // サービス作成後に Private Endpoint と DNS の対応付けを作ります。
 module endpoints 'modules/services-private-endpoints.bicep' = if (deployCore) {
   name: '${stem}-private-endpoints'

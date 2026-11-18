@@ -14,7 +14,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from test_api_protocols import bound_coverage, bound_external_coverage, configuration
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/gateway/deploy"))
 import api_publication as publish_apis
 
@@ -30,6 +30,7 @@ class ContractRatePublicationTests(unittest.TestCase):
         cls.config=configuration.normalize_configuration(raw,base_directory=CORE/"config")
         cls.parameters={"apiDefinitions":cls.config["apiDefinitions"],
             "credentialLogin":{},
+            "subscriptionKeyHeader":cls.config["gateway"]["authentication"]["subscriptionKeyHeader"],
             "publicHostName":cls.config["gateway"]["publicHostName"],
             "entraTenantId":cls.config["entraTenantId"],
             "entraTenantId":cls.config["entraTenantId"],
@@ -56,7 +57,7 @@ class ContractRatePublicationTests(unittest.TestCase):
         count=len(self.parameters["apiDefinitions"])
         for index in range(count):
             api=self.parameters["apiDefinitions"][index]
-            xml=self.evaluate("[variables('policyValues')[copyIndex()]]",index)
+            xml=compiled_policy_value(self.template,self.parameters,index)
             with self.subTest(api=api["name"],kind=api["apiType"]):
                 self.assertNotIn("__RATE_LIMIT_",xml)
                 parsed=ET.fromstring(xml)
@@ -73,7 +74,7 @@ class ContractRatePublicationTests(unittest.TestCase):
                     self.assertIsNone(parsed.find(".//set-body"))
 
     def test_generated_mcp_counts_only_backing_rest_and_pii_error_keeps_429(self):
-        xml=self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]")
+        xml=compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies')
         generated=ET.fromstring(xml)
         self.assertIsNone(generated.find(".//include-fragment[@fragment-id='core-rate-limit']"))
         self.assertEqual(generated.find("on-error/choose/when/return-response/set-status").attrib["code"],"429")

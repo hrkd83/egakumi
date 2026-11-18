@@ -137,8 +137,11 @@ class WireContractTests(unittest.TestCase):
         self.assertEqual(len(before['profiles']), 22)
         self.assertEqual(len(after['profiles']), 22)
         self.assertEqual(len(previous), 120)
-        self.assertEqual(sum(len(p['exclusions']) for p in after['profiles']), 120)
-        self.assertEqual(set(previous), set(current))
+        self.assertEqual(sum(len(p['exclusions']) for p in after['profiles']), 121)
+        correlation_scope = ('g-responses', 'gateway', ('/models/openai/v1/responses',),
+                             'RequestArgValues', 'Equals', 'input.call_id')
+        self.assertEqual(set(current), set(previous) | {correlation_scope})
+        self.assertEqual(current[correlation_scope], {'REQUEST-942-APPLICATION-ATTACK-SQLI': {'942450'}})
         expected_scopes = {key for key, groups in previous.items()
                            if {name for name, rules in groups.items() if rules is None} == old_groups}
         self.assertEqual(len(expected_scopes), 117)
@@ -186,6 +189,24 @@ class WireContractTests(unittest.TestCase):
         forbidden = {'input.', 'messages.', 'tools.', 'metadata.', '*'}
         for profile in generated_manifest()['profiles']:
             self.assertFalse(forbidden & {e['selector'] for e in profile['exclusions']})
+
+    def test_response_call_id_stays_control_with_one_exact_rule_exception(self):
+        field = next(f for f in contract_fields('g-responses') if f['selector'] == 'input.call_id')
+        self.assertEqual(field['data_type'], 'control')
+        self.assertEqual(field['groups'], [])
+        opaque = next(f for f in contract_fields('g-responses') if f['selector'] == 'input.encrypted_content')
+        self.assertEqual(opaque['data_type'], 'opaque')
+        self.assertEqual(set(opaque['groups']), APP_GROUPS)
+        selected = [(p['name'], p['paths'], e) for p in generated_manifest()['profiles']
+                    for e in p['exclusions'] if e['selector'].startswith('input.call_id')]
+        self.assertEqual(selected, [('g-responses', ['/models/openai/v1/responses'], {
+            'matchVariable': 'RequestArgValues', 'selectorMatchOperator': 'Equals', 'selector': 'input.call_id',
+            'exclusionManagedRuleSets': [{'ruleSetType': 'OWASP', 'ruleSetVersion': '3.2',
+                'ruleGroups': [{'ruleGroupName': 'REQUEST-942-APPLICATION-ATTACK-SQLI',
+                                'rules': [{'ruleId': '942450'}]}]}],
+        })])
+        self.assertNotIn(('RequestArgValues', 'Equals', 'input.call_id'),
+                         approved_group_scopes()['g-responses']['fields'])
 
     def test_unknown_leaf_and_reference_cycle_stop_rendering(self):
         for mutation in ('unclassified', 'cycle'):

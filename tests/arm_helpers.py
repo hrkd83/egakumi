@@ -67,8 +67,10 @@ class ArmExpression:
         if name == "if":
             return value(arguments[1] if value(arguments[0]) else arguments[2])
         if name == "lambda":
-            parameter, body = arguments
-            return lambda item: self.evaluate(parameters, index, body, {**bindings, value(parameter): item})
+            *parameter_nodes, body = arguments
+            parameter_names = [value(parameter) for parameter in parameter_nodes]
+            return lambda *items: self.evaluate(parameters, index, body,
+                                                 {**bindings, **dict(zip(parameter_names, items))})
         values = [value(argument) for argument in arguments]
         if name in ("true", "false"): return name == "true"
         if name == "reference":
@@ -89,8 +91,11 @@ class ArmExpression:
             return values[0] == values[1]
         if name == "not":
             return not values[0]
+        if name == "add": return values[0] + values[1]
         if name == "format":
             return values[0].format(*values[1:])
+        if name == "trim":
+            return values[0].strip()
         if name == "__bicep.xmlText":
             return values[0].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         if name == "filter":
@@ -123,8 +128,14 @@ class PolicyExpression(ArmExpression):
         self.functions = functions or []
 
     def resolve(self, value, parameters, index=0):
+        # ARM evaluates expression-valued object/array members too. Leaving a
+        # copy input object raw would inject both if branches into policy XML.
+        if isinstance(value, dict):
+            return {key: self.resolve(item, parameters, index) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self.resolve(item, parameters, index) for item in value]
         if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
-            return PolicyExpression(value, self.variables, self.cache, self.functions).evaluate(parameters, index)
+            return type(self)(value, self.variables, self.cache, self.functions).evaluate(parameters, index)
         return value
 
     def evaluate(self, parameters, index=0, tree=None, bindings=None):
@@ -149,7 +160,7 @@ class PolicyExpression(ArmExpression):
         if name == "or": return any(self.evaluate(parameters, index, argument, bindings) for argument in arguments)
         if name == "and":
             return all(self.evaluate(parameters, index, argument, bindings) for argument in arguments)
-        extra = {"variables", "replace", "base64", "string", "join", "items", "map", "contains", "length", "flatten", "union", "startsWith", "greater", "empty", "split", "first", "last", "substring", "endsWith", "or", "uniqueString"}
+        extra = {"variables", "replace", "base64", "string", "join", "items", "map", "reduce", "contains", "length", "flatten", "union", "startsWith", "greater", "empty", "split", "first", "last", "substring", "endsWith", "or", "uniqueString", "indexOf"}
         if name not in extra:
             return super().evaluate(parameters, index, tree, bindings)
         values = [self.evaluate(parameters, index, argument, bindings) for argument in arguments]
@@ -172,7 +183,13 @@ class PolicyExpression(ArmExpression):
         if name == "join": return values[1].join(values[0])
         if name == "items": return [{"key": key, "value": value} for key, value in sorted(values[0].items())]
         if name == "map": return [values[1](item) for item in values[0]]
+        if name == "reduce":
+            collection, accumulator, operation = values
+            for item in collection:
+                accumulator = operation(accumulator, item)
+            return accumulator
         if name == "contains": return values[1] in values[0]
+        if name == "indexOf": return values[0].index(values[1]) if values[1] in values[0] else -1
         if name == "length": return len(values[0])
         if name == "split": return values[0].split(values[1])
         if name == "first": return values[0][0]
@@ -192,6 +209,30 @@ class PolicyExpression(ArmExpression):
                     if item not in result: result.append(item)
             return result
         raise AssertionError("Unsupported policy ARM function: " + name)
+
+
+def compiled_policy_value(template, parameters, index=0, resource_name=None):
+    """Read the XML expression actually assigned to the compiled policy resource.
+
+    Internal template variables may be removed by the Bicep compiler. The deployed
+    resource remains the contract, including the WebSocket handshake policy.
+    """
+    supplied = {**{name: definition['defaultValue']
+                   for name, definition in template.get('parameters', {}).items()
+                   if 'defaultValue' in definition}, **parameters}
+    if resource_name is None:
+        api = supplied['apiDefinitions'][index]
+        resource_name = 'websocketPolicies' if api['apiType'] == 'websocket' else 'apiPolicies'
+    resources = template['resources']
+    if isinstance(resources, dict):
+        resource = resources[resource_name]
+    else:
+        resource = next(item for item in resources if item.get('copy', {}).get('name') == resource_name)
+    expression = resource['properties']['value']
+    if not expression.startswith('['):
+        return expression
+    return PolicyExpression(expression, template.get('variables', {}),
+                            functions=template.get('functions', [])).evaluate(supplied, index)
 
 
 class DiscoveryExpression(PolicyExpression):

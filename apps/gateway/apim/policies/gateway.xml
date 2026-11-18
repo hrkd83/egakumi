@@ -1,7 +1,7 @@
 <policies>
   <!--
     通常の REST API の認可・入力制約・接続先認証・転送を管理します。入口認証は base で全体ポリシーを継承します。
-    入口はAPIMの購読キーで認可し、裏側のサービスは設定したマネージドIDまたはCM等の資格情報で呼び出します。
+    入口は購読キー、またはEntraアクセストークンで認可します。裏側の認証は別に行います。
     __...__ は Bicep が検証済み API 契約から埋める置換箇所、{{...}} は APIM Named Value 参照です。
     要求 ID で処理を追跡しますが、本文・token・API key を監査へ保存しません。応答を読み切らず SSE を中継します。
   -->
@@ -15,7 +15,12 @@
       }
       return settings.ToString(Newtonsoft.Json.Formatting.None);
     }" />
+    <!-- API固有の制御設定。判定条件は維持し、監査情報と保存先を分けます。 -->
+    <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
+    <!-- 全業務操作で、baseを通じて共通のキー／Bearer認証を実行します。 -->
     <base />
+    <set-header name="X-Core-Caller-Id" exists-action="delete" />
+    <set-header name="X-Core-Subscription-Id" exists-action="delete" />
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
     <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
     <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
@@ -162,18 +167,36 @@
       <include-fragment fragment-id="core-gateway-telemetry" />
       <return-response><set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request profile is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
     </when></choose>
-    <!-- 共通入口が検証した購読を、このAPIの操作制約と監査へ引き渡します。
-         呼出主体は購読IDで固定し、下流の本人認証はAPI固有の処理で確認します。 -->
+    <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
+    <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
     <set-variable name="gatewayDecision" value="@{
       var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
       var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
       var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
-      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot; || context.Subscription == null
-          || String.IsNullOrWhiteSpace(context.Subscription.Id) || !context.Request.Headers.ContainsKey(keyHeader)
-          || context.Request.Headers[keyHeader].Length != 1
-          || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return deny.ToString(); }
-      var decision = new JObject(new JProperty(&quot;allowed&quot;, true),
-        new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot;) { return deny.ToString(); }
+      JObject decision;
+      if (context.Request.Headers.ContainsKey(keyHeader)) {
+        /* 購読とキー用ヘッダーの形式は共通認証で確認済みです。検証済み購読IDを呼出主体へ引き継ぎます。 */
+        decision = new JObject(new JProperty(&quot;allowed&quot;, true),
+          new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
+      } else {
+        try {
+          if (context.Subscription != null
+              || !context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;]
+              || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return deny.ToString(); }
+          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+          Guid tenant, principal;
+          if ((int?)user[&quot;schemaVersion&quot;] != 1
+              || !Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
+              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return deny.ToString(); }
+          var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
+          if ((string)user[&quot;callerId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller) { return deny.ToString(); }
+          decision = new JObject(new JProperty(&quot;allowed&quot;, true), new JProperty(&quot;method&quot;, &quot;user&quot;),
+            new JProperty(&quot;callerId&quot;, caller), new JProperty(&quot;allocationId&quot;, caller),
+            new JProperty(&quot;verifiedTenantId&quot;, tenant.ToString(&quot;D&quot;)), new JProperty(&quot;verifiedPrincipalId&quot;, principal.ToString(&quot;D&quot;)),
+            new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
+        } catch { return deny.ToString(); }
+      }
       if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
         var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
         if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
@@ -321,9 +344,10 @@
         <return-response><set-status code="403" reason="API target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
       </when>
     </choose>
-    <!-- 本文からのモデル名取得は通常HTTPに限定し、native streamの共通処理へ混ぜません。 -->
-    <set-variable name="gatewayAuditSettings" value="@{
-      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+    <!-- 選択済みの操作制約は制御用設定へ戻し、監査メタデータへ混ぜません。
+         本文からのモデル名取得は通常HTTPに限定します。 -->
+    <set-variable name="gatewayControlSettings" value="@{
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayControlSettings&quot;]);
       settings[&quot;operationConstraints&quot;][context.Operation.Id] = JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
       return settings.ToString(Newtonsoft.Json.Formatting.None);
     }" />
@@ -342,7 +366,7 @@
     <include-fragment fragment-id="core-audit-context" />
     <!-- Foundryの独自header透過を仮定せず、Responses正式metadataへ固定GUIDを注入。
          利用者metadataは直前のhostedAgentPost制約がsample_modeだけに制限済みです。 -->
-    <choose><when condition="@(!String.IsNullOrEmpty((string)JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;])[&quot;targetAgent&quot;]))">
+    <choose id="core-hosted-response-metadata"><when condition="@(!String.IsNullOrEmpty((string)JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;])[&quot;targetAgent&quot;]))">
       <set-body>@{
         var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
         var metadata = body[&quot;metadata&quot;] as JObject ?? new JObject();
@@ -387,6 +411,7 @@
     <set-header name="X-Core-L7-Ingress" exists-action="delete" />
     __DEFAULT_BACKEND_XML__
     <set-variable name="gatewayCredentialConnection" value="__CREDENTIAL_CONNECTION_BASE64__" />
+    <!-- core-http-credential-inbound-start -->
     <choose>
       <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayCredentialConnection&quot;]))">
         <include-fragment fragment-id="core-credential-connection" />
@@ -394,6 +419,7 @@
       </when>
       <otherwise>__BACKEND_AUTHENTICATION_XML__</otherwise>
     </choose>
+    <!-- core-http-credential-inbound-end -->
     <!-- CMの本人セッション証明はGateway内で使い、接続先へ渡しません。 -->
     <set-header name="X-Core-Connection-Session" exists-action="delete" />
     <set-header name="X-Core-Connection-Poll" exists-action="delete" />
@@ -410,11 +436,13 @@
   <outbound>
     <include-fragment fragment-id="core-backend-audit" />
     <base />
+    <!-- core-http-credential-outbound-start -->
     <choose>
       <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayCredentialConnection&quot;]))">
         <include-fragment fragment-id="core-credential-connection-outbound" />
       </when>
     </choose>
+    <!-- core-http-credential-outbound-end -->
     <set-variable name="gatewayAuditPhase" value="backend-response" />
     <set-variable name="gatewayAuditCode" value="BACKEND_RESPONSE" />
     <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />

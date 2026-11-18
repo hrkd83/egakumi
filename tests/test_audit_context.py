@@ -7,9 +7,19 @@ import subprocess
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
-from test_contract_rate_policy import expression, PWSH
+from test_contract_rate_policy import expression as original_expression, PWSH
+from deployment.helpers.apim_audit import render_audit_policy
+from policy_fixture_paths import policy_fixture_path
 
 CORE=Path(__file__).resolve().parents[1]
+
+def expression(filename, xpath, attribute="value"):
+ if filename != 'core-gateway-telemetry.xml': return original_expression(filename, xpath, attribute)
+ root=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/gateway/apim/policies',filename).read_text(encoding='utf-8')))
+ node=root.find(xpath); raw=(node.get(attribute) if attribute else node.text).strip()
+ if not raw.startswith('@{') or not raw.endswith('}'): raise AssertionError('Expected an APIM expression')
+ return raw[2:-1]
+
 TENANT='11111111-1111-4111-8111-111111111111'
 PRINCIPAL='22222222-2222-4222-8222-222222222222'
 CLIENT='33333333-3333-4333-8333-333333333333'
@@ -64,7 +74,19 @@ public static class AuditFixture {
    var c=new Context();
    c.Subscription.Id=(string)item["subscriptionId"]??"subscription-a";
    if((bool?)item["nullSubscription"]==true) c.Subscription=null;
-   c.Variables["gatewayAuditSettings"]=item["settings"].ToString(Formatting.None);
+   var audit=(JObject)item["settings"].DeepClone();
+   var controls=new JObject();
+   foreach(var field in new [] {"operationId","operationConstraints","tokenLimitOperationIds"}) {
+    if(audit[field]!=null) { controls[field]=audit[field]; audit.Remove(field); }
+   }
+   audit.Remove("apiId");
+   c.Variables["gatewayAuditSettings"]=audit.ToString(Formatting.None);
+   c.Variables["gatewayControlSettings"]=controls.ToString(Formatting.None);
+   if((bool?)item["legacySettings"]==true) {
+    c.Variables["gatewayAuditSettings"]=item["settings"].ToString(Formatting.None);
+    c.Variables.Remove("gatewayControlSettings");
+   }
+   if(item["controlRaw"]!=null) c.Variables["gatewayControlSettings"]=(string)item["controlRaw"];
    c.Variables["gatewayDecision"]=item["decision"].ToString(Formatting.None);
    c.Variables["gatewayAuditPhase"]="backend-response"; c.Variables["gatewayAuditCode"]="BACKEND_RESPONSE";
    c.Request.Body.Text=(string)item["body"]??"{}";
@@ -146,14 +168,19 @@ class AuditContextTests(unittest.TestCase):
   path=copy.deepcopy(SETTINGS); path['operationConstraints']={'path':{'kind':'pathModel','parameter':'deployment','allowedModels':['approved-model']}}
   add('http-path-model',settings=path,operation='path',pathModel='approved-model')
   add('http-malformed-model',body='{malformed PRIVATE_TEXT',skipInjection=True)
+  cls.rolling_cases=('valid','chat','rerank','native-unread','websocket-unread','http-path-model')
+  for item in list(cases):
+   if item['name'] in cls.rolling_cases:
+    old=copy.deepcopy(item); old.update(name=item['name']+'-legacy-mixed',legacySettings=True); cases.append(old)
+  add('malformed-new-control',legacySettings=True,controlRaw='{broken')
   source=SOURCE
   for marker,filename,xpath,attr in [
     ('__CLAIM__','audit-context.xml','./set-variable[@name="gatewayAgentTrace"]','value'),
-    ('__INJECT__','gateway.xml','./inbound/choose/when/set-body',None),
+    ('__INJECT__','gateway.xml','./inbound/choose[@id="core-hosted-response-metadata"]/when/set-body',None),
     ('__BODY_MODEL__','audit-body-model.xml','./set-variable[@name="gatewayAuditBodyModel"]','value'),
     ('__MODEL__','audit-context.xml','./set-variable[@name="gatewayAuditModel"]','value'),
     ('__BACKEND__','backend-audit.xml','./set-variable','value'),
-    ('__TELEMETRY__','gateway-telemetry.xml','./trace/message',None)]:
+    ('__TELEMETRY__','core-gateway-telemetry.xml','./trace/message',None)]:
    source=source.replace(marker,expression(filename,xpath,attr))
   with tempfile.TemporaryDirectory(prefix='core-agent-audit-') as folder:
    p=Path(folder); (p/'fixture.cs').write_text(source); (p/'cases.json').write_text(json.dumps(cases))
@@ -168,6 +195,7 @@ class AuditContextTests(unittest.TestCase):
   record=self.results['valid']; self.assertEqual(record['parentLinkStatus'],'candidate')
   self.assertEqual(record['claimedParentId'],PARENT); self.assertEqual(record['parentClaimActorId'],DECISION['callerId'])
   self.assertEqual(record['callerId'],DECISION['callerId']); self.assertEqual(record['subscriptionId'],'subscription-a')
+
   for name in ['wrong-client','wrong-principal','wrong-role','ambiguous-agent','person','multiple-oid','key']:
    self.assertEqual(self.results[name]['parentLinkStatus'],'candidate')
    self.assertEqual(self.results[name]['parentClaimActorId'],DECISION['callerId'])
@@ -176,6 +204,18 @@ class AuditContextTests(unittest.TestCase):
    self.assertNotIn('verifiedClientId',self.results[name])
   for name in ['wrong-caller','wrong-method','denied','missing-subscription','empty-subscription','invalid-parent','duplicate-parent','zero-parent','missing-parent']:
    with self.subTest(name=name): self.assertNotIn('claimedParentId',self.results[name])
+
+ def test_model_audit_requires_current_control_settings_without_legacy_fallback(self):
+  for name in self.rolling_cases:
+   with self.subTest(case=name):
+    record=self.results[name+'-legacy-mixed']
+    self.assertNotIn('targetModel',record)
+    self.assertEqual(record['usageStatus'],'none')
+    if name in ('native-unread','websocket-unread'):
+     self.assertEqual(record['requestBodyReads'],0)
+  record=self.results['malformed-new-control']
+  self.assertNotIn('targetModel',record)
+  self.assertEqual(record['usageStatus'],'none')
 
  def test_target_agent_name_comes_from_the_backend_definition(self):
   for name in ['target','target-none','target-ambiguous']:

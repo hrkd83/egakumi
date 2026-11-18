@@ -1,0 +1,136 @@
+<policies>
+  <!-- 全APIに共通する入口の処理です。Azureポータルの All APIs に設定され、
+       各APIの inbound にある base の位置で実行されます。
+       先に要求の記録情報を準備し、AppGWの入口を確認してから、認証方法を選びます。
+       通常のAPIは、キー用ヘッダーがあれば購読キー、なければEntraのBearerトークンを検証します。
+       ブラウザーの接続ログインに必要な4操作だけは、後述の条件で共通認証を省略します。
+       共通処理が終わると各APIの処理へ戻り、そのAPIに必要な利用権限や接続を確認します。
+       backend、outbound、on-error は、それぞれ転送・応答・エラーの段階で実行されます。 -->
+  <inbound>
+    <!-- 1. 後で「いつ、どのAPIに来た要求か」を監査ログから追えるよう、gatewayRequestContextを作ります。
+         要求ID、APIと操作のID、受信時刻、HTTPメソッド、操作のパスひな形などをまとめます。
+         この時点ではまだ認証前なので、利用者の本人確認結果は後の処理で別に記録します。
+         apimPeerIpはAPIMが直接通信した相手のIPであり、AppGW経由なら社員PCのIPとは限りません。
+         User-Agentはクライアントの申告、AppGWのTraceIdはログを結び付ける候補として扱います。
+         本文、キー、トークン、Cookieはここへ保存せず、文字数や形式も確認して記録します。 -->
+    <set-variable id="core-request-context" name="gatewayRequestContext" value="@{
+      var snapshot = new JObject(new JProperty(&quot;requestId&quot;, context.RequestId.ToString()),
+        new JProperty(&quot;apiId&quot;, context.Api == null ? null : context.Api.Id),
+        new JProperty(&quot;operationId&quot;, context.Operation == null ? null : context.Operation.Id));
+      snapshot[&quot;requestReceivedAt&quot;] = context.Timestamp.ToString(&quot;O&quot;);
+      var method = context.Request.Method ?? &quot;&quot;;
+      snapshot[&quot;httpMethod&quot;] = method.Length &gt; 0 &amp;&amp; method.Length &lt;= 20 &amp;&amp; method.All(c =&gt; c &gt;= &quot;A&quot;[0] &amp;&amp; c &lt;= &quot;Z&quot;[0]) ? method : null;
+      var template = context.Operation == null ? &quot;&quot; : context.Operation.UrlTemplate ?? &quot;&quot;;
+      var queryAt = template.IndexOf(&quot;?&quot;);
+      var templateLength = queryAt &lt; 0 ? template.Length : queryAt;
+      snapshot[&quot;operationTemplate&quot;] = new string(template.Take(Math.Min(templateLength, 512)).Where(c =&gt; !Char.IsControl(c)).ToArray());
+      System.Net.IPAddress peer;
+      var address = context.Request.IpAddress ?? &quot;&quot;;
+      snapshot[&quot;apimPeerIp&quot;] = address.Length &lt;= 64 &amp;&amp; System.Net.IPAddress.TryParse(address, out peer) ? peer.ToString() : null;
+      snapshot[&quot;reportedUserAgent&quot;] = null;
+      if (context.Request.Headers.ContainsKey(&quot;User-Agent&quot;) &amp;&amp; context.Request.Headers[&quot;User-Agent&quot;].Length == 1) {
+        var agent = context.Request.Headers[&quot;User-Agent&quot;][0] ?? &quot;&quot;;
+        snapshot[&quot;reportedUserAgent&quot;] = new string(agent.Take(512).Where(c =&gt; !Char.IsControl(c) &amp;&amp; !Char.IsSurrogate(c)).ToArray());
+      }
+      snapshot[&quot;appGatewayTraceId&quot;] = null;
+      if (context.Request.Headers.ContainsKey(&quot;x-appgw-trace-id&quot;) &amp;&amp; context.Request.Headers[&quot;x-appgw-trace-id&quot;].Length == 1) {
+        var trace = context.Request.Headers[&quot;x-appgw-trace-id&quot;][0] ?? &quot;&quot;;
+        Guid traceId;
+        if (trace.Length &lt;= 64 &amp;&amp; Guid.TryParse(trace, out traceId) &amp;&amp; traceId != Guid.Empty) { snapshot[&quot;appGatewayTraceId&quot;] = traceId.ToString(&quot;D&quot;); }
+      }
+      return snapshot.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <!-- 2. RESTなどのHTTP要求が、WAFのあるAppGW入口を通ったことを確認します。
+         AppGWが付ける内部ヘッダー X-Core-L7-Ingress が、設定値と一致し、値が1つだけかを検査します。
+         入口確認が必須の構成で値がない・違う・重複する場合は、監査情報を作って403で終了します。
+         これにより、gRPC用のTCP入口から通常のHTTP APIへ入ってWAFを迂回する経路を防ぎます。
+         API側で専用gRPCとして設定した coreNativeGrpc の通信は、このHTTP用検査の対象外です。
+         入口確認に通っても利用権限はまだ確定しないため、続けて次の認証処理へ進みます。 -->
+    <choose id="core-trusted-ingress">
+      <when condition="@{
+        var grpc = context.Variables.ContainsKey(&quot;coreNativeGrpc&quot;) &amp;&amp; (bool)context.Variables[&quot;coreNativeGrpc&quot;];
+        return __L7_INGRESS_REQUIRED__ &amp;&amp; !grpc &amp;&amp; (context.Request.Headers.GetValueOrDefault(&quot;X-Core-L7-Ingress&quot;, &quot;&quot;) != &quot;__L7_INGRESS_EXPECTED__&quot; || context.Request.Headers[&quot;X-Core-L7-Ingress&quot;].Length != 1);
+      }">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="TRUSTED_INGRESS_REQUIRED" />
+        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        __AUTHENTICATION_TELEMETRY_XML__
+        <return-response><set-status code="403" reason="Trusted ingress required" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+      </when>
+    </choose>
+    <!-- 3. この要求に適用する認証方法を選びます。chooseは最初に条件が一致した分岐を実行します。
+         最初にブラウザー4操作の限定例外を判定し、それ以外はキー用ヘッダーの有無で分けます。
+         キーがなければEntraのBearer検証へ、キーがあれば下のotherwiseで購読キーの確認へ進みます。
+         購読キーの有効性・購読の状態・APIへの利用範囲はAPIM標準の購読検証が担当します。
+         ここではその検証結果とヘッダーの形式を確認し、不正なキーをBearerで代替認証しません。 -->
+    <choose id="core-common-authentication">
+      <!-- __CREDENTIAL_LOGIN_ANONYMOUS__ -->
+      <when condition="@(false)">
+        <!-- この分岐は条件が常にfalseのため実行されません。
+             生成時の分岐のひな形であり、任意の要求を認証なしで通す入口ではありません。 -->
+        <set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" />
+      </when>
+      <!-- __ENTRA_AUTHENTICATION_XML__ -->
+      <otherwise>
+        <!-- 3-B. キーを提示した要求は、この購読キーの経路で判定を終えます。
+             APIMがキー不要のProductへ要求を振り分けても、有効な購読が確認できなければ401にします。
+             キーは設定されたヘッダーに1つの空でない値として送る必要があり、URLのクエリ指定は拒否します。
+             Authorizationヘッダーも付いていても、不正なキーからBearer認証へ切り替えません。 -->
+        <set-variable name="gatewayKeyHeader" value="{{core-subscription-key-header}}" />
+        <set-variable name="gatewayAuthenticationFailure" value="@{
+          var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
+          if (context.Request.Url.Query.ContainsKey(&quot;subscription-key&quot;) || context.Request.Url.Query.ContainsKey(&quot;api-key&quot;)) { return &quot;Credentials must use the configured headers&quot;; }
+          if (!context.Request.Headers.ContainsKey(keyHeader)) { return &quot;Subscription key required&quot;; }
+          if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+              || context.Request.Headers[keyHeader].Length != 1
+              || String.IsNullOrWhiteSpace(context.Request.Headers.GetValueOrDefault(keyHeader, &quot;&quot;))) { return &quot;Invalid subscription key&quot;; }
+          return &quot;&quot;;
+        }" />
+        <choose>
+          <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;]))">
+            <set-variable name="gatewayAuditPhase" value="rejected" />
+            <set-variable name="gatewayAuditCode" value="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;] == &quot;Subscription key required&quot; ? &quot;AUTHENTICATION_REQUIRED&quot; : &quot;INVALID_AUTHENTICATION&quot;)" />
+            <set-variable name="gatewayAuditStatus" value="@(401)" />
+            __AUTHENTICATION_TELEMETRY_XML__
+            <!-- キーの確認に失敗したので、拒否理由を監査へ記録して401で終了します。
+                 応答にはキーを載せず、問い合わせとログ照合に使うapim-request-idを返します。 -->
+            <return-response>
+              <set-status code="401" reason="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;])" />
+              <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+              <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+            </return-response>
+          </when>
+        </choose>
+        <!-- キーの確認が成功したので、確認済みの購読IDと共通認証の成功フラグを後続処理へ渡します。
+             購読IDはキーの利用枠を識別する情報であり、操作している社員本人のIDではありません。
+             各APIはこれを使って利用権限・利用枠・監査を処理します。
+             Graphなど本人の接続が必要なAPIでは、この後にCM接続や本人の確認も行います。 -->
+        <set-variable name="gatewaySubscriptionId" value="@(context.Subscription.Id)" />
+        <set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" />
+      </otherwise>
+    </choose>
+    <!-- 4. 共通認証で「誰の資格情報を確認できたか」をgatewayAuthenticatedSubjectにまとめます。
+         キー経路では確認済みの購読、Bearer経路では確認済みのテナント・利用者などを記録します。
+         ブラウザーの限定例外は、共通認証では本人確認していないものとして区別します。
+         この情報を各監査ログで再利用し、各APIの利用許可・拒否とは別に認証結果を追えるようにします。
+         この記録だけで各APIの利用を許可する処理ではありません。 -->
+    <set-variable id="core-audit-authenticated-subject" name="gatewayAuthenticatedSubject" value="@{
+      __AUDIT_AUTHENTICATED_SUBJECT_CSHARP__
+      return authenticatedSubject.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+  </inbound>
+  <!-- 転送段階の共通の既定処理です。inboundを通過した要求を設定済みのバックエンドへ送ります。
+       各APIが継承・上書きするbackendポリシーと、inboundで選んだ接続先の設定が適用されます。 -->
+  <backend><forward-request /></backend>
+  <outbound>
+    <!-- 応答段階では、要求を受けたときのIDをapim-request-idヘッダーに付けて返します。
+         利用者からこのIDを聞くことで、監査ログやバックエンドの記録と照合できます。 -->
+    <set-header id="core-response-request-id" name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+  </outbound>
+  <on-error>
+    <!-- ポリシー処理などでエラーになった場合も、照合用のapim-request-idを返します。
+         Bearerトークン検証のエラーだった場合は、下の専用処理で拒否を監査へ記録し401を返します。 -->
+    <set-header id="core-error-request-id" name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+    <!-- __ENTRA_AUTHENTICATION_ERROR_XML__ -->
+  </on-error>
+</policies>

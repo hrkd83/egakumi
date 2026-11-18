@@ -17,7 +17,7 @@ if __name__ == "__main__":
 import argparse
 from pathlib import Path
 
-from deployment.helpers.apim_authentication import render_service_policy
+from deployment.helpers.apim_authentication import entra_authentication_settings, render_service_policy
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.credential_login import settings
 from deployment.helpers.paths import private_parent
@@ -26,10 +26,12 @@ from deployment.helpers.paths import private_parent
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="Reviewable global policy XML; existing files are not overwritten")
-    parser.add_argument("--config", type=Path, help="Include the configured API Credential Manager connection login")
+    parser.add_argument("--config", type=Path, help="Include configured Entra authentication and API Credential Manager login")
     args = parser.parse_args(argv)
     output = private_parent(args.output)
-    policy = render_service_policy(settings(load_configuration(args.config)) if args.config else None)
+    configuration = load_configuration(args.config) if args.config else None
+    policy = render_service_policy(settings(configuration) if configuration else None,
+                                   entra=entra_authentication_settings(configuration) if configuration else None)
     descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as destination:
         os.fchmod(destination.fileno(), 0o600)

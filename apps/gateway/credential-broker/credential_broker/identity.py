@@ -26,11 +26,12 @@ class JwtVerifier:
 
     def verify(self, token, profile, nonce):
         import jwt
-        endpoint = f"https://login.microsoftonline.com/{profile.tenant_id}/discovery/v2.0/keys"
+        identity = profile.identity_app
+        endpoint = f"https://login.microsoftonline.com/{identity.tenant_id}/discovery/v2.0/keys"
         client = self._keys.setdefault(endpoint, jwt.PyJWKClient(endpoint, cache_keys=True))
         key = client.get_signing_key_from_jwt(token)
-        claims = jwt.decode(token, key.key, algorithms=["RS256"], audience=profile.client_id,
-            issuer=f"https://login.microsoftonline.com/{profile.tenant_id}/v2.0", leeway=30,
+        claims = jwt.decode(token, key.key, algorithms=["RS256"], audience=identity.client_id,
+            issuer=f"https://login.microsoftonline.com/{identity.tenant_id}/v2.0", leeway=30,
             options={"require": ["exp", "iat", "iss", "aud", "sub", "oid", "tid", "nonce"]})
         if not isinstance(claims.get("nonce"), str) or not hmac.compare_digest(claims["nonce"], nonce):
             raise IdentityError("Identity verification failed")
@@ -48,8 +49,9 @@ class OidcClient:
         if self.application_factory:
             return self.application_factory(profile)
         import msal
-        return msal.ConfidentialClientApplication(profile.client_id, client_credential=profile.client_secret,
-            authority="https://login.microsoftonline.com/" + profile.tenant_id,
+        identity = profile.identity_app
+        return msal.ConfidentialClientApplication(identity.client_id, client_credential=identity.client_secret,
+            authority="https://login.microsoftonline.com/" + identity.tenant_id,
             token_cache=msal.TokenCache())
 
     def begin(self, profile):

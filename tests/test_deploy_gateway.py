@@ -274,6 +274,21 @@ class GatewayDeploymentTests(unittest.TestCase):
             observed['deploy_release'].assert_called_once()
             self.assertEqual(observed['deploy_release'].call_args.args[2]['imageDigest'], DIGEST)
 
+    def test_generated_source_is_saved_protected_and_excluded_from_cli_summary(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        source = {'schemaVersion': 1, 'fixtureSourceXml': '<fragment>synthetic-private-source</fragment>'}
+        result = {'status': 'deployed', 'apiPublication': {'entraPublicationSource': source, 'runtimeVerified': False}}
+        with self.isolated_cli(config, state) as (arguments, observed):
+            observed['deploy_release'].return_value = result
+            self.assertEqual(gateway.main(arguments + ['--image-digest', DIGEST]), 0)
+            stored_path, stored = observed['protected_json'].call_args.args
+            self.assertEqual(stored_path.name, 'gateway-deployment.json')
+            self.assertEqual(stored['apiPublication']['entraPublicationSource'], source)
+            self.assertNotIn('synthetic-private-source', sys.stdout.getvalue())
+            self.assertNotIn('entraPublicationSource', sys.stdout.getvalue())
+            self.assertEqual(result['apiPublication']['entraPublicationSource'], source)
+
     def test_broker_disabled_updates_settings_and_apis_without_sql_or_readiness(self):
         config, state = fixture()
         events = []
@@ -380,8 +395,9 @@ class GatewayDeploymentTests(unittest.TestCase):
         document=mock.Mock(side_effect=lambda *args: events.append('document-waf') or {'paths':['/tools/documents/v1/analyze']})
         with mock.patch.object(gateway,'broker_enabled',return_value=False), mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
             result=gateway.deploy_release(config,state,{'imageDigest':''},{'gateway':{},'apis':{}},mock.Mock(),
-                deploy=lambda *args:{},refresh=lambda *args:None,publish=lambda *args:events.append('apis') or {},document_waf=document,progress=lambda *args,**kwargs:None)
-        self.assertEqual(events,['apis','document-waf'])
+                deploy=lambda *args:{},refresh=lambda *args:None,publish=lambda *args:events.append('apis') or {},document_waf=document,
+                data_waf=lambda *args,**kwargs:events.append('data-waf') or {},progress=lambda *args,**kwargs:None)
+        self.assertEqual(events,['apis','document-waf','data-waf'])
         self.assertEqual(result['documentWaf']['paths'],['/tools/documents/v1/analyze'])
         with mock.patch.object(gateway,'broker_enabled',return_value=False), mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
             with self.assertRaisesRegex(ValueError,'document WAF failed'):

@@ -383,6 +383,35 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | MET-02 | 使用量・欠測・集計 | usage有/無、長いstream終了前後を比較し、同一要求の重複と別deploymentの記録を確認する。 | 出典・相関ID・deploymentで一意に対応付ける。欠測は未計測であり0ではない。入力/出力/合計を整合させ、P95の平均や二重集計で費用・性能を作らない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | MET-03 | 監視と制限の説明 | [購読別観測](subscription-limits.md)の手順で少数要求を集計し、値とUI/ガイドを照合する。 | 制限の標準値・計測単位・遅延・非対象APIを説明できる。観測から無断で保護上限を自動設定せず、DDoS防御・バックエンド容量・購読枠を区別する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 
+#### Entra Gateway OAuthと専用open Productの追加受入
+
+追加方式は[Entra作業計画](../reference/entra-app-rollout-plan.md)に従います。APIの`subscriptionRequired=true`を維持し、キーなし要求だけを専用open Product `core-entra-model-users`からJWT検証へ進めます。所有markerは`core-owned-entra-model-users-v1`、対象は全業務APIの正本・生成MCP・設定済みCM保護入口から自動生成します。CMブラウザー／callbackは一時取引認証を保持します。Productは各sectionの`base`のみを継承し、既存の購読必須Product・キー・正本URLを維持します。公開Entra設定は`audience`・`requiredScope`・`userLimits`だけで、APIMのクライアント許可リストはありません。
+
+[MicrosoftのSubscriptions仕様](https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions)では、不正キーもopen Productへフォールバックします。共通認証はキーの提示と検証済み購読の欠落を検出して401にし、有効JWTによる救済を禁止します。API自体を購読不要にすると提示キーを無視するため、この方式へ変更しません。
+
+社員利用は基本無制限とし、毎分トークン上限・月間等の期間quotaは`null`で明示的に無効化します。request rateは機械的な大量要求を抑える暫定防御値の例として1000 requests／60秒を置き、対象Codexで調整します。HTTP回数は人のプロンプト数と異なり、ツール継続・retry・並列処理は複数call、1推論内のreasoningだけでは別HTTP要求になりません。rateだけで攻撃を判定せず、既存WAF・Entra認証・client権限・API／モデル制約を維持します。
+
+以下は新方式の実環境受入項目です。**全項目未実施**で、既存の`GW`・`LIM`・`MET`や結果要約のPASSへ加算しません。合成試験・ポリシー読戻し・実要求の結果を区別し、実ID・キー・token・認証code・環境証跡は公開表へ転載しません。状態変更・再生成・serviceキーの確認には、所有と復旧方法を確認した専用試験資源を使います。
+
+| ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| ENTRA-01 | APIとopen Productの構造 | 正本API・生成MCP・CM保護入口、全revision・operation、API型を区別するV2 source、既存Product、専用Productの購読要件・所有marker・関連付け・policyを読戻す。旧source移行、部分再公開、真の新規構築を分ける。 | APIは購読必須。current/onlineのrevision 1が1つだけで、複数revision・既存保護sourceの不足は停止しfresh bootstrapへ流さない。旧sourceは既知の生成元と実policyの厳密一致で移行。新規は過去配備・checkpoint・旧managed Entra・全選択API・共有資材衝突を完全GETで確認後にclosed stagingで準備。open Productは最大1つ、正本からの自動対象を所属させ、旧所有APIは部分再公開でも保持。gRPC protoの実readbackが期待形式でない場合も停止する。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-02 | 既存Productキーの互換性 | 通常購読と検証用Productのprimary／secondaryで変更前後の同じ許可APIを実行する。既存Portalも確認する。 | APIM標準のactive・Product/API所属検証と`context.Subscription`を維持。同一購読の主副は同じ利用枠。既存Product policy・CM所有者検査・監査が従来どおり適用される。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-03 | API／all-APIs／serviceキー | 専用のAPI・all-APIs購読で許可/範囲外APIを比較する。serviceキーは隔離した非破壊試験だけで確認する。 | APIM標準の購読範囲とAPI固有の認可を維持。API／all-APIs／serviceキーにProduct policyが適用されない既存仕様を変更しない。masterを社員へ配布しない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-04 | 無効キーのfallback拒否 | 無効・停止・削除・対象外Product/APIのキーを、JWTなしと有効JWT付きで同じ対象APIへ送る。 | open Productへfallbackしても401。rawキー提示かつ`context.Subscription`なしをJWT検証より先に拒否し、backendへ到達せずBearerで救済しない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-05 | キー更新・停止の反映 | 専用購読の主キーを1回再生成し、旧主・新主・副を比較する。停止・再開とAPI/Product所属変更も確認する。 | 旧主キー・停止・範囲外は有効JWTがあっても拒否。新主・副は有効な同じ購読へ到達。APIM標準の反映時間を記録し、追加の認可cacheで失効を遅らせない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-06 | 空・重複・query・競合提示 | 空キー、同名header重複、大小文字を変えた重複、`api-key`/`subscription-key` query、headerとqueryの競合を送る。 | 空・重複・queryを拒否し、JWT付きでも救済しない。keyやtokenをURL・応答・診断ログへ残さない。合成の不正値を使い実キーをqueryへ載せない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-07 | Authorizationの用途分離 | APIキーを`Authorization: Bearer`だけへ移した要求と、正しい設定キーheader＋既存用途のAuthorizationを比較する。JWT headerの重複・空Bearerも送る。 | AuthorizationだけのAPIキーはJWTとして拒否。正しいキー提示時はキー側の従来処理を維持し、任意Authorizationを新JWT条件で拒否しない。キーなしの不正Bearerは401。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-08 | 社員Public client PKCE | 登録済みCodex client、認証tenant、loopback redirectでAuthorization Code＋PKCEを実行し、API向け委任tokenだけを送る。Entraの同意・割当による段階配布と停止も比較する。 | secret・固定APIキー・OpenAIサインインを要求せず、委任許可を得たユーザーが対象モデルを利用できる。APIリソースのGUIDをv2 audとし、scope URIをaudへ代入しない。新規取得停止と発行済みtoken期限・既存streamを区別し、APIMクライアント許可リストの回収を前提にしない。 | Codex本体と実Entraの試験未実施。 | 未実施 |
+| ENTRA-09 | JWT検証の拒否境界 | tenant／issuer／aud／v2／scp不一致、期限切れ、署名改変、tid/oid欠落・不正、ID token、Graph token、app-only tokenを制御した試験で比較する。azpの欠落・空・zero・不正・重複も比較する。 | 正しいv2ユーザー委任tokenだけを受理。不一致は401で、利用者・利用枠を推測せずbackendへ送らない。azpの違い・欠落・不正で認可を狭めず、単一の有効GUIDだけ監査へ残す。署名不正の合成試験を実Entraの条件不一致試験へ読み替えない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-10 | 全業務transportと拒否境界 | HTTP・SSE・MCP・WS handshake・gRPC開始・Realtime制御・CM保護操作をキーとBearerで実行する。無認証、未登録operation/method、別人・別tenant・認証方式間のsession/ticket転用、CMブラウザー／callbackも比較する。 | 両方式で既存の操作・入力・モデル制約と所有者検査を維持。無認証と未登録操作を契約どおり拒否。CMユーザーcs2とキーcs2、Realtimeユーザーticket v4とキーv3は相互流用を拒否。同じ本人の更新tokenは再利用可能。ブラウザー／callbackは専用一時取引を要求し、Gateway tokenだけで迂回できない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-11 | 継承・処理順序 | global→Product→API→operationの有効policyを照合。変更前のAPI集合に含まれない、正本へ追加したAPIも比較する。隔離構成でbase欠落・検証前のheader上書き・early return・未知fragmentを再現する。Product欠落・別Productの要求も、APIM標準の拒否と共通認証の拒否を区別して確認する。 | 専用Productはbaseのみ。BearerのProductの存在とIDは共通認証で確認し、各APIは認証完了と本人情報の整合性を確認する。通常要求はキーheaderの有無だけで認証方法を選び、API名をBearer分岐の条件にしない。正本へ追加したAPIのProduct所属と共通認証継承を配備前に照合する。キー提示時の購読またはキーなしのJWTを検証してから、対象backendの認証がAuthorizationを設定する。迂回や未知変更は公開前に停止。valid keyの既存Product policyを保持する。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-12 | 本人別制限・無制限と監査 | 2本人・複数client/APIで、nullの毎分トークン・期間quotaと有効なrequest rateを確認。実Codexの長い推論・ツール継続・retry・並列要求を比較し、有限枠の拒否は隔離した少数要求で別途確認する。 | 有効counterは検証済みtid+oidで共有しclient切替で回避できない。nullの制限は実行せず、欠落・不正設定を無制限へ変換しない。既存キーcounterを維持。方式、tid、oid、任意の有効azp、正本API、request ID、モデルを関連付け、tokenを記録しない。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-13 | Responses・SSE・ツール継続 | APIM/AppGW経由で逐次SSE、response.completed、エラー、複数ターン、function_callとfunction_call_outputをCodexで確認する。 | 過去入力・call_id・ツール結果を保持してローカル実行後に回答が継続。意図したmodel→deployment/API世代へ到達。SSEの途中を成功完了にせず共有経路のtimeout/bufferも確認する。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-14 | 更新・再サインイン | 対象CLI/Desktop runtimeで期限到来、更新成功/失敗、再サインイン、保存済み認証の利用を比較する。 | Gateway OAuthが更新または明示再サインインへ進み、固定token/外部取得コマンドへ自動切替しない。失敗した生成要求を無条件に再送しない。 | Codex本体の実試験未実施。 | 未実施 |
+| ENTRA-15 | 閉鎖・途中失敗・rollback | 専用Product所属を先に解除して社員経路を閉じ、内部stagingでのBearer分岐切替と復旧を確認。ETag競合、途中失敗、古い関連付け残存も再現する。 | APIは購読必須のまま。失敗時はBearer受付を停止。閉鎖後はキーなし/無効キーを拒否し正常キーを維持。公開enabled/apiNames入力を使わず、Product非公開化やBicep省略だけを解除完了にせず所有とreadbackを確認する。 | 新方式の実試験未実施。 | 未実施 |
+| ENTRA-16 | 認証tenantとbackend認証の分離 | 同一/別tenant構成の入力・token宛先・Foundry RBAC・検証済みJWT後のbackend認証を照合する。CMのSQL v4・Broker・XML更新と本人照合も確認する。 | employee認証tenantをAzure資源tenant/MIへ流用しない。社員tokenはAPIMで検証後に除去し、FoundryへAPIM MI、Graph本人接続へCM委任token等の正本backend認証を送る。CM本人確認tenantがGateway認証tenantと違うprofileを拒否。APIMのOAuth管理画面設定のみでJWT検証済みと判定しない。 | 新方式の実試験未実施。 | 未実施 |
+
 ### 3.5 Model Gateway・リアルタイム音声
 
 本節は `main` の `c6ba7ca` にある実装から作成した試験仕様です。この仕様の作成時には試験を実行していません。過去の動作確認結果は転記せず、全行を未実施から開始します。

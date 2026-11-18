@@ -1,0 +1,25 @@
+<fragment>
+  <!-- Entraトークン検証で失敗すると、通常の処理を中断して共通のon-errorへ移ります。
+       その検証で発生したエラーだけをここで受け、認証拒否の監査情報を作って401を返します。
+       応答には問い合わせ用の要求IDとBearer認証が必要なことを示し、トークンの内容は含めません。 -->
+  <choose id="core-entra-authentication-error">
+    <when condition="@(context.LastError.PolicyId == &quot;core-entra-token-validation&quot;)">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="INVALID_AUTHENTICATION" />
+      <set-variable name="gatewayAuditStatus" value="@(401)" />
+      __AUTHENTICATION_TELEMETRY_XML__
+      <return-response>
+        <set-status code="401" reason="Invalid authentication" />
+        <set-header name="WWW-Authenticate" exists-action="override">
+          <value>Bearer</value>
+        </set-header>
+        <set-header name="apim-request-id" exists-action="override">
+          <value>@(context.RequestId.ToString())</value>
+        </set-header>
+        <set-header name="Cache-Control" exists-action="override">
+          <value>no-store</value>
+        </set-header>
+      </return-response>
+    </when>
+  </choose>
+</fragment>

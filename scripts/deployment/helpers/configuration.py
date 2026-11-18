@@ -101,7 +101,7 @@ PARAMETER_SECTION_KEYS = {
 # 空配列や空文字でもconfigへ置けば拒否し、他企業の値を黙って継承させません。
 PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS | {"apimAllowedFqdns", "managementAllowedFqdns"}
 PARAMETER_GATEWAY_NESTED_KEYS = {
-    "authentication": {"subscriptionKeyHeader", "credentialLogin"},
+    "authentication": {"subscriptionKeyHeader", "credentialLogin", "entra"},
     "grpc": {"publicHostName"},
     "rateLimits": {"subscriptionKey", "application"},
     "queryGuards": set(QUERY_GUARD_DEFAULTS),
@@ -228,6 +228,37 @@ def _strings(value: Any, path: str, *, minimum: int = 0) -> list[str]:
     if len(set(result)) != len(result):
         _fail(path, "must not contain duplicates")
     return result
+
+
+def _entra_authentication(value: Any) -> dict:
+    """同じAPIの委任認証を完全検査する。公開設定に有効・無効の切替を持たせない。"""
+    path = "gateway.authentication.entra"
+    settings = _object(value, path, {
+        "audience", "requiredScope", "userLimits",
+    })
+    for name in ("audience", "requiredScope", "userLimits"):
+        if name not in settings:
+            _fail(path + "." + name, "must be specified for delegated authentication")
+    settings["audience"] = _guid(settings.get("audience"), path + ".audience")
+    scope = _string(settings.get("requiredScope"), path + ".requiredScope", maximum=128)
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", scope):
+        _fail(path + ".requiredScope", "must be one delegated scope name without a resource prefix")
+    limits_path = path + ".userLimits"
+    limits = _object(settings.get("userLimits"), limits_path, {"requestRate", "tokensPerMinute", "tokenQuota"})
+    for name in ("requestRate", "tokensPerMinute", "tokenQuota"):
+        if name not in limits:
+            _fail(limits_path + "." + name, "must be specified; use null to disable this limit")
+    if limits["requestRate"] is not None:
+        rate = _object(limits["requestRate"], limits_path + ".requestRate", {"calls", "renewalPeriodSeconds"})
+        _integer(rate.get("calls"), limits_path + ".requestRate.calls", 1, 1000000)
+        _integer(rate.get("renewalPeriodSeconds"), limits_path + ".requestRate.renewalPeriodSeconds", 1, 300)
+    if limits["tokensPerMinute"] is not None:
+        _integer(limits["tokensPerMinute"], limits_path + ".tokensPerMinute", 1, 2147483647)
+    if limits["tokenQuota"] is not None:
+        quota = _object(limits["tokenQuota"], limits_path + ".tokenQuota", {"tokens", "period"})
+        _integer(quota.get("tokens"), limits_path + ".tokenQuota.tokens", 1, 2147483647)
+        _choice(quota.get("period"), limits_path + ".tokenQuota.period", ("Hourly", "Daily", "Weekly", "Monthly", "Yearly"))
+    return settings
 
 
 def _cidrs(value: Any, path: str, *, minimum: int = 0) -> list[str]:
@@ -1151,18 +1182,31 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # gRPCで使う証明書のホスト名も、独立した値のまま矛盾させない。
     g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "grpc", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
-    # 共通入口はサーバーが保持する購読キーで認可します。
-    authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin"})
+    # 共通入口は購読キーの提示を優先し、キーなしBearer要求にはEntra認証を使います。
+    authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin", "entra"})
     key_header = _string(authentication.setdefault("subscriptionKeyHeader", "api-key"), "gateway.authentication.subscriptionKeyHeader", maximum=128)
-    if not re.fullmatch(r"[A-Za-z0-9-]+", key_header) or key_header.casefold().startswith("x-core-connection-") or key_header.casefold() in ("authorization", "host", "content-type", "cookie", "x-core-l7-ingress"):
+    # 相関・本人接続用ヘッダーと同じ名前では、基盤の書き換えでキーの値が変わるため拒否する。
+    if (not re.fullmatch(r"[A-Za-z0-9-]+", key_header)
+            or key_header.casefold().startswith("x-core-connection-")
+            or key_header.casefold() in ("authorization", "host", "content-type", "cookie", "x-core-l7-ingress",
+                                        "x-ms-client-request-id", "x-appgw-trace-id",
+                                        "x-core-caller-id", "x-core-subscription-id")):
         _fail("gateway.authentication.subscriptionKeyHeader", "must be a dedicated HTTP header name")
+    if "entra" in authentication:
+        authentication["entra"] = _entra_authentication(authentication["entra"])
     login = authentication.get("credentialLogin")
     if login is not None:
         q = "gateway.authentication.credentialLogin"
-        _object(login, q, {"providerNames", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
+        _object(login, q, {"providerNames", "identity", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
         selected = _strings(login.get("providerNames"), q + ".providerNames", minimum=1)
         if len(set(selected)) != len(selected) or any(not API_NAME.fullmatch(name) for name in selected):
             _fail(q + ".providerNames", "must identify unique Credential Manager providers")
+        if "identity" in login:
+            identity_path = q + ".identity"
+            identity = _object(login["identity"], identity_path, {"tenantId", "clientId", "clientSecretFile"})
+            for field in ("tenantId", "clientId"):
+                identity[field] = _guid(identity.get(field), identity_path + "." + field)
+            identity["clientSecretFile"] = _secret_path(identity.get("clientSecretFile"), identity_path + ".clientSecretFile", Path(base_directory).resolve())
         for field, default in SESSION_POLICY_DEFAULTS.items():
             minimum, maximum = SESSION_POLICY_BOUNDS[field]
             _integer(login.setdefault(field, default), q + "." + field, minimum, maximum)
@@ -1376,6 +1420,9 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             provider = next((p for p in providers if p["name"] == name), None)
             if not provider or provider["identityProvider"] != "aad":
                 _fail(q + ".providerNames", "personal sign-in requires a registered Entra provider")
+            identity = login.get("identity")
+            if identity and identity["tenantId"] != provider["oauthTenantId"]:
+                _fail(q + ".identity.tenantId", "must match every selected personal connection provider tenant")
             endpoint = _https(provider.get("identityEndpoint"), "credentialProviders.identityEndpoint")
             identity = urlparse(endpoint)
             resource = urlparse(provider["resourceUri"])
@@ -1384,6 +1431,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             prop = provider.setdefault("identityIdProperty", "id")
             if not isinstance(prop, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", prop):
                 _fail("credentialProviders.identityIdProperty", "must be an explicit identity response property")
+        if login.get("identity"):
+            identity = login["identity"]
+            for provider in providers:
+                if Path(provider["clientSecretFile"]) == Path(identity["clientSecretFile"]) and (
+                        provider["oauthTenantId"] != identity["tenantId"]
+                        or provider["clientId"].lower() != identity["clientId"]):
+                    _fail(q + ".identity.clientSecretFile", "must not share a credential file with a different Entra application")
         allowed = c["network"]["firewall"].setdefault("apimAllowedFqdns", [])
         if "management.azure.com" not in allowed:
             allowed.append("management.azure.com")
@@ -1479,6 +1533,11 @@ def _file_reference_fields(raw: dict):
         for i, provider in enumerate(providers):
             if isinstance(provider, dict) and "clientSecretFile" in provider:
                 yield provider, "clientSecretFile", f"credentialProviders[{i}].clientSecretFile"
+    identity = raw
+    for section in ("gateway", "authentication", "credentialLogin", "identity"):
+        identity = identity.get(section) if isinstance(identity, dict) else None
+    if isinstance(identity, dict) and "clientSecretFile" in identity:
+        yield identity, "clientSecretFile", "gateway.authentication.credentialLogin.identity.clientSecretFile"
 
 
 def _resolve_file_references(raw: dict, base_directory: Path) -> dict:
@@ -1627,6 +1686,9 @@ def build_bicep_configuration(configuration: dict) -> dict:
     result["management"].pop("sshPublicKeyFile", None)
     for provider in result["credentialProviders"]:
         provider.pop("clientSecretFile", None)
+    identity = result.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
+    if identity:
+        identity.pop("clientSecretFile", None)
     from .credential_pools import physical_providers, logical_profiles
     result["credentialPhysicalProviders"] = physical_providers(result)
     result["credentialProfiles"] = logical_profiles(result)
@@ -1845,6 +1907,17 @@ def load_credential_provider_secrets(configuration: dict) -> dict:
             _fail("credentialProviders.clientSecretFile", "must not be empty")
         result[provider["name"]] = value
     return result
+
+
+def load_credential_identity_secret(configuration: dict) -> str:
+    """独立したOIDC本人確認secretだけを実行直前に読み、CM資格情報へ混ぜない。"""
+    identity = configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
+    if not identity:
+        return ""
+    value = _read_protected_file(identity["clientSecretFile"], "credentialLogin.identity.clientSecretFile")
+    if not value:
+        _fail("credentialLogin.identity.clientSecretFile", "must not be empty")
+    return value
 
 
 def load_secret_inputs(configuration: dict) -> dict:

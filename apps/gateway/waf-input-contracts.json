@@ -1204,6 +1204,12 @@
           "variable": "RequestArgValues",
           "operator": "Equals",
           "rules": "reviewed-03"
+        },
+        {
+          "selector": "input.call_id",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-12"
         }
       ],
       "bindings": [
@@ -3417,6 +3423,16 @@
           },
           {
             "ruleId": "942430"
+          }
+        ]
+      }
+    ],
+    "reviewed-12": [
+      {
+        "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
+        "rules": [
+          {
+            "ruleId": "942450"
           }
         ]
       }

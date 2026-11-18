@@ -36,6 +36,14 @@ def https_url(value: str, *, origin=False) -> str:
 
 
 @dataclass(frozen=True)
+class OidcIdentity:
+    """本人確認用のEntraアプリです。CM providerの業務API資格情報とは別の責務です。"""
+    tenant_id: str
+    client_id: str
+    client_secret: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class Profile:
     name: str
     tenant_id: str
@@ -44,6 +52,11 @@ class Profile:
     identity_endpoint: str = "https://graph.microsoft.com/v1.0/me"
     identity_id_property: str = "id"
     pools: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def identity_app(self) -> OidcIdentity:
+        """旧JSON契約も維持し、独立設定から渡されたOIDCアプリとして取得します。"""
+        return OidcIdentity(self.tenant_id, self.client_id, self.client_secret)
 
 
 @dataclass(frozen=True)
