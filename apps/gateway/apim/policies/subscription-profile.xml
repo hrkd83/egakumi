@@ -2,6 +2,10 @@
   <!-- core-subscription-profile-v1: 購読設定はSQLから読み、XMLへ埋め込みません。 -->
   <set-variable name="gatewaySubscriptionProfile" value="{&quot;requestRate&quot;:null,&quot;tokensPerMinute&quot;:null,&quot;tokenQuota&quot;:null}" />
   <choose>
+    <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;user&quot;)">
+      <!-- 社員枠はserver設定だけから取得。購読profile API・SQL・cacheは使用しません。 -->
+      <include-fragment fragment-id="core-entra-user-profile" />
+    </when>
     <when condition="@(&quot;{{core-subscription-profile-enabled}}&quot; == &quot;true&quot; &amp;&amp; !(bool)context.Variables[&quot;gatewayRateLimitExempt&quot;])">
       <!-- 主キー・副キーは検証済み購読IDへ集約。設定の版をカウンターキーに含めません。 -->
       <set-variable name="gatewayProfileCacheKey" value="@(&quot;core-profile-v1:&quot; + context.Deployment.ServiceName + &quot;:&quot; + context.Subscription.Id)" />

@@ -15,6 +15,8 @@ import struct
 import unicodedata
 import uuid
 
+from .caller import UserCaller, matches, storage_fields
+
 
 class StoreError(RuntimeError):
     pass
@@ -111,6 +113,7 @@ def _flow_json(flow):
 
 _FIELDS = {
     "TransactionId": "transactionId", "ProfileName": "profileName", "SubscriptionId": "subscriptionId",
+    "CallerId": "callerId",
     "PollHash": "pollHash", "LaunchHash": "launchHash", "CookieHash": "cookieHash",
     "OidcStateHash": "oidcStateHash", "OidcFlow": "flow", "CmStateHash": "cmStateHash",
     "TicketHash": "ticketHash", "Phase": "phase", "TenantId": "tenantId", "ObjectId": "objectId",
@@ -249,11 +252,11 @@ class SqlStore:
     def ensure_ready(self):
         with self._db() as cursor:
             cursor.execute("SELECT MAX(Version) FROM broker.SchemaVersions;")
-            if cursor.fetchone()[0] != 3:
+            if cursor.fetchone()[0] != 4:
                 raise StoreUnavailable("Credential ledger schema is not ready")
             cursor.execute("SELECT TOP(0) ProfileName,ProviderName,AllocationBlocked FROM broker.Pools;")
-            cursor.execute("SELECT TOP(0) PendingSessionId,PendingSessionSecretHash,SubjectEpochAtVerification,ConnectionEpochAtVerification FROM broker.Transactions;")
-            cursor.execute("SELECT TOP(0) IdleExpiresAt,AbsoluteExpiresAt,Generation FROM broker.Sessions;")
+            cursor.execute("SELECT TOP(0) PendingSessionId,PendingSessionSecretHash,SubjectEpochAtVerification,ConnectionEpochAtVerification,CallerId FROM broker.Transactions;")
+            cursor.execute("SELECT TOP(0) IdleExpiresAt,AbsoluteExpiresAt,Generation,CallerId FROM broker.Sessions;")
 
     def health(self):
         try:
@@ -273,8 +276,7 @@ class SqlStore:
         """認証取引と新しい仮証明を分離する。古い証明は本人の制約にだけ利用する。"""
         tx, profile, poll_hash, launch_hash = _hash(tx), _name(profile), _hash(poll_hash), _hash(launch_hash)
         pending_session_id, pending_secret_hash = _hash(pending_session_id), _hash(pending_secret_hash)
-        if not isinstance(subscription_id, str) or not 1 <= len(subscription_id) <= 256:
-            raise ValueError("Invalid verified subscription")
+        subscription, caller_id = storage_fields(subscription_id)
         if type(force_cm_login) is not bool or force_cm_login and source_session is None:
             raise ValueError("A reauthentication attempt requires an existing proof")
         if type(login_limit) is not int or not 1 <= login_limit <= 10000:
@@ -283,7 +285,10 @@ class SqlStore:
             now = self._now(cursor)
             if not now < expires_at <= now + 600:
                 raise ValueError("Invalid transaction lifetime")
-            required_tenant = required_owner = None
+            required_tenant = (subscription_id.tenant_id
+                               if isinstance(subscription_id, UserCaller) else None)
+            required_owner = (subscription_id.principal_id
+                              if isinstance(subscription_id, UserCaller) else None)
             if source_session is not None:
                 session_id, secret_hash = (_hash(item) for item in source_session)
                 cursor.execute("SELECT * FROM broker.Sessions WITH (UPDLOCK,HOLDLOCK) WHERE SessionId=?", session_id)
@@ -292,7 +297,7 @@ class SqlStore:
                 if (source is None or not hmac.compare_digest(source['secretHash'], secret_hash)
                         and not (source.get('previousSecretHash') and source.get('previousValidUntil', 0) > now
                                  and hmac.compare_digest(source['previousSecretHash'], secret_hash))
-                        or source['subscriptionId'] != subscription_id or source['profileName'] != profile):
+                        or not matches(source, subscription_id) or source['profileName'] != profile):
                     raise StoreNotAuthorized("Credential proof is unavailable")
                 required_tenant, required_owner = source['tenantId'], source['objectId']
                 cursor.execute("SELECT State FROM broker.Connections WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND TenantId=? AND ObjectId=?",
@@ -308,12 +313,17 @@ class SqlStore:
                             raise StoreConflict("Connection is unavailable")
                     cursor.execute("UPDATE broker.Sessions SET Revoked=1,RevokedAt=?,RevocationReason='REAUTHENTICATION_REQUIRED' WHERE ProfileName=? AND TenantId=? AND ObjectId=? AND Revoked=0",
                                    now, profile, required_tenant, required_owner)
-            cursor.execute("SELECT COUNT(*) FROM broker.Transactions WITH (UPDLOCK,HOLDLOCK,INDEX(IX_BrokerTransactionSubscriptionCreated)) WHERE SubscriptionId=? AND CreatedAt>?",
-                           subscription_id, now - 60)
+            column = "CallerId" if caller_id is not None else "SubscriptionId"
+            index = ("IX_BrokerTransactionCallerCreated" if caller_id is not None
+                     else "IX_BrokerTransactionSubscriptionCreated")
+            cursor.execute("SELECT COUNT(*) FROM broker.Transactions WITH (UPDLOCK,HOLDLOCK,INDEX("
+                           + index + ")) WHERE " + column + "=? AND CreatedAt>?",
+                           caller_id if caller_id is not None else subscription,
+                           now - 60)
             if cursor.fetchone()[0] >= login_limit:
                 raise StoreRateLimited("Credential login rate limit reached")
-            cursor.execute("INSERT broker.Transactions(TransactionId,ProfileName,SubscriptionId,PollHash,LaunchHash,Phase,ExpiresAt,CreatedAt,RequiredTenantId,RequiredObjectId,ForceCmLogin,PendingSessionId,PendingSessionSecretHash) VALUES(?,?,?,?,?,'pending',?,?,?,?,?,?,?)",
-                           tx, profile, subscription_id, poll_hash, launch_hash, int(expires_at), now,
+            cursor.execute("INSERT broker.Transactions(TransactionId,ProfileName,SubscriptionId,CallerId,PollHash,LaunchHash,Phase,ExpiresAt,CreatedAt,RequiredTenantId,RequiredObjectId,ForceCmLogin,PendingSessionId,PendingSessionSecretHash) VALUES(?,?,?,?,?,?,'pending',?,?,?,?,?,?,?)",
+                           tx, profile, subscription, caller_id, poll_hash, launch_hash, int(expires_at), now,
                            required_tenant, required_owner, force_cm_login, pending_session_id, pending_secret_hash)
             return self._transaction(cursor, tx)
 
@@ -357,6 +367,10 @@ class SqlStore:
             value = self._transaction(cursor, tx, True)
             now = self._now(cursor)
             self._active(value, now, {'identityProcessing'})
+            if (value.get('requiredTenantId') is not None
+                    and (value['requiredTenantId'], value.get('requiredObjectId'))
+                    != (tenant_id, object_id)):
+                raise StoreNotAuthorized("Credential caller mismatch")
             cursor.execute("SELECT RevocationEpoch FROM broker.SubjectSecurity WITH (UPDLOCK,HOLDLOCK) WHERE TenantId=? AND ObjectId=?", tenant_id, object_id)
             existing = cursor.fetchone()
             epoch = int(existing[0]) if existing else 0
@@ -452,6 +466,10 @@ class SqlStore:
             value = self._transaction(cursor, tx, True)
             now = self._now(cursor)
             self._active(value, now, {'verifying'})
+            if value.get('callerId') is not None and not matches(
+                value, UserCaller.parse(value['callerId'])
+            ):
+                raise StoreNotAuthorized("Credential caller mismatch")
             if value['ticketHash'] != ticket_hash or value['objectId'] != verified_owner_id:
                 raise StoreConflict("Credential owner verification failed")
             cursor.execute("SELECT RevocationEpoch FROM broker.SubjectSecurity WITH(UPDLOCK,HOLDLOCK) WHERE TenantId=? AND ObjectId=?", value['tenantId'], value['objectId'])
@@ -472,8 +490,8 @@ class SqlStore:
                 raise StoreConflict("Credential mapping changed during verification")
             absolute = now + policy['absoluteLifetimeSeconds']
             idle = min(now + policy['idleTimeoutSeconds'], absolute)
-            cursor.execute("INSERT broker.Sessions(SessionId,SecretHash,SubscriptionId,ProfileName,TenantId,ObjectId,ProviderName,ConnectionId,AuthenticatedAt,LastBusinessUsedAt,IdleExpiresAt,AbsoluteExpiresAt,ExpiresAt,IdleTimeoutSeconds,RotationIntervalSeconds,RotationGraceSeconds,RotationHandoffSeconds,RotationCandidateTtlSeconds,Generation,NextRotationAt,SubjectEpochAtAuthentication,ConnectionEpochAtAuthentication,CreatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)",
-                value['pendingSessionId'], value['pendingSessionSecretHash'], value['subscriptionId'], value['profileName'],
+            cursor.execute("INSERT broker.Sessions(SessionId,SecretHash,SubscriptionId,CallerId,ProfileName,TenantId,ObjectId,ProviderName,ConnectionId,AuthenticatedAt,LastBusinessUsedAt,IdleExpiresAt,AbsoluteExpiresAt,ExpiresAt,IdleTimeoutSeconds,RotationIntervalSeconds,RotationGraceSeconds,RotationHandoffSeconds,RotationCandidateTtlSeconds,Generation,NextRotationAt,SubjectEpochAtAuthentication,ConnectionEpochAtAuthentication,CreatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)",
+                value['pendingSessionId'], value['pendingSessionSecretHash'], value['subscriptionId'], value.get('callerId'), value['profileName'],
                 value['tenantId'], value['objectId'], value['providerName'], value['connectionId'], now, now, idle, absolute, idle,
                 policy['idleTimeoutSeconds'], policy['rotationIntervalSeconds'], policy['rotationGraceSeconds'],
                 policy['rotationHandoffSeconds'], policy['rotationCandidateTtlSeconds'], now + policy['rotationIntervalSeconds'],
@@ -484,13 +502,15 @@ class SqlStore:
     def status(self, tx, poll_hash, subscription_id):
         with self._db() as cursor:
             value = self._transaction(cursor, tx)
-            if (value['pollHash'] != _hash(poll_hash) or value['subscriptionId'] != subscription_id
+            if isinstance(subscription_id, UserCaller) and not matches(value, subscription_id):
+                raise StoreNotAuthorized("Credential caller mismatch")
+            if (value['pollHash'] != _hash(poll_hash) or not matches(value, subscription_id)
                     or value['expiresAt'] <= self._now(cursor) or value['phase'] == 'failed'):
                 raise StoreConflict("Credential transaction is unavailable")
             if value['phase'] == 'complete':
-                cursor.execute("SELECT * FROM broker.Sessions WHERE SessionId=? AND SubscriptionId=?", value['pendingSessionId'], subscription_id)
+                cursor.execute("SELECT * FROM broker.Sessions WHERE SessionId=?", value['pendingSessionId'])
                 session = _row(cursor)
-                if session is None:
+                if session is None or not matches(session, subscription_id):
                     raise StoreConflict("Session is unavailable")
                 value.update(self._metadata(session))
             # 状態確認から、現行値・候補値・ハッシュを呼出元へ返さない。
@@ -504,7 +524,7 @@ class SqlStore:
         record = _row(cursor)
         # ロック待ちの間に期限を超える場合があるため、取得後のSQL時刻で判定する。
         now = self._now(cursor)
-        if record is None or record['subscriptionId'] != sub or profile is not None and record['profileName'] != _name(profile):
+        if record is None or not matches(record, sub) or profile is not None and record['profileName'] != _name(profile):
             raise StoreNotAuthorized("Credential proof is unavailable")
         current = hmac.compare_digest(record['secretHash'], secret_hash)
         previous = (record.get('previousSecretHash') is not None and record.get('previousValidUntil', 0) > now

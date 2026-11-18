@@ -1,0 +1,162 @@
+<fragment>
+  <!-- このXMLがSTEP4全体の分岐と順序を定義します。同名CSの各区画を対応する式へ生成時に差し込みます。 -->
+  <!-- chooseは最初に条件が一致した分岐を実行します。
+       最初に接続ログインの開始・戻り先の受付に限った例外を判定し、それ以外はキー用ヘッダーの有無で分けます。
+       キーがなければEntraのBearer検証へ、キーがあれば下のotherwiseで購読キーの確認へ進みます。
+       購読キーの有効性・購読の状態・APIへの利用範囲はAPIM標準の購読検証が担当します。
+       ここではその検証結果とヘッダーの形式を確認し、不正なキーをBearerで代替認証しません。 -->
+  <choose id="core-common-authentication">
+    <when condition="@((bool)context.Variables[&quot;gatewayCredentialBrowserException&quot;])">
+      <!-- 接続ログインの開始・戻り先の受付への一致が確認できたので、共通のキー／Bearer検証を省略します。
+           本人の認証成功とは区別し、後続の操作・Broker・CMが必要な取引と本人を確認します。 -->
+      <set-variable name="gatewayCommonAuthenticationAnonymous" value="@(true)" />
+    </when>
+    <!-- core-entra-branch-start -->
+    <when condition="@(!context.Request.Headers.ContainsKey(&quot;{{core-subscription-key-header}}&quot;))">
+      <!-- APIキー用ヘッダーがない業務APIの要求は、この分岐で社員Bearerを検証します。
+           キー用ヘッダーがある要求はキー認証へ進みます。キーが不正な場合も、
+           一緒に送られたBearerで代わりに通過させることはありません。 -->
+      <set-variable name="gatewayKeyHeader" value="{{core-subscription-key-header}}" />
+      <!-- 会社の認証設定をAPIMの名前付きの値から取得します。
+           テナント・社員別の利用枠を後続の検証で使うため、要求とは別に保持します。
+           利用枠のJSONは文字列として読み、後で項目と型を確認します。 -->
+      <set-variable name="gatewayEntraTenantId" value="{{core-entra-tenant-id}}" />
+      <set-variable name="gatewayEntraUserLimits" value="{{core-entra-user-limits}}" />
+      <!-- 購読キーを要求しないProductの経路にいることと、Authorizationの形式を確認します。
+           APIキーがURLの引数に混入している要求、Bearerの欠落・重複・空の値は401で終了します。
+           ここではヘッダーの形式を確認し、トークンの正当性は次のEntra検証で判断します。 -->
+      <set-variable name="gatewayAuthenticationFailure" value="@{__CORE_COMMON_AUTHENTICATION_BEARER_REQUEST_VALIDATION_CSHARP__}" />
+      <choose>
+        <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;]))">
+          <set-variable name="gatewayAuditPhase" value="rejected" />
+          <set-variable name="gatewayAuditCode" value="INVALID_AUTHENTICATION" />
+          <set-variable name="gatewayAuditStatus" value="@(401)" />
+          __AUTHENTICATION_TELEMETRY_XML__
+          <return-response>
+            <set-status code="401" reason="Invalid authentication" />
+            <set-header name="WWW-Authenticate" exists-action="override">
+              <value>Bearer</value>
+            </set-header>
+            <set-header name="apim-request-id" exists-action="override">
+              <value>@(context.RequestId.ToString())</value>
+            </set-header>
+            <set-header name="Cache-Control" exists-action="override">
+              <value>no-store</value>
+            </set-header>
+          </return-response>
+        </when>
+      </choose>
+      <!-- Entra発行トークンの署名・有効期限・会社テナント・APIの宛先を検証します。
+           v2アクセストークンで、必要な委任スコープを持つことも確認します。
+           成功したトークンだけをgatewayValidatedTokenへ保存し、失敗時はon-errorで401を返します。 -->
+      <validate-azure-ad-token id="core-entra-token-validation" tenant-id="{{core-entra-tenant-id}}" header-name="Authorization" failed-validation-httpcode="401" failed-validation-error-message="Invalid authentication" output-token-variable-name="gatewayValidatedToken">
+        <audiences>
+          <audience>{{core-entra-api-audience}}</audience>
+        </audiences>
+        <required-claims>
+          <claim name="ver" match="all">
+            <value>2.0</value>
+          </claim>
+          <claim name="scp" match="any" separator=" ">
+            <value>{{core-entra-required-scope}}</value>
+          </claim>
+        </required-claims>
+      </validate-azure-ad-token>
+      <!-- 標準トークン検証を通過した証拠を、この要求の中だけで保持します。
+           APIごとの対応可否を選ぶフラグではなく、社員識別や会社設定の確認もまだ完了していません。
+           後続APIが参照する2つの認証完了マーカーは、すべての確認が終わるまで設定しません。 -->
+      <set-variable name="gatewayEntraTokenValidationCompleted" value="@(true)" />
+      <!-- 検証済みトークンから本人情報を先に保存し、会社設定の不備でも監査から本人を追えるようにします。
+           要求IDと検証箇所を付け、後で別の要求や未検証の申告情報と取り違えないように照合します。
+           必須claimの不備は認証拒否、処理自体の予期しない例外は基盤エラーとして区別します。
+           azpは監査用の任意情報です。クライアントアプリの許可リストには使いません。 -->
+      <set-variable name="gatewayEntraIdentityResult" value="@{__CORE_COMMON_AUTHENTICATION_ENTRA_IDENTITY_CSHARP__}" />
+      <!-- 本人情報と会社設定を確認し、後続APIへ渡せる完成形の認証情報を組み立てます。
+           社員のclaim不備は401、テナント設定や利用枠のJSON・型・範囲の不備は500に分けます。
+           JSONの重複項目に新しい制約は加えず、既存の3項目と数値範囲の確認を維持します。
+           nullはその利用制限を設定しない意味です。成功時のJSON形式は既存の7項目を保ちます。 -->
+      <set-variable name="gatewayEntraAuthenticationResult" value="@{__CORE_COMMON_AUTHENTICATION_ENTRA_AUTHENTICATION_RESULT_CSHARP__}" />
+      <set-variable name="gatewayAuthenticationFailure" value="@(JObject.Parse((string)context.Variables[&quot;gatewayEntraAuthenticationResult&quot;])[&quot;errorCode&quot;]?.ToString() ?? &quot;&quot;)" />
+      <!-- 失敗理由を分類して監査へ記録し、必ずここで要求を終了します。
+           本人の不備は再サインインを促す401、会社設定や内部処理の不備は500です。例外の詳細は返しません。 -->
+      <choose>
+        <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;]))">
+          <set-variable name="gatewayAuditCode" value="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;])" />
+          <set-variable name="gatewayAuditStatus" value="@((string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;INVALID_AUTHENTICATION&quot; ? 401 : 500)" />
+          <set-variable name="gatewayAuditPhase" value="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 401 ? &quot;rejected&quot; : &quot;policy-error&quot;)" />
+          <!-- 会社設定や内部処理の500でも、本人を確認済みなら識別情報を失敗監査へ残します。
+               検証通過の証拠・要求ID・本人情報の形式と対応を再確認し、キーや購読との混在は採用しません。
+               これは失敗監査専用です。認証完了マーカーや後続APIの認証結果を代わりに成功へしません。 -->
+          <set-variable name="gatewayEntraFailureSubject" value="@{__CORE_COMMON_AUTHENTICATION_ENTRA_FAILURE_SUBJECT_CSHARP__}" />
+          __ENTRA_FAILURE_TELEMETRY_XML__
+          <choose>
+            <when condition="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 401)">
+              <return-response>
+                <set-status code="401" reason="Invalid authentication" />
+                <set-header name="WWW-Authenticate" exists-action="override">
+                  <value>Bearer</value>
+                </set-header>
+                <set-header name="apim-request-id" exists-action="override">
+                  <value>@(context.RequestId.ToString())</value>
+                </set-header>
+                <set-header name="Cache-Control" exists-action="override">
+                  <value>no-store</value>
+                </set-header>
+              </return-response>
+            </when>
+            <otherwise>
+              <return-response>
+                <set-status code="500" reason="Gateway processing failed" />
+                <set-header name="WWW-Authenticate" exists-action="delete" />
+                <set-header name="apim-request-id" exists-action="override">
+                  <value>@(context.RequestId.ToString())</value>
+                </set-header>
+                <set-header name="Cache-Control" exists-action="override">
+                  <value>no-store</value>
+                </set-header>
+              </return-response>
+            </otherwise>
+          </choose>
+        </when>
+      </choose>
+      <!-- トークン・本人・会社設定のすべての確認が成功したので、共通認証の完了を記録します。
+           後続の各APIはこの結果を使い、操作の権限・利用枠・外部サービス接続を引き続き確認します。 -->
+      <set-variable name="gatewayUserAuthentication" value="@((string)context.Variables[&quot;gatewayEntraAuthenticationResult&quot;])" />
+      <set-variable name="gatewayEntraAuthenticationValidated" value="@(true)" />
+      <set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" />
+    </when>
+    <!-- core-entra-branch-end -->
+    <otherwise>
+      <!-- キーを提示した要求は、この購読キーの経路で判定を終えます。
+           APIMがキー不要のProductへ要求を振り分けても、有効な購読が確認できなければ401にします。
+           キーは設定されたヘッダーに1つの空でない値として送る必要があり、URLのクエリ指定は拒否します。
+           Authorizationヘッダーも付いていても、不正なキーからBearer認証へ切り替えません。 -->
+      <set-variable name="gatewayKeyHeader" value="{{core-subscription-key-header}}" />
+      <set-variable name="gatewayAuthenticationFailure" value="@{__CORE_COMMON_AUTHENTICATION_KEY_REQUEST_VALIDATION_CSHARP__}" />
+      <choose>
+        <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;]))">
+          <set-variable name="gatewayAuditPhase" value="rejected" />
+          <set-variable name="gatewayAuditCode" value="INVALID_AUTHENTICATION" />
+          <set-variable name="gatewayAuditStatus" value="@(401)" />
+          __AUTHENTICATION_TELEMETRY_XML__
+          <!-- キーの確認に失敗したので、拒否理由を監査へ記録して401で終了します。
+               応答にはキーを載せず、問い合わせとログ照合に使うapim-request-idを返します。 -->
+          <return-response>
+            <set-status code="401" reason="@((string)context.Variables[&quot;gatewayAuthenticationFailure&quot;])" />
+            <set-header name="apim-request-id" exists-action="override">
+              <value>@(context.RequestId.ToString())</value>
+            </set-header>
+            <set-header name="Cache-Control" exists-action="override">
+              <value>no-store</value>
+            </set-header>
+          </return-response>
+        </when>
+      </choose>
+      <!-- 目的：認証済み購読の監査照合と、後続処理での認証成功の確認に必要な情報を渡します。 -->
+      <!-- 処理：購読IDをgatewaySubscriptionIdに保存してSTEP5の監査照合に使い、この要求の認証成功をgatewayCommonAuthenticationValidatedにtrueで記録します。 -->
+      <!-- 補足：各APIは購読IDをcontext.Subscription.Idから直接取得します。保存する購読IDはキー利用枠の識別子で、社員本人のIDではありません。 -->
+      <set-variable name="gatewaySubscriptionId" value="@(context.Subscription.Id)" />
+      <set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" />
+    </otherwise>
+  </choose>
+</fragment>

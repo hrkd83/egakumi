@@ -43,6 +43,7 @@ test -f "$DEPLOY_PARAMS_FILE"
 3. `gateway.publicHostName`と`gateway.grpc.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
 4. `certificate.plugin`は`Azure`とし、第3章で確認したDNS側Subscription IDとUAMIのリソースIDを`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`へ必ず記入する。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止する。
 5. Azure RBACの対象Object IDを設定する。CM providerの`clientId`を第2章で作成したEntraアプリのIDへ置き換え、本人接続の有効期間等を確認する。
+6. `gateway.authentication.entra.audience`をegakumi-apiのClient IDへ置き換える。委任scopeは`Gateway.Invoke`。クライアントID一覧や対象API一覧は入力しない。
 
 公開例にはGraph本人接続用の`credentialProviders`と`gateway.authentication.credentialLogin`を含めています。`azd up`は共通基盤を作成した後、Gateway、Portalの順に配備します。Gateway工程でCM provider・credentials DB・認証窓口とAPIを設定し、Portal工程で認証DB・管理画面と検証用購読を準備します。`apiDefinitions: []`なら標準19 API、配列に定義があれば指定したAPIを登録します。公開例の`publishApis`は`true`です。既存のlocal paramsは自動変更しません。
 
@@ -64,11 +65,79 @@ test -f "$DEPLOY_PARAMS_FILE"
 
 `gateway.authentication.subscriptionKeyHeader`に購読キーの受信ヘッダー名を指定します。既定は`api-key`です。APIMの標準機能で有効な購読とProduct/APIの利用範囲を確認し、全体ポリシーを`<base />`で各APIへ継承します。
 
-APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`で操作・モデル・入力・出力等を制限します。本人接続が必要なAPIにはCM接続セッションの条件を設定します。
+`X-Core-Caller-Id`と`X-Core-Subscription-Id`は、検証済み呼出主体を扱う内部用の予約ヘッダーです。大文字・小文字を問わず購読キーヘッダーには指定できません。旧入力で指定している場合は配備前の入力検査で停止するため、`api-key`等の専用ヘッダーへ変更し、API設定とクライアントの送信設定を一緒に更新してください。
 
-公開例の`gateway.authentication.credentialLogin`と対応providerを使って、本人の下流認証を準備します。後続のAPI登録処理でCM共通窓口の保護APIとブラウザーAPIを追加し、本人接続APIでは同じ購読へ結び付けた接続セッションも検査します。[CM共通接続手順](credential-manager-login.md)
+APIの`authorization.mode`は既存の`subscriptionKey`を維持します。この値はAPI認可契約の識別子で、Bearerを無効にする設定ではありません。`operationConstraints`で操作・モデル・入力・出力等を制限します。本人接続が必要なAPIにはCM接続セッションの条件を設定します。
+
+公開例の`gateway.authentication.credentialLogin`と対応providerを使って、本人の下流認証を準備します。後続のAPI登録処理でCM共通窓口の保護APIとブラウザーAPIを追加し、本人接続APIでは入口で検証した購読またはユーザー本人へ結び付けた接続セッションも検査します。[CM共通接続手順](credential-manager-login.md)
 
 キーはクライアントのバックエンドへ保管します。画面からはBFF等を利用し、ブラウザーJavaScriptへキーを配布しません。
+
+### 社員のEntra認証（段階実装）
+
+購読キー認証とEntraアクセストークン認証を同じURLで常時併用します。キーを提示した要求はAPIMの購読検証へ、キーなしで`Authorization: Bearer ...`を提示した要求はJWT検証へ進みます。全業務APIを対象とし、認証方式の切替・許可クライアント一覧・対象API一覧は入力しません。**APIの`subscriptionRequired:true`を維持し、キーなし要求だけを専用open Product `core-entra-model-users`からJWT検証へ進めます。** CMのブラウザー戻り先は一時取引で保護する専用経路です。
+
+| 段階 | 状態と確認範囲 |
+| --- | --- |
+| 実装 | 設定schema、JWT検証、本人別上限・監査、専用Productの生成と公開controllerを追加。生成元XMLと管理プレーン読戻しの照合、所属解除／追加、競合検出と失敗復旧を実装 |
+| ローカル | 合成の設定・policy・拒否・遷移・生成XML照合・展開サイズを検証。これらの成功だけで実接続可能と判定しない |
+| 実環境 | 配備・反映と実接続の受入は対象環境ごとに確認する。管理プレーンの配備・読戻し成功だけで実接続の受入完了とは判定しない。対象APIMの全policy・revision・キー範囲の読戻しと、限定した実接続の確認後に利用を開始する |
+
+本節は公開資材の実装状況と確認範囲を示し、特定環境の配備・反映・受入完了を記録するものではありません。
+
+検証用・本番用の公開例には、`gateway.authentication.entra`の全設定欄を用意しています。`audience`のGUIDは独立した合成例です。必ず導入先のegakumi-apiのClient IDへ置き換えてください。新しい標準構成は両方式を利用できる状態で配備します。
+
+認証テナントはトップレベルの`entraTenantId`です。次は設定の抜粋です。既存の`subscriptionKeyHeader`・`credentialLogin`・API定義・Product・購読を保持します。`<...>`は置換必須のプレースホルダーで、そのまま配備入力へ転記しません。古い入力の`entra.enabled`・`allowedClientIds`・`apiNames`は削除してください。クライアント側にはEntraでegakumi-apiの委任アクセス許可と必要な同意を設定します。APIMはクライアントの許可リストを持ちません。
+
+社員利用は基本無制限とし、毎分トークン上限と月間等の期間quotaは`null`で明示的に無効化します。**1000 requests／60秒は機械的な大量要求を抑える暫定防御値の例で、推奨値の確定ではありません。対象Codexの通常利用を確認して調整します。**
+
+```json
+"authentication": {
+  "subscriptionKeyHeader": "api-key",
+  "entra": {
+    "audience": "<API_APP_CLIENT_ID>",
+    "requiredScope": "Gateway.Invoke",
+    "userLimits": {
+      "requestRate": {
+        "calls": 1000,
+        "renewalPeriodSeconds": 60
+      },
+      "tokensPerMinute": null,
+      "tokenQuota": null
+    }
+  }
+}
+```
+
+| `gateway.authentication.entra`の項目 | 制約・現在の扱い |
+| --- | --- |
+| `audience` | egakumi-apiの非ゼロGUID形式のApplication（client）ID。要求scopeの`api://...`文字列やObject IDを指定しない |
+| `requiredScope` | 単一の委任scope名。既定は`Gateway.Invoke`。resource prefixや複数scopeを含めない |
+| `userLimits.requestRate` | `null`で要求回数制限を無効化。非nullは`calls`が1〜1000000、`renewalPeriodSeconds`が1〜300秒の整数 |
+| `userLimits.tokensPerMinute` | `null`で毎分トークン制限を無効化。非nullは1〜2147483647の整数 |
+| `userLimits.tokenQuota` | `null`で期間トークン枠を無効化。非nullは`tokens`が1〜2147483647の整数、`period`がHourly／Daily／Weekly／Monthly／Yearly |
+
+認証tenantはトップレベルの`entraTenantId`を使います。`entra.tenantId`は追加しません。認証テナント全ユーザーを対象とし、初期の個人／グループ許可台帳は作りません。有効にした共通制限だけを検証済み`tid+oid`ごとに計数し、既存キーの購読counterは維持します。`userLimits`を指定する場合は3項目をすべて揃え、無効化する項目には`null`を指定します。省略・空object・未知項目や不正値を無制限へ読み替えません。
+
+基盤／Gateway配備は、認証tenant・`audience`・`requiredScope`・`userLimits`を、それぞれ非秘密のAPIM Named Values `core-entra-tenant-id`・`core-entra-api-audience`・`core-entra-required-scope`・`core-entra-user-limits`へ生成します。値は既存paramsから取得し、追加の入力欄やNamed Valuesの手入力は不要です。共通policyはこの4値を参照し、API公開処理は基盤所有の値を上書きせず照合します。
+
+要求回数は人が入力するプロンプトの回数ではありません。ローカルツール結果による回答継続、retry、並列処理は複数のHTTP要求になります。1回のモデル推論の内部reasoningだけで、別HTTP要求が発生するわけではありません。rateだけでは攻撃と通常利用を判定できないため、既存WAF・Entra認証・client権限・API／モデル制約も維持します。`null`は提供元やAPIMの技術上限を解除する設定ではありません。
+
+専用ProductのIDはコード固定で、`openProductId`をparamsへ追加しません。所有markerは`core-owned-entra-model-users-v1`、Productは各sectionの`base`のみを継承します。既存の購読必須Product・関連付け・キーを維持し、対象APIにはopen Productを最大1つだけ関連付けます。有効キーはAPIM標準のactive・API／Product／all-APIs／service範囲検証を使います。不正キーがopen Productへfallbackしても、提示キーと`context.Subscription`の欠落を共通認証で検出して401にし、有効JWTで救済しません。
+
+有効化では、閉じた社員経路でglobal／Product／API／全operationと参照fragment・backend・NamedValue・全revisionを読戻し、専用Product所属を最後に追加します。更新・無効化では所属を先に解除して社員経路を閉じ、Bearer設定を変更します。途中失敗ではBearer受付を停止し、正常キーの利用と読戻しを確認します。APIの購読要件は常にtrueのままです。Productを非公開にするだけ、Bicepの定義を省くだけでは所属解除や無効化の完了にしません。
+
+初期の公開controllerは、対象APIにcurrent・onlineのrevision 1が1つだけある構成を扱います。revision一覧は取得しますが、複数revisionや生成元にないrevisionを自動で取り込みません。新規環境では、controller内部で社員経路を閉じたままAPIを作成し、生成元XMLとの読戻し照合後に専用Product所属を追加します。利用者がparamsを無効／有効へ書き換える工程はありません。既存環境で生成元が不足する場合は、変更前に停止します。
+
+旧生成元形式の`schemaVersion:1`から移行するときは、旧生成元に載る全APIを新形式で再公開します。未更新の旧APIを残す部分更新は、既存のBearer経路を閉じる前に拒否します。新形式への移行後は、部分更新でも未更新APIの生成元と認証対応を保持します。新規APIの追加はAPI本体・revisionと配備対象の共有子資源について、既存生成元との一致または未作成を確認してから開始します。
+
+API公開のBicep出力`entraPublicationSource`は、コードから生成したAPI／operation／fragmentのXMLと接続定義を含みます。公開stdoutへ出さず、既存の保護stateと`.local/<environment>/state/gateway-api-source.json`へ保存します。Entra未有効化の通常公開では既存の公開確認が成功した時点、Entra切替では閉じたstagingの全読戻しが成功した時点で更新します。通常のキー公開に社員有効化専用のrevision／Product制約を追加しません。保存した生成元を検証済みフラグとして信用せず、社員経路の有効化・更新ごとに実XML・依存先・ETag・所属集合を照合します。部分的なBicep失敗などで生成元と一致しない場合は停止し、閉じた状態で管理者が差分と復旧方法を確認します。
+
+新しいsource checkpointは、API生成元とは別に`globalPolicy`・`entraAuthentication`・`entraNamedValues`へ共通policy本文・論理認証設定・4つのNamed Valuesの独立期待値も保存します。これらも生成処理で再検査し、実読戻しと照合します。
+
+更新時には社員Bearer経路の短時間停止が発生します。Product／APIの関連付け操作には条件付きETagの保証がないため、専用Productの所有marker、global／API／ProductのETag、関連付け集合を前後で確認します。未知のProduct、追加revision、独自fragment、NamedValue変更などを自動で採用しません。失敗時は今回追加した関連付けを先に解除し、この処理が書いたXMLとETagがまだ一致するときだけglobalを戻します。閉鎖・復旧を確認できない場合はその状態を報告し、管理者の確認を必要とします。
+
+入口認証の対象はAPI正本から自動生成します。API／操作の下流認証は入口と別で、Graph等はCM本人接続、モデルはManaged Identityや登録済みの下流資格情報を使います。CM接続、非同期Document、Realtimeの結果・接続は検証済み本人へ結び付け、別人が引き継げないことを確認します。HTTP／SSE／MCP／WebSocket／gRPCごとに、既存キーの状態・範囲・利用枠、無効キー＋有効JWTの拒否、継承順序、所有者・更新・復旧を実APIMで別途確認します。合成試験を全経路の実接続完了と扱いません。[作業計画](../reference/entra-app-rollout-plan.md)と[追加受入項目](../testing/integration-tests.md#entra-gateway-oauthと専用open-productの追加受入)を参照してください。
 
 ### 基盤作成とAPI利用を分けて選ぶ
 
@@ -137,13 +206,15 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `environmentName` | `"<ENVIRONMENT_NAME>"` | 命名とタグに使う任意の環境名。test/dev/prodは参考例。先頭英小文字、英小文字・数字・内部ハイフン、最大12字。SKU・保持・保護の切替には使わない。 |
 | `subscriptionId` | `"<SUBSCRIPTION_ID>"` | 構築先Subscription ID。公開例のゼロGUIDを企業の実値へ置換。 |
 | `azureTenantId` | `"<AZURE_TENANT_ID>"` | Azureリソースの構築先Tenant ID。Subscription・Key Vault・Azure RBAC・管理APIに使用。 |
-| `entraTenantId` | `"<ENTRA_TENANT_ID>"`（省略可） | OAuth接続の既定認証先。省略時はazureTenantId。 |
+| `entraTenantId` | `"<ENTRA_TENANT_ID>"`（省略可） | OAuth接続の既定認証先と社員Entra認証tenant。省略時はazureTenantId。Azure配置先とは別。 |
 | `services.apimInstanceId` | 準備コマンドが生成 | APIM名と用途別WAFポリシー名の末尾に使う英小文字・数字6文字。構築・更新・途中再開・撤去で保持。configには記載しない。 |
 | `services.publisherName` | `"<APIM_PUBLISHER_NAME>"` | APIMの発行者表示名。 |
 | `services.publisherEmail` | `"<APIM_PUBLISHER_EMAIL>"` | APIMの発行者メール。導入先の実値へ変更。 |
 | `gateway.publicHostName` | `"<GATEWAY_FQDN>"` | API専用の公開FQDN。公開DNSと証明書に一致させる。 |
 | `gateway.authentication.subscriptionKeyHeader` | `"api-key"` | 全API共通の購読キー受信ヘッダー名。APIの設定と一致させる。 |
 | `gateway.authentication.credentialLogin` | `graph-delegated`を対象に設定済み | CM本人接続の対象provider・セッション有効期間・ログイン取引の期限・回数制限。詳細は後述。 |
+| `gateway.authentication.credentialLogin.identity` | 省略可 | CM窓口のOIDC本人確認を下流providerから独立させる3値。省略時は既存方式。詳細は後述。 |
+| `gateway.authentication.entra` | 公開例に設定済み、APIアプリIDの置換必須 | 全業務APIの社員委任認証の設定。キー認証と併用する。認証tenant・API audience・委任scopeを検証し、クライアント一覧やAPI一覧の入力は不要。実配備・受入は別工程。詳細は前述。 |
 | `management.adminUsername` | `"<MANAGEMENT_USERNAME>"` | Linuxの初期管理者名。root/admin等の予約名を除く、最大32字。 |
 | `management.sshPublicKeyFile` | `"./secrets/management-ssh.pub"` | 必須の公開鍵入力兼生成先。有効な既存RSA 2048bit以上/Ed25519公開鍵は外部保存でも再利用。公開鍵・秘密鍵が両方ない場合だけ、同じ環境の`.local/<environment>/secrets/`へパスフレーズなしRSA4096鍵対をpreupで生成。秘密鍵はAzureへ送らない。 |
 | `management.loginAssignments` | `[]` | Azure RBACのVMログイン許可。各要素principalId/principalType/role。roleはUser/Administrator。 |
@@ -335,8 +406,24 @@ CMの共通入力例です。provider側に`identityEndpoint`等も設定しま�
 | `rotationGraceSeconds` | 300（5分） | 1〜3600秒、更新間隔未満。更新確定から旧値を受け付ける固定猶予 |
 | `rotationHandoffSeconds` | 600（10分） | 60〜3600秒。候補を初めて発行してから更新確定が必要になるまでの時間 |
 | `rotationCandidateTtlSeconds` | 600（10分） | 60〜3600秒、引き渡し猶予以下。保存・確定する候補の有効期間 |
+| `transactionLifetimeSeconds` | 300（5分） | 60〜600秒。認証開始時に固定する取引の寿命 |
+| `identity` | 省略 | 指定時は`tenantId`・`clientId`・`clientSecretFile`をすべて設定する。下流CM providerとは別のOIDC本人確認設定 |
 
-これらは認証完了時にセッションへ固定します。設定変更で既存セッションの最長期限は延長しません。ポーリング・ヘルスチェック・更新確定は無操作期限を延長せず、期限切れ・失効済みのセッションも復活させません。
+セッションの6つの期限・更新設定は認証完了時にセッションへ固定します。設定変更で既存セッションの最長期限は延長しません。ポーリング・ヘルスチェック・更新確定は無操作期限を延長せず、期限切れ・失効済みのセッションも復活させません。
+
+R0では、必要に応じて`gateway.authentication.credentialLogin.identity`へ現在のWebアプリの3値を明示し、CM providerを変更しても窓口の本人確認が暗黙に切り替わらないようにします。新しい`egakumi-credential`アプリへの切替は後続工程です。下記は`credentialLogin`へ追加する抜粋で、secret値をparamsへ記入するものではありません。
+
+```json
+"identity": {
+  "tenantId": "<IDENTITY_TENANT_ID>",
+  "clientId": "<CURRENT_IDENTITY_APP_CLIENT_ID>",
+  "clientSecretFile": "./secrets/entra-client-secret.txt"
+}
+```
+
+`tenantId`と`clientId`は非ゼロGUID、ファイル参照はparams基準で解決します。`tenantId`は`providerNames`で選択した全CM providerの`oauthTenantId`と一致させます。同じEntraアプリの既存secretファイルは参照できますが、別アプリと同じファイルを共有すると設定検査で拒否します。省略時は選択CM provider由来の現行本人確認設定を維持します。このsecretはサーバー専用で、Codexへ配布せず、Codex／APIアプリのClient IDもこの欄へ入れません。Portalは引き続き`portalAuthentication.credentialProviderName`で選択した既存CMアプリ・secretを使用し、このR0設定では切り替わりません。
+
+本人確認のclient・tenant・secretを変更する前に新規認証開始を止め、旧取引を変更前の設定期限（最大600秒）まで排出するか無効化してから切り替えます。既存CM接続・セッションの`tid+oid`契約と、旧アプリ・secretを保持して復旧できることを別に確認します。進行中の取引や旧refresh tokenを新しいアプリへ転用しません。
 
 `/auth/connections`のstart/status/logout/logout-all/disconnectと、`/auth/connections/session/commit`は購読キーで保護します。認証取引の`transactionId`・`pollSecret`と、バックエンドに保存する本人接続セッションは独立しています。`/auth/connections/browser`のGET/POST launch・callbackは一時取引・起動秘密・Cookie・期限で照合します。SQLは本人・接続の世代と証明ハッシュを管理し、Microsoftのアクセストークン・更新トークンはCMが管理します。[呼出手順](credential-manager-login.md)を参照してください。
 
@@ -414,6 +501,8 @@ AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査�
 `A.mcpProxy.endpoints`は公開設定では配列です。Azureへの送信時だけ、Streamable HTTPは`mcp`、旧SSEは`sse`（GET）と`messages`（POST）をキーにした辞書へ変換し、作成済みbackendを`backendId`で関連付けます。利用者が設定する接続先パスはこの変換で変更しません。配備の受理と、各transportの実接続・tool実行は別に確認します。
 
 #### OAuth provider（credentialProviders[]）
+
+追加準備の[egakumi-api](02a-entra-api.md)はAPIリソースの登録です。そのClient IDは前述の`gateway.authentication.entra.audience`へ記入できる準備値で、`credentialProviders[].clientId`へ設定しません。APIアプリの登録だけではBearer経路は有効化されません。以下は現行CMの下流OAuthクライアントの設定です。
 
 [Entraアプリの準備](02-entra.md)で控えた値を、`.local/<environment>/params.local.json`へ記入します。公開例にはGraph本人接続用のproviderがあるため、その`clientId`のゼロGUIDを作成したアプリのIDへ置き換えます。
 

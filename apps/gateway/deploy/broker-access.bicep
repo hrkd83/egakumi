@@ -7,12 +7,21 @@ param schemaIdentity object
 @secure()
 @description('初回に生成した内部認証鍵。空の場合は既存値を更新しません。')
 param brokerKey string = ''
+@secure()
+param credentialIdentitySecret string = ''
+param identityConfigured bool = false
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: vaultName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 resource key 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(brokerKey)) {
   parent: vault
   name: 'core-credential-broker-key'
   properties: { value: brokerKey, attributes: { enabled: true } }
+}
+// CM用core-credential-*と異なる名前空間で、本人確認の資格情報を保持します。
+resource identityKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (identityConfigured) {
+  parent: vault
+  name: 'core-oidc-identity'
+  properties: { value: credentialIdentitySecret, attributes: { enabled: true } }
 }
 var kvSecretUser = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 var acrPull = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')

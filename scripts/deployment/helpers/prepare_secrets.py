@@ -127,7 +127,7 @@ def _dns_value(plugin: str) -> str:
 
 
 def _specifications(config: dict) -> list[dict]:
-    """DNS入力とCMの参照・用途を集め、同じファイルへの重複入力をなくす。"""
+    """DNS・CM・本人確認の参照と用途を集め、同じファイルへの重複入力をなくす。"""
     specifications = []
     certificate = config.get("certificate", {})
     if certificate.get("mode") == "dnsPlugin" and certificate.get("plugin") != "Azure":
@@ -135,6 +135,10 @@ def _specifications(config: dict) -> list[dict]:
     for provider in config.get("credentialProviders", []):
         specifications.append({"kind": "entra", "path": provider["clientSecretFile"],
                                "purposes": [{"kind": "cm", "name": provider.get("name", ""), "clientId": provider.get("clientId", "")} ]})
+    identity = config.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
+    if identity:
+        specifications.append({"kind": "entra", "path": identity["clientSecretFile"],
+                               "purposes": [{"kind": "identity", "name": "", "clientId": identity["clientId"]}]})
     unique = {}
     for specification in specifications:
         path = _checked_path(specification["path"])
@@ -158,12 +162,12 @@ def _public_label(value: str) -> str:
 
 
 def _purpose_label(specification: dict) -> str:
-    """同じsecretを使う複数のCM設定をまとめ、利用者が対応するアプリを選べるようにする。"""
+    """同じsecretを使う用途をまとめ、利用者が対応するアプリを選べるようにする。"""
     if specification["kind"] == "dns":
         return _public_label(specification["certificate"]["plugin"]) + "のDNS資格情報"
     purposes = []
     for purpose in specification["purposes"]:
-        title = "CM接続"
+        title = "CM本人確認（OIDC）" if purpose["kind"] == "identity" else "CM接続"
         name = _public_label(purpose["name"])
         if name:
             title += ": " + name
@@ -203,6 +207,8 @@ def _storage_guide(config: dict, root: Path, specifications: list[dict]) -> list
         except ValueError:
             local = "設定で指定した保護ファイル"
         cloud = "Key Vault" if specification["kind"] == "dns" else ("APIMと認証窓口用Key Vault" if config.get("gateway", {}).get("authentication", {}).get("credentialLogin") else "APIM")
+        if specification["kind"] == "entra" and all(purpose["kind"] == "identity" for purpose in specification["purposes"]):
+            cloud = "認証窓口用Key Vault"
         lines.append("  保存先: " + _public_label(local) + "（構築時に" + cloud + "へ設定）")
     return lines
 

@@ -6,7 +6,7 @@
        Body.Asも事前bufferの対象にするため、単なるif分岐での共用は避けます。 -->
   <set-variable name="gatewayAuditBodyModel" value="@{
     try {
-      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayControlSettings&quot;]);
       var operation = String.IsNullOrEmpty((string)settings[&quot;operationId&quot;]) ? context.Operation.Id : (string)settings[&quot;operationId&quot;];
       var constraint = settings[&quot;operationConstraints&quot;][operation];
       var kind = (string)constraint?[&quot;kind&quot;];

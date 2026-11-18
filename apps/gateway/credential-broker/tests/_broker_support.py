@@ -5,6 +5,7 @@ import copy
 import secrets
 import unittest
 
+from credential_broker.caller import UserCaller, matches, storage_fields
 from credential_broker.identity import Identity, IdentityError
 from credential_broker.service import BrokerService
 from credential_broker.settings import Profile, Settings
@@ -46,10 +47,11 @@ class LedgerDouble:
 
     def create_challenge(self, tx, profile, sub, poll, launch, expires,
                          *, pending_session_id, pending_secret_hash, source_session=None, force_cm_login=False, login_limit=10):
-        required = {}
+        required = (dict(requiredTenantId=sub.tenant_id, requiredObjectId=sub.principal_id)
+                    if isinstance(sub, UserCaller) else {})
         if source_session:
             row = self.sessions.get(source_session[0])
-            if (not row or row["secretHash"] != source_session[1] or row["subscriptionId"] != sub
+            if (not row or row["secretHash"] != source_session[1] or not matches(row, sub)
                     or row["profileName"] != profile):
                 raise StoreNotAuthorized()
             mapping = self.mappings.get((profile, row["tenantId"], row["objectId"]))
@@ -62,10 +64,11 @@ class LedgerDouble:
                 for session in self.sessions.values():
                     if (session["profileName"], session["tenantId"], session["objectId"]) == (profile, row["tenantId"], row["objectId"]):
                         session["revoked"] = True
-        recent = [row for row in self.transactions.values() if row["subscriptionId"] == sub and row["createdAt"] > self.now - 60]
+        recent = [row for row in self.transactions.values() if matches(row, sub) and row["createdAt"] > self.now - 60]
         if len(recent) >= login_limit:
             raise StoreRateLimited()
-        self.transactions[tx] = dict(transactionId=tx, profileName=profile, subscriptionId=sub,
+        subscription, caller = storage_fields(sub)
+        self.transactions[tx] = dict(transactionId=tx, profileName=profile, subscriptionId=subscription, callerId=caller,
             pollHash=poll, launchHash=launch, expiresAt=expires, pendingSessionId=pending_session_id,
             pendingSecretHash=pending_secret_hash, phase="pending",
             createdAt=self.now, forceCmLogin=force_cm_login, **required)
@@ -98,6 +101,8 @@ class LedgerDouble:
 
     def set_identity(self, tx, tenant, owner, upn):
         row = self.active(tx, ["identityProcessing"])
+        if row.get("requiredTenantId") and (row["requiredTenantId"], row["requiredObjectId"]) != (tenant, owner):
+            raise StoreNotAuthorized()
         row.update(tenantId=tenant, objectId=owner, ownerId=owner, upn=upn, phase="identityVerified")
         return copy.deepcopy(row)
 
@@ -168,7 +173,9 @@ class LedgerDouble:
 
     def status(self, tx, poll, sub):
         row = self.active(tx, ["pending", "identityPending", "identityVerified", "cmPending", "verifying", "complete"])
-        if row["pollHash"] != poll or row["subscriptionId"] != sub:
+        if isinstance(sub, UserCaller) and not matches(row, sub):
+            raise StoreNotAuthorized()
+        if row["pollHash"] != poll or not matches(row, sub):
             raise StoreConflict()
         result = dict(row, status="complete" if row["phase"] == "complete" else "pending")
         if row["phase"] == "complete":
@@ -177,7 +184,7 @@ class LedgerDouble:
 
     def resolve_session(self, tx, secret, sub, profile):
         row = self.sessions.get(tx)
-        if (not row or secret not in {row["secretHash"], row["previousHash"]} or row["subscriptionId"] != sub
+        if (not row or secret not in {row["secretHash"], row["previousHash"]} or not matches(row, sub)
                 or (profile is not None and row["profileName"] != profile)):
             raise StoreNotAuthorized()
         mapping = self.mappings.get((row["profileName"], row["tenantId"], row["objectId"]))
@@ -221,7 +228,7 @@ class LedgerDouble:
         candidate = self.candidates.get(candidate_id)
         if (row and candidate and row.get("winningCandidate") == candidate_id and row["secretHash"] == candidate_hash
                 and row["previousHash"] == current_hash and row["generation"] == from_generation + 1
-                and row["subscriptionId"] == sub and not row["revoked"]
+                and matches(row, sub) and not row["revoked"]
                 and min(row["idleExpiresAt"], row["absoluteExpiresAt"]) > self.now):
             return copy.deepcopy(row)
         record = self.resolve_session(sid, current_hash, sub, None)
@@ -241,7 +248,7 @@ class LedgerDouble:
 
     def revoke_session(self, tx, secret, sub):
         row = self.sessions.get(tx)
-        if row and row["secretHash"] == secret and row["subscriptionId"] == sub:
+        if row and row["secretHash"] == secret and matches(row, sub):
             row["revoked"] = True
             return True
         return False

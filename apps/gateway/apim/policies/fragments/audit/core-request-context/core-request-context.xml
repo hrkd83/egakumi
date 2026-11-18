@@ -1,0 +1,7 @@
+<fragment>
+  <!-- 要求の追跡に必要な項目をgatewayRequestContextへまとめます。
+       認証前の処理なので、社員本人の確認結果はここへ混ぜません。 -->
+  <set-variable id="core-request-context" name="gatewayRequestContext" value="@{
+      __CORE_REQUEST_CONTEXT_CSHARP__
+    }" />
+</fragment>

@@ -98,10 +98,12 @@ import shutil
 import ssl
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+import xml.etree.ElementTree as ET
 
 # azd hookからファイルを直接実行する場合も、呼出元の作業ディレクトリーに依存させない。
 if __package__ in (None, ""):
@@ -348,6 +350,32 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
             "contentVersion": "1.0.0.0", "parameters": {key: {"value": value} for key, value in values.items()}}
 
 
+def _arm_success_body(method, parsed, request_body, response_headers, content):
+    """明示したAPIM rawxml読取だけを、既存検証が使うproperties形式へそろえる。"""
+    content_types = [value.split(";", 1)[0].strip().lower() for name, value in response_headers.items()
+                     if name.lower() == "content-type" and isinstance(value, str)]
+    raw_path = re.fullmatch(
+        r"/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\.ApiManagement/service/[^/]+/"
+        r"(?:(?:apis/[^/]+/(?:operations/[^/]+/)?|products/[^/]+/)?policies/policy|policyFragments/[^/]+)",
+        parsed.path, re.IGNORECASE)
+    raw_requested = (method == "GET" and request_body is None and raw_path is not None
+                     and parse_qs(parsed.query).get("format") == ["rawxml"])
+    if raw_requested and content_types == ["application/vnd.ms-azure-apim.policy.raw+xml"]:
+        try:
+            value = content.decode("utf-8")
+            if "<!DOCTYPE" in value.upper() or "<!ENTITY" in value.upper():
+                raise ValueError("Unsafe policy XML")
+            root = ET.fromstring(value)
+            expected_root = "fragment" if "/policyfragments/" in parsed.path.lower() else "policies"
+            if root.tag != expected_root:
+                raise ValueError("Unexpected policy XML root")
+        except (UnicodeError, ValueError, ET.ParseError):
+            raise DeploymentError("ARM returned invalid APIM raw policy XML") from None
+        return {"properties": {"format": "rawxml", "value": value}}
+    # 別providerのXMLや不正なJSONを、APIM policyとして受け入れない。
+    return json.loads(content) if content else None
+
+
 class ArmTransport:
     """指定サブスクリプションのARMだけへ接続する。トークンはメモリー内に保持する。"""
     def __init__(self, config: dict):
@@ -356,6 +384,7 @@ class ArmTransport:
         self.tenant = config["azureTenantId"]
         self.token = None
         self.expires = 0
+        self._token_lock = threading.Lock()
         self.opener = build_opener(NoRedirect())
 
     def request(self, method: str, path: str, body=None, headers=None) -> dict:
@@ -372,9 +401,12 @@ class ArmTransport:
         if not parsed.path.lower().startswith(f"/subscriptions/{self.subscription}/".lower()):
             raise DeploymentError("An ARM operation targeted a different subscription")
         if time.time() + 120 >= self.expires:
-            auth = arm_access_token(self.subscription, self.tenant)
-            self.token = auth["accessToken"]
-            self.expires = float(auth.get("expires_on", time.time() + 600))
+            # 並行する独立GETでもtoken取得は1回。HTTP要求そのものはこのlockで囲みません。
+            with self._token_lock:
+                if time.time() + 120 >= self.expires:
+                    auth = arm_access_token(self.subscription, self.tenant)
+                    self.token = auth["accessToken"]
+                    self.expires = float(auth.get("expires_on", time.time() + 600))
         request_headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json", **(headers or {})}
         request = Request(uri, method=method, headers=request_headers,
                           data=None if body is None else json.dumps(body).encode())
@@ -385,8 +417,9 @@ class ArmTransport:
             try:
                 with self.opener.open(request, timeout=120) as response:
                     content = response.read()
-                    return {"statusCode": response.status, "headers": dict(response.headers),
-                            "body": json.loads(content) if content else None}
+                    response_headers = dict(response.headers)
+                    return {"statusCode": response.status, "headers": response_headers,
+                            "body": _arm_success_body(method, parsed, body, response_headers, content)}
             except HTTPError as error:
                 response_headers = dict(error.headers or {})
                 if error.code in (408, 429, 500, 502, 503, 504) and attempt + 1 < attempts:

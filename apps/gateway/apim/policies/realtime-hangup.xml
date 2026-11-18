@@ -28,13 +28,28 @@
             var payload = Newtonsoft.Json.Linq.JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
             var decision = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
             var settings = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
-            /* APIMが検証した購読を所有者に使い、追加の本人tokenでは所有権を変更しません。 */
-            if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
-                || (bool?)decision[&quot;allowed&quot;] != true || (string)decision[&quot;method&quot;] != &quot;subscriptionKey&quot;
-                || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return false; }
-            var subscriptionId = context.Subscription.Id;
+            /* 所有者は入口で検証した購読またはユーザーです。認証方式をまたいで移しません。 */
+            var userOwner = (string)decision[&quot;method&quot;] == &quot;user&quot;;
+            if ((bool?)decision[&quot;allowed&quot;] != true) { return false; }
+            var subscriptionId = &quot;&quot;;
+            if ((string)decision[&quot;method&quot;] == &quot;subscriptionKey&quot;) {
+                if (context.Subscription == null || String.IsNullOrWhiteSpace(context.Subscription.Id)
+                    || (string)decision[&quot;callerId&quot;] != &quot;subscription:&quot; + context.Subscription.Id) { return false; }
+                subscriptionId = context.Subscription.Id;
+            } else if (userOwner) {
+                if (context.Subscription != null || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;)
+                    || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return false; }
+                var user = Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+                Guid tenant, principal;
+                if (!Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
+                    || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return false; }
+                var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
+                if ((string)decision[&quot;callerId&quot;] != caller || (string)user[&quot;callerId&quot;] != caller
+                    || (string)decision[&quot;verifiedTenantId&quot;] != tenant.ToString(&quot;D&quot;)
+                    || (string)decision[&quot;verifiedPrincipalId&quot;] != principal.ToString(&quot;D&quot;)) { return false; }
+            } else { return false; }
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            return (int?)payload[&quot;v&quot;] == 3 &amp;&amp; (string)payload[&quot;callId&quot;] == callId
+            return (int?)payload[&quot;v&quot;] == (userOwner ? 4 : 3) &amp;&amp; (string)payload[&quot;callId&quot;] == callId
                 &amp;&amp; (string)payload[&quot;subscriptionId&quot;] == subscriptionId
                 &amp;&amp; (string)payload[&quot;callerId&quot;] == (string)decision[&quot;callerId&quot;]
 

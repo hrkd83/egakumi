@@ -34,7 +34,26 @@
             if (decision[&quot;profileId&quot;]?.Type == JTokenType.String &amp;&amp; ((string)decision[&quot;profileId&quot;]).Length &lt;= 256) {
               record[&quot;profileId&quot;] = (string)decision[&quot;profileId&quot;];
             }
-          } else if (allowed) { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
+          } /* core-user-audit-start */ else if (allowed &amp;&amp; (string)decision[&quot;method&quot;] == &quot;user&quot;
+              &amp;&amp; context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) &amp;&amp; (bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) {
+            var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+            Guid tenant = Guid.Empty, principal = Guid.Empty, client = Guid.Empty;
+            var valid = Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) &amp;&amp; tenant != Guid.Empty
+              &amp;&amp; Guid.TryParse((string)user[&quot;principalId&quot;], out principal) &amp;&amp; principal != Guid.Empty
+              &amp;&amp; Guid.TryParse((string)user[&quot;clientId&quot;], out client) &amp;&amp; client != Guid.Empty;
+            var caller = valid ? &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;) : &quot;&quot;;
+            if (!valid || (string)decision[&quot;callerId&quot;] != caller || (string)user[&quot;callerId&quot;] != caller
+                || (string)decision[&quot;allocationId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller
+                || (string)decision[&quot;verifiedTenantId&quot;] != tenant.ToString(&quot;D&quot;)
+                || (string)decision[&quot;verifiedPrincipalId&quot;] != principal.ToString(&quot;D&quot;)
+                || (string)decision[&quot;verifiedClientId&quot;] != client.ToString(&quot;D&quot;)) { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
+            else {
+              record[&quot;callerId&quot;] = caller; record[&quot;allocationId&quot;] = caller; record[&quot;method&quot;] = &quot;user&quot;;
+              record[&quot;verifiedTenantId&quot;] = tenant.ToString(&quot;D&quot;); record[&quot;verifiedPrincipalId&quot;] = principal.ToString(&quot;D&quot;);
+              record[&quot;verifiedClientId&quot;] = client.ToString(&quot;D&quot;);
+              if (decision[&quot;profileId&quot;]?.Type == JTokenType.String &amp;&amp; ((string)decision[&quot;profileId&quot;]).Length &lt;= 256) { record[&quot;profileId&quot;] = (string)decision[&quot;profileId&quot;]; }
+            }
+          } /* core-user-audit-end */ else if (allowed) { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
         } catch { record[&quot;authorization&quot;] = &quot;unconfirmed&quot;; }
       }
       /* 認可済み設定/別fragmentの検査結果だけを使います。traceでは本文やheaderを読みません。 */

@@ -22,7 +22,7 @@
     if (route == &quot;none&quot;) { return result.ToString(Newtonsoft.Json.Formatting.None); }
     var kind = &quot;&quot;;
     try {
-      var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+      var settings = JObject.Parse((string)context.Variables[&quot;gatewayControlSettings&quot;]);
       kind = (string)settings[&quot;operationConstraints&quot;]?[route == &quot;piiMcp&quot; ? &quot;pii_redact_text&quot; : operation]?[&quot;kind&quot;];
     } catch { return result.ToString(Newtonsoft.Json.Formatting.None); }
     if ((route == &quot;liveCreate&quot; &amp;&amp; kind != &quot;liveCreate&quot;) || (route == &quot;realtimeCreate&quot; &amp;&amp; kind != &quot;realtimeCreate&quot;)

@@ -29,6 +29,8 @@ def fixture():
     # 基礎fixtureはCMを使わず、接続試験ではconnection_fixtureで追加する。
     value["credentialProviders"] = []
     value["gateway"]["authentication"].pop("credentialLogin", None)
+    # 汎用試験はEntra追加前の入力互換も扱う。Entra試験で別途追加する。
+    value["gateway"]["authentication"].pop("entra", None)
     value["certificate"].pop("domainNames", None)
     return value
 

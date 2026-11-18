@@ -3,6 +3,7 @@ targetScope = 'resourceGroup'
 
 param names object
 param authentication object
+param entraTenantId string
 @description('AppGW HTTP 経路の識別値の Key Vault URI。値そのものは渡しません。')
 #disable-next-line secure-secrets-in-params
 param l7IngressSecretIdentifier string = ''
@@ -14,6 +15,11 @@ param credentialBrokerUrl string = ''
 param credentialBrokerSecretIdentifier string = ''
 
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = { name: names.apim }
+
+module entraSettings 'entra-named-values.bicep' = if (contains(authentication, 'entra')) {
+  name: 'core-entra-settings'
+  params: { apimName: names.apim, tenantId: entraTenantId, entra: authentication.entra }
+}
 
 // 共通認可で受け付ける購読キーのヘッダー名を基盤で用意します。
 resource keyHeaderNamedValue 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {

@@ -10,6 +10,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from deployment.helpers import credential_login
+from deployment.helpers.apim_audit import render_audit_policy
 
 CORE=Path(__file__).resolve().parents[1]
 TX,SECRET,LAUNCH,STATE,COOKIE=(c*64 for c in "abcdf")
@@ -52,7 +53,7 @@ public static class CredentialFixture {
   foreach(JObject item in JArray.Parse(json)) {
    var c=new Context();c.Api.Id=(string)item["api"];c.Operation.Id=(string)item["operation"];c.Request.Method=(string)item["method"]??"POST";c.Request.OriginalUrl.Path=(string)item["path"]??"/";
    if(item["lastError"] is JObject lastError){c.LastError.Source=(string)lastError["source"];c.LastError.Reason=(string)lastError["reason"];}
-   if(item["subscription"]!=null)c.Subscription=new Named{Id=(string)item["subscription"]};
+   if(item["subscription"]!=null && item["subscription"].Type!=JTokenType.Null)c.Subscription=new Named{Id=(string)item["subscription"]};
    if(item["body"]!=null)c.Request.Body.Data=item["body"].Type==JTokenType.String?(string)item["body"]:item["body"].ToString(Formatting.None);
    foreach(var p in ((JObject)(item["headers"]??new JObject())).Properties())c.Request.Headers[p.Name]=p.Value is JArray?p.Value.Select(v=>(string)v).ToArray():new[]{(string)p.Value};
    foreach(var p in ((JObject)(item["query"]??new JObject())).Properties())c.Request.Url.Query[p.Name]=p.Value is JArray?p.Value.Select(v=>(string)v).ToArray():new[]{(string)p.Value};
@@ -89,7 +90,7 @@ class CredentialPolicyTests(unittest.TestCase):
     self.assertEqual(root.find("inbound/rewrite-uri").get("template"),path)
     for header in ("X-Core-Broker-Key","X-Core-Subscription-Id"):
      node=root.find("inbound/set-header[@name='"+header+"']")
-     self.assertEqual(node.get("exists-action"),"override")
+     self.assertTrue(node.get("exists-action")=="override" or node.get("exists-action").startswith("@"))
      self.assertNotIn("context.Request",node.find("value").text)
     self.assertIsNotNone(root.find("inbound/set-header[@name='api-key'][@exists-action='delete']"))
 
@@ -160,9 +161,11 @@ class CredentialExpressionTests(unittest.TestCase):
  def setUpClass(cls):
   CredentialPolicyTests.setUpClass()
   cls.roots=CredentialPolicyTests.roots
+  cls.roots["telemetry"]=ET.fromstring(render_audit_policy((CORE/"apps/gateway/apim/policies/credential-telemetry.xml").read_text(encoding="utf-8")))
+  cls.login=CredentialPolicyTests.login
   pwsh=os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
   if not pwsh:raise unittest.SkipTest("PowerShell Roslyn is required")
-  methods=[];switches=[];counts={};retry_methods={}
+  methods=[];switches=[];counts={};retry_methods={};caller_methods={}
   for filename,root in cls.roots.items():
    parents={child:parent for parent in root.iter() for child in parent}
    for node in root.iter():
@@ -174,7 +177,15 @@ class CredentialExpressionTests(unittest.TestCase):
      methods.append("static object "+method+"(Context context) { "+expression(value)+" }")
      if node.tag=="set-variable" and kind=="attribute" and value==node.get("value"):
       name=filename+":"+node.get("name");number=counts.get(name,0);counts[name]=number+1
-      switches.append('case '+json.dumps(name+":"+str(number))+':output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
+      if node.get("name")=="credentialCallerId":caller_methods[filename]=method
+      prepare='c.Variables["credentialCallerId"]='+caller_methods[filename]+'(c);' if filename=="connection" and node.get("name")=="gatewayConnectionSelection" and number==0 else ''
+      if filename=="connection" and node.get("name")=="gatewayConnectionSelection" and number==1:
+       prepare+='c.Variables["gatewayConnectionProviderSettings"]='+json.dumps(root.find(".//set-variable[@name='gatewayConnectionProviderSettings']").get("value"))+';'
+      switches.append('case '+json.dumps(name+":"+str(number))+':'+prepare+'output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
+     if filename=="start" and node.tag=="set-header" and node.get("name") in ("X-Core-Caller-Id","X-Core-Subscription-Id") and kind=="attribute":
+      switches.append('case '+json.dumps('caller-action:'+node.get("name"))+':output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
+     if filename=="telemetry" and node.tag=="message" and kind=="text":
+      switches.append('case "credential-telemetry":output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
      if filename in ("start","challenge"):
       if node.tag=="set-variable" and node.get("name")==("credentialProxyRetryAfter" if filename=="start" else "gatewayConnectionChallengeRetryAfter"):
        retry_methods[(filename,"seconds")]=method
@@ -189,7 +200,10 @@ class CredentialExpressionTests(unittest.TestCase):
     raise AssertionError("Rate error response must expose its actual Retry-After expressions")
    switches.append('case "retry-'+policy+'":c.Variables['+json.dumps(variable)+']='+retry_methods[(policy,"seconds")]+'(c);var retryAction'+policy+'=(string)'+retry_methods[(policy,"action")]+'(c);output[(string)item["id"]]=new JObject(new JProperty("action",retryAction'+policy+'),new JProperty("header",retryAction'+policy+'=="override"?(string)'+retry_methods[(policy,"header")]+'(c):null));break;')
   cases=[]
-  def add(name,expr,**values):cases.append({"id":name,"expression":expr,"subscription":"sub-a",**values})
+  def add(name,expr,**values):
+   subscription=values.pop("subscription","sub-a")
+   variables={"gatewayCommonAuthenticationValidated":True,"credentialCallerId":"subscription:"+(subscription or ""),**values.pop("variables",{})}
+   cases.append({"id":name,"expression":expr,"subscription":subscription,"variables":variables,**values})
   for operation in credential_login.OPERATIONS:
    for label,source,reason in (("missing","authorization","SubscriptionKeyNotFound"),("invalid","authorization","SubscriptionKeyInvalid"),("limited","rate-limit-by-key","RateLimitExceeded"),("backend","forward-request","BackendConnectionFailure"),("expression","set-variable","ExpressionValueEvaluationFailure")):
     add("proxy-error-"+operation+"-"+label,operation+":credentialProxyErrorStatus:0",lastError={"source":source,"reason":reason})
@@ -209,14 +223,54 @@ class CredentialExpressionTests(unittest.TestCase):
   config={"enabled":True,"mode":"personal","providerName":"graph-delegated"}
   def preliminary(name,**changes):
    selected=changes.pop("config",config)
-   add(name,"connection:gatewayConnectionSelection:0",headers=changes.pop("headers",{"X-Core-Connection-Session":SESSION}),variables={"gatewayDecision":changes.pop("decision",decision),"gatewayCredentialConnection":credential_login.encode(selected)},**changes)
+   variables={"gatewayDecision":changes.pop("decision",decision),"gatewayCredentialConnection":credential_login.encode(selected),**changes.pop("variables",{})}
+   add(name,"connection:gatewayConnectionSelection:0",headers=changes.pop("headers",{"X-Core-Connection-Session":SESSION}),variables=variables,**changes)
   preliminary("pre-valid");preliminary("pre-no-session",headers={});preliminary("pre-multi-session",headers={"X-Core-Connection-Session":[SESSION]*2});preliminary("pre-old-format",headers={"X-Core-Connection-Session":TX+"."+SECRET})
   preliminary("pre-malformed",headers={"X-Core-Connection-Session":"bad"});preliminary("pre-other-sub",subscription="sub-b");preliminary("pre-denied",decision={**decision,"allowed":False});preliminary("pre-disabled",config={**config,"enabled":False})
+  caller="user:"+TENANT+":"+OWNER
+  user={"schemaVersion":1,"callerId":caller,"allocationId":caller,"tenantId":TENANT,"principalId":OWNER,"clientId":""}
+  user_variables={"gatewayEntraAuthenticationValidated":True,"gatewayUserAuthentication":user}
+  user_decision={"allowed":True,"method":"user","callerId":caller,"allocationId":caller}
+  audit={"gatewayAuditPhase":"rejected","gatewayAuditCode":"CREDENTIAL_CONNECTION_DENIED","gatewayAuditStatus":403,"gatewayAuditSettings":{"backendService":"graph","backendAuthentication":"credentialManager","measurementRole":"entry","serviceClass":"platform"}}
+  for label,values,subscription in (
+   ("user",{**user_variables,"credentialCallerId":caller,"gatewayDecision":user_decision},None),
+   ("key",{"gatewayDecision":decision},"sub-a"),
+   ("mismatch",{**user_variables,"credentialCallerId":caller,"gatewayDecision":{**user_decision,"callerId":"user:"+TENANT+":"+TENANT}},None),
+  ):
+   add("audit-"+label,"credential-telemetry",subscription=subscription,api="graph-me",operation="get-me",variables={**audit,**values})
+  preliminary("pre-user-valid",subscription=None,decision=user_decision,variables=user_variables)
+  preliminary("pre-user-key-mixed",decision=user_decision,variables=user_variables)
+  preliminary("pre-user-unverified",subscription=None,decision=user_decision,variables={**user_variables,"gatewayEntraAuthenticationValidated":False})
+  preliminary("pre-user-wrong-caller",subscription=None,decision={**user_decision,"callerId":"user:"+TENANT+":"+TENANT},variables=user_variables)
+  for label,variables in (("key",{}),("user",user_variables),("unverified",{"gatewayCommonAuthenticationValidated":False})):
+   add("caller-"+label,"connection:credentialCallerId:0",subscription=None if label=="user" else "sub-a",variables=variables)
+  for label,identity in (("key","subscription:sub-a"),("user",caller)):
+   for header in ("X-Core-Caller-Id","X-Core-Subscription-Id"):
+    add("caller-header-"+label+"-"+header,"caller-action:"+header,variables={"credentialCallerId":identity})
   selected={"allowed":True,"providerName":"graph-delegated-a","connectionId":"test.user-abcdef0123456789","ownerId":OWNER,"tenantId":TENANT,"identityEndpoint":"https://graph.microsoft.com/v1.0/me","identityIdProperty":"id"}
-  def selection(name,body=None,status=200):
-   add(name,"connection:gatewayConnectionSelection:1",variables={"gatewayConnectionSelection":{"profileName":"graph-delegated"}},response={"name":"gatewayConnectionSessionResponse","status":status,"body":selected if body is None else body})
+  def selection(name,body=None,status=200,profile="graph-delegated",expr="connection:gatewayConnectionSelection:1"):
+   add(name,expr,variables={"gatewayConnectionSelection":{"profileName":profile}},response={"name":"gatewayConnectionSessionResponse","status":status,"body":selected if body is None else body})
+  add("selection-user-valid","connection:gatewayConnectionSelection:1",subscription=None,variables={"credentialCallerId":caller,"gatewayConnectionSelection":{"profileName":"graph-delegated"}},response={"name":"gatewayConnectionSessionResponse","status":200,"body":selected})
+  add("selection-user-wrong-owner","connection:gatewayConnectionSelection:1",subscription=None,variables={"credentialCallerId":"user:"+TENANT+":"+TENANT,"gatewayConnectionSelection":{"profileName":"graph-delegated"}},response={"name":"gatewayConnectionSessionResponse","status":200,"body":selected})
   selection("selection-valid");selection("selection-forbidden",status=403);selection("selection-required",status=409);selection("selection-unavailable",status=500)
-  for field,value in {"providerName":"other-provider","tenantId":OWNER,"ownerId":"not-guid","identityEndpoint":"https://attacker.example/me","connectionId":"../../other","allowed":False}.items():selection("selection-bad-"+field,{**selected,field:value})
+  for field,value in {"providerName":"other-provider","tenantId":OWNER,"ownerId":"not-guid","identityEndpoint":"https://attacker.example/me","identityIdProperty":"other-id","connectionId":"../../other","allowed":False}.items():selection("selection-bad-"+field,{**selected,field:value})
+  selection("selection-bad-profile",profile="other-profile")
+  # 構築時に埋め込む設定を変え、候補なし・重複・不正要素も実際のC#式で確認します。
+  for label,providers in (
+   ("empty",[]),
+   ("duplicate",cls.login["providers"]*2),
+   ("malformed",cls.login["providers"]+["not-a-provider"]),
+   ("other-source",[{**cls.login["providers"][0],"sourceName":"other-profile"}]),
+   ("unique",[{**cls.login["providers"][0],"name":"other-provider"}]+cls.login["providers"]),
+  ):
+   login={**cls.login,"providers":providers}
+   root=ET.fromstring(credential_login.render_connection("credential-connection.xml",login))
+   value=root.findall(".//set-variable[@name='gatewayConnectionSelection']")[1].get("value")
+   method="Expression"+str(len(methods));expr="selection-pool:"+label
+   methods.append("static object "+method+"(Context context) { "+expression(value)+" }")
+   provider_settings=root.find(".//set-variable[@name='gatewayConnectionProviderSettings']").get("value")
+   switches.append('case '+json.dumps(expr)+':c.Variables["gatewayConnectionProviderSettings"]='+json.dumps(provider_settings)+';output[(string)item["id"]]=JToken.FromObject('+method+'(c));break;')
+   selection("selection-pool-"+label,expr=expr)
   challenge={"status":"need_login","protocolVersion":2,"provisionalConnectionSession":SESSION,"transactionId":TX,"pollSecret":SECRET,"expiresIn":600,
    "loginUrl":"https://gateway.example.com/auth/connections/browser/launch#transactionId="+TX+"&launch="+LAUNCH,
    "statusUrl":"https://gateway.example.com/auth/connections/status?transactionId="+TX}
@@ -279,16 +333,43 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
   for name in ("pre-no-session","pre-multi-session","pre-malformed","pre-other-sub","pre-denied","pre-disabled","pre-old-format"):
    self.assertFalse(json.loads(self.results[name])["allowed"],name)
 
+ def test_user_caller_is_verified_and_personal_connection_owner_cannot_change(self):
+  self.assertEqual(self.results["caller-key"],"subscription:sub-a")
+  self.assertEqual(self.results["caller-user"],"user:"+TENANT+":"+OWNER)
+  self.assertEqual(self.results["caller-unverified"],"")
+  self.assertTrue(json.loads(self.results["pre-user-valid"])["allowed"])
+  for label in ("key-mixed","unverified","wrong-caller"):
+   self.assertFalse(json.loads(self.results["pre-user-"+label])["allowed"])
+  self.assertTrue(json.loads(self.results["selection-user-valid"])["allowed"])
+  self.assertFalse(json.loads(self.results["selection-user-wrong-owner"])["allowed"])
+  for label in ("key","user"):
+   for header in ("X-Core-Caller-Id","X-Core-Subscription-Id"):
+    expected="override" if (label=="user")== (header=="X-Core-Caller-Id") else "delete"
+    self.assertEqual(expected,self.results["caller-header-"+label+"-"+header])
+
  def test_builtin_authorization_and_throttling_are_not_reported_as_broker_failure(self):
   for operation in credential_login.OPERATIONS:
    for label,expected in (("missing",401),("invalid",401),("limited",429),("backend",503),("expression",503)):
     self.assertEqual(self.results["proxy-error-"+operation+"-"+label],expected)
 
+ def test_cm_refusal_audit_retains_verified_user_without_a_subscription(self):
+  user=json.loads(self.results["audit-user"])
+  self.assertEqual(user["callerId"],"user:"+TENANT+":"+OWNER)
+  self.assertEqual((user["verifiedTenantId"],user["verifiedPrincipalId"]),(TENANT,OWNER))
+  self.assertEqual(user["method"],"user")
+  self.assertNotIn("subscriptionId",user)
+  key=json.loads(self.results["audit-key"])
+  self.assertEqual(key["subscriptionId"],"sub-a")
+  self.assertEqual(key["method"],"subscriptionKey")
+  mismatch=json.loads(self.results["audit-mismatch"])
+  self.assertEqual(mismatch["authorization"],"unconfirmed")
+  self.assertNotIn("callerId",mismatch)
+
  def test_start_rate_policy_captures_retry_seconds_without_changing_its_counter(self):
   rate=self.roots["start"].find("inbound/rate-limit-by-key")
   self.assertEqual(rate.get("retry-after-variable-name"),"credentialLoginStartRetryAfter")
   self.assertEqual((rate.get("calls"),rate.get("renewal-period")),("10","60"))
-  self.assertEqual(rate.get("counter-key"),'@("credential-login-start:" + context.Subscription.Id)')
+  self.assertIn('credentialCallerId',rate.get("counter-key"))
 
  def test_rate_error_headers_use_bounded_canonical_retry_seconds(self):
   for policy in ("start","challenge"):
@@ -327,6 +408,16 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
   for name,status in (("selection-forbidden",403),("selection-required",409),("selection-unavailable",503)):
    self.assertEqual(json.loads(self.results[name])["status"],status)
   self.assertEqual(json.loads(self.results["selection-bad-allowed"])["status"],409)
+
+ def test_broker_provider_match_is_unique_and_malformed_pools_fail_closed(self):
+  for label in ("empty","duplicate","malformed","other-source"):
+   with self.subTest(pool=label):
+    result=json.loads(self.results["selection-pool-"+label])
+    self.assertFalse(result["allowed"])
+    self.assertEqual(result["status"],503)
+  unique=json.loads(self.results["selection-pool-unique"])
+  self.assertTrue(unique["allowed"])
+  self.assertEqual(unique["providerName"],"graph-delegated-a")
 
  def test_callback_input_and_owner_verification(self):
   self.assertTrue(self.results["callback-input-valid"])

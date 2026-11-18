@@ -13,7 +13,7 @@ APIM経由で本人接続を管理する内部FastAPIサービスです。MSAL�
 - `AZURE_SUBSCRIPTION_ID`、`AZURE_RESOURCE_GROUP`、`APIM_NAME`、`APIM_PRINCIPAL_ID`、`AZURE_TENANT_ID`、`AZURE_CLIENT_ID`: 接続先APIMとbrokerのマネージドID。
 - `AZURE_SQL_SERVER`、`AZURE_SQL_DATABASE`: 暗号化接続する台帳。Azure SQLはbrokerのマネージドIDで認証します。
 - `BROKER_TRANSACTION_TTL_SECONDS`: 60〜600、既定300。
-- `BROKER_LOGIN_CALLS_PER_MINUTE`: サブスクリプションごとの認証開始回数上限。既定10。`start`と`challenge`の合計をSQLで直近60秒間集計します。
+- `BROKER_LOGIN_CALLS_PER_MINUTE`: 検証済み購読またはユーザーごとの認証開始回数上限。既定10。`start`と`challenge`の合計をSQLで直近60秒間集計します。
 
 本人セッションの設定は、`gateway.authentication.credentialLogin`から次の環境変数へ渡します。秒単位です。
 
@@ -36,7 +36,9 @@ APIM経由で本人接続を管理する内部FastAPIサービスです。MSAL�
 
 SQLスキーマとpool行は、配備用IDで事前に初期化します。アプリ起動時にスキーマの準備状態を確認し、失敗時は起動を停止します。プロセスメモリーを永続台帳の代わりに使うフォールバックはありません。
 
-`sql/001_initial.sql`、`002_session_lifecycle.sql`、`003_idle_connection_cleanup.sql`を番号順に一度ずつ適用します。002は旧取引・旧セッション証明だけを回収し、CM接続とプール・本人対応表を保持します。再配備で適用済み002を繰り返さないため、新方式のセッションは削除しません。本人・接続の失効世代、認証取引に保存した本人・接続の世代スナップショット、現行／旧値／候補のハッシュをSQLで照合します。Microsoftのアクセストークン・更新トークンはSQLに保存しません。003はスキーマ版3として接続の利用日時と回収用のSQL処理を更新します。既存の`LastUsedAt`は巻き戻さず保持します。
+`sql/001_initial.sql`、`002_session_lifecycle.sql`、`003_idle_connection_cleanup.sql`、`004_verified_user_caller.sql`を番号順に一度ずつ適用します。002は旧取引・旧セッション証明だけを回収し、CM接続とプール・本人対応表を保持します。再配備で適用済み002を繰り返さないため、新方式のセッションは削除しません。本人・接続の失効世代、認証取引に保存した本人・接続の世代スナップショット、現行／旧値／候補のハッシュをSQLで照合します。Microsoftのアクセストークン・更新トークンはSQLに保存しません。003はスキーマ版3として接続の利用日時と回収用のSQL処理を更新します。既存の`LastUsedAt`は巻き戻さず保持します。004は購読IDとユーザー主体を別の列で保持し、既存の購読・セッション・取引・CM接続を維持します。
+
+旧Brokerはスキーマ版を正確に3と照合するため、004で版4へ移行した時点で旧imageのhealthは失敗します。保守時間を確保して、同じソース・paramsから**SQL版4→対応版Broker imageと定期照合ジョブ→APIMポリシー**の順に配備します。SQL移行後に旧imageだけへ戻しても復旧しません。対応版で前進して再試行し、DB復元が必要なら[SQLの復旧手順](../../../docs/setup/credential-sql.md#運用と復旧)に従います。SQL復元はCMの状態を巻き戻しません。
 
 ## 内部API
 
@@ -51,15 +53,19 @@ SQLスキーマとpool行は、配備用IDで事前に初期化します。ア�
 | `/v2/session/disconnect` | SQLで利用を禁止してからCM接続を削除する。GET 404の確認後だけ容量を解放する |
 | `/v2/connection/status` | CMの既知の認証失効と、一時障害・不明状態を区別する |
 
-これらは`X-Core-Broker-Key`を定数時間で照合し、その後にAPIMから渡された購読IDを検証します。ヘルスチェックは`/health`です。
+これらは`X-Core-Broker-Key`を定数時間で照合し、その後にAPIMから渡された主体を検証します。既存のキー経路は`X-Core-Subscription-Id`とJSONの`subscriptionId`を維持します。Bearer経路はAPIMが`X-Core-Caller-Id: user:<TENANT_ID>:<OBJECT_ID>`を設定し、セッション操作のJSONでは`callerId`を使います。両ヘッダーの混在・重複、ヘッダーとJSONの主体不一致を拒否します。SQLではユーザー主体を`CallerId`へ保存し、`SubscriptionId`へユーザーIDを入れません。
+
+Bearerで始める取引は、Gatewayで検証したtenant/oidを初回から固定します。CMのサインイン、保存済みセッション、Graph等の本人確認結果がその本人と一致する場合だけ接続を利用できます。ブラウザーのlaunch/callbackは従来の短時間取引証明・Cookie・stateで保護します。既存の`/health`に加え、ユーザー主体対応を示す`/health/gateway-caller-v1`を用意します。後者はSQL版4と必要列を毎回確認し、準備不足や到達不能時は503を返します。Startup・Readiness・Liveness probeはこの能力確認用pathを使います。
+
+APIだけの公開処理も、対応するReadiness probe、最新Ready revisionのactive・health・稼働状態、実imageの一致をAzureから確認します。旧runtimeや旧SQLでは、APIMとFirewallへの書込み前に停止します。
 
 業務APIから認証を案内するとき、APIMは`POST /v1/challenge`へ`providerName`、`connectionSession`（未指定時は空文字）、`reason`を送ります。`reason`はセッションの再取得を表す`session_required`か、CMでの再認証を必要とする`token_rejected`です。後者は既存セッションの証明を必須とします。
 
 応答は`protocolVersion: 2`、`status: need_login`、`loginUrl`、`transactionId`、`pollSecret`、`statusUrl`、`expiresIn`と、独立した乱数の`provisionalConnectionSession`です。呼び出し元のバックエンドが仮セッションを保存してから、固定Gateway originの認証URLを利用者へ案内します。Microsoftサインインが完了するまで、SQLには一時取引だけを作成し、CMの接続枠は割り当てません。`status`は状態・本人・セッションID・期限だけを返し、セッション値を再発行しません。
 
-有効期限が切れたセッションも、証明を照合できれば元の本人に結び付けた新しい再認証へ進みます。古いセッション自体は延長・復活させません。異なる本人での認証は403です。証明ハッシュは期限切れ後24時間保持し、その間もAPI利用を許可しません。保持期間後に削除されたセッションは403となるため、呼び出し元は既知の期限を過ぎた保存済みセッションを破棄して再取得できます。誤った証明・購読・プロファイルは403、真正でも期限切れ・失効済みなら利用を拒否します。開始回数の上限超過は429と`Retry-After: 60`を返します。
+有効期限が切れたセッションも、証明を照合できれば元の本人に結び付けた新しい再認証へ進みます。古いセッション自体は延長・復活させません。異なる本人での認証は403です。証明ハッシュは期限切れ後24時間保持し、その間もAPI利用を許可しません。保持期間後に削除されたセッションは403となるため、呼び出し元は既知の期限を過ぎた保存済みセッションを破棄して再取得できます。誤った証明・呼出主体・プロファイルは403、真正でも期限切れ・失効済みなら利用を拒否します。開始回数の上限超過は429と`Retry-After: 60`を返します。
 
-初回も再利用時も、最終的なCM tokenとGraph本人IDの照合はAPIMで行います。`/v1/complete`が期待する本人との一致をSQL内で確認してからセッションを利用可能にします。セッションは購読・論理プロファイル・有効期限に結び付けます。
+初回も再利用時も、最終的なCM tokenとGraph本人IDの照合はAPIMで行います。`/v1/complete`が期待する本人との一致をSQL内で確認してからセッションを利用可能にします。セッションは検証済み購読またはユーザー・論理プロファイル・有効期限に結び付けます。キー経路とBearer経路のセッションは相互に流用せず、切替時に新しいセッションを取得します。
 
 SQLにある接続がCM側で削除・切断されていた場合は、保存版を照合して再認証状態へ戻し、同じプール・接続名を使って修復します。新規接続と再認証はMicrosoftの接続画面へ進み、本人照合済みの接続はそのまま再利用します。CMの不明な`Error`や一時障害だけを理由に、定期照合が接続消失と決め付けることはありません。
 
@@ -87,10 +93,12 @@ PYTHONPATH=. python -B -m unittest discover -s tests -v
 
 実RSA署名によるID token検証、MSALによるstate・nonce・PKCE生成、期限、更新応答の消失、並行更新、全失効、接続解除を検証します。未使用接続回収は、60日の境界、利用・認証・leaseとの競合、条件付きCM削除、404後の容量解放と再試行を制御した応答で確認します。偽cursorはSQL条件・引数・処理順を確認するもので、SQL Serverの行ロックや分離を実行した結果ではありません。
 
-実SQLテストは専用のローカルDBで行います。DB名は`egakumi_broker_test_`で始まるものだけを許可し、各ケースで`broker`のデータを消去します。空の専用DBへ`sql/001_initial.sql`、`sql/002_session_lifecycle.sql`、`sql/003_idle_connection_cleanup.sql`を順に適用し、接続文字列を保護された環境変数`BROKER_SQL_TEST_CONNECTION`へ外部から設定してください。秘密の値をコマンド例・Gitへ記載しません。
+実SQLテストは専用のローカルDBで行います。DB名は`egakumi_broker_test_`で始まるものだけを許可し、各ケースで`broker`のデータを消去します。空の専用DBへ`sql/001_initial.sql`、`sql/002_session_lifecycle.sql`、`sql/003_idle_connection_cleanup.sql`、`sql/004_verified_user_caller.sql`を順に適用し、接続文字列を保護された環境変数`BROKER_SQL_TEST_CONNECTION`へ外部から設定してください。秘密の値をコマンド例・Gitへ記載しません。
 
 ```sh
 PYTHONPATH=. python -B -m unittest discover -s tests -p 'test_session_sql.py' -v
 ```
 
 このテストは実トランザクションで期限境界・更新競合・失効・ロック待ちと、未使用接続回収と業務利用・再認証の競合を確認します。接続変数が未設定のSKIPを実SQLでのPASSへ換算しません。Azure上の権限とAPIMを通るMicrosoftサインインは、配備後の確認として分けます。
+
+SQL版3から4への実SQL移行・データ保持は未試験です。切り替え前後の既存キー用`cs2`の利用、Bearer本人接続、本人不一致・別主体セッションの拒否を専用SQLと実APIMの受入確認に含めます。

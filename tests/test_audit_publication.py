@@ -7,10 +7,12 @@ from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
 import test_contract_rate_publication as rate_fixture
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 from arm_helpers import DiscoveryExpression
 from configuration_fixtures import connection_fixture, configuration
 from deployment.helpers.diagnostics import canonical_settings
+from deployment.helpers.apim_audit import render_audit_policy
+from policy_fixture_paths import policy_fixture_path
 from bicep_helpers import compile_bicep
 
 CORE=Path(__file__).resolve().parents[1]
@@ -19,23 +21,81 @@ class AuditPublicationTests(unittest.TestCase):
  def setUp(self): self.parameters=copy.deepcopy(type(self).parameters)
  def evaluate(self,value,index=0):
   return PolicyExpression(value,self.template['variables'],functions=self.template['functions']).evaluate(self.parameters,index)
+ def test_shared_audit_subject_matches_python_renderer_in_published_trace_templates(self):
+  def structure(node):
+   text=node.text or ''
+   return (node.tag,tuple(sorted(node.attrib.items())),text if text.strip() else '',
+           tuple(structure(child) for child in node),(node.tail or '').strip())
+  directory=CORE/'apps/gateway/apim/policies'
+  marker='__AUDIT_SUBJECT_OBSERVATION_CSHARP__'
+  for filename,resource_name,source_marker,comment_mode in (
+    ('core-gateway-telemetry.xml','gatewayTelemetryFragment','__CORE_GATEWAY_TELEMETRY_CSHARP__','full'),
+    ('query-telemetry.xml','queryTelemetryFragment',marker,'compact')):
+   with self.subTest(template=filename):
+    raw=policy_fixture_path(directory,filename).read_text(encoding='utf-8')
+    self.assertIn(source_marker,raw)
+    expected=ET.fromstring(render_audit_policy(raw,source_comments=comment_mode))
+    value=self.template['resources'][resource_name]['properties']['value']
+    actual=self.evaluate(value) if value.startswith('[') else value
+    self.assertNotIn(source_marker,actual)
+    self.assertEqual(structure(ET.fromstring(actual)),structure(expected))
+  raw=(directory/'credential-telemetry.xml').read_text(encoding='utf-8')
+  self.assertIn(marker,raw)
+  expected=ET.fromstring(render_audit_policy(raw,source_comments='compact'))
+  actual=self.evaluate("[variables('credentialGatewayTelemetryBody')]")
+  self.assertNotIn(marker,actual)
+  self.assertEqual(structure(ET.fromstring('<fragment>'+actual+'</fragment>')),structure(expected))
+  expected_messages=[structure(node) for node in expected.findall('.//trace[@source="core-gateway"]')]
+  self.assertTrue(expected_messages)
+  for resource_name,filename in (('credentialConnectionFragment','credential-connection.xml'),
+    ('credentialSessionUseFragment','credential-session-use.xml'),
+    ('credentialConnectionOutboundFragment','credential-connection-outbound.xml')):
+   with self.subTest(fragment=resource_name):
+    source=ET.fromstring(render_audit_policy((directory/filename).read_text(encoding='utf-8'),source_comments='compact'))
+    source_messages=expected_messages+[structure(node) for node in source.findall('.//trace[@source="core-gateway"]')]
+    value=self.template['resources'][resource_name]['properties']['value']
+    actual=self.evaluate(value) if value.startswith('[') else value
+    self.assertNotIn(marker,actual)
+    messages=ET.fromstring(actual).findall('.//trace[@source="core-gateway"]')
+    self.assertTrue(messages)
+    for node in messages:
+     self.assertIn(structure(node),source_messages)
+     self.assertIn('"authenticatedSubject"',node.find('message').text)
+     self.assertIn('"requestContext"',node.find('message').text)
  def test_every_compiled_policy_has_expanded_audit_settings_and_backend_capture_before_base(self):
   for index,api in enumerate(self.parameters['apiDefinitions']):
-   value=self.evaluate("[variables('policyValues')[copyIndex()]]",index)
+   value=compiled_policy_value(self.template,self.parameters,index)
    with self.subTest(api=api['name']):
     self.assertNotIn('__AUDIT_',value)
     root=ET.fromstring(value)
     raw=root.find("inbound/set-variable[@name='gatewayAuditSettings']").attrib['value']
     settings=json.loads(base64.b64decode(raw.split('"')[1]))
-    self.assertEqual(settings['apiId'],api['name'])
+    control_raw=root.find("inbound/set-variable[@name='gatewayControlSettings']").attrib['value']
+    controls=json.loads(base64.b64decode(control_raw.split('"')[1]))
+    self.assertNotIn('__CONTROL_',value)
+    self.assertEqual(set(settings),{'serviceClass','backendService','backendAuthentication','operationBackends',
+      'llmOperationIds','websocketModel','targetAgent','measurementRole'})
+    self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds'})
+    self.assertEqual(controls['operationId'],'')
+    self.assertEqual(controls['operationConstraints'],api['authorization']['operationConstraints'])
+    expected=self.evaluate("[__bicep.tokenLimitOperations(parameters('apiDefinitions')[copyIndex()])]",index)
+    self.assertEqual(controls['tokenLimitOperationIds'],expected)
+    inbound=list(root.find('inbound'))
+    self.assertLess(inbound.index(root.find("inbound/set-variable[@name='gatewayControlSettings']")),
+      inbound.index(root.find('inbound/base')))
     self.assertEqual(settings['backendAuthentication'],'credentialConnection' if api.get('credentialConnection') else api['backendAuthentication']['mode'])
     self.assertEqual(settings['serviceClass'],api['serviceClass'])
     self.assertEqual(root.find('outbound')[0].attrib['fragment-id'],'core-backend-audit')
     if api['apiType'] in ('websocket','grpc','mcp'): self.assertIsNone(root.find('.//set-body'))
-  xml=self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]")
+  xml=compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies')
   raw=ET.fromstring(xml).find("inbound/set-variable[@name='gatewayAuditSettings']").attrib['value']
   settings=json.loads(base64.b64decode(raw.split('"')[1]))
   self.assertEqual(settings['measurementRole'],'facade'); self.assertEqual(settings['llmOperationIds'],[])
+  raw=ET.fromstring(xml).find("inbound/set-variable[@name='gatewayControlSettings']").attrib['value']
+  controls=json.loads(base64.b64decode(raw.split('"')[1]))
+  api=next(api for api in self.parameters['apiDefinitions'] if 'mcp' in api)
+  self.assertEqual(controls,{'operationId':api['mcp']['operationNames'][0],
+    'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[]})
  def test_effective_cm_authentication_metadata_does_not_change_the_authentication_or_route(self):
   # 実Bicepから生成したXMLを比較し、CMの監査表示だけが変わることを確認します。
   config=rate_fixture.configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'config')
@@ -44,7 +104,7 @@ class AuditPublicationTests(unittest.TestCase):
   index=len(self.parameters['apiDefinitions'])-1
   for enabled in (True,False):
    api['credentialConnection']['enabled']=enabled
-   value=self.evaluate("[variables('policyValues')[copyIndex()]]",index)
+   value=compiled_policy_value(self.template,self.parameters,index)
    root=ET.fromstring(value)
    node=root.find("inbound/set-variable[@name='gatewayAuditSettings']")
    settings=json.loads(base64.b64decode(node.attrib['value'].split('"')[1]))
@@ -90,12 +150,12 @@ class AuditPublicationTests(unittest.TestCase):
       self.assertNotRegex(value,r'(?:Request|Response)\s*\.\s*Body\b')
  def test_native_protocols_and_all_transitive_fragments_never_access_opaque_bodies(self):
   self.parameters.update(publishApis=True,l7IngressSecretIdentifier='',entraTenantId=self.config['entraTenantId'])
-  service=ET.fromstring((CORE/'apps/gateway/apim/policies/service.xml').read_text()
-    .replace('__L7_INGRESS_REQUIRED__','false').replace('__L7_INGRESS_EXPECTED__',''))
+  service=ET.fromstring(render_audit_policy((CORE/'apps/gateway/apim/policies/service.xml').read_text()
+    .replace('__L7_INGRESS_REQUIRED__','false').replace('__L7_INGRESS_EXPECTED__','')))
   native_count=0
   for index,api in enumerate(self.parameters['apiDefinitions']):
    if api['apiType'] not in ('websocket','grpc'):continue
-   root=ET.fromstring(self.evaluate("[variables('policyValues')[copyIndex()]]",index))
+   root=ET.fromstring(compiled_policy_value(self.template,self.parameters,index))
    graph=self.expanded_fragment_graph(root)
    self.assertTrue({'core-audit-context','core-backend-audit','core-gateway-telemetry','core-rate-limit'} <= set(graph))
    self.assertNotIn('core-audit-body-model',graph)
@@ -104,7 +164,7 @@ class AuditPublicationTests(unittest.TestCase):
   self.assertGreaterEqual(native_count,2)
  def test_http_extracts_model_before_common_audit_and_mcp_does_not_import_that_reader(self):
   for index,api in enumerate(self.parameters['apiDefinitions']):
-   root=ET.fromstring(self.evaluate("[variables('policyValues')[copyIndex()]]",index))
+   root=ET.fromstring(compiled_policy_value(self.template,self.parameters,index))
    ids=[node.attrib['fragment-id'] for node in root.findall('inbound/include-fragment')]
    if api['apiType']=='http':
     self.assertIn('core-audit-body-model',ids)
@@ -120,14 +180,14 @@ class AuditPublicationTests(unittest.TestCase):
        self.assertEqual(node.attrib.get('name'),'gatewayRateLimitExempt')
     self.assert_body_free_nodes(graph)
   # REST由来MCP facadeにも、HTTPモデル本文抽出fragmentを推移的に持ち込まない。
-  facade=ET.fromstring(self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]"))
+  facade=ET.fromstring(compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies'))
   graph=self.expanded_fragment_graph(facade)
   self.assertNotIn('core-audit-body-model',graph)
   self.assert_body_free_nodes(graph)
 
  def test_generated_mcp_argument_guard_preserves_input_and_only_builds_a_fixed_error(self):
   """本文を監査せず、PII引数の検査とJSON-RPCエラー生成だけに使う。"""
-  facade=ET.fromstring(self.evaluate("[variables('mcpPolicyValues')[copyIndex()]]"))
+  facade=ET.fromstring(compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies'))
   readers=[]
   for node in facade.iter():
    values=[*node.attrib.values(),node.text or '']

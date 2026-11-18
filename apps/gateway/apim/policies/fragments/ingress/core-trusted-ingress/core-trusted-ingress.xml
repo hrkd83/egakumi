@@ -1,0 +1,26 @@
+<fragment>
+  <!-- 目的：HTTP要求が、WAFで検査するAppGW入口を通ったことを確認します。利用者の認証は後続の共通認証処理で行います。 -->
+  <!-- 処理：入口確認が必要なHTTP要求だけを検査します。専用gRPCとして設定された要求は、この検査を通さず後続へ進めます。 -->
+  <choose id="core-trusted-ingress">
+    <when condition="@{
+        __CORE_TRUSTED_INGRESS_CSHARP__
+      }">
+      <!-- 処理：入口ヘッダーの欠落・不一致・重複を検出したので、STEP1の要求情報と拒否理由を監査へ記録します。 -->
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="TRUSTED_INGRESS_REQUIRED" />
+      <set-variable name="gatewayAuditStatus" value="@(403)" />
+      <!-- 監査コードの再利用：
+           配備時に、core-gateway-telemetry.xmlと同名C#の監査コードを、この位置へ展開します。
+           Azureには展開済みのコードが登録され、入口が不正な要求だけをここで監査記録します。
+           フラグメント内から別のフラグメントは呼べないため、ソースを再利用して組み込みます。 -->
+      __AUTHENTICATION_TELEMETRY_XML__
+      <!-- 処理：403とログ照合用の要求IDを返し、認証やバックエンド接続へ進まずに終了します。検査に合格した要求は、この分岐を実行しません。 -->
+      <return-response>
+        <set-status code="403" reason="Trusted ingress required" />
+        <set-header name="apim-request-id" exists-action="override">
+          <value>@(context.RequestId.ToString())</value>
+        </set-header>
+      </return-response>
+    </when>
+  </choose>
+</fragment>

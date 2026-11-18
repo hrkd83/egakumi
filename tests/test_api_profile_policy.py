@@ -211,6 +211,19 @@ class ProfilePolicyTests(unittest.TestCase):
                 cases.append(case(label + "-reject-" + suffix, **{**base, **patch}))
             cases.append(case(label + "-other-api", **{**base, "api": "another-api", "query": {"provider-option": "synthetic"}, "headers": {"Content-Type": "text/plain"}}))
             cases.append(case(label + "-other-operation", **{**base, "path": "/different-operation", "query": {"provider-option": "synthetic"}}))
+        cls.responses_call_id_body = {**native_body, "input": [
+            {"type": "function_call", "call_id": "call_synthetic_0x41424344", "name": "synthetic_tool", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call_synthetic_0x41424344", "output": "Synthetic result"}]}
+        correlation = {"config": inference, "api": "openai-inference-v1", "operation": "responses-create",
+                       "path": "/responses", "body": cls.responses_call_id_body,
+                       "headers": {"Content-Type": "application/json"}}
+        cases.append(case("responses-call-id-native", **correlation))
+        for suffix, patch in (
+            ("query", {"query": {"input.call_id": "call_synthetic_0x41424344"}}),
+            ("duplicate-query", {"query": {"input.call_id": ["call_synthetic_0x41424344", "call_synthetic_other"]}}),
+            ("query-before-body", {"query": {"input.call_id": "call_synthetic_0x41424344"}, "rawBody": "{"}),
+        ):
+            cases.append(case("responses-call-id-reject-" + suffix, **{**correlation, **patch}))
         multipart = ('--synthetic-image-boundary\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n'
             'Keep the synthetic <script> example as text.\r\n--synthetic-image-boundary\r\n'
             'Content-Disposition: form-data; name="image"; filename="synthetic.png"\r\n'
@@ -505,6 +518,23 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 else:
                     self.assertTrue(result["targetAllowed"], name)
                 self.assertIn("provider_extension", json.loads(result["bodyAfter"]))
+
+    def test_response_call_ids_preserve_tool_pairs_and_do_not_admit_same_name_query(self):
+        result = self.results["responses-call-id-native"]
+        self.assertTrue(result["requestAllowed"])
+        for stage in ("profile", "decision", "limits"):
+            self.assertTrue(result[stage]["allowed"], stage)
+        self.assertTrue(result["targetAllowed"])
+        body = json.loads(result["bodyAfter"])
+        self.assertEqual(body, self.responses_call_id_body)
+        self.assertEqual(body["input"][0]["call_id"], body["input"][1]["call_id"])
+        for suffix in ("query", "duplicate-query", "query-before-body"):
+            rejected = self.results["responses-call-id-reject-" + suffix]
+            with self.subTest(case=suffix):
+                self.assertFalse(rejected["requestAllowed"])
+                self.assertEqual(rejected["reads"], 0)
+                self.assertEqual(rejected["bodyAfter"], "{" if suffix == "query-before-body"
+                                 else json.dumps(self.responses_call_id_body, separators=(",", ":")))
 
     def test_inference_contract_rejection_is_audited_after_authentication(self):
         root = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").getroot()

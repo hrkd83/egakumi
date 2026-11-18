@@ -61,8 +61,8 @@ python3 scripts/deploy_gateway.py \
 1. 共通基盤の実IDを確認し、認証窓口の公開ソースだけを既存管理VMへ転送する。params・secrets・個人セッションはイメージへ含めない。
 2. 管理VMへACRスコープの組み込み`AcrPush`を一時付与し、イメージを作成して非公開ACRへ登録する。実際のdigestを取得し、そのビルドで作成した一時Run Commandと一時権限を回収する。
 3. credentials DB、認証窓口の実行用ID、CMプロバイダー・必要な組み込みロール、専用鍵とAPIMの名前付きの値・バックエンドを配備する。
-4. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。本人対応とCMプールは保持する。本人セッションv2へ初めて切り替える際は`002_session_lifecycle.sql`が旧取引・旧セッションを無効化し、セッション関連テーブルを新定義へ置き換える。v2配備の通常再試行では有効なセッションを初期化し直さない。`003_idle_connection_cleanup.sql`はスキーマ版3として未使用接続回収と割当処理を更新し、既存の`LastUsedAt`を巻き戻さず保持する。
-5. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
+4. 同じdigestのSQL初期化ジョブを実行し、テーブル・プール台帳・実行用IDのSQL権限を準備する。本人対応とCMプールは保持する。本人セッションv2へ初めて切り替える際は`002_session_lifecycle.sql`が旧取引・旧セッションを無効化し、セッション関連テーブルを新定義へ置き換える。v2配備の通常再試行では有効なセッションを初期化し直さない。`003_idle_connection_cleanup.sql`はスキーマ版3として未使用接続回収と割当処理を更新し、既存の`LastUsedAt`を巻き戻さず保持する。`004_verified_user_caller.sql`はスキーマ版4としてユーザー主体用の`CallerId`列を追加し、既存の購読・取引・セッション・CM接続を保持する。
+5. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。新しいStartup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を毎回検査する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
 6. API・バックエンド・Product・購読・ポリシーを登録する。必要な診断ログと初期サンプルの整理も行う。
 
 本人接続を使わない設定では認証窓口の配備を省略し、APIの登録を行う。`apiDefinitions: []`は標準19 APIを意味する。APIを公開する実行には`publishApis: true`が必要。
@@ -90,6 +90,8 @@ API登録は手順4に含まれるため、別の登録コマンドは不要。�
 - 同じ人で2回サインインし、CM接続数が増えないこと。
 - 別の人では別の接続になること。
 - 別購読のセッションを使用すると拒否されること。
+- 更新前後で既存のキー認証と保存済み`cs2`セッションが利用できること。
+- GatewayのBearer認証でも同じGraph APIを呼べること。CMでGatewayと異なる本人へサインインすると拒否され、別利用者やキー経路のセッションを流用できないこと。
 - CMの切断・削除時に他の資格情報へ切り替わらず、再認証が必要になること。
 - DBへの到達不能時に、本人接続APIが利用を許可しないこと。
 - キー不正・権限不足・SQLや外部通信の障害を認証のやり直しに置き換えないこと。
@@ -107,6 +109,16 @@ SQLの主要テーブルは`broker.Pools`、`broker.Connections`、`broker.Trans
 
 初めて`002_session_lifecycle.sql`を適用する既存DBでは、セッション関連定義の変更と旧取引・旧セッションの無効化を伴う。保守時間を確保してSQL→Broker→APIMまで同じ資材で更新し、本人接続を再認証する。適用済みmigrationの通常再配備では、この初期化を繰り返さない。
 
+### ユーザー主体対応への切り替え
+
+`004_verified_user_caller.sql`はデータを保持する追加移行であり、002で行う旧セッションの無効化は繰り返さない。ただし、旧Brokerはスキーマ版を正確に3と照合するため、SQLを版4へ更新した時点で旧Brokerのhealthは失敗する。対応版Brokerも正確に版4と必要列を照合する。この切り替えには保守時間を確保し、同じGatewayソース・paramsで**SQL→対応版Broker imageと定期照合ジョブ→APIMポリシー**の順に更新する。進行中の旧照合ジョブも終了を確認する。
+
+APIだけを更新する処理は、対応するReadiness probeと最新Ready revisionの実health・imageをAzureから読み合わせる。旧runtimeや未完了のSQL移行では、APIMやFirewallを書き換える前に停止する。SQL移行をAPIだけの配備で代用しない。
+
+SQL版4への移行後、旧imageだけへ戻しても旧Brokerのhealthは回復しない。対応版のSQL・image・定期ジョブを揃えて同じparamsから再試行し、前進して復旧する。DBを戻す判断が必要な場合は、本書の時点復元手順に従う。SQLの復元はCM側の状態を巻き戻さない。
+
+既存キー用の`cs2`は保持する。Bearer利用へ切り替えるときは、その検証済みユーザーに結び付く新しい`cs2`を取得する。同じテナント・本人のCM接続は再利用するが、キー用とユーザー用のセッションは相互に流用できない。SQL版3から4への移行は実SQLでは未試験であり、配備前に専用SQLで移行・データ保持・既存キーの継続利用を確認する。
+
 SQLの実行用ユーザーはマネージドIDのクライアントIDをSIDとして登録する。Azure RBACの割当で使うオブジェクトIDとは用途が異なる。[Microsoft公式のCREATE USERの例](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-user-transact-sql?view=azuresqldb-current#k-create-a-contained-database-user-from-a-microsoft-entra-principal-without-validation)に従う。
 
 既存の照合ジョブは毎時17分にCMとSQLを突き合わせ、消失・切断した接続を利用未確認に戻す。同じジョブで60日未使用の接続も回収し、Entra同期や追加ジョブは作らない。CM側だけの接続、pool上限、照合不能は件数として調査し、観測だけで容量を解放しない。
@@ -119,7 +131,7 @@ SQLの実行用ユーザーはマネージドIDのクライアントIDをSIDと�
 
 CM側だけに残る接続を確認したpoolは`broker.Pools.AllocationBlocked=1`として、新規割当を止める。CMの実在接続・本人対応表・`Allocated`件数を運用者が照合・修復してから解除する。通常の照合や`migrate`では解除しない。既存の正常な接続はGraph本人照合を継続する。
 
-`loginCallsPerMinute`は購読単位の開始回数制限である。同時サインイン数、SQLの待ち時間、CM管理APIの制限を測定して設定する。`pool.count × pool.capacity`は保管枠であり、同時処理性能の保証ではない。
+`loginCallsPerMinute`は検証済み購読またはユーザー単位の開始回数制限である。同時サインイン数、SQLの待ち時間、CM管理APIの制限を測定して設定する。`pool.count × pool.capacity`は保管枠であり、同時処理性能の保証ではない。
 
 SQLの時点復元はCMを巻き戻さない。次の順で復旧する。
 

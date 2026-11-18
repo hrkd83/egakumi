@@ -1,0 +1,10 @@
+<fragment>
+  <!-- 目的：STEP4で確認した購読または社員を、各APIの利用許可とは別に監査で追跡できるようにします。 -->
+  <!-- 処理：認証完了と識別情報を照合し、確認済み・未確認・不整合を区別したJSONをgatewayAuthenticatedSubjectへ保存します。 -->
+  <!-- 生成：同名C#の本文を下のマーカーへ展開し、説明コメントも含めてAzureのcore-audit-authenticated-subjectへ登録します。 -->
+  <!-- 補足：ここでは監査データを準備します。ログ出力は後続の監査処理が担当し、この部品は本文・生トークンを再読したり、要求を拒否したりしません。 -->
+  <set-variable id="core-audit-authenticated-subject" name="gatewayAuthenticatedSubject" value="@{
+      __CORE_AUTHENTICATED_SUBJECT_CSHARP__
+      return authenticatedSubject.ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+</fragment>

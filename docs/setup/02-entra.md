@@ -2,7 +2,9 @@
 
 [← 01. 前提を確認する](01-prerequisites.md) · [次へ：03. 公開DNSを準備する →](03-public-dns.md)
 
-業務APIの共通入口はAPIM購読キーです。モデル・PII等の基本利用と、APIMのマネージドIDからFoundryへ接続する通信は、この章のアプリ登録を前提にしません。本人のGraph接続、Portalへのサインイン、Portalでのグループ所有APIキー管理には、同じ単一テナントのEntraアプリ`AI Gateway Platform`を使います。
+API向けアクセストークン認可の追加準備は[02a. egakumi-apiを登録する](02a-entra-api.md)、PC上のOAuthクライアントは[02b. egakumi-codexを登録する](02b-entra-codex.md)を参照してください。現在のPortal・CM・本人確認は本ページの共用構成を使用し、アプリの登録だけではAPIMのBearer認可へ切り替わりません。
+
+業務APIの入口は既定でAPIM購読キーです。MI認証のFoundry OpenAI HTTP Chat／Responsesでは、[認可設定](04-params.md)により対象APIへ同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象環境への反映・接続受入は別途確認し、この手順を特定環境の完了記録として扱いません。購読キーによるモデル・PII等の基本利用と、APIMのマネージドIDからFoundryへ接続する通信は、この章のアプリ登録を前提にしません。本人のGraph接続、Portalへのサインイン、Portalでのグループ所有APIキー管理には、同じ単一テナントのEntraアプリ`AI Gateway Platform`を使います。
 
 通常の`azd up`はGatewayとPortalを両方配備するため、構築担当者は本章の共用アプリを準備します。API利用者が購読キーでモデルを呼び出すために、利用者ごとの追加アプリ登録を行う必要はありません。
 

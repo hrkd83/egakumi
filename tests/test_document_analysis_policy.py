@@ -95,6 +95,8 @@ public static class DocumentFixture {
  }
  static Context New(JObject item) {
   var c=new Context();
+  SetKey(c);
+  if ((bool?)item["user"]==true) SetUser(c);
   c.Variables["documentSettings"]=__SETTINGS__;
   c.Variables["documentBaseUrl"]=__BASE__;
   c.Variables["documentModel"]=(string)item["model"]??"prebuilt-layout";
@@ -105,6 +107,16 @@ public static class DocumentFixture {
   c.Response.Headers["Retry-After"]=new[]{(string)item["retry"]??""};
   if ((bool?)item["nullResponse"]==true) c.Response=null;
   return c;
+ }
+ static void SetKey(Context c) {
+  c.Subscription=new Named{Id="synthetic-owner"};
+  c.Variables["gatewayDecision"]=new JObject(new JProperty("allowed",true),new JProperty("method","subscriptionKey"),new JProperty("callerId","subscription:synthetic-owner")).ToString();
+ }
+ static void SetUser(Context c,string tenant="11111111-1111-4111-8111-111111111111",string principal="22222222-2222-4222-8222-222222222222") {
+  c.Subscription=null; var caller="user:"+tenant+":"+principal;
+  c.Variables["gatewayEntraAuthenticationValidated"]=true;
+  c.Variables["gatewayUserAuthentication"]=new JObject(new JProperty("tenantId",tenant),new JProperty("principalId",principal),new JProperty("callerId",caller)).ToString();
+  c.Variables["gatewayDecision"]=new JObject(new JProperty("allowed",true),new JProperty("method","user"),new JProperty("callerId",caller),new JProperty("verifiedTenantId",tenant),new JProperty("verifiedPrincipalId",principal)).ToString();
  }
  public static string Run(string input) {
   var results=new JObject();
@@ -135,6 +147,11 @@ public static class DocumentFixture {
     if(mutation=="api")c.Api.Id="other-api";
     if(mutation=="backend")c.Variables["documentBaseUrl"]="https://other.example.com";
     if(mutation=="anonymous")c.Subscription=null;
+    if(mutation=="other-user")SetUser(c,principal:"33333333-3333-4333-8333-333333333333");
+    if(mutation=="other-tenant")SetUser(c,tenant:"44444444-4444-4444-8444-444444444444");
+    if(mutation=="user-to-key")SetKey(c);
+    if(mutation=="key-to-user")SetUser(c);
+    if(mutation=="unvalidated-user")c.Variables["gatewayEntraAuthenticationValidated"]=false;
     if(mutation=="altered")ticket=ticket.Substring(0,ticket.Length-1)+(ticket.EndsWith("A")?"B":"A");
     if(mutation=="model-unresigned") { claims["model"]="prebuilt-read"; ticket=Encode(claims.ToString(Formatting.None))+"."+ticket.Split('.')[1]; }
     if(mutation=="model") { claims["model"]="unapproved-model"; ticket=Sign(claims); }
@@ -204,6 +221,9 @@ class DocumentAnalysisPolicyTests(unittest.TestCase):
             {'id': 'start-anonymous', 'mode': 'start', 'anonymous': True}])
         for mutation in ('', 'caller', 'api', 'backend', 'anonymous', 'job', 'altered', 'model-unresigned', 'model', 'audience', 'domain', 'future', 'lifetime', 'expired', 'malformed', 'oversize', 'query'):
             cls.cases.append({'id': 'owner-' + (mutation or 'valid'), 'mode': 'owner', 'mutation': mutation})
+        for mutation in ('', 'other-user', 'other-tenant', 'user-to-key', 'unvalidated-user'):
+            cls.cases.append({'id': 'user-owner-' + (mutation or 'valid'), 'mode': 'owner', 'user': True, 'mutation': mutation})
+        cls.cases.append({'id': 'key-to-user', 'mode': 'owner', 'mutation': 'key-to-user'})
         for name, body, status in [('success', analysis_result(), 200), ('running', {'status': 'running'}, 200),
                 ('not-started', {'status': 'notStarted'}, 200), ('failed', {'status': 'failed', 'error': {'message': 'SENTINEL_PRIVATE'}}, 200),
                 ('canceled', {'status': 'canceled'}, 200), ('wrong-version', analysis_result(apiVersion='preview'), 200),
@@ -303,6 +323,13 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             self.assertEqual(set(json.loads(result['result'])), {'error', 'requestId'})
             self.assertNotIn('SENTINEL', result['result'])
         self.assertEqual(self.results['poll-throttle']['retryAfter'], 23)
+
+    def test_user_job_is_bound_to_tenant_and_person_across_token_refresh(self):
+        """本人だけが結果を取得でき、別人・別tenant・認証方式変更を拒否する。"""
+        self.assertEqual(self.results['user-owner-valid']['status'], 200)
+        for mutation in ('other-user', 'other-tenant', 'user-to-key', 'unvalidated-user'):
+            self.assertEqual(self.results['user-owner-' + mutation]['status'], 403)
+        self.assertEqual(self.results['key-to-user']['status'], 403)
 
     def test_response_budget_includes_native_and_final_public_envelopes(self):
         for delta in (-1, 0):

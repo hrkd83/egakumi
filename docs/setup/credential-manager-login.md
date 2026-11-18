@@ -1,18 +1,20 @@
 # APIからCredential Managerの本人接続を使う
 
-本人接続セッションv2の契約。Graph等の業務APIへ購読キーで要求し、必要なときだけMicrosoft認証を案内する。有効なセッションを保存していれば、通常の継続利用で認証画面を開かない。Portal自身のBetter Authセッションとは別の仕組みである。
+本人接続セッションv2の契約。Graph等の業務APIへ購読キーまたはGateway向けユーザーアクセストークンで要求し、必要なときだけMicrosoft認証を案内する。有効なセッションを保存していれば、通常の継続利用で認証画面を開かない。Portal自身のBetter Authセッションとは別の仕組みである。
 
 ## 保存先と役割
 
 | 情報・処理 | 担当 |
 | --- | --- |
 | アクセストークン・リフレッシュトークンの保存と更新 | APIM Credential Manager（CM） |
-| 本人・購読・CM接続・セッション・期限・失効の対応 | Azure SQLのbroker台帳 |
+| 本人・検証済み購読またはユーザー主体・CM接続・セッション・期限・失効の対応 | Azure SQLのbroker台帳 |
 | Microsoft本人確認、Graph本人照合、接続再利用とプール割当 | APIMと内部credential broker |
 | 購読キー・接続セッション・更新候補・短命の取引情報 | 呼び出しアプリのバックエンド |
 | 認証URLの表示、完了確認、保存更新、元要求の再開 | 呼び出しアプリ |
 
-本人は検証済みの`tenantId + oid`で識別する。UPN申告だけで本人を確定しない。アプリ自身が検証したログイン利用者と、認証完了応答の`tenantId + ownerId`を比較し、別利用者のセッションを使い回さない。保存先も`Gateway origin + 購読ID + 論理プロファイル + 検証済みtid/oid`で分離する。
+本人は検証済みの`tenantId + oid`で識別する。UPN申告だけで本人を確定しない。アプリ自身が検証したログイン利用者と、認証完了応答の`tenantId + ownerId`を比較し、別利用者のセッションを使い回さない。保存先も`Gateway origin + 検証済み購読IDまたはユーザー主体 + 論理プロファイル + 検証済みtid/oid`で分離する。
+
+Bearer利用では、APIMが検証した`user:<TENANT_ID>:<OBJECT_ID>`を呼出主体とし、CMの認証開始時からその本人を固定する。CMでサインインした本人と、業務APIが照合した本人が一致するときだけ許可する。購読キーからBearerへ切り替える場合はユーザー主体用の新しい`cs2`を取得する。同じ本人のCM接続は再利用できるが、キー用とユーザー用のセッションは相互に流用できない。
 
 ## 有効期限と設定
 
@@ -40,6 +42,7 @@
 | 旧値の猶予 | 更新確定から固定5分。並行利用や再試行で延長しない |
 | 更新引き渡し猶予 | 更新要求後10分を過ぎると、業務実行前に`SessionUpdateRequired`を返す |
 | 候補の期限 | 10分。失われた候補から平文を復元・再取得しない |
+| 認証開始回数 | `loginCallsPerMinute`。検証済み購読またはユーザーごとに、startとchallengeの直近60秒間の合計を制限 |
 
 実際の期限は`min(最終業務利用 + 無操作期限, 認証完了 + 最長期限)`。SQLで期限・失効を確認してから更新する。期限切れ・失効・改ざんを延長・復活させない。期限設定は認証完了時のセッションへ記録され、設定変更だけで既存セッションの最長期限を変更しない。
 
@@ -68,12 +71,12 @@
 
 ## 初回認証
 
-1. バックエンドから業務APIへ購読キーを付ける。保存済みの接続セッションは`X-Core-Connection-Session`で送る。
+1. バックエンドから業務APIへ購読キーまたは`Authorization: Bearer <GATEWAY_ACCESS_TOKEN>`を付ける。保存済みの接続セッションは`X-Core-Connection-Session`で送る。
 2. 有効な場合は、CMのトークンとGraph本人IDを照合し、そのまま業務APIを実行する。
 3. 認証が必要な場合はHTTP409の`authentication`を受け取る。
 4. **バックエンドは仮セッションと取引を、呼び出し元の検証済み本人に対応付けて永続保存してから、`loginUrl`だけを利用者へ表示する。** 仮セッションは本人確認完了前には利用できない。
 5. 利用者がMicrosoft認証を終える。CM接続と本人の一致確認後に、初めてセッションが有効になる。
-6. バックエンドが購読キーと`X-Core-Connection-Poll: <pollSecret>`で`statusUrl`を確認する。完了応答の本人IDをアプリの利用者と照合する。
+6. バックエンドが開始時と同じ呼出主体の購読キーまたはBearerと、`X-Core-Connection-Poll: <pollSecret>`で`statusUrl`を確認する。完了応答の本人IDをアプリの利用者と照合する。
 7. 保存済み仮値を有効な接続セッションとして扱い、取引秘密を保存先から除去する。元の読み取りGETを一度再開する。
 
 ```json
@@ -156,7 +159,7 @@ Content-Type: application/json
 | `POST /auth/connections/logout-all` | 有効な本人セッションから確定した本人の全セッションを失効 |
 | `POST /auth/connections/disconnect` | 対象本人接続と関連セッションをSQLで利用禁止にしてからCM接続を削除 |
 
-いずれも購読キーと`X-Core-Connection-Session`を使用する。自由入力UPNやObject IDで対象を選ばせない。現行値・旧値・候補は同じ失効に従う。アプリ側でも保存値を削除する。SQLで毎回確認するため失効は次の要求から反映するが、既に開始した下流処理の取り消しは保証しない。
+いずれも開始時と同じ呼出主体の購読キーまたはBearerと、`X-Core-Connection-Session`を使用する。更新確定のHTTP例も、Bearer利用時は`api-key`を`Authorization: Bearer <GATEWAY_ACCESS_TOKEN>`へ置き換える。自由入力UPNやObject IDで対象を選ばせない。現行値・旧値・候補は同じ失効に従う。アプリ側でも保存値を削除する。SQLで毎回確認するため失効は次の要求から反映するが、既に開始した下流処理の取り消しは保証しない。
 
 CMの確定した更新不能・接続失効は認証案内へ戻す。一時的なCM/Graph障害、通常のGraph権限不足、基盤のclient secret期限切れを、利用者の再認証ループへ置き換えない。未知のCM状態は503として停止する。Entraの条件付きアクセス・MFA要求を無視しない。現在のCMログインリンクAPIでは任意claimsの引き渡しを保証できないため、Graphのclaims challengeは403`ConnectionClaimsRequired`で利用を停止する。自動ログインを繰り返して解決したことにはしない。claims要求をCMのフローで満たせる範囲は、実テナントの受入試験で確認する。
 
@@ -183,6 +186,10 @@ python3 scripts/credential_client.py \
 ## 配備時の切り替え
 
 旧`transactionId.pollSecret`形式を受け入れる互換処理は作らない。SQL初期化でセッション関連定義をv2へ切り替え、旧取引・旧セッションを無効化する。CM接続・本人とプールの対応は保持する。SQL→Broker→APIMの順で、同じGateway資材から配備する。[SQL配備と復旧](credential-sql.md)を参照する。
+
+ユーザー主体対応の`004_verified_user_caller.sql`は、既存のキー用`cs2`・取引・CM接続を保持する追加移行である。旧BrokerはSQL版3を正確に照合するため、版4のSQLへ移行した後はhealthが失敗する。保守時間内に**SQL版4→対応版Broker imageと定期照合ジョブ→APIMポリシー**まで同じソース・paramsで更新する。APIだけの更新は、対応probeと最新Ready revisionのhealth・実imageが揃わなければ書込み前に停止する。
+
+SQL移行後に旧imageだけへ戻しても復旧しない。対応版で前進して再試行するか、必要なら[SQLの時点復元](credential-sql.md#運用と復旧)を実施する。CMはSQLと一緒に巻き戻らない。実SQLでの版3→4移行は未試験であり、既存キーの継続利用、Bearer本人接続、本人不一致・別主体セッションの拒否を配備前後に確認する。
 
 ## APIMポリシーの定義場所
 

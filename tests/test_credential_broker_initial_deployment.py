@@ -111,8 +111,18 @@ class InitialDeploymentTests(unittest.TestCase):
             path = 'sql/003_idle_connection_cleanup.sql'
             self.assertIn(path, archive.getnames())
             self.assertEqual(archive.extractfile(path).read(),
-                             (ROOT / 'apps/gateway/credential-broker' / path).read_bytes())
+                             (ROOT / 'apps/gateway/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
             self.assertIn(b"Version=3", archive.extractfile(path).read())
+
+    def test_user_caller_contract_and_schema_ship_together_without_test_sources(self):
+        data, _ = image.source_bundle()
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+            for path in ('credential_broker/caller.py', 'sql/004_verified_user_caller.sql'):
+                self.assertIn(path, archive.getnames())
+                self.assertEqual(archive.extractfile(path).read(),
+                                 (ROOT / 'apps/gateway/credential-broker' / path).read_bytes())
+            self.assertNotIn('tests/test_verified_user_caller.py', archive.getnames())
+            self.assertIn(b'Version=4', archive.extractfile('sql/004_verified_user_caller.sql').read())
 
     def test_build_receipt_reuse_requires_same_source_environment_and_successful_cleanup(self):
         config, state = fixture()

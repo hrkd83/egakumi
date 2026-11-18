@@ -611,7 +611,7 @@ class SubscriptionProfileBicepTests(unittest.TestCase):
 
 class SubscriptionProfileGatewayContractTests(unittest.TestCase):
     def test_actual_compiled_gateway_policies_satisfy_the_activation_check(self):
-        from arm_helpers import PolicyExpression
+        from arm_helpers import compiled_policy_value
         from test_api_protocols import bound_external_coverage, configuration
 
         template = compile_bicep('apps/gateway/apim/api-publication.bicep')
@@ -622,8 +622,7 @@ class SubscriptionProfileGatewayContractTests(unittest.TestCase):
         protocols = set()
         for index, api in enumerate(parameters['apiDefinitions']):
             with self.subTest(name=api['name'], api_type=api['apiType']):
-                xml = PolicyExpression("[variables('policyValues')[copyIndex()]]", template['variables'],
-                    functions=template.get('functions', [])).evaluate(parameters, index)
+                xml = compiled_policy_value(template, parameters, index)
                 profiles._profile_policy_ready(xml)
                 protocols.add(api['apiType'])
         self.assertTrue({'http', 'websocket'}.issubset(protocols))

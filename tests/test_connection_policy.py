@@ -1,10 +1,12 @@
 """CM 接続の追加条件と下流エラー変換の公開契約を検証する。"""
+import base64
 import json
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
 from deployment.helpers import credential_login
 from test_credential_login import settings
+from policy_fixture_paths import policy_fixture_path
 
 CORE=Path(__file__).resolve().parents[1]
 POLICIES=CORE/"apps/gateway/apim/policies"
@@ -13,14 +15,15 @@ POLICIES=CORE/"apps/gateway/apim/policies"
 class ConnectionPolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        telemetry=(POLICIES/"gateway-telemetry.xml").read_text(encoding="utf-8").replace("<fragment>","").replace("</fragment>","")
+        telemetry=policy_fixture_path(POLICIES,"core-gateway-telemetry.xml").read_text(encoding="utf-8").replace("<fragment>","").replace("</fragment>","")
         cls.inbound=ET.fromstring(credential_login.render_connection("credential-connection.xml",settings(),telemetry))
         cls.use=ET.fromstring(credential_login.render_connection("credential-session-use.xml",settings(),telemetry))
         cls.outbound=ET.fromstring(credential_login.render_connection("credential-connection-outbound.xml",settings(),telemetry))
 
     def test_subscription_session_selection_precedes_cm_acquisition(self):
         children=list(self.inbound)
-        self.assertEqual(children[0].get("name"),"gatewayConnectionSelection")
+        self.assertEqual(children[0].get("name"),"credentialCallerId")
+        self.assertEqual(children[1].get("name"),"gatewayConnectionSelection")
         acquire=self.inbound.find(".//get-authorization-context")
         session=self.inbound.find(".//send-request[@response-variable-name='gatewayConnectionSessionResponse']")
         self.assertIsNotNone(session)
@@ -63,7 +66,10 @@ class ConnectionPolicyTests(unittest.TestCase):
         auth=branch.find('choose/when')
         self.assertIn('409',auth.get('condition'))
         request=auth.find('send-request')
-        self.assertEqual(request.find("set-header[@name='X-Core-Subscription-Id']/value").text,'@(context.Subscription.Id)')
+        self.assertIn('context.Subscription.Id',request.find("set-header[@name='X-Core-Subscription-Id']/value").text)
+        caller=request.find("set-header[@name='X-Core-Caller-Id']")
+        self.assertIn('credentialCallerId',caller.find('value').text)
+        self.assertIn('delete',caller.get('exists-action'))
         body=request.find('set-body').text
         self.assertIn('selection["profileName"]',body)
         self.assertIn('gatewayConnectionRequestSession',body)
@@ -74,11 +80,26 @@ class ConnectionPolicyTests(unittest.TestCase):
 
     def test_twelve_pool_fragments_fit_the_apim_fragment_size_limit(self):
         from test_credential_pool_deployment import configured
-        telemetry=(POLICIES/'gateway-telemetry.xml').read_text(encoding='utf-8').replace('<fragment>','').replace('</fragment>','')
+        telemetry=policy_fixture_path(POLICIES,'core-gateway-telemetry.xml').read_text(encoding='utf-8').replace('<fragment>','').replace('</fragment>','')
         for filename in ('credential-connection.xml','credential-session-use.xml','credential-connection-outbound.xml'):
             rendered=credential_login.render_connection(filename,credential_login.settings(configured()),telemetry)
             self.assertLess(len(rendered.encode('utf-8')),32768,filename)
             self.assertNotIn('__CREDENTIAL_',rendered)
+
+    def test_provider_growth_does_not_expand_the_connection_validation_expression(self):
+        from test_credential_pool_deployment import configured
+        roots=[self.inbound,ET.fromstring(credential_login.render_connection(
+            'credential-connection.xml',credential_login.settings(configured())))]
+        values=[]
+        for root in roots:
+            constant=root.find(".//set-variable[@name='gatewayConnectionProviderSettings']").get('value')
+            self.assertFalse(constant.startswith('@'))
+            self.assertIn('providers',json.loads(base64.b64decode(constant)))
+            validation=root.findall(".//set-variable[@name='gatewayConnectionSelection']")[1].get('value')
+            self.assertIn('context.Variables["gatewayConnectionProviderSettings"]',validation)
+            self.assertNotIn(constant,validation)
+            values.append(validation)
+        self.assertEqual(values[0],values[1])
 
     def test_cm_token_only_replaces_the_downstream_authorization_header(self):
         header=self.use.find("set-header[@name='Authorization']")

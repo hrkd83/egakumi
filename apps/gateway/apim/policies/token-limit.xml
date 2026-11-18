@@ -1,11 +1,33 @@
 <fragment>
   <!-- トークン制限はOpenAI形式Chat/Responsesの対応操作だけに適用します。 -->
   <set-variable name="gatewayLlmTokenLimitEnabled" value="@{
-    var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
+    var settings = JObject.Parse((string)context.Variables[&quot;gatewayControlSettings&quot;]);
     var operations = settings[&quot;tokenLimitOperationIds&quot;] as JArray;
-    return !(bool)context.Variables[&quot;gatewayRateLimitExempt&quot;] &amp;&amp; operations != null &amp;&amp; operations.Any(value =&gt; (string)value == context.Operation.Id);
+    var supported = !(bool)context.Variables[&quot;gatewayRateLimitExempt&quot;] &amp;&amp; operations != null &amp;&amp; operations.Any(value =&gt; (string)value == context.Operation.Id);
+    var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+    if ((string)decision[&quot;method&quot;] != &quot;user&quot;) { return supported; }
+    if (!(bool)decision[&quot;allowed&quot;] || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;)
+        || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]
+        || !context.Variables.ContainsKey(&quot;gatewayEntraUserLimits&quot;)) { throw new Exception(&quot;Configured employee limits are required&quot;); }
+    var limits = JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;]);
+    if (!JToken.DeepEquals(limits, JObject.Parse((string)context.Variables[&quot;gatewayEntraUserLimits&quot;]))
+        || limits[&quot;tokensPerMinute&quot;] == null || limits[&quot;tokenQuota&quot;] == null) { throw new Exception(&quot;Configured employee limits are required&quot;); }
+    /* 明示nullは制限なし。利用者監査とnative usage logの設定には影響しません。 */
+    return supported &amp;&amp; (limits[&quot;tokensPerMinute&quot;].Type != JTokenType.Null || limits[&quot;tokenQuota&quot;].Type != JTokenType.Null);
   }" />
   <choose><when condition="@((bool)context.Variables[&quot;gatewayLlmTokenLimitEnabled&quot;])">
+    <set-variable name="gatewayTokenCounterKey" value="@{
+      var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+      if ((string)decision[&quot;method&quot;] == &quot;user&quot;) {
+        if (!(bool)decision[&quot;allowed&quot;] || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { throw new Exception(&quot;Verified employee is required&quot;); }
+        var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
+        var identity = (string)user[&quot;tenantId&quot;] + &quot;:&quot; + (string)user[&quot;principalId&quot;];
+        if ((string)decision[&quot;callerId&quot;] != &quot;user:&quot; + identity || (string)decision[&quot;allocationId&quot;] != &quot;user:&quot; + identity
+            || (string)user[&quot;callerId&quot;] != &quot;user:&quot; + identity) { throw new Exception(&quot;Verified employee is required&quot;); }
+        return &quot;core-tokens-v1:user:&quot; + identity;
+      }
+      return &quot;core-tokens-v1:&quot; + context.Subscription.Id;
+    }" />
     <set-variable name="gatewayTokensPerMinute" value="@((int?)JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;])[&quot;tokensPerMinute&quot;] ?? 0)" />
     <set-variable name="gatewayTokenQuota" value="@{
       var quota = JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;])[&quot;tokenQuota&quot;] as JObject;
@@ -18,13 +40,13 @@
     <!-- SQLの上限値はInt32で保持します。APIMへはTPMをInt32、累積token-quotaをInt64で渡します。 -->
     <choose>
       <when condition="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;] &gt; 0 &amp;&amp; (int)context.Variables[&quot;gatewayTokenQuota&quot;] &gt; 0)">
-        <llm-token-limit id="core-tokens-combined" counter-key="@(&quot;core-tokens-v1:&quot; + context.Subscription.Id)" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
+        <llm-token-limit id="core-tokens-combined" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
       </when>
       <when condition="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;] &gt; 0)">
-        <llm-token-limit id="core-tokens-rate" counter-key="@(&quot;core-tokens-v1:&quot; + context.Subscription.Id)" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" estimate-prompt-tokens="true" />
+        <llm-token-limit id="core-tokens-rate" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" estimate-prompt-tokens="true" />
       </when>
       <when condition="@((int)context.Variables[&quot;gatewayTokenQuota&quot;] &gt; 0)">
-        <llm-token-limit id="core-tokens-quota" counter-key="@(&quot;core-tokens-v1:&quot; + context.Subscription.Id)" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
+        <llm-token-limit id="core-tokens-quota" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
       </when>
     </choose>
   </when></choose>

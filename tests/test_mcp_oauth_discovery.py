@@ -16,7 +16,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from test_api_protocols import bound_external_coverage, configuration
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -47,6 +47,10 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
         return DiscoveryExpression(expression, self.template["variables"], functions=self.template["functions"]).evaluate(self.parameters(definitions), index)
 
     def variable(self, name, definitions=None):
+        if name == 'policyValues':
+            parameters = self.parameters(definitions)
+            return [compiled_policy_value(self.template, parameters, index)
+                    for index in range(len(parameters['apiDefinitions']))]
         return self.value("[variables('" + name + "')]", definitions)
 
     def expanded(self, value, definitions=None, index=0):
@@ -77,13 +81,17 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 node = ET.fromstring(policy).find('./inbound/set-variable[@name="gatewayAuditSettings"]')
                 encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', node.get("value")).group(1)
                 self.assertEqual(json.loads(base64.b64decode(encoded)), {
-                    "apiId": api["name"], "serviceClass": api["serviceClass"], "backendService": api["backendService"],
+                    "serviceClass": api["serviceClass"], "backendService": api["backendService"],
                     "backendAuthentication": api["backendAuthentication"]["mode"],
+                    "operationBackends": {},
+                    "llmOperationIds": [], "websocketModel": "", "targetAgent": "",
+                    "measurementRole": "facade"})
+                control_node = ET.fromstring(policy).find('./inbound/set-variable[@name="gatewayControlSettings"]')
+                encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', control_node.get("value")).group(1)
+                self.assertEqual(json.loads(base64.b64decode(encoded)), {
                     "operationId": api["mcp"]["operationNames"][0],
                     "operationConstraints": api["authorization"]["operationConstraints"],
-                    "operationBackends": {},
-                    "llmOperationIds": [], "tokenLimitOperationIds": [], "websocketModel": "", "targetAgent": "",
-                    "measurementRole": "facade"})
+                    "tokenLimitOperationIds": []})
 
     def test_key_mcp_does_not_publish_gateway_oauth_discovery(self):
         for name in ("oauthMetadataApi", "oauthMetadataOperations", "oauthMetadataPolicy"):
@@ -128,7 +136,10 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             self.assertNotIn('gatewayMcpOAuth', policy)
             self.assertIn('subscriptionKey', policy)
             root = ET.fromstring(policy)
-            self.assertEqual(root.find('./inbound/set-header[@name="Authorization"]').get('exists-action'), 'delete')
+            key_branch = next(branch for branch in root.findall('./inbound/choose/when')
+                              if branch.find('./set-header[@name="Authorization"]') is not None)
+            self.assertIn('"method"] == "subscriptionKey"', key_branch.get('condition'))
+            self.assertEqual(key_branch.find('./set-header[@name="Authorization"]').get('exists-action'), 'delete')
 
     def test_final_policies_expand_and_preserve_protocol_body_boundaries(self):
         for api, policy in zip(self.definitions, self.variable("policyValues")):

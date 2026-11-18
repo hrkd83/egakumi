@@ -7,6 +7,9 @@ param foundation object
 @description('物理CMプロバイダーの作成に使う、論理プロバイダー名ごとのclient secret。')
 param credentialProviderSecrets object = {}
 @secure()
+@description('独立したOIDC本人確認アプリのsecret。CM providerのsecretとは別の入力です。')
+param credentialIdentitySecret string = ''
+@secure()
 @description('初回だけ生成する内部通信の共有鍵。空の場合は既存の鍵を保持します。')
 param brokerKey string = ''
 param imageDigest string = ''
@@ -20,7 +23,11 @@ var profiles = configuration.credentialProfiles
 var brokerEnabled = !empty(profiles)
 var login = configuration.gateway.authentication.?credentialLogin ?? { providerNames: [] }
 var brokerUrl = 'https://ca-${stem}-credentials.${foundation.environmentDomain}'
-var oidcSecrets = [for name in objectKeys(profiles): { env: profiles[name].clientSecretEnv, uri: 'https://${foundation.vaultName}${environment().suffixes.keyvaultDns}/secrets/core-credential-${name}', name: 'oidc-${name}' }]
+var identityConfigured = contains(login, 'identity')
+var legacyOidcSecrets = [for name in objectKeys(profiles): { env: profiles[name].clientSecretEnv, uri: 'https://${foundation.vaultName}${environment().suffixes.keyvaultDns}/secrets/core-credential-${name}', name: 'oidc-${name}' }]
+var oidcSecrets = identityConfigured
+  ? [{ env: 'OIDC_SECRET_IDENTITY', uri: 'https://${foundation.vaultName}${environment().suffixes.keyvaultDns}/secrets/core-oidc-identity', name: 'oidc-identity' }]
+  : legacyOidcSecrets
 
 module runtime 'identity.bicep' = if (brokerEnabled) {
   name: '${stem}-gateway-identity'
@@ -39,6 +46,8 @@ module access 'broker-access.bicep' = if (brokerEnabled) {
     runtimeIdentity: runtime!.outputs.identity
     schemaIdentity: foundation.schemaIdentity
     brokerKey: brokerKey
+    credentialIdentitySecret: credentialIdentitySecret
+    identityConfigured: identityConfigured
   }
 }
 
@@ -112,6 +121,7 @@ module settings 'apim-settings.bicep' = if (deployApplication) {
   params: {
     names: { apim: foundation.apimName }
     authentication: configuration.gateway.authentication
+    entraTenantId: configuration.?entraTenantId ?? configuration.azureTenantId
     l7IngressSecretIdentifier: foundation.l7IngressSecretIdentifier
     realtimeTicketSecretIdentifier: foundation.realtimeTicketSecretIdentifier
     credentialBrokerUrl: brokerEnabled ? brokerUrl : ''

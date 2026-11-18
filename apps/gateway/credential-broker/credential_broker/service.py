@@ -8,6 +8,7 @@ import secrets
 import time
 from urllib.parse import urlencode
 
+from .caller import UserCaller
 from .cm import CmError
 from .identity import IdentityError
 from .store import (StoreCapacity, StoreConflict, StoreNotAuthorized, StoreNotFound,
@@ -75,6 +76,8 @@ class BrokerService:
         return self.settings.profiles[name]
 
     def subscription(self, value):
+        if isinstance(value, UserCaller):
+            return value
         if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,256}", value):
             raise BrokerError("AuthenticationRequired", 401)
         return value
@@ -101,6 +104,7 @@ class BrokerService:
 
     def start(self, provider, subscription_id):
         profile, sub = self.profile(provider), self.subscription(subscription_id)
+        self._caller_profile(sub, profile)
         transaction, poll, launch, session_id, session_secret = (self.random(32) for _ in range(5))
         now = int(self.clock())
         self._guard(lambda: self.store.create_transaction(transaction, profile.name, sub, digest(poll), digest(launch),
@@ -108,6 +112,12 @@ class BrokerService:
             pending_secret_hash=digest(session_secret),
             login_limit=self.settings.login_calls_per_minute))
         return self._login_response(transaction, poll, launch, session_id, session_secret)
+
+    @staticmethod
+    def _caller_profile(caller, profile):
+        """本人接続のtenantはGateway検証済みユーザーと一致させる。"""
+        if isinstance(caller, UserCaller) and caller.tenant_id != profile.tenant_id:
+            raise BrokerError("ConnectionNotAuthorized", 403)
 
     def _login_response(self, transaction, poll, launch, session_id, session_secret):
         return {"status": "need_login", "protocolVersion": 2,
@@ -120,6 +130,7 @@ class BrokerService:
     def challenge(self, provider, subscription_id, connection_session, reason):
         """業務 API の応答用に、本人確認を始める短時間の案内だけを作る。"""
         profile, sub = self.profile(provider), self.subscription(subscription_id)
+        self._caller_profile(sub, profile)
         if (not isinstance(reason, str) or reason not in {"session_required", "token_rejected"}
                 or not isinstance(connection_session, str)):
             raise BrokerError("InvalidRequest", 400)

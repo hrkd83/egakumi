@@ -7,6 +7,11 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from configuration_fixtures import CORE, api_fixture, fixture, configuration
+from deployment.helpers.apim_audit import expand_audit_fragments
+from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
+from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
+from deployment.helpers.apim_authentication import render_service_policy
+from deployment.helpers.apim_common_authentication import render_common_authentication_fragments, expand_common_authentication_fragments
 from test_gateway_limits_telemetry import PWSH
 
 SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
@@ -18,16 +23,21 @@ class CommonAuthenticationConfigurationTests(unittest.TestCase):
                          {"core-subscription-key-header":"api-key"})
 
     def test_key_header_is_case_insensitive_and_api_setting_matches(self):
-        raw=api_fixture()
-        raw["gateway"]["authentication"]["subscriptionKeyHeader"]="X-Gateway-Key"
-        raw["apiDefinitions"][0]["subscriptionKeyHeader"]="x-gateway-key"
-        actual=configuration.normalize_configuration(raw,base_directory=CORE/"config")
-        self.assertEqual(actual["apiDefinitions"][0]["subscriptionKeyHeader"],"X-Gateway-Key")
+        from deployment.helpers.apim_authentication import common_authentication_settings
+        for header in ("api-key", "Ocp-Apim-Subscription-Key", "X-Gateway-Key"):
+            raw=api_fixture()
+            raw["gateway"]["authentication"]["subscriptionKeyHeader"]=header
+            raw["apiDefinitions"][0]["subscriptionKeyHeader"]=header.lower()
+            with self.subTest(header=header):
+                actual=configuration.normalize_configuration(raw,base_directory=CORE/"config")
+                self.assertEqual(actual["apiDefinitions"][0]["subscriptionKeyHeader"],header)
+                self.assertEqual(common_authentication_settings(actual),{"core-subscription-key-header":header})
 
     def test_common_key_header_cannot_collide_with_credentials_or_transport(self):
         from deployment.helpers.apim_authentication import common_authentication_settings
         for header in ("Authorization","Host","Content-Type","Cookie","X-Core-L7-Ingress",
-                       "X-Core-Connection-Session","X-Core-Connection-Poll","X-Core-Connection-Transaction","bad header",""):
+                       "X-Core-Connection-Session","X-Core-Connection-Poll","X-Core-Connection-Transaction",
+                       "X-Core-Connection-Custom","x-Ms-ClIeNt-ReQuEsT-iD","X-APPGW-TRACE-ID","bad header",""):
             with self.subTest(header=header),self.assertRaises(ValueError):
                 common_authentication_settings({"gateway":{"authentication":{"subscriptionKeyHeader":header}}})
 
@@ -48,20 +58,31 @@ def csharp_expression(raw):
     return "return " + json.dumps(raw) + ";"
 
 
-def compile_inbound(root):
+def compile_inbound(root, browser_exception_fragment=None, *, browser_exception_login=None, after_variable=None, trace_messages=False):
     """choose/set-variableを実式のまま実行する小さなローカル試験用アダプター。"""
+    # 監査・入口確認・ブラウザー例外の部品を実式として実行する。
+    # CMを構成した試験は、その設定から生成した例外部品を渡す。既知includeを無処理扱いにしない。
+    enabled = root.find('.//include-fragment[@fragment-id="core-entra-authentication-error"]') is not None
+    xml = expand_common_authentication_fragments(ET.tostring(root, encoding="unicode"),
+        render_common_authentication_fragments(entra_enabled=enabled), entra_enabled=enabled)
+    xml = expand_trusted_ingress_fragment(xml)
+    xml = expand_browser_exception_fragment(xml, browser_exception_fragment, login=browser_exception_login)
+    root = ET.fromstring(expand_audit_fragments(xml))
     methods = []
 
     def value(raw):
         name = "Expression" + str(len(methods))
         body = csharp_expression(raw).replace("{{core-subscription-key-header}}", "X-Gateway-Key")
         body = body.replace("__L7_INGRESS_REQUIRED__", "true").replace("__L7_INGRESS_EXPECTED__", "fixture-ingress")
+        body = body.replace("{{core-l7-ingress-enabled}}", "true").replace("{{core-l7-ingress-secret}}", "fixture-ingress")
         methods.append("static dynamic " + name + "(Context context) { " + body + " }")
         return name + "(context)"
 
     def emit(node):
         if node.tag == "set-variable":
-            return "context.Variables[" + json.dumps(node.get("name")) + "] = " + value(node.get("value")) + ";"
+            emitted = "context.Variables[" + json.dumps(node.get("name")) + "] = " + value(node.get("value")) + ";"
+            # 試験専用の故障注入。運用ポリシーへ特別なリクエスト分岐を追加しない。
+            return emitted + (after_variable(node.get("name")) if after_variable else "")
         if node.tag == "choose":
             branches = []
             for branch in node:
@@ -71,12 +92,34 @@ def compile_inbound(root):
             return "\n".join(branches)
         if node.tag == "return-response":
             status = node.find("set-status")
-            headers = "\n".join("context.ResponseHeaders[" + json.dumps(header.get("name")) + "] = (string)" + value(header.find("value").text) + ";"
+            headers = "\n".join("context.ResponseHeaders.Remove(" + json.dumps(header.get("name")) + ");"
+                                if header.get("exists-action") == "delete" else
+                                "context.ResponseHeaders[" + json.dumps(header.get("name")) + "] = (string)" + value(header.find("value").text) + ";"
                                 for header in node.findall("set-header"))
             return headers + "\nreturn " + status.get("code") + ";"
         if node.tag == "validate-azure-ad-token":
-            return 'if (!context.ValidSignature) { return 401; } context.Variables["gatewayValidatedToken"] = context.Token;'
-        if node.tag in ("set-header", "include-fragment", "trace"):
+            # 署名・issuer・audience等の標準検証はValidSignatureで代用し、実Azureで別途受入する。
+            # required-claimsの値条件だけは実XMLから生成する。claimの値数1の確認は後続の実式に任せる。
+            conditions = ["context.ValidSignature", "context.Token != null", "context.Token.Claims != null"]
+            for claim in node.findall("./required-claims/claim"):
+                name = json.dumps(claim.get("name"))
+                values = claim.findall("value")
+                match = claim.get("match", "all")
+                if not values or match not in ("all", "any"):
+                    raise AssertionError("Unsupported required-claims policy")
+                required = "new [] { " + ", ".join("(string)" + value(item.text) for item in values) + " }"
+                actual = "context.Token.Claims[" + name + "].Where(claimValue => claimValue != null)"
+                separator = claim.get("separator")
+                if separator is not None:
+                    actual += ".SelectMany(claimValue => claimValue.Split(new [] { " + json.dumps(separator) + " }, StringSplitOptions.None))"
+                conditions.append("(context.Token.Claims.ContainsKey(" + name + ") && context.Token.Claims[" + name + "] != null && "
+                                  + required + (".All" if match == "all" else ".Any") + "(required => " + actual + ".Contains(required)))")
+            failed = node.get("failed-validation-httpcode", "401")
+            output = json.dumps(node.get("output-token-variable-name"))
+            return "if (!(" + " && ".join(conditions) + ")) { return " + failed + "; } context.Variables[" + output + "] = context.Token;"
+        if node.tag == "trace":
+            return "context.TraceMessages.Add((string)" + value(node.find("message").text) + ");" if trace_messages else ""
+        if node.tag in ("set-header", "include-fragment"):
             return ""
         raise AssertionError("Unsupported authentication policy node: " + node.tag)
 
@@ -90,23 +133,29 @@ using System.Linq;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-public class Named { public string Id; }
+public class Named { public string Id; public string UrlTemplate = "/tools/{tool}/invoke"; }
 public class Url { public string Path; public Dictionary<string,string[]> Query = new Dictionary<string,string[]>(StringComparer.OrdinalIgnoreCase); }
 public class Request {
- public string Method; public Url Url = new Url(); public Url OriginalUrl = new Url();
+ public string Method; public string IpAddress = "192.0.2.10"; public Url Url = new Url(); public Url OriginalUrl = new Url();
  public Dictionary<string,string[]> Headers = new Dictionary<string,string[]>(StringComparer.OrdinalIgnoreCase);
  public object Body { get { throw new Exception("Common authentication read a request body"); } }
 }
 public class Jwt { public Dictionary<string,string[]> Claims = new Dictionary<string,string[]>(); }
 public class Context {
  public Guid RequestId = Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+ public DateTime Timestamp = DateTime.Parse("2026-01-02T03:04:05Z", null, System.Globalization.DateTimeStyles.RoundtripKind);
  public Request Request = new Request(); public Named Api = new Named(); public Named Operation = new Named();
  public Named Subscription; public Named Product;
  public Dictionary<string,object> Variables = new Dictionary<string,object>();
  public Dictionary<string,string> ResponseHeaders = new Dictionary<string,string>();
+ public List<string> TraceMessages = new List<string>();
  public Jwt Token; public bool ValidSignature;
 }
 public static class Extensions {
+ // APIMの型付き変数取得を再現します。型不一致を既定値へ読み替えず、実式のcatchで扱わせます。
+ public static T GetValueOrDefault<T>(this Dictionary<string,object> values,string key,T fallback) {
+  object value; return values.TryGetValue(key,out value) ? (T)value : fallback;
+ }
  public static string GetValueOrDefault(this Dictionary<string,string[]> values,string key,string fallback) {
   return values.ContainsKey(key) ? String.Join(" ",values[key]) : fallback;
  }
@@ -132,11 +181,13 @@ public static class CommonAuthenticationFixture {
    if ((bool?)item["grpc"] == true) c.Variables["coreNativeGrpc"] = true;
    if (item["challenge"] != null) c.Variables["gatewayMcpChallenge"] = (string)item["challenge"];
    if (item["marker"] != null) c.Variables["gatewayCommonAuthenticationValidated"] = (bool)item["marker"];
+   if (item["requestContext"] != null) c.Variables["gatewayRequestContext"] = item["requestContext"].ToString(Formatting.None);
    int status = item["guard"] != null ? (Guard(c, (string)item["guard"]) ? 503 : 200) : Authenticate(c);
    output[(string)item["id"]] = new JObject(new JProperty("status",status),
      new JProperty("authenticated",c.Variables.ContainsKey("gatewayCommonAuthenticationValidated") && (bool)c.Variables["gatewayCommonAuthenticationValidated"]),
      new JProperty("hasValidatedToken",c.Variables.ContainsKey("gatewayValidatedToken")),
-     new JProperty("challenge",c.ResponseHeaders.ContainsKey("WWW-Authenticate") ? c.ResponseHeaders["WWW-Authenticate"] : null));
+     new JProperty("challenge",c.ResponseHeaders.ContainsKey("WWW-Authenticate") ? c.ResponseHeaders["WWW-Authenticate"] : null),
+     new JProperty("requestContext",c.Variables.ContainsKey("gatewayRequestContext") ? JObject.Parse((string)c.Variables["gatewayRequestContext"]) : null));
   }
   return output.ToString(Formatting.None);
  }
@@ -148,7 +199,7 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not PWSH: raise unittest.SkipTest("PowerShell with Roslyn is required; Azure was not tested")
-        methods,inbound=compile_inbound(ET.parse(SERVICE_POLICY).getroot())
+        methods,inbound=compile_inbound(ET.fromstring(render_service_policy()))
         guards=[]
         for filename in ("gateway.xml","protocol.xml","mcp.xml"):
             policy=ET.parse(CORE/"apps/gateway/apim/policies"/filename).getroot()
@@ -174,6 +225,8 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
           {"id":"query-api-key","headers":key,"subscription":True,"query":{"api-key":"forbidden"}},
           {"id":"wrong-alias","headers":{**good,"api-key":"SYNTHETIC_KEY"},"subscription":True},
           {"id":"missing-ingress","headers":{"X-Gateway-Key":"SYNTHETIC_KEY"},"subscription":True},
+          {"id":"overwrite-request-context","headers":key,"subscription":True,
+           "requestContext":{"requestId":"untrusted","apiId":"untrusted","operationId":"untrusted"}},
           {"id":"grpc","headers":{"X-Gateway-Key":"SYNTHETIC_KEY"},"subscription":True,"grpc":True},
           {"id":"unregistered-metadata","api":"unregistered-metadata-api","operation":"metadata-gateway","method":"GET","path":"/unregistered/metadata","headers":good},
           {"id":"unregistered-login","api":"unregistered-login-api","operation":"login","method":"GET","path":"/unregistered/login","headers":good},
@@ -213,18 +266,61 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     def test_common_authentication_keeps_the_trusted_ingress_requirement(self):
         self.assertEqual(self.results["missing-ingress"]["status"],403)
 
+    def test_request_identity_is_initialized_even_before_ingress_or_authentication_rejection(self):
+        expected={"requestId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","apiId":"gui-added-api","operationId":"invoke",
+                  "requestReceivedAt":"2026-01-02T03:04:05Z","httpMethod":"POST",
+                  "operationTemplate":"/tools/{tool}/invoke","apimPeerIp":"192.0.2.10",
+                  "reportedUserAgent":None,"appGatewayTraceId":None}
+        for name in ("key","unknown-key","missing","missing-ingress","grpc","overwrite-request-context"):
+            with self.subTest(case=name):
+                self.assertEqual(self.results[name]["requestContext"],expected)
+
     def test_api_guard_requires_the_common_authentication_marker(self):
         for policy in ("gateway","protocol","mcp"):
             for marker in (None,False,True):
                 self.assertEqual(self.results[f"guard-{policy}-{marker}"]["status"],200 if marker is True else 503)
 
 class CommonAuthenticationWiringTests(unittest.TestCase):
+    def test_common_request_context_merge_is_first_unique_and_idempotent(self):
+        from deployment.helpers.apim_authentication import merge_common_authentication_policy,validate_common_authentication_policy
+        policy='<policies><inbound><set-header name="X-Manual" exists-action="delete"/></inbound><backend><forward-request timeout="123"/></backend><outbound/><on-error/></policies>'
+        merged,changed=merge_common_authentication_policy(policy)
+        self.assertTrue(changed)
+        root=ET.fromstring(merged)
+        self.assertEqual(root.find('inbound')[0].get('id'),'core-request-context')
+        self.assertEqual(root.find('inbound')[0].tag,'include-fragment')
+        self.assertEqual(root.find('inbound')[0].get('fragment-id'),'core-request-context')
+        expanded=ET.fromstring(expand_audit_fragments(merged))
+        self.assertEqual(len(expanded.findall('.//set-variable[@name="gatewayRequestContext"]')),1)
+        self.assertEqual(root.find('./backend/forward-request').get('timeout'),'123')
+        self.assertIsNotNone(root.find('./inbound/set-header[@name="X-Manual"]'))
+        validate_common_authentication_policy(merged)
+        self.assertEqual(merge_common_authentication_policy(merged),(merged,False))
+
+    def test_common_request_context_rejects_changed_owned_initializer_or_manual_overwrite(self):
+        from deployment.helpers.apim_authentication import merge_common_authentication_policy,render_service_policy
+        for kind in ('owned-reference','manual-overwrite','duplicate-reference','nested-reference'):
+            root=ET.fromstring(render_service_policy())
+            if kind=='owned-reference':
+                root.find('./inbound/include-fragment[@id="core-request-context"]').set('fragment-id','untrusted')
+            elif kind=='manual-overwrite':
+                ET.SubElement(root.find('inbound'),'set-variable',{'name':'gatewayRequestContext','value':'untrusted'})
+            elif kind=='duplicate-reference':
+                ET.SubElement(root.find('inbound'),'include-fragment',{'fragment-id':'core-request-context'})
+            else:
+                reference=root.find('./inbound/include-fragment[@id="core-request-context"]')
+                root.find('inbound').remove(reference)
+                ET.SubElement(root.find('inbound'),'choose').append(reference)
+            with self.subTest(kind=kind),self.assertRaises(ValueError):
+                merge_common_authentication_policy(ET.tostring(root,encoding='unicode'))
+
     def test_broker_migration_replaces_only_owned_cache_and_anonymous_route(self):
-        from deployment.helpers.apim_authentication import merge_common_authentication_policy, render_service_policy, validate_common_authentication_policy
+        from deployment.helpers.apim_authentication import merge_common_authentication_policy, render_service_policy, validate_common_authentication_policy, _render_inline_common_authentication_service_policy
+        from browser_exception_projection import project_browser_exception_to_previous
         from test_credential_login import settings
         import re
         login = settings()
-        root = ET.fromstring(render_service_policy(login))
+        root = ET.fromstring(project_browser_exception_to_previous(_render_inline_common_authentication_service_policy(login), login))
         inbound = root.find("inbound")
         anonymous = inbound.find("choose[@id='core-common-authentication']/when")
         anonymous.set("condition", re.sub(r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)', '', anonymous.get("condition")))
@@ -241,7 +337,9 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
         merged, changed = merge_common_authentication_policy(old, login, migrate_credential_broker=True)
         self.assertTrue(changed)
         self.assertNotIn("core-credential-login-cache", merged)
-        self.assertIn("identity-callback", merged)
+        self.assertIn("identity-callback", project_browser_exception_to_previous(merged, login))
+        self.assertIsNotNone(ET.fromstring(merged).find(
+            "inbound/include-fragment[@fragment-id='core-credential-browser-exception']"))
         self.assertIsNotNone(ET.fromstring(merged).find("inbound/set-header[@name='X-Manual']"))
         validate_common_authentication_policy(merged, login)
         self.assertFalse(merge_common_authentication_policy(merged, login, migrate_credential_broker=True)[1])
@@ -252,11 +350,11 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
             merge_common_authentication_policy(ET.tostring(root, encoding="unicode"), login, migrate_credential_broker=True)
 
     def test_broker_migration_rejects_partial_cache_or_modified_authorization(self):
-        from deployment.helpers.apim_authentication import merge_common_authentication_policy, render_service_policy
+        from deployment.helpers.apim_authentication import merge_common_authentication_policy, _render_inline_common_authentication_service_policy
         from test_credential_login import settings
         login = settings()
         for kind in ("partial", "modified"):
-            root = ET.fromstring(render_service_policy(login))
+            root = ET.fromstring(_render_inline_common_authentication_service_policy(login))
             if kind == "partial":
                 ET.SubElement(root.find("inbound"), "cache-lookup-value", {"id":"core-credential-login-cache", "caching-type":"internal"})
             else:
@@ -300,8 +398,8 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
             '<policies><inbound/><other/><outbound/></policies>',
             '<policies><inbound/><inbound/></policies>',
             '<policies><outbound/><inbound/></policies>',
-            render_service_policy().replace('name="gatewayCommonAuthenticationValidated" value="@(true)"',
-                                            'name="gatewayCommonAuthenticationValidated" value="@(false)"'),
+            render_service_policy().replace('id="core-common-authentication" fragment-id="core-common-authentication"',
+                                            'id="core-common-authentication" fragment-id="untrusted-authentication"'),
         ]
         for policy in invalid:
             with self.subTest(policy=policy),self.assertRaisesRegex(ValueError,'incompatible'):

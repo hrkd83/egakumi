@@ -86,6 +86,83 @@
   ],
   "literal_exceptions": [
     {
+      "rule": "environment-identifier",
+      "value": "__ENTRA_TENANT_ID__",
+      "reason": "Unresolved renderer placeholder in the fixed legacy policy snapshot used only for strict migration checks; not an environment value.",
+      "paths": [
+        "apps/gateway/apim/policies/entra-authentication-legacy.xml",
+        "apps/gateway/apim/policies/entra-authentication-literal.xml"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Independent repeated-digit API audience example and offline caller fixtures, not copied from an environment; deployment examples require replacement.",
+      "paths": [
+        "params/test.example.json",
+        "params/production.example.json",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_entra_publication_bootstrap.py",
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Independent repeated-digit verified-user fixture for offline document ownership tests; no real principal.",
+      "paths": [
+        "tests/test_document_analysis_policy.py",
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_entra_named_value_refresh.py",
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Independent repeated-digit alternate-user fixture for offline document ownership tests; no real principal.",
+      "paths": [
+        "tests/test_document_analysis_policy.py",
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_entra_named_value_publication.py",
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "44444444-4444-4444-8444-444444444444",
+      "reason": "Independent repeated-digit alternate-owner and tenant fixtures for offline ownership tests; no live identity.",
+      "paths": [
+        "tests/test_document_analysis_policy.py",
+        "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_entra_named_value_publication.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+      "reason": "Independent repeated-character UUID used only to test audience case normalization; no real application.",
+      "paths": [
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-a",
+      "reason": "Independent synthetic subscription label used only to reject mixed key/user caller contracts in offline tests.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
       "rule": "credential-assignment",
       "value": " . getenv(",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
@@ -675,7 +752,9 @@
       "value": "subscriptionId",
       "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
       "paths": [
-        "apps/gateway/credential-broker/credential_broker/store.py"
+        "apps/gateway/credential-broker/credential_broker/store.py",
+        "apps/gateway/apim/policies/expressions/legacy/audit-subject-observation.cs",
+        "apps/gateway/apim/policies/fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs"
       ]
     },
     {
@@ -967,7 +1046,8 @@
         "tests/test_operation_backend_publication.py",
         "tests/test_realtime_policy.py",
         "tests/test_shared_mcp_configuration.py",
-        "apps/portal/lib/generated/model-api-definitions.json"
+        "apps/portal/lib/generated/model-api-definitions.json",
+        "tests/test_entra_publication.py"
       ]
     },
     {
@@ -2626,7 +2706,10 @@
         "tests/test_standard_gateway_authorization.py",
         "tests/test_subscription_profile_deployment.py",
         "tests/test_voice_client.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_publication.py",
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2786,7 +2869,9 @@
         "tests/test_subscription_profile_deployment.py",
         "tests/test_subscription_usage.py",
         "tests/test_tenant_configuration.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2843,7 +2928,8 @@
         "tests/test_publish_apis.py",
         "tests/test_realtime_policy.py",
         "tests/test_standard_gateway_authorization.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2891,7 +2977,8 @@
         "tests/test_realtime_policy.py",
         "tests/test_split_cli.py",
         "tests/test_standard_apis.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2910,7 +2997,11 @@
         "tests/test_deploy_portal.py",
         "tests/test_management_cleanup.py",
         "tests/test_publish_apis.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_credential_identity.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/test_audit_subject_contract.py"
       ]
     },
     {
@@ -2923,7 +3014,8 @@
         "tests/test_audit_usage.py",
         "tests/test_configuration.py",
         "tests/test_publish_apis.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2944,7 +3036,9 @@
         "tests/test_configuration.py",
         "tests/test_prepare_coverage.py",
         "tests/test_publish_apis.py",
-        "apps/portal/tests/document-operation.test.ts"
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_credential_identity.py",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -2970,7 +3064,8 @@
       "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
       "paths": [
         "tests/test_publish_apis.py",
-        "tests/test_split_cli.py"
+        "tests/test_split_cli.py",
+        "tests/test_credential_identity.py"
       ]
     },
     {
@@ -3050,7 +3145,10 @@
         "tests/test_local_preparation_hooks.py",
         "tests/test_network_preservation.py",
         "tests/test_pii_policy.py",
-        "tests/test_portal_api_keys_setup.py"
+        "tests/test_portal_api_keys_setup.py",
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_audit_identification.py",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -3097,7 +3195,8 @@
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_integration_client.py",
         "tests/test_pii_policy.py",
-        "tests/test_portal_api_keys_setup.py"
+        "tests/test_portal_api_keys_setup.py",
+        "tests/test_entra_gateway_authentication.py"
       ]
     },
     {
@@ -3617,6 +3716,138 @@
         "apps/portal/lib/rerank-integration.ts"
       ],
       "reason": "Reviewed PHP template concatenates an environment-loaded variable into a header and sets unlimited cURL duration; this exact code fragment contains no credential value."
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "ca-test-fixture-portal.internal-fixture.azurecontainerapps.io",
+      "reason": "Independent synthetic Entra/APIM publication fixture, or documented shared Azure audience. Exact test path and value only.",
+      "paths": [
+        "tests/test_entra_publication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "ca-test-fixture-portal.other-fixture.azurecontainerapps.io",
+      "reason": "Independent synthetic Entra/APIM publication fixture, or documented shared Azure audience. Exact test path and value only.",
+      "paths": [
+        "tests/test_entra_publication.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "__ENTRA_TENANT_ID__",
+      "paths": [
+        "apps/gateway/apim/policies/entra-authentication.xml"
+      ],
+      "reason": "Reviewed Entra template placeholder or malformed-input test sentinel; exact file and literal only, no deployment identity."
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "learn.chatgpt.com",
+      "paths": [
+        "docs/reference/entra-app-rollout-plan.md",
+        "docs/setup/02b-entra-codex.md"
+      ],
+      "reason": "Official OpenAI Gateway OAuth documentation host; exact reviewed documentation paths and host only."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "SENTINEL",
+      "paths": [
+        "tests/test_entra_authentication_configuration.py"
+      ],
+      "reason": "Reviewed Entra template placeholder or malformed-input test sentinel; exact file and literal only, no deployment identity."
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "CONCURRENT_TOKEN_FIXTURE",
+      "paths": [
+        "tests/test_lifecycle_transport.py"
+      ],
+      "reason": "Fixed dummy access-token string returned by the local fetch_token mock in offline ARM transport tests; not a live credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "{{core-entra-tenant-id}}",
+      "paths": [
+        "apps/gateway/apim/policies/entra-authentication-audit-v1.xml",
+        "apps/gateway/apim/policies/fragments/authentication/core-common-authentication/core-common-authentication.xml",
+        "tests/test_entra_gateway_authentication.py"
+      ],
+      "reason": "APIM Named Value reference syntax in policy or offline reader tests; no resolved Entra tenant or application identifier is stored."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "synthetic-subscription",
+      "paths": [
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_subject_contract.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "invalid",
+      "paths": [
+        "tests/test_entra_gateway_authentication.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "configured-key",
+      "paths": [
+        "tests/test_entra_publication_reconciliation.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "fixture-shared",
+      "paths": [
+        "tests/test_entra_publication_reconciliation.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "SENTINEL_FORGED_SUBSCRIPTION",
+      "paths": [
+        "tests/test_gateway_limits_telemetry.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "SENTINEL_UNVERIFIED_CLIENT",
+      "paths": [
+        "tests/test_gateway_limits_telemetry.py"
+      ],
+      "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "management.example",
+      "paths": [
+        "tests/test_entra_membership_snapshot.py"
+      ],
+      "reason": "RFC-reserved example domain used only in a synthetic backend-membership rejection test; not a deployed host."
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "abcdefab-cdef-4abc-8def-abcdefabcdef",
+      "paths": [
+        "tests/test_audit_subject_contract.py"
+      ],
+      "reason": "Independent repeated/example UUID used by offline boundary or broker_fixture tests; not a live environment identifier."
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "98765432-9876-4987-8987-987654321000",
+      "paths": [
+        "tests/test_broker_only_update.py"
+      ],
+      "reason": "Independent repeated/example UUID used by offline boundary or broker_fixture tests; not a live environment identifier."
     }
   ],
   "reviewed_binary_assets": [
@@ -3859,6 +4090,101 @@
       "path": "tests/test_gateway_speech_waf.py",
       "sha256": "3085d395ec34ced6417d04f26588209bc064f2478c2943b0908a579347d2bdc3",
       "reason": "Offline speech WAF test constructs independent fixture/probe data; no real recording, tenant or credential. Depth heuristic false positive. Exact source snapshot only."
+    },
+    {
+      "path": "docs/images/entra-api-setup/03-register-form.png",
+      "sha256": "47180e3f895bc2dc2ace55e35343d495878c25bf816974bb9a217edcb3a1590f",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/04-overview.png",
+      "sha256": "2210115d1fbc17b099e270039d8c0427d0f1a26a1a5a8737171afc2407577993",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/05-api-uri.png",
+      "sha256": "c41893731ebf8437f5d7e132f11456e82aa41fae5d6cb80a0d87ed1ccda14f69",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/06-scope-form.png",
+      "sha256": "f62fb1a9bdf014e53b1077b33ef3157e3314d8ef2cbb291691457e1e141cd092",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/07-expose-api.png",
+      "sha256": "0319b7b37ebb288488fd59c650ad05cd28e8eacbf683fe53b5333d9204983bad",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/08-manifest-v2.png",
+      "sha256": "883acf1b20646dbcda490358c777e2315710d854d9d95dc04be2d7dbaa309e5b",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/09-api-permissions.png",
+      "sha256": "e21109357a20e8a10d132bdc8f396aa6e49a90348829934c5b11baa20b7c0f0f",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/10-authentication.png",
+      "sha256": "d1448360df65a5de6a29c4fe9f3b4e741c83cbc22d6db8eea427625bfecd1222",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-api-setup/11-certificates.png",
+      "sha256": "36d18c505771d695f358fae80b5efaea13c5b5d563eff1ade054be171a35fa77",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/03-register-form.png",
+      "sha256": "2a795d831f957defa3b36387ca0a360771dafe35c207038e3d2254b62678c244",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/04-overview.png",
+      "sha256": "7ca5a9c31ddbd515926108f22ee006b81e7d192d35e28e7fbdbad2e24e05e35c",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/05-public-redirect.png",
+      "sha256": "62c1664c89e11645da96ec2d09ed29fb51b91d315a57e507b3e902f8ab22e531",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/06-public-flows-off.png",
+      "sha256": "105a41a79ed137c2c38f31e007c1f14ff76dbb238e227b84e6bc58ab92234203",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/07-delegated-scope.png",
+      "sha256": "65aaa47ffcea356511637fb582eed452843e443af4fe62c4e3f329812e4eb8f6",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/08-permissions-before-consent.png",
+      "sha256": "f3944f7ce7bf09724c5978034f59a4cbb0a83655a94057363c7c9235bac752f1",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/09-admin-consent-confirmation.png",
+      "sha256": "80f76333eca5f4f861d58cc89b5a40ca32c4209444dba1bfc45665081f9fd5b9",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/10-permissions-consented.png",
+      "sha256": "f27c5a3bee34f20bf5eb9e5716b66121a71a4e4ebad3a668aa3223626cd4f8cd",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/11-no-credentials.png",
+      "sha256": "374f9c2609f33539f46e77f3ef63ab771a8e5e6a1a98333afc13d7296faddbe1",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "docs/images/entra-codex-setup/12-assignment-not-required.png",
+      "sha256": "ddcaaa77d2d70d24cef185ff50f41fe024f3487d5d51ddca249606a4d2f5b16b",
+      "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
     }
   ]
 }

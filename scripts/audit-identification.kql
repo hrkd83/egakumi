@@ -1,0 +1,163 @@
+// 要求ごとに1行。認証主体、要求context、AppGWのネットワーク観測を別々に表示する。
+// gateway/credential/query traceのeventはgateway-request/query-guard。独立context eventはない。
+// 保存先/保持期間/RBACは変更しない。本文、URL/query、資格情報、自由headerは射影しない。
+// audit-usage.kqlの利用量集計とは別契約。HTTP 2xx/SSE接続成功を機能完了と扱わない。
+let apimResourceId = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.ApiManagement/service/REPLACE';
+let appGatewayResourceId = '/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.Network/applicationGateways/REPLACE';
+let startTime = ago(24h);
+let endTime = now();
+let canonicalId = (v:string) {
+    iff(v matches regex @'^[0-9a-fA-F]{32}$|^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
+        and tostring(toguid(v)) != '00000000-0000-0000-0000-000000000000', tostring(toguid(v)), '')
+};
+let boundedText = (v:dynamic, limit:long) { iff(gettype(v) == 'string' and strlen(tostring(v)) <= limit, tostring(v), '') };
+// parse_jsonはJSON内のGUID/ISO文字列をguid/datetimeに型付けする。
+let boundedIdentifier = (v:dynamic, limit:long) { iff(gettype(v) in ('string', 'guid') and strlen(tostring(v)) <= limit, tostring(v), '') };
+let canonicalDynamicId = (v:dynamic) { canonicalId(boundedIdentifier(v, 36)) };
+let utcInstant = (v:string) { iff(v matches regex @'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,7})?(Z|\+00:00)$',
+    todatetime(v), datetime(null)) };
+let nullableText = (v:dynamic, limit:long) { isnull(v) or (gettype(v) == 'string' and strlen(tostring(v)) <= limit) };
+let validIp = (v:string) { isnotempty(v) and v !contains '/' and v !contains '%'
+    and ((v matches regex @'^\d{1,3}(\.\d{1,3}){3}$' and isnotnull(parse_ipv4(v)))
+        or (v contains ':' and isnotempty(parse_ipv6(v)))) };
+let logicalApiId = (v:string) { tostring(split(v, ';')[0]) };
+let native = materialize(ApiManagementGatewayLogs
+| where _ResourceId =~ apimResourceId and TimeGenerated between (startTime .. endTime)
+| extend requestId = canonicalId(tostring(CorrelationId)), nativeCorrelationId = tostring(CorrelationId),
+    rawAppGatewayTrace = RequestHeaders['x-appgw-trace-id']
+| extend nativeTraceCandidate = canonicalId(case(gettype(rawAppGatewayTrace) in ('string', 'guid'), tostring(rawAppGatewayTrace),
+    gettype(rawAppGatewayTrace) == 'array' and array_length(rawAppGatewayTrace) == 1, tostring(rawAppGatewayTrace[0]), ''))
+// 通常の主キーはAPIMのCorrelationId。欠落行にもquery内だけの識別子を与えて消さない。
+| serialize nativeOrdinal = row_number()
+| extend nativeRequestKey = case(isnotempty(requestId), requestId, isnotempty(nativeCorrelationId), strcat('native:', nativeCorrelationId), strcat('native-row:', tostring(nativeOrdinal)))
+| project nativeRequestKey, requestId, nativeCorrelationId, TimeGenerated, ApiId, OperationId,
+    nativeHttpMethod = tostring(column_ifexists('Method', '')), ResponseCode, BackendResponseCode, nativeTraceCandidate, TraceRecords);
+let nativeRequests = native
+| summarize nativeLogRows = count(),
+    nativeVariants = make_set(bag_pack('apiId', ApiId, 'operationId', OperationId, 'httpMethod', nativeHttpMethod,
+        'responseCode', ResponseCode, 'backendResponseCode', BackendResponseCode), 32),
+    nativeTraceCandidates = make_set_if(nativeTraceCandidate, isnotempty(nativeTraceCandidate), 16),
+    arg_max(TimeGenerated, requestId, nativeCorrelationId, ApiId, OperationId, nativeHttpMethod, ResponseCode, BackendResponseCode)
+    by nativeRequestKey;
+let observations = materialize(native
+| mv-expand trace = TraceRecords
+| extend rawTrace = coalesce(tostring(trace.message), tostring(trace.Message))
+| extend record = parse_json(rawTrace)
+| where gettype(record.schemaVersion) in ('long', 'int') and tolong(record.schemaVersion) == 1
+    and tostring(record.event) in ('gateway-request', 'query-guard')
+| extend auditV2 = gettype(record.auditSchemaVersion) in ('long', 'int') and tolong(record.auditSchemaVersion) == 2,
+    recordRequestId = canonicalId(tostring(record.requestId)), eventName = tostring(record.event),
+    phase = boundedText(record.phase, 64), code = boundedText(record.code, 64),
+    subject = record.authenticatedSubject, ctx = record.requestContext
+| extend requestLinkValid = isnotempty(requestId) and recordRequestId == requestId,
+    subjectStatus = boundedText(subject.status, 32), subjectKind = boundedText(subject.kind, 32),
+    subjectMethod = boundedText(subject.method, 32), subjectCaller = boundedText(subject.callerId, 320),
+    subjectSubscription = boundedIdentifier(subject.subscriptionId, 256),
+    subjectTenant = canonicalDynamicId(subject.tenantId), subjectPrincipal = canonicalDynamicId(subject.principalId),
+    subjectClient = canonicalDynamicId(subject.clientId), subjectAllocation = boundedText(subject.allocationId, 320)
+| extend keyShapeValid = gettype(subject) == 'dictionary' and subjectKind == 'apimSubscription' and subjectMethod == 'subscriptionKey'
+    and isnotempty(subjectSubscription) and subjectCaller == strcat('subscription:', subjectSubscription)
+    and isempty(tostring(subject.tenantId)) and isempty(tostring(subject.principalId)) and isempty(tostring(subject.clientId)) and isempty(tostring(subject.allocationId)),
+    userShapeValid = gettype(subject) == 'dictionary' and subjectKind == 'entraUser' and subjectMethod == 'user'
+    and isnotempty(subjectTenant) and isnotempty(subjectPrincipal)
+    and subjectCaller == strcat('user:', subjectTenant, ':', subjectPrincipal) and subjectAllocation == subjectCaller
+    and (isempty(tostring(subject.clientId)) or isnotempty(subjectClient)) and isempty(tostring(subject.subscriptionId))
+| extend subjectVerified = auditV2 and requestLinkValid and subjectStatus == 'verified' and (keyShapeValid or userShapeValid),
+    subjectInconsistent = auditV2 and (subjectStatus == 'inconsistent'
+        or (subjectStatus == 'verified' and (not(requestLinkValid) or not(keyShapeValid or userShapeValid)))
+        or (gettype(subject) == 'dictionary' and subjectStatus !in ('verified', 'unverified', 'inconsistent'))),
+    subjectVariant = bag_pack('status', subjectStatus, 'kind', subjectKind, 'method', subjectMethod, 'callerId', subjectCaller,
+        'subscriptionId', subjectSubscription, 'tenantId', subjectTenant, 'principalId', subjectPrincipal, 'clientId', subjectClient, 'allocationId', subjectAllocation),
+    verifiedIdentity = bag_pack('kind', subjectKind, 'method', subjectMethod, 'callerId', subjectCaller,
+        'subscriptionId', subjectSubscription, 'tenantId', subjectTenant, 'principalId', subjectPrincipal, 'clientId', subjectClient, 'allocationId', subjectAllocation)
+| extend contextRequestId = canonicalDynamicId(ctx.requestId), contextApiId = boundedIdentifier(ctx.apiId, 256),
+    contextOperationId = boundedIdentifier(ctx.operationId, 256),
+    receivedAt = utcInstant(extract_json('$.requestContext.requestReceivedAt', rawTrace, typeof(string))),
+    contextHttpMethod = boundedText(ctx.httpMethod, 16), operationTemplate = boundedText(ctx.operationTemplate, 512),
+    apimPeerIp = boundedText(ctx.apimPeerIp, 64),
+    reportedUserAgent = iff(gettype(ctx.reportedUserAgent) in ('string', 'guid', 'datetime', 'timespan'),
+        substring(extract_json('$.requestContext.reportedUserAgent', rawTrace, typeof(string)), 0, 512), ''),
+    contextTraceId = canonicalDynamicId(ctx.appGatewayTraceId)
+| extend receivedAtText = iff(isnotnull(receivedAt), strcat(format_datetime(receivedAt, 'yyyy-MM-dd'), 'T',
+    format_datetime(receivedAt, 'HH:mm:ss.fffffff'), 'Z'), '')
+| extend contextShapeValid = gettype(ctx) == 'dictionary' and requestLinkValid and contextRequestId == requestId
+    and logicalApiId(contextApiId) == logicalApiId(tostring(ApiId)) and contextOperationId == tostring(OperationId)
+    and isnotnull(receivedAt)
+    and contextHttpMethod matches regex @'^[A-Z]{1,16}$' and operationTemplate !contains '?'
+    and nullableText(ctx.operationTemplate, 512) and (isnull(ctx.apimPeerIp) or validIp(apimPeerIp))
+    and (isnull(ctx.reportedUserAgent) or (gettype(ctx.reportedUserAgent) in ('string', 'guid', 'datetime', 'timespan')
+        and strlen(extract_json('$.requestContext.reportedUserAgent', rawTrace, typeof(string))) <= 512))
+    and (isnull(ctx.appGatewayTraceId) or isnotempty(contextTraceId)),
+    contextVariant = bag_pack('requestId', contextRequestId, 'apiId', contextApiId, 'operationId', contextOperationId,
+        'requestReceivedAt', receivedAtText, 'httpMethod', contextHttpMethod, 'operationTemplate', operationTemplate,
+        'apimPeerIp', apimPeerIp, 'reportedUserAgent', reportedUserAgent, 'appGatewayTraceId', contextTraceId)
+| project nativeRequestKey, auditV2, eventName, phase, code, recordStatus = toint(record.status), requestLinkValid,
+    subjectStatus, subjectVerified, subjectInconsistent, subjectVariant, verifiedIdentity, contextShapeValid, contextVariant,
+    linkedContextTraceCandidate = iff(auditV2 and requestLinkValid and contextRequestId == requestId, contextTraceId, ''));
+let custom = observations
+| summarize customObservationCount = count(), eventNames = make_set(eventName, 8),
+    gatewayPhases = make_set_if(phase, eventName == 'gateway-request', 32), queryGuardPhases = make_set_if(phase, eventName == 'query-guard', 32),
+    customResults = make_set(bag_pack('event', eventName, 'phase', phase, 'code', code, 'status', recordStatus), 64),
+    auditV2ObservationCount = countif(auditV2), unlinkedV2ObservationCount = countif(auditV2 and not(requestLinkValid)),
+    verifiedSubjects = make_set_if(verifiedIdentity, subjectVerified, 32),
+    authenticatedSubjectVariants = make_set_if(subjectVariant, auditV2, 32),
+    inconsistentSubjectCount = countif(subjectInconsistent), unverifiedSubjectCount = countif(auditV2 and subjectStatus == 'unverified'),
+    contextVariants = make_set_if(contextVariant, auditV2, 32), validContextVariants = make_set_if(contextVariant, auditV2 and contextShapeValid, 32),
+    malformedContextCount = countif(auditV2 and not(contextShapeValid)),
+    contextTraceCandidates = make_set_if(linkedContextTraceCandidate, isnotempty(linkedContextTraceCandidate), 16)
+    by nativeRequestKey;
+let appgw = AGWAccessLogs
+| where _ResourceId =~ appGatewayResourceId and TimeGenerated between (startTime .. endTime)
+| extend appGatewayTraceId = canonicalId(tostring(TransactionId))
+| where isnotempty(appGatewayTraceId)
+// 完全なUser-Agentの差も内部hashで区別する。hash自体は出力しない。
+| summarize appGatewayLogRows = count(), appGatewayFirstLogAt = min(TimeGenerated), appGatewayLastLogAt = max(TimeGenerated),
+    appGatewayVariantKeys = make_set(hash_sha256(dynamic_to_json(bag_pack('clientIp', tostring(ClientIp), 'userAgent', tostring(UserAgent),
+        'httpStatus', HttpStatus, 'serverStatus', ServerStatus))), 32),
+    appGatewayVariants = make_set(bag_pack('clientIp', tostring(ClientIp), 'userAgent', substring(tostring(UserAgent), 0, 512),
+        'userAgentTruncated', strlen(tostring(UserAgent)) > 512, 'httpStatus', HttpStatus, 'serverStatus', ServerStatus), 32)
+    by appGatewayTraceId;
+nativeRequests
+| join kind=leftouter custom on nativeRequestKey
+| extend verifiedSubjects = coalesce(verifiedSubjects, dynamic([])), authenticatedSubjectVariants = coalesce(authenticatedSubjectVariants, dynamic([])),
+    contextVariants = coalesce(contextVariants, dynamic([])), validContextVariants = coalesce(validContextVariants, dynamic([])),
+    customObservationCount = coalesce(customObservationCount, 0),
+    inconsistentSubjectCount = coalesce(inconsistentSubjectCount, 0), malformedContextCount = coalesce(malformedContextCount, 0),
+    auditV2ObservationCount = coalesce(auditV2ObservationCount, 0), unverifiedSubjectCount = coalesce(unverifiedSubjectCount, 0),
+    unlinkedV2ObservationCount = coalesce(unlinkedV2ObservationCount, 0)
+// 初期unverifiedから後続verifiedへの進行は許容。explicit verifiedが1主体で整合する場合だけ採用する。
+| extend authenticatedSubjectStatus = case(inconsistentSubjectCount > 0 or array_length(verifiedSubjects) > 1, 'inconsistent',
+    array_length(verifiedSubjects) == 1, 'verified', 'unverified'),
+    requestContextStatus = case(malformedContextCount > 0 or array_length(validContextVariants) > 1, 'inconsistent',
+        array_length(validContextVariants) == 1, 'available', 'missing'),
+    nativeMetadataStatus = iff(array_length(nativeVariants) == 1, 'consistent', 'inconsistent')
+| extend adoptedSubject = iff(authenticatedSubjectStatus == 'verified', verifiedSubjects[0], dynamic({})),
+    adoptedContext = iff(requestContextStatus == 'available', validContextVariants[0], dynamic({}))
+| extend appGatewayTraceCandidates = set_union(nativeTraceCandidates, coalesce(contextTraceCandidates, dynamic([])))
+| extend appGatewayTraceId = iff(array_length(appGatewayTraceCandidates) == 1, tostring(appGatewayTraceCandidates[0]), '')
+| join kind=leftouter appgw on appGatewayTraceId
+| extend appGatewayCorrelationStatus = case(array_length(appGatewayTraceCandidates) == 0, 'no-candidate',
+    array_length(appGatewayTraceCandidates) > 1, 'inconsistent-candidate', isempty(appGatewayVariants), 'unmatched',
+    array_length(appGatewayVariantKeys) != 1, 'ambiguous-log', 'matched')
+| project nativeRequestKey, requestId, nativeCorrelationId, nativeLogAt = TimeGenerated, nativeMetadataStatus, nativeLogRows,
+    apiId = tostring(ApiId), operationId = tostring(OperationId), nativeHttpMethod, responseCode = ResponseCode, backendResponseCode = BackendResponseCode,
+    authenticatedSubject = bag_merge(bag_pack('status', authenticatedSubjectStatus), adoptedSubject), requestContext = adoptedContext,
+    authenticatedSubjectStatus, subjectKind = tostring(adoptedSubject.kind), method = tostring(adoptedSubject.method),
+    callerId = tostring(adoptedSubject.callerId), subscriptionId = tostring(adoptedSubject.subscriptionId),
+    tenantId = tostring(adoptedSubject.tenantId), principalId = tostring(adoptedSubject.principalId), clientId = tostring(adoptedSubject.clientId), allocationId = tostring(adoptedSubject.allocationId),
+    authenticatedSubjectVariants, unverifiedSubjectCount, inconsistentSubjectCount,
+    requestContextStatus, malformedContextCount, requestReceivedAt = todatetime(adoptedContext.requestReceivedAt), httpMethod = tostring(adoptedContext.httpMethod),
+    operationTemplate = tostring(adoptedContext.operationTemplate), apimPeerIp = tostring(adoptedContext.apimPeerIp),
+    apimPeerIpSource = iff(isnotempty(tostring(adoptedContext.apimPeerIp)), 'apim-observed-upstream-peer', 'unavailable'),
+    reportedUserAgent = tostring(adoptedContext.reportedUserAgent), userAgentTrust = 'client-reported',
+    appGatewayTraceId, appGatewayTraceCandidates, appGatewayCorrelationStatus,
+    appGatewayClientIp = iff(appGatewayCorrelationStatus == 'matched', tostring(appGatewayVariants[0].clientIp), ''),
+    appGatewayClientIpSource = iff(appGatewayCorrelationStatus == 'matched', 'appgw-observed-immediate-client', 'unavailable'),
+    appGatewayUserAgent = iff(appGatewayCorrelationStatus == 'matched', tostring(appGatewayVariants[0].userAgent), ''),
+    appGatewayUserAgentTruncated = iff(appGatewayCorrelationStatus == 'matched', tobool(appGatewayVariants[0].userAgentTruncated), bool(null)),
+    appGatewayHttpStatus = iff(appGatewayCorrelationStatus == 'matched', toint(appGatewayVariants[0].httpStatus), int(null)),
+    appGatewayServerStatus = iff(appGatewayCorrelationStatus == 'matched', toint(appGatewayVariants[0].serverStatus), int(null)),
+    appGatewayLogRows, appGatewayFirstLogAt, appGatewayLastLogAt, appGatewayVariants,
+    appGatewayDistinctVariants = array_length(appGatewayVariantKeys),
+    customObservationCount, auditV2ObservationCount, unlinkedV2ObservationCount, eventNames, gatewayPhases, queryGuardPhases, customResults, contextVariants
+| order by nativeLogAt desc

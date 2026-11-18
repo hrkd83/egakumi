@@ -9,12 +9,18 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
 
 CORE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CORE / "scripts"))
+from deployment.helpers.apim_audit import expand_audit_fragments, render_audit_policy
+from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
+from policy_fixture_paths import policy_fixture_path
+
 POLICIES = CORE / "apps/gateway/apim/policies"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 if not PWSH:
@@ -24,7 +30,10 @@ if not PWSH:
 
 def expression(path, xpath, attribute=None):
     """XML内の指定位置からAPIMの実C#式を取り出す。想定外の形式なら試験を止める。"""
-    element = ET.parse(path).find(xpath)
+    rendered = expand_audit_fragments(expand_trusted_ingress_fragment(render_audit_policy(path.read_text(encoding="utf-8"))))
+    element = ET.fromstring(rendered).find(xpath)
+    if element is None:
+        raise AssertionError("Expected the generated APIM expression at its original execution position")
     value = element.get(attribute) if attribute else element.text
     if not value or not value.strip().startswith("@{") or not value.strip().endswith("}"):
         raise AssertionError("Expected an APIM multi-statement expression")
@@ -32,7 +41,9 @@ def expression(path, xpath, attribute=None):
 
 
 LIMIT_EXPRESSION = expression(POLICIES / "model-limits.xml", "./set-variable", "value")
-TELEMETRY_EXPRESSION = expression(POLICIES / "gateway-telemetry.xml", "./trace/message")
+TELEMETRY_EXPRESSION = expression(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml"), "./trace/message")
+REQUEST_CONTEXT_EXPRESSION = expression(POLICIES / "service.xml", "./inbound/set-variable[@name='gatewayRequestContext']", "value")
+SUBJECT_EXPRESSION = expression(POLICIES / "service.xml", "./inbound/set-variable[@name='gatewayAuthenticatedSubject']", "value")
 
 # 本番XMLから例外時のstatus式を抽出します。C#で実行し、既定200を成功と誤記しないことを確認します。
 ERROR_STATUS_EXPRESSIONS = {
@@ -65,14 +76,21 @@ public sealed class Body {
     return (T)value;
   }
 }
-public sealed class Request { public Body Body; public Dictionary<string,string[]> Headers = new Dictionary<string,string[]>(); }
+public sealed class Request {
+  public Body Body; public string Method = "POST"; public string IpAddress = "192.0.2.10";
+  public Dictionary<string,string[]> Headers = new Dictionary<string,string[]>();
+}
 public sealed class Response {
   public int StatusCode;
   public Body Body { get { throw new Exception("Response body must remain untouched"); } }
 }
-public sealed class NamedContext { public string Id; }
+public sealed class NamedContext { public string Id; public string UrlTemplate = "/responses"; }
 public sealed class Jwt { public Dictionary<string, string[]> Claims = new Dictionary<string, string[]>(); }
 public static class ClaimExtensions {
+  // APIMの型付き変数取得を再現し、欠落と型不一致の挙動を区別します。
+  public static T GetValueOrDefault<T>(this Dictionary<string,object> values,string key,T fallback) {
+    object value; return values.TryGetValue(key,out value) ? (T)value : fallback;
+  }
   public static string GetValueOrDefault(this Dictionary<string, string[]> claims, string key, string fallback) {
     return claims.ContainsKey(key) ? String.Join(" ", claims[key]) : fallback;
   }
@@ -80,6 +98,7 @@ public static class ClaimExtensions {
 public sealed class Context {
   public Dictionary<string, object> Variables = new Dictionary<string, object>();
   public Guid RequestId = Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  public DateTime Timestamp = DateTime.Parse("2026-01-02T03:04:05Z", null, System.Globalization.DateTimeStyles.RoundtripKind);
   public Request Request;
   public Response Response;
   public NamedContext Api = new NamedContext { Id = "models" };
@@ -89,6 +108,8 @@ public sealed class Context {
 public static class PolicyFixture {
   public static string Limits(Context context) { __LIMITS__ }
   public static string Telemetry(Context context) { __TELEMETRY__ }
+  public static string RequestContext(Context context) { __REQUEST_CONTEXT__ }
+  public static string Subject(Context context) { __SUBJECT__ }
   public static int ErrorStatus(Context context) { return __ERROR_STATUS__; }
   public static string Run(string casesJson) {
     var results = new JObject();
@@ -99,13 +120,40 @@ public static class PolicyFixture {
       };
       if ((bool?)item["responseNull"] == true) context.Response = null;
       if ((bool?)item["nullSubscription"] == true) context.Subscription = null;
+      if (item["api"] != null) context.Api.Id = (string)item["api"];
+      if (item["operation"] != null) context.Operation.Id = (string)item["operation"];
+      if ((bool?)item["nullApi"] == true) context.Api = null;
+      if ((bool?)item["nullOperation"] == true) context.Operation = null;
       if (item["headers"] != null) foreach (var entry in ((JObject)item["headers"]).Properties()) context.Request.Headers[entry.Name] = new string[] { (string)entry.Value };
+      if ((bool?)item["requestContextMissing"] != true) context.Variables["gatewayRequestContext"] = RequestContext(context);
+      if (item["requestContextRaw"] != null) context.Variables["gatewayRequestContext"] = (string)item["requestContextRaw"];
+      foreach (var field in new [] { "commonValidated", "entraValidated" }) {
+        if (item[field] != null) context.Variables[field == "commonValidated" ? "gatewayCommonAuthenticationValidated" : "gatewayEntraAuthenticationValidated"] = ((JValue)item[field]).Value;
+      }
+      if (item["subscriptionSnapshot"] != null) context.Variables["gatewaySubscriptionId"] = (string)item["subscriptionSnapshot"];
+      if (item["configuredTenant"] != null) context.Variables["gatewayEntraTenantId"] = (string)item["configuredTenant"];
+      if (item["userAuthentication"] != null) context.Variables["gatewayUserAuthentication"] = item["userAuthentication"].Type == JTokenType.String ? (string)item["userAuthentication"] : item["userAuthentication"].ToString(Formatting.None);
       context.Variables["gatewayOperationConstraint"] = (item["constraint"] ?? new JObject()).ToString(Formatting.None);
       foreach (var field in new string[] { "gatewayAuditPhase", "gatewayAuditCode" }) {
         if (item[field] != null) context.Variables[field] = (string)item[field];
       }
       if (item["decision"] != null) context.Variables["gatewayDecision"] = item["decision"].Type == JTokenType.String ? (string)item["decision"] : item["decision"].ToString(Formatting.None);
-      if (item["settings"] != null) context.Variables["gatewayAuditSettings"] = item["settings"].ToString(Formatting.None);
+      if (item["settings"] != null) {
+        var audit=(JObject)item["settings"].DeepClone();
+        var controls=new JObject();
+        foreach(var field in new [] {"operationId","operationConstraints","tokenLimitOperationIds"}) {
+          if(audit[field]!=null) { controls[field]=audit[field]; audit.Remove(field); }
+        }
+        audit.Remove("apiId");
+        context.Variables["gatewayAuditSettings"] = audit.ToString(Formatting.None);
+        context.Variables["gatewayControlSettings"] = controls.ToString(Formatting.None);
+        if ((bool?)item["legacySettings"] == true) {
+          context.Variables["gatewayAuditSettings"] = item["settings"].ToString(Formatting.None);
+          context.Variables.Remove("gatewayControlSettings");
+        }
+      }
+      if (item.Property("controlRaw") != null) context.Variables["gatewayControlSettings"] =
+        item["controlRaw"].Type == JTokenType.Null ? null : (string)item["controlRaw"];
       if (item["selection"] != null) context.Variables["gatewayProfileSelection"] = item["selection"].ToString(Formatting.None);
       if (item["auditModel"] != null) context.Variables["gatewayAuditModel"] = (string)item["auditModel"];
       if (item["connectionExpiry"] != null) context.Variables["gatewayConnectionExpiresOn"] = ((JValue)item["connectionExpiry"]).Value;
@@ -115,6 +163,8 @@ public static class PolicyFixture {
         context.Variables["gatewayValidatedToken"] = jwt;
       }
       var mode = (string)item["mode"];
+      if ((bool?)item["subjectMissing"] != true && (bool?)item["requestContextMissing"] != true) context.Variables["gatewayAuthenticatedSubject"] = Subject(context);
+      if (item.Property("subjectRaw") != null) context.Variables["gatewayAuthenticatedSubject"] = item["subjectRaw"].Type == JTokenType.Null ? null : item["subjectRaw"].Type == JTokenType.String ? (string)item["subjectRaw"] : item["subjectRaw"].ToString(Formatting.None);
       if (mode == "on-error") context.Variables["gatewayAuditStatus"] = ErrorStatus(context);
       string raw = mode == "telemetry" || mode == "on-error" ? Telemetry(context) : Limits(context);
       results[(string)item["id"]] = new JObject(
@@ -126,7 +176,7 @@ public static class PolicyFixture {
     return results.ToString(Formatting.None);
   }
 }
-""".replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TELEMETRY__", TELEMETRY_EXPRESSION).replace("__ERROR_STATUS__", ERROR_STATUS_EXPRESSION[2:-1])
+""".replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TELEMETRY__", TELEMETRY_EXPRESSION).replace("__REQUEST_CONTEXT__", REQUEST_CONTEXT_EXPRESSION).replace("__SUBJECT__", SUBJECT_EXPRESSION).replace("__ERROR_STATUS__", ERROR_STATUS_EXPRESSION[2:-1])
 
 
 def limit_case(case_id, body, constraint=None):
@@ -182,7 +232,60 @@ CASES = [
     {"id": "audit-connection-expiry-zero", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "connectionExpiry": 0},
     {"id": "audit-connection-expiry-ms", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "connectionExpiry": 1792382400000},
     {"id": "audit-connection-expiry-text", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "connectionExpiry": "SENTINEL_METADATA"},
+    {"id": "audit-pre-base", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "requestContextMissing": True,
+     "gatewayAuditPhase":"rejected", "gatewayAuditCode":"INVALID_REQUEST", "responseStatus":400},
+    {"id": "audit-broken-request-context", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "requestContextRaw":"{broken"},
+    {"id": "audit-no-api-operation", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "nullApi":True,"nullOperation":True},
+    {"id": "audit-mcp-operation-override", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "api":"synthetic-mcp","operation":"mcp-execute",
+     "auditModel":"synthetic-model","settings":{"operationId":"chat-create","llmOperationIds":["chat-create"],
+       "serviceClass":"platform","backendService":"foundryOpenAi","backendAuthentication":"managedIdentity","measurementRole":"facade"}},
 ]
+
+# 認証は共通入口で完了し、認可decisionが未作成/拒否でも主体を保持するケース。
+_subject_tenant = "11111111-1111-4111-8111-111111111111"
+_subject_person = "22222222-2222-4222-8222-222222222222"
+_subject_client = "33333333-3333-4333-8333-333333333333"
+_subject_caller = "user:" + _subject_tenant + ":" + _subject_person
+_subject_user = {"schemaVersion": 1, "tenantId": _subject_tenant, "principalId": _subject_person,
+                 "clientId": _subject_client, "callerId": _subject_caller, "allocationId": _subject_caller}
+_subject_base = {"mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "gatewayAuditPhase": "rejected",
+                 "gatewayAuditCode": "AUTHORIZATION_DENIED", "responseStatus": 403,
+                 "commonValidated": True, "entraValidated": True, "nullSubscription": True,
+                 "configuredTenant": _subject_tenant, "userAuthentication": _subject_user}
+CASES.extend([
+    {**_subject_base, "id": "subject-user-early-denied", "decision": {"allowed": False, "callerId": "SENTINEL_UNVERIFIED_CALLER"}},
+    {**_subject_base, "id": "subject-user-before-decision"},
+    {**_subject_base, "id": "subject-user-client-absent", "userAuthentication": {**_subject_user, "clientId": ""}},
+    {"id": "subject-key-early-denied", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
+     "commonValidated": True, "subscriptionSnapshot": "subscription-a", "gatewayAuditPhase": "rejected",
+     "headers": {"Authorization": "Bearer SENTINEL_TOKEN"}, "claims": {"oid": "SENTINEL_UNVERIFIED_PRINCIPAL"},
+     "decision": {"allowed": False, "callerId": "SENTINEL_UNVERIFIED_CALLER"}},
+    {**_subject_base, "id": "subject-key-priority", "nullSubscription": False, "subscriptionSnapshot": "subscription-a",
+     "userAuthentication": "SENTINEL_INVALID_JSON"},
+    {"id": "subject-no-common-marker", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
+     "claims": {"tid": _subject_tenant, "oid": _subject_person}},
+    {**_subject_base, "id": "subject-forged-package", "commonValidated": False, "entraValidated": False,
+     "headers": {"X-Core-Caller-Id": "SENTINEL_FORGED_CALLER", "X-Core-Subscription-Id": "SENTINEL_FORGED_SUBSCRIPTION"}},
+    {**_subject_base, "id": "subject-entra-marker-only", "commonValidated": False},
+    {**_subject_base, "id": "subject-marker-wrong-type", "commonValidated": "true"},
+    {**_subject_base, "id": "subject-marker-empty", "commonValidated": ""},
+    {"id": "subject-key-inconsistent", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
+     "commonValidated": True, "subscriptionSnapshot": "SENTINEL_DIFFERENT_SUBSCRIPTION"},
+])
+for _label, _user in (
+    ("caller", {**_subject_user, "callerId": "SENTINEL_UNVERIFIED_CALLER"}),
+    ("allocation", {**_subject_user, "allocationId": "SENTINEL_UNVERIFIED_ALLOCATION"}),
+    ("principal", {**_subject_user, "principalId": "00000000-0000-0000-0000-000000000000"}),
+    ("client", {**_subject_user, "clientId": "SENTINEL_UNVERIFIED_CLIENT"}),
+    ("schema", {**_subject_user, "schemaVersion": True}),
+    ("malformed", "{broken"), ("empty", ""), ("missing-fields", {}), ("oversized", " " * 4097),
+):
+    CASES.append({**_subject_base, "id": "subject-user-inconsistent-" + _label, "userAuthentication": _user})
+CASES.append({**_subject_base, "id": "subject-user-inconsistent-tenant", "configuredTenant": _subject_person})
+for _label, _raw in (("malformed", "{broken"), ("null", None), ("oversized", " " * 1601),
+                     ("wrong-type", {"status": "verified", "kind": "apimSubscription", "method": "subscriptionKey", "callerId": [], "subscriptionId": "subscription-a"}),
+                     ("caller", {"status": "verified", "kind": "apimSubscription", "method": "subscriptionKey", "callerId": "SENTINEL_FORGED_CALLER", "subscriptionId": "subscription-a"})):
+    CASES.append({"id": "subject-observation-" + _label, "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT", "subjectRaw": _raw})
 
 # Regression cases use the shipped contracts, including optional native fields.
 for _id, _api, _operation, _body in (
@@ -291,6 +394,12 @@ for label, requested, effective, aliases in (
         "selection": {"allowed": True, "requestedModel": requested, "effectiveModel": effective,
             "constraint": {"modelAliases": aliases}}})
 
+for _name in ('audit-mcp-operation-override','audit-alias-valid'):
+    _base=next(item for item in CASES if item['id']==_name)
+    CASES.append({**_base,'id':_name+'-legacy-mixed','legacySettings':True})
+    for _label, _raw in (('malformed', '{broken'), ('null', None), ('blank', ''), ('array', '[]'), ('scalar', '42')):
+        CASES.append({**_base,'id':_name+'-'+_label+'-new','legacySettings':True,'controlRaw':_raw})
+
 
 class GatewayExpressionTests(unittest.TestCase):
     """APIMの入力上限・生成token上限・安全な利用量記録を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
@@ -328,6 +437,45 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def decision(self, case_id):
         return self.results[case_id]["result"]
+
+    def test_authenticated_subject_preserves_verified_identity_before_authorization(self):
+        expected = {"status": "verified", "kind": "entraUser", "method": "user", "callerId": _subject_caller,
+                    "allocationId": _subject_caller, "tenantId": _subject_tenant,
+                    "principalId": _subject_person, "clientId": _subject_client}
+        for name in ("subject-user-early-denied", "subject-user-before-decision"):
+            with self.subTest(case=name):
+                self.assertEqual(self.decision(name)["authenticatedSubject"], expected)
+                self.assertEqual(self.results[name]["reads"], 0)
+        self.assertEqual(self.decision("subject-user-early-denied")["authorization"], "denied")
+        self.assertEqual(self.decision("subject-user-before-decision")["authorization"], "unconfirmed")
+        self.assertEqual(self.decision("subject-user-client-absent")["authenticatedSubject"], {**expected, "clientId": ""})
+
+    def test_authenticated_subject_uses_subscription_before_any_bearer_identity(self):
+        expected = {"status": "verified", "kind": "apimSubscription", "method": "subscriptionKey",
+                    "callerId": "subscription:subscription-a", "subscriptionId": "subscription-a"}
+        for name in ("subject-key-early-denied", "subject-key-priority"):
+            with self.subTest(case=name):
+                self.assertEqual(self.decision(name)["authenticatedSubject"], expected)
+                self.assertEqual(self.results[name]["reads"], 0)
+                self.assertNotIn("SENTINEL", json.dumps(self.decision(name)))
+
+    def test_authenticated_subject_withholds_identity_for_unverified_or_inconsistent_results(self):
+        self.assertEqual(self.decision("subject-no-common-marker")["authenticatedSubject"], {"status": "unverified"})
+        self.assertEqual(self.decision("subject-forged-package")["authenticatedSubject"], {"status": "unverified"})
+        self.assertNotIn("SENTINEL", json.dumps(self.decision("subject-forged-package")))
+        inconsistent = ["subject-entra-marker-only", "subject-marker-wrong-type", "subject-marker-empty", "subject-key-inconsistent"]
+        inconsistent += ["subject-user-inconsistent-" + label for label in ("caller", "allocation", "principal", "client", "schema", "malformed", "empty", "missing-fields", "oversized", "tenant")]
+        for name in inconsistent:
+            with self.subTest(case=name):
+                self.assertEqual(self.decision(name)["authenticatedSubject"], {"status": "inconsistent"})
+                self.assertEqual(self.results[name]["reads"], 0)
+                self.assertNotIn("SENTINEL", json.dumps(self.decision(name)))
+        for label in ("malformed", "null", "oversized", "wrong-type", "caller"):
+            name = "subject-observation-" + label
+            with self.subTest(case=name):
+                self.assertEqual(self.decision(name)["authenticatedSubject"], {"status": "inconsistent"})
+                self.assertEqual(self.results[name]["reads"], 0)
+                self.assertNotIn("SENTINEL", json.dumps(self.decision(name)))
 
     def test_service_class_is_explicitly_allowlisted_without_reading_request_body(self):
         for classification in ("platform", "sample"):
@@ -440,6 +588,34 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(result["authorization"], "allowed")
         self.assertEqual(result, self.decision("audit-no-token"))
 
+    def test_common_identity_and_pre_base_fallback_preserve_log_ids_without_body_reads(self):
+        for name in ('audit-accepted','audit-pre-base','audit-broken-request-context'):
+            with self.subTest(case=name):
+                record=self.decision(name)
+                self.assertEqual(record['requestId'],'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+                self.assertEqual(record['apiId'],'models')
+                self.assertEqual(record['operationId'],'responses-create')
+                self.assertEqual(self.results[name]['reads'],0)
+        nulls=self.decision('audit-no-api-operation')
+        self.assertIsNone(nulls['apiId'])
+        self.assertIsNone(nulls['operationId'])
+
+    def test_mcp_control_operation_override_does_not_replace_the_actual_logged_operation(self):
+        record=self.decision('audit-mcp-operation-override')
+        self.assertEqual(record['apiId'],'synthetic-mcp')
+        self.assertEqual(record['operationId'],'mcp-execute')
+        self.assertEqual(record['usageStatus'],'native-log-join-required')
+        self.assertEqual(self.results['audit-mcp-operation-override']['reads'],0)
+
+    def test_usage_requires_current_control_settings_and_never_reads_request_body(self):
+        for name in ('audit-mcp-operation-override','audit-alias-valid'):
+            with self.subTest(case=name):
+                self.assertEqual(self.decision(name+'-legacy-mixed')['usageStatus'],'none')
+                self.assertEqual(self.results[name+'-legacy-mixed']['reads'],0)
+                for suffix in ('malformed', 'null', 'blank', 'array', 'scalar'):
+                    self.assertEqual(self.decision(name+'-'+suffix+'-new')['usageStatus'],'none')
+                    self.assertEqual(self.results[name+'-'+suffix+'-new']['reads'],0)
+
     def test_unconfirmed_subscription_never_records_caller_attribution(self):
         for case_id in ("audit-caller-mismatch", "audit-subscription-absent"):
             with self.subTest(case_id=case_id):
@@ -486,7 +662,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(self.decision("audit-untrusted-values")["code"], "UNSPECIFIED")
 
     def test_trace_targets_resource_logs_without_appi_or_body_capture(self):
-        root = ET.parse(POLICIES / "gateway-telemetry.xml").getroot()
+        root = ET.parse(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml")).getroot()
         self.assertEqual(root.find("trace").attrib, {"source": "core-gateway", "severity": "information"})
         for forbidden in ("context.Request.Body", "context.Response.Body", "context.Request.Headers", "context.Request.Url", "LastError.Message"):
             self.assertNotIn(forbidden, TELEMETRY_EXPRESSION)

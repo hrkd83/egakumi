@@ -20,6 +20,7 @@ import time
 
 from deployment.helpers.configuration import (
     build_bicep_configuration, load_configuration_source, load_credential_provider_secrets,
+    load_credential_identity_secret,
 )
 from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
@@ -165,7 +166,8 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
                    refresh=configure_named_values, publish=api_publication.execute_plan,
                    callback_waf=configure_gateway_identity_callback_waf,
                    speech_waf=configure_gateway_speech_waf,
-                   document_waf=configure_gateway_document_waf, data_waf=configure_data_waf, progress=print):
+                   document_waf=configure_gateway_document_waf, data_waf=configure_data_waf, progress=print,
+                   publication_checkpoint=None):
     """SQL成功後だけアプリとAPIを更新する。共有鍵・CM接続・既存SQLデータは維持する。"""
     enabled = broker_enabled(config)
     if enabled:
@@ -186,7 +188,8 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
     refresh(config, current['outputs'], transport)
     progress('Gateway: API・製品・購読・ポリシーを公開します。', flush=True)
     plan = api_publication.prepare_plan(config, current)
-    publication = publish(config, current, plan, templates['apis'], transport)
+    publication = (publish(config, current, plan, templates['apis'], transport, checkpoint=publication_checkpoint)
+                   if publication_checkpoint is not None else publish(config, current, plan, templates['apis'], transport))
     callback = None
     if enabled:
         progress('Gateway: 本人認証callback用WAFを設定します。', flush=True)
@@ -227,6 +230,7 @@ def main(argv=None):
     args.state_file = workspace.checked(args.state_file or workspace.state / 'latest.json')
     args.output = workspace.checked(args.output or workspace.state / 'gateway-plan.json')
     build_record = workspace.state / 'credential-broker-build.json'
+    publication_record = workspace.checked(workspace.state / 'gateway-api-source.json')
     if args.deployment_name:
         # 計画時も、このオプションを使った場合に限りCore配備を読み取ります。
         from deployment.helpers.configuration import load_configuration
@@ -239,6 +243,10 @@ def main(argv=None):
     else:
         state = json.loads(args.state_file.read_text(encoding='utf-8'))
     config = resolve_publication_configuration(source, state)
+    if args.execute and publication_record.is_file():
+        # A checkpoint supplies expected source only. Fresh raw policy/ETag/
+        # membership readback is still mandatory and detects partial drift.
+        state['apiPublicationSourceCheckpoint'] = json.loads(publication_record.read_text(encoding='utf-8'))
     if args.execute and config.get('publishApis') is not True:
         raise ValueError('Set publishApis=true to deploy the Gateway APIs')
     foundation = foundation_inputs(config, state)
@@ -274,15 +282,22 @@ def main(argv=None):
     templates = {'gateway': run_json(['az', 'bicep', 'build', '--file', str(MODULE), '--stdout']),
                  'apis': run_json(['az', 'bicep', 'build', '--file', str(api_publication.MODULE), '--stdout'])}
     values['credentialProviderSecrets'] = load_credential_provider_secrets(config)
+    if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
+        values['credentialIdentitySecret'] = load_credential_identity_secret(config)
     verify_foundation(config, foundation, transport)
     if active:
         values['brokerKey'] = broker_secret(config, foundation, transport)
         if not digest:
             values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
                 record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
-    result = deploy_release(config, state, values, templates, transport)
+    result = deploy_release(config, state, values, templates, transport,
+                            publication_checkpoint=lambda value: protected_json(publication_record, value))
     protected_json(workspace.state / 'gateway-deployment.json', result)
-    print(json.dumps(result, ensure_ascii=False))
+    summary = copy.deepcopy(result)
+    # Actual source XML is protected output, never CLI stdout or public evidence.
+    summary.get('apiPublication', {}).pop('entraPublicationSource', None)
+    summary.get('apiPublication', {}).pop('credentialBrowserPublicationSource', None)
+    print(json.dumps(summary, ensure_ascii=False))
     return 0
 
 
