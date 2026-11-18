@@ -31,7 +31,7 @@ rotationCommitAttempted          確定要求を送る前に保存する試行�
 
 ## Next.js / Node.js
 
-サーバー用クライアントの正本は[`apps/portal/lib/connection-session/client.ts`](../../apps/portal/lib/connection-session/client.ts)。[`clients/connection-session/typescript/connection-session.ts`](../../clients/connection-session/typescript/connection-session.ts)は同じ実装を再exportする入口で、別管理のコピーではない。別アプリへ取り込むときは正本を使い、暗号化共有store・認証済み本人の境界をそのアプリへ実装する。追加の認証SDKは要求せず、アプリの既存認証から確認済み本人を受け取る。PortalのBetter Authログインと、この接続セッションの期限を同一にしない。
+サーバー用クライアントの正本は[`apps/portal/lib/connection-session/client.ts`](../../apps/portal/lib/connection-session/client.ts)。別アプリへ取り込むときはこの実装を使い、暗号化共有store・認証済み本人の境界をそのアプリへ実装する。追加の認証SDKは要求せず、アプリの既存認証から確認済み本人を受け取る。PortalのBetter Authログインと、この接続セッションの期限を同一にしない。
 
 業務GETは排他取得後に開始する90秒のHTTP予算を使い、前後の更新確定と業務実行前409後の
 再試行でも同じ期限を共有する。更新確定などの制御要求は1要求25秒を上限とし、業務処理中は
@@ -79,18 +79,18 @@ export async function GET() {
 
 Portalの実装は`lib/connection-session/store.ts`と`crypto.ts`を使用し、`portalConnectionState`へ利用者別の接続状態をAES-256-GCMで保存する。保存先の鍵は`BETTER_AUTH_SECRET`から用途別に導出し、DBのリース・版数比較で排他する。署名鍵の更新後は旧暗号文を復号できないため、管理者がGraph保存状態を初期化してから再認証する運用が必要である。画面の再実行だけでは復旧せず、暗号文の不正は自動破棄しない。Microsoftアクセストークン・更新トークンは引き続きCMが管理する。
 
-参照実装の実通信なしテストと型検査:
+参照実装の実通信なしテストと型検査（リポジトリルートで実行）:
 
 ```bash
-node --experimental-strip-types --test clients/connection-session/typescript/connection-session.test.ts
+node --experimental-strip-types --test apps/portal/tests/connection-session-client.test.ts
 node apps/portal/node_modules/typescript/bin/tsc --noEmit --strict --target ES2022 \
   --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions \
   --types node --typeRoots apps/portal/node_modules/@types \
-  clients/connection-session/typescript/connection-session.ts \
-  clients/connection-session/typescript/connection-session.test.ts
+  apps/portal/lib/connection-session/client.ts \
+  apps/portal/tests/connection-session-client.test.ts
 ```
 
-Nodeの型消去はテスト実行用。本番アプリへ組み込む際は、そのアプリのTypeScriptビルドを使う。
+このテストはPortalの`npm test`にも含まれる。Nodeの型消去はテスト実行用。本番アプリへ組み込む際は、そのアプリのTypeScriptビルドを使う。
 
 ## FastAPI / Python
 

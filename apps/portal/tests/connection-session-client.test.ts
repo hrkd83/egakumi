@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConnectionSessionClient, ConnectionSessionError } from "./connection-session.ts";
-import type { PrivateState, SharedStateStore } from "./connection-session.ts";
+import { ConnectionSessionClient, ConnectionSessionError } from "../lib/connection-session/client.ts";
+import type { PrivateState, SharedStateStore } from "../lib/connection-session/client.ts";
 
 const origin = "https://gateway.example.com";
 const sid = "d".repeat(64);
