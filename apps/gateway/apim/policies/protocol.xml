@@ -116,7 +116,7 @@
          サーバーの案内にAPIMが付けるprefixと同じ公開パスだけを認めます。 -->
     __MCP_PROXY_ROUTE_XML__
     <!-- CMを使うMCPだけ、接続の利用者確認とtoken設定を差し込みます。
-         WebSocketとgRPCには、各通信で対応した専用の下流認証を生成します。 -->
+         WebSocketには、対応した専用の下流認証を生成します。 -->
     __CREDENTIAL_CONNECTION_INBOUND_XML__
     <!-- CMの本人セッション証明はGateway内で使い、接続先へ渡しません。 -->
     <set-header name="X-Core-Connection-Session" exists-action="delete" />

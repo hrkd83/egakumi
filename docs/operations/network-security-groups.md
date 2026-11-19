@@ -95,6 +95,14 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 | 330 | `allow-apim-internal-cache-egress` | APIMサブネットCIDR | APIMサブネットCIDR | TCP／6381-6383 | `N-APIM-OUT-CACHE` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `N-APIM-OUT-TERMINAL` |
 
+### NTPとFirewallのDNS依存
+
+APIMの[公式NTP要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-reference#internal-infrastructure-and-diagnostics)はOutbound UDP123です。NSGの`allow-time-sync-egress`はこの要件に対応します。構築資材のFirewallは別に`time.windows.com`へのUDP123を許可しますが、APIMの公式要件はこのFQDNへの限定を保証していません。
+
+VNetとFirewall上流はAzure標準DNSを使用します。FirewallのDNS Proxyを有効にするだけでは、APIMのDNS問い合わせ先はProxyへ切り替わりません。[Firewallの公式DNS仕様](https://learn.microsoft.com/en-us/azure/firewall/dns-settings#dns-proxy)では、Proxyを使わないクライアントとFirewallの名前解決結果に差が出る可能性を示しています。
+
+NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Actionで検索し、許可だけでなく拒否も確認します。`apim-platform-time`に一致するAllowは、その時点の宛先IPがFirewallのFQDN許可集合に含まれる証拠です。NTP応答・時計同期や将来の全DNS回答の成功は、このログだけでは確認できません。宛先限定の採否とDNS依存の解消はFirewall Policyの棚卸しで扱い、確認だけで標準DNSや経路を変更しません。
+
 ## Private Endpoint（pep）
 
 ### Inbound
