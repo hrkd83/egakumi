@@ -11,6 +11,7 @@ _PRIMARY_FILES = {
         ("core-credential-browser-exception", "fragments/authentication"),
         ("core-common-authentication", "fragments/authentication"),
         ("core-gateway-telemetry", "fragments/audit"),
+        ("core-api-settings", "fragments/settings"),
     )
     for suffix in (".xml", ".cs")
 }

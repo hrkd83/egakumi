@@ -1,16 +1,20 @@
 <policies>
-  <!--
-    WebSocket / MCP proxy の接続開始時に全体の認証を継承し、API 固有の認可を実施します。
-    通常RESTと同じ購読キーまたはBearerを確認し、API定義にあるモデル名と接続先queryを入口で検査します。
-    WebSocket は接続開始時にモデルと固定 query を検査します。
-  -->
+  <!-- WebSocketの接続開始・外部MCPの転送用テンプレート。 -->
   <inbound>
-    <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
-    <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
+    <!-- ========== API設定の準備（core-api-settings） ========== -->
+    <!-- 目的：共通処理へ、このAPIの監査・制御設定を渡します。 -->
+    <!-- 処理：API固有データを共通部品で読み、監査・制御の2変数へ格納します。 -->
+    <set-variable name="gatewayApiSettingsSource" value="__API_SETTINGS_BASE64__" />
+    <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+    <!-- === -->
     <!-- MCP型だけに、個別PRMの転送を止める固定guardを差し込みます。 -->
     __MCP_PRM_GUARD_XML__
-    <!-- native stream/MCPも共通入口で購読キーまたはBearerを検証します。 -->
+    <!-- === -->
+    <!-- ========== 共通ポリシーの適用 ========== -->
+    <!-- 目的：共通の入口確認・認証・監査情報の準備を実行します。 -->
+    <!-- 処理：上位のInboundを実行します。拒否されなければ、このAPIの後続処理へ戻ります。 -->
     <base />
+    <!-- === -->
     <set-header name="X-Core-Caller-Id" exists-action="delete" />
     <set-header name="X-Core-Subscription-Id" exists-action="delete" />
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>

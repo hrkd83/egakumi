@@ -21,6 +21,9 @@ from deployment.helpers.apim_authentication import (
     ENTRA_OPEN_PRODUCT_ID, ENTRA_NAMED_VALUES, validate_entra_named_values, validate_entra_named_value,
 )
 from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES
+from deployment.helpers.apim_api_settings import (
+    API_SETTINGS_ID, API_SETTINGS_SOURCE_VARIABLE, validate_api_settings_inheritance, validate_api_settings_scope,
+)
 from deployment.helpers.apim_ingress import (
     TRUSTED_INGRESS_ID, render_trusted_ingress_fragment, render_legacy_trusted_ingress_fragment,
 )
@@ -257,10 +260,12 @@ def _xml(value, *, fragment=False, inherited=False):
         if len(bases) != 1 or bases[0] not in list(section):
             raise ValueError("Inbound policy inheritance must execute exactly once")
         before = list(section)[:list(section).index(bases[0])]
+        validate_api_settings_inheritance(root)
         # Retired metadata is accepted only while reading an explicitly owned
         # previous source. New templates are rejected before deployment.
-        metadata = ("gatewayAuditSettings", "gatewayControlSettings", "coreNativeGrpc")
+        metadata = ("gatewayAuditSettings", "gatewayControlSettings", "coreNativeGrpc", API_SETTINGS_SOURCE_VARIABLE)
         if any(not (node.tag == "set-variable" and node.get("name") in metadata)
+               and not (node.tag == "include-fragment" and node.attrib == {"id": API_SETTINGS_ID, "fragment-id": API_SETTINGS_ID})
                and _structure(node) != _structure(ET.fromstring(PRM_GUARD)) for node in before):
             raise ValueError("Only source-verified audit/operation metadata may precede inbound inheritance")
     return root
@@ -279,8 +284,9 @@ def _same_xml(actual, expected, *, fragment=False, inherited=False):
         raise ValueError("Raw policy readback differs from the generated source; markers are not proof")
 
 
-def _audit_fragment_scope(policies, apim_id):
+def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
     """共通入口の部品を固定位置へ限定し、認証例外の拡大や変数上書きを防ぐ。"""
+    validate_api_settings_scope(policies, apim_id, api_properties=api_properties)
     global_id = apim_id + "/policies/policy"
     ingress_id = TRUSTED_INGRESS_ID
     common_ids = set(AUDIT_FRAGMENT_FILES) | {ingress_id, BROWSER_EXCEPTION_ID} | set(AUTHENTICATION_FRAGMENT_IDS)
@@ -463,7 +469,7 @@ def read_policy_graph(manifest: PolicyManifest, transport):
         raise ValueError("A canonical APIM resource ID is required")
     if not manifest.operations or set(manifest.operations) != set(manifest.products) or set(manifest.operations) != set(manifest.api_properties):
         raise ValueError("The complete target API manifest is required")
-    _audit_fragment_scope(manifest.policies, apim)
+    _audit_fragment_scope(manifest.policies, apim, api_properties=manifest.api_properties)
     snapshot, visited = {}, set()
 
     def dependency(kind, name, expected):
@@ -939,7 +945,7 @@ def source_manifest(source, apim_id, api_names, global_policy, *, named_values=N
             if resource_id in children or not isinstance(entry["properties"], dict):
                 raise ValueError("The generated API child source must be unique and complete")
             children[resource_id] = copy.deepcopy(entry["properties"])
-    _audit_fragment_scope(policies, apim_id)
+    _audit_fragment_scope(policies, apim_id, api_properties=api_properties)
     return PolicyManifest(apim_id, policies, operations, products, entries("backends", "properties"), expected_named,
                           api_properties, children, version)
 

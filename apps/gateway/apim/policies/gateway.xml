@@ -1,21 +1,17 @@
 <policies>
-  <!-- RESTの入口認証はbaseへ委譲し、操作制約・接続先認証・転送を管理します。
-       __...__ はBicepのAPI契約、{{...}}はNamed Value参照です。
-       本文・資格情報は監査せず、SSEは読み切らず中継します。 -->
+  <!-- HTTP APIの入力検査・下流接続用テンプレート。 -->
   <inbound>
-    <set-variable name="gatewayAuditSettings" value="@{
-      var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)));
-      var backend = settings[&quot;operationBackends&quot;]?[context.Operation.Id];
-      if (backend != null) {
-        settings[&quot;backendService&quot;] = backend[&quot;backendService&quot;];
-        settings[&quot;backendAuthentication&quot;] = backend[&quot;backendAuthentication&quot;];
-      }
-      return settings.ToString(Newtonsoft.Json.Formatting.None);
-    }" />
-    <!-- API固有の制御設定。判定条件は維持し、監査情報と保存先を分けます。 -->
-    <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
-    <!-- 全業務操作で、baseを通じて共通のキー／Bearer認証を実行します。 -->
+    <!-- ========== API設定の準備（core-api-settings） ========== -->
+    <!-- 目的：共通処理へ、このAPIの監査・制御設定を渡します。 -->
+    <!-- 処理：API固有データを共通部品で読み、監査・制御の2変数へ格納します。 -->
+    <set-variable name="gatewayApiSettingsSource" value="__API_SETTINGS_BASE64__" />
+    <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+    <!-- === -->
+    <!-- ========== 共通ポリシーの適用 ========== -->
+    <!-- 目的：共通の入口確認・認証・監査情報の準備を実行します。 -->
+    <!-- 処理：上位のInboundを実行します。拒否されなければ、このAPIの後続処理へ戻ります。 -->
     <base />
+    <!-- === -->
     <set-header name="X-Core-Caller-Id" exists-action="delete" />
     <set-header name="X-Core-Subscription-Id" exists-action="delete" />
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>

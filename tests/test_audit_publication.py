@@ -21,6 +21,21 @@ class AuditPublicationTests(unittest.TestCase):
  def setUp(self): self.parameters=copy.deepcopy(type(self).parameters)
  def evaluate(self,value,index=0):
   return PolicyExpression(value,self.template['variables'],functions=self.template['functions']).evaluate(self.parameters,index)
+ def api_settings(self,root):
+  source=root.find("inbound/set-variable[@name='gatewayApiSettingsSource']")
+  self.assertIsNotNone(source)
+  lines=base64.b64decode(source.attrib['value'],validate=True).decode('utf-8').split('\n')
+  self.assertEqual(len(lines),3)
+  inbound=list(root.find('inbound'))
+  calls=root.findall("inbound/include-fragment[@fragment-id='core-api-settings']")
+  self.assertEqual(len(calls),1)
+  self.assertEqual(calls[0].attrib,{'id':'core-api-settings','fragment-id':'core-api-settings'})
+  self.assertEqual(inbound.index(calls[0]),inbound.index(source)+1)
+  before=inbound[:inbound.index(root.find('inbound/base'))]
+  self.assertIn(calls[0],before)
+  self.assertFalse(any(node.tag=='set-variable' and node.get('name') in
+    ('gatewayApiSettings','gatewayAuditSettings','gatewayControlSettings') for node in before))
+  return lines[0],json.loads(lines[1]),json.loads(lines[2])
  def test_shared_audit_subject_matches_python_renderer_in_published_trace_templates(self):
   def structure(node):
    text=node.text or ''
@@ -29,6 +44,7 @@ class AuditPublicationTests(unittest.TestCase):
   directory=CORE/'apps/gateway/apim/policies'
   marker='__AUDIT_SUBJECT_OBSERVATION_CSHARP__'
   for filename,resource_name,source_marker,comment_mode in (
+    ('core-api-settings.xml','apiSettingsFragment','__CORE_API_SETTINGS_CSHARP__','full'),
     ('core-gateway-telemetry.xml','gatewayTelemetryFragment','__CORE_GATEWAY_TELEMETRY_CSHARP__','full'),
     ('query-telemetry.xml','queryTelemetryFragment',marker,'compact')):
    with self.subTest(template=filename):
@@ -68,31 +84,29 @@ class AuditPublicationTests(unittest.TestCase):
    with self.subTest(api=api['name']):
     self.assertNotIn('__AUDIT_',value)
     root=ET.fromstring(value)
-    raw=root.find("inbound/set-variable[@name='gatewayAuditSettings']").attrib['value']
-    settings=json.loads(base64.b64decode(raw.split('"')[1]))
-    control_raw=root.find("inbound/set-variable[@name='gatewayControlSettings']").attrib['value']
-    controls=json.loads(base64.b64decode(control_raw.split('"')[1]))
+    api_type,settings,controls=self.api_settings(root)
+    self.assertEqual(api_type,api['apiType'])
+    self.assertNotIn('__API_SETTINGS_',value)
     self.assertNotIn('__CONTROL_',value)
     self.assertEqual(set(settings),{'serviceClass','backendService','backendAuthentication','operationBackends',
       'llmOperationIds','websocketModel','targetAgent','measurementRole'})
+    self.assertEqual(settings['operationBackends'],{
+      operation['name']:{'backendService':operation['backendOverride']['backendService'],
+        'backendAuthentication':operation['backendOverride']['backendAuthentication']['mode']}
+      for operation in api['operations'] if 'backendOverride' in operation})
     self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds'})
     self.assertEqual(controls['operationId'],'')
     self.assertEqual(controls['operationConstraints'],api['authorization']['operationConstraints'])
     expected=self.evaluate("[__bicep.tokenLimitOperations(parameters('apiDefinitions')[copyIndex()])]",index)
     self.assertEqual(controls['tokenLimitOperationIds'],expected)
-    inbound=list(root.find('inbound'))
-    self.assertLess(inbound.index(root.find("inbound/set-variable[@name='gatewayControlSettings']")),
-      inbound.index(root.find('inbound/base')))
     self.assertEqual(settings['backendAuthentication'],'credentialConnection' if api.get('credentialConnection') else api['backendAuthentication']['mode'])
     self.assertEqual(settings['serviceClass'],api['serviceClass'])
     self.assertEqual(root.find('outbound')[0].attrib['fragment-id'],'core-backend-audit')
     if api['apiType'] in ('websocket','grpc','mcp'): self.assertIsNone(root.find('.//set-body'))
   xml=compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies')
-  raw=ET.fromstring(xml).find("inbound/set-variable[@name='gatewayAuditSettings']").attrib['value']
-  settings=json.loads(base64.b64decode(raw.split('"')[1]))
+  api_type,settings,controls=self.api_settings(ET.fromstring(xml))
+  self.assertEqual(api_type,'mcp')
   self.assertEqual(settings['measurementRole'],'facade'); self.assertEqual(settings['llmOperationIds'],[])
-  raw=ET.fromstring(xml).find("inbound/set-variable[@name='gatewayControlSettings']").attrib['value']
-  controls=json.loads(base64.b64decode(raw.split('"')[1]))
   api=next(api for api in self.parameters['apiDefinitions'] if 'mcp' in api)
   self.assertEqual(controls,{'operationId':api['mcp']['operationNames'][0],
     'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[]})
@@ -106,8 +120,8 @@ class AuditPublicationTests(unittest.TestCase):
    api['credentialConnection']['enabled']=enabled
    value=compiled_policy_value(self.template,self.parameters,index)
    root=ET.fromstring(value)
-   node=root.find("inbound/set-variable[@name='gatewayAuditSettings']")
-   settings=json.loads(base64.b64decode(node.attrib['value'].split('"')[1]))
+   api_type,settings,_=self.api_settings(root)
+   self.assertEqual(api_type,'http')
    self.assertEqual(settings['backendAuthentication'],'credentialConnection')
    self.assertIsNotNone(root.find("inbound/choose/when/include-fragment[@fragment-id='core-credential-connection']"))
   # CMを持たないHTTP、native protocol、外側MCPの表示は基底の認証方式を保ちます。
@@ -117,6 +131,14 @@ class AuditPublicationTests(unittest.TestCase):
   api['credentialConnection']=connection
   settings=self.evaluate("[__bicep.auditSettings(parameters('apiDefinitions')[copyIndex()], 'read-profile', true())]",index)
   self.assertEqual(settings['backendAuthentication'],api['backendAuthentication']['mode'])
+ def test_credential_management_api_inherits_without_model_api_settings(self):
+  raw=self.template['resources']['credentialLoginApiPolicy']['properties']['value']
+  value=self.evaluate(raw) if raw.startswith('[') else raw
+  root=ET.fromstring(value)
+  for section in ('inbound','backend','outbound','on-error'):
+   self.assertEqual([node.tag for node in root.find(section)],['base'])
+  self.assertEqual(root.findall('.//include-fragment[@fragment-id="core-api-settings"]'),[])
+  self.assertEqual(root.findall('.//set-variable[@name="gatewayApiSettingsSource"]'),[])
  def expanded_fragment_graph(self,root):
   """実コンパイル値のinclude先を再帰探索し、未解決や循環を成功扱いしない。"""
   fragments={}

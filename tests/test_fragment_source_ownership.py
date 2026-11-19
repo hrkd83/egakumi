@@ -4,7 +4,7 @@ import unittest
 
 from deployment.helpers.apim_audit import (
     CORE_AUTHENTICATED_SUBJECT_MARKER, CORE_GATEWAY_TELEMETRY_MARKER,
-    CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, SOURCE_EXPRESSION_FILES,
+    CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, CORE_API_SETTINGS_MARKER, SOURCE_EXPRESSION_FILES,
     SUBJECT_OBSERVATION_MARKER,
 )
 
@@ -15,8 +15,9 @@ PRIMARY = {
     "core-trusted-ingress": CORE_TRUSTED_INGRESS_MARKER,
     "core-credential-browser-exception": CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER,
     "core-gateway-telemetry": CORE_GATEWAY_TELEMETRY_MARKER,
+    "core-api-settings": CORE_API_SETTINGS_MARKER,
 }
-PURPOSES = {identifier: "ingress" if identifier == "core-trusted-ingress" else "authentication" if identifier == "core-credential-browser-exception" else "audit"
+PURPOSES = {identifier: "settings" if identifier == "core-api-settings" else "ingress" if identifier == "core-trusted-ingress" else "authentication" if identifier == "core-credential-browser-exception" else "audit"
             for identifier in PRIMARY}
 
 

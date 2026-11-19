@@ -85,20 +85,28 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
         apis = [api for api in self.definitions if "mcp" in api]
         for api, policy in zip(apis, self.variable("mcpPolicyValues")):
             with self.subTest(api=api["name"]):
-                node = ET.fromstring(policy).find('./inbound/set-variable[@name="gatewayAuditSettings"]')
-                encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', node.get("value")).group(1)
-                self.assertEqual(json.loads(base64.b64decode(encoded)), {
+                root = ET.fromstring(policy)
+                node = root.find('./inbound/set-variable[@name="gatewayApiSettingsSource"]')
+                self.assertIsNotNone(node)
+                lines = base64.b64decode(node.get("value"), validate=True).decode("utf-8").split("\n")
+                self.assertEqual(len(lines), 3)
+                self.assertEqual(lines[0], "mcp")
+                self.assertEqual(json.loads(lines[1]), {
                     "serviceClass": api["serviceClass"], "backendService": api["backendService"],
                     "backendAuthentication": api["backendAuthentication"]["mode"],
                     "operationBackends": {},
                     "llmOperationIds": [], "websocketModel": "", "targetAgent": "",
                     "measurementRole": "facade"})
-                control_node = ET.fromstring(policy).find('./inbound/set-variable[@name="gatewayControlSettings"]')
-                encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', control_node.get("value")).group(1)
-                self.assertEqual(json.loads(base64.b64decode(encoded)), {
+                self.assertEqual(json.loads(lines[2]), {
                     "operationId": api["mcp"]["operationNames"][0],
                     "operationConstraints": api["authorization"]["operationConstraints"],
                     "tokenLimitOperationIds": []})
+                inbound = list(root.find("inbound"))
+                calls = root.findall('./inbound/include-fragment[@fragment-id="core-api-settings"]')
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(calls[0].attrib, {"id": "core-api-settings", "fragment-id": "core-api-settings"})
+                self.assertEqual(inbound.index(calls[0]), inbound.index(node) + 1)
+                self.assertLess(inbound.index(calls[0]), inbound.index(root.find("inbound/base")))
 
     def test_key_mcp_does_not_publish_gateway_oauth_discovery(self):
         for name in ("oauthMetadataApi", "oauthMetadataOperations", "oauthMetadataPolicy"):

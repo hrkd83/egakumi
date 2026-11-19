@@ -2,40 +2,97 @@
 
 状態：段階実装中。本書は一般化した計画であり、特定環境のアプリ作成・配備・実接続の完了記録ではない。実環境の作業状態と証跡は保護したローカル領域に分けて管理する。
 
-## 現在の実装範囲
+## 現在位置：入口認証と共通Inboundを整備し、各APIの棚卸へ進む
 
 | 範囲 | 現在の状態 |
 |---|---|
-| Entraの追加登録 | [egakumi-api](../setup/02a-entra-api.md)と[egakumi-codex](../setup/02b-entra-codex.md)の画面付き準備手順を用意 |
+| Entraの追加登録 | [egakumi-api](../setup/02a-entra-api.md)と[egakumi-codex](../setup/02b-entra-codex.md)の画面付き準備手順を用意。残るPortal・Tools・Credentialの登録と切替は後続 |
 | APIMの業務API認可 | 設定schema、JWT検証ポリシーの生成、検証済み本人による利用上限・監査、専用open Productの生成と公開controllerを実装。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成。HTTP・WebSocket・MCPのAPI型を区別するV2 source（旧gRPC sourceは所有照合用の読戻し互換のみ保持）、管理プレーン読戻し、所属解除／追加、競合検出と失敗復旧を含む |
+| 共通Inbound | STEP1要求情報、STEP2入口確認、STEP3接続ログインの受付判定、STEP4キー／Bearer認証、STEP5認証済み利用者情報を正規フラグメントへ整理済み |
+| 各API・操作のInbound | 棚卸は未完。本文・ツール形式・モデル機能・上限・CM本人接続など、残る制御を実行順に確認する |
+| backend・outbound・on-error | 標準Entra検証のエラー部品は実装済み。ただし、これらのブロック全体の棚卸は未完 |
+| Portalの認証 | サインイン・管理Graphは共用アプリとclient secretを使用。Portal専用設定・証明書認証・API用OAuthは未実装 |
 | CM本人確認設定の独立 | `credentialLogin.identity`を追加。省略時は従来構成を維持。アプリの実切替は別工程 |
 | 実APIMでのBearer受付 | 配備・反映と実接続の受入は対象環境ごとに確認する。APIの`subscriptionRequired:true`を維持し、専用open ProductとキーなしJWT分岐を照合する。管理プレーンの配備・読戻し成功だけで実接続の受入完了とは判定しない |
 | 全モデル・ツール対応 | CM、MCP、WebSocket、Realtime、非同期操作等の認可・所有者資材を拡張。CMのSQL v4・Broker・XML更新を含む。実readback・モデル・クライアント・各transportの受入は未実施 |
 
-第1段階の公開資材は上記の範囲で実装しているが、この全API対応の変更はAzureへ再配備しておらず、特定環境での受入完了を示すものではない。購読キーの提示を優先し、キーなしBearerを同じ業務APIのURLで認可する。Entra設定を省略した旧構成はキー方式を保持する。同じURLで既存キーの状態・API／Product範囲を検証する実APIM試験、継承ポリシーの照合、公開・復旧の確認を対象環境ごとに行い、必要な確認がそろうまで利用を開始しない。公開設定に有効化スイッチは設けない。
+入口認証の実装、ポリシー棚卸の完了、個々のクライアント・APIの実接続受入は別に管理する。Codexの先行試験だけで、Graph・非同期操作等も含む全APIの受入が完了したとは扱わない。特定環境の配備・接続結果は保護した記録で確認する。
 
-## 進める順序
+同じ業務APIのURLで、購読キーの提示を優先し、キーがなければBearerを検証する。両方式への対応を標準とし、公開設定に有効化スイッチ、Bearer対象APIの選択、クライアントアプリ許可リストは設けない。
+
+## 完遂までの順序
+
+最終形のEntraアプリは**5つ**。これに対して、以下の工程番号は残る作業の順序を表す。APIM共通InboundのSTEP1～5とは別の番号である。先にAPIポリシーを整理し、その後に共用アプリの利用先を順に切り替える。
 
 ```mermaid
-flowchart LR
-  P["準備<br/>現行動作・設定を分離"] --> A["1 egakumi-api<br/>APIMのトークン認可"]
-  A --> T["1P Codex先行試験<br/>1台でOAuth・推論・ツール継続"]
-  T --> B["2A egakumi-portal<br/>サインインを分離"]
-  B --> C["2B Portalの試す機能<br/>キー／トークンを選択"]
-  C --> D["3 egakumi-tools<br/>外部API接続を分離"]
-  D --> E["4 egakumi-credential<br/>接続窓口を分離"]
-  E --> F["5 Codexの展開<br/>管理設定・端末配布"]
+flowchart TD
+  A["ここまでの整備<br/>API/Codexの登録手順・Bearer入口・共通Inbound STEP1～5"]
+  A --> B["工程1 各API・操作のInbound棚卸"]
+  B --> C["工程2 backend・outbound・on-error棚卸"]
+  C --> D["工程3 egakumi-portalの認証分離"]
+  D --> E["工程4 Portalの試す機能をキー／Bearerに対応"]
+  E --> F["工程5 egakumi-toolsの外部API接続を分離<br/>採用時はOBOも導入"]
+  F --> G["工程6 egakumi-credentialの本人確認を切替"]
+  G --> H["工程7 既存egakumi-codexを使って端末へ展開"]
+  H --> I["工程8 旧共用アプリ・旧接続・移行資材を撤去"]
 ```
 
-| アプリ名 | 責務 | 基本構成 |
+| アプリ名 | 最終的な責務 | 分離・整備する工程 |
 |---|---|---|
-| egakumi-api | APIMで公開するAPIのリソース登録。Gateway.Invokeを公開 | 認証用EntraのSingle tenant。API公開。secret・redirect不要 |
-| egakumi-portal | Portalサインイン、Portal管理機能のGraph、APIを試す本人のトークン取得 | Web。証明書client assertion。Graph管理はアプリケーション権限、API呼出しは委任権限 |
-| egakumi-tools | Graph等の外部API用トークンをCMで取得・更新 | Web。外部APIの委任権限。CMが対応する認証方式 |
-| egakumi-credential | 本人接続を選択・管理する窓口のサインイン | Web。OIDC本人確認。外部API業務権限は付与しない |
-| egakumi-codex | CodexからAPI向けユーザートークンを取得 | Public client。Authorization Code＋PKCE。secret不要 |
+| egakumi-api | APIMで公開するAPIの宛先。Gateway.Invokeを公開。OBO採用時は下流トークン交換のアプリも兼ねる | 登録手順・入口認証は整備済み。APIごとの制御は工程1～2。OBO用資格情報・委任権限は採用時に工程5で追加 |
+| egakumi-codex | Codexが社員のAPI向けトークンを取得。Public client・PKCE | 登録手順は整備済み。工程7は既存登録を使った検証・端末配布 |
+| egakumi-portal | Portalサインイン、Portal管理機能のGraph、APIを試す本人のトークン取得 | 工程3～4。client secretを使わない証明書方式は設計候補で、実装・受入が必要 |
+| egakumi-tools | CMがGraph等の外部API向け委任トークンを取得・更新 | 工程5。Graph /me等の接続を移行。CMのFICによるsecret不要化も検証 |
+| egakumi-credential | 接続ログイン窓口で本人を確認 | 工程6。外部APIの業務権限やPortal管理権限は持たせない |
 
-認証用EntraとAzure基盤は別の設定とする。同一・別テナントの双方を対象にし、両tenant IDの一致を必須条件にしない。Azure側のManaged Identityは、この5アプリと別に管理する。
+移行中は旧共用アプリが並行して残るが、工程8で利用先を確認して撤去し、最終構成を5つにする。Azure側のManaged Identityは、この5アプリと別に管理する。
+
+認証用EntraとAzure基盤は別の設定とする。同一・別テナントの双方を対象にし、両tenant IDの一致を必須条件にしない。Portalの証明書案は、Azure側で署名し、認証Entra側のアプリに公開証明書を登録する構成として確認する。
+
+OBOの採否は未決定。5アプリへの分離だけでOBOが成立するとは扱わない。**工程1のGraph等の本人接続の棚卸で採否と設計を決め、採用する場合は工程5でTools分離と合わせて実装・切替する。** 受信トークンのaudienceに対応する中間APIのアプリ・資格情報・下流委任権限を設計し、工程5より前に役割分担を確定する。
+
+Gateway.Invokeのトークンはegakumi-api向けなので、OBOの交換もegakumi-apiのclient IDで認証する。実処理をBrokerへ置く場合でも、egakumi-toolsやegakumi-credentialのclient IDで同トークンを交換しない。OBO採用時は、egakumi-apiをAPI公開だけのアプリから証明書と下流委任権限を持つアプリへ拡張する設計判断になる。これにより、基本の5アプリ構成を維持した案を検討できる。
+
+| 工程 | 次へ進むための完了条件 |
+|---|---|
+| 1 各API・操作のInbound | 制御を一つずつ説明・判断し、採用した処理を整理・反映・疎通確認。棚卸済み資材を最終フォルダ構成へ移し、APIM独自のモデル機能制限を未確認のまま残さない |
+| 2 backend・outbound・on-error | 転送先・下流認証、ストリーミング、応答・エラー・監査を確認。policies配下の全資材が最終フォルダ構成に収まり、不要なlegacy系ファイルと参照が残らない状態でポリシー棚卸を完了 |
+| 3 Portal認証分離 | 新アプリでサインイン・管理Graphが動作し、既存のユーザー・キー所有権・本人接続状態を維持 |
+| 4 PortalのAPI試用 | 同じAPIへキー／Bearerを選択して送信でき、更新・再認証と全対象機能の所有者確認が成立 |
+| 5 Tools分離・採用時のOBO導入 | CMの新接続を取得・更新でき、新旧移行・再同意・回収を確認。OBO採用時はBearerの交換経路とキーのCM経路をともに受入 |
+| 6 Credential分離 | 新アプリで接続ログインの本人確認が動作し、既存CM接続を別人へ引き継がない |
+| 7 Codex展開 | 対象のDesktop／CLIでOAuth・推論・必要なツールが動作し、管理設定の配布・復旧を確認 |
+| 8 旧構成撤去 | 旧アプリ・旧資格情報・旧provider/profile・旧設定の参照がなく、正式手順で最終構成を新規構築できる |
+
+各工程にはEntraの画面付き事前準備、params／schema、IaC／配備、機能の実装、検証、正式手順の更新を含める。アプリを登録しただけで分離完了とは判定しない。
+
+### 工程1・2を完了とする配置・撤去条件
+
+工程1・2を終えて工程3のPortal分離へ進む時点で、`apps/gateway/apim/policies/`の全資材を、[管理README](../../apps/gateway/apim/policies/README.md)の最終フォルダ構成へ収める。共通の`service.xml`は直下、その他のポリシー資材は`fragments/`、`api-templates/`、`operation-policies/`、`snippets/`等の目的別階層へ配置する。分離したC#は同名XMLと同じ部品フォルダへ置く。
+
+不要なlegacyフォルダ・旧XML／C#・旧inlineテンプレート・移行用コピーを残さない。別名や別フォルダへの移動だけで撤去済みとは扱わない。生成・配備処理、旧方式専用の検査・テスト、文書の参照も整理し、旧資材がなくても新規構築と再配備が成立することを確認する。
+
+この配置・撤去は工程1・2の完了条件であり、工程8へ先送りしない。工程8で扱う旧Entra共用アプリ・旧CM接続等の撤去とは区別する。
+
+## クライアントシークレットを使わない方式の検討
+
+対象はEntraアプリのclient secretである。証明書の秘密鍵、Portalのセッション署名・暗号化鍵、CMが保持する本人のrefresh token等の管理は引き続き必要になる。
+
+| 対象 | secret不要化の候補 | 実装・受入する工程 |
+|---|---|---|
+| egakumi-api | 入口のAPI公開には資格情報不要。OBO採用時は証明書client assertion | 工程1で設計、工程5でOBO実装・証明書登録・交換の受入 |
+| egakumi-codex | Public clientのAuthorization Code＋PKCE | 先行準備の方式を維持し、工程7で対象端末へ配布 |
+| egakumi-portal | Key Vaultの非exportable鍵で署名する証明書client assertion | 工程3。同一・別テナントとローカル開発の認証を確認 |
+| egakumi-tools | CMのAuthorization code with federated identity credentials（FIC） | 工程5。現行secret固定契約を変更し、作成・再同意・token更新を確認 |
+| egakumi-credential | BrokerのOIDCコード交換を証明書client assertionへ対応 | 工程6。現行MSAL・KV署名の対応を検証後に採用 |
+
+Microsoftの[CM公式手順](https://learn.microsoft.com/en-us/azure/api-management/credentials-how-to-azure-ad)は、secret方式とFIC方式の両方を案内している。CMのFICは、APIMが表示するIssuer・Subject・Audienceを、EntraアプリのFederated credentialsへ「Other issuer」として登録する。現在の`credential-manager.bicep`と秘密入力はclient secretを前提としているため、製品の対応だけで既存実装がsecret不要になったとは扱わない。対応するARM／API・生成設定、登録順、接続の再同意と更新、復旧を確認する。
+
+CMのFICと、Managed IdentityをEntraアプリへ直接信頼させるFICは別の方式として調査する。後者の[公式仕様](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-config-app-trust-managed-identity)はManaged Identityとアプリ登録が同じテナントに属する条件を持つ。その条件をCMの「Other issuer」方式へ自動的に当てはめない。認証EntraとAzureが別テナントの構成でも、CMのFICが成立するかを先行試験で確認する。
+
+Portal・Credential・OBOの証明書案では、Azure側MIはKey Vaultへの署名アクセスに使い、公開証明書を認証Entra側へ登録する。Azureテナントと認証テナントが同じでなければ使えない設計にはしない。通常のMI→アプリFICも候補にする場合は、同一テナント構成用の別案として評価する。
+
+secret不要化を目標とする範囲と方式は工程1で確認し、CMのFIC、Portal／Credential／OBOの証明書を小さな試験で検証してから各工程で切り替える。未確認の方式を必須設定へ変えて既存接続を停止させない。
 
 ## 初期導入の方針
 
@@ -53,7 +110,7 @@ flowchart LR
 
 | 作業 | 成果物・完了条件 |
 |---|---|
-| 作業差分と現在の正本を確認 | 既存の未コミット変更を破棄せず、認証変更の差分を分ける。既存機能の基準試験を記録 |
+| 作業差分と現在の正本を確認 | 最新mainを確認し、通常の作業ブランチで編集する。既存の未コミット変更を破棄せず、作業用コピーへ変更を切り出してコミット内容を合成しない。既存機能の基準試験を記録 |
 | 対象の棚卸し | 有効API、REST操作、MCP、SSE、WebSocket、WebRTC制御、非同期結果・取消、CM補助操作の一覧 |
 | 実際の設定を読戻す | APIM SKU、API/Productの購読要件、global→product→API→operationの有効ポリシー、MI/RBAC、AppGW経路・buffer・timeout |
 | テナントと管理担当を分離 | Azure側の作業と認証Entra側のアプリ・同意作業を別工程にする |
@@ -72,9 +129,9 @@ flowchart LR
 
 | アプリ | プラットフォーム・戻り先 | 権限・scopeの分担 | 資格情報 |
 |---|---|---|---|
-| egakumi-api | APIリソース。戻り先不要 | Gateway.Invokeを公開、requestedAccessTokenVersion=2。Graph権限は追加しない | secret・証明書不要 |
+| egakumi-api | APIリソース。戻り先不要 | Gateway.Invokeを公開、requestedAccessTokenVersion=2。OBO採用時だけ下流の委任権限・管理者同意を追加 | API公開だけなら資格情報不要。OBO採用時は専用証明書を候補とする |
 | egakumi-portal | Web。Portalの/api/auth/callback/microsoft。API追加認証のcallbackは実装確定後に別途登録 | ログインはopenid/profile/email。管理GraphはGroupMember.Read.All・User.ReadBasic.Allのアプリケーション権限。「試す」はegakumi-apiのGateway.Invoke委任権限と必要なoffline_access | KV署名用証明書の公開部分。Entra client secretは作らない |
-| egakumi-tools | Web。CM標準redirect | Graph /meは委任User.Read、OIDC・更新に必要なscope。WorkIQはresource別に確認。Portal管理Graph権限は付けない | 現CM契約に対応するサーバー専用secretを基本候補とし、証明書対応を推測しない |
+| egakumi-tools | Web。CM標準redirect | Graph /meは委任User.Read、OIDC・更新に必要なscope。WorkIQはresource別に確認。Portal管理Graph権限は付けない | CMのFICを検証する。現行secret契約と切替・回収手順を分け、証明書対応とは混同しない |
 | egakumi-credential | Web。接続窓口の/auth/connections/browser/identity-callback | OIDC本人確認。Graph業務委任やPortal管理権限を付けない | 専用secretまたは独立PoC済みの証明書方式。共用secretのまま最終構成にしない |
 | egakumi-codex | Mobile and desktop／Public client。http://127.0.0.1:<PORT>/callback等、対象runtimeと一致するloopback | egakumi-apiのGateway.Invoke・offline_access。Graph User.Readは追加しない | secret・証明書不要。Authorization Code＋PKCE |
 
@@ -121,7 +178,7 @@ prepare_registration.pyは現在、公開名・CM redirect等をローカル計�
 - 旧PRE-003〜PRE-009の登録・権限7件・戻り先3件・共用secretのPASSを、新5アプリ構成の合格へ読み替えない。新条件は未実施として独立して記録する。
 - 手順の追加と実装は段階ごとに揃える。新しい準備手順を、まだ未対応の現行CLIで実行できるものとして掲載しない。
 
-## 第1段階：egakumi-apiとAPIMのトークン認可
+## 入口認証の設計・実装内容（ここまでの整備）
 
 ### 1-1 Entraを準備する
 
@@ -134,7 +191,7 @@ prepare_registration.pyは現在、公開名・CM redirect等をローカル計�
 | Microsoft Graph形式のmanifest | api.requestedAccessTokenVersion = 2 |
 | 証明書とシークレット・認証 | このAPIリソース登録にはsecret・証明書・redirectを追加しない |
 
-実接続試験にはクライアント登録も必要。egakumi-codexのPublic client登録と画面付き事前準備手順を先行する。第1段階のAzure反映とAPI直接確認の後に、1台のCodexで先行試験を行う。Codexの先行試験が終わってからPortal本体の認証切替などのアプリ分離へ進み、端末への管理設定配布は第5段階で行う。利用資格は認証テナント全ユーザーとし、全体配布前に検証環境で受入を行う。
+実接続試験にはクライアント登録も必要。egakumi-codexのPublic client登録と画面付き事前準備手順を先行する。入口認証のAzure反映とAPI直接確認の後に、1台のCodexで先行試験を行う。先行試験と工程1～2のポリシー整備を済ませてからPortal本体の認証切替などのアプリ分離へ進み、端末への管理設定配布は工程7で行う。利用資格は認証テナント全ユーザーとし、全体配布前に検証環境で受入を行う。
 
 ### 1-2 認証主体と利用枠を分ける
 
@@ -230,7 +287,7 @@ python3 -B scripts/entra_signin.py user-token \
 
 **戻し方：** 所有を照合した専用open Productの対象API所属を先に解除し、社員経路の閉鎖を読戻してから共通認証のBearer分岐を無効化する。APIは購読必須のままにし、キーなし要求の拒否と既存キー利用を確認する。途中失敗ではBearer受付を停止し、閉鎖を確認できなければ復旧未完として新しい読戻しを行う。Productを非公開にするだけ、Incremental Bicepの定義を省くだけでは復旧完了にしない。旧globalを戻す場合もETag・現在値・継承を確認する。進行中streamの扱いと新方式sessionの排出は別に定義し、SQL状態を無条件に削除しない。
 
-## 第1P段階：1台のCodexによる先行試験
+## Codex先行試験（全社展開より前に行う）
 
 Portal・tools・credentialのアプリ分離を開始する前に、Gateway OAuthからResponses推論までを端末で確認する。全APIの実装範囲は維持し、CodexのResponses試験だけを全transportの受入完了へ読み替えない。
 
@@ -240,9 +297,67 @@ Portal・tools・credentialのアプリ分離を開始する前に、Gateway OAu
 4. Codex本人のブラウザーサインインでトークンを取得し、モデル応答、複数ターン、ローカルツールと結果継続、更新または再サインインを確認する。固定token・env_key・外部token取得コマンドはCodexの接続設定に入れない。
 5. DesktopとCLIの実施結果を別に記録する。CLI単独の成功をDesktopの成功にせず、未実施・版不足・経路障害を明示する。
 
-実際の接続先・版・設定・結果は保護したローカル証跡へ記録する。先行試験の完了後に第2A段階へ進み、全体配布・管理設定・併用端末の検証は第5段階で行う。
+実際の接続先・版・設定・結果は保護したローカル証跡へ記録する。先行試験と工程1～2のポリシー整備を済ませてから工程3のPortal分離へ進み、全体配布・管理設定・併用端末の検証は工程7で行う。
 
-## 第2A段階：egakumi-portalの分離
+## 工程1：各API・操作のInboundを棚卸する
+
+### 次の棚卸前に、IaC生成・配備サイズの余裕を確保する
+
+350万bytesはリポジトリの配備前検査予算であり、APIMが個々のXMLへ適用する上限ではない。ただし、[ARMの公式上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/best-practices#template-limits)には、変数・パラメーター・反復資源を展開したテンプレート全体の4MBと、資源定義ごとの1MBがある。要求全体の大きさによって4MB未満でも拒否されるため、検査予算を引き上げるだけの対処はしない。現在の展開見積りはAzure内部のjobサイズ計算そのものではない。
+
+APIMの[ポリシー文書](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)と[フラグメント](https://learn.microsoft.com/en-us/azure/api-management/policy-fragments)の単体上限は別に確認する。C#は生成時にXMLへ組み込むため、単体サイズは完成XMLを測る。全体の見積りには配備資源だけでなく、照合用の生成元出力と中間変数も含まれ、同じXMLが複数回数えられる。
+
+次の制御棚卸より先に、照合用の生成元をARM配備要求から分離する案と、API等を別の配備単位へ分割する案を比較する。採用案は、各配備単位を公式4MBの70%以下（280万bytes以下）に収め、追加APIを含む合成設定でも余裕を確認することを目標とする。コメント削除や制御・監査の省略で収めない。
+
+照合用データを分離する場合も、現在値の読戻しを正本に置き換えず、同じソースから生成した期待値で照合する。分割する場合は、共通部品・API・操作の登録順、失敗時の再開、正式CLIと既存環境の更新を確認する。このチャットのAPIM接続を維持し、Foundryの容量やAppGWを再配備する変更は含めない。
+
+共通Inbound STEP5を終えた要求は、呼出元API／操作の`<base/>`の次の処理へ戻る。APIや操作に`<base/>`より前の短絡処理があれば、それも実行順に確認する。最初は`gateway.xml`を使用する推論APIから再開し、他のAPI・操作へ進む。
+
+最初の設定準備は、API固有データを各APIに残し、`<base/>`前に`core-api-settings`を呼ぶ方式で共通化する。API定義から生成した監査・制御のJSON文字列を受け取り、従来の`gatewayAuditSettings`／`gatewayControlSettings`へ渡す。通常HTTPの操作別監査接続情報の選択、認証後のprofile反映、WebSocketのモデル更新、MCPの計測役割は維持する。この共通化だけで後続の制御項目の棚卸を完了とはしない。
+
+各APIを順番に回り、同じ処理を繰り返し判断しない。共通テンプレートを基準に、実際の適用順で棚卸し、各APIでは設定値・利用する部品・例外だけを確認する。
+
+| 順序 | 棚卸の単位 | 進め方 |
+|---|---|---|
+| 1 | 3テンプレートの共通先頭 | `base`後の本人申告ヘッダー削除、要求ID設定、共通認証の完了確認を、一項目ずつ確認する |
+| 2 | HTTPの`gateway.xml` | query・要求形式、profile、認証結果、モデル／機能、利用枠、資格情報除去、下流接続を実行順に確認する。CM本人接続に到達した段階でOBOの採否を判断する |
+| 3 | `protocol.xml`の差分 | 外部MCPの`base`前のメタデータ用パス処理も確認し、WebSocketの接続開始、モデルquery、固定query、転送・CM接続へ進む。既確認の共通処理は同じ内容・順序かを照合する |
+| 4 | `mcp.xml`の差分 | REST操作から生成するMCP表口を確認する。`base`前の短絡、tool引数、本人と監査の引継ぎ、REST側との二重計数を確認する |
+| 5 | 操作ポリシーの種類別 | PII、文書解析、Live／Realtime、画像・音声等の処理を種類ごとに確認する。各APIでは所属する種類、モデル、接続先、固有制約の差分を照合する |
+| 6 | 工程1の横断確認 | 有効API・全操作の対応表を埋め、未確認の処理・差分・参照先が残っていないことを確認して工程2へ進む |
+
+一つの処理の判断を他の種類へ無条件に流用しない。同じ処理は説明・判断を一度にまとめ、差分があれば別項目として確認する。複数の項目があるブロックは、一項目ずつ判断を揃えた後にまとめて改修・部品化・移設し、反映回数を抑える。
+改修したブロックの必要なローカル検証をまとめ、Azureでは変更対象だけを反映・読戻しする。接続試験は影響するAPI種類の代表操作と認証方式を確認し、成功した無関係の試験を毎回繰り返さない。工程1・2の完了時には、全対象の対応と最終フォルダ構成・legacy撤去を確認する。
+
+| 確認する処理 | 主な対象 |
+|---|---|
+| 共通処理から戻った後の要求情報・認証結果・query検査 | `gateway.xml`、`protocol.xml`、`mcp.xml`、`query-guard.xml` |
+| モデルの入力・機能・ツール形式を制限する処理 | `gateway.xml`等の本文検査。function以外のtool拒否、保存済み状態・ファイル参照・include制限などを別々に判断 |
+| 利用枠・トークン数・購読または社員の扱い | `subscription-profile.xml`、`entra-user-profile.xml`、`rate-limit.xml`、`token-limit.xml` |
+| CMの本人接続・外部API向けトークン取得 | `credential-connection.xml`、`credential-session-use.xml`、`credential-login/`、該当API／操作ポリシー |
+| 個別操作・生成ポリシー | `api-publication.bicep`、`document-analysis*.xml`、`realtime-*.xml`等 |
+
+一つの制御ごとに、目的・実際の処理・影響・選択肢・推奨理由を説明し、採否を確認してから改修する。Foundryが提供する機能をAPIM独自の許可条件で制限する処理は、その必要性を個別に確認する。共通の認証条件、利用者の識別と監査、接続所有者の確認と、モデル機能の制限を混同しない。
+
+OBOはCM本人接続の棚卸時に判断する。APIM向けのアクセストークンをGraph／WorkIQへそのまま送らない。既存CM接続による委任トークン取得と、OBOによる交換は別案として比較する。OBOを採用する場合も、接続ログインのブラウザー受付例外を自動的に撤去するとは扱わない。
+
+最新のソースではgRPCの新規提供を廃止している。HTTP/SSE・WebSocket・MCP・Realtime・非同期操作等の有効対象を棚卸・受入の一覧にし、旧gRPCの扱いは移行時の読戻し・撤去確認に限る。共通STEP2に残る旧説明も差分確認の対象とし、廃止したTCP入口を新構成の前提に戻さない。
+
+## 工程2：backend・outbound・on-errorを棚卸する
+
+共通・Product・API・操作の継承と上書きを含め、実際に適用される処理を確認する。共通の`backend`が直ちに転送するとは決め付けず、各API側のバックエンド処理・`<base/>`の位置も調べる。
+
+| ブロック | 確認する内容 |
+|---|---|
+| backend | Foundry等の宛先、APIMのManaged Identity／CMによる下流認証、入口のキー／トークンの除去、タイムアウト・再試行・SSEのバッファリング |
+| outbound | 本文・ヘッダー・状態コードの変更、`store=false`等の要求書換えを含む転送設定、ストリームを保つ処理、利用量・正常終了の監査 |
+| on-error | Entra／購読検証の失敗、下流エラー、通信障害の分類と監査。API／操作独自の上書きでも401／403／429／500等を適切に区別できること |
+
+`service.xml`、APIテンプレート、個別操作、監査フラグメントと生成・配備処理を同じ棚卸対象にする。特に、個別`on-error`が共通のEntraエラー処理を継承せず、Bearerの認証失敗を下流障害として扱わないか確認する。
+
+棚卸で残すと決めた処理を正規のフォルダ・フラグメント・説明コメントへ揃え、不要な重複を除去する。現行の`expressions/legacy/`、旧inlineポリシー等は用途と参照先を解消して削除し、ポリシー棚卸完了時にはlegacy資材を残さない。移行時の所有照合・読戻し互換がまだ必要なら、後回しのまま完了とせず、その移行確認まで工程2に含める。
+
+## 工程3：egakumi-portalの分離
 
 | 作業 | 対象・条件 |
 |---|---|
@@ -264,7 +379,7 @@ BETTER_AUTH_SECRETと既存の暗号化資材は保持する。AppGW向けexport
 
 **戻し方：** 旧アプリ・旧secret参照・旧読取権限を受入まで残し、イメージと構成を組で戻す。切替中のOAuth取引は期限待ち／無効化する。新旧のtokenを別clientへ転用しない。旧Portal専用grant・redirectの撤去は確認後に明示的に行い、CM用secretとCM redirectは保持する。
 
-## 第2B段階：Portalでキー／アクセストークンを選んで試す
+## 工程4：Portalでキー／アクセストークンを選んで試す
 
 最初の案は、Portalログインを維持したまま「アクセストークンで試す」を選んだときに追加のAPI認証を行う方式。API向け追加同意・再認証の失敗で、キー管理などのPortal全体を利用不能にしない。
 
@@ -293,10 +408,10 @@ WebSocketのAuthorizationは確立後に更新できない。接続上限・再�
 
 **戻し方：** UIのtoken機能と新規追加認証を無効化し、キー機能を継続。API token保存は失効・期限に従って処理する。SQLを追加互換のまま保持し、コードrollbackで旧runtimeが新形式を誤使用しないことを確認する。
 
-## 第3段階：egakumi-toolsの分離
+## 工程5：egakumi-toolsの分離と、採用時のOBO導入
 
 1. 認証Entraに新Webアプリを作成しCM標準redirectを登録。Graph業務委任User.Read・更新用offline_access等を準備する。Portal管理Graph権限を移さない。
-2. 現CMのclientSecret契約は分離だけで証明書方式に変わるとは扱わない。必要な専用secretはサーバー側で保管・secure入力し、社員へ配布しない。
+2. CMのFICを採用する場合は、Authorization code with federated identity credentialsのproviderと、Entra側のIssuer・Subject・Audience登録を準備する。現行clientSecret契約からの変更、別テナント構成、ARM／APIの対応、認証コード・refresh token交換を検証する。secret方式を移行中に残す場合もサーバー側で保管し、社員へ配布しない。
 3. 旧CM providerのClient IDを上書きせず、新provider／pool／profileを並行追加する。本人の再同意で新接続を作る。
 4. 現接続PKはTenantId・ObjectId・ProfileName。同じprofileにpoolだけ増やして新旧接続を並行保存できると仮定しない。初期は新profileによる限定移行を候補とする。
 5. profile選択は検証済み本人と運用側の移行状態から行う。任意のprovider・pool名をクライアントに選ばせない。
@@ -308,9 +423,23 @@ WebSocketのAuthorizationは確立後に更新できない。接続上限・再�
 
 WorkIQは同じアプリのAPI権限へ追加できるかを公式仕様で確認する。異なるresource/audienceは別token・CM provider/profileとして扱う。WorkIQ tokenでGraph /meを呼んで本人照合できると仮定しない。WorkIQ実装そのものは今回の分離作業に含めない。
 
+### OBOを採用した場合に追加する実装
+
+| 対象 | 追加する設定・処理 |
+|---|---|
+| egakumi-api | OBO用の公開証明書、Graph等の下流委任権限、管理者同意。受信audienceとOBO client IDの一致を確認 |
+| APIMの外部API向け処理 | 共通STEP4・STEP5の検証結果を使用し、BearerならOBO、キーなら本人のCM接続へ分岐。モデル推論のMI接続とは別にする |
+| Broker等のサーバー処理 | `obo.py`・`client_assertion.py`等を候補とし、egakumi-apiの証明書でtoken交換。本人・resource／scopeに結び付けたcache、claims challenge、監査、失敗応答を実装 |
+| 内部通信・設定・IaC | 元のuser assertionを安全な内部経路で必要な処理へ渡し、鍵の署名権限・証明書version・下流scopeを設定。元tokenやclient assertionをログへ出さない |
+| 正式手順・受入 | Bearerの本人継承、下流権限不足・同意・期限切れ・別人、キーの既存CM経路、Graph／WorkIQごとのaudienceを確認 |
+
+[EntraのOBO公式仕様](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow)は、共有secretに代えて証明書client assertionを使用できる。ただし、元のuser assertionはOBOを実行するアプリ向けでなければならない。egakumi-toolsのclient IDでegakumi-api向けtokenを交換する処理にはしない。
+
+APIキーには本人のuser assertionがないため、OBOの採用後もキー経路には本人がログインして外部API接続を取得する導線を残す。CMブラウザー受付・Broker・CMの所有者確認を、OBOの導入だけを理由に撤去しない。
+
 **戻し方：** 新規移行を止め、旧provider/profileへ戻す。新tokenを旧接続として偽装しない。旧アプリと接続を残し、既存利用者の接続状態に合わせて復旧する。
 
-## 第4段階：egakumi-credentialの分離
+## 工程6：egakumi-credentialの分離
 
 準備工程で独立させた本人確認設定を、新Webアプリへ切り替える。redirectはhttps://<GATEWAY_HOST>/auth/connections/browser/identity-callback。OIDC本人確認だけを担当し、Graph業務委任・Portal管理権限を持たせない。
 
@@ -322,10 +451,10 @@ MSAL、PKCE、state、nonce、署名・issuer/audienceの検証を維持する�
 
 **戻し方：** 本人確認client設定とruntimeを旧構成へ戻す。切替中の取引は再認証し、egakumi-toolsのCM接続は変更しない。
 
-## 第5段階：Codexの管理設定と端末配布
+## 工程7：Codexの管理設定と端末配布
 
-- 第1P段階の先行試験を基準に、配布対象のCodex CLIとDesktop内蔵runtimeのversion、Gateway OAuth・管理構成・カタログ対応を確認する。更新した版や専用／併用端末で再確認する。
-- 認証EntraにSingle tenant／Mobile and desktop Public clientを登録。loopback redirectとCodexのport/pathを一致させる。secret・Implicit grant不要。Allow public client flowsは通常OFF起点で対象版を確認する。
+- 先行試験を基準に、配布対象のCodex CLIとDesktop内蔵runtimeのversion、Gateway OAuth・管理構成・カタログ対応を確認する。更新した版や専用／併用端末で再確認する。
+- 先行準備したegakumi-codexを使用し、別の同名アプリを重複登録しない。Single tenant／Mobile and desktop Public client、loopback redirectとCodexのport/path、委任許可と同意を確認する。secret・Implicit grant不要。Allow public client flowsは通常OFF起点で対象版を確認する。
 - egakumi-apiのGateway.Invokeへ委任許可・管理者同意を追加し、Entraの利用者割当と条件付きアクセスを確認して段階配布する。APIMのクライアント許可リストへ追加する操作はない。
 - company provider、Responses base_url、モデルalias、requires_openai_auth=false、gateway_oauthを構成する。固定token・env_key・外部token取得コマンドを標準構成へ追加しない。
 - config.tomlは変更可能な既定、requirements.tomlは強制項目と完全なprovider定義を担当。対象versionで置換・優先順位を確認する。
@@ -338,12 +467,20 @@ MSAL、PKCE、state、nonce、署名・issuer/audienceの検証を維持する�
 
 **戻し方：** Intune配布と会社provider利用を段階停止し、EntraのCodex向け委任許可・同意・利用者割当を回収する。Portalや他clientのAPI許可は維持する。新規トークン取得の停止と、発行済みアクセストークンの有効期限・既存streamの終了は別に扱う。APIMにクライアント許可リストはないため、回収だけで即時に既存tokenが拒否されたとは判定しない。
 
+## 工程8：旧共用アプリと移行設定を撤去する
+
+Portal、CMの外部API接続、Brokerの本人確認がそれぞれ新アプリへ切り替わり、旧接続・旧取引の利用が終わったことを確認する。旧共用アプリの権限・redirect・secret／証明書を回収し、旧provider/profile、設定のfallback、準備CLIの共用前提も削除する。旧アプリの削除は、この利用先確認と新構成の受入後に行う。
+
+`02-entra.md`を最終5役割への案内に揃え、アプリ別の画面付き手順、params／schema、構築CLI、IaC、運用の更新・失効手順から旧共用構成への依存をなくす。最終構成での新規構築と、移行済み環境の通常更新を確認して完遂とする。
+
 ## 実装・配備前の判断事項
 
 | 判断 | 推奨初期案 | 決めるための情報 |
 |---|---|---|
 | 共通URLの有効化条件 | APIの購読必須を維持し、専用open ProductでキーなしJWTを受ける | primary／secondary、停止、API／Product／all-APIs／service範囲、無効キーfallback拒否、policy継承、有効化・復旧の実APIM結果 |
 | 社員の利用資格と上限 | 認証Entraの全ユーザー。基本無制限で毎分トークン・期間quotaはnull。request rateは本人単位の暫定防御値 | 1000 requests／60秒の例を実Codexのツール継続・retry・並列要求と比較して調整。rateだけで攻撃を判定しない |
+| OBOの採否 | 未決定。工程1のCM本人接続の棚卸時に比較し、5アプリ分離と別の設計判断として扱う | 受信audience、中間APIのアプリと資格情報、下流委任権限、CM接続の必要性、同一本人の確認と失効 |
+| Portalのsecretなし認証 | 証明書client assertionを設計候補とし、工程3で検証 | 別tenantを含むKV署名・コード交換・Graph管理、証明書登録・更新、ローカル開発の実認証経路 |
 | API OAuth保存と取得 | on-demand追加認証、サーバー暗号化SQL、共有更新lease | Better Auth callback PoC、logout要件、保存・監査・鍵rotation方針 |
 | 実装対象とpilot順 | 実装は全業務API。pilotは1モデルHTTP/SSEから進め、全transportを必須受入ゲートとする | 実際に有効なAPI・client・モデル・ネットワークと有効transportの実readback形式 |
 | tools移行 | 新profile＋本人再同意の並行移行 | 現接続数、pool容量、旧接続を残す期間、移行対象client |
@@ -355,7 +492,7 @@ MSAL、PKCE、state、nonce、署名・issuer/audienceの検証を維持する�
 ## 検証・作業記録
 
 - 合成・ローカル試験と実環境試験を別に記録し、未実施項目をPASSにしない。
-- 第1段階は既存common authentication／publication／quota／CM／protocol試験を拡張し、tokenの正常・拒否・所有権・rollbackを追加する。
+- 入口認証と工程1～2では既存common authentication／publication／quota／CM／protocol試験を拡張し、tokenの正常・拒否・所有権・rollbackを追加する。
 - Portalはauth-flow、runtime grants、SQL migration、token cacheの更新競合、全Try機能の契約を試験する。依存追加時はnpm auditを確認する。
 - 各段階は「構成と差分」「合成試験」「検証環境」「限定利用者」「対象拡大」「旧資材回収」の順に進める。
 - 転用不能なtokenや新形式sessionをrollback時に旧方式へ偽装しない。データの追加migrationを原則とし、受入前の破壊的schema変更を避ける。
@@ -373,22 +510,11 @@ MSAL、PKCE、state、nonce、署名・issuer/audienceの検証を維持する�
 
 Entraアプリはdisplay nameだけで再利用・更新対象を決めない。Application client ID、Application Object ID、Service Principal Object IDを用途別に記録し、認証tenantと所有stateを照合する。新しい準備CLIは既存scripts/operations/common.pyの保護記録・対象照合を参考にし、ARMとMicrosoft Graph／KV data-planeの通信を混同しない。
 
-## レビューできる変更単位
+## 各工程の変更・検証・コミット
 
-| 単位 | 内容 | 次へ進む条件 |
-|---|---|---|
-| R0 | 基準試験・棚卸し、Entra事前準備の改訂設計、CM本人確認設定の独立 | 役割別準備と新規／移行手順が定義され、旧設定で既存キーとCMの動作が同じ |
-| R1 | egakumi-api／codexの登録手順、schema、購読必須APIへの専用open Product追加 | 登録入力・権限・Entra設定を持たない旧構成の互換と、closed staging時の安全な拒否を確認 |
-| R2 | JWT検証、本人別の有効な制限・null無効化・監査 | 正常・拒否・停止・上限なしと有限枠の試験を分けて通過 |
-| R3 | CM、非同期ticket、MCP、音声／protocol所有者対応 | 必要な全transportを検証し、限定公開とrollbackを確認 |
-| R4 | Portal証明書認証・Graph管理・配備 | 新旧ユーザーと既存状態の継続を確認 |
-| R5 | Portal API認証・暗号化保存・更新／失効 | callback本人照合、共有更新、logout・競合試験を通過 |
-| R6 | 全Try機能の資格情報選択・共通API target | 全対象でキーとtokenを確認。部分対応のまま完了としない |
-| R7 | tools新provider／profileと本人再同意 | 新旧並行利用と復旧・回収を確認 |
-| R8 | credential窓口の新アプリ切替 | 旧取引の排出・本人照合・既存接続継続を確認 |
-| R9 | Codex、モデルcatalog、端末配布 | 対象runtimeと専用／併用端末の実接続を確認 |
+上の工程1～8は設計・実装・受入の区切りであり、コミット数の指定ではない。通常の作業ブランチで作業ツリーを編集し、生成元・設定・配備処理・必要な試験・正式手順を一緒に確認する。コミット内容だけを別コピーへ切り出したり、部分ファイルからindexを合成したりしない。
 
-各単位に必要な試験・文書を含める。reviewを分けても生成元・認可・所有者の照合が未完の新経路は公開せず、内部のclosed stagingを維持する。公開paramsの有効化スイッチや対象API選択へ置き換えない。
+改修した処理に必要な検証をまとめ、成功した検証を変更理由なく繰り返さない。必須GitフックとCIは維持する。ポリシーの改修は採否を確認した範囲へ限定し、公開paramsの有効化スイッチ・API選択・クライアント許可リストを追加して段階導入を代替しない。
 
 ## 参照する公式仕様
 

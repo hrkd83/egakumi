@@ -5,7 +5,7 @@
 ## 要求が通る順序
 
 1. APIMがAPI・Operationを特定する。購読キー付き要求はAPIM標準の購読検証を使い、キーなし要求は専用の購読不要Productを通して共通認証へ進む。
-2. APIポリシーがAPI固有の監査・制御設定を変数へ格納し、`<base/>`で全体ポリシーを継承する。
+2. APIポリシーが固有の設定データを保存し、`core-api-settings`で監査・制御の2変数を準備してから、`<base/>`で全体ポリシーを継承する。WebSocketは接続開始の`onHandshake`で実行する。
 3. 全体ポリシーが共通の要求情報と信頼した入口経路を確認する。設定済みキーヘッダーがあれば購読キー、なければ`Authorization: Bearer`のEntraアクセストークンを検証する。無効なキーをBearerで救済しない。
 4. APIポリシーがOperation、モデル、入力形式・サイズ、生成上限を確認する。
 5. 検証済みの購読またはユーザーを呼出主体として回数・利用量を計数し、要求ID・API・Operation等の監査情報を確定する。
@@ -49,6 +49,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 
 | Azureの部品名 | XMLの正本 | C#式の正本 | 処理・出力 |
 | --- | --- | --- | --- |
+| `core-api-settings` | `fragments/settings/core-api-settings/core-api-settings.xml` | `fragments/settings/core-api-settings/core-api-settings.cs` | 各APIの`base`前で設定を読み、`gatewayAuditSettings`と`gatewayControlSettings`を準備する。共通InboundのSTEPとは別のAPI側処理 |
 | `core-request-context` | `fragments/audit/core-request-context/core-request-context.xml` | `fragments/audit/core-request-context/core-request-context.cs` | `gatewayRequestContext`：受信時刻、要求・API・操作のID、操作のひな形、接続元と相関候補 |
 | `core-trusted-ingress` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs` | 必須のHTTP入口ヘッダーを判定し、欠落・不一致・重複なら既存監査へ記録して403を返す。API固有の変数で免除しない |
 | `core-credential-browser-exception` | `fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.xml` | `fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs` | `gatewayCredentialBrowserException`：接続ログインの開始・戻り先の受付への一致を判定する。本人の認証成功を示す値ではない |
@@ -83,18 +84,31 @@ OBOの採否は、共通STEP4の入口認証とSTEP5の認証済み利用者情�
 
 標準APIは、APIごとの設定を変数へ格納してから`<base/>`で全体ポリシーを継承する。同じテンプレートでも、接続先や操作設定の値はAPIごとに異なる。全体ポリシーは要求から取得できる共通情報を作り、入口と認証を確認する。
 
+読み込み処理は`core-api-settings`へ集約する。各APIが持つBase64データは、復元するとAPI種類・監査JSON・制御JSONの3行になる。各JSONは生成時に1行へ整形し、内部の改行はエスケープする。二重のJSON化を避けて配備サイズを抑え、JSON文字列をそのまま渡す。通常HTTPの監査だけ従来と同じ操作別backendの選択を行う。
+
+```xml
+<set-variable name="gatewayApiSettingsSource" value="__API_SETTINGS_BASE64__" />
+<include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+<!-- === -->
+<base />
+```
+
+`__API_SETTINGS_BASE64__`は生成前の置換位置であり、AzureにはAPIごとの生成済みデータが入る。CM管理・ブラウザー受付のAPIは、このAIモデル用設定を渡さず、従来の継承を維持する。
+
 | 変数 | 設定する場所 | 内容 |
 | --- | --- | --- |
 | `gatewayRequestContext` | All APIsのInbound先頭から`core-request-context`を実行 | 要求・API・操作ID、受信時刻、HTTPメソッド、操作のひな形、接続元と相関候補。[監査識別情報](audit-identification.md)の出力契約に従う |
 | `gatewayAuthenticatedSubject` | 共通認証後に`core-audit-authenticated-subject`を実行 | 確認済みの購読または社員の識別情報。APIごとの利用許可とは別に監査へ渡す |
 | `gatewayCredentialBrowserException` | STEP2直後、共通認証の分岐前に`core-credential-browser-exception`を実行 | CM設定の有無と専用API・操作・HTTPメソッド・元のパスから判定したtrue／false。共通認証を省略する受付かを示す |
-| `gatewayAuditSettings` | 対象APIのInbound、`<base/>`の前 | サービス分類、接続先の種類と認証方式、操作別の接続情報、使用量計測の対象、WebSocketモデル、Agent、計測の役割 |
-| `gatewayControlSettings` | 対象APIのInbound、`<base/>`の前 | `operationId`、`operationConstraints`、`tokenLimitOperationIds`。操作・入力の検査とトークン計数が参照するAPI固有設定 |
+| `gatewayApiSettingsSource` | 対象APIのInbound、`<base/>`の前 | API定義から生成したBase64設定データ。API種類と監査・制御のJSON文字列 |
+| `gatewayApiSettings` | `core-api-settings` | Base64を一度だけ復元した3行の設定データ |
+| `gatewayAuditSettings` | 対象APIの`<base/>`前で`core-api-settings`を実行 | サービス分類、接続先の種類と認証方式、操作別の接続情報、使用量計測の対象、WebSocketモデル、Agent、計測の役割 |
+| `gatewayControlSettings` | 対象APIの`<base/>`前で`core-api-settings`を実行 | `operationId`、`operationConstraints`、`tokenLimitOperationIds`。操作・入力の検査とトークン計数が参照するAPI固有設定 |
 | 認証結果の変数 | All APIsの共通認証処理 | 検証済み購読・ユーザー・トークンと認証完了状態。API側の自己申告を認証結果として扱わない |
 
 監査情報と制御設定は、監査項目の追加・整形と、認可・入力制約・計数の判定を独立して扱うために別の変数へ分ける。`gatewayAuditSettings`を作る処理自体は入力を拒否したり本文を書き換えたりしない。制御設定を参照する後続ポリシーの動作は、それぞれ別に確認する。変数の分離だけで既存の許可条件、モデル機能、接続先、本文変換、計数対象を変更しない。
 
-共有fragmentとAPIポリシーを同じ資材の構成にそろえて配備する。現行の共有処理は`gatewayControlSettings`を直接参照する。更新中に旧APIと新しい共有処理が混在すると、一時的に要求が失敗する場合がある。全APIの更新後に、分離した設定を使うことと、キー・Bearer両方式の接続を確認する。監査設定には制御項目を格納しない。
+共有fragmentとAPIポリシーを同じ資材の構成にそろえて配備する。今回の移行は新しい設定fragmentを先に登録し、次に各APIの初期化を切り替える。後続が参照する2変数と共通認証は変えず、移行途中の旧APIも同じ2変数を準備する。全APIの更新後に、分離した設定を使うことと、キー・Bearer両方式の接続を確認する。監査設定には制御項目を格納しない。
 
 名前付きの値（Named Values）は、APIMが保存し、複数のポリシーから`{{name}}`で参照する固定設定である。共通キーヘッダー名、入口の有効設定、Brokerの接続先、API別の下流audienceは既に名前付きの値で管理し、秘密情報はKey Vault参照を使う。API固有の値も保存できるが、要求IDや認証結果のように要求ごとに決まる情報は実行時変数へ保持する。
 
@@ -113,7 +127,7 @@ Entraの共通認証には、次の4つの非秘密の名前付きの値を使�
 
 `gatewayAuditSettings`と`gatewayControlSettings`の初期値はAPI契約から生成する。実行時にはOperation別の接続情報を選び、選択済みprofileの操作制約を反映するため、要求内の加工結果を実行時変数へ保持する。固定JSONを名前付きの値へ移しても、この変数は必要となる。現在はAPI契約とポリシーを同じ版で照合する設定として生成資材で管理し、ポリシー本文と独立して運用する共通固定値には名前付きの値を使う。
 
-実行時変数の定義は、GUIのAll APIsまたは対象APIのAll operationsのXMLで確認する。配備時には置換用文字列が設定JSONのBase64文字列に置き換わるが、画面に実行後の変数値が表示されるわけではない。登録資材の変更と実環境への反映は別に検証する。
+実行時変数の定義は、GUIのAll APIsまたは対象APIのAll operationsのXMLで確認する。配備時には置換用文字列が設定データのBase64文字列に置き換わるが、画面に実行後の変数値が表示されるわけではない。登録資材の変更と実環境への反映は別に検証する。
 
 旧生成元が一部のAPIしか含まない既存環境では、読み取ったXMLを生成元の証明として代用しない。明示した全APIの整合工程では、既知の旧生成元を独立に照合し、残りのAPI・操作・schema・tool・fragment・接続先をバックアップと競合検出の証跡として読み取る。社員Productへの所属を一時解除して現在の資材を配備し、完全なv2生成元と実設定が一致した後に新しい生成元を保護領域へ記録する。共通認証の切替と社員Productへの所属復帰は最後に行う。既存キーのscope・状態は事前確認し、Foundryの容量とFirewallルールをこの整合工程で変更しない。
 
@@ -242,7 +256,7 @@ CMは、必要なAPIが利用する共通の下流OAuth機能とする。`graph-
 2. APIs → All APIsのコードエディターで共通の購読キー検証とEntraアクセストークン検証を確認する。認証用テナント・API audience・`Gateway.Invoke`は適用された`validate-azure-ad-token`を見る。
 3. 対象API → All operationsで操作制約・下流認証を確認する。CMを使うAPIは接続セッションの照合処理も確認する。
 4. Operationのコードエディターで固定URI・Live／Realtime／PII等の固有処理を確認する。WSSは`onHandshake`を見る。
-5. Policy fragmentsで`core-request-context`・`core-audit-authenticated-subject`・`core-gateway-telemetry`のC#説明と、`core-trusted-ingress`の入口確認を読む。`core-rate-limit`・`core-credential-connection`等の個別処理もここで確認する。
+5. Policy fragmentsで`core-api-settings`のAPI設定準備、`core-request-context`・`core-audit-authenticated-subject`・`core-gateway-telemetry`のC#説明、`core-trusted-ingress`の入口確認を読む。`core-rate-limit`・`core-credential-connection`等の個別処理もここで確認する。
 6. Credential managerでprovider、connection、本人同意、APIM MIのaccess policyを確認する。
 
 XMLには処理の目的・入力・失敗時の動作を説明する日本語コメントを記載する。登録前に計画を確認し、適用後のXMLを読み直して照合する。
