@@ -39,7 +39,10 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
         return compile_bicep(relative)
 
     def parameters(self, definitions=None):
-        return {"apiDefinitions": self.definitions if definitions is None else definitions,
+        return {**{name: definition['defaultValue']
+                   for name, definition in self.template['parameters'].items()
+                   if 'defaultValue' in definition},
+                "apiDefinitions": self.definitions if definitions is None else definitions,
                 "publishApis": True, "l7IngressSecretIdentifier": "",
                 "queryGuards": self.config["gateway"]["queryGuards"]}
 
@@ -51,6 +54,10 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             parameters = self.parameters(definitions)
             return [compiled_policy_value(self.template, parameters, index)
                     for index in range(len(parameters['apiDefinitions']))]
+        if name == 'mcpPolicyValues':
+            parameters = self.parameters(definitions)
+            return [compiled_policy_value(self.template, parameters, index, resource_name='mcpPolicies')
+                    for index in range(len(self.variable('mcpApis', definitions)))]
         return self.value("[variables('" + name + "')]", definitions)
 
     def expanded(self, value, definitions=None, index=0):
@@ -147,9 +154,8 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 root = ET.fromstring(policy)
                 self.assertNotRegex(policy, r"__[A-Z][A-Z0-9_]*__")
                 self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
-                if api["apiType"] == "grpc":
-                    self.assertEqual(root.find("./backend/forward-request").get("http-version"), "2")
-                if api["apiType"] in ("grpc", "websocket"):
+                self.assertNotEqual(api["apiType"], "grpc")
+                if api["apiType"] == "websocket":
                     self.assertEqual(root.findall('.//set-body'), [])
                     self.assertNotRegex(policy, r'(?:Request|Response)\s*\.\s*Body')
         for policy in self.variable("mcpPolicyValues"):
@@ -174,9 +180,12 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             self.assertFalse(str(resource_type).startswith("Microsoft.ApiManagement/service/apis"))
             self.assertNotEqual(resource_type, "Microsoft.ApiManagement/service/backends")
         azure_modules = [resource for resource in resources if 'tenantId' in resource.get('properties', {}).get('parameters', {})]
-        self.assertEqual(len(azure_modules), 2)
+        self.assertEqual(len(azure_modules), 3)
         for resource in azure_modules:
-            self.assertEqual(resource['properties']['parameters']['tenantId']['value'], "[parameters('configuration').azureTenantId]")
+            expected = ("[coalesce(tryGet(parameters('configuration'), 'entraTenantId'), parameters('configuration').azureTenantId)]"
+                        if 'core-entra-settings' in resource['name']
+                        else "[parameters('configuration').azureTenantId]")
+            self.assertEqual(resource['properties']['parameters']['tenantId']['value'], expected)
 
 
 if __name__ == "__main__":

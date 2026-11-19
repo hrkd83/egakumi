@@ -3,6 +3,7 @@ import Negotiator from "negotiator";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { defaultLocale, hasLocale, locales, type Locale } from "@/lib/i18n/config";
+import { getPortalPublicOrigin } from "@/lib/public-origin";
 
 /**
  * ブラウザーの優先言語から、ポータルが提供する表示言語を選びます。
@@ -40,8 +41,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const redirectUrl = request.nextUrl.clone();
+  // ACAはHTTP後段でX-Forwarded-Protoをhttpへ上書きします。公開設定からHTTPSを保ちます。
+  const redirectUrl = new URL(getPortalPublicOrigin());
   redirectUrl.pathname = `/${getLocale(request)}${pathname}`;
+  redirectUrl.search = request.nextUrl.search;
   return NextResponse.redirect(redirectUrl);
 }
 

@@ -32,6 +32,172 @@ from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
 from lifecycle_fixtures import LifecycleFixture, ScriptedTransport, response_policy
 
 
+class CommandJsonTransportTests(unittest.TestCase):
+    """Windows CLIのUTF-8境界と、他OSの既存実行方法を合成JSONで検証する。"""
+
+    def test_windows_azure_cli_resolves_executable_and_uses_utf8_without_mutating_inputs(self):
+        arguments = ["az", "account", "show", "--output", "json"]
+        response = {"metadata": {"description": "通信要件の確認用テスト"}}
+        parent_environment = {"PATH": "/fixture/bin", "PARENT_FIXTURE": "retained",
+                              "PYTHONUTF8": "0", "PYTHONIOENCODING": "cp932"}
+        for supplied_environment in (None, {"CHILD_FIXTURE": "retained", "PYTHONUTF8": "0",
+                                            "PYTHONIOENCODING": "cp932"}):
+            with self.subTest(explicit_environment=supplied_environment is not None):
+                environment_before = copy.deepcopy(supplied_environment)
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0,
+                    json.dumps(response, ensure_ascii=False), "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value="/fixture/az.cmd") as executable, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = parent_environment
+                    self.assertEqual(lifecycle.run(arguments, payload={"description": "合成入力"},
+                        environment=supplied_environment), response)
+                executable.assert_called_once_with("az")
+                process.assert_called_once()
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *arguments[1:]])
+                options = process.call_args.kwargs
+                self.assertEqual(options["encoding"], "utf-8")
+                self.assertTrue(options["text"])
+                self.assertTrue(options["capture_output"])
+                self.assertEqual(json.loads(options["input"]), {"description": "合成入力"})
+                self.assertEqual(options["env"], {**parent_environment, **(supplied_environment or {}),
+                    "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+                self.assertEqual(arguments[0], "az")
+                self.assertEqual(supplied_environment, environment_before)
+                self.assertEqual(parent_environment["PYTHONUTF8"], "0")
+                self.assertEqual(parent_environment["PYTHONIOENCODING"], "cp932")
+
+    def test_windows_non_azure_json_child_uses_utf8_without_azure_resolution(self):
+        arguments = ["/fixture/pwsh", "-NoProfile", "-File", "/fixture/helper.ps1"]
+        completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"result":"合成結果"}', "")
+        with mock.patch.object(lifecycle, "os") as platform, \
+             mock.patch.object(lifecycle.shutil, "which") as executable, \
+             mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+            platform.name = "nt"
+            platform.environ = {"PARENT_FIXTURE": "retained"}
+            self.assertEqual(lifecycle.run(arguments), {"result": "合成結果"})
+        executable.assert_not_called()
+        self.assertEqual(process.call_args.args[0], arguments)
+        self.assertEqual(process.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(process.call_args.kwargs["env"], {"PARENT_FIXTURE": "retained",
+            "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        self.assertIsNone(process.call_args.kwargs["input"])
+
+    def test_windows_bicep_build_uses_explicit_parent_path_or_standard_compiler(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        cases = (
+            ({"BICEP_CLI": "/fixture/child/bicep.exe"}, {"BICEP_CLI": "/fixture/parent/bicep.exe"},
+             "/fixture/path/bicep.exe", "/fixture/child/bicep.exe", []),
+            ({}, {"BICEP_CLI": "/fixture/parent/bicep.exe"}, "/fixture/path/bicep.exe",
+             "/fixture/parent/bicep.exe", []),
+            ({}, {}, "/fixture/path/bicep.exe", "/fixture/path/bicep.exe", [mock.call("bicep")]),
+            ({}, {}, None, "/fixture/compiler-root/.azure/bin/bicep.exe", [mock.call("bicep")]),
+        )
+        for environment, parent_environment, path_compiler, expected_compiler, resolution in cases:
+            with self.subTest(compiler=expected_compiler):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"description":"通信要件"}', "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value=path_compiler) as executable, \
+                     mock.patch.object(lifecycle.Path, "home", return_value=Path("/fixture/compiler-root")) as standard_home, \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=True), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = parent_environment
+                    self.assertEqual(lifecycle.run(arguments, environment=environment), {"description": "通信要件"})
+                self.assertEqual(executable.call_args_list, resolution)
+                self.assertEqual(standard_home.call_count, int(path_compiler is None and not environment and not parent_environment))
+                self.assertEqual(process.call_args.args[0], [expected_compiler, "build",
+                    "/fixture/infra/main.bicep", "--stdout"])
+                self.assertEqual(process.call_args.kwargs["encoding"], "utf-8")
+                self.assertEqual(process.call_args.kwargs["env"]["PYTHONUTF8"], "1")
+                self.assertEqual(process.call_args.kwargs["env"]["PYTHONIOENCODING"], "utf-8")
+                self.assertEqual(arguments, ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"])
+
+    def test_windows_bicep_build_preserves_other_flags_and_positional_file(self):
+        for build_arguments, converted in (
+            (["--stdout", "--file", "/fixture/infra/main.bicep", "--no-restore"],
+             ["--stdout", "/fixture/infra/main.bicep", "--no-restore"]),
+            (["/fixture/infra/main.bicep", "--stdout"], ["/fixture/infra/main.bicep", "--stdout"]),
+        ):
+            with self.subTest(arguments=build_arguments):
+                arguments = ["az", "bicep", "build", *build_arguments]
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which") as executable, \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=True), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": "/fixture/bicep.exe"}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                executable.assert_not_called()
+                self.assertEqual(process.call_args.args[0], ["/fixture/bicep.exe", "build", *converted])
+                self.assertEqual(arguments, ["az", "bicep", "build", *build_arguments])
+
+    def test_windows_bicep_missing_compiler_falls_back_to_azure_cli_without_conversion(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        for configured_compiler in (None, "/fixture/missing/bicep.exe"):
+            with self.subTest(configured_compiler=configured_compiler):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                def resolve(command):
+                    return "/fixture/az.cmd" if command == "az" else None
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", side_effect=resolve) as executable, \
+                     mock.patch.object(lifecycle.Path, "home", return_value=Path("/fixture/home")), \
+                     mock.patch.object(lifecycle.Path, "is_file", return_value=False), \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": configured_compiler} if configured_compiler else {}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                expected_resolution = [mock.call("az")] if configured_compiler else [mock.call("bicep"), mock.call("az")]
+                self.assertEqual(executable.call_args_list, expected_resolution)
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *arguments[1:]])
+                self.assertIn("--file", process.call_args.args[0])
+
+    def test_windows_bicep_other_commands_still_use_windows_azure_cli(self):
+        for suffix in (["bicep", "version"], ["bicep", "build-params", "--file", "/fixture/infra/main.bicepparam"],
+                       ["deployment", "group", "what-if", "--output", "json"]):
+            with self.subTest(command=suffix):
+                arguments = ["az", *suffix]
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, "{}", "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which", return_value="/fixture/az.cmd") as executable, \
+                     mock.patch.object(lifecycle.Path, "is_file") as compiler_file, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "nt"
+                    platform.environ = {"BICEP_CLI": "/fixture/bicep.exe"}
+                    self.assertEqual(lifecycle.run(arguments), {})
+                executable.assert_called_once_with("az")
+                compiler_file.assert_not_called()
+                self.assertEqual(process.call_args.args[0], ["/fixture/az.cmd", *suffix])
+
+    def test_windows_missing_azure_cli_stops_before_launching_child(self):
+        with mock.patch.object(lifecycle, "os") as platform, \
+             mock.patch.object(lifecycle.shutil, "which", return_value=None) as executable, \
+             mock.patch.object(lifecycle.subprocess, "run") as process:
+            platform.name = "nt"
+            with self.assertRaisesRegex(lifecycle.DeploymentError, "Install Azure CLI on Windows"):
+                lifecycle.run(["az", "account", "show"])
+        executable.assert_called_once_with("az")
+        process.assert_not_called()
+
+    def test_non_windows_keeps_existing_cli_environment_and_locale_decoding(self):
+        arguments = ["az", "bicep", "build", "--file", "/fixture/infra/main.bicep", "--stdout"]
+        for environment in (None, {"CHILD_FIXTURE": "retained", "PYTHONUTF8": "0"}):
+            with self.subTest(explicit_environment=environment is not None):
+                completed = lifecycle.subprocess.CompletedProcess(arguments, 0, '{"result":"合成結果"}', "")
+                with mock.patch.object(lifecycle, "os") as platform, \
+                     mock.patch.object(lifecycle.shutil, "which") as executable, \
+                     mock.patch.object(lifecycle.subprocess, "run", return_value=completed) as process:
+                    platform.name = "posix"
+                    self.assertEqual(lifecycle.run(arguments, environment=environment), {"result": "合成結果"})
+                executable.assert_not_called()
+                self.assertIs(process.call_args.args[0], arguments)
+                self.assertIs(process.call_args.kwargs["env"], environment)
+                self.assertIsNone(process.call_args.kwargs["encoding"])
+                self.assertIsNone(process.call_args.kwargs["input"])
+
+
 class ProviderRegistrationTests(unittest.TestCase):
     """本物のCLIを呼ばず、標準RPの登録と完了待ちを検証する。"""
 
@@ -297,6 +463,21 @@ class ArmTransportTests(LifecycleFixture, unittest.TestCase):
                     self.assertEqual(observed["statusCode"], status)
                     self.assertEqual(self.opener.open.call_count, 1)
                     sleep.assert_not_called()
+
+    def test_nsg_and_gateway_mutations_keep_the_concrete_if_match_header_and_do_not_retry_conflicts(self):
+        for method in ('PUT', 'DELETE'):
+            self.opener.open.reset_mock()
+            self.opener.open.side_effect = self.http_error(412)
+            with self.subTest(method=method), mock.patch.object(lifecycle.time, 'sleep') as sleep:
+                observed = self.transport.request(method, self.path,
+                    {'properties': {'priority': 120}} if method == 'PUT' else None,
+                    headers={'If-Match': '"owned-version-fixture"'})
+            self.assertEqual(observed['statusCode'], 412)
+            self.assertEqual(self.opener.open.call_count, 1)
+            request = self.opener.open.call_args.args[0]
+            self.assertEqual(request.get_header('If-match'), '"owned-version-fixture"')
+            self.assertEqual(request.get_method(), method)
+            sleep.assert_not_called()
 
     def test_authentication_and_other_non_transient_http_errors_are_not_retried(self):
         for status in (302, 400, 401, 403, 404, 409, 412, 422, 501):

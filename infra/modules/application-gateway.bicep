@@ -102,16 +102,6 @@ param additionalWafLogScrubbingRules array = []
 @maxValue(86400)
 @description('AppGW がバックエンド応答を待つ秒数。長い推論やストリーミングにも影響します。')
 param backendRequestTimeoutSeconds int = 600
-@allowed([true])
-@description('通常 HTTPS とは別に常設する native gRPC 用 TCP/TLS 経路。無効化できません。')
-param grpcEnabled bool = true
-@allowed([8443])
-@description('利用者が gRPC で接続する固定公開 TCP ポート。8443 だけを使います。')
-param grpcPublicPort int = 8443
-@allowed([443])
-@description('AppGW が内部 APIM の gRPC 入口へ接続する固定 TCP ポート。TLS の 443 だけを使います。')
-param grpcBackendPort int = 443
-@description('AppGW の HTTP 書き換え経路を APIM が見分ける共有値。利用者の認証トークンとは別です。')
 @secure()
 param l7IngressSecret string = ''
 
@@ -376,7 +366,7 @@ var dataGatewayPathRules = map(filter(dataProfiles, profile => profile.scope == 
     firewallPolicy: { id: resourceId('Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies', 'wafpol-${profile.name}-${wafPolicyIdentifier}') }
     backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
     backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-    ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+    rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
   }
 })
 var dataPortalPathRules = map(filter(dataProfiles, profile => profile.scope == 'portal'), profile => {
@@ -389,7 +379,7 @@ var dataPortalPathRules = map(filter(dataProfiles, profile => profile.scope == '
   }
 })
 
-// HTTPS 終端・Host 書換え・ヘルスチェック・API 転送。gRPC は別 TCP リスナーとして構成します。
+// HTTPS終端と通常HTTPの入口証明を常設し、内部APIM/PortalへHTTPで転送します。
 resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
   name: gatewayName
   location: location
@@ -410,39 +400,15 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
     sslCertificates: [{ name: 'gateway-tls', properties: { keyVaultSecretId: keyVaultCertificateSecretId } }]
     gatewayIPConfigurations: [{ name: 'agw-ipcfg', properties: { subnet: { id: subnetId } } }]
     frontendIPConfigurations: [{ name: 'agw-frontend-public', properties: { publicIPAddress: { id: publicIpId } } }]
-    frontendPorts: concat([
+    frontendPorts: [
       { name: 'port-80', properties: { port: 80 } }
       { name: 'port-443', properties: { port: 443 } }
-    ], grpcEnabled ? [{ name: 'port-grpc', properties: { port: grpcPublicPort } }] : [])
-    // TCP/TCP preserves the TLS byte stream and ALPN negotiation with APIM.
-    // WAF does not inspect this listener; global APIM edge proof protects all
-    // non-gRPC APIs from being reached through it.
-    ...(grpcEnabled ? {
-      listeners: [{
-        name: 'listener-grpc-tcp'
-        properties: {
-          frontendIPConfiguration: { id: '${gatewayId}/frontendIPConfigurations/agw-frontend-public' }
-          frontendPort: { id: '${gatewayId}/frontendPorts/port-grpc' }
-          protocol: 'Tcp'
-        }
-      }]
-      backendSettingsCollection: [{
-        name: 'betcp-apim-grpc'
-        properties: { protocol: 'Tcp', port: grpcBackendPort, timeout: backendRequestTimeoutSeconds }
-      }]
-      routingRules: [{
-        name: 'rule-grpc-tcp'
-        properties: {
-          priority: 300
-          ruleType: 'Basic'
-          listener: { id: '${gatewayId}/listeners/listener-grpc-tcp' }
-          backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
-          backendSettings: { id: '${gatewayId}/backendSettingsCollection/betcp-apim-grpc' }
-        }
-      }]
-    } : {})
-    ...(grpcEnabled ? {
-      rewriteRuleSets: [{
+    ]
+    // 再配備でも旧gRPC専用L4設備を残さないよう、空の固定集合を明示します。
+    listeners: []
+    routingRules: []
+    backendSettingsCollection: []
+    rewriteRuleSets: [{
         name: 'trusted-l7-ingress'
         properties: {
           // AppGW は一つの転送規則に一つの rewrite set だけを関連付けられます。
@@ -453,8 +419,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
             actionSet: { requestHeaderConfigurations: [{ headerName: 'X-Core-L7-Ingress', headerValue: l7IngressSecret }] }
           }]
         }
-      }]
-    } : {})
+    }]
     httpListeners: concat([
       {
         name: 'listener-http'
@@ -513,8 +478,8 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
     }], [{
       name: 'behttp-portal'
       properties: {
-        protocol: 'Https'
-        port: 443
+        protocol: 'Http'
+        port: 80
         cookieBasedAffinity: 'Disabled'
         // Portal waits for the same Gateway calls, including non-streaming inference.
         requestTimeout: backendRequestTimeoutSeconds
@@ -539,7 +504,8 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
     }], [{
       name: 'probe-portal'
       properties: {
-        protocol: 'Https'
+        protocol: 'Http'
+        port: 80
         host: portalBackendHost
         // Portal配備後は認証不要のヘルスAPIで稼働状態を判定します。
         // 初期構築の仮イメージは対象外です。認証画面への転送は正常判定に含めません。
@@ -576,7 +542,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
         properties: {
           defaultBackendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
           defaultBackendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-          ...(grpcEnabled ? { defaultRewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+          defaultRewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
           pathRules: concat(dataGatewayPathRules, useGatewayAuthWafPolicy ? [{
             name: 'credential-identity-callback'
             properties: {
@@ -584,7 +550,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
               firewallPolicy: { id: gatewayAuthWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+              rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
             }
           }] : [], useSpeechWafPolicy ? [{
             name: 'speech'
@@ -593,7 +559,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
               firewallPolicy: { id: speechWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+              rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
             }
           }] : [], useDocumentWafPolicy ? [{
             name: 'document-analysis-upload'
@@ -602,7 +568,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
               firewallPolicy: { id: documentUploadWafPolicy!.id }
               backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
               backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-              ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+              rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
             }
           }] : [])
         }
@@ -642,7 +608,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
           ...(useProtocolWafPolicies ? { urlPathMap: { id: '${gatewayId}/urlPathMaps/pathmap-protocols' } } : {
             backendAddressPool: { id: '${gatewayId}/backendAddressPools/bepool-apim' }
             backendHttpSettings: { id: '${gatewayId}/backendHttpSettingsCollection/behttp-apim' }
-            ...(grpcEnabled ? { rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' } } : {})
+            rewriteRuleSet: { id: '${gatewayId}/rewriteRuleSets/trusted-l7-ingress' }
           })
         }
       }

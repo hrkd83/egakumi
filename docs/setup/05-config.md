@@ -19,7 +19,7 @@
 
 1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。StandardでIDPSを有効にしない。
 2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。paramsのAPIごとの許可モデルと対応させる。
-3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。gRPCの共通入口は公開8443／APIM443で常設する。
+3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。通常HTTP／HTTPSの入口保護と、初期NSGの固定集合を確認する。
 4. 同じparamsでローカル検査し、整合を確認する。
 
 ```sh
@@ -41,7 +41,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・IP計画・許可元・追加接続先・権限は前節のparamsへ記載します。VNetとFirewallのDNS設定は標準configの空配列に固定し、Azure提供DNSを使います。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・Firewallの追加接続先・権限は前節のparamsへ記載します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSGの初期集合と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
@@ -53,17 +53,13 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
-| `network.operatorProtocol` | `"Tcp"` | 管理VMへ許可するプロトコル。Tcp/Udp/*。 |
-| `network.operatorPorts` | `["22"]` | 管理VMへ許可する宛先ポート。Linux SSHは22。 |
-| `network.dnsServers` | `[]`（固定） | VNetはAzure提供DNS（168.63.129.16）を使用する。空配列以外は入力検査で拒否し、paramsからも指定できない。 |
 | `network.bgpRoutePropagation.agw` | `true` | AppGW用RTへGateway由来経路を伝搬。true=伝搬する、false=しない。 |
 | `network.bgpRoutePropagation.apim` | `true` | APIM用RTのルート伝搬。 |
 | `network.bgpRoutePropagation.management` | `true` | 管理VM用RTのルート伝搬。デフォルトルートのnext hopやピアリングとは別。 |
 | `network.appGatewayZones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW用公開IPの可用性ゾーン番号。gateway.zonesと一致させる。[]は番号の明示なし。 |
-| `network.apimKeyVaultAccessEnabled` | `true` | APIM→Key Vault PEの通信許可。常設gRPCの証明書・入口証明のためtrueが必須。Azure RBACは別設定。 |
 | `network.dnsTtl` | `300` | 作成するPrivate DNSレコードのTTL、秒。1〜86400。 |
 
-AppGW用NSGは、全IPv4（`0.0.0.0/0`）からのWeb TCP80/443・gRPC TCP8443と、同じVNetのFirewall公開IP `/32`からのTCP443をBicepで固定して許可します。`network.certificatePublicProbeEnabled`と`network.clientAddressPrefixes`は入力項目ではありません。params・config・合成設定ファイルに指定すると、固定条件と同じ`true`・`["0.0.0.0/0"]`でもAzure変更前の入力検査で拒否します。以前の入力から削除してください。HTTP／TLS／API検査は別途実行します。管理VMの接続元・プロトコル・ポートは従来の設定項目です。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
+NSGは全サブネットの通信要件に対応する固定の初期集合をBicepで作成し、送信元・宛先には構築したサブネットCIDRと割当IPを組み込みます。AppGWは公開TCP80／443を別々に許可し、同じVNetのFirewall公開IP `/32`からのHTTPSも独立した規則にします。gRPC専用のTCP8443入口は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`dnsServers`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`と`network.firewall.dnsServers`は入力項目から削除しました。以前のJSONから取り除いてください。管理VMのSSH初期規則とAPIM→Key Vaultの許可も常設します。企業のIP制限・ハブ接続・独自DNSに合わせる変更は構築後にAzureポータルで行い、再構築・再適用時には初期集合との差を再確認します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
 ルート伝搬はGateway由来経路だけを対象とし、UDR・ピアリング・デフォルトルート変更とは別です。独立VNetには伝搬元Gatewayがないため、既定trueでもGateway由来の経路はありません。Azureの否定形属性へはBicep内部で反転します。[ルート伝搬](https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table)
 
@@ -79,7 +75,6 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 | `network.firewall.threatIntelMode` | `"Alert"` | 脅威情報のAlert=検知、Deny=遮断、Off=無効。 |
 | `network.firewall.idpsMode` | テスト：`"Off"`／本番：`"Alert"` | PremiumのIDPSはAlert/Deny。Standardの見本はOffを明記し、Bicepでは対応しないIDPS設定自体を作らない。 |
 | `network.firewall.zones` | テスト：`[]`／本番：`["1","2","3"]` | Firewallと公開IPの可用性ゾーン。 |
-| `network.firewall.dnsServers` | `[]`（固定） | Firewall自身の名前解決もAzure提供DNSを使う。空配列以外は入力検査で拒否し、paramsからも指定できない。 |
 | `network.firewall.signatureOverrides` | `[]` | Premium IDPSの署名ごとの設定。 |
 
 #### サービス（services）
@@ -99,7 +94,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 | `services.projectDescription` | `"Core platform project for shared model, agent, and tool capabilities."` | 初期Projectの説明。 |
 | `services.speechEnabled` | `true` | APIMのMIへ対象FoundryのSpeech権限を付与。音声モデル全体の配備フラグではない。 |
 | `services.grantApimFoundryModelsAccess` | `true` | APIMへ対象Foundryの非OpenAIモデル用の組み込み利用権限を付与。 |
-| `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設gRPCの証明書・入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
+| `services.grantApimSecretAccess` | テスト：`true`／本番：`false` | バックエンド資格情報のためAPIMへKey Vaultのsecret読取権限を付与。常設L7入口証明等に必要なKV読取権限は、この指定と別にAPIM自身へ付与。通信許可とは別。 |
 | `services.modelDeployments` | [初期28モデル](../reference/platform.md#初期モデルと公開api)（固定版・SKUはconfig参照） | 単一FoundryへBicepで配備。32件の上限内で選定し、実カタログと利用枠を配備前に照合。 |
 
 初回は32件の上限のうち28件を使用します。モデル追加時は、配備数の上限・対象モデルの提供条件・利用枠を確認します。
@@ -119,14 +114,14 @@ Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもA
 
 共通認可の`gateway.authentication.subscriptionKeyHeader`は企業固有のparamsで設定します。全体ポリシーが購読キーと利用範囲を検証し、API側が操作・モデル・入力の制約と下流認証を設定します。本人接続が必要なAPIはCMを利用します。[共通認証の設定](04-params.md#gateway全体の認証とapiごとの認可)を参照してください。
 
-native gRPC用のTCP入口は共通仕様として常設し、その経路は通常のHTTPS本文WAF検査の対象外です。他APIの迂回防止は実機試験で確認します。
+公開入口はAppGWのHTTP／HTTPSです。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーが入口証明を検査します。この保護はgRPC等の有効フラグに依存せず常設します。APIMへ直接届く要求の拒否は実機試験でも確認します。
 
 WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/gateway/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
 
 
-APIMのTLS証明書と入口／RealtimeのKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。
+APIMの常設L7入口証明／Realtime所有者署名のKey Vault参照は、APIM自身のシステム割り当てマネージドIDを使い、対象KVだけに組み込みのKey Vault Secrets Userを付与します。APIMのHTTPS保守は既定の`<APIM_NAME>.azure-api.net`をPrivate DNSで内部VIPへ解決し、同名のHost／SNIとMicrosoft管理の既定証明書を使います。gRPC専用だったAPIMの公開名customProxyと公開証明書参照は撤去します。[KV firewall有効時にAPIMのユーザー割り当てIDを使用できない制約](https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity)に合わせた構成です。AppGWは証明書用のユーザー割り当てIDを引き続き使います。IDの権限とPE経由の到達性は別々に実機確認します。
 
-APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。APIMのカスタムドメイン証明書取得には、VNetからKVへ到達できる場合でもこの例外が必要です。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材はgRPCの共通入口を常設し、同じKVから証明書と入口証明を参照するため、この管理用例外を有効化します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。通常のAPIMバックエンド呼出し・管理VM・AppGWの証明書読取はPE経由で確認します。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
+APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Deny`を維持し、`bypass: AzureServices`を管理処理用の例外として設定します。カスタムドメイン証明書を参照する場合、APIMはVNetからKVへ到達できてもこの例外が必要ですが、標準構築ではそのAPIM証明書参照を撤去しました。named valueも管理面の機能ですが、ネットワーク到達性があれば例外なしの接続を選べます。この資材では管理用のtrusted services例外を維持します。gRPC専用customProxyの撤去後、APIMは公開証明書を参照せず、常設L7入口証明と所有者署名用のNamed Valueを参照します。一般利用者や任意のAzureアプリへの公開許可ではなく、trusted serviceにも対象KVのRBACを要求します。通常のAPIMバックエンド呼出し・管理VM・AppGWの証明書読取はPE経由で確認します。[APIM管理面と通常のAPI通信の区別](https://learn.microsoft.com/en-us/azure/api-management/breaking-changes/trusted-service-connectivity-retirement-march-2026#scenarios-that-are-not-affected-by-the-breaking-change)、[公開アクセス無効時も残るtrusted services例外](https://learn.microsoft.com/en-us/azure/key-vault/general/network-security#key-vault-firewall-enabled-trusted-services-only)
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -146,17 +141,15 @@ APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Den
 | `gateway.rateLimits.subscriptionKey.calls` | `60` | 有効化した場合のみ適用する期間内要求数、整数1〜1,000,000。 |
 | `gateway.rateLimits.subscriptionKey.renewalPeriodSeconds` | `60` | 有効化した場合のみ適用する計数期間、整数1〜300秒。 |
 
-gRPCの入口は基盤の共通仕様として、常に有効・公開TCP8443・APIM側TCP443に固定します。configやparamsで無効化・ポート変更する調整項目ではありません。標準configからこれらの指定を除き、構築処理が固定値を補完して既存の配備処理へ渡します。公開ホスト名は従来どおりparamsで指定します。
+gRPCは基盤の提供要件から廃止しました。`gateway.grpc`ブロック全体（公開ホスト名だけの指定や空オブジェクトも含む）と、APIの`apiType: "grpc"`・proto定義は入力検査で拒否します。AppGWのfrontend HTTP/2は維持し、内部APIM／ACAへはHTTP80で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
 
-`gateway.grpc.enabled`・`publicPort`・`backendPort`は入力項目ではありません。config・params・合成設定ファイルで指定すると、固定値と同じ`true`・`8443`・`443`でも構築前に拒否します。公開ホスト名だけをparamsで指定でき、検査後に構築処理が内部用の固定値を生成します。Realtime・文書ジョブの署名鍵の準備条件は別の設定です。
-
-API公開では、基盤の配備出力が共通仕様の公開ホスト名・TCP8443・入口証明の準備状態と一致することを確認します。一致しない基盤へは公開せず、先にCoreを配備してください。入口を常設することと、登録した各gRPCサービスの実通信が検証済みであることは別です。
+API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7入口証明のKey Vault参照・Named Value・AppGW rewrite・APIM検査が整合することを確認します。不一致の基盤へは公開せず、Coreの入口設備を先に揃えます。Realtime・文書ジョブの所有者署名鍵の準備条件は維持します。
 
 #### Linux管理VM（management）
 
 管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。パスワード認証・RDPは構成しません。証明書取得・更新は固定版PowerShell 7.6.7をLinuxで動かし、定期実行はsystemd timer、OSログ収集はLinux AMA/DCRで行います。
 
-時刻同期は既存Chronyを優先し、Ubuntu標準の`/etc/chrony/sources.d/90-core-platform.sources`に`network.ntpFqdns`を設定します。既存PHC/refclock・confdir/sourcedir・OS側のsource設定は保持し、未知の企業設定や既定poolを自動削除しません。外部NTPの到達先はNSGとFirewallの許可先でも制限します。timesyncdのみのイメージでは専用drop-inを使い、両方のサービスが無い場合は明示的に失敗します。サービス稼働・構文確認と、実際の同期元・精度の確認は別に行います。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
+時刻同期は既存Chronyを優先し、Ubuntu標準の`/etc/chrony/sources.d/90-core-platform.sources`にBicepで固定した`ntp.ubuntu.com`を設定します。既存PHC/refclock・confdir/sourcedir・OS側のsource設定は保持し、未知の企業設定や既定poolを自動削除しません。外部NTPの到達先はNSGとFirewallの許可先でも制限します。timesyncdのみのイメージでは専用drop-inを使い、両方のサービスが無い場合は明示的に失敗します。サービス稼働・構文確認と、実際の同期元・精度の確認は別に行います。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
 
 認証監査はSSH・PAMの認証/account/sessionを保持します。コマンド本文を含むsudoの`COMMAND=`行とcron本文は、AMA転送前のrsyslog規則でイベントごと収集対象から除外し、マスク済み行は新造しません。DCR側の追加マスクは維持します。rsyslogの構文検査とサービス操作は失敗段階を分けて返します。
 

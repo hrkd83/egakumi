@@ -55,7 +55,7 @@ scripts/
 | `credential_image.py`・`portal_image.py` | Gateway・Portalの配布物検査、イメージ構築、一時資源・権限の回収 | `deploy_gateway.py`・`deploy_portal.py` |
 | `powershell_runtime.py` | PowerShell実行ファイルとモジュール検索先の選択 | 構築前の依存確認、取込上限の設定 |
 | `set-app-insights-cap.ps1` | PowerShell依存確認、Application Insightsの日次取込上限設定 | `preup`・`preprovision` |
-| `grpc_lifecycle.py` | gRPC・Realtime用秘密情報の準備、入口設定の確認・更新、撤去後のローカル秘密の削除 | 構築前・構築後・撤去後。API登録でも一部共用 |
+| `grpc_lifecycle.py` | 常設L7入口・Realtime／所有者チケット用秘密の準備、旧所有APIM専用bindingの撤去とnative HTTPS確認、撤去後のローカル秘密回収 | 構築前・構築後・撤去後。API登録でも一部共用 |
 | `cleanup.py` | 所有するリソースの照合、モデル・APIM・Gateway／PortalのCA・ジョブ・CAE・管理VM／NICの先行削除、subnet解放、所有5RGと記録したACA管理RGの消失確認 | `predown`・`postdown` |
 | `paths.py` | このリポジトリのルート位置の解決 | 補助処理から共用 |
 

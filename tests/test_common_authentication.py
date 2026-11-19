@@ -250,7 +250,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             cls.results=json.loads(result.stdout)
 
     def test_only_verified_keys_authenticate_the_request(self):
-        for name in ("key","key-with-bearer","key-with-unrelated-auth","key-with-duplicate-auth","grpc"):
+        for name in ("key","key-with-bearer","key-with-unrelated-auth","key-with-duplicate-auth"):
             with self.subTest(case=name):
                 self.assertEqual(self.results[name]["status"],200)
                 self.assertTrue(self.results[name]["authenticated"])
@@ -265,6 +265,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_common_authentication_keeps_the_trusted_ingress_requirement(self):
         self.assertEqual(self.results["missing-ingress"]["status"],403)
+        self.assertEqual(self.results["grpc"]["status"],403)
+        self.assertFalse(self.results["grpc"]["authenticated"])
 
     def test_request_identity_is_initialized_even_before_ingress_or_authentication_rejection(self):
         expected={"requestId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","apiId":"gui-added-api","operationId":"invoke",

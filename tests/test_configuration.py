@@ -134,22 +134,25 @@ class PublicSampleTests(unittest.TestCase):
                 if name == "test":
                     self.assertNotIn("idpsMode", actual["network"]["firewall"])
 
-    def test_explicit_network_defaults_include_optional_rule_arrays(self):
-        """企業のIP条件はparams、通信機能の既定値はconfigに明示する。"""
+    def test_explicit_network_defaults_keep_fixed_rules_and_firewall_extension_inputs(self):
+        """DNS/NSG固定入力を再生成せず、Firewall拡張配列と既存の標準値を保持する。"""
+        retired_inputs = {
+            "clientAddressPrefixes": [], "certificatePublicProbeEnabled": False,
+            "dnsServers": [], "operatorAddressPrefixes": [],
+            "operatorProtocol": "Tcp", "operatorPorts": ["22"],
+            "ntpAddressPrefixes": [], "ntpFqdns": [],
+            "managementAdditionalSecurityRules": [], "apimKeyVaultAccessEnabled": False,
+        }
         for name in ("test", "production"):
-            parameters, options, _ = self.sample(name)
+            parameters, options, actual = self.sample(name)
             network = options["network"]
             addresses = parameters["network"]
-            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
-                self.assertNotIn(key, network)
-                self.assertNotIn(key, addresses)
+            for output in (parameters, options, actual, configuration.build_bicep_configuration(actual)):
+                for key in retired_inputs:
+                    self.assertNotIn(key, output["network"])
+                self.assertNotIn("dnsServers", output["network"]["firewall"])
             self.assertEqual(network["dnsTtl"], 300)
-            self.assertEqual(network["dnsServers"], [])
-            self.assertEqual(network["firewall"]["dnsServers"], [])
-            self.assertNotIn("dnsServers", addresses)
-            self.assertNotIn("dnsServers", addresses["firewall"])
-            self.assertEqual(addresses["managementAdditionalSecurityRules"], [])
-            self.assertEqual(network["operatorPorts"], ["22"])
+            self.assertEqual(actual["network"]["dnsTtl"], 300)
             self.assertEqual(addresses["firewall"]["snatPrivateRanges"], ["IANAPrivateRanges"])
             self.assertEqual(network["firewall"]["signatureOverrides"], [])
             for key in ("idpsPrivateRanges", "bypassTrafficSettings",
@@ -159,20 +162,27 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertNotIn(key, network["firewall"])
             self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
             self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
+        for key, value in retired_inputs.items():
+            raw = fixture()
+            raw["network"][key] = value
+            with self.subTest(retired_input=key), self.assertRaisesRegex(
+                    configuration.ConfigurationError, "network.*unsupported field.*" + key):
+                configuration.normalize_configuration(raw, base_directory=CORE / "config")
 
-    def test_gateway_defaults_cover_large_requests_voice_and_native_grpc(self):
+    def test_gateway_defaults_preserve_large_requests_and_voice_without_grpc(self):
         for name in ("test", "production"):
-            _, options, actual = self.sample(name)
+            parameters, options, actual = self.sample(name)
             gateway = options["gateway"]
             self.assertEqual(gateway["wafMaxRequestBodySizeInKb"], 2000)
             self.assertEqual(gateway["wafRequestBodyInspectLimitInKb"], 2000)
             self.assertEqual(gateway["wafFileUploadLimitInMb"], 4)
             self.assertTrue(gateway["realtimeControlEnabled"])
-            self.assertEqual({key: actual["gateway"]["grpc"][key] for key in ("enabled", "publicPort", "backendPort")},
-                             {"enabled": True, "publicPort": 8443, "backendPort": 443})
-            self.assertEqual(actual["gateway"]["grpc"]["publicHostName"], actual["gateway"]["publicHostName"])
-            # 共通gRPC入口は設定選択を持たず、公開名はparamsのFQDNへ揃える。
-            self.assertNotIn("grpc", gateway)
+            # gRPC撤去で、通常HTTP APIの本文上限やRealtime制御を変えない。
+            for key in ("wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb",
+                        "wafFileUploadLimitInMb", "realtimeControlEnabled"):
+                self.assertEqual(actual["gateway"][key], gateway[key])
+            for output in (parameters, options, actual, configuration.build_bicep_configuration(actual)):
+                self.assertNotIn("grpc", output["gateway"])
 
     def test_org_inputs_cannot_be_deployed_with_unset_target_guids(self):
         for name in ("test", "production"):
@@ -402,14 +412,17 @@ class ConfigurationTests(unittest.TestCase):
             "agw": True, "apim": True, "management": True,
         })
 
-    def test_fixed_appgw_rules_need_no_configuration_and_operators_remain_closed_by_default(self):
+    def test_fixed_network_rules_need_no_client_or_operator_configuration(self):
         raw = fixture()
-        raw["network"].pop("operatorAddressPrefixes", None)
+        before = copy.deepcopy(raw)
         actual = self.normalize(raw)
         for output in (actual, configuration.build_bicep_configuration(actual)):
-            self.assertEqual(output["network"]["operatorAddressPrefixes"], [])
-            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled",
+                        "operatorAddressPrefixes", "operatorProtocol", "operatorPorts"):
                 self.assertNotIn(key, output["network"])
+            for key in ("addressSpaces", "subnetPrefixes"):
+                self.assertEqual(output["network"][key], raw["network"][key])
+        self.assertEqual(raw, before)
 
     def test_appgw_rule_inputs_are_rejected_even_with_fixed_values(self):
         cases = {

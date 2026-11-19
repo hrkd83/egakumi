@@ -4,7 +4,10 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from deployment.helpers.apim_authentication import _render_inline_trusted_ingress_service_policy
-from deployment.helpers.apim_ingress import TRUSTED_INGRESS_ID, render_trusted_ingress_fragment
+from deployment.helpers.apim_ingress import (
+    TRUSTED_INGRESS_ID, render_trusted_ingress_fragment, render_legacy_trusted_ingress_fragment,
+    expand_trusted_ingress_fragment,
+)
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID
 from test_audit_fragment_publication import audit_graph, changed_xml
 from test_entra_publication import APIM, GLOBAL, response, source_fixture
@@ -24,6 +27,22 @@ def source_rejected(test, current):
 
 
 class TrustedIngressPublicationTests(unittest.TestCase):
+    def test_fixed_retired_grpc_leaf_is_accepted_only_for_explicit_owned_readback(self):
+        current, transport = audit_graph()
+        previous = render_legacy_trusted_ingress_fragment()
+        current.policies[INGRESS] = previous
+        transport.inventory[INGRESS] = response(INGRESS, {"format": "rawxml", "value": previous})
+        restored = publication.source_manifest(source_fixture(current), APIM, ["model-a", "model-b"], current.policies[GLOBAL])
+        publication.read_policy_graph(restored, transport)
+        self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+        with self.assertRaises(ValueError):
+            expand_trusted_ingress_fragment(current.policies[GLOBAL], previous)
+        self.assertIn("coreNativeGrpc", expand_trusted_ingress_fragment(current.policies[GLOBAL], previous, allow_legacy_source=True))
+        altered = previous.replace("&amp;&amp; !grpc", "&amp;&amp; grpc")
+        current.policies[INGRESS] = altered
+        with self.assertRaises(ValueError):
+            publication.source_manifest(source_fixture(current), APIM, ["model-a", "model-b"], current.policies[GLOBAL])
+
     def test_new_fragment_and_fixed_previous_inline_form_have_get_only_graphs(self):
         for inline in (False, True):
             with self.subTest(inline=inline):

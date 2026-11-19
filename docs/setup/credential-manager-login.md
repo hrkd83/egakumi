@@ -65,7 +65,7 @@ Bearer利用では、APIMが検証した`user:<TENANT_ID>:<OBJECT_ID>`を呼出�
 
 自前のWAFを作成する構成では、`/auth/connections/browser/identity-callback`の完全パスに専用ポリシー`wafpol-g-auth-<ID>`を関連付ける。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子を使う。認可コードのSQLi誤検知を抑えるため、現行資材は`code`引数の**値**だけをOWASP 3.2の`942430`・`942440`・`942450`から除外する。引数名、`state`、他の引数・URI・規則は除外しない。本文検査、サイズ制限、秘密値のログ除去、追加の企業規則は共通WAFと同じに保つ。
 
-既存の`pathmap-protocols`へ`credential-identity-callback`の規則を追加し、既存APIの経路を保持する。gRPCを併設する場合も、HTTP入口の`trusted-l7-ingress`書き換えをcallbackと既定経路の両方に適用する。初期構築用BicepとGateway配備処理が同じ構成を使用し、Portalの認証callback用ポリシーは変更しない。
+既存の`pathmap-protocols`へ`credential-identity-callback`の規則を追加し、既存APIの経路を保持する。HTTP入口の`trusted-l7-ingress`書き換えをcallbackと既定経路の両方に常設適用する。初期構築用BicepとGateway配備処理が同じ構成を使用し、Portalの認証callback用ポリシーは変更しない。
 
 企業管理の既存WAFを指定する構成では、そのポリシーを自動で置換・複製しない。管理者が同じcallback・引数値・規則の範囲で調整する。`Standard_v2`にはWAF調整を作成しない。
 

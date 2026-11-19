@@ -50,7 +50,7 @@ API登録処理は、APIの配備成功を確認してから共通ポリシー�
 | Azureの部品名 | XMLの正本 | C#式の正本 | 処理・出力 |
 | --- | --- | --- | --- |
 | `core-request-context` | `fragments/audit/core-request-context/core-request-context.xml` | `fragments/audit/core-request-context/core-request-context.cs` | `gatewayRequestContext`：受信時刻、要求・API・操作のID、操作のひな形、接続元と相関候補 |
-| `core-trusted-ingress` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs` | 必須のHTTP入口ヘッダーを判定し、欠落・不一致・重複なら既存監査へ記録して403を返す。専用gRPCは対象外 |
+| `core-trusted-ingress` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml` | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs` | 必須のHTTP入口ヘッダーを判定し、欠落・不一致・重複なら既存監査へ記録して403を返す。API固有の変数で免除しない |
 | `core-credential-browser-exception` | `fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.xml` | `fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs` | `gatewayCredentialBrowserException`：接続ログインの開始・戻り先の受付への一致を判定する。本人の認証成功を示す値ではない |
 | `core-common-authentication` | `fragments/authentication/core-common-authentication/core-common-authentication.xml` | `fragments/authentication/core-common-authentication/core-common-authentication.cs` | 通常要求のキー／Bearerを認証する。購読、トークン、本人、会社設定を確認し、成功を後続へ伝える |
 | `core-entra-authentication-error` | `fragments/authentication/core-entra-authentication-error/core-entra-authentication-error.xml` | なし（短いXML式のみ） | 標準Entra検証の失敗を既存監査と401応答へつなぐ。共通`on-error`から呼び出す |
@@ -123,7 +123,7 @@ Entraの共通認証には、次の4つの非秘密の名前付きの値を使�
 
 | 処理 | 実施内容 | 主なファイル |
 | --- | --- | --- |
-| 信頼した入口 | AppGW経由の識別値を確認。native gRPCは登録済みTCP経路を使用 | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml`、`service.xml` |
+| 信頼した入口 | AppGW経由の識別値を通常HTTP(S)で常設確認。gRPC専用の入口免除は廃止 | `fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml`、`service.xml` |
 | 購読キー | 設定済みヘッダーが1個で空でないこと、`context.Subscription.Id`の存在を確認。URLのキーを拒否 | `service.xml` |
 | Entraアクセストークン | キーヘッダーがない要求で署名・期限、認証用テナント、API audience、v2、`Gateway.Invoke`を検証。クライアントアプリIDは認可の制限に使わない | `fragments/authentication/core-common-authentication/core-common-authentication.xml`、`service.xml` |
 | 呼出主体 | キーは`subscription:<購読ID>`、Bearerは`user:<テナントID>:<ユーザーObject ID>`。同じ購読または同じユーザーの利用枠を共有 | `gateway.xml`、`protocol.xml`、`mcp.xml` |

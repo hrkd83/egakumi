@@ -10,9 +10,9 @@
 | 作業 | 既存の入口 | 正本・確認先 |
 | --- | --- | --- |
 | データ項目に対するWAF誤検知 | `scripts/operations/waf.py` | WAF manifestと対象パスの実ポリシー |
-| 4 NSGの通信範囲・優先度 | 対象の規則に限定した操作を決める | [共通採番と規則の用途](network-security-groups.md)、params、Core state |
-| 不要なDNS用NSG子規則の回収 | `scripts/operations/nsg_dns.py` | Azure提供DNS、所有する3 NSGの既知の6子規則 |
-| AppGWの重複する送信規則の回収 | `scripts/operations/nsg_appgw_egress.py` | 同じVNetのAPIM・Vault PE宛ての既知の3子規則 |
+| 5 NSGの通信範囲・優先度 | 対象の規則に限定した操作を決める | [共通採番と規則の用途](network-security-groups.md)、params、Core state |
+| 旧DNS6子規則の回収（互換入口） | `scripts/operations/nsg_dns.py` | Azure提供DNS、所有する3 NSGの既知の6子規則 |
+| 旧AppGW送信3子規則の回収（互換入口） | `scripts/operations/nsg_appgw_egress.py` | 同じVNetのAPIM・Vault PE宛ての既知の3子規則 |
 | APIバックエンド追加に伴う外向き許可 | Gateway個別配備（G） | API定義、対象Firewall規則、APIM実設定 |
 | 通知先・監視条件 | `scripts/operations/monitoring.py` | params・対応Bicep、実通知設定・条件・ログ |
 | AppGW・Container Appの容量 | 対象資源の構成／スケール画面 | 対応config／Bicep、実設定・revision・稼働状態 |
@@ -68,6 +68,8 @@ ETag競合・未完了時も、ポリシーやAppGWを削除して再作成し�
 
 ## 不要なDNS用NSG子規則を回収する
 
+この節のCLIは旧資材のDNS6子だけを扱う互換入口である。通常Coreは全72ルールを扱う固定NSG移行に統合し、以下の旧cleanupを個別に重ねて実行しない。
+
 Azure提供DNSを使う本構成では、`allow-dns-tcp`と`allow-dns-udp`を
 AppGW・APIM・管理VMのNSGへ追加しない。Incremental配備は省いた子規則を
 削除しないため、既存環境の回収には次の専用入口を使う。
@@ -96,54 +98,41 @@ python3 -B scripts/operations/nsg_dns.py --config "$DEPLOY_PARAMS_FILE" --execut
 残件を計画し直す。ETagを使える子ではIf-Matchを付けるが、直前読取と
 ローカルロックは別端末の同時変更に対する原子的な排他を保証しない。
 
-通常の`azd up`／`azd provision`と直接core配備でも、同じ限定回収を既存規則の
-保持確認より先に実行する。新規構築や回収済み環境ではDELETEしない。
-通常hookの保護記録は環境別`state/dns-nsg-retirement/`に置く。
-切戻しが必要なら保存した対象規則と現在のDNS・他設定を確認し、今回の6子だけを
-個別に復元する。古いNSG全体のJSONをPUTしたり、DNS設定を変更したりしない。
+通常のCoreは全72件の固定NSG移行へ統合し、旧DNS6子の個別cleanupを重ねない。
+[現在の固定集合と移行順序](network-security-groups.md#新規構築と既存環境の移行)を参照する。
 
 ## AppGWの重複する送信規則を回収する
 
-AppGWの送信にはカスタム規則を作成せず、既定65000・65001・65500を使う。
-同じVNetのAPIMとKey Vault PEへの通信は65000で許可されるため、次の3本を
-個別に許可する必要はない。対向NSGの受信Allowと4096のDenyは維持する。
+`scripts/operations/nsg_appgw_egress.py`は旧名`allow-apim-http`、`allow-apim-grpc`、
+`allow-key-vault`の3子規則だけを扱う互換入口である。現在のAppGWは通信設計の記録として
+APIM／ACAへのHTTP80、Key VaultへのHTTPS443を別のFIX名・割当IPで明示する。
+既定Outbound許可も維持するため、明示Allowだけで送信範囲を限定したとは解釈しない。
 
-| 方向 | 優先度 | 規則名 | プロトコル・宛先 |
-| --- | --- | --- | --- |
-| Outbound | 120 | `allow-apim-http` | TCP80・APIMサブネット |
-| Outbound | 125 | `allow-apim-grpc` | TCP443・APIMサブネット |
-| Outbound | 220 | `allow-key-vault` | TCP443・Key Vault PEのIP |
+通常Coreでは全72件を検証して旧子を回収する固定NSG移行を使用し、この旧3子CLIを重ねない。
+単独の互換CLIを使う場合も、所有・完全一致tuple・既定許可・現在ETagを確認し、
+対象3子だけを回収する。他NSG、UDR、DNS、Firewall、現在のFIX名ルールを削除しない。
+変更前・試行・結果は保護した`state/operations/`へ保存する。
 
-Incremental配備だけでは既存の子規則が残るため、構築済み環境では次の入口を使う。
-基盤全体を再配備せず、指定した環境のこの3子規則だけをDELETEする。
+## Portal後段をHTTP80へ移行する
 
-```sh
-python3 -B scripts/operations/nsg_appgw_egress.py --config "$DEPLOY_PARAMS_FILE"
-python3 -B scripts/operations/nsg_appgw_egress.py --config "$DEPLOY_PARAMS_FILE" --execute
-```
+新規構築ではBicepがACA HTTP受付、AppGW HTTP80後段・HTTP80 probe、Firewall80許可を固定する。
+既存HTTPS後段へ最終Coreを先に適用すると通信断の恐れがあるため、次の段階移行を使う。
+Azure CLI・Entra認証と以下の配備処理はWindows側で実行する。WSLはローカル検証に使用する。
 
-1. 同じ環境の保護params・Core stateを選択し、所有するAppGW用NSG、
-   VNet内のAppGW・APIMサブネット、Vault PEと実IP、既定の送信許可を確認する。
-   送信Denyや意味の違う同名規則等があれば停止する。
-2. 計画で規則名・優先度・Outbound・Allow・TCP・送信元・宛先・ポートを
-   全3本照合する。同番号のInbound、PEの同名`allow-key-vault`は削除しない。
-3. 実行直前にも現物を再読取し、子規則だけを削除する。親NSGのPUT、
-   サブネット関連付け、UDR、Firewall、DNSの変更は行わない。
-   各子の不存在と親のSucceededを待ち、他規則・既定規則・関連付けの保持を照合する。
-4. 再実行で残存削除0件・Azure書込0件を確認する。4 NSGの他規則と関連付け、
-   UDR・Firewall・DNSを変更前と比較する。新しい接続で通常API、gRPC経路、
-   公開Portalと転送先の応答を確認し、AppGWのVault証明書参照と公開TLSも照合する。
-   TLSハンドシェイクや認証拒否だけを、gRPCの実モデル推論成功として報告しない。
+1. `scripts/operations/portal_backend_http.py status --config "$DEPLOY_PARAMS_FILE"`で現在の
+   AppGW backend／probe、内部ACA、Firewall80／443を読む。
+2. 同CLIの`prepare`で80追加の計画を記録し、`--execute`で所有Firewall規則へ80だけを追加する。
+   既存443と他ルールを保持し、ETagと変更前記録、readbackを確認する。
+3. 正式なPortal個別配備を行う。公開originとSecure Cookieを維持する対応imageを使用し、
+   期待image／revision、ACAのHTTP受付とHTTP readinessを確認した後、AppGW backendとprobeを
+   同じPUTでHTTP80へ切り替える。変更前Gateway記録の保存が失敗すればPUTしない。
+4. 新規接続で公開health、ログイン・callback、通常Portal操作を確認する。正常HTTP80後段と
+   Firewall80許可が成立した場合だけCore gateを通し、最終固定資材を反映して旧443を回収する。
+5. 切戻しが必要なら同CLIの`rollback`で計画し、443許可の確保・readbackを先に行ってから
+   AppGW backend／probeをHTTPS443へ戻す。アプリ・秘密・データや別経路のAPIM→ACA443を削除しない。
 
-計画・試行・各削除・結果は環境別`state/operations/`に保護保存する。
-応答不明・競合・未完了時は自動再送せず、現物と記録を確認して残件を計画し直す。
-ローカルロックとETagの直前照合は、別端末からの同時更新を完全には防がない。
-切戻す場合も保存した対象3子だけを個別に復元し、古い親NSG全体をPUTしない。
-
-通常の`azd up`／`azd provision`と直接core配備でも、同じ限定回収を
-既存規則の保持確認より先に実行する。新規構築・回収済み環境ではDELETEしない。
-通常hookの記録は環境別`state/appgw-egress-nsg-retirement/`へ保存する。
-この入口は既存DNSルール廃止処理とは独立しており、DNS用6子の削除を同時実行しない。
+応答不明・競合・未完了は停止し、原本と現在状態を確認する。image／revisionの成立、Portalの公開TLS、
+ログイン成功を、ARMのSucceededだけで代用しない。Firewall Policy全体の棚卸しは別工程として残す。
 
 ## APIバックエンドに必要な外向き許可を追加する
 

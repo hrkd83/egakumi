@@ -81,7 +81,7 @@ def foundation_inputs(config, state):
         raise ValueError('Core schema identity differs from this environment')
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
-    foundation['l7IngressSecretIdentifier'] = vault + 'core-l7-ingress-secret' if output.get('grpc', {}).get('enabled') else ''
+    foundation['l7IngressSecretIdentifier'] = vault + 'core-l7-ingress-secret' if features.get('l7IngressEnabled') is True else ''
     foundation['realtimeTicketSecretIdentifier'] = vault + 'core-realtime-ticket-key' if features.get('ownerTicketEnabled', features.get('realtimeEnabled')) else ''
     return foundation
 

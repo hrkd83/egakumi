@@ -45,19 +45,20 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
             "properties": {"securityRules": [{"name": "existing-dynamic-rule", "properties": {"priority": 150}}]},
         }}
 
-    def test_first_partial_and_repeated_up_only_read_the_four_exact_nsgs(self):
-        for present in ((), ("agw", "pep"), ("agw", "apim", "pep", "vm")):
+    def test_first_partial_and_repeated_up_only_read_the_five_exact_nsgs(self):
+        suffixes = ("agw", "apim", "pep", "vm", "aca")
+        for present in ((), ("agw", "pep"), suffixes):
             responses = [self.nsg_response(suffix) if suffix in present else {"statusCode": 404, "body": None}
-                         for suffix in ("agw", "apim", "pep", "vm")]
+                         for suffix in suffixes]
             transport = ScriptedTransport(responses)
             before = copy.deepcopy(transport.responses)
             with self.subTest(present=present):
                 names = lifecycle.discover_existing_network_security_groups(self.config, transport)
                 self.assertEqual(names, [f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in present])
-                self.assertEqual(len(transport.calls), 4)
+                self.assertEqual(len(transport.calls), 5)
                 self.assertFalse(transport.mutations())
                 self.assertEqual(transport.responses, [])
-                for index, suffix in enumerate(("agw", "apim", "pep", "vm")):
+                for index, suffix in enumerate(suffixes):
                     expected = self.nsg_response(suffix)["body"]["id"] + "?api-version=2025-01-01"
                     self.assertEqual(transport.calls[index]["path"], expected)
                 # 読取結果にある動的規則は書換えたりARM入力へ複写したりしない。
@@ -104,18 +105,20 @@ class ExistingNetworkSecurityGroupTests(LifecycleFixture, unittest.TestCase):
             transport.assert_not_called()
 
     def test_direct_core_deployment_discovers_before_put(self):
-        transport = ScriptedTransport([self.nsg_response(suffix) for suffix in ("agw", "apim", "pep", "vm")]
-            + [{"statusCode": 404, "body": None}] * 6 + [
+        transport = ScriptedTransport([self.nsg_response(suffix) for suffix in ("agw", "apim", "pep", "vm", "aca")]
+            + [{"statusCode": 404, "body": None}] * 7 + [
             {"statusCode": 201, "body": {}},
             {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}},
         ])
         with mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                mock.patch.object(lifecycle, "run", return_value={"resources": []}):
-            self.assertEqual(lifecycle.deploy_phase(self.config, "core"), {})
-        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 10 + ["PUT", "GET"])
+                mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
+                mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"runtimeVerified": False}) as ingress:
+            self.assertEqual(lifecycle.deploy_phase(self.config, "core", secrets={}), {})
+        ingress.assert_called_once()
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 12 + ["PUT", "GET"])
         values = transport.mutations()[0]["body"]["properties"]["parameters"]
         self.assertEqual(values["existingNetworkSecurityGroupNames"]["value"],
-                         [f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in ("agw", "apim", "pep", "vm")])
+                         [f"nsg-{self.config['resourceStem']}-{suffix}" for suffix in ("agw", "apim", "pep", "vm", "aca")])
 
     def test_preup_generates_discovered_internal_parameter_after_authentication(self):
         """初回でもtenant照合→RP登録→環境設定・所有資源読取の順を守る。"""
@@ -333,13 +336,15 @@ class ExistingRouteTableRoutesTests(LifecycleFixture, unittest.TestCase):
 
     def test_direct_core_deployment_reads_full_routes_before_its_only_put(self):
         snapshots = [self.route_table_response(suffix) for suffix in ("agw", "apim", "vm", "aca")]
-        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 4 + snapshots + [{"statusCode": 404, "body": None}] * 2 + [
+        transport = ScriptedTransport([{"statusCode": 404, "body": None}] * 5 + snapshots + [{"statusCode": 404, "body": None}] * 3 + [
             {"statusCode": 201, "body": {}},
             {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
         with mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-                mock.patch.object(lifecycle, "run", return_value={"resources": []}):
-            self.assertEqual(lifecycle.deploy_phase(self.config, "core"), {})
-        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 10 + ["PUT", "GET"])
+                mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
+                mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"runtimeVerified": False}) as ingress:
+            self.assertEqual(lifecycle.deploy_phase(self.config, "core", secrets={}), {})
+        ingress.assert_called_once()
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 12 + ["PUT", "GET"])
         routes = transport.mutations()[0]["body"]["properties"]["parameters"]["existingRouteTableRoutes"]["value"]
         self.assertEqual(len(routes), 4)
         for snapshot in snapshots:

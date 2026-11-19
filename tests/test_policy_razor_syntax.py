@@ -11,12 +11,16 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
 
 CORE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CORE / "scripts"))
+from deployment.helpers.apim_audit import SOURCE_EXPRESSION_FILES, render_audit_policy
+
 POLICIES = CORE / "apps/gateway/apim/policies"
 SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
@@ -26,11 +30,14 @@ if not PWSH:
 
 
 def policy_expressions():
-    """コメントや JSON 本文を除き、XML 属性と要素本文の APIM 式を集める。"""
+    """配備と同じ監査rendererでC#正本を展開し、XML内のAPIM式を集める。"""
     cases = []
     for path in sorted(set([*POLICIES.glob("*.xml"),
                             *(POLICIES / "credential-login").glob("*.xml"), SERVICE_POLICY])):
-        root = ET.fromstring("<root>" + path.read_text(encoding="utf-8") + "</root>")
+        rendered = render_audit_policy(path.read_text(encoding="utf-8"))
+        if any(marker in rendered for marker in SOURCE_EXPRESSION_FILES):
+            raise AssertionError(f"Audit source markers remain unexpanded in {path.name}")
+        root = ET.fromstring("<root>" + rendered + "</root>")
         for index, element in enumerate(root.iter()):
             values = [("text", element.text), *element.attrib.items()]
             for field, raw in values:

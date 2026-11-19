@@ -272,8 +272,7 @@ class PublicationDiagnosticIntegrationTests(unittest.TestCase):
 
     def test_success_records_verified_diagnostics_after_api_deployment(self):
         policy_id = self.fixture.plan["apimId"] + "/policies/policy"
-        self.fixture.inventory[policy_id] = response({"etag": '"initial-policy"', "properties": {
-            "format": "rawxml", "value": "<policies><inbound/><backend><forward-request/></backend><outbound/></policies>"}})
+        self.fixture.inventory[policy_id]["body"]["etag"] = '"initial-policy"'
         transport = publication_cases.Transport(self.fixture.inventory)
         result = publish.execute_plan(self.fixture.config, self.fixture.state, self.fixture.plan,
                                       self.fixture.template, transport, sleep=lambda _: None)
@@ -281,7 +280,8 @@ class PublicationDiagnosticIntegrationTests(unittest.TestCase):
         self.assertTrue(result["webSocketDiagnostics"]["updated"])
         writes = [path.split("?")[0] for method, path, _, _ in transport.calls if method == "PUT"]
         self.assertLess(writes.index(self.fixture.plan["deploymentId"]), writes.index(self.diagnostic_id))
-        self.assertLess(writes.index(self.diagnostic_id), writes.index(policy_id))
+        self.assertNotIn(policy_id, writes)
+        self.assertFalse(result["commonAuthenticationPolicyUpdated"])
 
     def test_invalid_diagnostic_preflight_stops_all_cloud_writes(self):
         for failure in (403, 404, "destination"):

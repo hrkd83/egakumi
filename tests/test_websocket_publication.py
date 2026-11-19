@@ -25,14 +25,14 @@ class WebSocketPublicationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.template = compile_bicep('apps/gateway/apim/api-publication.bicep')
 
-    def test_private_http_hop_accepts_ws_while_native_grpc_remains_https(self):
-        """AppGWのTLS終端後の経路を許可し、gRPCのTLS条件を変えない。"""
+    def test_private_http_hop_keeps_http_and_websocket_protocols(self):
+        """AppGWのTLS終端後のHTTP／WebSocket経路の受付契約を維持する。"""
         expression = ArmExpression(self.template["resources"]["apis"]["properties"])
-        for kind, expected in (("websocket", ["ws", "wss"]), ("grpc", ["https"])):
+        for kind, expected in (("websocket", ["ws", "wss"]), ("http", ["http", "https"])):
             api = {"displayName": "Fixture", "name": "fixture", "path": "fixture",
                    "apiType": kind, "authorization": {"mode": "entraOnly"},
                    "subscriptionKeyHeader": "Ocp-Apim-Subscription-Key",
-                   "backendUrl": "wss://backend.example.com/voice", "grpc": {"definition": "fixture"}}
+                   "backendUrl": "wss://backend.example.com/voice"}
             actual = expression.evaluate({"apiDefinitions": [api],
                                           "queryGuards": self.template["parameters"]["queryGuards"]["defaultValue"]}, 0)
             self.assertEqual(actual["protocols"], expected)
@@ -80,7 +80,7 @@ class WebSocketPublicationTests(unittest.TestCase):
                 else:
                     self.assertEqual(len(selection), 1)
                     self.assertEqual(selection[0].get("backend-id"), api["name"] + "-backend")
-        self.assertEqual(kinds, {"http", "grpc", "mcp", "websocket"})
+        self.assertEqual(kinds, {"http", "mcp", "websocket"})
 
     def test_only_websocket_uses_onhandshake_without_replacing_global_policy(self):
         resources = self.template["resources"]
@@ -119,7 +119,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         self.assertIsNotNone(observer.find('./set-variable[@name="realtimeObserverOwnerValid"]'))
         self.assertEqual(observer.find('./choose/when/return-response/set-status').get("code"), "403")
         service = ET.parse(SERVICE_POLICY)
-        self.assertEqual(len(service.findall("./inbound/choose[@id='core-common-authentication']")), 1)
+        self.assertEqual(len(service.findall("./inbound/include-fragment[@id='core-common-authentication']")), 1)
 
     def test_global_policy_preserves_ingress_proof_without_an_api_inventory(self):
         """全体のAPI ID制限を設けず、入口証明・転送・相関IDを保持する。"""

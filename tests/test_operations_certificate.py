@@ -1,6 +1,10 @@
 """Existing certificate maintenance rejects uncertain work and accepts only observed public TLS."""
 import ast
+import base64
+import contextlib
 import copy
+from email.message import Message
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +16,8 @@ import sys
 import time
 import unittest
 from unittest import mock
+import urllib.request
+from urllib.response import addinfourl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from operations import certificate as cert
@@ -31,8 +37,7 @@ class Context:
                        'productName': 'fixture', 'environmentName': 'test',
                        'resourceGroupNames': {'maint': 'rg-test-maint', 'nw': 'rg-test-nw'},
                        'certificate': {'certificateName': 'public-gateway'},
-                       'gateway': {'publicHostName': 'gateway.example.com',
-                                   'grpc': {'enabled': True, 'publicHostName': 'gateway.example.com', 'publicPort': 8443}},
+                       'gateway': {'publicHostName': 'gateway.example.com'},
                        'portal': {'publicHostName': 'portal.example.com'}}
         self.state = {'outputs': {'managementVm': {'id': VM}, 'gateway': {'id': GATEWAY}}}
         self.calls, self.records = [], []
@@ -81,7 +86,7 @@ class CertificateTests(unittest.TestCase):
         with mock.patch.object(cert, 'run_worker') as worker, mock.patch.object(cert, 'tls_leaf') as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=False, thumbprint=None))
         self.assertEqual(result['status'], 'planned')
-        self.assertEqual(result['apimRefreshApi'], '2025-09-01-preview')
+        self.assertEqual(result['certificateConsumer'], 'application-gateway')
         self.assertEqual(self.ctx.calls, [])
         worker.assert_not_called()
         tls.assert_not_called()
@@ -103,6 +108,68 @@ class CertificateTests(unittest.TestCase):
         self.assertNotIn('az login', text)
         program = cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit')
         ast.parse(program)
+
+    def metadata_transport(self, redirect=None):
+        """Run real urllib proxy/redirect handlers; intercept before any socket opens."""
+        requests = []
+        public = metadata()
+        certificate = {'id': public['certificateId'], 'sid': public['secretVersionUri'],
+                       'attributes': {'enabled': True, 'exp': public['expires']},
+                       'cer': base64.b64encode(b'independent synthetic public leaf').decode()}
+        def offline_open(handler, connection, request, **options):
+            kind = 'imds' if request.full_url.startswith('http://169.254.169.254/') else 'vault'
+            requests.append({'kind': kind, 'host': request.host, 'tunnelHost': request._tunnel_host,
+                             'url': request.full_url, 'headers': dict(request.header_items())})
+            headers = Message()
+            status = 302 if kind == redirect else 200
+            if status == 302:
+                headers['Location'] = 'https://redirect-target.invalid/untrusted'
+            value = {'access_token': 'placeholder'} if kind == 'imds' else certificate
+            response = addinfourl(io.BytesIO(json.dumps(value).encode()), headers, request.full_url, status)
+            response.msg = 'Found' if status == 302 else 'OK'
+            return response
+        proxy = 'http://untrusted-proxy.invalid:8888'
+        environment = {'http_proxy': proxy, 'https_proxy': proxy, 'HTTP_PROXY': proxy,
+                       'HTTPS_PROXY': proxy, 'no_proxy': '', 'NO_PROXY': ''}
+        output = io.StringIO()
+        with mock.patch.dict(os.environ, environment, clear=True), \
+                mock.patch.object(urllib.request.AbstractHTTPHandler, 'do_open', new=offline_open), \
+                mock.patch.object(subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+                contextlib.redirect_stdout(output):
+            if redirect:
+                with self.assertRaises(SystemExit) as stopped:
+                    exec(compile(cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit'),
+                                 '<synthetic-certificate-metadata>', 'exec'), {})
+                self.assertEqual(stopped.exception.code, 1)
+            else:
+                exec(compile(cert.metadata_program('kv-test-fixture', 'public-gateway', 'unit'),
+                             '<synthetic-certificate-metadata>', 'exec'), {})
+        return requests, output.getvalue()
+
+    def test_imds_bypasses_environment_proxy_while_vault_retains_its_proxy(self):
+        requests, output = self.metadata_transport()
+        self.assertEqual([r['kind'] for r in requests], ['imds', 'vault'])
+        self.assertEqual((requests[0]['host'], requests[0]['tunnelHost']), ('169.254.169.254', None))
+        self.assertEqual(requests[0]['headers']['Metadata'], 'true')
+        self.assertEqual(requests[0]['url'],
+                         'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net')
+        self.assertNotIn('Authorization', requests[0]['headers'])
+        self.assertEqual((requests[1]['host'], requests[1]['tunnelHost']),
+                         ('untrusted-proxy.invalid:8888', 'kv-test-fixture.vault.azure.net'))
+        self.assertEqual(requests[1]['headers']['Authorization'], 'Bearer placeholder')
+        self.assertIn('/certificates/public-gateway?', requests[1]['url'])
+        self.assertNotIn('/secrets/', requests[1]['url'])
+        self.assertTrue(output.startswith(cert.MARKER))
+        self.assertNotIn('placeholder', output)
+
+    def test_imds_and_vault_both_reject_redirects_without_forwarding_credentials(self):
+        for source in ('imds', 'vault'):
+            with self.subTest(source=source):
+                requests, output = self.metadata_transport(redirect=source)
+                self.assertEqual([r['kind'] for r in requests], ['imds'] if source == 'imds' else ['imds', 'vault'])
+                self.assertFalse(any('redirect-target.invalid' in r['url'] for r in requests))
+                self.assertNotIn(cert.MARKER, output)
+                self.assertNotIn('placeholder', output)
 
     def test_only_current_public_metadata_is_accepted(self):
         raw = cert.MARKER + json.dumps(metadata())
@@ -127,135 +194,17 @@ class CertificateTests(unittest.TestCase):
             cert.verify_references(self.ctx, GATEWAY, 'kv-test-fixture', 'public-gateway')
         self.assertEqual(self.ctx.calls, [])
 
-    def test_lro_accepts_only_same_apim_or_provider_region_and_keeps_url_in_ram(self):
-        url = APIM + '/operationresults/test?api-version=2025-09-01-preview&sig=SYNTHETIC_SIGNATURE'
-        self.ctx.transport.request.return_value = {'statusCode': 200, 'body': {'status': 'Succeeded'}}
-        cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': 'https://management.azure.com' + url}}, sleep=lambda _: None)
-        self.ctx.transport.request.assert_called_once_with('GET', 'https://management.azure.com' + url)
-        self.assertEqual(self.ctx.records, [])
-        self.assertEqual(self.ctx.calls, [])
 
-    def test_foreign_signed_lro_urls_are_rejected_before_get(self):
-        paths = ['http://management.azure.com' + APIM + '/operations/x',
-                 'https://management.azure.com.evil.invalid' + APIM + '/operations/x',
-                 'https://management.azure.com' + APIM.replace(SUB, 'foreign') + '/operations/x',
-                 f'https://management.azure.com/subscriptions/{SUB}/providers/Microsoft.ApiManagement/locations/westus/operations/x']
-        for url in paths:
-            with self.subTest(url=url), self.assertRaises(OperationError):
-                cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Azure-AsyncOperation': url}}, sleep=lambda _: None)
 
-    def test_location_completion_can_be_empty_but_status_endpoint_cannot(self):
-        url = 'https://management.azure.com' + APIM + '/operations/x'
-        for code in (200, 204):
-            self.ctx.transport.request.return_value = {'statusCode': code, 'body': None}
-            cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url}}, sleep=lambda _: None)
-            with self.assertRaises(OperationError):
-                cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Azure-AsyncOperation': url}}, sleep=lambda _: None)
 
-    def test_location_pending_empty_then_owned_resource_completes_without_status(self):
-        url = 'https://management.azure.com' + APIM + '/operationresults/test'
-        self.ctx.transport.request.side_effect = [
-            {'statusCode': 202, 'body': None, 'headers': {'Retry-After': '3'}},
-            {'statusCode': 200, 'body': {'id': APIM, 'type': 'Microsoft.ApiManagement/service',
-                                       'properties': {'hostnameConfigurations': []}}}]
-        delays = []
-        cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url, 'Retry-After': '7'}},
-                          timeout=20, sleep=delays.append, clock=lambda: 0)
-        self.assertEqual(delays, [7, 3])
-        self.assertEqual(self.ctx.transport.request.call_args_list,
-                         [mock.call('GET', url), mock.call('GET', url)])
-        self.assertEqual(self.ctx.calls, [])
-        self.assertEqual(self.ctx.records, [])
 
-    def test_location_resource_completion_rejects_foreign_errors_and_failure(self):
-        url = 'https://management.azure.com' + APIM + '/operationresults/test'
-        resource = {'id': APIM, 'type': 'Microsoft.ApiManagement/service',
-                    'properties': {'provisioningState': 'Succeeded'}}
-        foreign = copy.deepcopy(resource); foreign['id'] += '-foreign'
-        wrong_type = copy.deepcopy(resource); wrong_type['type'] = 'Microsoft.Network/applicationGateways'
-        errored = copy.deepcopy(resource); errored['error'] = {'code': 'SyntheticFailure'}
-        failed = copy.deepcopy(resource); failed['status'] = 'Succeeded'; failed['properties']['provisioningState'] = 'Failed'
-        wrong_properties = copy.deepcopy(resource); wrong_properties['properties'] = []
-        for body in (foreign, wrong_type, errored, failed, wrong_properties, [{'status': 'Succeeded'}]):
-            self.ctx.transport.request.reset_mock()
-            self.ctx.transport.request.return_value = {'statusCode': 200, 'body': body}
-            with self.subTest(body=body), self.assertRaises(OperationError):
-                cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url}}, sleep=lambda _: None)
-            self.ctx.transport.request.assert_called_once_with('GET', url)
-        self.assertEqual(self.ctx.calls, [])
 
-    def test_location_empty_pending_has_finite_budget_and_only_gets(self):
-        url = 'https://management.azure.com' + APIM + '/operationresults/test'
-        self.ctx.transport.request.return_value = {'statusCode': 202, 'body': None,
-                                                   'headers': {'Retry-After': '2'}}
-        elapsed = [0]
-        def sleep(delay):
-            elapsed[0] += delay
-        with self.assertRaises(OperationError):
-            cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url, 'Retry-After': '2'}},
-                              timeout=7, sleep=sleep, clock=lambda: elapsed[0])
-        self.assertEqual(elapsed, [6])
-        self.assertEqual(self.ctx.transport.request.call_args_list, [mock.call('GET', url)] * 3)
-        self.assertEqual(self.ctx.calls, [])
 
-    def test_default_refresh_budget_waits_one_lro_past_twenty_minutes(self):
-        url = 'https://management.azure.com' + APIM + '/operationresults/test'
-        self.ctx.transport.request.side_effect = [
-            {'statusCode': 202, 'body': None, 'headers': {'Retry-After': '1200'}},
-            {'statusCode': 200, 'body': {'id': APIM, 'type': 'Microsoft.ApiManagement/service'}}]
-        elapsed = [0]
-        cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url, 'Retry-After': '1200'}},
-                          sleep=lambda delay: elapsed.__setitem__(0, elapsed[0] + delay),
-                          clock=lambda: elapsed[0])
-        self.assertEqual(elapsed, [2400])
-        self.assertEqual(self.ctx.transport.request.call_args_list, [mock.call('GET', url)] * 2)
-        self.assertEqual(self.ctx.calls, [])
 
-    def test_location_wait_does_not_retry_initial_conflict_or_expand_relative_urls(self):
-        with self.assertRaises(OperationError):
-            cert.wait_refresh(self.ctx, {'statusCode': 409, 'body': {'error': {'code': 'ServiceLocked'}}},
-                              sleep=lambda _: None)
-        with self.assertRaises(OperationError):
-            cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': APIM + '/operationresults/test'}},
-                              sleep=lambda _: None)
-        self.ctx.transport.request.assert_not_called()
-        self.assertEqual(self.ctx.calls, [])
 
-    def test_retry_after_is_respected_before_initial_and_subsequent_status_reads(self):
-        url = 'https://management.azure.com' + APIM + '/operations/x'
-        self.ctx.transport.request.side_effect = [
-            {'statusCode': 200, 'body': {'status': 'InProgress'}, 'headers': {'Retry-After': '3'}},
-            {'statusCode': 200, 'body': {'status': 'Succeeded'}}]
-        delays = []
-        cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url, 'Retry-After': '7'}},
-                          timeout=20, sleep=delays.append, clock=lambda: 0)
-        self.assertEqual(delays, [7, 3])
-        self.assertEqual(self.ctx.transport.request.call_count, 2)
 
-    def test_retry_after_longer_than_budget_or_unsupported_does_not_poll_early(self):
-        url = 'https://management.azure.com' + APIM + '/operations/x'
-        for hint in ('120', 'invalid', '99999999999999999999999999', ''):
-            with self.subTest(hint=hint), self.assertRaises(OperationError):
-                cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url, 'Retry-After': hint}},
-                                  timeout=30, sleep=lambda _: None, clock=lambda: 0)
-        self.ctx.transport.request.assert_not_called()
 
-    def test_lro_404_or_unknown_is_not_success(self):
-        url = 'https://management.azure.com' + APIM + '/operations/x'
-        for response in ({'statusCode': 404}, {'statusCode': 200, 'body': {}},
-                         {'statusCode': 200, 'body': {'status': 'Failed'}}):
-            self.ctx.transport.request.return_value = response
-            with self.subTest(response=response), self.assertRaises(OperationError):
-                cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Azure-AsyncOperation': url}}, sleep=lambda _: None)
 
-    def test_lro_pending_has_bounded_wait_and_no_mutation_retry(self):
-        url = 'https://management.azure.com' + APIM + '/operations/x'
-        self.ctx.transport.request.return_value = {'statusCode': 200, 'body': {'status': 'InProgress'}}
-        with self.assertRaises(OperationError):
-            cert.wait_refresh(self.ctx, {'statusCode': 202, 'headers': {'Location': url}},
-                              timeout=1, clock=mock.Mock(side_effect=[0, 0, 0, 2]), sleep=lambda _: None)
-        self.assertEqual(self.ctx.calls, [])
-        self.assertTrue(all(call.args[0] == 'GET' for call in self.ctx.transport.request.call_args_list))
 
     def test_gateway_refresh_preserves_other_tags_and_restores_only_its_tag(self):
         cert.refresh_gateway(self.ctx, GATEWAY)
@@ -294,127 +243,80 @@ class CertificateTests(unittest.TestCase):
         refresh.assert_not_called()
         self.assertFalse(any(call[0] == 'POST' for call in self.ctx.calls))
 
-    def test_refresh_rejection_records_only_status_and_bounded_code_without_retry(self):
-        original_request = self.ctx.request
-        for code, expected in [('ServiceLocked', 'ServiceLocked'), ('not a code\nSECRET', None),
-                               ('x' * 129, None), (None, None)]:
-            with self.subTest(code=code):
-                self.ctx.calls.clear(); self.ctx.records.clear()
-                def rejected(method, resource_id, api, body=None, headers=None):
-                    response = original_request(method, resource_id, api, body, headers)
-                    if method == 'POST':
-                        return {'statusCode': 409, 'headers': {'Location': 'https://example.invalid/PRIVATE_TOKEN'},
-                                'body': {'error': {'code': code, 'message': 'PRIVATE_ERROR_MESSAGE',
-                                                   'details': ['PRIVATE_DETAILS']}}}
-                    return response
-                with mock.patch.object(self.ctx, 'request', side_effect=rejected), \
-                        mock.patch.object(cert, 'run_worker', return_value=metadata()) as worker, \
-                        mock.patch.object(cert, 'refresh_gateway') as gateway, \
-                        mock.patch.object(cert, 'tls_leaf', return_value={'thumbprint': 'B' * 40,
-                            'trustedAndHostnameVerified': True}) as tls:
-                    with self.assertRaises(OperationError):
-                        cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-                worker.assert_called_once_with(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
-                gateway.assert_not_called()
-                tls.assert_called_once_with('gateway.example.com', 8443)
-                self.assertEqual(len(self.ctx.calls), 1)
-                self.assertEqual(self.ctx.calls[0][:2], ('POST', APIM + '/refreshHostnames'))
-                responses = [v for k, v in self.ctx.records if k == 'certificate-apim-refresh-response']
-                self.assertEqual(responses, [{'httpStatus': 409, 'azureErrorCode': expected}])
-                recorded = json.dumps(self.ctx.records)
-                for private in ('PRIVATE_TOKEN', 'PRIVATE_ERROR_MESSAGE', 'PRIVATE_DETAILS', 'SECRET'):
-                    self.assertNotIn(private, recorded)
 
-    def test_sync_matching_current_apim_leaf_skips_post_but_refreshes_gateway_and_observes_all_hosts(self):
-        def leaf(host, port):
-            return {'host': host, 'port': port, 'thumbprint': THUMB,
-                    'trustedAndHostnameVerified': True}
+
+
+
+
+
+
+    def test_sync_uses_only_appgw_certificates_and_public_https_hosts(self):
+        original_verify = self.ctx.verify_resource
+        def gateway_only(resource_id, api, expected_type=None):
+            self.assertNotEqual(resource_id, APIM)
+            return original_verify(resource_id, api, expected_type)
+        self.ctx.verify_resource = gateway_only
         with mock.patch.object(cert, 'run_worker', return_value=metadata()) as worker, \
-                mock.patch.object(cert, 'wait_refresh') as wait, \
-                mock.patch.object(cert, 'tls_leaf', side_effect=leaf) as tls:
+                mock.patch.object(cert, 'tls_leaf', side_effect=lambda h, p: {
+                    'host': h, 'port': p, 'thumbprint': THUMB,
+                    'trustedAndHostnameVerified': True}) as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        worker.assert_called_once_with(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
         self.assertEqual(result['status'], 'public-tls-verified')
-        self.assertFalse(any(call[0] == 'POST' for call in self.ctx.calls))
+        worker.assert_called_once_with(self.ctx, VM, 'kv-test-fixture', 'public-gateway')
+        self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443)])
+        self.assertFalse(any(call[0] == 'POST' or call[1].startswith(APIM) for call in self.ctx.calls))
         self.assertEqual(len([call for call in self.ctx.calls if call[0] == 'PATCH']), 2)
         self.assertEqual(self.ctx.gateway['tags'], {'existing': 'keep'})
-        wait.assert_not_called()
-        self.assertEqual(tls.call_args_list, [mock.call('gateway.example.com', 8443),
-            mock.call('gateway.example.com', 443), mock.call('portal.example.com', 443),
-            mock.call('gateway.example.com', 8443)])
-        skipped = [value for kind, value in self.ctx.records if kind == 'certificate-apim-refresh-skipped']
-        self.assertEqual(skipped, [{'basis': 'trusted-public-tls-matches-current-key-vault',
-            'postSkipped': True, 'lroCompletionObserved': False,
-            'publicTls': leaf('gateway.example.com', 8443)}])
-        self.assertFalse(any(kind == 'certificate-apim-refresh-requested' for kind, _ in self.ctx.records))
+        self.assertFalse(any(kind.startswith('certificate-apim') for kind, _ in self.ctx.records))
 
-    def test_sync_trusted_old_apim_leaf_keeps_one_post_and_existing_wait(self):
+    def test_sync_succeeds_with_no_custom_apim_certificate(self):
+        self.ctx.apim['properties']['hostnameConfigurations'] = []
         with mock.patch.object(cert, 'run_worker', return_value=metadata()), \
                 mock.patch.object(cert, 'refresh_gateway') as gateway, \
-                mock.patch.object(cert, 'wait_refresh') as wait, \
-                mock.patch.object(cert, 'tls_leaf', return_value={'thumbprint': 'B' * 40,
-                    'trustedAndHostnameVerified': True}) as tls, \
-                mock.patch.object(cert, 'observe', return_value=[]) as observe:
-            result = cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        self.assertEqual(result['status'], 'public-tls-verified')
-        self.assertEqual([call[:2] for call in self.ctx.calls], [('POST', APIM + '/refreshHostnames')])
-        tls.assert_called_once_with('gateway.example.com', 8443)
-        wait.assert_called_once()
+                mock.patch.object(cert, 'observe', return_value=[]):
+            cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
         gateway.assert_called_once_with(self.ctx, GATEWAY)
-        observe.assert_called_once()
-        self.assertFalse(any(kind == 'certificate-apim-refresh-skipped' for kind, _ in self.ctx.records))
-
-    def test_sync_tls_observation_failure_stops_without_post_or_gateway_update(self):
-        with mock.patch.object(cert, 'run_worker', return_value=metadata()), \
-                mock.patch.object(cert, 'tls_leaf', side_effect=OperationError('Synthetic TLS failure')), \
-                mock.patch.object(cert, 'refresh_gateway') as gateway, \
-                mock.patch.object(cert, 'observe') as observe:
-            with self.assertRaises(OperationError):
-                cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        self.assertEqual(self.ctx.calls, [])
-        gateway.assert_not_called(); observe.assert_not_called()
-        self.assertFalse(any(kind in ('certificate-apim-refresh-skipped', 'certificate-result')
-                             for kind, _ in self.ctx.records))
-
-    def test_sync_skip_cannot_bypass_versionless_reference_verification(self):
-        self.ctx.apim['properties']['hostnameConfigurations'][0]['keyVaultId'] += '/' + 'a' * 32
-        with mock.patch.object(cert, 'run_worker') as worker, mock.patch.object(cert, 'tls_leaf') as tls:
-            with self.assertRaises(OperationError):
-                cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-        worker.assert_not_called(); tls.assert_not_called()
         self.assertEqual(self.ctx.calls, [])
 
-    def test_sync_skip_is_not_success_when_remaining_gateway_or_public_tls_work_fails(self):
-        for failed_stage in ('refresh_gateway', 'observe'):
-            with self.subTest(stage=failed_stage):
+    def test_gateway_snapshot_failure_stops_before_any_patch(self):
+        with mock.patch.object(self.ctx, 'record', side_effect=OperationError('Synthetic record failure')):
+            with self.assertRaises(OperationError):
+                cert.refresh_gateway(self.ctx, GATEWAY)
+        self.assertEqual(self.ctx.calls, [])
+
+    def test_sync_retains_versionless_appgw_reference_validation(self):
+        self.ctx.gateway['properties']['sslCertificates'][0]['properties']['keyVaultSecretId'] += 'a' * 32
+        with mock.patch.object(cert, 'run_worker') as worker:
+            with self.assertRaises(OperationError):
+                cert.operate(self.ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
+        worker.assert_not_called()
+        self.assertEqual(self.ctx.calls, [])
+
+    def test_sync_is_not_success_when_gateway_or_public_tls_work_fails(self):
+        for stage in ('refresh_gateway', 'observe'):
+            with self.subTest(stage=stage):
                 ctx = Context()
                 with mock.patch.object(cert, 'run_worker', return_value=metadata()), \
-                        mock.patch.object(cert, 'tls_leaf', return_value={'thumbprint': THUMB,
-                            'trustedAndHostnameVerified': True}), \
                         mock.patch.object(cert, 'refresh_gateway') as gateway, \
                         mock.patch.object(cert, 'observe', return_value=[]) as observe:
-                    {'refresh_gateway': gateway, 'observe': observe}[failed_stage].side_effect = OperationError('Synthetic failure')
+                    {'refresh_gateway': gateway, 'observe': observe}[stage].side_effect = OperationError('Synthetic failure')
                     with self.assertRaises(OperationError):
                         cert.operate(ctx, SimpleNamespace(stage='sync', execute=True, thumbprint=None))
-                self.assertFalse(any(call[0] == 'POST' for call in ctx.calls))
                 self.assertFalse(any(kind == 'certificate-result' for kind, _ in ctx.records))
+                self.assertFalse(any(call[0] == 'POST' for call in ctx.calls))
 
-    def test_success_requires_kv_and_every_public_tls_leaf_to_match(self):
-        current = metadata()
+    def test_renew_requires_kv_and_every_public_https_leaf_to_match(self):
         changed = metadata(); changed['thumbprint'] = 'B' * 40
-        with mock.patch.object(cert, 'run_worker', side_effect=[current, changed]), \
+        with mock.patch.object(cert, 'run_worker', side_effect=[metadata(), changed]), \
                 mock.patch.object(cert, 'refresh_gateway') as gateway, \
-                mock.patch.object(cert, 'wait_refresh') as refresh, \
                 mock.patch.object(cert, 'tls_leaf', side_effect=lambda h, p: {'host': h, 'port': p, 'thumbprint': 'B' * 40}) as tls:
             result = cert.operate(self.ctx, SimpleNamespace(stage='renew', execute=True, thumbprint=THUMB))
         self.assertEqual(result['status'], 'public-tls-verified')
         gateway.assert_called_once_with(self.ctx, GATEWAY)
-        refresh.assert_called_once()
-        self.assertEqual(tls.call_count, 3)  # renew retains its POST; no sync-only pre-observation.
-        self.assertEqual(len([call for call in self.ctx.calls if call[0] == 'POST']), 1)
+        self.assertEqual(tls.call_count, 2)
+        self.assertFalse(any(call[0] == 'POST' for call in self.ctx.calls))
         observed = self.ctx.records[-1][1]['publicTls']
-        self.assertEqual({(v['host'], v['port']) for v in observed},
-                         {('gateway.example.com', 443), ('portal.example.com', 443), ('gateway.example.com', 8443)})
+        self.assertEqual({(v['host'], v['port']) for v in observed}, {('gateway.example.com', 443), ('portal.example.com', 443)})
 
     def test_vm_command_is_not_repeated_on_pending_timeout(self):
         self.ctx.run_cli = mock.Mock(side_effect=lambda args: json.dumps({

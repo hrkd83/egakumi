@@ -7,10 +7,10 @@
 | 範囲 | 現在の状態 |
 |---|---|
 | Entraの追加登録 | [egakumi-api](../setup/02a-entra-api.md)と[egakumi-codex](../setup/02b-entra-codex.md)の画面付き準備手順を用意 |
-| APIMの業務API認可 | 設定schema、JWT検証ポリシーの生成、検証済み本人による利用上限・監査、専用open Productの生成と公開controllerを実装。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成。HTTP・WebSocket・gRPC・MCPのAPI型を区別するV2 source、管理プレーン読戻し、所属解除／追加、競合検出と失敗復旧を含む |
+| APIMの業務API認可 | 設定schema、JWT検証ポリシーの生成、検証済み本人による利用上限・監査、専用open Productの生成と公開controllerを実装。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成。HTTP・WebSocket・MCPのAPI型を区別するV2 source（旧gRPC sourceは所有照合用の読戻し互換のみ保持）、管理プレーン読戻し、所属解除／追加、競合検出と失敗復旧を含む |
 | CM本人確認設定の独立 | `credentialLogin.identity`を追加。省略時は従来構成を維持。アプリの実切替は別工程 |
 | 実APIMでのBearer受付 | 配備・反映と実接続の受入は対象環境ごとに確認する。APIの`subscriptionRequired:true`を維持し、専用open ProductとキーなしJWT分岐を照合する。管理プレーンの配備・読戻し成功だけで実接続の受入完了とは判定しない |
-| 全モデル・ツール対応 | CM、MCP、WebSocket、gRPC、Realtime、非同期操作等の認可・所有者資材を拡張。CMのSQL v4・Broker・XML更新を含む。実readback・モデル・クライアント・各transportの受入は未実施 |
+| 全モデル・ツール対応 | CM、MCP、WebSocket、Realtime、非同期操作等の認可・所有者資材を拡張。CMのSQL v4・Broker・XML更新を含む。実readback・モデル・クライアント・各transportの受入は未実施 |
 
 第1段階の公開資材は上記の範囲で実装しているが、この全API対応の変更はAzureへ再配備しておらず、特定環境での受入完了を示すものではない。購読キーの提示を優先し、キーなしBearerを同じ業務APIのURLで認可する。Entra設定を省略した旧構成はキー方式を保持する。同じURLで既存キーの状態・API／Product範囲を検証する実APIM試験、継承ポリシーの照合、公開・復旧の確認を対象環境ごとに行い、必要な確認がそろうまで利用を開始しない。公開設定に有効化スイッチは設けない。
 
@@ -54,7 +54,7 @@ flowchart LR
 | 作業 | 成果物・完了条件 |
 |---|---|
 | 作業差分と現在の正本を確認 | 既存の未コミット変更を破棄せず、認証変更の差分を分ける。既存機能の基準試験を記録 |
-| 対象の棚卸し | 有効API、REST操作、MCP、SSE、WebSocket、gRPC、WebRTC制御、非同期結果・取消、CM補助操作の一覧 |
+| 対象の棚卸し | 有効API、REST操作、MCP、SSE、WebSocket、WebRTC制御、非同期結果・取消、CM補助操作の一覧 |
 | 実際の設定を読戻す | APIM SKU、API/Productの購読要件、global→product→API→operationの有効ポリシー、MI/RBAC、AppGW経路・buffer・timeout |
 | テナントと管理担当を分離 | Azure側の作業と認証Entra側のアプリ・同意作業を別工程にする |
 | CM設定の結合を解消 | credentialLoginの本人確認設定をcredentialProvidersから独立させる。当初は旧アプリを参照し、外部API用Client ID変更で本人確認まで変わらないようにする |
@@ -173,7 +173,7 @@ Bearer要求では、署名・期限・自社tenant/issuer・v2のaud=<API_APP_C
 | audit-context.xml・fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml | 認証方式、tid/oid、任意のazp、利用枠、正本API、request ID、モデルを関連付ける。token・key・本文を記録しない |
 | credential-connection.xml・credential-login/*.xml・[credential-broker](../../apps/gateway/credential-broker/) | Bearer本人を初回取引からcallback・業務利用・更新・logout/disconnectまで照合。キーとユーザーcs2は相互流用せず、確認済み接続はtid+oidで再利用。SQL v4・Broker・XMLを揃えて更新し、既存キーv2契約を維持 |
 | realtime-create/observer/hangup・live・非同期結果取得 | 本人と利用枠をticket・call・結果所有者へ結び付ける。旧購読所有の契約も維持 |
-| [application-gateway.bicep](../../infra/modules/application-gateway.bicep)・経路の更新処理 | 共通URLでBearerがAPIMへ到達すること、既存rewrite・WAF範囲・タイムアウトを確認。gRPC固定メソッドpathと認証metadataは対象transportで検証する |
+| [application-gateway.bicep](../../infra/modules/application-gateway.bicep)・経路の更新処理 | 共通URLでBearerがAPIMへ到達すること、既存rewrite・WAF範囲・タイムアウトを確認。常設のL7入口証明が通常APIの直接アクセスを拒否し、AppGW→APIMのHTTP80転送と整合することを確認する |
 
 初期の利用対象は認証テナント全ユーザー、利用は基本無制限で有効な制限だけ構成の共通値を使い、個人grant台帳・利用許可resolverは追加しない。CMとsessionの本人所有者契約は入口認可と別に維持する。将来、グループ別の利用枠が必要になった段階で、責務に沿って追加する。内部通信ではAPIM以外が本人情報を偽装できないことを試験する。既存グループ購読を利用枠へ対応させる場合は、実際の購読状態・API範囲・停止の反映も確認する。
 
@@ -181,7 +181,7 @@ Bearer認証は全API共通で、実行時にAPI名の一覧や対応フラグ�
 
 STEP4の認証成功は、キー／Bearer共通の`gatewayCommonAuthenticationValidated`と、Bearerのトークン・本人・会社設定までの`gatewayEntraAuthenticationValidated`で後続へ伝える。標準検証、本人情報、会社設定を確認する順序と、認証不備401・設定／内部不備500の分類を維持して部品化する。XMLと同名C#の対応は[認証部品の説明](../../apps/gateway/apim/policies/fragments/authentication/core-common-authentication/README.md)を参照する。
 
-公開controllerはcurrent・onlineのrevision 1が1つだけある対象APIを照合し、V2 source manifestでAPI型・全操作・生成MCP・CM保護入口と必要なimport内容を管理する。gRPCのproto format/valueを含む実readback形式は未確認で、期待する読戻しが得られなければ停止する。複数revisionや既存の保護source不足を新規構築へ流さない。旧形式は既知の生成元と実policyが厳密一致する場合だけ移行する。真の新規構築は過去配備・checkpoint・旧managed Entra・選択API全revision・共有資材の衝突がないことを完全GETで確認し、closed stagingでsourceを確立してから公開する。部分再公開は旧sourceと新sourceを合わせ、既存の所有APIのBearer受付も維持する。
+公開controllerはcurrent・onlineのrevision 1が1つだけある対象APIを照合し、V2 source manifestでAPI型・全操作・生成MCP・CM保護入口と必要なimport内容を管理する。gRPCの新規登録は拒否し、旧V2 sourceに含まれるproto format/valueは既知の所有契約との厳密な照合に限って保持する。旧sourceの読戻しに不一致があれば停止する。複数revisionや既存の保護source不足を新規構築へ流さない。旧形式は既知の生成元と実policyが厳密一致する場合だけ移行する。真の新規構築は過去配備・checkpoint・旧managed Entra・選択API全revision・共有資材の衝突がないことを完全GETで確認し、closed stagingでsourceを確立してから公開する。部分再公開は旧sourceと新sourceを合わせ、既存の所有APIのBearer受付も維持する。
 
 既存globalの手動処理は保持し、既知のCore NamedValue/backendを事前照合する。globalが存在しない場合のclosed baseline作成は、APIM全API inventoryが空であることを確認した新規構築だけに限定する。
 
@@ -198,14 +198,14 @@ Globalの共通ブロックは既知の旧形式だけ移行する。ETag付き�
 3. 無効キー＋有効JWT、空・重複・query提示を拒否する。APIキーをAuthorization: Bearerへ移した要求も拒否し、正しいキー＋既存用途のAuthorizationはキー側の従来動作を維持する。
 4. 正常tokenとtenant/issuer/aud/v2/scp不一致、tid/oid欠落・不正、期限切れ、改変、app-only、認証なしを確認。azpの欠落・不正・重複が認可を狭めず、単一の有効GUIDだけ監査へ残ることも確認する。global→Product→API→operationのbase継承と、JWT検証前のAuthorization・キー変更やearly returnがないことを有効policyで確認する。
 5. キー利用枠が変わらず、社員の有効なrequest rateと監査が効き、nullの毎分トークン・期間quotaは適用されないことを確認。対象Codexで長い推論・ツール継続・retry・並列処理の通常利用を比較する。有限枠の拒否境界は隔離した少数の合成要求で別途確認し、CM session・call ticket・非同期結果の別人／認証方式間の転用拒否を確認する。
-6. 全業務APIをキーとBearerで確認する。Graph本人接続、REST-backed MCP、非同期API、音声・Realtime、WebSocket handshake・gRPC開始の認可と所有者を含める。CMブラウザー／callbackは一時取引認証を保持し、未登録operation/methodと無認証を拒否する。
+6. 全業務APIをキーとBearerで確認する。Graph本人接続、REST-backed MCP、非同期API、音声・Realtime、WebSocket handshakeの認可と所有者を含める。CMブラウザー／callbackは一時取引認証を保持し、未登録operation/methodと無認証を拒否する。
 7. Responsesはresponse.completed・エラー・function_call/call_id・function_call_output・複数ターンを確認。モデルaliasとdeployment、api-version、store=falseの場合の入力履歴再送も確認。
 8. AppGWを含む逐次転送・timeoutを確認。共有AppGWのresponse buffering変更が必要なら、既存APIの回帰試験を行ってから変更する。
 9. 安全なキー専用状態でAPIとpolicyを準備し、読戻し後に対象open Product関連付けとBearer分岐を有効化する。途中失敗ではキーなしを拒否できる状態を維持する。無効化・rollbackを新しい試行として確認し、成功した有効化試験を復旧の合格へ流用しない。
 
 キーなしのBearer要求は専用open Productの文脈となり、既存の購読必須Productのpolicyを引き継ぐとは仮定しない。専用Productはbaseのみとし、必要な認可・制限・監査・変換はglobal/APIで実行する。有効なProductキーは従来のProduct policyを維持する。API／all-APIs／serviceキーではProduct policyが適用されないという[既存の継承仕様](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-policies)も維持する。バックエンド定義・MIのtoken宛先・RBACはAPIごとに確認し、APIアプリの委任権限と別に検証する。
 
-MCPのREST-backed operationIdは同じREST操作へ関連付け、Bearer検証済みの主体が内部呼出し先へ引き継がれることを確認する。WebSocketはhandshake、gRPCはRPC開始、WebRTCは制御APIと所有者を検証し、接続後frameやメディアまでHTTP JWT検証が繰り返されるとは扱わない。
+MCPのREST-backed operationIdは同じREST操作へ関連付け、Bearer検証済みの主体が内部呼出し先へ引き継がれることを確認する。WebSocketはhandshake、WebRTCは制御APIと所有者を検証し、接続後frameやメディアまでHTTP JWT検証が繰り返されるとは扱わない。
 
 ### 試験用のPKCE補助CLI
 
@@ -345,7 +345,7 @@ MSAL、PKCE、state、nonce、署名・issuer/audienceの検証を維持する�
 | 共通URLの有効化条件 | APIの購読必須を維持し、専用open ProductでキーなしJWTを受ける | primary／secondary、停止、API／Product／all-APIs／service範囲、無効キーfallback拒否、policy継承、有効化・復旧の実APIM結果 |
 | 社員の利用資格と上限 | 認証Entraの全ユーザー。基本無制限で毎分トークン・期間quotaはnull。request rateは本人単位の暫定防御値 | 1000 requests／60秒の例を実Codexのツール継続・retry・並列要求と比較して調整。rateだけで攻撃を判定しない |
 | API OAuth保存と取得 | on-demand追加認証、サーバー暗号化SQL、共有更新lease | Better Auth callback PoC、logout要件、保存・監査・鍵rotation方針 |
-| 実装対象とpilot順 | 実装は全業務API。pilotは1モデルHTTP/SSEから進め、全transportを必須受入ゲートとする | 実際に有効なAPI・client・モデル・ネットワーク、gRPC等の実readback形式 |
+| 実装対象とpilot順 | 実装は全業務API。pilotは1モデルHTTP/SSEから進め、全transportを必須受入ゲートとする | 実際に有効なAPI・client・モデル・ネットワークと有効transportの実readback形式 |
 | tools移行 | 新profile＋本人再同意の並行移行 | 現接続数、pool容量、旧接続を残す期間、移行対象client |
 | credentialもsecretなしにするか | 分離は必須。認証方式は独立PoCで判断 | CM・MSALの対応方式、証明書運用と署名経路 |
 | Codex／Enterprise併用 | 配布対象群を分ける | CLI/Desktop version、会社固定範囲、同端末でのprovider切替要件 |

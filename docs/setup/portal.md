@@ -6,6 +6,10 @@ Tool GatewayはREST・MCP・A2Aに分けて案内します。RESTは上記3 API�
 
 公開入口は`https://portal.<domain>`です。Gatewayの`https://gateway.<domain>`とは共通App Gatewayのホスト名で振り分けます。
 
+App Gatewayは公開HTTPSを終端し、Portalへの後段通信とヘルスプローブには閉域HTTP80を使います。Firewallを通る往復経路、ACA内部VIPとbackend Hostは維持します。ACAの`allowInsecure: true`はこのHTTP受付を追加し、ACAのHTTPS443受付そのものは残します。APIMから共用ACAへのHTTPS通信も維持します。公開ポートや後段プロトコルを選ぶparams/configは設けません。
+
+言語付きURLへの転送、OAuthの戻り先、Secure CookieとOrigin検査は公開`BETTER_AUTH_URL=https://...`を基準にします。ACAが`X-Forwarded-Proto`を`http`へ上書きしても、内部HTTP URLをブラウザーへ案内しません。本番Firewallの既存IDPS設定と、検証用のIDPS Offはこの変更で切り替えません。
+
 ## 配備資材の置き場所
 
 ```text
@@ -152,9 +156,9 @@ Graphへ正規表現を送るのではなく、取得した名前をサーバー
 1. 管理VMに一時的な組み込み`AcrPush`を付与し、公開ソースだけを渡してイメージを作成します。非公開ACRの`portal`へ登録し、digestを取得します。一時ロールとRun Commandは回収します。
 2. 共通SQLサーバーへPortal専用DBを作成・更新し、`caj-<環境>-<製品>-psql`を配備します。Portal実行IDへ、組み込みの`API Management Service Contributor`を対象APIM単体の範囲で割り当てます。
 3. この手動ジョブを配備スクリプトが起動し、`sql/`のDDL、正本にあるグループ・製品承認、検証用購読の作成・台帳登録、実行用IDのSQL権限を設定します。SQL初期化に成功するまでアプリ本体は更新しません。
-4. 既存App Gatewayの`probe-portal`を、認証不要の`/api/health`からHTTP 200が返ることを確認する設定へ合わせます。Microsoft認証の戻り先には、後述の限定WAF設定も適用します。ほかのプローブ・API転送は変更しません。
-5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、認証用環境変数とKey Vault参照を渡します。
-6. 新しいリビジョンの起動と公開URLの`/api/health`を確認します。Readinessでは`/api/health/ready`から実行用IDのSQL照会と専用鍵の準備も確認します。
+4. Microsoft認証の戻り先には、後述の限定WAF設定を適用します。この段階ではPortalの稼働中backendを切り替えません。
+5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、HTTP80受付、認証用環境変数とKey Vault参照を渡します。今回の期待imageと正常revisionが一致するまで待ち、以前のrevisionがHealthyというだけでは進みません。
+6. FirewallのAppGW→ACA TCP80許可、内部VIP、backend HostとHTTP受付を照合してから、App Gatewayの`behttp-portal`と`probe-portal`を同一ETag付きPUTでHTTP80へ揃えます。認証不要の`/api/health`、HTTP 200判定を使い、ほかのプローブ・API転送・公開証明書を保持します。新しいリビジョンと公開URLのヘルスを確認します。Readinessでは`/api/health/ready`から実行用IDのSQL照会と専用鍵の準備も確認します。
 7. Gatewayの固定ポリシーとKey Vault参照を確認して、購読プロファイルの参照を有効化します。結果は`.local/<environment>/state/portal-deployment.json`へ保存します。
 
 SQL初期化ジョブはスケジュール実行しません。テーブル初期化をアプリの起動処理にも含めません。再配備では既存データを維持し、未適用のマイグレーションを適用します。
@@ -166,6 +170,33 @@ SQL初期化ジョブはスケジュール実行しません。テーブル初�
 アプリ更新工程では`caj-<環境>-<製品>-psync`も配備します。このジョブは15分ごとに、台帳にある所有グループのうち観測が古いものを最大100件照合します。Entra全体のメンバー名簿は複製しません。Portalと同じイメージ・実行IDとGraph資格情報を使い、購読の停止・削除・メール通知は行いません。総グループ数や通信状況によって全件の照合に複数回必要なため、各行の確認日時を参照します。
 
 別の構築記録を使う場合は`--state-file <path>`、Azureに記録された完了済みのコア構築出力を読む場合は`--deployment-name <構築名>`を指定します。作成済みのPortalイメージを使う場合は`--image-digest sha256:<digest>`を指定できます。
+
+### 既存HTTPS後段からHTTP80へ移行する
+
+新規構築はBicepの固定HTTP80設定を使います。構築済みのHTTPS後段は、最終80-onlyのCoreを先に配備すると旧Firewall443許可が先に消えるため、次の順序で移行します。構築前処理は旧HTTPS後段を検出した場合に停止し、Coreの先行切替を防ぎます。Azure CLIは認可済みのWindows側を使い、WSL上のLinux Azure CLIでは認証しません。
+
+以下はWindows PowerShellの例です。`DEPLOY_PARAMS_FILE`は同じ対象環境の保護入力を指定します。移行機能をparams/configに追加せず、既存環境だけの運用操作として実行します。
+
+```powershell
+python -B scripts/operations/portal_backend_http.py status --config $env:DEPLOY_PARAMS_FILE
+python -B scripts/operations/portal_backend_http.py prepare --config $env:DEPLOY_PARAMS_FILE
+python -B scripts/operations/portal_backend_http.py prepare --config $env:DEPLOY_PARAMS_FILE --execute
+python -B scripts/deploy_portal.py --config $env:DEPLOY_PARAMS_FILE --execute
+python -B scripts/operations/portal_backend_http.py status --config $env:DEPLOY_PARAMS_FILE
+```
+
+`prepare`は`rcg-portal`の所有済み`portal-ingress`へ`agw-aca-http` TCP80を追加し、旧`agw-aca-https` TCP443と他規則を保持します。既定は読取りによる計画です。`--execute`は環境別ロック、事前の保護記録、ETagによる更新、読戻しを使います。Portal配備は修正済みimage/revisionのHTTP受付を確認してから、変更前Gateway設定を`.local/<environment>/state/portal-http80/`へ保護記録してAppGWを切り替えます。途中失敗時はその時点の実状態を読み、古い成功記録だけで再開しません。
+
+公開HTTPS、公開80からHTTPSへの転送、言語redirect、Microsoft login/callback/session/logout、Secure Cookie・CSRF、代表APIの逐次転送と保守通信を確認します。`status`の`coreHttpContractReady`は設定の読取り照合であり、実際の疎通成功を表すものではありません。疎通確認後に最終Coreを再配備し、このAppGW→ACA区間の旧443許可を撤去します。以降のCore・Portal再配備もHTTP80へ収束し、APIM→ACA HTTPS443を維持します。
+
+切戻しは次の計画を確認してから実行します。
+
+```powershell
+python -B scripts/operations/portal_backend_http.py rollback --config $env:DEPLOY_PARAMS_FILE
+python -B scripts/operations/portal_backend_http.py rollback --config $env:DEPLOY_PARAMS_FILE --execute
+```
+
+切戻しは必要な旧Firewall443許可を先に復元し、現在の他設定を保持してPortal backend/probeだけを同一PUTでHTTPS443へ戻します。ACAのHTTP受付とFW80は残し、稼働経路を先に閉じません。公開疎通を確認してから不要な移行設定を扱います。AppGW全体PUTによる既存接続への影響は別途確認し、無停止を保証しません。
 
 ## SQLと秘密情報
 

@@ -116,7 +116,11 @@ class ApiFoundationBicepTests(unittest.TestCase):
         for path in ('/models/openai/v1/chat/completions', '/models/openai/v1/responses',
                      '/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'):
             self.assertIn(path, published)
-        self.assertTrue(all('{' not in path and '*' not in path for path in published))
+        self.assertTrue(all('{' not in path for path in published))
+        # Only the two canonical signed operations use an AppGW wildcard. The
+        # APIM operation and owner-ticket checks still bound their variable IDs.
+        self.assertEqual({path for path in published if '*' in path}, {
+            '/tools/documents/v1/operations/*', '/models/openai-realtime/v1/calls/*'})
         self.assertTrue(self.value(self.main['variables']['realtimeEnabled'], config))
         self.assertIn({'category': 'WebSocketConnectionLogs', 'enabled': True}, self.apim_logs(config))
 
@@ -167,14 +171,14 @@ class ApiFoundationBicepTests(unittest.TestCase):
     def test_document_foundation_prepares_owner_key_before_public_api_creation(self):
         """非公開の基盤用メタデータから文書ジョブの署名鍵だけを準備する。"""
         config = configuration.build_bicep_configuration(foundation_configuration())
-        config['gateway']['grpc']['enabled'] = False
+        self.assertNotIn('grpc', config['gateway'])
         config['gateway']['realtimeControlEnabled'] = False
         config['infrastructureApiDefinitions'] = [api for api in config['infrastructureApiDefinitions']
                                                    if api.get('name') == 'document-analysis-v1']
         self.assertEqual(config['apiDefinitions'], [])
         self.assertFalse(self.value(self.main['variables']['realtimeEnabled'], config))
         self.assertTrue(self.value(self.main['variables']['ownerTicketEnabled'], config))
-        self.assertTrue(self.value(self.main['variables']['useIngressSecrets'], config))
+        self.assertIs(self.main['variables']['useIngressSecrets'], True)
 
 
 if __name__ == '__main__':

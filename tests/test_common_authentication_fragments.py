@@ -9,7 +9,10 @@ from unittest import mock
 import xml.etree.ElementTree as ET
 
 from deployment.helpers.apim_audit import expand_audit_fragments, render_audit_fragments, render_audit_policy
-from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
+from deployment.helpers.apim_ingress import (
+    expand_trusted_ingress_fragment, render_trusted_ingress_fragment,
+    render_legacy_trusted_ingress_fragment,
+)
 from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
 from deployment.helpers import apim_common_authentication as fragments
 from deployment.helpers.apim_authentication import (
@@ -115,6 +118,14 @@ def expand_all(xml, *, login=None, entra_enabled=True):
 def fingerprint(xml, *, login=None, entra_enabled=True):
     expanded = expand_all(xml, login=login, entra_enabled=entra_enabled)
     root = project_reviewed_subject(ET.fromstring(expanded))
+    # Retain the independently recorded authentication hashes. Only the exact
+    # reviewed gRPC exemption removal is projected back to its frozen condition;
+    # any other ingress alteration remains visible to the comparison.
+    current = ET.fromstring(render_trusted_ingress_fragment()).find("choose/when").get("condition")
+    previous = ET.fromstring(render_legacy_trusted_ingress_fragment()).find("choose/when").get("condition")
+    for branch in root.findall("./inbound/choose[@id='core-trusted-ingress']/when"):
+        if code_value(branch.get("condition")) == code_value(current):
+            branch.set("condition", previous)
     encoded = json.dumps(code_shape(root, project_observer=True), ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -138,7 +149,7 @@ class CommonAuthenticationFragmentPreservationTests(unittest.TestCase):
     def test_unreviewed_authentication_writer_or_budget_changes_are_not_projected_away(self):
         value = expand_all(render_service_policy(entra=entra_settings()))
         self.assertEqual(fingerprint(value), BEFORE_CURRENT[(False, True)])
-        for mode in ("authentication", "writer", "observer-bound", "top-level-bound"):
+        for mode in ("authentication", "writer", "observer-bound", "top-level-bound", "ingress"):
             root = ET.fromstring(value)
             if mode == "writer":
                 node = root.find("./inbound/set-variable[@name='gatewayAuthenticatedSubject']")
@@ -151,6 +162,9 @@ class CommonAuthenticationFragmentPreservationTests(unittest.TestCase):
                 nodes = [node for node in root.iter() if node.text and "?256:" in node.text]
                 self.assertTrue(nodes)
                 nodes[0].text = nodes[0].text.replace("?256:", "?257:", 1)
+            elif mode == "ingress":
+                branch = root.find("./inbound/choose[@id='core-trusted-ingress']/when")
+                branch.set("condition", branch.get("condition").replace("X-Core-L7-Ingress", "X-Unreviewed-Ingress"))
             else:
                 nodes = [node for node in root.iter() if node.text and re.search(r"subscription\.Length\s*<=\s*256", node.text)]
                 self.assertTrue(nodes)

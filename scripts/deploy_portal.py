@@ -26,11 +26,12 @@ from deployment.helpers.portal_authentication import prepare_secret
 from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
+from deployment.helpers.portal_backend_http import verify_portal_http_ready
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
-from deployment.lifecycle import ArmTransport, DeploymentError, NoRedirect, protected_json, state_from_outputs
+from deployment.lifecycle import ArmTransport, DeploymentError, NoRedirect, protected_json, state_from_outputs, upgrade_journal
 from waf_policy import reconcile as configure_data_waf
 from standard_apis import infrastructure_api_definitions
 
@@ -222,17 +223,33 @@ def wait_schema(config, execution, transport, *, timeout=900, sleep=time.sleep, 
     raise ValueError('Portal SQL initialization is still pending; inspect its job execution')
 
 
-def wait_application(config, transport, *, timeout=900, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+def wait_application(config, transport, *, expected_image_digest=None, timeout=900, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+    """今回の期待イメージが反映された正常revisionまで待ち、旧Healthyだけで進まない。"""
+    if expected_image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', expected_image_digest):
+        raise ValueError('Portal application readiness requires an immutable image digest')
+    expected_image = (f"acr{config['resourceStem'].replace('-', '')}.azurecr.io/portal@{expected_image_digest}"
+                      if expected_image_digest is not None else None)
     target = group_scope(config) + '/providers/Microsoft.App/containerApps/ca-' + config['resourceStem'] + '-portal'
     deadline, notice = monotonic() + timeout, monotonic() + 45
     while monotonic() < deadline:
         app = checked(transport, 'GET', target + '?api-version=' + APP_API, label='Read Portal application')
         properties = app.get('properties', {})
         revision = properties.get('latestRevisionName')
-        if revision and revision == properties.get('latestReadyRevisionName'):
+        ingress = properties.get('configuration', {}).get('ingress', {})
+        containers = properties.get('template', {}).get('containers', [])
+        expected_app = (expected_image is None or (len(containers) == 1
+                        and containers[0].get('name') == 'portal' and containers[0].get('image') == expected_image
+                        and ingress.get('allowInsecure') is True and ingress.get('targetPort') == 3000))
+        if (properties.get('provisioningState') == 'Succeeded' and expected_app
+                and isinstance(revision, str) and re.fullmatch(r'[a-z0-9-]+', revision)
+                and revision == properties.get('latestReadyRevisionName')):
             ready = checked(transport, 'GET', target + '/revisions/' + revision + '?api-version=' + APP_API, label='Read Portal revision').get('properties', {})
-            if ready.get('healthState') == 'Healthy' and ready.get('provisioningState') == 'Provisioned' and ready.get('runningState') == 'Running':
-                return
+            containers = ready.get('template', {}).get('containers', [])
+            expected_revision = expected_image is None or (len(containers) == 1
+                and containers[0].get('name') == 'portal' and containers[0].get('image') == expected_image)
+            if (ready.get('healthState') == 'Healthy' and ready.get('provisioningState') == 'Provisioned'
+                    and ready.get('runningState') == 'Running' and expected_revision):
+                return {'revision': revision, 'expectedImageVerified': expected_image is not None}
         if properties.get('provisioningState') == 'Failed':
             raise ValueError('Portal application failed to provision')
         if monotonic() >= notice:
@@ -261,7 +278,7 @@ def verify_public(origin, *, timeout=180, sleep=time.sleep, monotonic=time.monot
     raise ValueError('Portal revision is running but the public health check did not succeed')
 
 
-def deploy_release(config, values, template, transport):
+def deploy_release(config, values, template, transport, *, record=None):
     """SQLの準備が成功した場合だけ、新しいアプリを公開して疎通確認する。"""
     print('ポータル: DB・実行権限・SQL初期化ジョブを配備します。', flush=True)
     deploy_template(config, values, template, transport)
@@ -271,8 +288,6 @@ def deploy_release(config, values, template, transport):
     job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
     started = checked(transport, 'POST', job + '/start?api-version=' + APP_API, label='Start Portal SQL initialization')
     wait_schema(config, started.get('name'), transport)
-    print('ポータル: App Gatewayのポータル用ヘルス監視を確認します。', flush=True)
-    gateway_probe = configure_portal_probe(config, transport)
     print('ポータル: Microsoft認証の戻り先用WAF設定を確認します。', flush=True)
     callback_waf = configure_portal_callback_waf(config, transport)
     print('ポータル: APIのデータ欄だけへ実測済みWAF除外を設定します。', flush=True)
@@ -280,12 +295,16 @@ def deploy_release(config, values, template, transport):
     print('ポータル: SQL初期化が完了しました。アプリを更新します。', flush=True)
     values['deployApplication'] = True
     deploy_template(config, values, template, transport)
-    wait_application(config, transport)
+    wait_application(config, transport, expected_image_digest=values['imageDigest'])
+    http_readiness = verify_portal_http_ready(config, transport, expected_image_digest=values['imageDigest'])
+    print('ポータル: 準備済みHTTP80後段とヘルス監視へApp Gatewayを揃えます。', flush=True)
+    gateway_probe = configure_portal_probe(config, transport, record=record)
     print('ポータル: 公開URLから起動状態を確認します。', flush=True)
     verify_public(values['publicOrigin'])
     apim_id = group_scope(config) + '/providers/Microsoft.ApiManagement/service/' + values['apimName']
     profiles = activate_profile_settings(apim_id, transport, infrastructure_api_definitions(config['apiDefinitions']))
-    return {'probe': gateway_probe, 'callbackWaf': callback_waf, 'dataWaf': data_waf, 'subscriptionProfiles': profiles}
+    return {'probe': gateway_probe, 'httpReadiness': http_readiness, 'callbackWaf': callback_waf,
+            'dataWaf': data_waf, 'subscriptionProfiles': profiles}
 
 
 def main(argv=None):
@@ -325,7 +344,7 @@ def main(argv=None):
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
-        'steps': ['build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-health-probe', 'configure-portal-auth-callback-waf', 'update-application', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
+        'steps': ['build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-http-ingress', 'verify-firewall-http80', 'configure-portal-health-probe', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
     protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))
@@ -337,11 +356,13 @@ def main(argv=None):
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
     values['signingSecret'] = signing_secret(config, values, transport)
     values['profileSecret'] = profile_secret(config, values, transport)
-    gateway_readiness = deploy_release(config, values, template, transport)
+    gateway_readiness = deploy_release(config, values, template, transport,
+                                      record=upgrade_journal(config, 'portal-http80'))
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
         'gatewayProbe': gateway_readiness['probe'], 'callbackWaf': gateway_readiness['callbackWaf'],
+        'httpReadiness': gateway_readiness['httpReadiness'],
         'subscriptionProfiles': gateway_readiness['subscriptionProfiles']}
     protected_json(workspace.state / 'portal-deployment.json', result)
     print(json.dumps(result, ensure_ascii=False))

@@ -26,6 +26,7 @@ ARM_PARAMETER_DEFAULTS = {
     "existingNetworkSecurityGroupNames": [],
     "existingRouteTableRoutes": {},
     "existingApimHostnameConfigurations": {},
+    "existingApimCustomProperties": {},
     "existingPortalApp": False,
     "existingWorkspaceDataCollectionRuleResourceId": "",
     "diagnosticSettingProperties": {},

@@ -19,11 +19,17 @@ from browser_exception_projection import project_browser_exception_to_previous
 
 
 class TrustedIngressStructureTests(unittest.TestCase):
-    def test_leaf_expansion_matches_the_entire_previous_executable_policy(self):
+    def test_leaf_expansion_matches_the_previous_ingress_prefix(self):
         previous = ET.fromstring(with_expected_observation_explanation(_render_inline_trusted_ingress_service_policy()))
         current = ET.fromstring(project_browser_exception_to_previous(
             expand_trusted_ingress_fragment(render_service_policy())))
-        self.assertEqual(_structure(current), _structure(previous))
+        # The frozen inline source predates the separate authentication review.
+        # Its independent expectation applies through ingress; the authentication
+        # fragment suite preserves the reviewed authentication executable hashes.
+        self.assertEqual(tuple(_structure(node) for node in list(current.find("inbound"))[:2]),
+                         tuple(_structure(node) for node in list(previous.find("inbound"))[:2]))
+        for section in ("backend", "outbound", "on-error"):
+            self.assertEqual(_structure(current.find(section)), _structure(previous.find(section)))
         fragment = ET.fromstring(render_trusted_ingress_fragment())
         self.assertEqual(_structure(fragment[0]), _structure(previous.find("inbound/choose[@id='core-trusted-ingress']")))
         self.assertFalse(fragment.findall('.//include-fragment'))
@@ -73,7 +79,9 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     def test_all_request_and_authentication_results_match_before_and_after(self):
         for required in ('true', 'false'):
             with self.subTest(required=required):
-                self.assertEqual(self.results[(required, 'fragment')], self.results[(required, 'inline')])
+                for case in self.cases:
+                    if not case.get('grpc') or required == 'false':
+                        self.assertEqual(self.results[(required, 'fragment')][case['id']], self.results[(required, 'inline')][case['id']])
 
     def test_bad_http_ingress_is_rejected_before_authentication(self):
         results = self.results[('true', 'fragment')]
@@ -83,13 +91,16 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertFalse(results[name]['authenticated'])
                 self.assertIsNotNone(results[name]['requestContext'])
 
-    def test_registered_grpc_and_valid_http_still_reach_authentication(self):
+    def test_retired_grpc_marker_does_not_exempt_missing_ingress(self):
         results = self.results[('true', 'fragment')]
-        for name in ('http-valid', 'grpc-missing', 'grpc-wrong', 'grpc-duplicate'):
+        for name in ('http-valid',):
             with self.subTest(case=name):
                 self.assertEqual(results[name]['status'], 200)
                 self.assertTrue(results[name]['authenticated'])
         self.assertEqual(results['http-no-key']['status'], 401)
+        for name in ('grpc-missing', 'grpc-wrong', 'grpc-duplicate'):
+            self.assertEqual(results[name]['status'], 403)
+            self.assertFalse(results[name]['authenticated'])
 
     def test_disabling_the_ingress_requirement_does_not_disable_authentication(self):
         results = self.results[('false', 'fragment')]

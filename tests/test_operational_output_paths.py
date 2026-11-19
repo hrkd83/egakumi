@@ -111,7 +111,7 @@ class OperationalOutputPathTests(unittest.TestCase):
     def test_waf_refuses_old_output_before_sending(self):
         case = SimpleNamespace(case_id="synthetic", category="synthetic", intent="synthetic",
                                path="/synthetic", target="gateway")
-        with patch.object(waf_probe, "build_corpus", return_value=[case]), \
+        with patch.object(waf_probe, "required_corpus", return_value=[case]), \
                 patch.object(waf_probe, "run_probe", side_effect=AssertionError("network request")), \
                 patch.object(waf_probe, "ThreadPoolExecutor", side_effect=AssertionError("network pool")), \
                 patch.object(waf_probe.argparse.ArgumentParser, "error", side_effect=ValueError("output rejected")):

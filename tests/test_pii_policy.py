@@ -11,6 +11,9 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from test_gateway_limits_telemetry import PWSH, expression
+from deployment.helpers.apim_common_authentication import (
+    expand_common_authentication_fragments, render_common_authentication_fragments,
+)
 
 CORE = Path(__file__).resolve().parents[1]
 POLICIES = CORE / "apps/gateway/apim/policies"
@@ -73,6 +76,7 @@ public static class PiiPolicyFixture {
   public static string Result(Context context) { __RESULT__ }
   public static string McpAuth(Context context) { __MCP_AUTH__ }
   public static string RestAuth(Context context) { __REST_AUTH__ }
+  public static string CommonKeyValidation(Context context) { __COMMON_KEY_VALIDATION__ }
   public static string RetryAfter(Context context) { __RETRY__ }
   public static string Run(string casesJson) {
     var result = new JObject();
@@ -105,6 +109,14 @@ public static class PiiPolicyFixture {
           context.Product = new NamedContext { Id = (string)item["product"] ?? "pii-users" };
         }
         context.Operation.Id = (string)item["operation"] ?? "pii_redact_text";
+        // Execute the actual inherited key gate before either API identity
+        // handoff. Unverified or malformed keys cannot reach those expressions.
+        var failure=CommonKeyValidation(context);
+        if (!String.IsNullOrEmpty(failure)) {
+          result[(string)item["id"]]=new JObject(new JProperty("allowed",false));
+          continue;
+        }
+        context.Variables["gatewayCommonAuthenticationValidated"]=true;
         var decision = mode == "mcp" ? McpAuth(context) : RestAuth(context);
         context.Variables["gatewayDecision"] = decision;
         var decisionResult = JObject.Parse(decision);
@@ -227,7 +239,12 @@ class PiiPolicyTests(unittest.TestCase):
         encoded_auth = base64.b64encode(json.dumps(auth).encode()).decode()
         mcp = MCP_AUTH_EXPRESSION.replace("__AUTHORIZATION_BASE64__", encoded_auth).replace("__MCP_OPERATION_ID__", "pii_redact_text")
         rest = REST_AUTH_EXPRESSION.replace("__AUTHORIZATION_BASE64__", encoded_auth)
+        common = ET.fromstring(render_common_authentication_fragments(entra_enabled=False)['core-common-authentication'])
+        key_validation = common.find("./choose/otherwise/set-variable[@name='gatewayAuthenticationFailure']").get('value').strip()
+        if not key_validation.startswith('@{') or not key_validation.endswith('}'):
+            raise AssertionError('Expected the actual common key validation expression')
         source = CSHARP.replace("__MCP_AUTH__", mcp).replace("__REST_AUTH__", rest).replace("__SETTINGS__", json.dumps(json.dumps(SETTINGS)))
+        source = source.replace('__COMMON_KEY_VALIDATION__', key_validation[2:-1])
         with tempfile.TemporaryDirectory(prefix="core-pii-policy-") as directory:
             path = Path(directory)
             (path / "fixture.cs").write_text(source)
@@ -337,7 +354,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 
     def test_pii_key_mcp_does_not_require_anonymous_oauth_metadata(self):
         from deployment.helpers.apim_authentication import render_service_policy
-        common = ET.fromstring(render_service_policy())
+        common = ET.fromstring(expand_common_authentication_fragments(render_service_policy(),
+            render_common_authentication_fragments(entra_enabled=False), entra_enabled=False))
         anonymous = common.find("./inbound/choose[@id='core-common-authentication']")
         self.assertIsNotNone(anonymous)
         self.assertEqual(common.findall(".//validate-azure-ad-token"), [])
@@ -355,13 +373,16 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertIsNone(tree.find("./outbound/set-body"))
         self.assertIsNone(tree.find("./inbound/set-body"))
         # 不正引数への固定JSON-RPCエラーだけは入口で生成し、正常の要求・応答は書き換えません。
-        early = tree.find("./inbound/choose/when/return-response/set-body")
+        argument_rejections = [branch for branch in tree.findall('./inbound/choose/when')
+                               if 'gatewayMcpArgumentError' in branch.get('condition', '')]
+        self.assertEqual(len(argument_rejections), 1)
+        early = argument_rejections[0].find('return-response/set-body')
         self.assertIsNotNone(early)
         self.assertIn("gatewayMcpArgumentError", early.text)
         publication = (POLICIES.parent / "api-publication.bicep").read_text()
         self.assertIn("apis/tools@2025-09-01-preview", publication)
         self.assertIn("operationId: '${apim.id}/apis/${api.name}/operations/${api.mcp.operationNames[0]}'", publication)
-        self.assertIn("value: entry.constraint.kind == 'pii'", publication)
+        self.assertIn("kind == 'pii' ? pii", publication)
         self.assertNotIn("Microsoft.Azure.ApiManagement.Gateway", text)
         schema = json.loads((POLICIES.parent / "schemas/pii.json").read_text())["schemas"]
         self.assertFalse(schema["PiiRedactRequest"]["additionalProperties"])

@@ -53,7 +53,7 @@ public static class IntegratedProfileFixture {
    foreach(var entry in ((JObject)(item["headers"]??new JObject())).Properties()) c.Request.Headers[entry.Name]=entry.Value is JArray?entry.Value.Select(x=>(string)x).ToArray():new[] {(string)entry.Value};
    foreach(var entry in ((JObject)(item["query"]??new JObject())).Properties()) c.Request.Url.Query[entry.Name]=entry.Value is JArray?entry.Value.Select(x=>(string)x).ToArray():new[] {(string)entry.Value};
    foreach(var entry in ((JObject)(item["parameters"]??new JObject())).Properties()) c.Request.MatchedParameters[entry.Name]=(string)entry.Value;
-   if(item["key"]!=null) { c.Subscription=new Named {Id=(string)item["key"]};c.Product=new Named {Id="tool-users"};c.Request.Headers["api-key"]=new[] {"fixture-value"}; }
+   if(item["key"]!=null && item["key"].Type!=JTokenType.Null) { c.Subscription=new Named {Id=(string)item["key"]};c.Product=new Named {Id="tool-users"};c.Request.Headers["api-key"]=new[] {"fixture-value"}; }
    var result=new JObject();
    if((string)item["mode"]=="ws") {
     var model=Model(c);c.Variables["gatewayProtocolModel"]=model;

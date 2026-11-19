@@ -29,6 +29,8 @@ class PayloadExpression(ArmExpression):
             return PayloadExpression(value, self.variables, self.login_endpoint).evaluate(parameters, 0)
         if isinstance(value, list):
             return [self.resolve(item, parameters) for item in value]
+        if isinstance(value, dict):
+            return {key: self.resolve(item, parameters) for key, item in value.items()}
         return value
 
     def evaluate(self, parameters, index=0, tree=None, bindings=None):
@@ -63,6 +65,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                 target = root / "infra/modules" / source.name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(source.read_bytes())
+            (root / "infra/nsg-rule-priorities.json").write_bytes((CORE / "infra/nsg-rule-priorities.json").read_bytes())
             (root / "guest").mkdir()
             for newline in (b"\n", b"\r\n"):
                 for name in ("configure-audit.sh", "certificate-bootstrap.sh", "certificate.ps1"):
@@ -82,7 +85,8 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
     @staticmethod
     def payload(template, expression, login_endpoint="https://login.microsoftonline.com/"):
         return PayloadExpression(expression, template.get("variables", {}), login_endpoint).evaluate(
-            {"ntpServers": ["time.example.com"]}, 0)
+            {"ntpServers": ["time.example.com"], "managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
+             "acaPrefix": "<ACA_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}, 0)
 
     def test_actual_run_command_scripts_are_lf_and_have_a_working_linux_shebang(self):
         for newline in (b"\n", b"\r\n"):
@@ -111,16 +115,20 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
 
     def test_portal_firewall_uses_hosts_without_url_separators_in_each_cloud(self):
         template = self.templates[b"\n", "portal-network"]
-        group, = [item for item in template["resources"]
+        resources = template["resources"]
+        resources = resources.values() if isinstance(resources, dict) else resources
+        group, = [item for item in resources
                   if item["type"] == "Microsoft.Network/firewallPolicies/ruleCollectionGroups"]
-        fqdn_values = [fqdn for collection in group["properties"]["ruleCollections"]
-                       for rule in collection["rules"] for fqdn in rule.get("targetFqdns", [])]
         for host in ("login.microsoftonline.com", "login.microsoftonline.us", "login.chinacloudapi.cn"):
             for suffix in ("", "/"):
                 with self.subTest(host=host, suffix=suffix):
                     endpoint = "https://" + host + suffix
-                    values = [self.payload(template, value, endpoint) if value.startswith("[") else value
-                              for value in fqdn_values]
+                    reader = PayloadExpression("[true()]", template.get("variables", {}), endpoint)
+                    parameters = {"managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
+                                  "acaPrefix": "<ACA_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}
+                    properties = reader.resolve(group["properties"], parameters)
+                    values = [fqdn for collection in properties["ruleCollections"]
+                              for rule in collection["rules"] for fqdn in rule.get("targetFqdns", [])]
                     self.assertIn(host, values)
                     self.assertIn("*." + host, values)
                     for value in values:

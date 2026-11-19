@@ -8,6 +8,8 @@ param vnetId string
 param pepSubnetId string
 param managementPrefix string
 param managementNsgName string
+param managementPrivateIp string
+param acaNsgName string
 param acaPrefix string
 param agwPrefix string
 param firewallPolicyName string
@@ -15,6 +17,32 @@ param pepNsgName string
 // 環境の認証URLからホスト部分を取り出して、Firewallの宛先に使います。
 var entraLoginHost = split(az.environment().authentication.loginEndpoint, '/')[2]
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
+
+// NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
+func allowRule(ruleName string, priority int, direction string, protocol string, sources array, destinations array, ports array) object => {
+  name: ruleName
+  properties: union({
+    description: 'Initial fixed communication: ${ruleName}'
+    priority: priority
+    direction: direction
+    access: 'Allow'
+    protocol: protocol
+    sourcePortRange: '*'
+  }, length(sources) == 1 ? {
+    sourceAddressPrefix: sources[0]
+  } : {
+    sourceAddressPrefixes: sources
+  }, length(destinations) == 1 ? {
+    destinationAddressPrefix: destinations[0]
+  } : {
+    destinationAddressPrefixes: destinations
+  }, length(ports) == 1 ? {
+    destinationPortRange: ports[0]
+  } : {
+    destinationPortRanges: ports
+  })
+}
+
 
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.azurecr.io'
@@ -50,34 +78,28 @@ module registryAddresses 'private-endpoint-addresses.bicep' = {
 }
 var registryPrivateIps = union([], flatten(registryAddresses.outputs.privateIpsByNic))
 resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: pepNsgName }
-resource allowPull 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
-  parent: pepNsg
-  name: 'allow-aca-acr'
-  properties: {
-    priority: nsgPriorities.groups.pep.rules['allow-aca-acr'].priority
-    direction: 'Inbound'
-    access: 'Allow'
-    protocol: 'Tcp'
-    sourceAddressPrefixes: [acaPrefix, managementPrefix]
-    destinationAddressPrefixes: registryPrivateIps
-    sourcePortRange: '*'
-    destinationPortRange: '443'
-  }
-}
 resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
+resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
+resource acaRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: pepNsg
+  name: 'allow-aca-acr-https-ingress'
+  properties: allowRule('allow-aca-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-acr-https-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+}
+resource managementRegistryIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: pepNsg
+  dependsOn: [acaRegistryIn]
+  name: 'allow-mgmt-vm-acr-https-ingress'
+  properties: allowRule('allow-mgmt-vm-acr-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-acr-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+}
 resource runnerRegistryAccess 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: managementNsg
-  name: 'allow-runner-acr'
-  properties: {
-    priority: nsgPriorities.groups.management.rules['allow-runner-acr'].priority
-    direction: 'Outbound'
-    access: 'Allow'
-    protocol: 'Tcp'
-    sourceAddressPrefix: managementPrefix
-    destinationAddressPrefixes: registryPrivateIps
-    sourcePortRange: '*'
-    destinationPortRange: '443'
-  }
+  name: 'allow-acr-https-egress'
+  properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.management.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
+}
+resource acaRegistryOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: acaNsg
+  name: 'allow-acr-https-egress'
+  properties: allowRule('allow-acr-https-egress', nsgPriorities.groups.aca.rules['allow-acr-https-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(registryPrivateIps, ip => '${ip}/32'), ['443']).properties
 }
 resource policy 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
 // Coreの通信規則が揃った後、Portal用の独立した規則グループを設定します。
@@ -132,11 +154,11 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: [{
-          name: 'agw-aca-https'
+          name: 'agw-aca-http'
           ruleType: 'NetworkRule'
           sourceAddresses: [agwPrefix]
           destinationAddresses: [acaPrefix]
-          destinationPorts: ['443']
+          destinationPorts: ['80']
           ipProtocols: ['TCP']
         }]
       }

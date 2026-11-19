@@ -122,7 +122,7 @@ echo "終了コード: $?"
 | 2 | 5RG、用途別ID、監視・監査先を作成。実IDをローカルのstateへ記録 |
 | 3 | VNet・subnet・NSG・UDR・Firewall・Private DNS、サービス・PE・RBACを作成 |
 | 4 | 管理VMでDNS-01の証明書を取得し、Key Vaultへ登録。AppGW・APIMの公開設定を仕上げる |
-| 5 | API Center同期とgRPC入口を設定し、`postprovision`で対象配備のCore出力と公開DNSの結果を保存 |
+| 5 | API Center同期と常設L7入口保護を設定し、`postprovision`で対象配備のCore出力と公開DNSの結果を保存 |
 | 6 | 対話可能な`postup`から`deploy_applications.py --execute`を呼び、Gatewayのイメージ、credentials DB・CM・SQL初期化、認証窓口、API・ポリシー・Productを配備 |
 | 7 | Gatewayの成功後、Portalの初回グループ設定、イメージ、認証DB・検証用購読・SQL権限を準備し、本体・照合ジョブを配備。公開ヘルスを確認して全体を完了 |
 
@@ -145,7 +145,7 @@ ARMのemail receiverの`status: Enabled`は、メールアドレスの確認完�
 3. Azure Portalで5RG、APIM／Foundry／AppGW等の作成状態、選択したモデルの配備成功を確認する。
 4. `.local/<environment>/state/latest.json`の`outputs.gateway.publicIpId`・`outputs.gateway.publicIp`を、PortalのそのPublic IPと照合する。
 5. `.local/<environment>/state/public-dns.json`でAzure Public DNSのGateway・Portal用Aエイリアスが**対象環境のAppGW Public IPリソース**へ接続されたことを確認する。
-6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。常設するnative gRPCの公開TCP8443でも確認する。入口のTLS確認とは別に、登録したgRPCサービスの実RPCとストリーミングを確認する。
+6. GatewayのFQDNで、TLS証明書のSAN・信頼チェーン・有効期限を確認する。公開TCP8443のgRPC専用入口を構成しない。公開TLSの確認とは別に、通常APIとSSE／WebSocket／MCPの実応答、AppGW→APIM／ACAのHTTP80転送、入口証明不備の拒否を確認する。
 7. 実行した配備で更新された`.local/<environment>/state/gateway-deployment.json`の`status: deployed`と、`.local/<environment>/state/portal-deployment.json`の`status: deployed`・`publicHealthVerified: true`を確認する。過去の成功結果が残っているだけの場合と区別する。
 8. 正規の購読キーと必要な本人セッションでGatewayの実応答を確認し、PortalのMicrosoftサインインと管理画面も確認する。初期構築後に同じ配備コマンドを重ねて実行する必要はない。
 

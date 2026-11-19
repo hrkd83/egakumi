@@ -23,7 +23,7 @@ param existingRouteTableRoutes object = {}
 
 // Design authority: infrastructure/{virtual-network,network-security-group,
 // route-table,private-dns-zone,azure-firewall,firewall-policy}. The core owns
-// five base subnets, four NSGs and three base route tables. The required
+// six subnets, five NSGs and three base route tables. The required
 // core sample portal adds a delegated ACA subnet and its own route table.
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 
@@ -36,18 +36,19 @@ var subnetPrefixes = config.?subnetPrefixes ?? {
   management: '10.40.2.128/26'
   aca: '10.40.2.192/26'
 }
-var dnsServers = config.?dnsServers ?? []
+// Initial VNet and Firewall upstream DNS use Azure-provided resolution.
+var dnsServers = []
 var firewallSettings = config.?firewall ?? {}
 var firewallTier = firewallSettings.?sku ?? 'Premium'
 var zones = firewallSettings.?zones ?? []
-var ntpAddressPrefixes = config.?ntpAddressPrefixes ?? ['Internet']
 // Azureの環境定義からStorage suffixとEntraの標準ログイン先を使います。
 // 認証先を利用者の要求ヘッダーや動的な外部URLから選ぶことはありません。
 
-// Azure の NSG API は単一宛先と複数宛先でプロパティ名が異なるため、個数に合わせて許可規則を組み立てます。
+// NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
 func allowRule(ruleName string, priority int, direction string, protocol string, sources array, destinations array, ports array) object => {
   name: ruleName
   properties: union({
+    description: 'Initial fixed communication: ${ruleName}'
     priority: priority
     direction: direction
     access: 'Allow'
@@ -68,66 +69,74 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-// 初期構築の利用者受信は全IPv4に固定し、params・configから変更しません。
-var clientAddressPrefixes = ['0.0.0.0/0']
-// 小さい priority の規則から評価されます。接続元を許可しても別段階の token/key 認証と API 認可は必要です。
+// AppGWとACAはAzure既定送信を保持。ACAは受信の末尾Any Denyも作成しません。
+// AzureFirewallSubnetに顧客NSGを作成・関連付けしません。
 var nsgDefinitions = [
   {
     key: 'agw'
     suffix: 'agw'
     rules: [
-      allowRule('allow-client-web', nsgPriorities.groups.agw.rules['allow-client-web'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], ['80', '443'])
-      allowRule('allow-gateway-manager', nsgPriorities.groups.agw.rules['allow-gateway-manager'].priority, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
-      allowRule('allow-load-balancer', nsgPriorities.groups.agw.rules['allow-load-balancer'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
-      // VNet内とInternetへの送信は既定65000・65001を使います。
-      // AppGWのカスタム送信規則は作成しません。
+      allowRule('allow-client-http-ingress', nsgPriorities.groups.agw.rules['allow-client-http-ingress'].priority, 'Inbound', 'Tcp', ['0.0.0.0/0'], [subnetPrefixes.agw], ['80'])
+      allowRule('allow-client-https-ingress', nsgPriorities.groups.agw.rules['allow-client-https-ingress'].priority, 'Inbound', 'Tcp', ['0.0.0.0/0'], [subnetPrefixes.agw], ['443'])
+      allowRule('allow-gateway-manager-ingress', nsgPriorities.groups.agw.rules['allow-gateway-manager-ingress'].priority, 'Inbound', 'Tcp', ['GatewayManager'], ['*'], ['65200-65535'])
+      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.agw.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
     ]
   }
   {
     key: 'apim'
     suffix: 'apim'
     rules: [
-      allowRule('allow-agw-api', nsgPriorities.groups.apim.rules['allow-agw-api'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
-      allowRule('allow-apim-management', nsgPriorities.groups.apim.rules['allow-apim-management'].priority, 'Inbound', 'Tcp', ['ApiManagement'], [subnetPrefixes.apim], ['3443'])
-      allowRule('allow-load-balancer', nsgPriorities.groups.apim.rules['allow-load-balancer'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.apim], ['6390'])
-      allowRule('allow-counter-sync-inbound', nsgPriorities.groups.apim.rules['allow-counter-sync-inbound'].priority, 'Inbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
-      allowRule('allow-storage', nsgPriorities.groups.apim.rules['allow-storage'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Storage'], ['443'])
-      // This is APIM's platform dependency, not a provisioned SQL Database.
-      allowRule('allow-sql-platform', nsgPriorities.groups.apim.rules['allow-sql-platform'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Sql'], ['1433'])
-      allowRule('allow-key-vault-platform', nsgPriorities.groups.apim.rules['allow-key-vault-platform'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureKeyVault'], ['443'])
-      allowRule('allow-monitor', nsgPriorities.groups.apim.rules['allow-monitor'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureMonitor'], ['1886', '443'])
-      // Azure Monitor の APIM 監査ログは Event Hubs 側にも送信します。
-      // AzureMonitor タグだけではこの宛先を含まないため、APIM から必要な TCP ポートだけを許可します。
-      // https://learn.microsoft.com/azure/api-management/virtual-network-reference#required-ports
-      allowRule('allow-monitor-event-hubs', nsgPriorities.groups.apim.rules['allow-monitor-event-hubs'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['EventHub'], ['443', '5671', '5672'])
-      allowRule('allow-entra', nsgPriorities.groups.apim.rules['allow-entra'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureActiveDirectory'], ['443'])
-      allowRule('allow-credential-manager', nsgPriorities.groups.apim.rules['allow-credential-manager'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureConnectors'], ['443'])
-      // Firewall application rules enforce the reviewed FQDN allowlist.
-      allowRule('allow-web-dependencies', nsgPriorities.groups.apim.rules['allow-web-dependencies'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Internet'], ['80', '443'])
-      // The managed APIM platform has a separate time dependency; a private
-      // Linux NTP override must not remove its required platform egress.
-      allowRule('allow-time-sync', nsgPriorities.groups.apim.rules['allow-time-sync'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], ['Internet'], ['123'])
-      allowRule('allow-counter-sync-outbound', nsgPriorities.groups.apim.rules['allow-counter-sync-outbound'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
+      allowRule('allow-appgw-http-ingress', nsgPriorities.groups.apim.rules['allow-appgw-http-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], ['80'])
+      allowRule('allow-api-management-ingress', nsgPriorities.groups.apim.rules['allow-api-management-ingress'].priority, 'Inbound', 'Tcp', ['ApiManagement'], [subnetPrefixes.apim], ['3443'])
+      allowRule('allow-apim-ratelimits-counter-sync-ingress', nsgPriorities.groups.apim.rules['allow-apim-ratelimits-counter-sync-ingress'].priority, 'Inbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
+      allowRule('allow-apim-internal-cache-ingress', nsgPriorities.groups.apim.rules['allow-apim-internal-cache-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['6381-6383'])
+      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.apim.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', '*', ['AzureLoadBalancer'], ['*'], ['*'])
+      allowRule('allow-storage-egress', nsgPriorities.groups.apim.rules['allow-storage-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Storage'], ['443'])
+      allowRule('allow-sql-egress', nsgPriorities.groups.apim.rules['allow-sql-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Sql'], ['1433'])
+      allowRule('allow-key-vault-egress', nsgPriorities.groups.apim.rules['allow-key-vault-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureKeyVault'], ['443'])
+      allowRule('allow-monitor-egress', nsgPriorities.groups.apim.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureMonitor'], ['1886', '443'])
+      allowRule('allow-event-hubs-egress', nsgPriorities.groups.apim.rules['allow-event-hubs-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['EventHub'], ['443', '5671', '5672'])
+      allowRule('allow-entra-egress', nsgPriorities.groups.apim.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-credential-manager-egress', nsgPriorities.groups.apim.rules['allow-credential-manager-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['AzureConnectors'], ['443'])
+      allowRule('allow-internet-egress', nsgPriorities.groups.apim.rules['allow-internet-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], ['Internet'], ['80', '443'])
+      allowRule('allow-time-sync-egress', nsgPriorities.groups.apim.rules['allow-time-sync-egress'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], ['Internet'], ['123'])
+      allowRule('allow-apim-ratelimits-counter-sync-egress', nsgPriorities.groups.apim.rules['allow-apim-ratelimits-counter-sync-egress'].priority, 'Outbound', 'Udp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['4290'])
+      allowRule('allow-apim-internal-cache-egress', nsgPriorities.groups.apim.rules['allow-apim-internal-cache-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.apim], ['6381-6383'])
     ]
   }
   {
     key: 'pep'
     suffix: 'pep'
-    rules: []
+    rules: [
+    ]
   }
   {
     key: 'management'
     suffix: 'vm'
-    rules: concat([
-      allowRule('allow-approved-entra', nsgPriorities.groups.management.rules['allow-approved-entra'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureActiveDirectory'], ['443'])
-      allowRule('allow-approved-management-api', nsgPriorities.groups.management.rules['allow-approved-management-api'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureResourceManager'], ['443'])
-      allowRule('allow-approved-monitor', nsgPriorities.groups.management.rules['allow-approved-monitor'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureMonitor'], ['443'])
-      allowRule('allow-approved-agent-storage', nsgPriorities.groups.management.rules['allow-approved-agent-storage'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Storage'], ['443'])
-      allowRule('allow-web-dependencies', nsgPriorities.groups.management.rules['allow-web-dependencies'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Internet'], ['80', '443'])
-      allowRule('allow-time-sync', nsgPriorities.groups.management.rules['allow-time-sync'].priority, 'Outbound', 'Udp', [subnetPrefixes.management], ntpAddressPrefixes, ['123'])
-    ], config.?managementAdditionalSecurityRules ?? [])
+    rules: [
+      allowRule('allow-azure-resource-manager-egress', nsgPriorities.groups.management.rules['allow-azure-resource-manager-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureResourceManager'], ['443'])
+      allowRule('allow-entra-egress', nsgPriorities.groups.management.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-monitor-egress', nsgPriorities.groups.management.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureMonitor'], ['443'])
+      allowRule('allow-storage-egress', nsgPriorities.groups.management.rules['allow-storage-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Storage'], ['443'])
+      allowRule('allow-internet-egress', nsgPriorities.groups.management.rules['allow-internet-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Internet'], ['80', '443'])
+      allowRule('allow-time-sync-egress', nsgPriorities.groups.management.rules['allow-time-sync-egress'].priority, 'Outbound', 'Udp', [subnetPrefixes.management], ['Internet'], ['123'])
+    ]
   }
-
+  {
+    key: 'aca'
+    suffix: 'aca'
+    rules: [
+      allowRule('allow-appgw-http-ingress', nsgPriorities.groups.aca.rules['allow-appgw-http-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.aca], ['80', '31080'])
+      allowRule('allow-apim-https-ingress', nsgPriorities.groups.aca.rules['allow-apim-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], [subnetPrefixes.aca], ['443', '31443'])
+      allowRule('allow-azure-load-balancer-ingress', nsgPriorities.groups.aca.rules['allow-azure-load-balancer-ingress'].priority, 'Inbound', 'Tcp', ['AzureLoadBalancer'], [subnetPrefixes.aca], ['30000-32767'])
+      allowRule('allow-arm-https-egress', nsgPriorities.groups.aca.rules['allow-arm-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureResourceManager'], ['443'])
+      allowRule('allow-aca-internal-egress', nsgPriorities.groups.aca.rules['allow-aca-internal-egress'].priority, 'Outbound', '*', [subnetPrefixes.aca], [subnetPrefixes.aca], ['*'])
+      allowRule('allow-entra-egress', nsgPriorities.groups.aca.rules['allow-entra-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureActiveDirectory'], ['443'])
+      allowRule('allow-monitor-egress', nsgPriorities.groups.aca.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureMonitor'], ['443'])
+      allowRule('allow-mcr-egress', nsgPriorities.groups.aca.rules['allow-mcr-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['MicrosoftContainerRegistry'], ['443'])
+      allowRule('allow-afd-first-party-egress', nsgPriorities.groups.aca.rules['allow-afd-first-party-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['AzureFrontDoor.FirstParty'], ['443'])
+    ]
+  }
 ]
 
 // 同じNSGを「作成」と「既存参照」の両方へ宣言しないよう、先に名前を分けます。
@@ -276,6 +285,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-01-01' = {
       name: 'snet-${resourcePrefix}-aca'
       properties: {
         addressPrefix: subnetPrefixes.aca
+        networkSecurityGroup: { id: resourceId('Microsoft.Network/networkSecurityGroups', nsgResourceNames[4]) }
         routeTable: { id: portalRouteTable!.id }
         delegations: [{ name: 'containerapps', properties: { serviceName: 'Microsoft.App/environments' } }]
         defaultOutboundAccess: false
@@ -360,7 +370,7 @@ resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' = {
     } : {})
     dnsSettings: {
       enableProxy: true
-      servers: firewallSettings.?dnsServers ?? dnsServers
+      servers: []
     }
     // Keep private-destination non-SNAT; IDPS classification ranges above
     // are distinct from these SNAT private ranges.
@@ -424,7 +434,7 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
             name: 'management-time'
             ruleType: 'NetworkRule'
             sourceAddresses: [subnetPrefixes.management]
-            destinationFqdns: config.?ntpFqdns ?? ['ntp.ubuntu.com']
+            destinationFqdns: ['ntp.ubuntu.com']
             destinationPorts: ['123']
             ipProtocols: ['UDP']
           }
@@ -441,22 +451,7 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
         ], firewallSettings.?managementAdditionalNetworkRules ?? [])
       }
 
-      ...(empty(dnsServers) ? [] : [
-        {
-          name: 'allow-custom-dns'
-          priority: 220
-          ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-          action: { type: 'Allow' }
-          rules: [{
-            name: 'custom-dns'
-            ruleType: 'NetworkRule'
-            sourceAddresses: [subnetPrefixes.apim, subnetPrefixes.management]
-            destinationAddresses: dnsServers
-            destinationPorts: ['53']
-            ipProtocols: ['TCP', 'UDP']
-          }]
-        }
-      ])
+
     ]
   }
 }
@@ -623,7 +618,7 @@ output subnetIds object = {
   aca: resourceId('Microsoft.Network/virtualNetworks/subnets', vnet.name, 'snet-${resourcePrefix}-aca')
 }
 output subnetPrefixes object = subnetPrefixes
-output nsgNames object = { agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3] }
+output nsgNames object = { agw: nsgResourceNames[0], apim: nsgResourceNames[1], pep: nsgResourceNames[2], management: nsgResourceNames[3], aca: nsgResourceNames[4] }
 output routeTableNames object = { agw: routeTables[0].name, apim: routeTables[1].name, management: routeTables[2].name }
 output privateDnsZoneIds object = {
   foundryCognitive: privateDnsZones[0].id

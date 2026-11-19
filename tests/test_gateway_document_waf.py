@@ -112,8 +112,7 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
         values.update(resourceStem='test-fixture', wafPolicyIdentifier='abc123', location='japaneast', documentUploadPaths=[DOCUMENT_PATH],
                       wafMaxRequestBodySizeInKb=2000, wafRequestBodyInspectLimitInKb=2000,
                       wafCustomRules=[{'name': 'retain-custom', 'priority': 1, 'action': 'Block'}],
-                      wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}],
-                      grpcEnabled=True)
+                      wafExclusions=[{'matchVariable': 'RequestHeaderValues', 'selectorMatchOperator': 'Equals', 'selector': 'Existing'}])
         values.update(changes)
         return values
 
@@ -167,22 +166,19 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
             'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': [{'ruleId': '920420', 'state': 'Disabled'}]}, {
             'ruleGroupName': 'REQUEST-930-APPLICATION-ATTACK-LFI', 'rules': [{'ruleId': '930110', 'state': 'Disabled'}]}])
 
-    def test_document_path_keeps_the_apim_backend_and_optional_trusted_rewrite(self):
+    def test_document_path_keeps_the_apim_backend_and_permanent_trusted_rewrite(self):
         gateway_resource = next(item for item in self.resources if item['type'] == 'Microsoft.Network/applicationGateways')
-        for grpc in (False, True):
-            properties = self.value(gateway_resource['properties'], self.parameters(grpcEnabled=grpc))
-            mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
-            selected = [item for item in mapping['pathRules'] if item['name'] == DOCUMENT_RULE_NAME]
-            self.assertEqual(len(selected), 1)
-            rule = selected[0]['properties']
-            self.assertEqual(rule['paths'], [DOCUMENT_PATH])
-            self.assertTrue(rule['firewallPolicy']['id'].endswith('/wafpol-g-document-upload-abc123'))
-            self.assertEqual(rule['backendAddressPool'], mapping['defaultBackendAddressPool'])
-            self.assertEqual(rule['backendHttpSettings'], mapping['defaultBackendHttpSettings'])
-            if grpc:
-                self.assertEqual(rule['rewriteRuleSet'], mapping['defaultRewriteRuleSet'])
-            else:
-                self.assertNotIn('rewriteRuleSet', rule)
+        properties = self.value(gateway_resource['properties'], self.parameters())
+        mapping = next(item['properties'] for item in properties['urlPathMaps'] if item['name'] == 'pathmap-protocols')
+        selected = [item for item in mapping['pathRules'] if item['name'] == DOCUMENT_RULE_NAME]
+        self.assertEqual(len(selected), 1)
+        rule = selected[0]['properties']
+        self.assertEqual(rule['paths'], [DOCUMENT_PATH])
+        self.assertTrue(rule['firewallPolicy']['id'].endswith('/wafpol-g-document-upload-abc123'))
+        self.assertEqual(rule['backendAddressPool'], mapping['defaultBackendAddressPool'])
+        self.assertEqual(rule['backendHttpSettings'], mapping['defaultBackendHttpSettings'])
+        self.assertEqual(rule['rewriteRuleSet'], mapping['defaultRewriteRuleSet'])
+        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
     def test_external_policy_standard_sku_and_unpublished_paths_do_not_create_document_policy(self):
         document = self.resource("g-document-upload")

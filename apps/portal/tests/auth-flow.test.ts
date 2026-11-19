@@ -11,11 +11,14 @@ function responseCookies(response: Response): string {
   return response.headers.getSetCookie().map((cookie) => cookie.split(";", 1)[0]).join("; ");
 }
 
-test("認証開始から本人登録・再利用・ログアウトまでをBetter Auth本体で確認する", async () => {
+for (const backendHttp of [false, true]) {
+test(`認証開始・本人登録・再利用・ログアウトを${backendHttp ? "ACA HTTP後段" : "公開HTTPS"}で確認する`, async () => {
   const tenantId = "11111111-1111-4111-8111-111111111111";
   const clientId = "22222222-2222-4222-8222-222222222222";
   const objectId = "33333333-3333-4333-8333-333333333333";
   const baseURL = "https://portal.example.invalid";
+  const requestOrigin = backendHttp ? "http://aca.internal.example.invalid" : baseURL;
+  const forwarded: Record<string, string> = backendHttp ? { "x-forwarded-proto": "http", "x-forwarded-host": "aca.internal.example.invalid" } : {};
   const database: Record<string, Record<string, unknown>[]> = {
     portalUser: [], portalAccount: [], portalSession: [], portalVerification: [],
   };
@@ -35,8 +38,8 @@ test("認証開始から本人登録・再利用・ログアウトまでをBette
   provider.validateAuthorizationCode = async () => ({ idToken, accessToken: "transient-test-token", scopes: ["openid", "profile", "email"] });
   provider.getUserInfo = createMicrosoftProfileResolver({ tenantId, clientId }, async () => keys.publicKey);
 
-  const start = await auth.handler(new Request(`${baseURL}/api/auth/sign-in/social`, {
-    method: "POST", headers: { "Content-Type": "application/json", Origin: baseURL },
+  const start = await auth.handler(new Request(`${requestOrigin}/api/auth/sign-in/social`, {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: baseURL, ...forwarded },
     body: JSON.stringify({ provider: "microsoft", callbackURL: "/ja/models", errorCallbackURL: "/ja/login?error=test" }),
   }));
   assert.equal(start.status, 200);
@@ -44,12 +47,13 @@ test("認証開始から本人登録・再利用・ログアウトまでをBette
   const loginURL = new URL(startData.url);
   assert.deepEqual(loginURL.searchParams.get("scope")?.split(" ").sort(), ["email", "openid", "profile"]);
   assert.equal(loginURL.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(loginURL.searchParams.get('redirect_uri'), `${baseURL}/api/auth/callback/microsoft`);
   const state = loginURL.searchParams.get("state");
   assert.ok(state);
   assert.equal(database.portalVerification.length, 1);
 
-  const callbackURL = `${baseURL}/api/auth/callback/microsoft?code=test-code&state=${encodeURIComponent(state)}`;
-  const callback = await auth.handler(new Request(callbackURL, { headers: { Cookie: responseCookies(start) } }));
+  const callbackURL = `${requestOrigin}/api/auth/callback/microsoft?code=test-code&state=${encodeURIComponent(state)}`;
+  const callback = await auth.handler(new Request(callbackURL, { headers: { Cookie: responseCookies(start), ...forwarded } }));
   assert.equal(callback.status, 302);
   assert.equal(callback.headers.get("location"), "/ja/models");
   assert.equal(database.portalUser.length, 1);
@@ -61,7 +65,7 @@ test("認証開始から本人登録・再利用・ログアウトまでをBette
   assert.ok(callback.headers.getSetCookie().some((cookie) => cookie.includes("HttpOnly") && cookie.includes("Secure")));
 
   const cookie = responseCookies(callback);
-  const sessionRequest = () => new Request(`${baseURL}/api/auth/get-session`, { headers: { Cookie: cookie } });
+  const sessionRequest = () => new Request(`${requestOrigin}/api/auth/get-session`, { headers: { Cookie: cookie, ...forwarded } });
   const session = await auth.handler(sessionRequest());
   assert.equal(session.status, 200);
   const current = await session.json() as { user: { entraObjectId: string } };
@@ -73,9 +77,10 @@ test("認証開始から本人登録・再利用・ログアウトまでをBette
   assert.equal(database.portalSession.length, sessionCount);
   assert.equal(database.portalUser.length, 1);
 
-  const logout = await auth.handler(new Request(`${baseURL}/api/auth/sign-out`, {
-    method: "POST", headers: { Cookie: cookie, Origin: baseURL, "Content-Type": "application/json" }, body: "{}",
+  const logout = await auth.handler(new Request(`${requestOrigin}/api/auth/sign-out`, {
+    method: "POST", headers: { Cookie: cookie, Origin: baseURL, "Content-Type": "application/json", ...forwarded }, body: "{}",
   }));
   assert.equal(logout.status, 200);
   assert.equal(await (await auth.handler(sessionRequest())).json(), null);
 });
+}

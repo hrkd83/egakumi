@@ -41,7 +41,8 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (!existingPortalApp) 
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Single'
-      ingress: { external: true, targetPort: 80, transport: 'http', allowInsecure: false }
+      // 公開HTTPSはAppGWで終端します。閉域の後段HTTP80を初回から受け付けます。
+      ingress: { external: true, targetPort: 80, transport: 'http', allowInsecure: true }
       registries: [{ server: registry.properties.loginServer, identity: pullIdentityId }]
     }
     template: {

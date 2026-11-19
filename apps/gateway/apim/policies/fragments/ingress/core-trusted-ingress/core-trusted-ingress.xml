@@ -1,6 +1,6 @@
 <fragment>
   <!-- 目的：HTTP要求が、WAFで検査するAppGW入口を通ったことを確認します。利用者の認証は後続の共通認証処理で行います。 -->
-  <!-- 処理：入口確認が必要なHTTP要求だけを検査します。専用gRPCとして設定された要求は、この検査を通さず後続へ進めます。 -->
+  <!-- 処理：入口確認が必要なHTTP要求のヘッダーを検査し、API固有の変数で検査を免除しません。 -->
   <choose id="core-trusted-ingress">
     <when condition="@{
         __CORE_TRUSTED_INGRESS_CSHARP__

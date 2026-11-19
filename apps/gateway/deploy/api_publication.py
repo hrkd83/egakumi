@@ -119,16 +119,17 @@ def prepare_plan(config: dict, state: dict) -> dict:
     except (ValueError, KeyError, TypeError):
         raise ValueError("Certificate identity client ID is invalid") from None
     grpc_lifecycle.require_shared_ingress(config, outputs)
-    grpc_on = grpc_lifecycle.enabled(config)
     ticket_on = grpc_lifecycle.owner_ticket_enabled(config)
     features = outputs.get("ingressSecrets", {})
-    if (grpc_on or ticket_on) and (features.get("enabled") is not True or
+    if (features.get("enabled") is not True or features.get("l7IngressEnabled") is not True or
             (ticket_on and features.get("ownerTicketEnabled", features.get("realtimeEnabled")) is not True)):
         raise ValueError("Ingress/ticket features must be prepared by the foundation deployment")
     if not config.get("apiDefinitions"):
         raise ValueError("API publication requires resolved API definitions")
     authentication = common_authentication_settings(config)
     for api in config["apiDefinitions"]:
+        if api.get("apiType") not in ("http", "websocket", "mcp") or "grpc" in api:
+            raise ValueError("API publication supports HTTP, WebSocket and MCP only; retired gRPC inputs are not accepted")
         if not _same(api.get("subscriptionKeyHeader"), authentication["core-subscription-key-header"]):
             raise ValueError("API key headers must match the foundation gateway.authentication settings")
     resolved, external_hosts = [], set()
@@ -178,7 +179,7 @@ def prepare_plan(config: dict, state: dict) -> dict:
             "user": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60},
             "subscriptionKey": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []},
             "application": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []}}),
-        "l7IngressSecretIdentifier": vault_base + grpc_lifecycle.SECRET_NAME if grpc_on else "",
+        "l7IngressSecretIdentifier": vault_base + grpc_lifecycle.SECRET_NAME,
         "realtimeTicketSecretIdentifier": vault_base + grpc_lifecycle.TICKET_NAME if ticket_on else ""}
     if entra["enabled"]:
         params["entraAuthentication"] = entra
@@ -397,6 +398,8 @@ def validate_publication_template(template):
     message = "Only the API publication module may be deployed"
     if not isinstance(template, dict):
         raise ValueError(message)
+    if "coreNativeGrpc" in json.dumps(template):
+        raise ValueError("API publication must not generate retired gRPC ingress exemptions")
     resources = template.get("resources")
     symbolic = isinstance(resources, dict)
     if symbolic:
@@ -415,6 +418,9 @@ def validate_publication_template(template):
                 or ("existing" in resource and type(resource["existing"]) is not bool)):
             raise ValueError(message)
         resource_type = resource["type"].lower()
+        if (resource_type == "microsoft.apimanagement/service/apis"
+                and resource.get("properties", {}).get("type") == "grpc"):
+            raise ValueError("API publication must not generate retired gRPC APIs")
         if resource_type == "microsoft.apimanagement/service/policies":
             raise ValueError("API publication must preserve the APIM global policy")
         if (resource_type == "microsoft.apimanagement/service/namedvalues"
@@ -888,8 +894,6 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     _owned(apim, plan["apimId"], config, "API Management")
     if apim.get("properties", {}).get("virtualNetworkType") != "Internal":
         raise ValueError("The existing internal API Management deployment is required")
-    if grpc_lifecycle.enabled(config) and str(apim.get("properties", {}).get("customProperties", {}).get(grpc_lifecycle.HTTP2, "")).lower() != "true":
-        raise ValueError("Foundation must enable HTTP/2 before publishing native gRPC")
     verify_subscription_products(plan, transport)
     authentication_policy = verify_common_authentication(plan, transport)
     verify_credential_login(config, plan, apim, transport)

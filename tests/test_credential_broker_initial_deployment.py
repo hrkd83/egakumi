@@ -120,7 +120,7 @@ class InitialDeploymentTests(unittest.TestCase):
             for path in ('credential_broker/caller.py', 'sql/004_verified_user_caller.sql'):
                 self.assertIn(path, archive.getnames())
                 self.assertEqual(archive.extractfile(path).read(),
-                                 (ROOT / 'apps/gateway/credential-broker' / path).read_bytes())
+                                 (ROOT / 'apps/gateway/credential-broker' / path).read_bytes().replace(b'\r\n', b'\n'))
             self.assertNotIn('tests/test_verified_user_caller.py', archive.getnames())
             self.assertIn(b'Version=4', archive.extractfile('sql/004_verified_user_caller.sql').read())
 

@@ -6,10 +6,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 from test_api_protocols import CSHARP, actual_expression
 from test_gateway_limits_telemetry import PWSH
 from configuration_fixtures import api_fixture, configuration, CORE
+from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
 
 TENANT = "11111111-1111-4111-8111-111111111111"
 PERSON = "22222222-2222-4222-8222-222222222222"
@@ -45,6 +47,7 @@ class StandardAuthorizationExpressionTests(unittest.TestCase):
         base = CSHARP.split("public static class ExpandedPolicyFixture")[0]
         source = base + r'''
 public static class StandardAuthFixture {
+ public static string CommonKeyValidation(Context context) { __COMMON_KEY_VALIDATION__ }
  public static string Http(Context context) { __HTTP__ }
  public static string Protocol(Context context) { __PROTOCOL__ }
  public static string Mcp(Context context) { __MCP__ }
@@ -57,10 +60,19 @@ public static class StandardAuthFixture {
    if (item["claims"] is JObject) {
     c.Request.Headers["Authorization"] = new[] {"Bearer SYNTHETIC_UNTRUSTED_TOKEN"};
    }
-   if (item["subscription"] != null) {
+   if (item["subscription"]?.Type == JTokenType.String) {
     c.Subscription = new Named {Id=(string)item["subscription"]};
+    c.Product = new Named {Id="standard-users"};
     c.Request.Headers["Ocp-Apim-Subscription-Key"] = new[] {"SYNTHETIC_KEY"};
    }
+   var failure = CommonKeyValidation(c);
+   if (!String.IsNullOrEmpty(failure)) {
+    var denied = new JObject(new JProperty("allowed", false));
+    results[(string)item["id"]] = new JObject(new JProperty("http", denied.DeepClone()),
+       new JProperty("protocol", denied.DeepClone()), new JProperty("mcp", denied.DeepClone()));
+    continue;
+   }
+   c.Variables["gatewayCommonAuthenticationValidated"] = true;
    results[(string)item["id"]] = new JObject(new JProperty("http", JObject.Parse(Http(c))),
       new JProperty("protocol", JObject.Parse(Protocol(c))), new JProperty("mcp", JObject.Parse(Mcp(c))));
   }
@@ -69,6 +81,12 @@ public static class StandardAuthFixture {
 }'''
         for marker, filename in (("__HTTP__", "gateway.xml"), ("__PROTOCOL__", "protocol.xml"), ("__MCP__", "mcp.xml")):
             source = source.replace(marker, actual_expression(filename, "gatewayDecision"))
+        common = ET.fromstring(render_common_authentication_fragments(entra_enabled=False)['core-common-authentication'])
+        key_validation = common.find("./choose/otherwise/set-variable[@name='gatewayAuthenticationFailure']").get('value').strip()
+        self_expression = key_validation[2:-1]
+        if not key_validation.startswith('@{') or not key_validation.endswith('}'):
+            raise AssertionError('Expected the actual inherited key validation expression')
+        source = source.replace('__COMMON_KEY_VALIDATION__', self_expression)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "policy.cs").write_text(source)

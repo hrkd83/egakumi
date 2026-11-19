@@ -1,14 +1,9 @@
-"""通常の構築後に、gRPC・Realtime用の入口設定を仕上げる。
+"""通常HTTP(S)の入口保護と、所有者チケット・HTTPS証明書参照を仕上げる。
 
-設定された機能にだけ、互いに独立したランダムな資格情報をローカルに準備し、
-構築後に今回のAPIM・Key Vault・マネージドIDと一致することを照合する。
-VMでの証明書発行より先にAPIM本体が必要なため、証明書発行後にAPIMの
-カスタムドメイン・HTTP/2設定の反映をAzure ARMで確認する。
-Named ValueのKey Vault参照は、Gateway資材を配備した後に別途確認する。
-VMへAPIMの管理権限を与える必要はない。既存の別ドメイン設定は保持する。
-prepareはローカルファイル操作、configure_endpointはAzure設定変更である。
-結果は管理面の設定確認であり、gRPCの疎通やWebRTC通話の合格とは別に扱う。
-Graph操作や追加の試験専用基盤は作らない。
+入口secretは常設し、所有者チケットは選択された通常APIの契約から判断する。
+APIM HTTPS保守は既定FQDN/SNIを使い、旧専用custom domainだけを所有照合後に撤去する。
+APIM受信HTTP/2はBicepと同じfalseに限定更新し、他customPropertiesを保持する。
+構築/運用の設定読戻しと実疎通の成功は区別する。
 """
 from __future__ import annotations
 
@@ -30,40 +25,26 @@ API = "2024-05-01"
 HTTP2 = "Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2"
 SECRET_NAME = "core-l7-ingress-secret"
 TICKET_NAME = "core-realtime-ticket-key"
-PUBLIC_GRPC_PORT = 8443
-APIM_GRPC_PORT = 443
 
 
 def enabled(config: dict) -> bool:
-    """常設入口の内部設定を検査し、無効化・別ポートの値を拒否する。"""
-    settings = config.get("gateway", {}).get("grpc", {})
-    if not isinstance(settings, dict) or settings.get("enabled", True) is not True:
-        raise ValueError("The shared gRPC ingress cannot be disabled")
-    for name, expected in (("publicPort", PUBLIC_GRPC_PORT), ("backendPort", APIM_GRPC_PORT)):
-        value = settings.get(name, expected)
-        if type(value) is not int or value != expected:
-            raise ValueError("The shared gRPC ingress requires public port 8443 and APIM port 443")
+    """通常HTTP(S)の入口保護は初期構成で常設。廃止した専用入力は拒否する。"""
+    if "grpc" in config.get("gateway", {}):
+        raise ValueError("The retired gateway.grpc input is unsupported")
     return True
 
 
 def require_shared_ingress(config: dict, outputs: dict) -> None:
-    """固定入口を配備した出力か照合し、古い基盤へのAPI公開を止める。通信は行わない。"""
+    """通常HTTP(S)入口保護を配備した出力か照合する。通信は行わない。"""
     enabled(config)
-    gateway = config.get("gateway", {})
-    host = gateway.get("publicHostName")
-    declared_host = gateway.get("grpc", {}).get("publicHostName", host)
-    applied = outputs.get("grpc", {})
-    secrets_state = outputs.get("ingressSecrets", {})
-    expected_url = f"https://{host}:{PUBLIC_GRPC_PORT}"
-    if (not isinstance(host, str) or not host or declared_host != host
+    host = config.get("gateway", {}).get("publicHostName")
+    applied = outputs.get("ingressSecrets", {})
+    if (not isinstance(host, str) or not host
             or not isinstance(applied, dict) or applied.get("enabled") is not True
+            or applied.get("l7IngressEnabled") is not True
             or not isinstance(applied.get("publicHostName"), str)
-            or applied["publicHostName"].casefold() != host.casefold()
-            or not isinstance(applied.get("publicUrl"), str)
-            or applied["publicUrl"].rstrip("/").casefold() != expected_url.casefold()
-            or not isinstance(secrets_state, dict) or secrets_state.get("enabled") is not True
-            or secrets_state.get("grpcEnabled") is not True):
-        raise ValueError("The shared gRPC ingress on port 8443 must be provisioned before API publication; update the Core first")
+            or applied["publicHostName"].casefold() != host.casefold()):
+        raise ValueError("The permanent HTTP(S) ingress protection must be provisioned before API publication; update the Core first")
 
 
 def realtime_enabled(config: dict) -> bool:
@@ -160,17 +141,17 @@ def apim_name_matches(config: dict, name: str) -> bool:
 def _own_apim(config: dict, outputs: dict) -> tuple[str, dict]:
     """配備出力のAPIM IDを命名・配置先・撤去記録と照合する。"""
     require_shared_ingress(config, outputs)
-    grpc = outputs.get("grpc" if enabled(config) else "ingressSecrets", {})
+    grpc = outputs.get("ingressSecrets", {})
     if not isinstance(grpc, dict) or grpc.get("enabled") is not True:
-        raise ValueError("gRPC bootstrap outputs are missing")
+        raise ValueError("Ingress bootstrap outputs are missing")
     apim_id = grpc.get("apimId", "")
     prefix = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}/providers/Microsoft.ApiManagement/service/"
     if (not isinstance(apim_id, str) or not apim_id.casefold().startswith(prefix.casefold())
             or not apim_name_matches(config, apim_id[len(prefix):])):
-        raise ValueError("gRPC bootstrap targeted a different API Management service")
+        raise ValueError("Ingress bootstrap targeted a different API Management service")
     cleanup_id = outputs.get("cleanup", {}).get("serviceResourceIds", {}).get("apim")
     if not isinstance(cleanup_id, str) or cleanup_id.lower() != apim_id.lower():
-        raise ValueError("gRPC bootstrap service differs from cleanup ownership")
+        raise ValueError("Ingress bootstrap service differs from cleanup ownership")
     return apim_id, grpc
 
 
@@ -272,70 +253,141 @@ def _ready_service(apim_id: str, transport, *, sleep, deadline) -> dict:
         sleep(min(10, remaining))
 
 
-def _configure_domain(config: dict, grpc: dict, outputs: dict, apim_id: str, transport, *, sleep, deadline) -> None:
-    """発行済みの同一ホスト証明書をAPIMへ結び、他のドメインを残してHTTP/2を有効にする。"""
-    host = config["gateway"]["grpc"]["publicHostName"]
-    if host != config["gateway"]["publicHostName"] or grpc.get("publicHostName") != host:
-        raise ValueError("gRPC hostname must match the certificate prepared for this environment")
-    uri = urlparse(grpc.get("certificateSecretUri", ""))
+def _native_service_properties(body: dict, apim_id: str, native_host: str) -> dict:
+    """所有APIMの既定HTTPS URLとInternal VNetを実応答で照合する。"""
+    if (not isinstance(body, dict)
+            or str(body.get("id", "")).casefold() != apim_id.casefold()
+            or str(body.get("name", "")).casefold() != apim_id.rsplit("/", 1)[-1].casefold()
+            or str(body.get("type", "")).casefold() != "microsoft.apimanagement/service"):
+        raise ValueError("Ingress endpoint response identifies a different API Management service")
+    properties = body.get("properties")
+    if (not isinstance(properties, dict) or properties.get("virtualNetworkType") != "Internal"
+            or not isinstance(properties.get("gatewayUrl"), str)
+            or properties["gatewayUrl"].casefold() != "https://" + native_host.casefold()):
+        raise ValueError("Ingress endpoint requires the owned internal API Management native HTTPS gateway")
+    custom = properties.get("customProperties", {})
+    if not isinstance(custom, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in custom.items()):
+        raise ValueError("API Management custom properties cannot be preserved")
+    return properties
+
+
+def _writable_domains(domains: list, native_host: str) -> list[dict]:
+    """既知の非秘密な証明書参照だけを保全し、未知形式をPATCHへ流さない。"""
+    writable = {"type", "hostName", "keyVaultId", "identityClientId", "defaultSslBinding",
+                "negotiateClientCertificate", "certificateSource"}
+    readonly = {"certificate", "certificateStatus", "encodedCertificate", "certificatePassword"}
+    if not isinstance(domains, list):
+        raise ValueError("API Management custom domain inventory is invalid")
+    result, seen = [], set()
+    for domain in domains:
+        if (not isinstance(domain, dict) or set(domain) - writable - readonly
+                or domain.get("encodedCertificate") is not None or domain.get("certificatePassword") is not None
+                or domain.get("type") not in ("Proxy", "Portal", "Management", "Scm", "DeveloperPortal", "ConfigurationApi")
+                or not isinstance(domain.get("hostName"), str)
+                or not re.fullmatch(r"(?:\*\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", domain["hostName"])
+                or len(domain["hostName"]) > 253
+                or any(key in domain and type(domain[key]) is not bool for key in ("defaultSslBinding", "negotiateClientCertificate"))
+                or domain.get("identityClientId") is not None and not re.fullmatch(r"[0-9a-fA-F-]{36}", str(domain["identityClientId"]))):
+            raise ValueError("API Management domain cannot be preserved without unsupported or private input")
+        identity = (domain["type"], domain["hostName"].casefold())
+        if identity in seen:
+            raise ValueError("API Management custom domain identity is ambiguous")
+        seen.add(identity)
+        source, vault_uri = domain.get("certificateSource"), domain.get("keyVaultId")
+        if vault_uri:
+            if not isinstance(vault_uri, str) or any(ord(char) <= 32 for char in vault_uri):
+                raise ValueError("API Management certificate reference cannot be preserved")
+            uri = urlparse(vault_uri)
+            if (source not in (None, "KeyVault") or uri.scheme != "https"
+                    or not re.fullmatch(r"[a-z0-9-]+\.vault\.azure\.net(?:[:]443)?", uri.netloc, re.IGNORECASE)
+                    or uri.query or uri.fragment or uri.params
+                    or not re.fullmatch(r"/secrets/[A-Za-z0-9-]+(?:/[A-Za-z0-9-]+)?/?", uri.path)):
+                raise ValueError("API Management certificate reference cannot be preserved")
+        elif source not in (None, "BuiltIn") or identity != ("Proxy", native_host.casefold()):
+            raise ValueError("API Management nonowned certificate requires explicit preservation review")
+        item = {key: copy.deepcopy(value) for key, value in domain.items() if key in writable and value is not None}
+        item.setdefault("certificateSource", "KeyVault" if vault_uri else "BuiltIn")
+        item.setdefault("negotiateClientCertificate", False)
+        item.setdefault("defaultSslBinding", False)
+        result.append(item)
+    return result
+
+
+def _legacy_owned_domain_uri(config: dict, feature: dict, outputs: dict) -> str:
+    """旧専用bindingの所有権だけを証明書参照で照合し、証明書本文は取得しない。"""
     vault_id = outputs.get("cleanup", {}).get("serviceResourceIds", {}).get("keyVault", "")
     expected_vault = (f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['svc']}"
                       f"/providers/Microsoft.KeyVault/vaults/kv-{config['resourceStem']}")
     if not isinstance(vault_id, str) or vault_id.casefold() != expected_vault.casefold():
-        raise ValueError("gRPC certificate targeted a different Key Vault")
-    vault_name = vault_id.rsplit("/", 1)[-1] if isinstance(vault_id, str) else ""
-    if (uri.scheme != "https" or uri.hostname != vault_name + ".vault.azure.net" or uri.port not in (None, 443)
-        or uri.username is not None or uri.password is not None or uri.query or uri.fragment
-        or uri.path.rstrip("/") != "/secrets/" + config["certificate"]["certificateName"]):
-        raise ValueError("gRPC certificate must use this environment's versionless Key Vault certificate secret")
-    # Key Vault firewall 有効時の APIM UAMI 非対応を避け、APIM 自身の ID を使う。
-    # null を明示して、以前の UAMI 指定が残った同一ドメインも更新する。
-    # https://learn.microsoft.com/azure/api-management/api-management-howto-use-managed-service-identity
-    # 公開ドメインを、SNI のない接続でも選択する既定の証明書にします。
-    # Azure はこの構成を true として読み返すため、false を要求し続けると、
-    # 設定済みでも再 PATCH を繰り返します。他のドメイン設定は下の kept で保持します。
-    desired = {"type": "Proxy", "hostName": host, "keyVaultId": uri.geturl().rstrip("/"),
-               "identityClientId": None, "defaultSslBinding": True, "negotiateClientCertificate": False}
+        raise ValueError("Legacy API Management certificate targeted a different Key Vault")
+    expected = "https://" + f"kv-{config['resourceStem']}.vault.azure.net/secrets/" + config["certificate"]["certificateName"]
+    # The certificate resource output can include the optional final slash on
+    # a versionless Secret URI. Accept that exact form, never another secret,
+    # version, query or extra path segment.
+    if feature.get("certificateSecretUri") not in (expected, expected + "/"):
+        raise ValueError("Legacy API Management certificate must use the exact owned versionless Key Vault secret")
+    return expected
+
+
+def _retire_owned_domain(config: dict, feature: dict, outputs: dict, apim_id: str, transport,
+                         *, sleep, deadline, mutation_recorder=None) -> dict:
+    """旧gRPCの所有bindingだけを除去し、native HTTPS・他domain・他設定を保全する。"""
+    native_host = apim_name(config) + ".azure-api.net"
+    applied_host = feature.get("apimGatewayHost", native_host)
+    if not isinstance(applied_host, str) or applied_host.casefold() != native_host.casefold():
+        raise ValueError("Ingress endpoint output identifies a different native API Management gateway")
     current_response = _ready_service(apim_id, transport, sleep=sleep, deadline=deadline)
-    current = _ok(current_response, "Read API Management custom domains")
-    properties = current.get("properties", {})
-    if properties.get("virtualNetworkType") != "Internal":
-        raise ValueError("gRPC bootstrap requires the owned internal API Management gateway")
-    domains = properties.get("hostnameConfigurations", [])
-    if not isinstance(domains, list) or any(not isinstance(item, dict) for item in domains):
-        raise ValueError("API Management custom domain inventory is invalid")
-    own = [item for item in domains if item.get("type") == "Proxy" and str(item.get("hostName", "")).lower() == host.lower()]
-    if len(own) > 1 or any(str(item.get("keyVaultId", "")).rstrip("/") not in ("", desired["keyVaultId"]) for item in own):
-        raise ValueError("An existing API Management hostname has a different certificate owner")
-    changed = (not own or any(own[0].get(key) != value for key, value in desired.items())
-               or str(properties.get("customProperties", {}).get(HTTP2, "")).lower() != "true")
-    # APIM作成時はまだ証明書がないため、発行後にこの対象ドメインだけを反映する。
-    # 別のカスタムドメインや既存customPropertiesは保持してPATCHする。
+    current = _ok(current_response, "Read API Management native endpoint")
+    properties = _native_service_properties(current, apim_id, native_host)
+    domains = _writable_domains(properties.get("hostnameConfigurations"), native_host)
+    own = [item for item in domains if item["type"] == "Proxy"
+           and item["hostName"].casefold() == config["gateway"]["publicHostName"].casefold()]
+    if own:
+        expected_uri = _legacy_owned_domain_uri(config, feature, outputs)
+        if len(own) != 1 or own[0].get("keyVaultId") != expected_uri:
+            raise ValueError("An existing API Management hostname has a different certificate owner")
+    kept = [copy.deepcopy(item) for item in domains if item not in own]
+    custom = {**properties.get("customProperties", {}), HTTP2: "false"}
+    # Removing the only custom Proxy makes the immutable native endpoint the
+    # default TLS binding. Preserve nonowned custom Proxy defaults unchanged.
+    if own and not any(item["type"] == "Proxy" and item["hostName"].casefold() != native_host.casefold() for item in kept):
+        for item in kept:
+            if item["type"] == "Proxy" and item["hostName"].casefold() == native_host.casefold():
+                item["defaultSslBinding"] = True
+    changed = bool(own) or properties.get("customProperties", {}).get(HTTP2) != "false"
+    mutation = {"apimId": apim_id, "ownedDomainRemoved": bool(own), "apimHttp2": "false", "runtimeVerified": False}
     if changed:
-        kept = [copy.deepcopy(item) for item in domains if item not in own]
-        custom = {**properties.get("customProperties", {}), HTTP2: "true"}
-        headers = {}
-        etag = current.get("etag") or next((value for key, value in current_response.get("headers", {}).items() if key.lower() == "etag"), None)
-        if isinstance(etag, str) and etag and etag.strip('"') != "*":
-            headers["If-Match"] = etag
+        if not callable(mutation_recorder):
+            raise ValueError("Ingress endpoint mutation requires a protected per-attempt journal")
+        # APIM returns an unquoted Base64 version in the JSON body and a proper
+        # quoted HTTP ETag in the header. Conditional requests use that header.
+        etag = next((value for key, value in current_response.get("headers", {}).items() if key.lower() == "etag"), None)
+        if etag is None:
+            etag = current.get("etag")
+        if (not isinstance(etag, str) or len(etag) > 512
+                or not re.fullmatch(r'(?:W/)?"[^"\x00-\x20\x7f,]+"|[A-Za-z0-9._:-]+', etag)
+                or etag in ('*', '"*"', 'W/"*"')):
+            raise ValueError("Ingress endpoint mutation requires the owned service ETag")
+        mutation_recorder("planned", {**mutation, "hostnameConfigurations": kept, "customProperties": custom})
         operation = transport.request("PATCH", apim_id + "?api-version=" + API,
-            {"properties": {"hostnameConfigurations": kept + [desired], "customProperties": custom}}, headers=headers)
-        _ok(operation, "Update API Management custom domain", (200, 201, 202, 204))
-    # サービス更新の完了 URL は Azure 側で形式が変わる場合があるため追いません。
-    # 今回所有する APIM 本体だけを GET し、進行状態と設定値の両方で完了を確認します。
-    # PATCH 直後に古い Succeeded が返っても、設定が未反映なら期限内で待ち続けます。
-    # 受付済みの PATCH を再送せず、Named Value の更新とは別に扱います。
+            {"properties": {"hostnameConfigurations": kept, "customProperties": custom}}, headers={"If-Match": etag})
+        _ok(operation, "Retire API Management legacy endpoint", (200, 201, 202, 204))
+        mutation_recorder("accepted", mutation)
+    # Follow only the already-owned service, never a completion-link target.
+    # A stale Succeeded response cannot stand in for the actual settings.
     while True:
-        observed = _ok(_ready_service(apim_id, transport, sleep=sleep, deadline=deadline), "Verify API Management custom domain")
-        observed_properties = observed.get("properties", {})
-        matched = [item for item in observed_properties.get("hostnameConfigurations", []) if all(item.get(key) == value for key, value in desired.items())]
-        if any(str(item.get("certificateStatus", "")).lower() == "failed" for item in matched):
-            raise ValueError("API Management custom domain certificate did not succeed")
-        if matched and str(observed_properties.get("customProperties", {}).get(HTTP2, "")).lower() == "true":
-            break
+        observed = _ok(_ready_service(apim_id, transport, sleep=sleep, deadline=deadline), "Verify API Management native endpoint")
+        observed_properties = _native_service_properties(observed, apim_id, native_host)
+        actual_domains = _writable_domains(observed_properties.get("hostnameConfigurations"), native_host)
+        expected_domains = sorted(kept, key=lambda item: (item["type"], item["hostName"].casefold()))
+        actual_domains.sort(key=lambda item: (item["type"], item["hostName"].casefold()))
+        if actual_domains == expected_domains and observed_properties.get("customProperties", {}) == custom:
+            if changed:
+                mutation_recorder("verified", mutation)
+            return {"apimGatewayHost": native_host, "legacyCustomDomainRetired": True, "mutationApplied": changed}
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise ValueError("API Management custom domain/HTTP2 readback is still pending; no additional update was requested")
+            raise ValueError("API Management endpoint/HTTP2 readback is still pending; no additional update was requested")
         sleep(min(10, remaining))
 
 
@@ -353,31 +405,27 @@ def _refresh_secret(apim_id: str, name: str, vault_name: str, transport, *, slee
         raise ValueError("Ingress named value refresh was not confirmed")
 
 
-def configure_endpoint(config: dict, outputs: dict, transport, *, sleep=time.sleep, timeout_seconds=3600) -> dict:
-    """Core配備後にAPIMの公開ドメイン・HTTP/2だけを仕上げる。
+def configure_endpoint(config: dict, outputs: dict, transport, *, sleep=time.sleep, timeout_seconds=3600, mutation_recorder=None) -> dict:
+    """Core配備後、旧専用bindingを撤去してAPIM native HTTPSとHTTP/2設定を照合する。
 
-    APIM作成→プライベート接続→VM証明書発行→APIM参照反映という依存順を守る。
-    VMへAPIMの管理権限を渡さず、限定したARM更新で循環依存を避ける。
-    この結果だけでgRPCやWebRTCの実通信が合格したとは判断しない。
+    新規APIMへ公開証明書を結び付けず、通常HTTPのL7保護を独立して維持する。
+    変更前後を保護journalへ記録し、この設定確認を実通信の成功とは扱わない。
     """
-    grpc_on = enabled(config)
-    if not grpc_on:
-        return {"enabled": False}
+    enabled(config)
     apim_id, feature = _own_apim(config, outputs)
     deadline = time.monotonic() + timeout_seconds
-    _configure_domain(config, feature, outputs, apim_id, transport, sleep=sleep, deadline=deadline)
-    return {"enabled": True, "grpcEnabled": True,
-            "status": "management-plane-configured", "runtimeVerified": False,
-            "certificateRenewal": "versionless-key-vault-reference",
-            "certificateRefresh": "observe-sync-and-expiry-in-runtime-test",
-            "trustBoundary": "AppGW configuration readers are trusted; TCP traffic has no WAF inspection"}
+    result = _retire_owned_domain(config, feature, outputs, apim_id, transport,
+                                  sleep=sleep, deadline=deadline, mutation_recorder=mutation_recorder)
+    return {**result, "enabled": True, "l7IngressEnabled": True,
+            "apimHttp2": "false", "status": "management-plane-configured", "runtimeVerified": False,
+            "trustBoundary": "AppGW HTTP(S) rewrite and APIM ingress validation"}
 
 
 def configure_named_values(config: dict, outputs: dict, transport, *, sleep=time.sleep, timeout_seconds=600) -> dict:
     """Gateway資材の反映後に、入口・チケット鍵のKey Vault参照を確認する。"""
-    grpc_on, realtime_on = enabled(config), realtime_enabled(config)
+    l7_on, realtime_on = enabled(config), realtime_enabled(config)
     ticket_on = owner_ticket_enabled(config)
-    if not grpc_on and not ticket_on:
+    if not l7_on and not ticket_on:
         return {"enabled": False}
     apim_id, _ = _own_apim(config, outputs)
     vault_id = outputs.get("cleanup", {}).get("serviceResourceIds", {}).get("keyVault", "")
@@ -386,12 +434,10 @@ def configure_named_values(config: dict, outputs: dict, transport, *, sleep=time
         raise ValueError("Ingress secrets targeted a different Key Vault")
     vault_name = vault_id.rsplit("/", 1)[-1]
     deadline = time.monotonic() + timeout_seconds
-    names = ([SECRET_NAME] if grpc_on else []) + ([TICKET_NAME] if ticket_on else [])
+    names = ([SECRET_NAME] if l7_on else []) + ([TICKET_NAME] if ticket_on else [])
     for name in names:
         _refresh_secret(apim_id, name, vault_name, transport, sleep=sleep, deadline=deadline, location=config.get("location"))
-    return {"enabled": True, "grpcEnabled": grpc_on, "realtimeEnabled": realtime_on,
+    return {"enabled": True, "l7IngressEnabled": l7_on, "realtimeEnabled": realtime_on,
             "ownerTicketEnabled": ticket_on,
             "status": "management-plane-configured", "runtimeVerified": False,
-            "certificateRenewal": "versionless-key-vault-reference" if grpc_on else "not-used-by-apim",
-            "certificateRefresh": "observe-sync-and-expiry-in-runtime-test" if grpc_on else "not-used-by-apim",
-            "trustBoundary": "AppGW configuration readers are trusted; TCP traffic has no WAF inspection" if grpc_on else "APIM ticket signing credential is server-side"}
+            "trustBoundary": "AppGW HTTP(S) rewrite and APIM ingress validation" if l7_on else "APIM ticket signing credential is server-side"}

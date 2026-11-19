@@ -27,15 +27,24 @@ NETWORK_INPUTS = {
     "subnetPrefixes": {"agw": "10.40.0.0/24", "pep": "10.40.1.0/24",
                        "firewall": "10.40.2.0/26", "apim": "10.40.2.64/26",
                        "management": "10.40.2.128/26", "aca": "10.40.2.192/26"},
-    "operatorAddressPrefixes": [],
-    "ntpAddressPrefixes": ["Internet"],
-    "managementAdditionalSecurityRules": [],
 }
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
     "idpsPrivateRanges": [], "bypassTrafficSettings": [],
     "apimAdditionalNetworkRules": [], "managementAdditionalNetworkRules": [],
     "apimAdditionalApplicationRules": [], "managementAdditionalApplicationRules": [],
+}
+RETIRED_NETWORK_INPUTS = {
+    "clientAddressPrefixes": ([], ["203.0.113.70/32"]),
+    "certificatePublicProbeEnabled": (False, True),
+    "dnsServers": ([], ["192.0.2.53"]),
+    "operatorAddressPrefixes": ([], ["198.51.100.70/32"]),
+    "operatorProtocol": ("", "Tcp"),
+    "operatorPorts": ([], ["22"]),
+    "ntpAddressPrefixes": ([], ["192.0.2.123/32"]),
+    "ntpFqdns": ([], ["time.example.com"]),
+    "managementAdditionalSecurityRules": ([], [{"name": "not-created"}]),
+    "apimKeyVaultAccessEnabled": (False, True),
 }
 
 
@@ -60,15 +69,6 @@ def custom_documents():
     network["addressSpaces"] = [item.replace("10.40.", "10.70.") for item in network["addressSpaces"]]
     network["subnetPrefixes"] = {key: value.replace("10.40.", "10.70.")
                                   for key, value in network["subnetPrefixes"].items()}
-    network.update(operatorAddressPrefixes=["198.51.100.70/32"],
-                   ntpAddressPrefixes=["192.0.2.123/32"])
-    options["network"]["dnsServers"] = []
-    options["network"]["firewall"]["dnsServers"] = []
-    network["managementAdditionalSecurityRules"] = [{
-        "name": "allow-enterprise-support", "properties": {
-            "priority": 370, "direction": "Outbound", "access": "Allow", "protocol": "Tcp",
-            "sourcePortRange": "*", "destinationPortRange": "443",
-            "sourceAddressPrefix": "10.70.2.128/26", "destinationAddressPrefix": "192.0.2.70/32"}}]
     firewall = copy.deepcopy(FIREWALL_INPUTS)
     firewall.update(snatPrivateRanges=["10.70.0.0/16"],
                     idpsPrivateRanges=["10.70.0.0/16"], bypassTrafficSettings=[{
@@ -86,7 +86,6 @@ def custom_documents():
             "targetFqdns": ["support.example.com"]}]
     firewall.update(apimAllowedFqdns=[], managementAllowedFqdns=[])
     network["firewall"] = firewall
-    network["ntpFqdns"] = parameters["network"]["ntpFqdns"]
     parameters["network"] = network
     parameters["monitoring"]["auditAllowedIpAddresses"] = ["203.0.113.71/32"]
     options["network"]["firewall"].update(sku="Premium", idpsMode="Alert")
@@ -105,8 +104,8 @@ def load_documents(options, parameters):
 
 
 class ParameterIpOwnershipTests(unittest.TestCase):
-    def test_public_samples_keep_environment_inputs_and_default_dns_in_their_owners(self):
-        """移動元の既知値を独立期待値にし、空配列も移動漏れと区別する。"""
+    def test_public_samples_keep_only_environment_addresses_as_network_inputs(self):
+        """独立した合成IP計画を期待値にし、固定NSG/DNS/NTP設定の再導入を検出する。"""
         for name in ("test", "production"):
             options, parameters = public_documents(name)
             with self.subTest(name=name):
@@ -114,17 +113,14 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertEqual({key: parameters["network"]["firewall"][key] for key in FIREWALL_INPUTS}, FIREWALL_INPUTS)
                 self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
                 self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
-                self.assertEqual(options["network"]["dnsServers"], [])
-                self.assertNotIn("dnsServers", parameters["network"])
                 self.assertFalse(set(options["network"]["firewall"]) & set(FIREWALL_INPUTS))
-                self.assertEqual(options["network"]["firewall"]["dnsServers"], [])
+                self.assertNotIn("dnsServers", options["network"]["firewall"])
                 self.assertNotIn("dnsServers", parameters["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
                 self.assertIn("rateLimits", options["gateway"])
-                self.assertIn("operatorPorts", options["network"])
                 self.assertNotIn("apimAllowedFqdns", options["network"]["firewall"])
                 self.assertIn("apimAllowedFqdns", parameters["network"]["firewall"])
-                for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+                for key in RETIRED_NETWORK_INPUTS:
                     self.assertNotIn(key, options["network"])
                     self.assertNotIn(key, parameters["network"])
 
@@ -144,10 +140,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                     load_documents(options, parameters)
 
     def test_parameter_network_rejects_unknown_and_platform_only_fields(self):
-        cases = [("network", "addressSpace"), ("network", "operatorPorts"),
-                 ("network", "dnsServers"),
+        cases = [("network", "addressSpace"), ("network", "bgpRoutePropagation"),
                  ("network", "firewall", "sku"), ("network", "firewall", "dnsServer"),
-                 ("network", "firewall", "dnsServers"),
                  ("monitoring", "auditAllowdIpAddresses")]
         for path in cases:
             options, parameters = custom_documents()
@@ -175,12 +169,14 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         result = build_bicep_configuration(normalized)
         for key in NETWORK_INPUTS:
             self.assertEqual(result["network"][key], parameters["network"][key])
-        self.assertEqual(result["network"]["dnsServers"], options["network"]["dnsServers"])
+        for key in RETIRED_NETWORK_INPUTS:
+            self.assertNotIn(key, result["network"])
         firewall = result["network"]["firewall"]
         for key in FIREWALL_INPUTS:
             self.assertEqual(firewall[key], parameters["network"]["firewall"][key])
-        for key in ("sku", "idpsMode", "zones", "dnsServers"):
+        for key in ("sku", "idpsMode", "zones"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
+        self.assertNotIn("dnsServers", firewall)
         # 正規化で証明書取得等の基盤FQDNを追加するが、paramsの明示値は失わない。
         for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
             self.assertTrue(set(parameters["network"]["firewall"][key]).issubset(firewall[key]))
@@ -191,64 +187,40 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for kind in ("subscriptionKey", "application"):
             self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], parameters["gateway"]["rateLimits"][kind]["overrides"])
 
-    def test_explicit_empty_dns_and_operator_ranges_survive_normalization(self):
+    def test_explicit_empty_audit_and_firewall_inputs_survive_normalization(self):
         options, parameters = custom_documents()
-        options["network"]["dnsServers"] = []
-        parameters["network"]["operatorAddressPrefixes"] = []
-        options["network"]["firewall"]["dnsServers"] = []
         parameters["monitoring"]["auditAllowedIpAddresses"] = []
+        for key in FIREWALL_INPUTS:
+            parameters["network"]["firewall"][key] = []
         result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
-        for key in ("dnsServers", "operatorAddressPrefixes"):
-            self.assertEqual(result["network"][key], [])
-        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+        for key in RETIRED_NETWORK_INPUTS:
             self.assertNotIn(key, result["network"])
-        self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
+        self.assertNotIn("dnsServers", result["network"]["firewall"])
+        for key in FIREWALL_INPUTS:
+            self.assertEqual(result["network"]["firewall"][key], [])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
 
-    def test_parameter_dns_cannot_override_the_config_even_with_matching_values(self):
-        for nested in (False, True):
-            for value in ([], ["168.63.129.16"], ["10.70.2.4"]):
-                options, parameters = custom_documents()
-                target = parameters["network"]["firewall"] if nested else parameters["network"]
-                target["dnsServers"] = value
-                with self.subTest(firewall=nested, value=value), self.assertRaisesRegex(
-                        ConfigurationError, r"network.*unsupported field.*dnsServers"):
-                    load_documents(options, parameters)
-
-    def test_config_dns_is_fixed_before_any_template_is_emitted(self):
-        for nested in (False, True):
-            for value in (["168.63.129.16"], ["10.70.2.4"], ["10.70.2.4/32"],
-                          ["dns.example.com"], ["2001:db8::53"], "10.70.2.4"):
-                options, parameters = custom_documents()
-                target = options["network"]["firewall"] if nested else options["network"]
-                target["dnsServers"] = value
-                with self.subTest(firewall=nested, value=value), self.assertRaisesRegex(
-                        ConfigurationError, r"network\.(?:firewall\.)?dnsServers"):
-                    normalize_configuration(load_documents(options, parameters))
-
-    def test_omitted_config_dns_keeps_azure_provided_dns_for_both_consumers(self):
-        options, parameters = custom_documents()
-        options["network"].pop("dnsServers")
-        options["network"]["firewall"].pop("dnsServers")
-        result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
-        self.assertEqual(result["network"]["dnsServers"], [])
-        self.assertEqual(result["network"]["firewall"]["dnsServers"], [])
-
-    def test_appgw_rule_settings_are_not_owned_by_parameters_or_config(self):
+    def test_retired_network_inputs_are_rejected_in_both_public_owners(self):
+        """空配列やfalseでも、廃止入力を有効な上書きとして黙って受け取らない。"""
         for owner in ("parameters", "config"):
-            for settings in ({"clientAddressPrefixes": ["0.0.0.0/0"]},
-                             {"clientAddressPrefixes": []},
-                             {"certificatePublicProbeEnabled": True},
-                             {"certificatePublicProbeEnabled": False},
-                             {"clientAddressPrefixes": ["203.0.113.70/32"],
-                              "certificatePublicProbeEnabled": True}):
+            for key, values in RETIRED_NETWORK_INPUTS.items():
+                for value in (None, *values):
+                    options, parameters = custom_documents()
+                    target = parameters if owner == "parameters" else options
+                    target["network"][key] = copy.deepcopy(value)
+                    with self.subTest(owner=owner, key=key, value=value), self.assertRaisesRegex(
+                            ConfigurationError, r"network.*unsupported field"):
+                        load_documents(options, parameters)
+
+    def test_firewall_dns_input_is_rejected_in_both_public_owners(self):
+        for owner in ("parameters", "config"):
+            for value in (None, [], ["168.63.129.16"], ["192.0.2.53"]):
                 options, parameters = custom_documents()
                 target = parameters if owner == "parameters" else options
-                target["network"].update(settings)
-                with self.subTest(owner=owner, settings=settings):
-                    with self.assertRaisesRegex(ConfigurationError,
-                                                r"network.*unsupported field"):
-                        normalize_configuration(load_documents(options, parameters))
+                target["network"]["firewall"]["dnsServers"] = copy.deepcopy(value)
+                with self.subTest(owner=owner, value=value), self.assertRaisesRegex(
+                        ConfigurationError, r"network\.firewall.*unsupported field.*dnsServers"):
+                    load_documents(options, parameters)
 
     def test_combined_internal_json_still_accepts_the_full_network(self):
         options, parameters = custom_documents()
@@ -258,8 +230,25 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             path.write_text(json.dumps(merged))
             normalized = normalize_configuration(load_configuration_source(path))
         self.assertEqual(normalized["network"]["subnetPrefixes"], parameters["network"]["subnetPrefixes"])
-        for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
+        for key in RETIRED_NETWORK_INPUTS:
             self.assertNotIn(key, normalized["network"])
+        self.assertNotIn("dnsServers", normalized["network"]["firewall"])
+
+    def test_combined_internal_json_cannot_restore_retired_inputs(self):
+        options, parameters = custom_documents()
+        current = load_documents(options, parameters)
+        cases = [(False, key, values[0]) for key, values in RETIRED_NETWORK_INPUTS.items()]
+        cases.append((True, "dnsServers", []))
+        for firewall, key, value in cases:
+            combined = copy.deepcopy(current)
+            target = combined["network"]["firewall"] if firewall else combined["network"]
+            target[key] = copy.deepcopy(value)
+            with tempfile.TemporaryDirectory(prefix="core-ip-retired-") as folder:
+                path = Path(folder) / "internal.json"
+                path.write_text(json.dumps(combined))
+                with self.subTest(firewall=firewall, key=key), self.assertRaisesRegex(
+                        ConfigurationError, r"network.*unsupported field"):
+                    normalize_configuration(load_configuration_source(path))
 
     def test_custom_ranges_are_validated_before_any_template_is_emitted(self):
         cases = [
@@ -303,6 +292,18 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 target[key] = copy.deepcopy(fields[key])
                 with self.subTest(group=group, key=key):
                     self.assertFalse(options_validator.is_valid(value))
+        for owner, document, validator in (("params", parameters, params_validator),
+                                            ("config", options, options_validator)):
+            for key, values in RETIRED_NETWORK_INPUTS.items():
+                for retired in values:
+                    value = copy.deepcopy(document)
+                    value["network"][key] = copy.deepcopy(retired)
+                    with self.subTest(owner=owner, key=key, retired=retired):
+                        self.assertFalse(validator.is_valid(value))
+            value = copy.deepcopy(document)
+            value["network"]["firewall"]["dnsServers"] = []
+            with self.subTest(owner=owner, key="firewall.dnsServers"):
+                self.assertFalse(validator.is_valid(value))
 
 
 class NetworkArmExpression(ArmExpression):
@@ -375,12 +376,8 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             'network-bindings': compile_bicep('infra/modules/network-bindings.bicep'),
         }
 
-    def configuration(self, empty_optional=False):
+    def configuration(self):
         options, parameters = custom_documents()
-        if empty_optional:
-            options["network"]["dnsServers"] = []
-            parameters["network"]["operatorAddressPrefixes"] = []
-            options["network"]["firewall"]["dnsServers"] = []
         return build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
 
     def resolver(self, module, config):
@@ -388,9 +385,11 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
+            "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
+            "existingNetworkSecurityGroupNames": [],
             "nsgNames": {key: "nsg-test-fixture-" + suffix
-                         for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"), ("management", "vm"))},
-            "grpcEnabled": True, "grpcPublicPort": 8443, "grpcBackendPort": 443}
+                         for key, suffix in (("agw", "agw"), ("apim", "apim"), ("pep", "pep"),
+                                             ("management", "vm"), ("aca", "aca"))}}
         return NetworkArmExpression("[createObject()]", template), parameters
 
     def test_custom_vnet_address_spaces_and_all_six_subnets_are_in_compiled_arm(self):
@@ -399,8 +398,20 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         properties = self.templates["network"]["resources"]["vnet"]["properties"]
         self.assertEqual(expression.resolve(properties["addressSpace"], parameters), {"addressPrefixes": config["network"]["addressSpaces"]})
         self.assertEqual(expression.resolve(properties["dhcpOptions"], parameters), {"dnsServers": []})
-        self.assertEqual([expression.resolve(item["properties"]["addressPrefix"], parameters) for item in expression.resolve(properties["subnets"], parameters)],
+        subnets = expression.resolve(properties["subnets"], parameters)
+        self.assertEqual([item["properties"]["addressPrefix"] for item in subnets],
                          [config["network"]["subnetPrefixes"][key] for key in ("agw", "firewall", "apim", "pep", "management", "aca")])
+        self.assertEqual(len(subnets), 6)
+        for subnet, suffix in zip(subnets, ("agw", None, "apim", "pep", "vm", "aca")):
+            with self.subTest(suffix=suffix):
+                if suffix is None:
+                    self.assertEqual(subnet["name"], "AzureFirewallSubnet")
+                    self.assertNotIn("networkSecurityGroup", subnet["properties"])
+                else:
+                    self.assertEqual(subnet["properties"]["networkSecurityGroup"]["id"],
+                                     "/mock/Microsoft.Network/networkSecurityGroups/nsg-test-fixture-" + suffix)
+        self.assertEqual(subnets[3]["properties"]["privateEndpointNetworkPolicies"],
+                         "NetworkSecurityGroupEnabled")
 
     def test_portal_adds_only_the_explicit_delegated_subnet(self):
         config = self.configuration()
@@ -411,24 +422,37 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(subnets[-1]["properties"]["addressPrefix"], "10.70.3.128/27")
         self.assertEqual(subnets[-1]["properties"]["delegations"][0]["properties"]["serviceName"], "Microsoft.App/environments")
 
-    def test_custom_cidrs_feed_static_and_dynamic_nsg_rules(self):
+    def test_custom_cidrs_and_allocated_ips_feed_static_and_dynamic_nsg_rules(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
         static = expression.resolve("[variables('staticNsgRules')]", parameters)
         rules = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in static}
-        self.assertEqual(rules[0, "allow-client-web"]["sourceAddressPrefix"], "0.0.0.0/0")
-        self.assertEqual(rules[0, "allow-client-web"]["destinationAddressPrefix"], "10.70.0.0/24")
-        self.assertEqual(rules[1, "allow-agw-api"]["destinationAddressPrefix"], "10.70.2.64/26")
-        self.assertEqual(rules[3, "allow-time-sync"]["destinationAddressPrefix"], "192.0.2.123/32")
-        self.assertEqual(rules[3, "allow-enterprise-support"]["sourceAddressPrefix"], "10.70.2.128/26")
+        for name, priority, port in (("allow-client-http-ingress", 121, "80"),
+                                     ("allow-client-https-ingress", 122, "443")):
+            with self.subTest(rule=name):
+                rule = rules[0, name]
+                self.assertEqual(rule["sourceAddressPrefix"], "0.0.0.0/0")
+                self.assertEqual(rule["destinationAddressPrefix"], "10.70.0.0/24")
+                self.assertEqual((rule["priority"], rule["destinationPortRange"]), (priority, port))
+        self.assertEqual(rules[1, "allow-appgw-http-ingress"]["sourceAddressPrefix"], "10.70.0.0/24")
+        self.assertEqual(rules[1, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(rules[3, "allow-time-sync-egress"]["sourceAddressPrefix"], "10.70.2.128/26")
+        self.assertEqual(rules[3, "allow-time-sync-egress"]["destinationAddressPrefix"], "Internet")
+        self.assertEqual(rules[3, "allow-time-sync-egress"]["priority"], 325)
+        self.assertEqual(rules[4, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.192/26")
         expression, parameters = self.resolver("network-bindings", config)
-        groups = expression.resolve("[variables('rulesByNsg')]", parameters)
-        dynamic = {item["name"]: item["properties"] for group in groups for item in group}
-        self.assertEqual(dynamic["allow-operator-management"]["sourceAddressPrefix"], "198.51.100.70/32")
-        self.assertEqual(dynamic["allow-client-grpc"]["sourceAddressPrefix"], "0.0.0.0/0")
-        self.assertEqual(dynamic["allow-agw-grpc"]["destinationAddressPrefix"], "10.70.2.64/26")
+        entries = expression.resolve("[variables('dynamicRules')]", parameters)
+        dynamic = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in entries}
+        self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["sourceAddressPrefix"], "192.0.2.10/32")
+        self.assertEqual(dynamic[0, "allow-firewall-public-https-ingress"]["priority"], 120)
+        self.assertEqual(dynamic[0, "allow-apim-http-egress"]["destinationAddressPrefix"], "10.70.2.68/32")
+        self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["sourceAddressPrefix"], "10.70.2.132/32")
+        self.assertEqual(dynamic[1, "allow-mgmt-vm-https-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(dynamic[3, "allow-apim-https-egress"]["sourceAddressPrefix"], "10.70.2.132/32")
+        self.assertEqual(dynamic[3, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(dynamic[4, "allow-appgw-https-egress"]["destinationAddressPrefix"], "198.51.100.10/32")
 
-    def test_fixed_azure_dns_reaches_vnet_and_firewall_without_nsg_dns_allows(self):
+    def test_fixed_dns_and_time_dependencies_are_implemented_without_config_inputs(self):
         options, parameters = custom_documents()
         config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
         expression, supplied = self.resolver("network", config)
@@ -436,13 +460,20 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(expression.resolve(resources["vnet"]["properties"]["dhcpOptions"], supplied),
                          {"dnsServers": []})
         static = expression.resolve("[variables('staticNsgRules')]", supplied)
-        rules = {(entry["nsgIndex"], entry["rule"]["name"]): entry["rule"]["properties"] for entry in static}
-        for nsg_index in (0, 1, 3):
-            for rule_name in ("allow-dns-tcp", "allow-dns-udp"):
-                with self.subTest(nsg=nsg_index, rule=rule_name):
-                    self.assertNotIn((nsg_index, rule_name), rules)
+        self.assertFalse(any("dns" in entry["rule"]["name"] for entry in static))
+        for key in RETIRED_NETWORK_INPUTS:
+            self.assertNotIn(key, config["network"])
         firewall = expression.resolve(resources["firewallPolicy"]["properties"], supplied)
-        self.assertEqual(firewall["dnsSettings"]["servers"], [])
+        self.assertEqual(firewall["dnsSettings"], {"enableProxy": True, "servers": []})
+        collections = expression.resolve(resources["platformRules"]["properties"], supplied)["ruleCollections"]
+        rules = {rule["name"]: rule for collection in collections for rule in collection["rules"]}
+        for name, source, fqdn in (("management-time", "10.70.2.128/26", "ntp.ubuntu.com"),
+                                    ("apim-platform-time", "10.70.2.64/26", "time.windows.com")):
+            with self.subTest(rule=name):
+                self.assertEqual(rules[name]["sourceAddresses"], [source])
+                self.assertEqual(rules[name]["destinationFqdns"], [fqdn])
+                self.assertEqual(rules[name]["destinationPorts"], ["123"])
+                self.assertEqual(rules[name]["ipProtocols"], ["UDP"])
 
     def test_firewall_arm_keeps_platform_sku_and_parameter_ip_settings_together(self):
         config = self.configuration()
@@ -461,59 +492,28 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 for rule in config["network"]["firewall"][owner + "Additional" + suffix]:
                     self.assertIn(rule, actual)
 
-    def test_appgw_arm_rules_stay_fixed_when_raw_config_supplies_old_fields(self):
-        for settings in ({}, {"clientAddressPrefixes": []},
-                         {"clientAddressPrefixes": ["203.0.113.70/32"]},
-                         {"clientAddressPrefixes": ["192.0.2.0/24", "198.51.100.0/24"],
-                          "certificatePublicProbeEnabled": False},
-                         {"certificatePublicProbeEnabled": True}):
-            config = self.configuration()
-            for key in ("clientAddressPrefixes", "certificatePublicProbeEnabled"):
-                self.assertNotIn(key, config["network"])
-            # loaderを経由しない直接モジュール入力も、固定規則を変えない。
-            config["network"].update(settings)
-            for module, collection, resource_name, rule_name, priority in (
-                ("network", "staticNsgRules", "staticSecurityRules", "allow-client-web", 120),
-                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-client-grpc", 125),
-                ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-firewall-public-ingress", 220),
-            ):
-                expression, supplied = self.resolver(module, config)
-                entries = expression.resolve("[variables('" + collection + "')]", supplied)
-                matches = [(index, entry["rule"]) for index, entry in enumerate(entries)
-                           if entry["nsgIndex"] == 0 and entry["rule"]["name"] == rule_name]
-                with self.subTest(settings=settings, module=module, rule=rule_name):
-                    self.assertEqual(len(matches), 1)
-                    index, rule = matches[0]
-                    properties = rule["properties"]
-                    self.assertEqual((properties["priority"], properties["access"]), (priority, "Allow"))
-                    expected_source = ("192.0.2.10/32" if rule_name == "allow-firewall-public-ingress"
-                                       else "0.0.0.0/0")
-                    self.assertEqual(properties["sourceAddressPrefix"], expected_source)
-                    self.assertEqual(properties["destinationAddressPrefix"], "10.70.0.0/24")
-                    child = self.templates[module]["resources"][resource_name]
-                    self.assertEqual(child["type"], "Microsoft.Network/networkSecurityGroups/securityRules")
-                    self.assertNotIn("condition", child)
-                    self.assertEqual(expression.resolve(child["copy"]["count"], supplied), len(entries))
-                    child_name = NetworkArmExpression(child["name"], self.templates[module]).evaluate(supplied, index)
-                    self.assertEqual(child_name, "nsg-test-fixture-agw/" + rule_name)
-
-    def test_empty_operator_ranges_omit_management_allow_and_dns_uses_azure_defaults(self):
-        config = self.configuration(empty_optional=True)
-        expression, parameters = self.resolver("network", config)
-        rules = expression.resolve("[variables('staticNsgRules')]", parameters)
-        by_name = {entry["rule"]["name"]: entry["rule"]["properties"] for entry in rules}
-        self.assertEqual((by_name["allow-client-web"]["priority"], by_name["allow-client-web"]["access"]), (120, "Allow"))
-        self.assertNotIn("allow-dns-tcp", by_name)
-        self.assertNotIn("allow-dns-udp", by_name)
-        vnet = self.templates["network"]["resources"]["vnet"]["properties"]
-        self.assertEqual(expression.resolve(vnet["dhcpOptions"], parameters), {"dnsServers": []})
-        firewall = expression.resolve(self.templates["network"]["resources"]["firewallPolicy"]["properties"], parameters)
-        self.assertEqual(firewall["dnsSettings"]["servers"], [])
-        expression, parameters = self.resolver("network-bindings", config)
-        groups = expression.resolve("[variables('rulesByNsg')]", parameters)
-        rules = {item["name"]: item["properties"] for group in groups for item in group}
-        self.assertEqual((rules["allow-client-grpc"]["priority"], rules["allow-client-grpc"]["access"]), (125, "Allow"))
-        self.assertNotIn("allow-operator-management", rules)
+    def test_static_and_dynamic_appgw_allow_children_are_unconditional(self):
+        """IP確定前後の両段階で、固定規則が子リソースとして更新される。"""
+        config = self.configuration()
+        for module, collection, resource_name, rule_name in (
+            ("network", "staticNsgRules", "staticSecurityRules", "allow-client-http-ingress"),
+            ("network", "staticNsgRules", "staticSecurityRules", "allow-client-https-ingress"),
+            ("network-bindings", "dynamicRules", "dynamicSecurityRules", "allow-firewall-public-https-ingress"),
+        ):
+            expression, supplied = self.resolver(module, config)
+            entries = expression.resolve("[variables('" + collection + "')]", supplied)
+            matches = [(index, entry["rule"]) for index, entry in enumerate(entries)
+                       if entry["nsgIndex"] == 0 and entry["rule"]["name"] == rule_name]
+            with self.subTest(module=module, rule=rule_name):
+                self.assertEqual(len(matches), 1)
+                index, rule = matches[0]
+                self.assertEqual(rule["properties"]["access"], "Allow")
+                child = self.templates[module]["resources"][resource_name]
+                self.assertEqual(child["type"], "Microsoft.Network/networkSecurityGroups/securityRules")
+                self.assertNotIn("condition", child)
+                self.assertEqual(expression.resolve(child["copy"]["count"], supplied), len(entries))
+                child_name = NetworkArmExpression(child["name"], self.templates[module]).evaluate(supplied, index)
+                self.assertEqual(child_name, "nsg-test-fixture-agw/" + rule_name)
 
 
 if __name__ == "__main__":

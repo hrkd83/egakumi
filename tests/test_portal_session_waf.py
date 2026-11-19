@@ -18,6 +18,7 @@ from deployment.helpers.portal_gateway import _callback_policy, _portal_policy, 
 from deployment.helpers.waf_names import policy_id
 from deployment.helpers.waf_body import ai_body_settings, raw_body_policy
 from waf_policy import desired_policy, exclusion, data_scope_exclusions, load_manifest, reconcile
+from waf_contracts import APP_GROUPS
 import test_waf_policy as data_fixtures
 
 
@@ -188,7 +189,7 @@ console.log(JSON.stringify(cookies));
             self.assertEqual(ordinary["managedRules"]["managedRuleSets"], base["properties"]["managedRules"]["managedRuleSets"])
 
 
-    def test_realtime_stop_handle_policy_is_exact_value_two_rules_and_matches_bicep(self):
+    def test_realtime_stop_handle_policy_is_exact_value_approved_groups_and_matches_bicep(self):
         path = "/api/models/realtime/stop"
         profiles = load_manifest()["profiles"]
         selected = [item for item in profiles if path in item["paths"]]
@@ -196,10 +197,19 @@ console.log(JSON.stringify(cookies));
         profile = selected[0]
         self.assertEqual((profile["name"], profile["scope"], profile["paths"]),
                          ("p-realtime", "portal", [path]))
-        expected = exclusion("handle", "REQUEST-942-APPLICATION-ATTACK-SQLI", ["942430", "942440"])
+        expected = exclusion("handle", "REQUEST-921-PROTOCOL-ATTACK", ["921110", "921130"])
+        expected['exclusionManagedRuleSets'][0]['ruleGroups'].extend(
+            {'ruleGroupName': name} for name in sorted(APP_GROUPS))
         self.assertEqual(profile["exclusions"], [expected])
         self.assertTrue(all(item["selector"] != "handle" for item in portal_session_exclusions()))
-        self.assertTrue(all(item != expected for other in profiles if other != profile for item in other["exclusions"]))
+        handle_profiles = [other for other in profiles
+                           if any(item['selector'] == 'handle' for item in other['exclusions'])]
+        self.assertEqual({(item['name'], item['scope'], tuple(item['paths'])) for item in handle_profiles}, {
+            ('p-realtime', 'portal', ('/api/models/realtime/stop',)),
+            ('p-document-status', 'portal', ('/api/tools/documents/status',)),
+        })
+        for other in handle_profiles:
+            self.assertEqual([item for item in other['exclusions'] if item['selector'] == 'handle'], [expected])
         parameters = self.parameters()
         compiled_profiles = self.value("[variables('dataProfiles')]", parameters)
         index = next(i for i, item in enumerate(compiled_profiles) if item["name"] == profile["name"])
@@ -250,7 +260,7 @@ console.log(JSON.stringify(cookies));
         mapping["pathRules"][0]["properties"].update(backendAddressPool=pool, backendHttpSettings=backend)
         original = copy.deepcopy(source)
         profile = next(item for item in load_manifest()["profiles"] if item["name"] == "p-realtime")
-        manifest = {"version": 1, "profiles": [profile]}
+        manifest = {"version": load_manifest()["version"], "profiles": [profile]}
         transport = data_fixtures.ArmMemory(source)
         receipt = reconcile(config, transport, scopes=("portal",), manifest=manifest)
         self.assertEqual((receipt["azureWrites"], receipt["policyUpdates"], receipt["gatewayUpdated"]), (2, 1, True))

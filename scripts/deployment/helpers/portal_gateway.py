@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import time
 
 from .paths import REPOSITORY
@@ -69,6 +70,42 @@ def _writable(body):
         return value
 
     result = clean(copy.deepcopy(body))
+    # The 2025-01-01 request schema and official SDK serializer omit these
+    # GET-only inverse references. Remove only validated, owned references at
+    # these positions; top-level listeners/routingRules remain writable.
+    properties = result.get("properties", {})
+    if isinstance(properties, dict):
+        reverse_references = {
+            "frontendIPConfigurations": ("httpListeners", "listeners"),
+            "frontendPorts": ("httpListeners", "listeners"),
+            "backendAddressPools": ("routingRules",),
+        }
+        gateway = body.get("id")
+        for collection, names in reverse_references.items():
+            items = properties.get(collection, [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                child = item.get("properties") if isinstance(item, dict) else None
+                if isinstance(child, dict):
+                    for name in names:
+                        if name not in child:
+                            continue
+                        references = child[name]
+                        targets = properties.get(name, [])
+                        if (not isinstance(references, list) or not isinstance(targets, list)
+                                or not isinstance(gateway, str) or not gateway):
+                            raise ValueError("App Gateway GET inverse references have an invalid shape")
+                        owned = {gateway.casefold() + "/" + name.casefold() + "/" + target["name"].casefold()
+                                 for target in targets if isinstance(target, dict) and isinstance(target.get("name"), str)}
+                        seen = set()
+                        for reference in references:
+                            identifier = reference.get("id") if isinstance(reference, dict) else None
+                            if (not isinstance(identifier, str) or set(reference) != {"id"}
+                                    or identifier.casefold() not in owned or identifier.casefold() in seen):
+                                raise ValueError("App Gateway GET inverse reference identifies an unexpected resource")
+                            seen.add(identifier.casefold())
+                        child.pop(name)
     for name in ("id", "name", "type", "systemData"):
         result.pop(name, None)
     identity = result.get("identity")
@@ -80,34 +117,76 @@ def _writable(body):
     return result
 
 
-def configure_portal_probe(config, transport, *, timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
-    """既存プローブのパスと応答コードだけを更新し、反映完了を待つ。"""
+def _portal_backend(body, expected):
+    """所有プローブの結び付けと、移行対象のHTTP(S)後段だけを照合する。"""
+    probe = _probe(body, expected)
+    backend = next(item for item in body['properties']['backendHttpSettingsCollection']
+                   if item.get('name') == 'behttp-portal')
+    properties = backend.get('properties', {})
+    protocol, port = properties.get('protocol'), properties.get('port')
+    if (protocol, port) not in (('Https', 443), ('Http', 80)):
+        raise ValueError('Portal gateway has an unexpected backend protocol or port')
+    probe_properties = probe['properties']
+    if (probe_properties.get('protocol') != protocol
+            or probe_properties.get('port', port) != port):
+        raise ValueError('Portal gateway probe protocol or port differs from its backend')
+    return backend, probe
+
+
+def portal_http_configured(body, expected):
+    """後段・プローブ・ヘルスAPIが初期HTTP80契約に一致するかを返す。"""
+    backend, probe = _portal_backend(body, expected)
+    return (backend['properties']['protocol'] == 'Http'
+            and backend['properties']['port'] == 80
+            and probe['properties']['protocol'] == 'Http'
+            and probe['properties'].get('port') == 80
+            and probe['properties']['path'] == '/api/health'
+            and probe['properties']['match']['statusCodes'] == ['200'])
+
+
+def configure_portal_probe(config, transport, *, record=None, timeout=1200, sleep=time.sleep, monotonic=time.monotonic, progress=print):
+    """準備済みPortalへの後段とプローブを同一PUTでHTTP80へ揃える。
+
+    呼出前にFW80と、今回配備した期待image/revisionのHTTP受付を照合する。
+    listener・Host・証明書・他のAPI経路は現在値を保持する。
+    """
     expected = gateway_id(config)
     path = expected + "?api-version=" + NETWORK_API
     response = transport.request("GET", path)
     body = _ok(response, "read")
-    probe = _probe(body, expected)
+    _portal_backend(body, expected)
     if body.get("properties", {}).get("provisioningState") != "Succeeded":
         raise ValueError("Portal gateway is not ready; inspect its current operation before retrying")
-    receipt = {"resourceId": expected, "probe": "probe-portal", "path": "/api/health", "statusCodes": ["200"], "updated": False}
-    if probe["properties"]["path"] == "/api/health" and probe["properties"]["match"]["statusCodes"] == ["200"]:
+    receipt = {"resourceId": expected, "probe": "probe-portal", "path": "/api/health", "statusCodes": ["200"],
+               "protocol": "Http", "port": 80, "updated": False}
+    if portal_http_configured(body, expected):
         return receipt
-    etag = body.get("etag") or next((value for key, value in response.get("headers", {}).items() if key.casefold() == "etag"), None)
-    if not isinstance(etag, str) or not etag.strip() or etag.strip('" ') == "*" or "\n" in etag or "\r" in etag:
-        raise ValueError("Portal gateway ETag is required before updating its configuration")
+    etag = _etag(response)
     update = _writable(body)
     target = next(item for item in update["properties"]["probes"] if item["name"] == "probe-portal")
     target["properties"]["path"] = "/api/health"
     target["properties"]["match"]["statusCodes"] = ["200"]
+    target["properties"]["protocol"] = 'Http'
+    target["properties"]["port"] = 80
+    backend = next(item for item in update['properties']['backendHttpSettingsCollection'] if item['name'] == 'behttp-portal')
+    backend['properties']['protocol'] = 'Http'
+    backend['properties']['port'] = 80
+    if not callable(record):
+        raise ValueError('Portal HTTP gateway cutover requires a protected pre-change record')
+    record('gateway-before', {'resourceId': expected, 'etag': etag,
+                              'configuration': _writable(body), 'plannedProtocol': 'Http', 'plannedPort': 80})
     _ok(transport.request("PUT", path, update, headers={"If-Match": etag}), "update", (200, 201, 202), require_body=False)
     deadline, notice = monotonic() + timeout, monotonic() + 45
     while monotonic() < deadline:
         current = _ok(transport.request("GET", path), "read update")
-        selected = _probe(current, expected)
+        _portal_backend(current, expected)
         status = current.get("properties", {}).get("provisioningState")
-        if (status == "Succeeded" and selected["properties"]["path"] == "/api/health"
-                and selected["properties"]["match"]["statusCodes"] == ["200"]):
-            return {**receipt, "updated": True}
+        if status == "Succeeded" and portal_http_configured(current, expected):
+            if _writable(current) != update:
+                raise ValueError('Portal HTTP gateway readback differs from its planned update; inspect concurrent or normalized changes')
+            result = {**receipt, "updated": True}
+            record('gateway-after', result)
+            return result
         if status in ("Failed", "Canceled", "Deleting"):
             raise ValueError("Portal gateway update did not succeed; inspect its provisioning state")
         if monotonic() >= notice:
@@ -119,7 +198,9 @@ def configure_portal_probe(config, transport, *, timeout=1200, sleep=time.sleep,
 
 def _etag(response):
     value = response.get("body", {}).get("etag") or next((value for key, value in response.get("headers", {}).items() if key.casefold() == "etag"), None)
-    if not isinstance(value, str) or not value.strip() or value.strip('" ') == "*" or "\n" in value or "\r" in value:
+    if (not isinstance(value, str) or len(value) > 512
+            or not re.fullmatch(r'(?:W/)?"[^"\x00-\x20\x7f,]+"|[A-Za-z0-9._:-]+', value)
+            or value in ('*', '"*"', 'W/"*"')):
         raise ValueError("Portal gateway configuration ETag is required before updating")
     return value
 

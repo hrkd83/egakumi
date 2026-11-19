@@ -20,13 +20,25 @@ class ProductSubscriptionDeploymentTests(unittest.TestCase):
                         if item["type"] == "Microsoft.ApiManagement/service/products"]
 
     def test_every_business_product_requires_approved_subscription(self):
-        product, = self.products
+        product = self.template['resources']['protectedProducts']
+        self.assertEqual([item for item in self.products if item['properties']['subscriptionRequired']], [product])
         props = product["properties"]
         self.assertTrue(props["subscriptionRequired"])
         self.assertTrue(props["approvalRequired"])
         self.assertEqual(props["state"], "published")
         self.assertNotIn("tokenEntryProduct", self.template["resources"])
         self.assertNotIn("tokenEntryApiLinks", self.template["resources"])
+
+    def test_employee_product_is_closed_and_omits_subscription_approval(self):
+        product = self.template['resources']['entraOpenProduct']
+        self.assertEqual([item for item in self.products if not item['properties']['subscriptionRequired']], [product])
+        self.assertIn('entraAuthentication', product['condition'])
+        self.assertIn('enabled', product['condition'])
+        self.assertEqual(product['properties']['state'], 'notPublished')
+        self.assertNotIn('approvalRequired', product['properties'])
+        # Employee membership is activated by the checked controller only after
+        # the complete authentication policy graph has been verified.
+        self.assertNotIn('entraOpenProductApiLinks', self.template['resources'])
 
     def test_personal_connection_protected_and_browser_apis_have_distinct_admission(self):
         resources = self.template["resources"]

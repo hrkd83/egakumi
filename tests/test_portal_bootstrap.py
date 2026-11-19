@@ -145,8 +145,11 @@ class PortalBootstrapLifecycleTests(LifecycleFixture, unittest.TestCase):
                         mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                         mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
                         mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
+                        mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                        mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}) as ingress, \
                         mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}):
-                    lifecycle.deploy_phase(self.config, phase)
+                    lifecycle.deploy_phase(self.config, phase, secrets={})
+                    self.assertEqual(ingress.call_count, 1 if phase == "core" else 0)
                     values = transport.mutations()[0]["body"]["properties"]["parameters"]
                     self.assertIs(values["existingPortalApp"]["value"], exists if phase == "core" else False)
                     self.assertEqual([call["method"] for call in transport.calls],
@@ -187,7 +190,7 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertEqual(app["properties"]["template"]["containers"][0]["image"], "mcr.microsoft.com/k8se/quickstart:latest")
         self.assertEqual(app["properties"]["template"]["scale"], {"minReplicas": 1, "maxReplicas": 1})
         ingress = app["properties"]["configuration"]["ingress"]
-        self.assertEqual(ingress, {"external": True, "targetPort": 80, "transport": "http", "allowInsecure": False})
+        self.assertEqual(ingress, {"external": True, "targetPort": 80, "transport": "http", "allowInsecure": True})
         self.assertEqual(app["identity"]["type"], "UserAssigned")
         self.assertEqual(template["outputs"]["platform"]["value"]["applicationName"], "[variables('applicationName')]")
 
@@ -212,6 +215,8 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         network = module('portal-network')
         self.assertIn('portal-registry', network['properties']['parameters']['registryId']['value'])
         resources = network['properties']['template']['resources']
+        if isinstance(resources, dict):
+            resources = resources.values()
         endpoint = next(r for r in resources if r['type'] == 'Microsoft.Network/privateEndpoints')
         self.assertEqual(endpoint['properties']['privateLinkServiceConnections'][0]['properties']['privateLinkServiceId'],
                          "[parameters('registryId')]")
@@ -226,6 +231,7 @@ class PortalBootstrapBicepTests(unittest.TestCase):
         self.assertEqual(app["name"], "[format('ca-{0}-portal', parameters('stem'))]")
         self.assertEqual(app["tags"], "[parameters('tags')]")
         self.assertEqual(app["properties"]["configuration"]["ingress"]["targetPort"], 3000)
+        self.assertIs(app['properties']['configuration']['ingress']['allowInsecure'], True)
         container = app["properties"]["template"]["containers"][0]
         self.assertIn("/api/health", json.dumps(container))
         self.assertIn("Readiness", json.dumps(container))

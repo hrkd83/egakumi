@@ -23,11 +23,6 @@
       "management": "10.40.2.128/26",
       "aca": "10.40.2.192/26"
     },
-    "operatorAddressPrefixes": [],
-    "ntpAddressPrefixes": [
-      "Internet"
-    ],
-    "managementAdditionalSecurityRules": [],
     "firewall": {
       "snatPrivateRanges": [
         "IANAPrivateRanges"
@@ -40,10 +35,7 @@
       "managementAdditionalApplicationRules": [],
       "apimAllowedFqdns": [],
       "managementAllowedFqdns": []
-    },
-    "ntpFqdns": [
-      "ntp.ubuntu.com"
-    ]
+    }
   },
   "services": {
     "publisherName": "Egakumi AI platform",
@@ -81,9 +73,6 @@
       }
     },
     "existingWafPolicyId": "",
-    "grpc": {
-      "publicHostName": "gateway.example.com"
-    },
     "rateLimits": {
       "subscriptionKey": {
         "overrides": []
