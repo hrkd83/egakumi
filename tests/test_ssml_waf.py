@@ -95,7 +95,7 @@ class GatewayExpression(ArmExpression):
 
 
 class SsmlWafTests(unittest.TestCase):
-    """正規 SSML パス以外の保護と、既存の HTTP/TCP 転送を維持する。"""
+    """正規SSMLパス以外の保護と、通常HTTPの常設入口証明を維持する。"""
 
     @classmethod
     def setUpClass(cls):
@@ -116,7 +116,7 @@ class SsmlWafTests(unittest.TestCase):
             keyVaultCertificateSecretId="https://kv-fixture.vault.azure.net/secrets/tls",
             certificateIdentityId="/fixture-mi", workspaceId="/fixture-workspace", auditStorageId="/fixture-audit",
             speechRawBodyPaths=["/models/azure-speech/v1/recognize", "/models/azure-speech/v1/synthesize"],
-            grpcEnabled=True, l7IngressSecret="SYNTHETIC_PRIVATE_INPUT",
+            l7IngressSecret="SYNTHETIC_PRIVATE_INPUT",
             wafExclusions=[{"matchVariable": "RequestHeaderValues", "selector": "X-Fixture", "selectorMatchOperator": "Equals"}],
             wafCustomRules=[{"name": "fixture-rule", "priority": 1, "action": "Block"}],
             additionalWafLogScrubbingRules=[{"state": "Enabled", "matchVariable": "RequestHeaderNames", "selector": "X-Fixture", "selectorMatchOperator": "Equals"}])
@@ -155,11 +155,14 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(pool["properties"]["backendAddresses"], [{"ipAddress": "10.40.2.200"}])
         backend = next(item for item in enabled["backendHttpSettingsCollection"] if item["name"] == "behttp-portal")
         self.assertEqual(backend["properties"]["hostName"], "portal.fixture.azurecontainerapps.io")
-        self.assertEqual(backend["properties"]["protocol"], "Https")
+        self.assertEqual(backend["properties"]["protocol"], "Http")
+        self.assertEqual(backend['properties']['port'], 80)
         probe = next(item for item in enabled["probes"] if item["name"] == "probe-portal")
         self.assertEqual(probe["properties"]["path"], "/api/health")
         self.assertEqual(probe["properties"]["host"], "portal.fixture.azurecontainerapps.io")
         self.assertEqual(probe["properties"]["match"]["statusCodes"], ["200"])
+        self.assertEqual(probe['properties']['protocol'], 'Http')
+        self.assertEqual(probe['properties']['port'], 80)
         self.assertEqual(len(enabled["httpListeners"]), 4)
         self.assertEqual(len(enabled["backendAddressPools"]), 2)
         self.protocol_path_rules(enabled)
@@ -215,44 +218,38 @@ class SsmlWafTests(unittest.TestCase):
                         "matchValues": [json_pattern], "transforms": ["Lowercase"]}]}])
                 self.assertEqual(policy["policySettings"], ai_body_settings(baseline["policySettings"]))
                 values = [item for item in policy["managedRules"]["exclusions"] if item["selector"] == selector]
-                groups = [{"ruleGroupName": "REQUEST-941-APPLICATION-ATTACK-XSS",
-                           "rules": [{"ruleId": "941130"}, {"ruleId": "941170"}]}]
-                if purpose == "g-chat-completions":
-                    groups.insert(0, {"ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
-                                      "rules": [{"ruleId": "931130"}]})
-                    groups.append({"ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
-                                   "rules": [{"ruleId": "942340"}, {"ruleId": "942450"}]})
-                else:
-                    groups = [{"ruleGroupName": name} for name in (
+                # 最新mainで採用済みのAIデータ欄契約。今回の通信改修で検査範囲を変えません。
+                groups = [{"ruleGroupName": "REQUEST-921-PROTOCOL-ATTACK",
+                           "rules": [{"ruleId": "921110"}, {"ruleId": "921130"}]}]
+                groups += [{"ruleGroupName": name} for name in (
                         "REQUEST-930-APPLICATION-ATTACK-LFI", "REQUEST-931-APPLICATION-ATTACK-RFI",
                         "REQUEST-932-APPLICATION-ATTACK-RCE", "REQUEST-933-APPLICATION-ATTACK-PHP",
-                        "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI")]
+                        "REQUEST-941-APPLICATION-ATTACK-XSS", "REQUEST-942-APPLICATION-ATTACK-SQLI",
+                        "REQUEST-944-APPLICATION-ATTACK-JAVA")]
                 self.assertEqual(values, [{"matchVariable": "RequestArgValues", "selectorMatchOperator": "Equals", "selector": selector,
                     "exclusionManagedRuleSets": [{"ruleSetType": "OWASP", "ruleSetVersion": "3.2", "ruleGroups": groups}]}])
 
     def test_exact_path_and_default_keep_same_apim_backend_and_trusted_rewrite(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
-        for grpc_on in (False, True):
-            parameters = self.parameters(grpcEnabled=grpc_on)
-            properties = self.value(gateway["properties"], parameters)
-            pathmap = properties["urlPathMaps"][0]["properties"]
-            rule = self.protocol_path_rules(properties)["speech"]
-            self.assertEqual(rule["paths"], parameters["speechRawBodyPaths"])
-            self.assertFalse(any("*" in path for path in rule["paths"]))
-            self.assertEqual(rule["backendAddressPool"], pathmap["defaultBackendAddressPool"])
-            self.assertEqual(rule["backendHttpSettings"], pathmap["defaultBackendHttpSettings"])
-            self.assertTrue(rule["firewallPolicy"]["id"].endswith("wafpol-g-speech-abc123"))
-            self.assertTrue(properties["firewallPolicy"]["id"].endswith("wafpol-g-base-abc123"))
-            self.assertEqual(properties["requestRoutingRules"][1]["properties"]["ruleType"], "PathBasedRouting")
-            self.assertEqual(properties["backendAddressPools"][0]["properties"]["backendAddresses"], [{"ipAddress": "10.40.2.68"}])
-            self.assertEqual(properties["backendHttpSettingsCollection"][0]["properties"]["port"], 80)
-            self.assertIn("redirectConfiguration", properties["requestRoutingRules"][0]["properties"])
-            if grpc_on:
-                self.assertEqual(rule["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
-                self.assertEqual(properties["listeners"][0]["properties"]["protocol"], "Tcp")
-            else:
-                self.assertNotIn("rewriteRuleSet", rule)
-                self.assertNotIn("defaultRewriteRuleSet", pathmap)
+        parameters = self.parameters()
+        properties = self.value(gateway["properties"], parameters)
+        pathmap = properties["urlPathMaps"][0]["properties"]
+        rule = self.protocol_path_rules(properties)["speech"]
+        self.assertEqual(rule["paths"], parameters["speechRawBodyPaths"])
+        self.assertFalse(any("*" in path for path in rule["paths"]))
+        self.assertEqual(rule["backendAddressPool"], pathmap["defaultBackendAddressPool"])
+        self.assertEqual(rule["backendHttpSettings"], pathmap["defaultBackendHttpSettings"])
+        self.assertTrue(rule["firewallPolicy"]["id"].endswith("wafpol-g-speech-abc123"))
+        self.assertTrue(properties["firewallPolicy"]["id"].endswith("wafpol-g-base-abc123"))
+        self.assertEqual(properties["requestRoutingRules"][1]["properties"]["ruleType"], "PathBasedRouting")
+        self.assertEqual(properties["backendAddressPools"][0]["properties"]["backendAddresses"], [{"ipAddress": "10.40.2.68"}])
+        self.assertEqual(properties["backendHttpSettingsCollection"][0]["properties"]["port"], 80)
+        self.assertIn("redirectConfiguration", properties["requestRoutingRules"][0]["properties"])
+        self.assertEqual(rule["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
+        self.assertTrue(rule['rewriteRuleSet']['id'].endswith('/rewriteRuleSets/trusted-l7-ingress'))
+        for collection in ('listeners', 'routingRules', 'backendSettingsCollection'):
+            self.assertEqual(properties[collection], [])
+        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
     def test_enterprise_policy_and_standard_sku_do_not_create_an_override(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
@@ -289,23 +286,19 @@ class SsmlWafTests(unittest.TestCase):
 
     def test_gateway_identity_callback_exists_without_other_protocol_paths_and_keeps_rewrite(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
-        for grpc_on in (False, True):
-            parameters = self.parameters(speechRawBodyPaths=[], grpcEnabled=grpc_on)
-            properties = self.value(gateway["properties"], parameters)
-            pathmap = next(item for item in properties["urlPathMaps"] if item["name"] == "pathmap-protocols")["properties"]
-            rules = self.protocol_path_rules(properties)
-            self.assertEqual(set(rules), {"credential-identity-callback"})
-            callback = rules["credential-identity-callback"]
-            self.assertEqual(callback["paths"], ["/auth/connections/browser/identity-callback"])
-            self.assertTrue(callback["firewallPolicy"]["id"].endswith("/wafpol-g-auth-abc123"))
-            routing = next(item for item in properties["requestRoutingRules"] if item["name"] == "rule-https-to-apim")["properties"]
-            self.assertEqual(routing["ruleType"], "PathBasedRouting")
-            self.assertTrue(routing["urlPathMap"]["id"].endswith("/pathmap-protocols"))
-            if grpc_on:
-                self.assertEqual(callback["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
-            else:
-                self.assertNotIn("rewriteRuleSet", callback)
-                self.assertNotIn("defaultRewriteRuleSet", pathmap)
+        parameters = self.parameters(speechRawBodyPaths=[])
+        properties = self.value(gateway["properties"], parameters)
+        pathmap = next(item for item in properties["urlPathMaps"] if item["name"] == "pathmap-protocols")["properties"]
+        rules = self.protocol_path_rules(properties)
+        self.assertEqual(set(rules), {"credential-identity-callback"})
+        callback = rules["credential-identity-callback"]
+        self.assertEqual(callback["paths"], ["/auth/connections/browser/identity-callback"])
+        self.assertTrue(callback["firewallPolicy"]["id"].endswith("/wafpol-g-auth-abc123"))
+        routing = next(item for item in properties["requestRoutingRules"] if item["name"] == "rule-https-to-apim")["properties"]
+        self.assertEqual(routing["ruleType"], "PathBasedRouting")
+        self.assertTrue(routing["urlPathMap"]["id"].endswith("/pathmap-protocols"))
+        self.assertEqual(callback["rewriteRuleSet"], pathmap["defaultRewriteRuleSet"])
+        self.assertTrue(callback['rewriteRuleSet']['id'].endswith('/rewriteRuleSets/trusted-l7-ingress'))
 
     def test_portal_callback_keeps_code_value_scoped_to_three_observed_sql_rules(self):
         parameters = self.parameters()

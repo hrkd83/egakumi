@@ -1,4 +1,4 @@
-"""モデル・音声・ファイル・gRPCのAPI設定とAPIM式を検証する。
+"""モデル・音声・ファイル・WebSocket/MCPのAPI設定とAPIM式を検証する。
 
 公開する操作と上流の形式を組み合わせ、未許可モデル・不正なサイズ・別セッションを拒否する。実XMLから取り出した式も動かすが、Azureへの配備成功は別の実機試験で確認する。
 """
@@ -57,7 +57,7 @@ def bound_coverage():
 
 
 def bound_external_coverage():
-    """汎用protocol能力の試験だけに、外部6 APIのfixtureを明示追加する。"""
+    """汎用protocol能力の試験だけに、外部5 APIのfixtureを明示追加する。"""
     from urllib.parse import urlsplit
     raw = bound_coverage()
     fixture_data = json.loads((CORE / "tests/fixtures/external-api-definitions.json").read_text())
@@ -72,7 +72,7 @@ def bound_external_coverage():
 
 
 class ProtocolConfigurationTests(unittest.TestCase):
-    """モデル・音声・ファイル・gRPCのAPI設定とAPIM式を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    """モデル・音声・ファイル・WebSocket/MCPのAPI設定とAPIM式を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def normalize(self, raw):
         return configuration.normalize_configuration(raw, base_directory=CORE / "config")
 
@@ -80,14 +80,14 @@ class ProtocolConfigurationTests(unittest.TestCase):
         actual = self.normalize(bound_coverage())
         self.assertEqual({a["productId"] for a in actual["apiDefinitions"]}, {"model-users", "pii-users", "connection-users"})
         self.assertFalse(actual["publishApis"])
-        self.assertTrue(actual["network"]["apimKeyVaultAccessEnabled"])
+        self.assertNotIn("apimKeyVaultAccessEnabled", actual["network"])
         self.assertEqual({a["apiType"] for a in actual["apiDefinitions"]}, {"http", "websocket"})
 
     def test_external_protocol_fixtures_are_explicitly_separate_from_standard(self):
         actual = self.normalize(bound_external_coverage())
-        self.assertEqual(len(actual["apiDefinitions"]), len(standard_apis.STANDARD_API_NAMES) + 6)
-        self.assertEqual(sum(api["serviceClass"] == "sample" for api in actual["apiDefinitions"]), 6)
-        self.assertEqual({api["apiType"] for api in actual["apiDefinitions"]}, {"http", "websocket", "mcp", "grpc"})
+        self.assertEqual(len(actual["apiDefinitions"]), len(standard_apis.STANDARD_API_NAMES) + 5)
+        self.assertEqual(sum(api["serviceClass"] == "sample" for api in actual["apiDefinitions"]), 5)
+        self.assertEqual({api["apiType"] for api in actual["apiDefinitions"]}, {"http", "websocket", "mcp"})
 
     def test_deployed_models_are_reachable_through_declared_api_contracts(self):
         """API例が公開するモデルと、接続契約を追加確認するモデルを明示照合する。"""
@@ -240,7 +240,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
         self.normalize(raw)
 
     def test_native_protocol_contract_cannot_inspect_frames(self):
-        for api_type in ("grpc", "websocket", "mcp"):
+        for api_type in ("websocket", "mcp"):
             raw = bound_external_coverage()
             api = next(a for a in raw["apiDefinitions"] if a.get("apiType") == api_type)
             api["authorization"]["operationConstraints"]["invoke"]["bodyFormat"] = "json"
@@ -250,7 +250,7 @@ class ProtocolConfigurationTests(unittest.TestCase):
     def test_external_protocol_fixtures_use_apim_managed_identity(self):
         definitions = self.normalize(bound_external_coverage())["apiDefinitions"]
         samples = [api for api in definitions if api["serviceClass"] == "sample"]
-        self.assertEqual(len(samples), 6)
+        self.assertEqual(len(samples), 5)
         for api in samples:
             with self.subTest(api=api["name"]):
                 self.assertEqual(api["backendAuthentication"], {"mode": "managedIdentity"})
@@ -306,16 +306,12 @@ class ProtocolConfigurationTests(unittest.TestCase):
         without_realtime = self.normalize(raw)
         self.assertFalse(without_realtime["gateway"]["realtimeControlEnabled"])
         self.assertFalse(realtime_enabled(without_realtime))
-        self.assertTrue(without_realtime["gateway"]["grpc"]["enabled"])
+        self.assertNotIn("grpc", without_realtime["gateway"])
         raw["gateway"]["realtimeControlEnabled"] = True
-        raw["network"]["apimKeyVaultAccessEnabled"] = False
-        with self.assertRaisesRegex(configuration.ConfigurationError, r"network\.apimKeyVaultAccessEnabled"):
-            self.normalize(raw)
-        raw["network"]["apimKeyVaultAccessEnabled"] = True
         actual = self.normalize(raw)
         self.assertTrue(actual["gateway"]["realtimeControlEnabled"])
         self.assertTrue(realtime_enabled(actual))
-        self.assertTrue(actual["gateway"]["grpc"]["enabled"])
+        self.assertNotIn("grpc", actual["gateway"])
         self.assertEqual(actual["apiDefinitions"], [])
         raw["gateway"]["realtimeControlEnabled"] = "true"
         with self.assertRaisesRegex(configuration.ConfigurationError, "realtimeControlEnabled"):
@@ -331,22 +327,12 @@ class ProtocolConfigurationTests(unittest.TestCase):
             if change == "mixedQuery": api["websocket"]["queryParameters"] = {"model": "unapproved"}
             with self.subTest(change=change), self.assertRaises(configuration.ConfigurationError): self.normalize(raw)
 
-    def test_grpc_import_is_self_contained_and_does_not_expose_listener_settings(self):
-        raw = bound_external_coverage()
-        api = next(a for a in raw["apiDefinitions"] if a.get("apiType") == "grpc")
-        self.assertEqual(api["path"], "")
-        api["grpc"]["definition"] += '\nimport "external.proto";'
-        with self.assertRaisesRegex(configuration.ConfigurationError, "self-contained"):
-            self.normalize(raw)
-        for key, values in (("enabled", (True, False)),
-                            ("publicPort", (8443, 9443, 65000, 65535, 443, 3389)),
-                            ("backendPort", (443, 80))):
-            for value in values:
-                raw = bound_external_coverage()
-                raw["gateway"].setdefault("grpc", {})[key] = value
-                with self.subTest(key=key, value=value), self.assertRaisesRegex(
-                        configuration.ConfigurationError, r"gateway\.grpc.*unsupported field.*" + key):
-                    self.normalize(raw)
+    def test_retired_grpc_api_and_proto_contract_are_explicitly_rejected(self):
+        for field, value in (("apiType", "grpc"), ("grpc", {"definition": 'syntax = "proto3";'})):
+            raw = bound_external_coverage()
+            raw["apiDefinitions"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(configuration.ConfigurationError):
+                self.normalize(raw)
 
     def test_mcp_endpoint_names_and_transport_are_official_contracts(self):
         raw = bound_external_coverage()
@@ -408,6 +394,7 @@ public static class ExpandedPolicyFixture {
  public static bool Target(Context context) { __TARGET__ }
  public static bool Ingress(Context context) { __INGRESS__ }
  public static bool Query(Context context) { __QUERY__ }
+ public static bool AuthenticationMissing(Context context) { __AUTH_GUARD__ }
  public static string Auth(Context context) { __AUTH__ }
  public static string Run(string input) {
   var results=new JObject();
@@ -418,10 +405,11 @@ public static class ExpandedPolicyFixture {
    foreach(var entry in ((JObject)(item["headers"]??new JObject())).Properties()) c.Request.Headers[entry.Name]=entry.Value is JArray ? entry.Value.Select(x=>(string)x).ToArray():new [] {(string)entry.Value};
    foreach(var entry in ((JObject)(item["query"]??new JObject())).Properties()) c.Request.Url.Query[entry.Name]=entry.Value is JArray ? entry.Value.Select(x=>(string)x).ToArray():new [] {(string)entry.Value};
    if(item["key"]!=null) { c.Subscription=new Named {Id=(string)item["key"]};c.Product=new Named {Id="tool-users"};c.Request.Headers["Ocp-Apim-Subscription-Key"]=new [] {"fixture-not-a-secret"}; }
+   if(item["authenticated"]!=null)c.Variables["gatewayCommonAuthenticationValidated"]=(bool)item["authenticated"];
    if(item["api"]!=null)c.Api.Id=(string)item["api"];
    if(item["grpc"]!=null)c.Variables["coreNativeGrpc"]=(bool)item["grpc"];
    string mode=(string)item["mode"];
-   JToken result=mode=="ingress"?(JToken)new JValue(Ingress(c)):mode=="query"?new JValue(Query(c)):mode=="auth"?JObject.Parse(Auth(c)):new JValue(Target(c));
+   JToken result=mode=="ingress"?(JToken)new JValue(Ingress(c)):mode=="query"?new JValue(Query(c)):mode=="auth"?(AuthenticationMissing(c)?new JObject(new JProperty("allowed",false)):JObject.Parse(Auth(c))):new JValue(Target(c));
    results[(string)item["id"]]=new JObject(new JProperty("result",result),new JProperty("reads",c.Request.Body.Reads));
   }
   return results.ToString(Formatting.None);
@@ -431,7 +419,7 @@ public static class ExpandedPolicyFixture {
 
 
 class ExpandedPolicyTests(unittest.TestCase):
-    """モデル・音声・ファイル・gRPCのAPI設定とAPIM式を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    """モデル・音声・ファイル・WebSocket/MCPのAPI設定とAPIM式を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     @classmethod
     def setUpClass(cls):
         if not PWSH: raise unittest.SkipTest("C# runtime unavailable; no live checks were performed")
@@ -461,12 +449,14 @@ class ExpandedPolicyTests(unittest.TestCase):
                             ("file-reference", {"input": [{"type": "input_file", "file_id": "other"}]})):
             cases.append({"id": "responses-" + name, "config": responses, "body": {"model": "approved", "input": "synthetic", **patch}})
         auth = {"mode": "subscriptionKey"}
-        cases.append({"id": "auth-valid", "mode": "auth", "config": auth, "key": "approved-key"})
+        cases.append({"id": "auth-valid", "mode": "auth", "config": auth, "key": "approved-key", "authenticated": True})
         cases.append({"id": "auth-deny-missing", "mode": "auth", "config": auth})
         cases.append({"id": "auth-deny-empty", "mode": "auth", "config": auth, "key": ""})
-        ingress = expression(SERVICE_POLICY, "./inbound/choose/when", "condition").replace("__L7_INGRESS_REQUIRED__", "true").replace("__L7_INGRESS_EXPECTED__", "fixture-ingress-proof")
+        ingress = expression(SERVICE_POLICY, "./inbound/choose/when", "condition").replace("{{core-l7-ingress-enabled}}", "true").replace("{{core-l7-ingress-secret}}", "fixture-ingress-proof")
+        guard_condition = ET.fromstring((POLICIES / "protocol.xml").read_text(encoding="utf-8")).find("./inbound/choose/when").get("condition")
+        auth_guard = "return " + guard_condition[2:-1] + ";"
         query = actual_expression("protocol.xml", "gatewayProtocolQueryAllowed").replace("__WEBSOCKET_QUERY_BASE64__", base64.b64encode(b'{"model":"approved","api-version":"2026-01-01"}').decode())
-        source = CSHARP.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed")).replace("__INGRESS__", ingress).replace("__QUERY__", query).replace("__AUTH__", actual_expression("protocol.xml", "gatewayDecision"))
+        source = CSHARP.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed")).replace("__INGRESS__", ingress).replace("__QUERY__", query).replace("__AUTH_GUARD__", auth_guard).replace("__AUTH__", actual_expression("protocol.xml", "gatewayDecision"))
         with tempfile.TemporaryDirectory(prefix="core-expanded-policies-") as temp:
             path = Path(temp); (path / "policy.cs").write_text(source); (path / "cases.json").write_text(json.dumps(cases))
             (path / "run.ps1").write_text("""$ErrorActionPreference='Stop'
@@ -489,8 +479,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             self.assertFalse(self.results["responses-" + name]["result"], name)
 
     def test_l4_listener_cannot_bypass_l7_proof_for_normal_api(self):
-        for name in ("missing", "spoof", "duplicate", "grpc-header"): self.assertTrue(self.results["ingress-" + name]["result"])
-        for name in ("valid", "grpc"): self.assertFalse(self.results["ingress-" + name]["result"])
+        for name in ("missing", "spoof", "duplicate", "grpc-header", "grpc"): self.assertTrue(self.results["ingress-" + name]["result"])
+        for name in ("valid",): self.assertFalse(self.results["ingress-" + name]["result"])
 
     def test_websocket_target_query_is_fixed_and_unread(self):
         for name in ("missing", "fixed"): self.assertTrue(self.results["query-" + name]["result"])

@@ -357,7 +357,6 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 class DocumentAnalysisConfigurationTests(unittest.TestCase):
     def raw(self):
         raw, _ = standard_fixture()
-        raw['network']['apimKeyVaultAccessEnabled'] = True
         raw['apiDefinitions'] = [copy.deepcopy(API)]
         return raw
 
@@ -402,13 +401,16 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
         config = normalize_configuration(raw)
         self.assertFalse(realtime_enabled(config))
         self.assertTrue(owner_ticket_enabled(config))
-        self.assertTrue(config['gateway']['grpc']['enabled'])
-        raw['network']['apimKeyVaultAccessEnabled'] = False
-        with self.assertRaisesRegex(ValueError, r'network\.apimKeyVaultAccessEnabled'):
-            normalize_configuration(raw)
+        self.assertNotIn('grpc', config['gateway'])
+        self.assertNotIn('apimKeyVaultAccessEnabled', config['network'])
+        # Key Vault access is a fixed NSG requirement, so neither flag value is an input.
+        for value in (False, True):
+            raw['network']['apimKeyVaultAccessEnabled'] = value
+            with self.subTest(retired_flag=value), self.assertRaisesRegex(ValueError, 'apimKeyVaultAccessEnabled'):
+                normalize_configuration(raw)
 
-    def test_canonical_paths_models_auth_provider_bounds_and_owner_key_remain_required(self):
-        for mutation in ('model', 'bytes', 'response', 'timeout', 'version', 'path', 'backend', 'status-method', 'status-path', 'status-parameters', 'owner-key'):
+    def test_canonical_paths_models_auth_and_provider_bounds_remain_required(self):
+        for mutation in ('model', 'bytes', 'response', 'timeout', 'version', 'path', 'backend', 'status-method', 'status-path', 'status-parameters'):
             raw = self.raw()
             api = raw['apiDefinitions'][0]
             start = api['authorization']['operationConstraints']['analyze_document']
@@ -422,7 +424,6 @@ class DocumentAnalysisConfigurationTests(unittest.TestCase):
             if mutation == 'status-method': api['operations'][1]['method'] = 'POST'
             if mutation == 'status-path': api['operations'][1]['urlTemplate'] = '/other/{operationId}'
             if mutation == 'status-parameters': api['operations'][1]['templateParameters'] = []
-            if mutation == 'owner-key': raw['network']['apimKeyVaultAccessEnabled'] = False
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 normalize_configuration(raw)
 

@@ -1,5 +1,4 @@
 """native MCPの誤った成功包装より前に引数不正を拒否するC#式を検証します。"""
-import base64
 import json
 from pathlib import Path
 import subprocess
@@ -7,14 +6,24 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from test_gateway_limits_telemetry import PWSH
+from arm_helpers import compiled_policy_value
+from bicep_helpers import compile_bicep
 
 class McpArgumentValidationTests(unittest.TestCase):
     def test_public_argument_schema_without_reflecting_sensitive_input(self):
         if not PWSH:self.skipTest('PowerShell Roslyn is required')
         root=Path(__file__).resolve().parents[1]
         api=json.loads((root/'apps/gateway/apim/apis/pii-v1.json').read_text(encoding='utf-8'))
-        value=ET.parse(root/'apps/gateway/apim/policies/mcp.xml').find("./inbound/set-variable[@name='gatewayMcpArgumentError']").get('value')
-        expression=value[2:-1].replace('__AUTHORIZATION_BASE64__',base64.b64encode(json.dumps(api['authorization']).encode()).decode())
+        # Exercise configured restrictions, rather than mistaking the canonical
+        # unrestricted language set and 1 MB default for these strict limits.
+        api['authorization']['operationConstraints']['pii_redact_text'].update(
+            maxRequestBytes=32768, allowedLanguages=['en', 'ja'])
+        api.update(apiType='http', backendUrl='https://backend.example.com',
+                   backendAuthentication={'mode':'none'}, backendHeaders={})
+        template=compile_bicep('apps/gateway/apim/api-publication.bicep')
+        policy=ET.fromstring(compiled_policy_value(template, {'apiDefinitions':[api]}, resource_name='mcpPolicies'))
+        value=policy.find("./inbound/set-variable[@name='gatewayMcpArgumentError']").get('value')
+        expression=value[2:-1]
         def call(arguments):return {'jsonrpc':'2.0','id':17,'method':'tools/call','params':{'name':'pii_redact_text','arguments':arguments}}
         valid=call({'text':'hello','language':'en'})
         cases=[valid,call({'text':1,'language':'en'}),call({'text':'SECRET_INPUT','language':'unknown'}),call({'text':'','language':'en'}),call({'text':'hello','language':'en','extra':'SECRET_INPUT'}),call({'language':'ja'}),call({'text':'x'*32768,'language':'en'}),{'jsonrpc':'2.0','id':1,'method':'tools/list'},call({'text':'😀'*5120,'language':'en'}),call({'text':'e\u0301'*5120,'language':'en'}),call({'text':'x'*32741,'language':'en'}),call({'text':'x'*32742,'language':'en'})]

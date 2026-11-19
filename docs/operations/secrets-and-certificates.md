@@ -88,7 +88,7 @@ versionless KV参照・公開ホストを照合し、workerのソース一致も
 管理VMの既存MIを使って公開certificate metadataだけを読み、PFXや秘密鍵を取得しない。
 
 1. まず次を計画・反映する。実行時は一回限りのVM Run Commandで更新timerと公開metadataを
-   読み、Gateway／Portalと採用済みAPIM直通経路のSNI・信頼を検証する。
+   読み、Gateway／PortalのHTTPS443のSNI・信頼を検証する。
    `public-tls-verified`は、KVの現在leafと実TLSが一致した場合だけ記録する。
    正常完了した今回のRun Commandだけを回収し、404を確認する。実行中や応答不明のものは保持する。
 
@@ -106,30 +106,26 @@ python3 -B scripts/operations/certificate.py --config "$DEPLOY_PARAMS_FILE" --st
 3. 期限前に計画更新する場合は上記へ`--rotate`を付ける。スクリプトが確認した現在leafを
    既存workerの`RotateFromThumbprint`へ渡し、新しい正常leafになったことを確認する。
    指定済みの公開thumbprintと照合したい場合は、代わりに`--thumbprint`を使う。
-4. 更新後はAPIMの公式`refreshHostnames`を一度要求する。現在使用するAPI版は
-   **2025-09-01-preview**で、計画にも表示する。これはNamed ValueのSecret refreshと別操作。
-   AppGWは既存タグを保持したETag付きの作業用タグ更新でKVを再確認させ、作業用タグを戻す。
-   参照変更や全体再配備で同期しない。[APIM同期API](https://learn.microsoft.com/en-us/rest/api/apimanagement/api-management-service/refresh-hostnames?view=rest-apimanagement-2025-09-01-preview)・[AppGWの取得仕様](https://learn.microsoft.com/en-us/azure/application-gateway/key-vault-certs#supported-certificates)
-5. APIMは一度受理された同じLROを、Retry-Afterに従って最大60分待つ。AppGW更新も有限時間で読み、公開Gateway・Portal・採用した直通経路すべての
-   実TLS leaf・信頼・ホスト名が現在KVと一致することを確認する。KVの版が増えたことだけで
-   完了にしない。通常APIとPortalログインも一度確認する。
+4. 更新後はAppGWの既存タグを保持したETag付きの作業用タグ更新でKVを再確認させ、
+   作業用タグを戻す。変更前のタグとETagは保護記録へ保存する。参照変更や全体再配備で
+   同期しない。[AppGWの取得仕様](https://learn.microsoft.com/azure/application-gateway/key-vault-certs#supported-certificates)
+5. AppGW更新を有限時間で読み、公開Gateway・PortalのHTTPS443の実TLS leaf・信頼・ホスト名が
+   現在KVと一致することを確認する。KVの版が増えたことだけで完了にしない。
+   通常APIとPortalログインも確認する。
 6. workerは成功したが同期で止まった場合は、元のVM Run Command・同期結果・参照を読む。
-   正常な証明書を再発行せず、必要なら`--stage sync`を計画・反映して同期とTLS観測だけを
-   行う。`check`で既に新版が配信されていると確認できた場合は追加更新をしない。
-   `sync`はversionless参照と現在KVの公開metadataを照合してから、APIM直通経路の
-   信頼・ホスト名付きTLSを確認する。現在leafと一致すればAPIMへのPOSTを省略し、
-   AppGW同期と全公開経路の確認へ進む。保護記録`certificate-apim-refresh-skipped`は
-   公開TLSによる一致の証拠であり、前のLROの成功を示すものではない。
-   信頼付きTLSで旧leafを確認した場合は通常の同期要求へ進み、TLSを確認できなければ停止する。
+   正常な証明書を再発行せず、必要なら`--stage sync`を計画・反映してAppGW同期とTLS観測を
+   行う。`check`で新版の配信を確認できた場合は追加更新しない。応答が不明な要求は、
+   元の結果を確認してから再開する。
 
-APIMの同期要求のHTTP状態とエラー識別子は、保護された
-`certificate-apim-refresh-response`記録で確認できる。`409 / ServiceLocked`で
-拒否された場合は、新しいKV版を保持し、Azure側の保守・更新状況を確認して時間を置き、
-同期だけを再試行する。資源の`Succeeded`表示だけでロック解除を判断しない。
-応答が不明な場合は、元の要求の結果を確認してから再開する。
+APIMのHTTPS保守には、Private DNSで内部VIPへ解決される標準`*.azure-api.net`名を
+HostとSNIに使用する。Microsoftが管理する既定証明書を使用するため、本workerの
+公開証明書同期対象に含めない。gRPC専用のAPIM公開名bindingと`refreshHostnames`呼出しは
+撤去する。AppGWの公開URLと証明書は維持する。
+[APIM標準Gateway名](https://learn.microsoft.com/azure/api-management/configure-custom-domain)・
+[内部VNetのDNS](https://learn.microsoft.com/azure/api-management/api-management-using-with-internal-vnet)
 
 **異常時：** worker・DNS・KV・サービス同期のどこで止まったかを保護記録で特定する。
-実行中や応答不明のVM要求・同期POSTを繰り返さず、旧証明書の有効な版を保持する。
+実行中や応答不明のVM要求・AppGW更新要求を繰り返さず、旧証明書の有効な版を保持する。
 DNS権限・KV権限／経路・timer・参照の対象だけを修正してから再試行する。
 公開側が旧版なら、再発行する前に同期を確認する。作業用タグ復元が未完了なら、現在の
 タグとETagを読み、同時変更を消さず該当タグだけを戻す。ログや秘密の一括取得は不要。

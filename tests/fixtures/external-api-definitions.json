@@ -349,44 +349,6 @@
       "serviceClass": "sample"
     },
     {
-      "name": "sample-grpc-v1",
-      "displayName": "Sample Grpc V1",
-      "path": "",
-      "backendService": "external",
-      "backendAudience": "https://provider.example.com",
-      "productId": "tool-users",
-      "subscriptionKeyHeader": "api-key",
-      "operations": [
-        {
-          "name": "invoke",
-          "displayName": "Invoke",
-          "method": "POST",
-          "urlTemplate": "/",
-          "templateParameters": []
-        }
-      ],
-      "keySubscriptions": [],
-      "authorization": {
-        "mode": "subscriptionKey",
-        "operationConstraints": {
-          "invoke": {
-            "kind": "registeredOperation",
-            "maxRequestBytes": 65536,
-            "bodyFormat": "none"
-          }
-        }
-      },
-      "backendAuthentication": {
-        "mode": "managedIdentity"
-      },
-      "apiType": "grpc",
-      "grpc": {
-        "definition": "syntax = \"proto3\";\npackage wf.sample.v1;\n\nmessage ProbeRequest { string text = 1; int32 count = 2; }\nmessage ProbeReply { string text = 1; int32 sequence = 2; }\n\nservice Probe {\n  rpc Echo(ProbeRequest) returns (ProbeReply);\n  rpc ServerStream(ProbeRequest) returns (stream ProbeReply);\n  rpc ClientStream(stream ProbeRequest) returns (ProbeReply);\n  rpc Bidi(stream ProbeRequest) returns (stream ProbeReply);\n}\n"
-      },
-      "backendUrl": "__TOOLS_GRPC_BACKEND__",
-      "serviceClass": "sample"
-    },
-    {
       "name": "sample-hosted-agent-v1",
       "displayName": "Sample Hosted Agent V1",
       "path": "agents/sample/v1",

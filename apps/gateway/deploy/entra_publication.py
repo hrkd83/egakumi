@@ -21,7 +21,9 @@ from deployment.helpers.apim_authentication import (
     ENTRA_OPEN_PRODUCT_ID, ENTRA_NAMED_VALUES, validate_entra_named_values, validate_entra_named_value,
 )
 from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES
-from deployment.helpers.apim_ingress import TRUSTED_INGRESS_ID
+from deployment.helpers.apim_ingress import (
+    TRUSTED_INGRESS_ID, render_trusted_ingress_fragment, render_legacy_trusted_ingress_fragment,
+)
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, BROWSER_EXCEPTION_VARIABLE, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import (
     AUTHENTICATION_FRAGMENT_IDS, COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
@@ -255,6 +257,8 @@ def _xml(value, *, fragment=False, inherited=False):
         if len(bases) != 1 or bases[0] not in list(section):
             raise ValueError("Inbound policy inheritance must execute exactly once")
         before = list(section)[:list(section).index(bases[0])]
+        # Retired metadata is accepted only while reading an explicitly owned
+        # previous source. New templates are rejected before deployment.
         metadata = ("gatewayAuditSettings", "gatewayControlSettings", "coreNativeGrpc")
         if any(not (node.tag == "set-variable" and node.get("name") in metadata)
                and _structure(node) != _structure(ET.fromstring(PRM_GUARD)) for node in before):
@@ -306,6 +310,9 @@ def _audit_fragment_scope(policies, apim_id):
             if (root.attrib or len(children) != 1 or children[0].tag != "choose"
                     or children[0].attrib != {"id": ingress_id}):
                 raise ValueError("The trusted ingress fragment must contain only its fixed ingress decision")
+            if not any(_structure(root) == _structure(_xml(expected, fragment=True))
+                       for expected in (render_trusted_ingress_fragment(), render_legacy_trusted_ingress_fragment())):
+                raise ValueError("The trusted ingress fragment differs from its fixed current or legacy source")
         if fragment_name == BROWSER_EXCEPTION_ID:
             children = list(root)
             if (root.attrib or len(children) != 1 or children[0].tag != "set-variable"
@@ -851,7 +858,7 @@ def _wait(transport, resource_id, *, sleep, deadline, raw=False):
 
 
 def source_manifest(source, apim_id, api_names, global_policy, *, named_values=None):
-    """protected ARM deployment outputの生成元XMLを、対象限定の期待値へ変換する。"""
+    """新旧のprotected生成元を対象限定の期待値へ変換する。旧gRPCの照合は新規受付ではない。"""
     version = source.get("schemaVersion") if isinstance(source, dict) else None
     required = {"schemaVersion", "apis", "policies", "backends", "namedValues"}
     if version == 2:

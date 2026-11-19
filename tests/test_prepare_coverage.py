@@ -180,8 +180,7 @@ class CoveragePreparationTests(unittest.TestCase):
         result = prepare_coverage.prepare(self.base, self.overlay, bindings, base_directory=CORE / "config", phase="foundation")
         self.assertEqual(len(result["apiDefinitions"]), len(self.base.get("apiDefinitions", [])))
         normalized = normalize_configuration(result, base_directory=CORE / "config")
-        self.assertEqual({key: normalized["gateway"]["grpc"][key] for key in ("enabled", "publicPort", "backendPort")},
-                         {"enabled": True, "publicPort": 8443, "backendPort": 443})
+        self.assertNotIn("grpc", normalized["gateway"])
         self.assertEqual(len(result["credentialProviders"]), len(self.base["credentialProviders"]))
         self.assertEqual(result["gateway"]["authentication"]["credentialLogin"],
                          self.base["gateway"]["authentication"]["credentialLogin"])

@@ -53,8 +53,7 @@ class GrpcBootstrapTests(unittest.TestCase):
             "location": "japaneast", "environmentName": "test",
             "services": {"apimInstanceId": "abc123"},
             "resourceGroupNames": {"svc": "rg-test-fixture-svc"},
-            "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True,
-                "publicHostName": "fixture.example.com", "publicPort": 8443, "backendPort": 443}},
+            "gateway": {"publicHostName": "fixture.example.com"},
             "certificate": {"certificateName": "gateway-tls"}, "apiDefinitions": [],
             "infrastructureApiDefinitions": []}
         self.client_id = "33333333-3333-4333-8333-333333333333"
@@ -63,43 +62,42 @@ class GrpcBootstrapTests(unittest.TestCase):
         self.vault_id = scope + "Microsoft.KeyVault/vaults/kv-test-fixture"
         self.vault = "kv-test-fixture"
         self.secret_uri = f"https://{self.vault}.vault.azure.net/secrets/gateway-tls"
-        self.outputs = {"grpc": {"enabled": True, "apimId": self.apim_id,
-            "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443",
-            "certificateSecretUri": self.secret_uri,
+        self.outputs = {"ingressSecrets": {"enabled": True, "l7IngressEnabled": True, "apimId": self.apim_id,
+            "publicHostName": "fixture.example.com", "certificateSecretUri": self.secret_uri,
             "namedValueId": self.apim_id + "/namedValues/" + grpc.SECRET_NAME},
-            "ingressSecrets": {"enabled": True, "grpcEnabled": True, "apimId": self.apim_id},
             "cleanup": {"serviceResourceIds": {"apim": self.apim_id, "keyVault": self.vault_id}}}
         self.desired = {"type": "Proxy", "hostName": "fixture.example.com", "keyVaultId": self.secret_uri,
-            "identityClientId": None, "defaultSslBinding": True, "negotiateClientCertificate": False}
-        self.other = {"type": "Proxy", "hostName": self.apim_id.rsplit("/", 1)[-1] + ".azure-api.net", "defaultSslBinding": True}
+            "defaultSslBinding": True, "negotiateClientCertificate": False, "certificateSource": "KeyVault"}
+        self.journal = []
+        self.other = {"type": "Proxy", "hostName": self.apim_id.rsplit("/", 1)[-1] + ".azure-api.net", "defaultSslBinding": True, "negotiateClientCertificate": False, "certificateSource": "BuiltIn"}
 
     def resource(self, domains=None, **properties):
-        return {"etag": '"fixture-etag"', "properties": {"virtualNetworkType": "Internal",
+        return {"etag": '"fixture-etag"', "id": self.apim_id, "name": self.apim_id.rsplit("/", 1)[-1],
+            "type": "Microsoft.ApiManagement/service", "properties": {"virtualNetworkType": "Internal",
+            "gatewayUrl": "https://" + self.other["hostName"],
             "provisioningState": "Succeeded", "hostnameConfigurations": domains if domains is not None else [self.other],
-            "customProperties": {grpc.HTTP2: "true", "KeepExistingSetting": "false"}, **properties}}
+            "customProperties": {grpc.HTTP2: "false", "KeepExistingSetting": "false"}, **properties}}
+
+    def configure_endpoint(self, *args, **kwargs):
+        kwargs.setdefault("mutation_recorder", lambda event, value: self.journal.append((event, copy.deepcopy(value))))
+        return grpc.configure_endpoint(*args, **kwargs)
 
     def named(self, name=grpc.SECRET_NAME, status="Success"):
         return {"properties": {"secret": True, "keyVault": {
             "secretIdentifier": f"https://{self.vault}.vault.azure.net/secrets/{name}",
             "lastStatus": {"code": status}}}}
 
-    def test_invalid_enabled_is_rejected_before_writes_or_transport(self):
-        for value in (False, None, 0, 1, "true"):
-            with self.subTest(value=value):
-                self.config["gateway"]["grpc"]["enabled"] = value
-                transport = Transport([])
-                for action in (
-                    lambda: grpc.prepare_secret(self.config, self.root, lifecycle.protected_json),
-                    lambda: grpc.configure_endpoint(self.config, {}, transport),
-                    lambda: grpc.configure_named_values(self.config, {}, transport),
-                ):
-                    with self.assertRaises(ValueError):
-                        action()
-                self.assertFalse(list(self.root.iterdir()))
-                self.assertEqual(transport.calls, [])
+    def test_retired_grpc_inputs_are_rejected_before_writes_or_transport(self):
+        for value in ({}, {"enabled": True}, {"enabled": False}, {"publicPort": 8443}):
+            self.config["gateway"]["grpc"] = value
+            transport = Transport([])
+            for action in (lambda: grpc.prepare_secret(self.config, self.root, lifecycle.protected_json), lambda: grpc.configure_endpoint(self.config, {}, transport), lambda: grpc.configure_named_values(self.config, {}, transport)):
+                with self.assertRaises(ValueError): action()
+            self.assertEqual(transport.calls, [])
+            self.assertFalse(list(self.root.iterdir()))
 
     def test_omitted_grpc_still_prepares_the_permanent_ingress_secret(self):
-        self.config["gateway"].pop("grpc")
+        self.config["gateway"].pop("grpc", None)
         self.assertTrue(grpc.enabled(self.config))
         self.assertEqual(set(grpc.prepare_secret(self.config, self.root, lifecycle.protected_json)), {"l7IngressSecret"})
 
@@ -119,7 +117,7 @@ class GrpcBootstrapTests(unittest.TestCase):
                 (self.config["subscriptionId"], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")):
             candidate = copy.deepcopy(self.outputs)
             foreign = self.apim_id.replace(segment, replacement)
-            candidate["grpc"]["apimId"] = foreign
+            candidate["ingressSecrets"]["apimId"] = foreign
             candidate["cleanup"]["serviceResourceIds"]["apim"] = foreign
             with self.subTest(scope=segment), self.assertRaises(ValueError):
                 grpc._own_apim(self.config, candidate)
@@ -129,29 +127,27 @@ class GrpcBootstrapTests(unittest.TestCase):
             grpc._own_apim(self.config, candidate)
 
     def test_stale_output_contract_is_rejected_before_transport(self):
-        changes = (
-            ("grpc", "enabled", False), ("grpc", "publicHostName", "other.example.com"),
-            ("grpc", "publicUrl", "https://fixture.example.com:9443"),
-            ("ingressSecrets", "grpcEnabled", False),
-        )
-        for group, field, value in changes:
-            for missing in (False, True):
-                candidate = copy.deepcopy(self.outputs)
-                if missing:
-                    candidate[group].pop(field)
-                else:
-                    candidate[group][field] = value
-                with self.subTest(group=group, field=field, missing=missing):
-                    transport = Transport([])
-                    for action in (grpc.configure_endpoint, grpc.configure_named_values):
-                        with self.assertRaises(ValueError):
-                            action(self.config, candidate, transport)
-                    self.assertEqual(transport.calls, [])
+        for key,value in (("enabled", False), ("l7IngressEnabled", False), ("publicHostName", "other.example.com")):
+            candidate = copy.deepcopy(self.outputs)
+            candidate["ingressSecrets"][key] = value
+            transport = Transport([])
+            with self.assertRaises(ValueError): grpc.configure_endpoint(self.config, candidate, transport)
+            self.assertEqual(transport.calls, [])
+
+    def test_legacy_versionless_certificate_reference_accepts_only_one_optional_final_slash(self):
+        for uri in (self.secret_uri, self.secret_uri + "/"):
+            feature = {**self.outputs["ingressSecrets"], "certificateSecretUri": uri}
+            self.assertEqual(grpc._legacy_owned_domain_uri(self.config, feature, self.outputs), self.secret_uri)
+        for uri in (self.secret_uri + "//", self.secret_uri + "/version", self.secret_uri + "?query=1",
+                    self.secret_uri + "-other"):
+            feature = {**self.outputs["ingressSecrets"], "certificateSecretUri": uri}
+            with self.subTest(uri=uri), self.assertRaises(ValueError):
+                grpc._legacy_owned_domain_uri(self.config, feature, self.outputs)
 
     def test_grpc_rejects_coherent_foreign_service_identity(self):
         """出力と撤去記録が一致しても、別サービスのIDは採用しない。"""
         candidate = copy.deepcopy(self.outputs)
-        for entry in (candidate["grpc"], candidate["cleanup"]["serviceResourceIds"]):
+        for entry in (candidate["ingressSecrets"], candidate["cleanup"]["serviceResourceIds"]):
             key = "apimId" if "apimId" in entry else "apim"
             entry[key] = self.apim_id.rsplit("/", 1)[0] + "/apim-unrelated-service"
         with self.assertRaises(ValueError):
@@ -204,7 +200,7 @@ class GrpcBootstrapTests(unittest.TestCase):
                                ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
         result = grpc.configure_named_values(self.config, self.outputs, transport)
         self.assertTrue(result["ownerTicketEnabled"])
-        self.assertTrue(result["grpcEnabled"])
+        self.assertTrue(result["l7IngressEnabled"])
         self.assertFalse(result["realtimeEnabled"])
         self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "POST", "GET"])
 
@@ -256,61 +252,125 @@ class GrpcBootstrapTests(unittest.TestCase):
                     action()
             self.assertEqual(external.read_text(), "unrelated fixture")
 
-    def test_patch_preserves_other_domains_and_security_settings_and_reads_back(self):
-        transport = Transport([ok(self.resource()), ok({}, code=202, headers={"Azure-AsyncOperation": "https://management.azure.com" + self.apim_id + "/operationresults/fixture?api-version=" + grpc.API}),
-            ok(self.resource([self.other, self.desired]))])
-        result = grpc.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None)
+    def test_retirement_preserves_other_domains_settings_and_records_readback(self):
+        foreign = {**self.desired, "hostName": "maintenance.example.com", "defaultSslBinding": False}
+        transport = Transport([ok(self.resource([self.other, foreign, self.desired])), ok(code=202), ok(self.resource([self.other, foreign]))])
+        result = self.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None)
         patch = transport.calls[1]
         self.assertEqual(patch["method"], "PATCH")
-        self.assertEqual(patch["body"]["properties"]["hostnameConfigurations"], [self.other, self.desired])
-        self.assertEqual(patch["body"]["properties"]["customProperties"]["KeepExistingSetting"], "false")
+        self.assertEqual(patch["body"]["properties"]["hostnameConfigurations"], [self.other, foreign])
+        self.assertEqual(patch["body"]["properties"]["customProperties"], {grpc.HTTP2: "false", "KeepExistingSetting": "false"})
         self.assertEqual(patch["headers"], {"If-Match": '"fixture-etag"'})
+        self.assertEqual([event for event, _ in self.journal], ["planned", "accepted", "verified"])
+        self.assertTrue(result["legacyCustomDomainRetired"])
+        self.assertTrue(result["mutationApplied"])
         self.assertFalse(result["runtimeVerified"])
-        self.assertEqual(result["status"], "management-plane-configured")
+        self.assertEqual(result["apimGatewayHost"], self.other["hostName"])
         self.assertEqual(transport.responses, [])
 
-    def test_reup_skips_domain_patch_and_does_not_touch_gateway_named_values(self):
-        """Azure が返す defaultSslBinding=true を差分にせず、同じドメインへ再 PATCH しない。"""
-        transport = Transport([ok(self.resource([self.other, self.desired])), ok(self.resource([self.other, self.desired]))])
-        grpc.configure_endpoint(self.config, self.outputs, transport)
-        self.assertNotIn("PATCH", [call["method"] for call in transport.calls])
-        self.assertTrue(self.desired["defaultSslBinding"])
-        mutations = [call for call in transport.calls if call["method"] != "GET"]
-        self.assertEqual(mutations, [])
+    def test_fresh_and_reup_never_create_domain_or_touch_named_values(self):
+        self.outputs["ingressSecrets"].pop("certificateSecretUri")
+        self.outputs["cleanup"]["serviceResourceIds"].pop("keyVault")
+        transport = Transport([ok(self.resource()), ok(self.resource())])
+        result = self.configure_endpoint(self.config, self.outputs, transport)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET", "GET"])
+        self.assertEqual(self.journal, [])
+        self.assertFalse(result["mutationApplied"])
+        self.assertTrue(result["legacyCustomDomainRetired"])
         self.assertFalse(any("namedValues" in call["path"] for call in transport.calls))
         self.assertEqual(transport.responses, [])
 
     def test_gateway_deployment_refreshes_only_owned_named_value_without_changing_domain(self):
         transport = Transport([ok(self.named()), ok(self.named())])
         result = grpc.configure_named_values(self.config, self.outputs, transport)
-        self.assertTrue(result["grpcEnabled"])
+        self.assertTrue(result["l7IngressEnabled"])
         self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET"])
         self.assertTrue(transport.calls[0]["path"].endswith("/namedValues/core-l7-ingress-secret/refreshSecret?api-version=2024-05-01"))
         self.assertNotIn("listSecrets", json.dumps(transport.calls))
         self.assertEqual(transport.responses, [])
 
-    def test_resume_waits_for_accepted_update_and_does_not_patch_matching_domain_again(self):
-        """前回の PATCH が進行中なら読取で待ち、反映済みの設定を再更新しない。"""
-        transport = Transport([ok(self.resource(provisioningState="Updating")),
-            ok(self.resource([self.other, self.desired], provisioningState="Activating")),
-            ok(self.resource([self.other, self.desired])), ok(self.resource([self.other, self.desired]))])
+    def test_mutation_requires_protected_journal_and_nonwildcard_etag(self):
+        initial = self.resource([self.other, self.desired])
+        transport = Transport([ok(initial)])
+        with self.assertRaisesRegex(ValueError, "protected per-attempt journal"):
+            grpc.configure_endpoint(self.config, self.outputs, transport)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+        for etag in (None, "", "*", '"*"', 'W/"*"', '""', 'W/""', " * ",
+                     "bad\nheader", '"first","second"', '"bad\x7fheader"', "a" * 513):
+            candidate = copy.deepcopy(initial)
+            candidate["etag"] = etag
+            transport = Transport([ok(candidate)])
+            with self.subTest(etag=etag), self.assertRaisesRegex(ValueError, "ETag"):
+                self.configure_endpoint(self.config, self.outputs, transport)
+            self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+        transport = Transport([ok(initial)])
+        with self.assertRaisesRegex(OSError, "fixture journal failure"):
+            grpc.configure_endpoint(self.config, self.outputs, transport,
+                mutation_recorder=lambda event, value: (_ for _ in ()).throw(OSError("fixture journal failure")))
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+
+    def test_removing_only_custom_proxy_restores_native_default_tls_binding(self):
+        native = {**self.other, "defaultSslBinding": False}
+        transport = Transport([ok(self.resource([native, self.desired])), ok(code=202), ok(self.resource())])
+        self.configure_endpoint(self.config, self.outputs, transport)
+        patch = next(call for call in transport.calls if call["method"] == "PATCH")
+        self.assertEqual(patch["body"]["properties"]["hostnameConfigurations"], [self.other])
+
+    def test_retirement_uses_http_etag_when_json_version_is_unquoted_base64(self):
+        initial = self.resource([self.other, self.desired])
+        initial['etag'] = 'AAAAAQ=='
+        transport = Transport([ok(initial, headers={'ETag': '"AAAAAQ=="'}), ok(code=202), ok(self.resource())])
+        self.configure_endpoint(self.config, self.outputs, transport)
+        patch = next(call for call in transport.calls if call['method'] == 'PATCH')
+        self.assertEqual(patch['headers'], {'If-Match': '"AAAAAQ=="'})
+        transport = Transport([ok(initial, headers={'ETag': '*'})])
+        with self.assertRaisesRegex(ValueError, 'ETag'):
+            self.configure_endpoint(self.config, self.outputs, transport)
+        self.assertEqual([call['method'] for call in transport.calls], ['GET'])
+
+    def test_native_endpoint_and_response_identity_are_required_before_mutation(self):
+        for field, value in (("id", self.apim_id + "-other"), ("name", "other"), ("type", "other"),
+                             ("gatewayUrl", "https://other.example.invalid"), ("virtualNetworkType", "External")):
+            initial = self.resource([self.other, self.desired])
+            target = initial["properties"] if field in ("gatewayUrl", "virtualNetworkType") else initial
+            target[field] = value
+            transport = Transport([ok(initial)])
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.configure_endpoint(self.config, self.outputs, transport)
+            self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+
+    def test_nonowned_domain_drift_and_patch_conflict_never_report_success(self):
+        foreign = {**self.desired, "hostName": "maintenance.example.com", "defaultSslBinding": False}
+        initial = self.resource([self.other, foreign, self.desired])
+        transport = Transport([ok(initial), ok(code=412)])
+        with self.assertRaises(ValueError):
+            self.configure_endpoint(self.config, self.outputs, transport)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET", "PATCH"])
+        final = self.resource([self.other, {**foreign, "negotiateClientCertificate": True}])
+        transport = Transport([ok(initial), ok(code=202), ok(final)])
+        with self.assertRaisesRegex(ValueError, "still pending"):
+            self.configure_endpoint(self.config, self.outputs, transport, timeout_seconds=0)
+        self.assertEqual([call["method"] for call in transport.calls], ["GET", "PATCH", "GET"])
+
+    def test_resume_waits_for_accepted_retirement_without_repatch(self):
+        transport = Transport([ok(self.resource([self.other, self.desired], provisioningState="Updating")),
+            ok(self.resource(provisioningState="Activating")), ok(self.resource()), ok(self.resource())])
         slept = []
-        result = grpc.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
+        result = self.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
         self.assertEqual(slept, [10, 10])
-        self.assertNotIn("PATCH", [call["method"] for call in transport.calls])
-        self.assertEqual(result["status"], "management-plane-configured")
+        self.assertEqual([call["method"] for call in transport.calls], ["GET"] * 4)
+        self.assertFalse(result["mutationApplied"])
         self.assertEqual(transport.responses, [])
 
-    def test_completion_waits_for_service_readback_before_validating_domain(self):
-        """完了 URL の成功直後に本体が古くても、同じ期限内で設定の反映を待つ。"""
-        transport = Transport([ok(self.resource()), ok(), ok(self.resource(provisioningState="Updating")),
-            ok(self.resource([self.other, self.desired]))])
+    def test_completion_waits_for_retirement_readback_before_success(self):
+        transport = Transport([ok(self.resource([self.other, self.desired])), ok(),
+            ok(self.resource([self.other, self.desired], provisioningState="Updating")), ok(self.resource())])
         slept = []
-        grpc.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
+        self.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
         self.assertEqual(slept, [10])
         patches = [call for call in transport.calls if call["method"] == "PATCH"]
         self.assertEqual(len(patches), 1)
-        self.assertEqual(patches[0]["body"]["properties"]["hostnameConfigurations"], [self.other, self.desired])
+        self.assertEqual(patches[0]["body"]["properties"]["hostnameConfigurations"], [self.other])
         self.assertEqual(transport.responses, [])
 
     def test_pending_timeout_and_failed_or_unknown_service_never_request_patch(self):
@@ -323,30 +383,27 @@ class GrpcBootstrapTests(unittest.TestCase):
                 self.assertEqual([call["method"] for call in transport.calls], ["GET"])
                 self.assertNotIn("fixture-etag", str(error.exception))
 
-    def test_final_readback_timeout_does_not_repeat_the_already_accepted_patch(self):
-        """完了待ちの期限が尽きても、その操作をやり直して別の更新を発生させない。"""
-        transport = Transport([ok(self.resource()), ok(), ok(self.resource(provisioningState="Updating"))])
+    def test_final_readback_timeout_does_not_repeat_accepted_patch(self):
+        transport = Transport([ok(self.resource([self.other, self.desired])), ok(), ok(self.resource(provisioningState="Updating"))])
         with self.assertRaisesRegex(ValueError, "still pending"):
-            grpc.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None, timeout_seconds=0)
+            self.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None, timeout_seconds=0)
         self.assertEqual([call["method"] for call in transport.calls], ["GET", "PATCH", "GET"])
+        self.assertEqual([event for event, _ in self.journal], ["planned", "accepted"])
 
-    def test_matching_domain_with_http2_disabled_is_repaired(self):
-        transport = Transport([ok(self.resource([self.desired], customProperties={grpc.HTTP2: "false"})),
-            ok(), ok(self.resource([self.desired]))])
-        grpc.configure_endpoint(self.config, self.outputs, transport)
-        patch = transport.calls[1]
-        self.assertEqual(patch["method"], "PATCH")
-        self.assertEqual(patch["body"]["properties"]["customProperties"][grpc.HTTP2], "true")
+    def test_native_endpoint_http2_is_disabled_without_creating_domain(self):
+        initial = self.resource(customProperties={grpc.HTTP2: "true", "KeepExistingSetting": "false"})
+        transport = Transport([ok(initial), ok(code=202), ok(self.resource())])
+        self.configure_endpoint(self.config, self.outputs, transport)
+        patch = next(call for call in transport.calls if call["method"] == "PATCH")
+        self.assertEqual(patch["body"]["properties"]["customProperties"], {grpc.HTTP2: "false", "KeepExistingSetting": "false"})
+        self.assertEqual(patch["body"]["properties"]["hostnameConfigurations"], [self.other])
 
-    def test_existing_user_assigned_certificate_identity_is_cleared_without_replacing_domain(self):
-        """同じ証明書でも旧 UAMI 指定を残さず、SAMI へ明示的に切り替える。"""
+    def test_owned_legacy_user_assigned_certificate_binding_is_removed(self):
         old_domain = {**self.desired, "identityClientId": self.client_id}
-        transport = Transport([ok(self.resource([self.other, old_domain])), ok(),
-            ok(self.resource([self.other, self.desired]))])
-        grpc.configure_endpoint(self.config, self.outputs, transport)
+        transport = Transport([ok(self.resource([self.other, old_domain])), ok(), ok(self.resource())])
+        self.configure_endpoint(self.config, self.outputs, transport)
         domains = transport.calls[1]["body"]["properties"]["hostnameConfigurations"]
-        self.assertEqual(domains, [self.other, self.desired])
-        self.assertIsNone(domains[1]["identityClientId"])
+        self.assertEqual(domains, [self.other])
 
     def test_null_system_identity_readback_is_accepted_but_user_assigned_named_value_is_rejected(self):
         """API が null/省略で表す SAMI は同一視し、成功済み UAMI は許可しない。"""
@@ -366,29 +423,31 @@ class GrpcBootstrapTests(unittest.TestCase):
         transport = Transport([ok(self.named()), ok(self.named()),
                                ok(self.named(grpc.TICKET_NAME)), ok(self.named(grpc.TICKET_NAME))])
         result = grpc.configure_named_values(self.config, self.outputs, transport)
-        self.assertTrue(result["grpcEnabled"])
+        self.assertTrue(result["l7IngressEnabled"])
         self.assertTrue(result["realtimeEnabled"])
         self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "POST", "GET"])
         self.assertIn("/namedValues/core-l7-ingress-secret/", transport.calls[0]["path"])
         self.assertIn("/namedValues/core-realtime-ticket-key/", transport.calls[2]["path"])
 
-    def test_foreign_output_host_versioned_cert_and_existing_foreign_cert_rejected(self):
-        for change in ("service", "vault", "cert", "version", "host"):
+    def test_foreign_outputs_and_unowned_certificate_are_not_removed(self):
+        for change in ("service", "vault", "cert", "version", "host", "native"):
             with self.subTest(change=change):
                 outputs = copy.deepcopy(self.outputs)
-                if change == "service": outputs["grpc"]["apimId"] += "-foreign"
-                elif change == "vault": outputs["cleanup"]["serviceResourceIds"]["keyVault"] = self.vault_id.replace("rg-test-fixture-svc", "rg-other-prod-svc")
-                elif change == "cert": outputs["grpc"]["certificateSecretUri"] = "https://other.vault.azure.net/secrets/gateway-tls"
-                elif change == "version": outputs["grpc"]["certificateSecretUri"] += "/version"
-                else: outputs["grpc"]["publicHostName"] = "other.example.com"
-                transport = Transport([])
-                with self.assertRaises(ValueError): grpc.configure_endpoint(self.config, outputs, transport)
-                self.assertEqual(transport.calls, [])
-        foreign = {**self.desired, "keyVaultId": "https://other.vault.azure.net/secrets/other"}
-        transport = Transport([ok(self.resource([foreign]))])
-        with self.assertRaisesRegex(ValueError, "different certificate owner"):
-            grpc.configure_endpoint(self.config, self.outputs, transport)
-        self.assertEqual([call["method"] for call in transport.calls], ["GET"])
+                if change == "service": outputs["ingressSecrets"]["apimId"] += "-foreign"
+                elif change == "vault": outputs["cleanup"]["serviceResourceIds"]["keyVault"] = self.vault_id.replace("rg-test-fixture-svc", "rg-other-svc")
+                elif change == "cert": outputs["ingressSecrets"]["certificateSecretUri"] = "https://other.vault.azure.net/secrets/gateway-tls"
+                elif change == "version": outputs["ingressSecrets"]["certificateSecretUri"] += "/version"
+                elif change == "native": outputs["ingressSecrets"]["apimGatewayHost"] = "other.example.invalid"
+                else: outputs["ingressSecrets"]["publicHostName"] = "other.example.com"
+                transport = Transport([ok(self.resource([self.other, self.desired]))])
+                with self.assertRaises(ValueError): self.configure_endpoint(self.config, outputs, transport)
+                self.assertTrue(all(call["method"] == "GET" for call in transport.calls))
+        for uri in ("https://other.vault.azure.net/secrets/other", self.secret_uri + "/version", None):
+            foreign = {**self.desired, "keyVaultId": uri}
+            transport = Transport([ok(self.resource([self.other, foreign]))])
+            with self.subTest(uri=uri), self.assertRaises(ValueError):
+                self.configure_endpoint(self.config, self.outputs, transport)
+            self.assertEqual([call["method"] for call in transport.calls], ["GET"])
 
     def test_async_redirect_other_host_or_service_never_followed(self):
         for destination in ("https://evil.example.com/operation", "https://management.azure.com" + self.apim_id.replace("apim-test-fixture-abc123", "apim-other-fixture") + "/operationresults/x"):
@@ -398,26 +457,25 @@ class GrpcBootstrapTests(unittest.TestCase):
                     sleep=lambda _: None, deadline=time.monotonic() + 1)
             self.assertEqual(transport.calls, [])
 
-    def test_patch_ignores_completion_links_and_waits_for_owned_service_values(self):
-        """未知の完了 URL へ接続せず、古い Succeeded・更新中を経て本体の設定反映を確認する。"""
+    def test_patch_ignores_completion_links_and_waits_for_owned_retirement(self):
         target = "https://evil.example.com/PRIVATE_FIXTURE"
-        transport = Transport([ok(self.resource()), ok(code=202, headers={"Location": target, "Azure-AsyncOperation": target}),
-            ok(self.resource()), ok(self.resource(provisioningState="Updating")),
-            ok(self.resource([self.other, self.desired]))])
+        initial = self.resource([self.other, self.desired])
+        transport = Transport([ok(initial), ok(code=202, headers={"Location": target, "Azure-AsyncOperation": target}),
+            ok(initial), ok(self.resource(provisioningState="Updating")), ok(self.resource())])
         slept = []
-        grpc.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
+        self.configure_endpoint(self.config, self.outputs, transport, sleep=slept.append)
         self.assertEqual([call["path"] for call in transport.calls[2:5]], [self.apim_id + "?api-version=" + grpc.API] * 3)
         self.assertEqual(slept, [10, 10])
         self.assertEqual([call["method"] for call in transport.calls].count("PATCH"), 1)
         self.assertNotIn(target, [call["path"] for call in transport.calls])
         self.assertEqual(transport.responses, [])
 
-    def test_patch_stale_succeeded_until_deadline_is_not_success_and_never_repatched(self):
-        """受付済みでも期待値が未反映なら成功にせず、再 PATCH や Named Value 更新を行わない。"""
+    def test_stale_succeeded_until_deadline_is_not_success_and_never_repatched(self):
+        initial = self.resource([self.other, self.desired])
         for state in ("Succeeded", "Failed", "Deleting"):
-            transport = Transport([ok(self.resource()), ok(code=202), ok(self.resource(provisioningState=state))])
+            transport = Transport([ok(initial), ok(code=202), ok(self.resource([self.other, self.desired], provisioningState=state))])
             with self.subTest(state=state), self.assertRaises(ValueError):
-                grpc.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None, timeout_seconds=0)
+                self.configure_endpoint(self.config, self.outputs, transport, sleep=lambda _: None, timeout_seconds=0)
             self.assertEqual([call["method"] for call in transport.calls], ["GET", "PATCH", "GET"])
 
     def test_refresh_accepts_tenant_operation_and_only_its_own_location_fallback(self):
@@ -503,6 +561,7 @@ class GrpcBootstrapTests(unittest.TestCase):
         with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "owned"}, response]), \
              mock.patch.object(lifecycle, "ROOT", self.root), \
              mock.patch.object(lifecycle, "ArmTransport"), \
+             mock.patch.object(lifecycle, "complete_core_network_upgrade"), \
              mock.patch.object(lifecycle, "configure_grpc_endpoint", side_effect=ValueError("Still pending")):
             with self.assertRaisesRegex(ValueError, "Still pending"):
                 lifecycle.postprovision(config)
@@ -514,80 +573,28 @@ class GrpcBootstrapTests(unittest.TestCase):
 
 class GrpcInfrastructureSourceTests(unittest.TestCase):
     """gRPCの証明書設定・HTTP/2・入口と鍵の管理を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
-    def test_apim_load_balancer_rules_limit_subnet_access_without_changing_firewall_path(self):
-        """NSG は実ノードを含む APIM 専用範囲、経路・FW は接続先 VIP として制限を維持する。"""
+    def test_grpc_assets_are_absent_and_https_maintenance_rules_remain(self):
         core = Path(__file__).resolve().parents[1]
         network = (core / "infra/modules/network-bindings.bicep").read_text()
-        expected = {
-            "allow-agw-grpc": ("apim", "Inbound", "subnetPrefixes.agw"),
-            "allow-management-grpc": ("apim", "Inbound", "managementPrivateIp"),
-            "allow-apim-grpc-comparison": ("management", "Outbound", "managementPrivateIp"),
-        }
-        for name, (group, direction, source) in expected.items():
-            with self.subTest(rule=name):
-                self.assertIn(
-                    f"withAccess(allowRule('{name}', nsgPriorities.groups.{group}.rules['{name}'].priority, '{direction}', 'Tcp', "
-                    f"[{source}], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')",
-                    network,
-                )
-        # NSG の宛先を変えても、Firewall を迂回する経路や別ノード宛ての FW 許可は追加しない。
-        self.assertIn("addressPrefix: '${apimPrivateIp}/32'", network)
-        self.assertIn("nextHopIpAddress: firewallPrivateIp", network)
-        self.assertIn("destinationAddresses: [apimPrivateIp]", network)
-        self.assertIn("destinationPorts: grpcEnabled ? ['80', string(grpcBackendPort)] : ['80']", network)
+        for name in ("allow-appgw-grpc-ingress", "allow-apim-grpc-egress", "grpcEnabled", "grpcBackendPort"):
+            self.assertNotIn(name, network)
+        self.assertIn("allow-mgmt-vm-https-ingress", network)
+        self.assertIn("allow-apim-https-egress", network)
+        self.assertIn("destinationPorts: ['80']", network)
 
-    def test_secure_inputs_do_not_enter_public_outputs_and_grpc_stays_enabled(self):
+    def test_secure_inputs_remain_private_and_normal_http_ingress_is_permanent(self):
         core = Path(__file__).resolve().parents[1]
         source = (core / "infra/main.bicep").read_text()
         self.assertIn("@secure()\nparam l7IngressSecret", source)
         self.assertIn("@secure()\nparam realtimeTicketKey", source)
-        for line in source.splitlines():
-            if line.startswith("output "):
-                self.assertNotIn("l7IngressSecret", line)
-                self.assertNotIn("realtimeTicketKey", line)
+        self.assertNotIn("output grpc ", source)
+        self.assertIn("l7IngressEnabled: true", source)
         services = (core / "infra/modules/services.bicep").read_text()
-        self.assertIn("param enableGrpc bool = true", services)
-        self.assertIn("identity: { type: 'SystemAssigned' }", services)
-        self.assertNotIn("param enableCertificateReader", services)
-        self.assertNotIn("param certificateIdentityId", services)
-        self.assertIn("grantApimSecretAccess: servicesConfig.grantApimSecretAccess || useIngressSecrets", source)
-        publication = (core / "apps/gateway/apim/api-publication.bicep").read_text()
-        self.assertNotIn("param l7IngressIdentityClientId", publication)
-        self.assertNotIn("param realtimeTicketIdentityClientId", publication)
+        self.assertIn("'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'", services)
         gateway = (core / "infra/modules/application-gateway.bicep").read_text()
-        self.assertIn("param grpcEnabled bool = true", gateway)
-        self.assertIn("protocol: 'Tcp'", gateway)
         self.assertIn("headerName: 'X-Core-L7-Ingress', headerValue: l7IngressSecret", gateway)
-        self.assertIn("backendHttpSettingsCollection", gateway)
-        self.assertIn("maxRequestBodySizeInKb: wafMaxRequestBodySizeInKb", gateway)
-        self.assertIn("requestBodyInspectLimitInKB: wafRequestBodyInspectLimitInKb", gateway)
-        self.assertIn("fileUploadLimitInMb: wafFileUploadLimitInMb", gateway)
-        self.assertIn("requestBodyCheck: true", gateway)
-        self.assertIn("requestBodyEnforcement: true", gateway)
-        self.assertIn("fileUploadEnforcement: true", gateway)
-        network = (core / "infra/modules/network-bindings.bicep").read_text()
-        self.assertIn("grpcEnabled ? 'Allow' : 'Deny'", network)
-        self.assertIn("destinationPorts: grpcEnabled ? ['80', string(grpcBackendPort)] : ['80']", network)
-        worker = (core / "guest/certificate.ps1").read_text()
-        self.assertIn("Ensure-ApimCertificateChain", worker)
-        self.assertIn("Set-RealtimeTicketKey", worker)
-        # Azure DNS uses an ARM-scoped IMDS token for the precreated identity.
-        # The audience is not an ARM/APIM destination: test_azure_dns_identity
-        # also executes the worker transport's offline endpoint boundary tests.
-        # Other certificate/gRPC operations must still avoid ARM tokens.
-        dns_arguments = re.search(r"(?ms)^function Get-AzureDnsPluginArguments \{.*?^\}", worker)
-        self.assertIsNotNone(dns_arguments)
-        self.assertIn("management.azure.com", dns_arguments.group(0))
-        self.assertIn("&mi_res_id=", dns_arguments.group(0))
-        self.assertNotIn("management.azure.com", worker[:dns_arguments.start()] + worker[dns_arguments.end():])
-        bindings = (core / "infra/modules/service-bindings.bicep").read_text()
-        self.assertIn("param speechEnabled bool = false", bindings)
-        self.assertIn("f2dc8367-1007-4938-bd23-fe263f013447", bindings)
-        self.assertIn("= if (speechEnabled)", bindings)
-        self.assertIn("speechEnabled: servicesConfig.?speechEnabled ?? false", source)
-        self.assertIn("param grantApimFoundryModelsAccess bool = false", bindings)
-        self.assertIn("a97b65f3-24c7-4388-baec-2e87135dc908", bindings)
-        self.assertIn("grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false", source)
+        self.assertNotIn("listener-grpc-tcp", gateway)
+        self.assertIn("enableHttp2: true", gateway)
 
     def test_vm_secret_functions_do_not_rotate_on_reapply_or_certificate_renewal(self):
         core = Path(__file__).resolve().parents[1]

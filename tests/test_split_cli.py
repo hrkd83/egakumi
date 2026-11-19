@@ -39,8 +39,11 @@ class SplitCliTests(unittest.TestCase):
         shutil.copytree(SCRIPTS, self.root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(CORE / "apps/gateway/apim", self.root / "apps/gateway/apim",
                         ignore=shutil.ignore_patterns("__pycache__"))
+        for name in ("waf-input-contracts.json", "waf-data-exclusions.json"):
+            shutil.copyfile(CORE / "apps/gateway" / name, self.root / "apps/gateway" / name)
         (self.root / "infra").mkdir()
         shutil.copyfile(CORE / "infra/log-privacy.json", self.root / "infra/log-privacy.json")
+        shutil.copyfile(CORE / "infra/nsg-rule-priorities.json", self.root / "infra/nsg-rule-priorities.json")
         self.options = json.loads((CORE / "config/test.json").read_text())
         self.parameters = json.loads((CORE / "params/test.example.json").read_text())
         self.parameters.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,

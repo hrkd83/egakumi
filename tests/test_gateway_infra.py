@@ -93,7 +93,8 @@ class GatewayInfrastructureTests(unittest.TestCase):
         for key in ("brokerKey", "credentialProviderSecrets"):
             self.assertTrue(gateway["parameters"][key]["type"].lower().startswith("secure"))
         access = self.module("gateway-access")["properties"]["template"]
-        key, = [item for item in access["resources"] if item["type"] == "Microsoft.KeyVault/vaults/secrets"]
+        key, = [item for item in access["resources"] if item["type"] == "Microsoft.KeyVault/vaults/secrets"
+                and "core-credential-broker-key" in item["name"]]
         self.assertEqual(key["condition"], "[not(empty(parameters('brokerKey')))]")
         self.assertIn("core-credential-broker-key", key["name"])
         identity = self.module("gateway-identity")["properties"]["template"]

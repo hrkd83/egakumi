@@ -162,7 +162,7 @@ def _path_gateway(config, source, expected, policy_id, *, paths, rule_name, poli
         raise ValueError('Gateway callback API route has another rewrite rule set')
     if mapping.get('defaultRewriteRuleSet') and route.get('rewriteRuleSet') and not _same_ref(route['rewriteRuleSet'], expected_rewrite):
         raise ValueError('Gateway callback API route has conflicting rewrite rule sets')
-    if config.get('gateway', {}).get('grpc', {}).get('enabled') and not rewrite:
+    if not rewrite:
         raise ValueError('Gateway callback requires the existing trusted L7 ingress rewrite')
     if rewrite:
         mapping['defaultRewriteRuleSet'] = copy.deepcopy(rewrite)

@@ -39,20 +39,14 @@ param keyVaultPrivateIps array
 @minLength(1)
 @description('管理 VM の確定済みプライベート IP。運用操作と内部接続の通信元・宛先に使います。')
 param managementPrivateIp string
-@allowed([true])
-@description('通常 HTTPS とは別に常設する native gRPC 用 TCP/TLS 経路。無効化できません。')
-param grpcEnabled bool = true
-@allowed([8443])
-@description('利用者が gRPC で接続する固定公開 TCP ポート。8443 だけを使います。')
-param grpcPublicPort int = 8443
-@allowed([443])
-@description('AppGW が内部 APIM の gRPC 入口へ接続する固定 TCP ポート。TLS の 443 だけを使います。')
-param grpcBackendPort int = 443
+@description('構築したAppGWの公開IP。ACAから通常HTTPSの入口へ戻る送信先。')
+param appGatewayPublicIpAddress string
 
-// 単一 IP と IP 配列のどちらにも同じ方針で NSG 規則を組み立てる共通関数です。
+// NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
 func allowRule(ruleName string, priority int, direction string, protocol string, sources array, destinations array, ports array) object => {
   name: ruleName
   properties: union({
+    description: 'Initial fixed communication: ${ruleName}'
     priority: priority
     direction: direction
     access: 'Allow'
@@ -73,10 +67,11 @@ func allowRule(ruleName string, priority int, direction string, protocol string,
   })
 }
 
-// 最後に評価される 4096 番で未許可通信を拒否。Allow の設定前に適用しないよう dependsOn で順序を固定します。
+// 明示Allowの後にだけ末尾Denyを登録します。AppGW/ACA送信とACA受信は既定規則を維持します。
 func denyRule(direction string, priority int) object => {
-  name: direction == 'Inbound' ? 'deny-other-inbound' : 'deny-other-outbound'
+  name: direction == 'Inbound' ? 'deny-any-ingress' : 'deny-any-egress'
   properties: {
+    description: 'Reject communication outside the fixed initial allow rules'
     priority: priority
     direction: direction
     access: 'Deny'
@@ -88,45 +83,40 @@ func denyRule(direction string, priority int) object => {
   }
 }
 
-func withAccess(rule object, access string) object => union(rule, { properties: union(rule.properties, { access: access }) })
-
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
+var nsgKeys = ['agw', 'apim', 'pep', 'management', 'aca']
 
-var nsgKeys = ['agw', 'apim', 'pep', 'management']
-var permitApimKeyVault = config.?apimKeyVaultAccessEnabled ?? true
-var operatorAddressPrefixes = config.?operatorAddressPrefixes ?? []
-// 初期構築の利用者受信は全IPv4に固定し、params・configから変更しません。
-var clientAddressPrefixes = ['0.0.0.0/0']
-// 配列の順番は agw / apim / pep / management。宛先は Azure の実出力を使い、PE の複数 IP を全て扱います。
+// Dynamic addresses always refer to resources built in this VNet. No presence flags are used.
 var rulesByNsg = [
   [
-    // AppGW の送信は NSG の既定規則を使い、受信規則だけを追加します。
-    // 自環境のFirewall公開IPからのHTTPS受信は常に許可します。
-    allowRule('allow-firewall-public-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443'])
-    // gRPC は常設し、固定の全IPv4許可で接続を受けます。
-    allowRule('allow-client-grpc', nsgPriorities.groups.agw.rules['allow-client-grpc'].priority, 'Inbound', 'Tcp', clientAddressPrefixes, [subnetPrefixes.agw], [string(grpcPublicPort)])
+    allowRule('allow-firewall-public-https-ingress', nsgPriorities.groups.agw.rules['allow-firewall-public-https-ingress'].priority, 'Inbound', 'Tcp', ['${firewallPublicIpAddress}/32'], [subnetPrefixes.agw], ['443'])
+    allowRule('allow-apim-http-egress', nsgPriorities.groups.agw.rules['allow-apim-http-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], ['${apimPrivateIp}/32'], ['80'])
+    allowRule('allow-key-vault-https-egress', nsgPriorities.groups.agw.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.agw], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
-    allowRule('allow-private-backends', nsgPriorities.groups.apim.rules['allow-private-backends'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], foundryPrivateIps, ['443'])
-    withAccess(allowRule('allow-key-vault-pe', nsgPriorities.groups.apim.rules['allow-key-vault-pe'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], keyVaultPrivateIps, ['443']), permitApimKeyVault ? 'Allow' : 'Deny')
-    // APIM は内部ロードバランサーの VIP で受けます。NSG の許可範囲は APIM 専用サブネットに揃えます。
-    // 宛先を APIM 専用サブネットへ限定し、送信元と TCP ポートは広げません。
-    // https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview
-    withAccess(allowRule('allow-agw-grpc', nsgPriorities.groups.apim.rules['allow-agw-grpc'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
-    withAccess(allowRule('allow-management-grpc', nsgPriorities.groups.apim.rules['allow-management-grpc'].priority, 'Inbound', 'Tcp', [managementPrivateIp], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
+    allowRule('allow-mgmt-vm-https-ingress', nsgPriorities.groups.apim.rules['allow-mgmt-vm-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.apim], ['443'])
+    allowRule('allow-foundry-https-egress', nsgPriorities.groups.apim.rules['allow-foundry-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-key-vault-https-egress', nsgPriorities.groups.apim.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.apim], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
   ]
   [
-    allowRule('allow-apim-foundry', nsgPriorities.groups.pep.rules['allow-apim-foundry'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], foundryPrivateIps, ['443'])
-    allowRule('allow-key-vault', nsgPriorities.groups.pep.rules['allow-key-vault'].priority, 'Inbound', 'Tcp', permitApimKeyVault ? [subnetPrefixes.agw, subnetPrefixes.apim] : [subnetPrefixes.agw], keyVaultPrivateIps, ['443'])
-    allowRule('allow-vm-https', nsgPriorities.groups.pep.rules['allow-vm-https'].priority, 'Inbound', 'Tcp', [managementPrivateIp], union(foundryPrivateIps, keyVaultPrivateIps), ['443'])
+    allowRule('allow-apim-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-apim-foundry-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-appgw-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-appgw-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.agw], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-apim-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-apim-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.apim], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-aca-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-aca-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', [subnetPrefixes.aca], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-mgmt-vm-key-vault-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-key-vault-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-mgmt-vm-foundry-https-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-foundry-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
   ]
-  concat([
-    allowRule('allow-private-services', nsgPriorities.groups.management.rules['allow-private-services'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], union(foundryPrivateIps, keyVaultPrivateIps), ['443'])
-    withAccess(allowRule('allow-apim-grpc-comparison', nsgPriorities.groups.management.rules['allow-apim-grpc-comparison'].priority, 'Outbound', 'Tcp', [managementPrivateIp], [subnetPrefixes.apim], [string(grpcBackendPort)]), grpcEnabled ? 'Allow' : 'Deny')
-  ], empty(operatorAddressPrefixes) ? [] : [
-    allowRule('allow-operator-management', nsgPriorities.groups.management.rules['allow-operator-management'].priority, 'Inbound', config.?operatorProtocol ?? 'Tcp', operatorAddressPrefixes, [managementPrivateIp], config.?operatorPorts ?? ['22'])
-  ])
-
+  [
+    allowRule('allow-key-vault-https-egress', nsgPriorities.groups.management.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+    allowRule('allow-apim-https-egress', nsgPriorities.groups.management.rules['allow-apim-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.apim], ['443'])
+    allowRule('allow-foundry-https-egress', nsgPriorities.groups.management.rules['allow-foundry-https-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(foundryPrivateIps, ip => '${ip}/32'), ['443'])
+  ]
+  [
+    allowRule('allow-mgmt-vm-http-ingress', nsgPriorities.groups.aca.rules['allow-mgmt-vm-http-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.aca], ['80', '31080'])
+    allowRule('allow-mgmt-vm-https-ingress', nsgPriorities.groups.aca.rules['allow-mgmt-vm-https-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], [subnetPrefixes.aca], ['443', '31443'])
+    allowRule('allow-appgw-https-egress', nsgPriorities.groups.aca.rules['allow-appgw-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], ['${appGatewayPublicIpAddress}/32'], ['443'])
+    allowRule('allow-key-vault-https-egress', nsgPriorities.groups.aca.rules['allow-key-vault-https-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.aca], map(keyVaultPrivateIps, ip => '${ip}/32'), ['443'])
+  ]
 ]
 
 // 前段で作成済みの NSG を参照するだけで、本体を作り直しません。
@@ -136,8 +126,7 @@ resource nsgs 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = [f
 
 var dynamicRules = flatten(map(range(0, length(nsgKeys)), i => map(rulesByNsg[i], rule => { nsgIndex: i, rule: rule })))
 
-// APIM・PE・VM の実 IP で通信を許可。管理接続元なしなら管理者規則を生成せず、設定を外した場合は構築前処理で現行Allow・220を削除します。
-// その他のオプションを無効にした場合は同名規則を Deny へ更新して旧許可を回収します。
+// 各資材の全PE IPを/32で登録し、管理VMの保守送信元も割当IP/32へ限定します。
 @batchSize(1)
 resource dynamicSecurityRules 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = [for entry in dynamicRules: {
   parent: nsgs[entry.nsgIndex]
@@ -146,12 +135,12 @@ resource dynamicSecurityRules 'Microsoft.Network/networkSecurityGroups/securityR
 }]
 
 var terminalRules = [
-  { nsgIndex: 0, rule: denyRule('Inbound', nsgPriorities.groups.agw.rules['deny-other-inbound'].priority) }
-  { nsgIndex: 1, rule: denyRule('Inbound', nsgPriorities.groups.apim.rules['deny-other-inbound'].priority) }
-  { nsgIndex: 2, rule: denyRule('Inbound', nsgPriorities.groups.pep.rules['deny-other-inbound'].priority) }
-  { nsgIndex: 3, rule: denyRule('Inbound', nsgPriorities.groups.management.rules['deny-other-inbound'].priority) }
-  { nsgIndex: 1, rule: denyRule('Outbound', nsgPriorities.groups.apim.rules['deny-other-outbound'].priority) }
-  { nsgIndex: 3, rule: denyRule('Outbound', nsgPriorities.groups.management.rules['deny-other-outbound'].priority) }
+  { nsgIndex: 0, rule: denyRule('Inbound', nsgPriorities.groups.agw.rules['deny-any-ingress'].priority) }
+  { nsgIndex: 1, rule: denyRule('Inbound', nsgPriorities.groups.apim.rules['deny-any-ingress'].priority) }
+  { nsgIndex: 2, rule: denyRule('Inbound', nsgPriorities.groups.pep.rules['deny-any-ingress'].priority) }
+  { nsgIndex: 3, rule: denyRule('Inbound', nsgPriorities.groups.management.rules['deny-any-ingress'].priority) }
+  { nsgIndex: 1, rule: denyRule('Outbound', nsgPriorities.groups.apim.rules['deny-any-egress'].priority) }
+  { nsgIndex: 3, rule: denyRule('Outbound', nsgPriorities.groups.management.rules['deny-any-egress'].priority) }
 ]
 
 // 必要な Allow が完成してから、その他通信の拒否を追加します。AppGW の必須 Internet 出口は閉じません。
@@ -205,7 +194,7 @@ resource ingressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
         ruleType: 'NetworkRule'
         sourceAddresses: [subnetPrefixes.agw]
         destinationAddresses: [apimPrivateIp]
-        destinationPorts: grpcEnabled ? ['80', string(grpcBackendPort)] : ['80']
+        destinationPorts: ['80']
         ipProtocols: ['TCP']
       }])
     }]

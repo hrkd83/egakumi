@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/gateway/deplo
 import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
 from deployment.helpers.apim_authentication import render_service_policy
+from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
 from deployment.helpers.subscription_profiles import DEFAULTS as PROFILE_DEFAULTS, PREFIX as PROFILE_PREFIX
 import render_apim_policy
 
@@ -58,7 +59,7 @@ def publication_fixture():
         "productName": "fixture", "environmentName": "test", "location": "japaneast", "foundryLocation": "eastus2",
         "services": {"apimInstanceId": "abc123"},
         "resourceGroupNames": {layer: "rg-test-fixture-" + layer for layer in publish.LAYERS},
-        "gateway": {"publicHostName": "fixture.example.com", "grpc": {"enabled": True}, "realtimeControlEnabled": True,
+        "gateway": {"publicHostName": "fixture.example.com", "realtimeControlEnabled": True,
             "authentication": {"subscriptionKeyHeader": "api-key"}},
         "network": {"subnetPrefixes": {"apim": "10.40.2.64/26"}}, "publishApis": True,
         "apiDefinitions": [{"name": "model", "backendService": "foundryOpenAi"},
@@ -82,8 +83,7 @@ def publication_fixture():
             "cleanup": {"serviceResourceIds": ids}, "services": ids,
             "endpoints": {"public": "https://fixture.example.com", "foundry": "https://aif-test-fixture.services.ai.azure.com"},
             "certificateIdentity": {"id": identity_id, "clientId": client_id},
-            "grpc": {"enabled": True, "publicHostName": "fixture.example.com", "publicUrl": "https://fixture.example.com:8443"},
-            "ingressSecrets": {"enabled": True, "grpcEnabled": True, "realtimeEnabled": True}}}
+            "ingressSecrets": {"enabled": True, "l7IngressEnabled": True, "publicHostName": "fixture.example.com", "realtimeEnabled": True}}}
     return config, state
 
 
@@ -189,8 +189,10 @@ class PublicationTests(unittest.TestCase):
             self.inventory[rid] = ok({"id": rid, "tags": {**self.tags, "layer": layer, "azd-env-name": "test"}})
         self.inventory[ids["apim"]] = ok({"id": ids["apim"], "tags": self.tags,
             "identity": {"type": "SystemAssigned", "principalId": "44444444-4444-4444-8444-444444444444"},
-            "properties": {"virtualNetworkType": "Internal", "customProperties": {publish.grpc_lifecycle.HTTP2: "true"}}})
+            "properties": {"virtualNetworkType": "Internal", "customProperties": {publish.grpc_lifecycle.HTTP2: "false"}}})
         self.inventory[ids["apim"] + "/policies/policy"] = ok({"properties": {"format": "rawxml", "value": render_service_policy()}})
+        for identifier, value in render_common_authentication_fragments(entra_enabled=False).items():
+            self.inventory[ids["apim"] + "/policyFragments/" + identifier] = ok({"properties": {"format": "rawxml", "value": value}})
         for name, value in self.plan["commonAuthentication"].items():
             self.inventory[ids["apim"] + "/namedValues/" + name] = ok({"properties": {
                 "displayName": name, "secret": False, "value": value}})
@@ -498,19 +500,21 @@ class PublicationTests(unittest.TestCase):
         for reason in ("malformed", "marker-only", "key-header", "telemetry", "marker", "duplicate", "nested"):
             inventory = copy.deepcopy(self.inventory)
             xml = render_service_policy()
+            fragment_id = self.plan["apimId"] + "/policyFragments/core-common-authentication"
+            fragment = inventory[fragment_id]["body"]["properties"]["value"]
             if reason == "missing":
                 inventory[policy_id] = ok({}, 404)
             elif reason == "old": xml = '<policies><inbound /><backend><forward-request /></backend><outbound /><on-error /></policies>'
             elif reason == "malformed": xml = '<policies><inbound>'
             elif reason == "marker-only": xml = '<policies><inbound><choose id="core-common-authentication"><otherwise><set-variable name="gatewayCommonAuthenticationValidated" value="@(true)" /></otherwise></choose></inbound></policies>'
             elif reason == "anonymous": xml = xml.replace('context.Api.Id == &quot;gateway-oauth-metadata&quot;', 'context.Api.Id != &quot;gateway-oauth-metadata&quot;')
-            elif reason == "key-header": xml = xml.replace('{{core-subscription-key-header}}', 'UNRELATED_PRIVATE_AUDIENCE')
-            elif reason == "telemetry": xml = xml.replace('source="core-gateway"', 'source="changed"')
-            elif reason == "marker": xml = xml.replace('name="gatewayCommonAuthenticationValidated" value="@(true)"', 'name="gatewayCommonAuthenticationValidated" value="@(false)"')
+            elif reason == "key-header": fragment = fragment.replace('{{core-subscription-key-header}}', 'UNRELATED_PRIVATE_AUDIENCE')
+            elif reason == "telemetry": fragment = fragment.replace('source="core-gateway"', 'source="changed"')
+            elif reason == "marker": fragment = fragment.replace('name="gatewayCommonAuthenticationValidated" value="@(true)"', 'name="gatewayCommonAuthenticationValidated" value="@(false)"')
             else:
                 document = ET.fromstring(xml)
                 inbound = document.find("inbound")
-                block = inbound.find("choose[@id='core-common-authentication']")
+                block = inbound.find("include-fragment[@id='core-common-authentication']")
                 if reason == "duplicate":
                     document.find("on-error").append(copy.deepcopy(block))
                 else:
@@ -518,8 +522,9 @@ class PublicationTests(unittest.TestCase):
                     ET.SubElement(ET.SubElement(inbound, "choose"), "otherwise").append(block)
                 xml = ET.tostring(document, encoding="unicode")
             if reason != "missing": inventory[policy_id]["body"]["properties"]["value"] = xml
+            inventory[fragment_id]["body"]["properties"]["value"] = fragment
             transport = Transport(inventory)
-            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, "common authentication") as error:
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, "(?i)authentication") as error:
                 publish.execute_plan(self.config, self.state, self.plan, self.template, transport)
             self.assertNotIn("UNRELATED_PRIVATE_AUDIENCE", str(error.exception))
             self.assertTrue(all(call[0] == "GET" for call in transport.calls))
@@ -553,11 +558,11 @@ class PublicationTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_DIAGNOSTIC", str(error.exception))
             self.assertTrue(all(call[0] == "GET" for call in transport.calls))
 
-    def test_initializes_factory_and_missing_policy_after_confirmed_api_deployment(self):
+    def test_initializes_missing_policy_after_confirmed_api_deployment(self):
         policy_id = self.plan["apimId"] + "/policies/policy"
         factory = '<policies><inbound/><backend><forward-request/></backend><outbound/><on-error/></policies>'
         custom = factory.replace('<inbound/>', '<inbound><!-- operator note --><set-header name="X-Custom" exists-action="override"><value>kept</value></set-header></inbound>')
-        for value in (None, factory, custom):
+        for value in (None,):
             with self.subTest(policy=value):
                 inventory = copy.deepcopy(self.inventory)
                 inventory[policy_id] = ok({}, 404) if value is None else ok({"etag": '"policy-version"', "properties": {"value": value}})
@@ -574,6 +579,17 @@ class PublicationTests(unittest.TestCase):
                     self.assertLess(xml.index('core-common-authentication'), xml.index('X-Custom'))
                 self.assertTrue(result["commonAuthenticationPolicyUpdated"])
                 self.assertFalse(any('/namedValues/' in call[1] for call in writes))
+
+    def test_existing_unrepresented_factory_policy_requires_explicit_source_reconciliation(self):
+        policy_id = self.plan["apimId"] + "/policies/policy"
+        for xml in ('<policies><inbound/><backend><forward-request/></backend><outbound/><on-error/></policies>',
+                    '<policies><inbound><set-header name="X-Custom"><value>kept</value></set-header></inbound><backend><forward-request/></backend><outbound/><on-error/></policies>'):
+            inventory = copy.deepcopy(self.inventory)
+            inventory[policy_id] = ok({"properties": {"value": xml}})
+            transport = Transport(inventory)
+            with self.subTest(xml=xml), self.assertRaises(ValueError):
+                publish.execute_plan(self.config, self.state, self.plan, self.template, transport)
+            self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
 
     def test_policy_preflight_requires_etag_and_other_prerequisites(self):
         policy_id = self.plan["apimId"] + "/policies/policy"
@@ -594,7 +610,7 @@ class PublicationTests(unittest.TestCase):
         factory = '<policies><inbound/><backend><forward-request/></backend><outbound/><on-error/></policies>'
         for reason in ("conflict", "ignored"):
             inventory = copy.deepcopy(self.inventory)
-            inventory[policy_id] = ok({"etag": '"policy-version"', "properties": {"value": factory}})
+            inventory[policy_id] = ok({}, 404)
             class ChangedPolicy(Transport):
                 def request(self, method, path, body=None, headers=None):
                     if method == "PUT" and path.split("?")[0] == policy_id:
@@ -629,12 +645,11 @@ class PublicationTests(unittest.TestCase):
         from urllib.parse import parse_qs,urlsplit
         policy_id=self.plan["apimId"]+"/policies/policy"
         inventory=copy.deepcopy(self.inventory)
-        inventory[policy_id]=ok({"etag":'"policy-version"',"properties":{
-            "format":"rawxml","value":'<policies><inbound/><backend><forward-request/></backend><outbound/></policies>'}})
+        inventory[policy_id]=ok({},404)
         class PolicyRepresentations(Transport):
             def request(self,method,path,body=None,headers=None):
                 response=super().request(method,path,body,headers)
-                if method=="GET" and path.split("?")[0]==policy_id:
+                if method=="GET" and path.split("?")[0]==policy_id and response.get("statusCode")==200:
                     properties=response["body"]["properties"]
                     if parse_qs(urlsplit(path).query).get("format")!=["rawxml"]:
                         properties["format"]="xml"
@@ -730,34 +745,43 @@ class PublicationTests(unittest.TestCase):
                 expected["backendUrl"] = "https://aif-test-fixture.openai.azure.com/openai/v1"
             self.assertEqual(published, expected)
 
-    def test_api_plan_requires_applied_shared_grpc_endpoint(self):
-        """別ポートや未準備の基盤を、新しい固定入口として案内しない。"""
-        for change in ("disabled", "missing", "port", "host", "url", "proof"):
+    def test_api_plan_requires_applied_permanent_http_ingress(self):
+        """公開host・入口secretの準備を検査し、廃止した8443出力には依存しない。"""
+        for change in ("disabled", "missing", "host", "proof"):
             state = copy.deepcopy(self.state)
-            feature = state["outputs"]["grpc"]
+            feature = state["outputs"]["ingressSecrets"]
             if change == "disabled":
                 feature["enabled"] = False
             elif change == "missing":
-                del state["outputs"]["grpc"]
-            elif change == "port":
-                feature["publicUrl"] = feature["publicUrl"].replace(":8443", ":9443")
+                del state["outputs"]["ingressSecrets"]
             elif change == "host":
                 feature["publicHostName"] += ".invalid"
-            elif change == "url":
-                del feature["publicUrl"]
             else:
-                state["outputs"]["ingressSecrets"]["grpcEnabled"] = False
+                feature["l7IngressEnabled"] = False
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "update the Core"):
                 publish.prepare_plan(self.config, state)
 
+    def test_retired_grpc_publication_inputs_and_template_exemptions_fail_before_azure(self):
+        for field, value in (("apiType", "grpc"), ("grpc", {})):
+            config = copy.deepcopy(self.config)
+            config["apiDefinitions"][0][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "retired"):
+                publish.prepare_plan(config, self.state)
+        template = {"resources": [{"type": "Microsoft.ApiManagement/service/apis", "properties": {"type": "grpc"}}]}
+        with self.assertRaisesRegex(ValueError, "retired"):
+            publish.validate_publication_template(template)
+        template["resources"][0]["properties"] = {"value": '<set-variable name="coreNativeGrpc" value="@(true)" />'}
+        with self.assertRaisesRegex(ValueError, "retired"):
+            publish.validate_publication_template(template)
+
     def test_foreign_state_names_identity_and_unprepared_feature_flags_fail_offline(self):
-        for key in ("subscription", "groups", "names", "identity", "grpc", "realtime"):
+        for key in ("subscription", "groups", "names", "identity", "l7", "realtime"):
             state = copy.deepcopy(self.state)
             if key == "subscription": state["subscriptionId"] = "other"
             elif key == "groups": state["resourceGroupNames"]["nw"] = "rg-other"
             elif key == "names": state["outputs"]["names"]["keyVault"] = "kv-other"
             elif key == "identity": state["outputs"]["certificateIdentity"]["id"] += "-foreign"
-            elif key == "grpc": state["outputs"]["grpc"]["enabled"] = False
+            elif key == "l7": state["outputs"]["ingressSecrets"]["l7IngressEnabled"] = False
             else: state["outputs"]["ingressSecrets"]["realtimeEnabled"] = False
             with self.subTest(key=key), self.assertRaises(ValueError):
                 publish.prepare_plan(self.config, state)

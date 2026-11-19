@@ -28,8 +28,8 @@ class ArmFixture:
         self.address = str(subnet.network_address + 4)
         source = "198.51.100.10/32"
         properties = {"priority": 220, "direction": "Inbound", "access": "Allow",
-                      "protocol": self.config["network"]["operatorProtocol"], "sourcePortRange": "*",
-                      "destinationPortRange": self.config["network"]["operatorPorts"][0],
+                      "protocol": "Tcp", "sourcePortRange": "*",
+                      "destinationPortRange": ["22"][0],
                       "sourceAddressPrefix": source, "destinationAddressPrefix": self.address}
         terminal = {"priority": 4096, "direction": "Inbound", "access": "Deny", "protocol": "*",
                     "sourcePortRange": "*", "destinationPortRange": "*",
@@ -217,41 +217,49 @@ class OperatorAccessTests(unittest.TestCase):
 
 
 class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
-    def test_direct_core_runs_cleanup_before_discovery_and_deployment(self):
+    def test_direct_core_stages_verified_legacy_rules_before_discovery_and_deployment(self):
         events = []
-        self.operator_cleanup.side_effect = lambda *args: events.append("cleanup")
+        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("stage") or {"azureWrites": 0}
+        self.complete_nsg.side_effect = lambda *args, **kwargs: events.append("complete") or {"azureWrites": 0}
+        outputs = self.outputs()
         transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
-            "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
+            "body": {"properties": {"provisioningState": "Succeeded",
+                "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                 mock.patch.object(lifecycle, "discover_existing_network_security_groups",
                                   side_effect=lambda *args: events.append("discover") or []), \
                 mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                 mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
-                mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False):
-            lifecycle.deploy_phase(self.config, "core")
-        self.assertEqual(events, ["cleanup", "discover"])
-        self.operator_cleanup.assert_called_once_with(self.config, transport)
+                mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
+                mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True, "l7IngressEnabled": True}):
+            lifecycle.deploy_phase(self.config, "core", secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+        self.assertEqual(events, ["stage", "discover", "complete"])
+        self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
+        self.assertTrue(callable(self.prepare_nsg.call_args.kwargs["record"]))
         self.assertEqual(len(transport.mutations()), 1)
 
-    def test_direct_core_cleanup_failure_stops_before_deployment(self):
-        self.operator_cleanup.side_effect = operator.OperatorAccessError("Unverified operator rule")
+    def test_direct_core_unknown_operator_rule_stops_fixed_migration_before_deployment(self):
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("Unverified operator rule")
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport") as factory, \
                 self.assertRaises(lifecycle.DeploymentError):
             lifecycle.deploy_phase(self.config, "core")
         factory.return_value.request.assert_not_called()
 
-    def test_monitoring_does_not_clean_operator_rules(self):
+    def test_monitoring_does_not_stage_or_delete_nsg_rules(self):
         transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
             "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport", return_value=transport):
             lifecycle.deploy_phase(self.config, "monitoring")
-        self.operator_cleanup.assert_not_called()
+        self.prepare_nsg.assert_not_called()
+        self.complete_nsg.assert_not_called()
+        self.portal_http_gate.assert_not_called()
 
-    def test_native_preprovision_cleans_before_core_inputs_and_stops_on_failure(self):
-        self.operator_cleanup.side_effect = operator.OperatorAccessError("Unverified operator rule")
+    def test_native_preprovision_checks_fixed_rules_before_core_inputs_and_stops_on_failure(self):
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("Unverified operator rule")
         transport = ScriptedTransport([{"statusCode": 404, "body": None}])
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), \
@@ -263,7 +271,9 @@ class LifecycleOperatorAccessTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "configure_app_insights_cap"), \
                 contextlib.redirect_stdout(io.StringIO()), self.assertRaises(lifecycle.DeploymentError):
             lifecycle.preprovision(self.config)
-        self.operator_cleanup.assert_called_once_with(self.config, transport)
+        self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
+        self.assertTrue(self.prepare_nsg.call_args.kwargs["execute"])
+        self.assertTrue(callable(self.prepare_nsg.call_args.kwargs["record"]))
         self.assertFalse(self.paths.parameters.exists())
         self.assertTrue((self.paths.state / "latest.json").exists())
 

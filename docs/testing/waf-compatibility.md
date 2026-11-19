@@ -265,7 +265,7 @@ FLUX画像編集はpromptだけでなく、`input_image`のraw Base64画像も�
 
 Azureの引数除外は、同じURIのqueryにある同名引数にも適用されます。App Gatewayのpath ruleは大文字小文字を区別せず、HTTP方式でも絞れません。APIM／Portalの認証、公開method、モデル許可、形式・入力制約を維持し、queryの同名欄とmethod違いも対照試験に含めます。
 
-WebSocketはHTTP Upgradeまでを試験します。接続後のframe、デコード後の画像・音声・PDFの意味内容をWAFが検査したとは扱いません。gRPCのTCP入口はHTTP WAFの対象外です。外部A2A・中継MCP・gRPC等を追加公開するときは、その実際の契約で同じ試験を追加します。
+WebSocketはHTTP Upgradeまでを試験します。接続後のframe、デコード後の画像・音声・PDFの意味内容をWAFが検査したとは扱いません。gRPC専用TCP入口とgRPCの新規API公開は廃止しました。外部A2A・中継MCP等を追加公開するときは、その実際のHTTP契約で同じ試験を追加します。
 
 入力空間は無限であり、有限の合成試験で将来すべての連携や誤検知ゼロを保証することはできません。新しいAPI・field・managed rule版を追加した場合は、正規データと攻撃対照を再実行します。拒否時は集計規則だけでなく、同一TransactionIdの原因規則とfieldを確認します。942150等の二段判定ログには前段候補のキー名も含まれるため、すべてを除外候補にしません。
 

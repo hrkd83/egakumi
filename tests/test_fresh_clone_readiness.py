@@ -97,6 +97,8 @@ class FreshCloneReadinessTests(unittest.TestCase):
         # 読む元を公開ソースの種類へ限定する。*.local.jsonやprivate領域を探索しない。
         patterns = ("scripts/**/*.py", "config/test.json", "config/production.json",
                     "params/*.example.json", "schemas/*.schema.json", "infra/log-privacy.json",
+                    "infra/nsg-rule-priorities.json",
+                    "apps/gateway/waf-input-contracts.json", "apps/gateway/waf-data-exclusions.json",
                     "apps/gateway/apim/apis/*.json", "apps/gateway/apim/model-capabilities.json",
                     "apps/gateway/apim/public-bindings.json")
         for pattern in patterns:
@@ -128,7 +130,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["credentialProviders"][0]["clientId"] = GATEWAY
         raw["portal"]["publicHostName"] = "portal.fresh-clone.example"
         raw["gateway"]["publicHostName"] = PUBLIC_HOST
-        raw["gateway"]["grpc"]["publicHostName"] = PUBLIC_HOST
+        self.assertNotIn("grpc", raw["gateway"])
         raw["certificate"]["domainNames"] = ["*.fresh-clone.example"]
         raw["certificate"]["contactEmail"] = "operator@fresh-clone.example"
         raw["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION

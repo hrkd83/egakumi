@@ -31,7 +31,7 @@ APIM nativeの`CorrelationId`を要求の主キーとする。custom traceの`re
 
 AppGWの`x-appgw-trace-id`は、要求headerを読んだ時点では相関候補である。GUID形式や信頼した入口の検査は、本人の認証を意味しない。既存AppGWログの`TransactionId`とGUIDを正規化してjoinし、一致するログがあるかを別に確認する。native診断で既に収集する同headerも候補のfallbackに使う。contextの採用を見送った場合も、同じ要求へ結び付くtrace ID候補は保持する。contextとnativeを含む候補が異なる場合は、片方を選ばず`inconsistent-candidate`とする。
 
-この相関はHTTP要求の経路を対象とする。専用gRPC TCP経路、WebSocket確立後のframe、WebRTCのメディア通信まで同じheader相関で識別できるとは扱わない。
+この相関はHTTP要求の経路を対象とする。WebSocket確立後のframe、WebRTCのメディア通信まで同じheader相関で識別できるとは扱わない。
 
 ## 出力する項目
 

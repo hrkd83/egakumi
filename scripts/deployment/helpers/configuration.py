@@ -73,11 +73,16 @@ PARAMETER_KEYS = {
     "management", "monitoring", "certificate", "authorization", "apiDefinitions",
     "credentialProviders", "publishApis", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
-# IP条件と不可分な規則配列も、環境ごとにparamsで全体を選びます。
-# VNetとFirewallのdnsServersはAzure提供DNSに固定し、config側で管理します。
+# このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
+# VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
 PARAMETER_NETWORK_IP_KEYS = {
-    "addressSpaces", "subnetPrefixes", "operatorAddressPrefixes",
-    "ntpAddressPrefixes", "managementAdditionalSecurityRules",
+    "addressSpaces", "subnetPrefixes",
+}
+RETIRED_NETWORK_INPUTS = {
+    "clientAddressPrefixes", "certificatePublicProbeEnabled", "dnsServers",
+    "operatorAddressPrefixes", "operatorProtocol", "operatorPorts",
+    "ntpAddressPrefixes", "ntpFqdns", "managementAdditionalSecurityRules",
+    "apimKeyVaultAccessEnabled",
 }
 PARAMETER_FIREWALL_IP_KEYS = {
     "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
@@ -86,9 +91,9 @@ PARAMETER_FIREWALL_IP_KEYS = {
 }
 PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
-    "network": PARAMETER_NETWORK_IP_KEYS | {"firewall", "ntpFqdns"},
+    "network": PARAMETER_NETWORK_IP_KEYS | {"firewall"},
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
-    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "grpc", "rateLimits", "queryGuards"},
+    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "rateLimits", "queryGuards"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
     "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
     "certificate": {"contactEmail", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
@@ -97,12 +102,11 @@ PARAMETER_SECTION_KEYS = {
 
 
 # 企業固有の情報はparamsだけが所有します。親の一部だけがparamsの項目
-# （grpcの公開名、rateLimitsの契約別上書き等）は、最下層のパスで明示します。
+# （rateLimitsの契約別上書き等）は、最下層のパスで明示します。
 # 空配列や空文字でもconfigへ置けば拒否し、他企業の値を黙って継承させません。
 PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS | {"apimAllowedFqdns", "managementAllowedFqdns"}
 PARAMETER_GATEWAY_NESTED_KEYS = {
     "authentication": {"subscriptionKeyHeader", "credentialLogin", "entra"},
-    "grpc": {"publicHostName"},
     "rateLimits": {"subscriptionKey", "application"},
     "queryGuards": set(QUERY_GUARD_DEFAULTS),
 }
@@ -110,12 +114,11 @@ PARAMETER_OWNED_PATHS = (
     *((key,) for key in ("schemaVersion", "productName", "environmentName", "subscriptionId", "azureTenantId", "entraTenantId",
                          "location", "foundryLocation", "apiCenterLocation", "tags",
                          "authorization", "credentialProviders", "apiDefinitions", "publishApis", "portalApiKeys")),
-    *(("network", key) for key in PARAMETER_NETWORK_IP_KEYS | {"ntpFqdns"}),
+    *(("network", key) for key in PARAMETER_NETWORK_IP_KEYS),
     *(("network", "firewall", key) for key in PARAMETER_FIREWALL_KEYS),
     *((section, key) for section in ("services", "management", "monitoring", "certificate", "portal")
       for key in PARAMETER_SECTION_KEYS[section]),
     ("gateway", "publicHostName"), ("gateway", "existingWafPolicyId"), ("gateway", "authentication"),
-    ("gateway", "grpc", "publicHostName"),
     *(("gateway", "rateLimits", kind, "overrides") for kind in ("subscriptionKey", "application")),
 )
 
@@ -353,10 +356,8 @@ def _network(raw: Any) -> dict:
     個々の値だけでは分からない組合せもここで確認する。
     """
     n = _object(copy.deepcopy(raw), "network", {
-        "addressSpaces", "subnetPrefixes", "operatorAddressPrefixes",
-        "operatorProtocol", "operatorPorts", "dnsServers", "bgpRoutePropagation", "firewall",
-        "appGatewayZones", "ntpAddressPrefixes", "ntpFqdns", "dnsTtl", "apimKeyVaultAccessEnabled",
-        "managementAdditionalSecurityRules",
+        "addressSpaces", "subnetPrefixes", "bgpRoutePropagation", "firewall",
+        "appGatewayZones", "dnsTtl",
     })
     spaces = _cidrs(n.get("addressSpaces"), "network.addressSpaces", minimum=1)
     prefixes = _object(n.get("subnetPrefixes"), "network.subnetPrefixes", set(SUBNET_KINDS))
@@ -377,25 +378,14 @@ def _network(raw: Any) -> dict:
         subnet_networks.append(subnet)
     if any(left.overlaps(right) for i, left in enumerate(subnet_networks) for right in subnet_networks[i + 1:]):
         _fail("network.subnetPrefixes", "subnets overlap")
-    # 利用者の受信許可はBicep内の固定値を使い、運用者の接続元だけを入力から受け取ります。
-    n["operatorAddressPrefixes"] = _cidrs(n.get("operatorAddressPrefixes", []), "network.operatorAddressPrefixes")
-    n["dnsServers"] = _list(n.get("dnsServers", []), "network.dnsServers")
-    if n["dnsServers"]:
-        _fail("network.dnsServers", "must remain empty to use Azure-provided DNS")
     # 公開設定ではtrue=伝播、false=非伝播と読む。ARMのdisable指定への反転は
     # Bicep側で行い、利用者が否定の否定を読み解く必要をなくす。
     routes = _object(n.get("bgpRoutePropagation", {}), "network.bgpRoutePropagation", {"agw", "apim", "management"})
     n["bgpRoutePropagation"] = {key: _bool(routes.get(key, True), "network.bgpRoutePropagation." + key) for key in ("agw", "apim", "management")}
-    _choice(n.setdefault("operatorProtocol", "Tcp"), "network.operatorProtocol", ("Tcp", "Udp", "*"))
-    n["operatorPorts"] = _strings(n.get("operatorPorts", ["22"]), "network.operatorPorts", minimum=1)
-    _bool(n.setdefault("apimKeyVaultAccessEnabled", True), "network.apimKeyVaultAccessEnabled")
     _integer(n.setdefault("dnsTtl", 300), "network.dnsTtl", 1, 86400)
     _strings(n.setdefault("appGatewayZones", ["1", "2", "3"]), "network.appGatewayZones")
-    _strings(n.setdefault("ntpAddressPrefixes", ["Internet"]), "network.ntpAddressPrefixes", minimum=1)
-    for fqdn in _strings(n.setdefault("ntpFqdns", ["ntp.ubuntu.com"]), "network.ntpFqdns", minimum=1):
-        _host(fqdn, "network.ntpFqdns")
     f = _object(n.setdefault("firewall", {}), "network.firewall", {
-        "sku", "idpsMode", "threatIntelMode", "zones", "dnsServers", "idpsPrivateRanges", "signatureOverrides",
+        "sku", "idpsMode", "threatIntelMode", "zones", "idpsPrivateRanges", "signatureOverrides",
         "bypassTrafficSettings", "snatPrivateRanges", "apimAllowedFqdns",
         "managementAllowedFqdns", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
         "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
@@ -412,9 +402,6 @@ def _network(raw: Any) -> dict:
         f.pop("idpsMode", None)
     if tier == "Standard" and any(f.get(key) for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings")):
         _fail("network.firewall", "IDPS configuration requires Premium")
-    _list(f.setdefault("dnsServers", []), "network.firewall.dnsServers")
-    if f["dnsServers"]:
-        _fail("network.firewall.dnsServers", "must remain empty to use Azure-provided DNS")
     _strings(f.setdefault("zones", []), "network.firewall.zones")
     for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
         if key in f:
@@ -423,7 +410,6 @@ def _network(raw: Any) -> dict:
     for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules", "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
         if key in f:
             _list(f[key], "network.firewall." + key)
-    _list(n.setdefault("managementAdditionalSecurityRules", []), "network.managementAdditionalSecurityRules")
     return n
 
 
@@ -753,9 +739,9 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
     names, paths, subscription_ids = set(), set(), {}
     for i, api in enumerate(result):
         p = f"apiDefinitions[{i}]"
-        _object(api, p, {"name", "displayName", "path", "backendService", "backendUrl", "backendPath", "backendAudience", "productId", "released", "subscriptionKeyHeader", "operations", "keySubscriptions", "authorization", "mcp", "credentialConnection", "apiType", "backendAuthentication", "backendHeaders", "grpc", "mcpProxy", "websocket", "serviceClass"})
+        _object(api, p, {"name", "displayName", "path", "backendService", "backendUrl", "backendPath", "backendAudience", "productId", "released", "subscriptionKeyHeader", "operations", "keySubscriptions", "authorization", "mcp", "credentialConnection", "apiType", "backendAuthentication", "backendHeaders", "mcpProxy", "websocket", "serviceClass"})
         _bool(api.setdefault("released", False), p + ".released")
-        api_type = _choice(api.setdefault("apiType", "http"), p + ".apiType", ("http", "websocket", "grpc", "mcp"))
+        api_type = _choice(api.setdefault("apiType", "http"), p + ".apiType", ("http", "websocket", "mcp"))
         name = _string(api.get("name"), p + ".name", maximum=80)
         if not API_NAME.fullmatch(name) or name.casefold() in names or name.casefold() in ("credential-manager-login", "credential-manager-browser"):
             _fail(p + ".name", "must be a unique API identifier")
@@ -765,8 +751,7 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
             _fail(p + ".serviceClass", "sample-prefixed APIs must be classified as sample")
         _string(api.get("displayName"), p + ".displayName")
         path = api.get("path")
-        if not (api_type == "grpc" and path == ""):
-            path = _string(path, p + ".path", maximum=400)
+        path = _string(path, p + ".path", maximum=400)
         if path.startswith("/") or "?" in path or path.casefold() in paths or any(segment in (".", "..") for segment in path.split("/")):
             _fail(p + ".path", "must be a unique relative API prefix")
         if path.casefold() == "auth" or path.casefold().startswith("auth/") or path.casefold() == ".well-known/oauth-protected-resource" or path.casefold().startswith(".well-known/oauth-protected-resource/"):
@@ -926,15 +911,6 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
             _fail(p + ".websocket", "is allowed only on a WebSocket API")
         # gRPC定義は単独で解決できるprotoに限定する。未取得のimportを
         # 配備時に探す仕様にせず、公開するサービスとRPCを事前に確定する。
-        if api_type == "grpc":
-            grpc = _object(api.get("grpc"), p + ".grpc", {"definition"})
-            definition = grpc.get("definition")
-            proto = _string(definition.strip() if isinstance(definition, str) else definition, p + ".grpc.definition", maximum=1000000)
-            grpc["definition"] = proto
-            if "service " not in proto or "rpc " not in proto or re.search(r'\bimport\s+(?:(?:public|weak)\s+)?["\']', re.sub(r"/\*.*?\*/|//[^\n]*", "", proto, flags=re.S)):
-                _fail(p + ".grpc.definition", "requires one self-contained proto with service and RPC methods; imported proto files are unsupported")
-        elif "grpc" in api:
-            _fail(p + ".grpc", "is allowed only on a gRPC API")
         # Streamable HTTPはmessage、従来SSEはsseとmessageを必要とする。
         # 別の通信方式を同じ入口数で扱わず、公式の接続先の組合せを検査する。
         if api_type == "mcp":
@@ -1180,7 +1156,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     c["services"] = s
     # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限、
     # gRPCで使う証明書のホスト名も、独立した値のまま矛盾させない。
-    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "grpc", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
+    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
     # 共通入口は購読キーの提示を優先し、キーなしBearer要求にはEntra認証を使います。
     authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin", "entra"})
@@ -1266,14 +1242,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             caller_ids.add(caller_id)
             _integer(entry.get("calls"), entry_path + ".calls", 1, 1000000)
             _integer(entry.get("renewalPeriodSeconds"), entry_path + ".renewalPeriodSeconds", 1, 300)
-    grpc = _object(g.setdefault("grpc", {}), "gateway.grpc", {"publicHostName"})
-    grpc["publicHostName"] = _host(grpc.setdefault("publicHostName", g["publicHostName"]), "gateway.grpc.publicHostName")
-    if grpc["publicHostName"] != g["publicHostName"]:
-        _fail("gateway.grpc", "requires the existing certificate hostname and APIM HTTPS port 443")
-    # 常設gRPCの有効状態・ポートは入力から受け取らず、内部設定として生成します。
-    grpc.update(enabled=True, publicPort=8443, backendPort=443)
-    if not c["network"]["apimKeyVaultAccessEnabled"]:
-        _fail("network.apimKeyVaultAccessEnabled", "must be enabled for the gRPC certificate and L7 ingress Key Vault references")
     c["gateway"] = g
     # VMはサイズとOSイメージだけでなく、ディスク方式・SSH鍵・管理者名も検査する。
     # latestの自動選択は使わず、検証した固定版で再現可能にする。
@@ -1477,10 +1445,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("services.speechEnabled", "must be enabled for registered Speech Entra backends; external resource RBAC remains an explicit prerequisite")
     if any(api["backendAuthentication"]["mode"] == "keyVaultHeader" for api in c["apiDefinitions"]) and not s["grantApimSecretAccess"]:
         _fail("services.grantApimSecretAccess", "must be enabled for registered backend Key Vault credentials")
-    if not c["network"]["apimKeyVaultAccessEnabled"]:
-        from .grpc_lifecycle import owner_ticket_enabled
-        if owner_ticket_enabled(c):
-            _fail("network.apimKeyVaultAccessEnabled", "must be enabled for owner-bound operation ticket Key Vault references")
     for api in c["apiDefinitions"]:
         connection = api.get("credentialConnection")
         if connection:
@@ -1492,7 +1456,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             if connection["mode"] == "service" and connection["connectionName"] not in provider["connectionNames"]:
                 _fail("apiDefinitions.credentialConnection", "references an undefined fixed service connection")
     c["apiPublicationStatus"] = "configured" if publish else "not-published"
-    c["network"]["apimKeyVaultAccessEnabled"] = c["network"]["apimKeyVaultAccessEnabled"] or s["grantApimSecretAccess"] or bool(login)
     # カタログ用の説明も無料の設定検査で作れることを先に確認する。
     # 説明自体はBicep入力時にだけ追加し、利用者の設定ファイルへは混ぜない。
     with_catalog_descriptions(c)
@@ -1610,9 +1573,12 @@ def _reject_config_environment_inputs(standard: dict) -> None:
         _fail("config.gateway", "contains unsupported field(s): grpc")
     network = standard.get("network", {})
     if isinstance(network, dict):
-        unsupported = {"clientAddressPrefixes", "certificatePublicProbeEnabled"}.intersection(network)
+        unsupported = RETIRED_NETWORK_INPUTS.intersection(network)
         if unsupported:
             _fail("config.network", "contains unsupported field(s): " + ", ".join(sorted(unsupported)))
+        firewall = network.get("firewall", {})
+        if isinstance(firewall, dict) and "dnsServers" in firewall:
+            _fail("config.network.firewall", "contains unsupported field(s): dnsServers")
 
 
 def load_configuration_source(path: Path | str) -> dict:

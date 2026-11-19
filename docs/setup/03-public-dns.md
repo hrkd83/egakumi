@@ -21,7 +21,7 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | `<ACME_CONTACT_EMAIL>` | 証明書を管理する連絡先 | `certificate.contactEmail` |
 | DNS担当者 | 委任・ゾーン・ID・権限の管理者 | 事前準備と継続運用 |
 
-ワイルドカード`*.<PUBLIC_ZONE>`は、そのゾーン直下の名前を覆います。ゾーン自身や、さらに深い階層の名前は自動では含みません。native gRPCの公開ホスト名もGatewayと同じにし、専用TCPポートで区別します。
+ワイルドカード`*.<PUBLIC_ZONE>`は、そのゾーン直下の名前を覆います。ゾーン自身や、さらに深い階層の名前は自動では含みません。公開入口はGateway／PortalのHTTPSです。gRPC専用TCP入口は構成しません。
 
 ## 2. Azureの公開ゾーンを用意し、NSを委任する
 

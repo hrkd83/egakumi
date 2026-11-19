@@ -42,33 +42,23 @@ class CatalogDescriptionTests(unittest.TestCase):
         self.assertIn("gpt-approved [OpenAI/gpt-approved, v=2026-01-01]", description)
         self.assertIn("実機の試験結果は別記録", description)
 
-    def test_grpc_uses_fixed_public_port_sni_and_proto_service_without_http_prefix(self):
+    def test_retired_grpc_catalog_contract_is_rejected(self):
         config = public_contract()
         config["gateway"]["publicHostName"] = "rpc.enterprise.example"
-        config["gateway"]["grpc"]["publicHostName"] = "rpc.enterprise.example"
         api = config["apiDefinitions"][0]
         api.update(apiType="grpc", path="", productId="tool-users",
                    grpc={"definition": 'syntax = "proto3"; package sample.v1; service Probe { rpc Echo (X) returns (X); }'})
-        description = describe_api(config, api)
-        self.assertIn("接続: https://rpc.enterprise.example:8443/", description)
-        self.assertIn("SNI=rpc.enterprise.example、ALPN=h2", description)
-        self.assertIn("sample.v1.Probe", description)
-        self.assertIn("API Centerの同期URLに公開ポートがない場合も、上記の公開URLで接続", description)
-        self.assertIn("HTTPのAPI prefixはRPC pathへ付けません", description)
-        self.assertIn("TCP入口はHTTP WAF検査対象外", description)
-        self.assertNotIn(":9443", description)
-        self.assertNotIn("https://rpc.enterprise.example:8443/models/", description)
+        with self.assertRaisesRegex(ValueError, "retired"):
+            describe_api(config, api)
 
     def test_copyable_endpoint_links_end_before_japanese_protocol_explanations(self):
         """空白までを自動リンク化しても、補足文を接続先の一部に含めない。"""
         config = public_contract()
         config["gateway"]["publicHostName"] = "api.enterprise.example"
-        config["gateway"]["grpc"]["publicHostName"] = "api.enterprise.example"
         api = copy.deepcopy(config["apiDefinitions"][0])
         cases = [
             ({"apiType": "http", "path": "tools/rest"}, ["https://api.enterprise.example/tools/rest"]),
             ({"apiType": "websocket", "path": "tools/socket"}, ["wss://api.enterprise.example/tools/socket"]),
-            ({"apiType": "grpc", "path": "", "grpc": {"definition": 'syntax = "proto3"; package test; service Probe {}'}}, ["https://api.enterprise.example:8443/"]),
             ({"apiType": "mcp", "path": "tools/mcp", "mcpProxy": {"transport": "streamable"}}, ["https://api.enterprise.example/tools/mcp/mcp"]),
             ({"apiType": "mcp", "path": "tools/legacy", "mcpProxy": {"transport": "sse", "endpoints": [
                 {"name": "sse", "uriTemplate": "/legacy/sse"}, {"name": "message", "uriTemplate": "/legacy/messages/"}]}},
@@ -176,7 +166,6 @@ class CatalogDescriptionTests(unittest.TestCase):
         # 各フィールド単体の長さが有効でも、接続先と説明の合計は超え得る。
         host = ".".join(["a" * 63, "b" * 63, "c" * 63, "d" * 61])
         config["gateway"]["publicHostName"] = host
-        config["gateway"]["grpc"]["publicHostName"] = host
         api["path"] = "models/" + "x" * 390
         api["productId"] = "p" * 80
         api["subscriptionKeyHeader"] = "k" * 128

@@ -73,9 +73,9 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         """Monitor 本体と別の Event Hubs 転送先も、APIM 発の必要 TCP だけを許可する。"""
         network = self.templates["network"]
         apim, = [group for group in network["variables"]["nsgDefinitions"] if group["key"] == "apim"]
-        event_hubs, = [rule for rule in apim["rules"] if "'allow-monitor-event-hubs'" in rule]
+        event_hubs, = [rule for rule in apim["rules"] if "'allow-event-hubs-egress'" in rule]
         self.assertEqual(event_hubs,
-                         "[__bicep.allowRule('allow-monitor-event-hubs', variables('nsgPriorities').groups.apim.rules['allow-monitor-event-hubs'].priority, 'Outbound', 'Tcp', "
+                         "[__bicep.allowRule('allow-event-hubs-egress', variables('nsgPriorities').groups.apim.rules['allow-event-hubs-egress'].priority, 'Outbound', 'Tcp', "
                          "createArray(variables('subnetPrefixes').apim), createArray('EventHub'), "
                          "createArray('443', '5671', '5672'))]")
         dependency, = [item for item in network["variables"]["apimPlatformDependencies"]
@@ -83,7 +83,8 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         self.assertEqual(dependency, {"name": "monitor-event-hubs", "destinations": ["EventHub"],
                                       "ports": ["443", "5671", "5672"]})
         # 変数の追加だけで終わらず、FW の実ルールへ同じ宛先・port が配線されることを確認する。
-        rules = network["resources"]["platformRules"]["properties"]["ruleCollections"]
+        collections = network["resources"]["platformRules"]["properties"]["ruleCollections"]
+        rules = next(item["rules"] for item in collections if item["name"] == "allow-apim-platform")
         self.assertIn("map(variables('apimPlatformDependencies')", rules)
         self.assertIn("'sourceAddresses', createArray(variables('subnetPrefixes').apim)", rules)
         self.assertIn("'destinationAddresses', lambdaVariables('dependency').destinations", rules)
@@ -98,7 +99,7 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         """実ARMのループを展開し、同じNSGの二重宣言と既存本体へのPUTを防ぐ。"""
         template = self.templates["network"]
         resources = template["resources"]
-        expected = {"nsg-egakumi-test-" + suffix for suffix in ("agw", "apim", "pep", "vm")}
+        expected = {"nsg-egakumi-test-" + suffix for suffix in ("agw", "apim", "pep", "vm", "aca")}
 
         def evaluate(expression, parameters, index=0):
             """NSG名の式に使うARM関数だけを評価する。Azureや任意コードは実行しない。"""

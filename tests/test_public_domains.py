@@ -30,7 +30,6 @@ class PublicDomainTests(unittest.TestCase):
             with self.subTest(api=api_host):
                 raw = fixture()
                 raw['gateway']['publicHostName'] = api_host
-                raw['gateway']['grpc']['publicHostName'] = api_host
                 raw['certificate']['domainNames'] = names
                 with self.assertRaisesRegex(configuration.ConfigurationError, 'certificate.domainNames'):
                     configuration.normalize_configuration(raw)

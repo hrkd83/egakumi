@@ -79,7 +79,7 @@ APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果c
 
 認可・操作制約の後、CM/MI・下流転送の前に即時計数します。超過は本文なし429・数値`Retry-After`・要求IDを返し、下流を呼びません。通常操作・一括処理・並列実行で採用する上限を確認してください。APIMの近似的な要求回数制限であり、料金上限やWAFの代替ではありません。
 
-HTTP/SSEは要求、gRPCはRPC開始、WebSocketは初回握手を数えます。生成MCPは参照先RESTの実処理で1回計数します。登録済みの取消・終了操作の免除と、偽装した要求を免除しないことも確認します。[APIMの回数制限](https://learn.microsoft.com/en-us/azure/api-management/rate-limit-by-key-policy)
+HTTP/SSEは要求、WebSocketは初回握手を数えます。生成MCPは参照先RESTの実処理で1回計数します。登録済みの取消・終了操作の免除と、偽装した要求を免除しないことも確認します。[APIMの回数制限](https://learn.microsoft.com/en-us/azure/api-management/rate-limit-by-key-policy)
 
 ## CMによるGraphの本人接続
 
@@ -271,9 +271,9 @@ sudo /usr/bin/pwsh -NoLogo -NoProfile -NonInteractive \
   -RotateFromThumbprint '<現在の公開証明書の40桁thumbprint>'
 ```
 
-指定した旧証明書と一致するときだけ既存注文を更新します。発行後のVault登録で失敗した場合は、同じ指定で再実行すると検査済みの新しいキャッシュ証明書を取り込み、重複発行を避けます。既に別の正常な証明書へ変わっていれば追加発行せず、`current-already-different`と表示します。これは今回の実行で交換したという意味ではありません。要求はtimerや設定に残さず、既存の証明書版・ACME状態を保持します。CAの回数制限で失敗した場合は連続実行せず原因を確認してください。完了後も通常の自動更新を続け、AppGWとAPIMが実際に返す公開証明書をそれぞれ照合します。
+指定した旧証明書と一致するときだけ既存注文を更新します。発行後のVault登録で失敗した場合は、同じ指定で再実行すると検査済みの新しいキャッシュ証明書を取り込み、重複発行を避けます。既に別の正常な証明書へ変わっていれば追加発行せず、`current-already-different`と表示します。これは今回の実行で交換したという意味ではありません。要求はtimerや設定に残さず、既存の証明書版・ACME状態を保持します。CAの回数制限で失敗した場合は連続実行せず原因を確認してください。完了後も通常の自動更新を続け、AppGWのGateway／Portalが実際に返す公開証明書をそれぞれ照合します。
 
-AppGWはバージョンなしKey Vault secret URIを参照し、通常約4時間ごとに新証明書を確認します。更新タスクへAppGW管理権限は与えません。gRPCのAPIM証明書も取得・更新・再適用を確認し、Developerでは自動同期を保証せず必要時に再同期します。Linux AMA/DCRがSyslog・性能・証明書状態を監視します。
+AppGWはバージョンなしKey Vault secret URIを参照し、通常約4時間ごとに新証明書を確認します。更新タスクへAppGW管理権限は与えません。APIM保守は標準Gateway名とMicrosoft管理の既定証明書を使用し、公開証明書の更新対象に含めません。Linux AMA/DCRがSyslog・性能・証明書状態を監視します。
 
 ### API Centerのカタログ管理
 
@@ -285,10 +285,10 @@ API説明はAPIMの公開契約から生成し、API Centerへ同期します。
 
 公開接続には、説明とruntime URIに記載された`https://`／`wss://`を使います。標準同期のREST仕様に`http`も含まれる場合がありますが、これはAppGWから内部APIMへのHTTP区間もAPIが受け付けるためです。購読キーとCM接続セッションはTLSで保護された公開URLへ送信してください。
 
-MCPとgRPCは、標準同期でAPIの説明・接続先が掲載されても、仕様Downloadが提供されるとは限りません。MCPの実tool定義は認証後の`tools/list`、gRPCのメッセージ定義は提供元のproto（公開登録の`grpc.definition`と同じ内容）で確認します。RESTのOpenAPIが取得できたことを、これらの仕様ファイルも取得できるという意味には扱いません。
+MCPは、標準同期でAPIの説明・接続先が掲載されても、仕様Downloadが提供されるとは限りません。実tool定義は認証後の`tools/list`で確認します。RESTのOpenAPIが取得できたことを、MCPの仕様ファイルも取得できるという意味には扱いません。
 
-gRPCの入口は基盤共通の公開TCP8443として常設します。AppGWからFirewallを介してAPIMのTCP443へ渡し、APIMでTLSを終端します。有効状態とポートは構築処理が内部で生成し、config・params・合成設定ファイルの入力項目にはしません。同じ固定値でも指定すると構築前に拒否します。入口の常設とは別に、利用するgRPCサービスをAPIとして登録します。
+gRPCは提供要件から廃止しました。公開TCP8443・AppGWの専用L4子設備・gRPC用NSG／Firewall許可・新規proto取り込み・専用のカタログ説明更新は作成しません。`gateway.grpc`全体とgRPC API定義は入力検査で拒否します。既存のgRPCを含むV2公開sourceは、旧資材の所有照合用として厳密な読戻し互換だけを維持します。
 
-native gRPCは、API説明に表示する完全な公開URL（例：`https://<GATEWAY_FQDN>:8443/`）、SNI、protoのservice名を使います。明示実行するAPI登録コマンドは、proto取り込み後にAPIMの説明を読み直し、必要な場合だけ説明をETag付きで更新します。API Centerの自動同期が管理する`deployment.server.runtimeUri`は、APIM側のHTTPS URLを示し、AppGWのTCP入口の公開ポートを含まない場合があります。この欄をAPI Center側で上書きしても維持される保証はないため、説明をAPIMから生成し、公開ポートを含む接続先を明示します。同期URLとの不一致と仕様ファイルの提供可否は、受入記録に残します。
+通常HTTP／HTTPSの入口保護は常設です。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーで証明を検査します。frontend HTTP/2は維持し、内部APIM／ACAへはHTTP80で転送します。APIMのServer.Http2は文字列`"false"`に固定します。HTTP・SSE・WebSocket・MCPの通常API、認証・認可・監査・CM・所有者署名の契約は維持します。gRPC廃止のローカル検証と実Azureの移行・通信確認は別に記録します。APIMの旧gRPC専用カスタムドメインは所有参照を照合して撤去し、通常APIのHostは標準Gateway名を維持します。他用途のドメインとHTTP2以外の既存customPropertiesは保持します。
 
-gRPCの受入では、正常な4方式に加え、入力エラー・期限・取消の最終statusを実SDKで確認します。採用構成のAPIM中継では、本文のない早期エラーを初回HEADERSだけで終える標準形式（Trailers-Only）が、クライアントで`UNKNOWN`に変わる場合があります。backendは初期metadataと終了metadataを分け、最終`grpc-status`を`END_STREAM`付きのtrailing HEADERSで返す構成にします。認証前に終了するフレームワーク由来のエラーや未登録methodも、利用するbackendで別途確認してください。成功RPCだけで全エラーの中継を保証しません。[gRPCのHTTP/2応答形式](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#responses)
+APIMの既定Gatewayはカスタムドメイン追加後も利用でき、削除できません。HTTPS保守では`<APIM_NAME>.azure-api.net`をPrivate DNSで内部VIPへ解決し、同名のHost／SNIを使うとMicrosoft管理の既定証明書で接続できます。公開URL・OAuth／CMの案内はAppGWの公開名を維持します。[既定GatewayとSNIの公式説明](https://learn.microsoft.com/azure/api-management/configure-custom-domain)、[Internal VNetの既定FQDNとDNS](https://learn.microsoft.com/azure/api-management/api-management-using-with-internal-vnet)

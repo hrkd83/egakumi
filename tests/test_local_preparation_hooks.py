@@ -137,7 +137,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 key.assert_not_called()
         self.assertEqual(list((self.root / ".local/test/secrets").glob("*")), [])
 
-    def test_both_provision_hooks_prepare_secret_then_key_then_load_before_azure_boundary(self):
+    def test_both_provision_hooks_prepare_secret_and_key_before_azure_boundary(self):
         """実local_preflightを通し、Azure入口をsentinelで止めるので外部処理はない。"""
         for hook in ("preup", "preprovision"):
             self.dns_selection.reset_mock()
@@ -183,7 +183,10 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 providers.assert_not_called()
                 arm.assert_not_called()
                 deploy.assert_not_called()
-            self.assertEqual(events, ["dependencies", "secret-preparation", "ssh", "secret-inputs", "azure-boundary"])
+            expected = ["dependencies", "secret-preparation", "ssh"]
+            if hook == "preup":
+                expected.append("secret-inputs")
+            self.assertEqual(events, expected + ["azure-boundary"])
             self.assertFalse(self.paths.parameters.exists())
 
     def test_key_preparation_failure_stops_both_hooks_before_secret_or_azure_access(self):
@@ -313,7 +316,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
             entra.chmod(0o600)
         for index, hook in enumerate((first_hook, "preprovision")):
             needs_input = index == 0 and not existing_secret
-            events, output = [], io.StringIO()
+            events, output, verified_configurations = [], io.StringIO(), []
             secret_before = (entra.read_bytes(), entra.stat().st_mtime_ns) if entra.exists() else None
 
             def dependencies(arguments, **kwargs):
@@ -349,13 +352,17 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 events.append("ssh")
                 return {"created": False}
 
-            def load_inputs(config):
+            def assert_prepared_inputs(config):
                 values = real_inputs(config)
                 self.assertEqual(values["credentialProviderSecrets"], {"approved-oauth": client_secret})
                 self.assertEqual(values["dnsPluginArgumentsJson"], "")
                 self.assertEqual(values["sshPublicKey"], ssh_fixture_key())
                 self.assertNotIn("preparedPfxBase64", values)
                 self.assertNotIn("preparedPfxPassword", values)
+                return values
+
+            def load_inputs(config):
+                values = assert_prepared_inputs(config)
                 events.append("load-inputs")
                 return values
 
@@ -363,6 +370,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 self.assertEqual(config["certificate"]["plugin"], "Azure")
                 self.assertEqual(config["certificate"]["azureDnsSubscriptionId"], self.config["certificate"]["azureDnsSubscriptionId"])
                 self.assertEqual(config["certificate"]["azureDnsManagedIdentityResourceId"], self.config["certificate"]["azureDnsManagedIdentityResourceId"])
+                verified_configurations.append(config)
                 events.append("azure-boundary")
                 raise lifecycle.DeploymentError("Fixture stops before Azure")
 
@@ -392,7 +400,15 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
                 for downstream in (providers, arm, deploy): downstream.assert_not_called()
             expected = ["dependencies"] + (["dns-precondition"] if hook == "preup" else [])
             if needs_input: expected += ["ready-confirm", "client-input"]
-            self.assertEqual(events, expected + ["ssh", "load-inputs", "azure-boundary"])
+            expected.append("ssh")
+            if hook == "preup":
+                expected.append("load-inputs")
+            self.assertEqual(events, expected + ["azure-boundary"])
+            # preprovision reads the prepared deployment secrets only after
+            # authentication and the read-only Portal migration gate. Verify
+            # the real prepared values separately when the sentinel stops it.
+            self.assertEqual(len(verified_configurations), 1)
+            assert_prepared_inputs(verified_configurations[0])
             self.assertEqual((source.read_bytes(), source.stat().st_mtime_ns), source_before)
             self.assertFalse(dns.exists())
             self.assertNotIn(client_secret, output.getvalue())

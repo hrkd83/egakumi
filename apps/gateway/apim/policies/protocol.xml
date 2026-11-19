@@ -1,11 +1,10 @@
 <policies>
   <!--
-    WebSocket / gRPC / MCP proxy の接続開始時に全体の認証を継承し、API 固有の認可を実施します。
+    WebSocket / MCP proxy の接続開始時に全体の認証を継承し、API 固有の認可を実施します。
     通常RESTと同じ購読キーまたはBearerを確認し、API定義にあるモデル名と接続先queryを入口で検査します。
-    gRPC は HTTP/2 と逐次転送を使用し、WebSocket は接続開始時にモデルと固定 query を検査します。
+    WebSocket は接続開始時にモデルと固定 query を検査します。
   -->
   <inbound>
-    __GRPC_INGRESS_XML__
     <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
     <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
     <!-- MCP型だけに、個別PRMの転送を止める固定guardを差し込みます。 -->

@@ -1,10 +1,7 @@
 <policies>
-  <!--
-    通常の REST API の認可・入力制約・接続先認証・転送を管理します。入口認証は base で全体ポリシーを継承します。
-    入口は購読キー、またはEntraアクセストークンで認可します。裏側の認証は別に行います。
-    __...__ は Bicep が検証済み API 契約から埋める置換箇所、{{...}} は APIM Named Value 参照です。
-    要求 ID で処理を追跡しますが、本文・token・API key を監査へ保存しません。応答を読み切らず SSE を中継します。
-  -->
+  <!-- RESTの入口認証はbaseへ委譲し、操作制約・接続先認証・転送を管理します。
+       __...__ はBicepのAPI契約、{{...}}はNamed Value参照です。
+       本文・資格情報は監査せず、SSEは読み切らず中継します。 -->
   <inbound>
     <set-variable name="gatewayAuditSettings" value="@{
       var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)));
@@ -40,9 +37,8 @@
         <set-body>@{ return new JObject(new JProperty("error", new JObject(new JProperty("code", (int)JObject.Parse((string)context.Variables["gatewayQueryGuardDecision"])["status"] == 400 ? "QUERY_PARAMETERS_NOT_ALLOWED" : "QUERY_GUARD_NOT_CONFIGURED"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None); }</set-body>
       </return-response>
     </when></choose>
-    <!-- WAF argument exclusions also match query arguments. These known model
-         operations validate media type and query before reading native bodies;
-         only OpenAI embeddings retains its documented optional API version. -->
+    <!-- Validate media type and query before body reads. Only OpenAI embeddings
+         retains its documented optional API version, despite WAF exclusions. -->
     <set-variable name="gatewayInferenceRequestAllowed" value="@{
       var api = context.Api.Id.Split(';')[0];
       if (api != &quot;openai-inference-v1&quot; &amp;&amp; api != &quot;openai-images-v1&quot; &amp;&amp; api != &quot;blackforest-images-v1&quot;
@@ -168,7 +164,7 @@
       <return-response><set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request profile is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
     </when></choose>
     <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
-    <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
+    <!-- 処理：共通入口の認証結果を照合し、キー優先で購読または社員情報を引き継ぎます。 -->
     <set-variable name="gatewayDecision" value="@{
       var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
       var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
@@ -212,7 +208,7 @@
         <return-response><set-status code="403" reason="API operation is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
       </when>
     </choose>
-    <!-- 今回の操作に対応するモデル・本文サイズ・出力上限等の制約を選びます。利用者の入力を制約そのものには使いません。 -->
+    <!-- 登録済みの操作制約を選びます。利用者入力を制約には使いません。 -->
     <set-variable name="gatewayOperationConstraint" value="@{
       return JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None);
     }" />
@@ -225,8 +221,7 @@
         <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;code&quot;])" />
         <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;status&quot;])" />
         <include-fragment fragment-id="core-gateway-telemetry" />
-        <!-- PIIの操作ポリシーより先に拒否する場合も、同じ公開エラー契約を返します。
-             認可・byte上限・監査codeは変更せず、他のAPIの上限エラーも維持します。 -->
+        <!-- PIIの早期拒否も同じ公開エラー契約を返します。認可・上限・監査は維持します。 -->
         <choose id="core-pii-public-limit-error">
           <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;] == &quot;pii&quot; &amp;&amp; (int)context.Variables[&quot;gatewayAuditStatus&quot;] == 413 &amp;&amp; (string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;REQUEST_TOO_LARGE&quot;)">
             <return-response>
@@ -383,9 +378,8 @@
     __SUBSCRIPTION_PROFILE_XML__
     <include-fragment fragment-id="core-rate-limit" />
     __TOKEN_LIMIT_XML__
-    <!-- Stateless Responses is a deliberately narrower public contract.
-         Force storage off even when the client requests store:true. SSE and
-         opaque reasoning/function Items are forwarded without response edits. -->
+    <!-- Stateless Responses forces store:false; SSE and opaque reasoning/function
+         Items are forwarded without response edits. -->
     <!-- 共有 Model Gateway の Responses は stateless 契約です。保存や過去応答参照等の状態共有を防ぐ設定へ変換します。 -->
     <set-variable name="gatewayStatelessResponses" value="@{
       return (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;] == &quot;statelessResponses&quot;;
@@ -456,8 +450,7 @@
     __RATE_LIMIT_ERROR_XML__
     <set-variable name="gatewayAuditPhase" value="policy-error" />
     <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
-    <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。
-         Responseの既定値200を成功と誤記せず、実際の400以上のエラー値だけを残します。 -->
+    <!-- 確定した400以上のエラーだけを記録し、通信断や既定値200は0（未確定）とします。 -->
     <set-variable name="gatewayAuditStatus" value="@(context.Response != null &amp;&amp; context.Response.StatusCode &gt;= 400 ? context.Response.StatusCode : 0)" />
     <include-fragment fragment-id="core-gateway-telemetry" />
     <set-variable name="gatewayQueryPhase" value="policy-error" />

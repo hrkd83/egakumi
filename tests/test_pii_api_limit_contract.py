@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-from arm_helpers import DiscoveryExpression
+from arm_helpers import compiled_policy_value
 from bicep_helpers import compile_bicep
 from test_gateway_limits_telemetry import PWSH, expression
 import test_pii_policy as fixtures
@@ -25,8 +25,7 @@ class PiiApiLimitContractTests(unittest.TestCase):
         api.update(apiType="http", backendUrl="https://backend.example.com",
                    backendAuthentication={"mode": "none"}, backendHeaders={})
         def policy(resource):
-            return DiscoveryExpression(template["resources"][resource]["properties"]["value"],
-                template["variables"], functions=template.get("functions", [])).evaluate({"apiDefinitions": [api]}, 0)
+            return compiled_policy_value(template, {"apiDefinitions": [api]}, resource_name=resource)
         cls.api = ET.fromstring(policy("apiPolicies"))
         cls.operation = ET.fromstring(policy("operationPolicies"))
         cls.mapping = cls.api.find("./inbound/choose/when/choose[@id='core-pii-public-limit-error']/when")

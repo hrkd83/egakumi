@@ -12,21 +12,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import argparse
 import copy
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 import hashlib
 import json
 import re
 import socket
 import ssl
 import time
-from urllib.parse import urlsplit
 import uuid
 
 from operations.common import OperationContext, OperationError
 
 ROOT = Path(__file__).resolve().parents[2]
-APIM_REFRESH_API = '2025-09-01-preview'
 COMPUTE_API = '2024-07-01'
 NETWORK_API = '2024-05-01'
 MARKER = 'EGAKUMI_CERT_METADATA:'
@@ -74,8 +70,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): return None
 try:
     opener = urllib.request.build_opener(NoRedirect())
+    imds_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     request = urllib.request.Request('http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net', headers={'Metadata':'true'})
-    with opener.open(request, timeout=10) as response: token=json.load(response)['access_token']
+    with imds_opener.open(request, timeout=10) as response: token=json.load(response)['access_token']
     request = urllib.request.Request(URL, headers={'Authorization':'Bearer '+token})
     with opener.open(request, timeout=15) as response: value=json.load(response)
     token=None
@@ -217,93 +214,6 @@ def verify_references(ctx, gateway, vault, name):
                 or str(listeners[0].get('sslCertificate', {}).get('id', '')).casefold() !=
                     (gateway + '/sslCertificates/gateway-tls').casefold()):
             raise OperationError('The selected public host is not bound to the owned certificate listener')
-    grpc = ctx.config.get('gateway', {}).get('grpc', {})
-    if grpc.get('enabled'):
-        apim = ctx.verify_resource(ctx.service_id('apim'), '2024-05-01', 'Microsoft.ApiManagement/service')
-        own = [v for v in apim.get('properties', {}).get('hostnameConfigurations', [])
-               if v.get('type') == 'Proxy' and v.get('hostName') == grpc['publicHostName']]
-        if len(own) != 1 or str(own[0].get('keyVaultId', '')).rstrip('/') != expected:
-            raise OperationError('API Management does not reference the expected versionless certificate')
-
-
-def wait_refresh(ctx, response, *, timeout=3600, sleep=time.sleep, clock=time.monotonic):
-    """公式refreshHostnamesのLRO URLはRAM内で限定検査し、GETだけを送る。"""
-    if response.get('statusCode') == 200:
-        return
-    if response.get('statusCode') != 202:
-        raise OperationError('Certificate synchronization was not accepted')
-    headers = {k.lower(): v for k, v in response.get('headers', {}).items()}
-    status_endpoint = 'azure-asyncoperation' in headers
-    url = headers.get('azure-asyncoperation') if status_endpoint else headers.get('location')
-    if not isinstance(url, str):
-        raise OperationError('Certificate synchronization is pending without a status URL')
-    parsed = urlsplit(url)
-    prefix = f"/subscriptions/{ctx.config['subscriptionId']}/"
-    region_prefix = prefix + 'providers/Microsoft.ApiManagement/locations/' + ctx.config['location'] + '/'
-    resource_prefix = ctx.service_id('apim') + '/'
-    if (parsed.scheme != 'https' or parsed.netloc != 'management.azure.com' or parsed.fragment
-            or '%' in parsed.path or '\\' in parsed.path or '..' in parsed.path.split('/')
-            or not any(parsed.path.casefold().startswith(v.casefold()) for v in (region_prefix, resource_prefix))):
-        raise OperationError('Certificate synchronization returned an untrusted status URL')
-    deadline = clock() + timeout
-    while clock() < deadline:
-        hint = headers.get('retry-after')
-        if hint is None:
-            delay = 5
-        else:
-            try:
-                if not isinstance(hint, str):
-                    raise ValueError()
-                if re.fullmatch(r'[0-9]{1,6}', hint):
-                    delay = max(1, int(hint))
-                else:
-                    date = parsedate_to_datetime(hint)
-                    if date.tzinfo is None:
-                        raise ValueError()
-                    delay = max(1, (date - datetime.now(timezone.utc)).total_seconds())
-            except (ValueError, TypeError, OverflowError):
-                raise OperationError('Certificate synchronization supplied an unsupported Retry-After; keep it pending') from None
-        if delay >= deadline - clock():
-            raise OperationError('Certificate synchronization Retry-After exceeds the remaining wait; keep it pending')
-        sleep(delay)
-        if clock() >= deadline:
-            break
-        try:
-            poll = ctx.transport.request('GET', url)
-        except Exception:
-            raise OperationError('Certificate synchronization status is unknown; no request was repeated') from None
-        body = poll.get('body')
-        if body is None:
-            body = {}
-        if not isinstance(body, dict) or body.get('error') is not None:
-            raise OperationError('Certificate synchronization did not confirm successful completion')
-        properties = body.get('properties')
-        if properties is None:
-            properties = {}
-        if not isinstance(properties, dict):
-            raise OperationError('Certificate synchronization did not confirm successful completion')
-        states = (body.get('status'), properties.get('provisioningState'))
-        if any(value in ('Failed', 'Canceled', 'Cancelled') for value in states):
-            raise OperationError('Certificate synchronization did not confirm successful completion')
-        resource_result = not status_endpoint and ('id' in body or 'type' in body)
-        if resource_result and (str(body.get('id', '')).casefold() != ctx.service_id('apim').casefold()
-                or str(body.get('type', '')).casefold() != 'microsoft.apimanagement/service'):
-            raise OperationError('Certificate synchronization returned a different resource')
-        status = states[0] or states[1]
-        if not status_endpoint and poll.get('statusCode') in (200, 204) and not body:
-            return
-        # refreshHostnames uses final-state-via=location. Its pending 202 can
-        # be empty; its final 200 is the owned service resource, not a status envelope.
-        if poll.get('statusCode') == 200 and resource_result and status is None:
-            return
-        if poll.get('statusCode') == 200 and status == 'Succeeded':
-            return
-        location_pending = not status_endpoint and poll.get('statusCode') == 202 and not body
-        if not location_pending and (poll.get('statusCode') not in (200, 202)
-                or status not in ('Accepted', 'InProgress', 'Running', 'Updating')):
-            raise OperationError('Certificate synchronization did not confirm successful completion')
-        headers = {k.lower(): v for k, v in poll.get('headers', {}).items()}
-    raise OperationError('Certificate synchronization remains pending; the POST was not repeated')
 
 
 def etag(value):
@@ -332,6 +242,7 @@ def wait_gateway(ctx, gateway, tag_value, *, timeout=1800, sleep=time.sleep, clo
 def refresh_gateway(ctx, gateway):
     before = ctx.verify_resource(gateway, NETWORK_API, 'Microsoft.Network/applicationGateways')
     tags = copy.deepcopy(before.get('tags') or {})
+    ctx.record('certificate-gateway-before', {'resourceId': gateway, 'etag': etag(before), 'tags': tags})
     marker = uuid.uuid4().hex
     response = ctx.request('PATCH', gateway, NETWORK_API, {'tags': {**tags, REFRESH_TAG: marker}}, {'If-Match': etag(before)})
     if response.get('statusCode') not in (200, 201, 202):
@@ -350,9 +261,6 @@ def refresh_gateway(ctx, gateway):
 
 def observe(ctx, metadata, *, timeout=300, sleep=time.sleep, clock=time.monotonic):
     hosts = [(ctx.config['gateway']['publicHostName'], 443), (ctx.config['portal']['publicHostName'], 443)]
-    grpc = ctx.config['gateway'].get('grpc', {})
-    if grpc.get('enabled'):
-        hosts.append((grpc['publicHostName'], grpc['publicPort']))
     deadline = clock() + timeout
     while True:
         values = [tls_leaf(host, port) for host, port in hosts]
@@ -368,7 +276,7 @@ def operate(ctx, args):
     if args.thumbprint and not re.fullmatch(r'[0-9A-Fa-f]{40}', args.thumbprint):
         raise OperationError('Planned rotation requires the current 40-character public leaf thumbprint')
     plan = {'stage': args.stage, 'status': 'planned', 'azureWrites': 0,
-            'apimRefreshApi': APIM_REFRESH_API, 'newJob': False, 'pfxDownload': False,
+            'certificateConsumer': 'application-gateway', 'newJob': False, 'pfxDownload': False,
             'publicTls': 'not-verified'}
     if not args.execute:
         ctx.record('certificate-plan', plan)
@@ -387,29 +295,6 @@ def operate(ctx, args):
             raise OperationError('The requested rotation did not produce a different public leaf')
         ctx.record('certificate-renewed', {'metadata': metadata, 'publicTls': 'not-verified'})
     if args.stage in ('renew', 'sync'):
-        grpc = ctx.config['gateway'].get('grpc', {})
-        if grpc.get('enabled'):
-            # A completed public delivery can outlive the previous CLI's LRO
-            # wait. Reuse that positive, trusted observation only for sync;
-            # an observation failure stops rather than repeating a pending POST.
-            delivered = tls_leaf(grpc['publicHostName'], grpc['publicPort']) if args.stage == 'sync' else None
-            if delivered is not None and delivered['thumbprint'] == metadata['thumbprint']:
-                ctx.record('certificate-apim-refresh-skipped', {
-                    'basis': 'trusted-public-tls-matches-current-key-vault',
-                    'postSkipped': True, 'lroCompletionObserved': False, 'publicTls': delivered})
-            else:
-                ctx.record('certificate-apim-refresh-requested', {'apiVersion': APIM_REFRESH_API, 'status': 'requested'})
-                response = ctx.request('POST', ctx.service_id('apim') + '/refreshHostnames', APIM_REFRESH_API)
-                # Preserve the definite response without retaining messages, headers,
-                # signed polling URLs, or other external response fields.
-                status = response.get('statusCode')
-                body = response.get('body')
-                error = body.get('error') if isinstance(body, dict) else None
-                code = error.get('code') if isinstance(error, dict) else None
-                ctx.record('certificate-apim-refresh-response', {
-                    'httpStatus': status if type(status) is int and 100 <= status <= 599 else None,
-                    'azureErrorCode': code if isinstance(code, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]{0,127}', code) else None})
-                wait_refresh(ctx, response)
         ctx.record('certificate-gateway-refresh-requested', {'status': 'requested'})
         refresh_gateway(ctx, gateway)
     observed = observe(ctx, metadata)

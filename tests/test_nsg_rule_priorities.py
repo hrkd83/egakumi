@@ -1,239 +1,171 @@
-"""Compile every owned NSG rule against one public priority contract.
-
-These checks use synthetic network inputs and do not contact Azure.
-"""
+"""Compile all 72 fixed NSG rules with synthetic addresses; no Azure calls."""
 import copy
 import json
 from pathlib import Path
 import unittest
 
 from bicep_helpers import compile_bicep
-from arm_helpers import DiscoveryExpression
-import test_parameter_ip_ownership as ip_fixtures
 from test_parameter_ip_ownership import NetworkArmExpression
 
-
 ROOT = Path(__file__).resolve().parents[1]
-GROUPS = ("agw", "apim", "pep", "management")
+GROUPS = ('agw', 'apim', 'pep', 'management', 'aca')
+MODULES = ('network', 'network-bindings', 'portal-network', 'portal-network-bindings', 'credential-broker-network')
+
+
+class FixedExpression(NetworkArmExpression):
+    """Evaluate compiled UDFs, supplying only synthetic NIC discovery outputs."""
+    def resolve(self, value, parameters):
+        if isinstance(value, dict): return {k: self.resolve(v, parameters) for k, v in value.items()}
+        if isinstance(value, list): return [self.resolve(v, parameters) for v in value]
+        if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
+            return FixedExpression(value, self.template, self.cache).evaluate(parameters, 0)
+        return value
+
+    def evaluate(self, parameters, index=0, tree=None, bindings=None):
+        tree = self.tree if tree is None else tree
+        if tree[0] == 'call' and tree[1] == 'reference':
+            return {'outputs': {'privateIpsByNic': {'value': [parameters['referencePrivateIps']]}}}
+        if tree[0] == 'call' and tree[1] == 'contains':
+            values = [self.evaluate(parameters, index, item, bindings) for item in tree[2]]
+            return values[1] in values[0]
+        return super().evaluate(parameters, index, tree, bindings)
+
+
+def canonical(p):
+    def values(one, many): return [p[one]] if one in p else p[many]
+    return {**{k: p[k] for k in ('direction', 'priority', 'access', 'protocol')},
+            'sourcePort': p['sourcePortRange'],
+            'source': values('sourceAddressPrefix', 'sourceAddressPrefixes'),
+            'destination': values('destinationAddressPrefix', 'destinationAddressPrefixes'),
+            'destinationPorts': values('destinationPortRange', 'destinationPortRanges')}
 
 
 class NsgRulePriorityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.contract = json.loads((ROOT / "infra/nsg-rule-priorities.json").read_text())
-        cls.templates = {name: compile_bicep("infra/modules/" + name + ".bicep")
-                         for name in ("network", "network-bindings", "portal-network",
-                                      "credential-broker-network")}
+        cls.contract = json.loads((ROOT / 'infra/nsg-rule-priorities.json').read_text())
+        cls.templates = {m: compile_bicep('infra/modules/' + m + '.bicep') for m in MODULES}
 
-    def parameters(self, **changes):
-        fixtures = ip_fixtures.ParameterIpCompiledNetworkTests()
-        fixtures.templates = self.templates
-        config = fixtures.configuration()
-        config["network"]["managementAdditionalSecurityRules"] = []
-        _, result = fixtures.resolver("network-bindings", config)
-        result.update(changes)
-        return result
+    def parameters(self, multiple=True, prefix='10.70'):
+        subnets = {'agw': prefix+'.0.0/24', 'pep': prefix+'.1.0/24', 'firewall': prefix+'.2.0/26',
+                   'apim': prefix+'.2.64/26', 'management': prefix+'.2.128/26', 'aca': prefix+'.2.192/26'}
+        sets = {k: [prefix+'.1.'+str(i), prefix+'.1.'+str(i+1)] for k, i in
+                (('foundry', 4), ('keyVault', 6), ('registry', 8), ('sql', 10))}
+        if not multiple: sets = {k: v[:1] for k, v in sets.items()}
+        ips = {'apim': prefix+'.2.68', 'aca': prefix+'.2.196', 'management': prefix+'.2.132',
+               'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'}
+        return {'config': {'subnetPrefixes': subnets}, 'resourcePrefix': 'test-fixture', 'subnetPrefixes': subnets,
+                'foundryPrivateIps': sets['foundry'], 'keyVaultPrivateIps': sets['keyVault'],
+                'managementPrivateIp': ips['management'], 'firewallPublicIpAddress': ips['firewallPublic'],
+                'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
+                'staticIp': ips['aca'], 'acaPrivateIp': ips['aca'], 'acaPrefix': subnets['aca'],
+                'apimPrefix': subnets['apim'], 'agwPrefix': subnets['agw'], 'managementPrefix': subnets['management'],
+                'existingNetworkSecurityGroupNames': [], 'enableCredentialBroker': False,
+                '__ips': ips, '__sets': sets}
 
-    def resolve(self, module, expression, parameters):
-        return NetworkArmExpression("[true()]", self.templates[module]).resolve(expression, parameters)
-
-    def entries(self, module, variable, parameters):
-        return self.resolve(module, "[variables('" + variable + "')]", parameters)
-
-    def resource(self, module, symbolic_name, rule_name):
-        resources = self.templates[module]["resources"]
-        if isinstance(resources, dict):
-            return resources[symbolic_name]
-        return next(item for item in resources
-                    if item["type"] == "Microsoft.Network/networkSecurityGroups/securityRules"
-                    and "'" + rule_name + "'" in item["name"])
+    def resolve(self, module, value, parameters):
+        p = copy.deepcopy(parameters)
+        if module in ('portal-network', 'credential-broker-network'):
+            p['referencePrivateIps'] = p['__sets']['registry' if module == 'portal-network' else 'sql']
+        return FixedExpression('[true()]', self.templates[module]).resolve(value, p)
 
     def compiled_rules(self, parameters):
-        result = {name: {} for name in GROUPS}
-        for module, variable in (("network", "staticNsgRules"),
-                                 ("network-bindings", "dynamicRules"),
-                                 ("network-bindings", "terminalRules")):
-            for entry in self.entries(module, variable, parameters):
-                group = result[GROUPS[entry["nsgIndex"]]]
-                rule = entry["rule"]
-                self.assertNotIn(rule["name"], group)
-                group[rule["name"]] = rule["properties"]
-        for module, resource, group, rule_name in (
-                ("portal-network", "allowPull", "pep", "allow-aca-acr"),
-                ("portal-network", "runnerRegistryAccess", "management", "allow-runner-acr"),
-                ("credential-broker-network", "sqlIn", "pep", "allow-credential-broker-sql"),
-                ("credential-broker-network", "vaultIn", "pep", "allow-credential-broker-vault"),
-                ("credential-broker-network", "brokerOut", "apim", "allow-credential-broker")):
-            item = self.resource(module, resource, rule_name)
-            result[group][rule_name] = {
-                key: self.resolve(module, item["properties"][key], parameters)
-                for key in ("priority", "direction", "access")}
+        result = {g: {} for g in GROUPS}
+        for module, variable in (('network', 'staticNsgRules'), ('network-bindings', 'dynamicRules'),
+                                 ('network-bindings', 'terminalRules')):
+            for e in self.resolve(module, "[variables('"+variable+"')]", parameters):
+                g = GROUPS[e['nsgIndex']]; r = e['rule']
+                self.assertNotIn(r['name'], result[g]); result[g][r['name']] = r['properties']
+        additional = (
+            ('portal-network', 'acaRegistryIn', 'pep', 'allow-aca-acr-https-ingress'),
+            ('portal-network', 'managementRegistryIn', 'pep', 'allow-mgmt-vm-acr-https-ingress'),
+            ('portal-network', 'runnerRegistryAccess', 'management', 'allow-acr-https-egress'),
+            ('portal-network', 'acaRegistryOut', 'aca', 'allow-acr-https-egress'),
+            ('portal-network-bindings', 'appgwPortalOut', 'agw', 'allow-aca-http-egress'),
+            ('portal-network-bindings', 'managementPortalHttpOut', 'management', 'allow-aca-http-egress'),
+            ('portal-network-bindings', 'managementPortalHttpsOut', 'management', 'allow-aca-https-egress'),
+            ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-1433-ingress'),
+            ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
+            ('credential-broker-network', 'brokerOut', 'apim', 'allow-aca-https-egress'),
+            ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-1433-egress'),
+            ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-1433-egress'))
+        for m, symbol, g, name in additional:
+            item = self.templates[m]['resources'][symbol]
+            self.assertNotIn('condition', item, (m, symbol)); self.assertNotIn(name, result[g])
+            result[g][name] = self.resolve(m, item['properties'], parameters)
         return result
 
-    def test_contract_has_only_current_rules_in_finite_unique_bands(self):
-        self.assertEqual(set(self.contract), {"version", "groups"})
-        self.assertEqual(self.contract["version"], 1)
-        self.assertEqual(set(self.contract["groups"]), set(GROUPS))
-        business = {
-            ("agw", "allow-client-web"), ("agw", "allow-client-grpc"),
-            ("apim", "allow-agw-api"), ("apim", "allow-agw-grpc"),
-            ("apim", "allow-private-backends"), ("apim", "allow-credential-broker"),
-            ("pep", "allow-apim-foundry")}
-        count = 0
-        terminal = 0
-        for group, value in self.contract["groups"].items():
-            self.assertEqual(set(value), {"suffix", "rules"})
-            identities = set()
-            for name, rule in value["rules"].items():
-                count += 1
-                self.assertEqual(set(rule), {"direction", "priority"})
-                self.assertIn(rule["direction"], ("Inbound", "Outbound"))
-                identity = rule["direction"], rule["priority"]
-                self.assertNotIn(identity, identities)
-                identities.add(identity)
-                if name.startswith("deny-other-"):
-                    terminal += 1
-                    self.assertEqual(rule["priority"], 4096)
+    def bind(self, tokens, p):
+        result = []
+        for token in tokens:
+            kind, value = token.split(':', 1)
+            if kind == 'subnet': result.append(p['subnetPrefixes'][value])
+            elif kind == 'ip': result.append(p['__ips'][value]+'/32')
+            elif kind == 'ips': result.extend(ip+'/32' for ip in p['__sets'][value])
+            elif kind in ('tag', 'literal'): result.append(value)
+            else: self.fail('Unknown fixed token: '+token)
+        return result
+
+    def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
+        self.assertEqual(self.contract['version'], 2)
+        self.assertEqual(set(self.contract['groups']), set(GROUPS))
+        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 11, 'management': 15}
+        record_ids = set(); terminal = 0
+        for g, group in self.contract['groups'].items():
+            self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
+            for name, rule in group['rules'].items():
+                self.assertNotIn(rule['designRecordId'], record_ids); record_ids.add(rule['designRecordId'])
+                identity = rule['direction'], rule['priority']
+                self.assertNotIn(identity, identities); identities.add(identity); self.assertNotIn('grpc', name)
+                if rule['access'] == 'Deny':
+                    terminal += 1; self.assertEqual(rule['priority'], 4096)
+                    self.assertEqual(name, 'deny-any-ingress' if rule['direction']=='Inbound' else 'deny-any-egress')
                 else:
-                    low, high = (120, 200) if (group, name) in business else (220, 300)
-                    self.assertTrue(low <= rule["priority"] < high)
-                    self.assertEqual((rule["priority"] - low) % 5, 0)
-        self.assertEqual((count, terminal), (46, 6))
+                    start = rule['priority']//100*100+20; self.assertIn(start, (120, 220, 320))
+                    bands.setdefault((rule['direction'], start), []).append(rule['priority'])
+            for (_, start), priorities in bands.items():
+                self.assertEqual(sorted(priorities), list(range(start, start+len(priorities))))
+        self.assertEqual((len(record_ids), terminal), (72, 6))
 
-    def test_every_compiled_rule_matches_exact_contract_without_new_outbound_deny(self):
-        rules = self.compiled_rules(self.parameters())
-        for group, actual in rules.items():
-            expected = self.contract["groups"][group]["rules"]
-            self.assertEqual(set(actual), set(expected), group)
-            for name, rule in actual.items():
-                self.assertEqual({key: rule[key] for key in ("direction", "priority")}, expected[name])
-            if group in ("agw", "pep"):
-                self.assertNotIn("deny-other-outbound", actual)
-        self.assertTrue(all(rule["direction"] == "Inbound" for rule in rules["agw"].values()))
-        suffixes = self.resolve("network", "[variables('nsgResourceNames')]", self.parameters())
-        self.assertEqual(suffixes, ["nsg-test-fixture-" + self.contract["groups"][name]["suffix"]
-                                    for name in GROUPS])
+    def test_all_72_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
+        for multiple, prefix in ((False, '10.70'), (True, '10.80')):
+            p = self.parameters(multiple, prefix); actual = self.compiled_rules(p)
+            for g, rules in actual.items():
+                manifest = self.contract['groups'][g]['rules']; self.assertEqual(set(rules), set(manifest), g)
+                for name, properties in rules.items():
+                    r = manifest[name]
+                    expected = {**{k: r[k] for k in ('direction', 'priority', 'access', 'protocol', 'sourcePort', 'destinationPorts')},
+                                'source': self.bind(r['source'], p), 'destination': self.bind(r['destination'], p)}
+                    with self.subTest(group=g, rule=name, multiple=multiple):
+                        self.assertEqual(canonical(properties), expected)
 
-    def test_app_gateway_uses_the_requested_exact_sequence(self):
-        parameters = self.parameters()
-        rules = self.compiled_rules(parameters)["agw"]
-        for direction, expected in {
-                "Inbound": {"allow-client-web": 120, "allow-client-grpc": 125,
-                            "allow-firewall-public-ingress": 220, "allow-gateway-manager": 225,
-                            "allow-load-balancer": 230, "deny-other-inbound": 4096},
-                "Outbound": {}}.items():
-            self.assertEqual({name: rule["priority"] for name, rule in rules.items()
-                              if rule["direction"] == direction}, expected)
-        self.assertEqual(rules["allow-firewall-public-ingress"], {
-            "priority": 220, "direction": "Inbound", "access": "Allow", "protocol": "Tcp",
-            "sourcePortRange": "*", "destinationPortRange": "443",
-            "sourceAddressPrefix": parameters["firewallPublicIpAddress"] + "/32",
-            "destinationAddressPrefix": parameters["subnetPrefixes"]["agw"],
-        })
-        for name, priority, port_properties in (
-                ("allow-client-web", 120,
-                 {"destinationPortRanges": ["80", "443"]}),
-                ("allow-client-grpc", 125,
-                 {"destinationPortRange": "8443"})):
-            with self.subTest(rule=name):
-                self.assertEqual(rules[name], {
-                    "priority": priority, "direction": "Inbound",
-                    "access": "Allow", "protocol": "Tcp",
-                    "sourcePortRange": "*",
-                    "sourceAddressPrefix": "0.0.0.0/0",
-                    "destinationAddressPrefix":
-                        parameters["subnetPrefixes"]["agw"],
-                    **port_properties,
-                })
+    def test_retired_flags_and_external_address_overrides_cannot_change_initial_rules(self):
+        p = self.parameters(); expected = self.compiled_rules(p)
+        p['config'].update(clientAddressPrefixes=['203.0.113.10/32'], certificatePublicProbeEnabled=False,
+                           apimKeyVaultAccessEnabled=False, operatorAddressPrefixes=['203.0.113.20/32'],
+                           operatorPorts=['22'], dnsServers=['192.0.2.53'], ntpAddressPrefixes=['192.0.2.123/32'],
+                           managementAdditionalSecurityRules=[{'name': 'not-created'}])
+        self.assertEqual(self.compiled_rules(p), expected)
+        for m in MODULES:
+            self.assertFalse({'grpcEnabled', 'grpcPublicPort', 'grpcBackendPort'} & set(self.templates[m]['parameters']))
 
-    def test_direct_config_overrides_cannot_change_app_gateway_rules(self):
-        parameters = self.parameters()
-        expected = self.compiled_rules(parameters)["agw"]
-        for override in (
-                {"clientAddressPrefixes": []},
-                {"clientAddressPrefixes":
-                    ["203.0.113.10/32", "198.51.100.0/26"]},
-                {"certificatePublicProbeEnabled": False},
-                {"clientAddressPrefixes": ["203.0.113.10/32"],
-                 "certificatePublicProbeEnabled": False}):
-            direct = copy.deepcopy(parameters)
-            direct["config"].update(override)
-            with self.subTest(override=override):
-                self.assertEqual(self.compiled_rules(direct)["agw"], expected)
-
-    def test_gateway_egress_uses_defaults_without_rewriting_existing_parent_nsgs(self):
-        parameters = self.parameters()
-        names = self.resolve("network", "[variables('nsgResourceNames')]", parameters)
-        parameters["existingNetworkSecurityGroupNames"] = names
-        template = self.templates["network"]
-        expression = DiscoveryExpression("[variables('newNsgResourceNames')]", template["variables"],
-                                         functions=template.get("functions", []))
-        self.assertEqual(expression.evaluate(parameters), [])
-        resources = self.templates["network"]["resources"]
-        self.assertEqual(resources["createdNsgs"]["properties"], {})
-        self.assertEqual(resources["nsgTagUpdates"]["type"], "Microsoft.Resources/tags")
-        for module in ("network", "network-bindings"):
-            items = self.templates[module]["resources"]
-            items = list(items.values()) if isinstance(items, dict) else items
-            self.assertFalse(any(item["type"].endswith("/defaultSecurityRules") for item in items))
-        rules = self.compiled_rules(parameters)
-        self.assertEqual(sum(rule["direction"] == "Inbound" for rule in rules["agw"].values()), 6)
-        self.assertFalse(any(rule["direction"] == "Outbound" for rule in rules["agw"].values()))
-        for name, port in (("allow-agw-api", "80"), ("allow-agw-grpc", "443")):
-            with self.subTest(receiver=name):
-                self.assertEqual(rules["apim"][name]["access"], "Allow")
-                self.assertEqual(rules["apim"][name]["sourceAddressPrefix"], parameters["subnetPrefixes"]["agw"])
-                self.assertEqual(rules["apim"][name]["destinationAddressPrefix"], parameters["subnetPrefixes"]["apim"])
-                self.assertEqual(rules["apim"][name]["destinationPortRange"], port)
-        vault = rules["pep"]["allow-key-vault"]
-        self.assertEqual(vault["sourceAddressPrefixes"], [parameters["subnetPrefixes"]["agw"], parameters["subnetPrefixes"]["apim"]])
-        self.assertEqual(vault["destinationAddressPrefix"], parameters["keyVaultPrivateIps"][0])
-        self.assertEqual((vault["access"], vault["destinationPortRange"]), ("Allow", "443"))
-
-    def test_optional_apim_and_operator_settings_preserve_fixed_gateway_rules(self):
-        parameters = self.parameters()
-        parameters["config"].update(operatorAddressPrefixes=[], apimKeyVaultAccessEnabled=False)
-        rules = self.compiled_rules(parameters)
-        self.assertNotIn("allow-operator-management", rules["management"])
-        terminal = rules["management"]["deny-other-inbound"]
-        self.assertEqual((terminal["priority"], terminal["access"], terminal["protocol"]),
-                         (4096, "Deny", "*"))
-        self.assertEqual(terminal["destinationPortRange"], "*")
-        self.assertEqual(terminal["sourceAddressPrefix"], "*")
-        self.assertEqual(terminal["destinationAddressPrefix"], "*")
-        self.assertEqual((rules["apim"]["allow-key-vault-pe"]["priority"],
-                          rules["apim"]["allow-key-vault-pe"]["access"]), (220, "Deny"))
-        ingress = rules["agw"]["allow-firewall-public-ingress"]
-        self.assertEqual((ingress["priority"], ingress["access"]), (220, "Allow"))
-        self.assertLess(rules["agw"]["allow-client-web"]["priority"], ingress["priority"])
-        self.assertEqual(ingress["sourceAddressPrefix"], parameters["firewallPublicIpAddress"] + "/32")
-        self.assertEqual(rules["pep"]["allow-key-vault"]["sourceAddressPrefix"],
-                         parameters["subnetPrefixes"]["agw"])
-
-    def test_enabled_operator_allows_only_the_selected_ranges_at_220(self):
-        parameters = self.parameters()
-        sources = ["192.0.2.0/26", "198.51.100.10/32"]
-        parameters["config"]["operatorAddressPrefixes"] = sources
-        operator = self.compiled_rules(parameters)["management"]["allow-operator-management"]
-        self.assertEqual((operator["priority"], operator["access"], operator["protocol"]),
-                         (220, "Allow", "Tcp"))
-        self.assertEqual(operator["sourceAddressPrefixes"], sources)
-        self.assertEqual(operator["destinationAddressPrefix"], parameters["managementPrivateIp"])
-        self.assertEqual(operator["destinationPortRange"], "22")
-
-    def test_custom_management_rule_is_not_renumbered_and_default_dns_needs_no_allow(self):
-        parameters = self.parameters()
-        custom = copy.deepcopy(ip_fixtures.custom_documents()[1]["network"]["managementAdditionalSecurityRules"][0])
-        parameters["config"]["managementAdditionalSecurityRules"] = [custom]
-        rules = self.compiled_rules(parameters)
-        self.assertEqual(rules["management"][custom["name"]], custom["properties"])
-        for group in GROUPS:
-            self.assertNotIn("allow-dns-tcp", rules[group])
-            self.assertNotIn("allow-dns-udp", rules[group])
-        broker = self.resource("credential-broker-network", "brokerOut", "allow-credential-broker")
-        self.assertFalse(self.resolve("credential-broker-network", broker["condition"],
-                                      {"enableCredentialBroker": False}))
+    def test_defaults_parent_preservation_and_fixed_dns_are_maintained(self):
+        p = self.parameters(); network = self.templates['network']; actual = self.compiled_rules(p)
+        for g, directions in (('agw', ('Outbound',)), ('aca', ('Inbound', 'Outbound')), ('pep', ('Outbound',))):
+            self.assertFalse(any(r['access']=='Deny' and r['direction'] in directions for r in actual[g].values()))
+        self.assertNotIn('allow-internet-egress', actual['aca']); self.assertNotIn('allow-storage-egress', actual['aca'])
+        names = self.resolve('network', "[variables('nsgResourceNames')]", p)
+        self.assertEqual(names, ['nsg-test-fixture-'+self.contract['groups'][g]['suffix'] for g in GROUPS])
+        p['existingNetworkSecurityGroupNames'] = names
+        self.assertEqual(self.resolve('network', "[variables('newNsgResourceNames')]", p), [])
+        self.assertEqual(network['resources']['createdNsgs']['properties'], {})
+        self.assertEqual(network['resources']['nsgTagUpdates']['type'], 'Microsoft.Resources/tags')
+        p['config'].update(dnsServers=['192.0.2.53'], firewall={'dnsServers': ['192.0.2.54']})
+        self.assertEqual(self.resolve('network', network['resources']['vnet']['properties']['dhcpOptions'], p), {'dnsServers': []})
+        firewall = self.resolve('network', network['resources']['firewallPolicy']['properties'], p)
+        self.assertEqual(firewall['dnsSettings'], {'enableProxy': True, 'servers': []})
+        for m in MODULES:
+            self.assertFalse(any(r['type'].endswith('/defaultSecurityRules') for r in self.templates[m]['resources'].values()))
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == '__main__': unittest.main()

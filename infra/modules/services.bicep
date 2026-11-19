@@ -35,11 +35,9 @@ param apimSkuName string = 'Premium'
 @minValue(1)
 @description('APIM の処理ユニット数。SKU と負荷に合わせて指定します。')
 param apimCapacity int = 1
-@allowed([true])
-@description('常設 gRPC 用に APIM の HTTP/2 を有効にする固定指定。無効化できません。')
-param enableGrpc bool = true
 @description('azd が所有確認した実 APIM 名ごとの公開ドメイン設定。秘密証明書・観測した証明書情報や状態は含めず、利用者の公開 config では指定しません。')
 param existingApimHostnameConfigurations object = {}
+param existingApimCustomProperties object = {}
 @allowed(['standard', 'premium'])
 @description('Key Vault の SKU。秘密情報・証明書の格納先の機能と料金に影響します。')
 param vaultSkuName string = 'standard'
@@ -169,19 +167,19 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' = {
     virtualNetworkType: 'Internal'
     virtualNetworkConfiguration: { subnetResourceId: apimSubnetId }
     publicNetworkAccess: 'Enabled'
-    // 初回の証明書発行は postprovision。次の本体 PUT で省略するとその参照を失うため、
-    // owned GET で確認した同じ APIM の公開情報だけを明示して保持します。
+    // 他用途の既存domainはowned GETから保持し、旧gRPC専用domainは後処理で照合して撤去します。
     // https://learn.microsoft.com/azure/azure-resource-manager/templates/deployment-modes#incremental-mode
     hostnameConfigurations: existingApimHostnameConfigurations[?names.apim] ?? []
-    customProperties: {
+    customProperties: union({
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Ssl30': 'false'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'false'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11': 'false'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Ssl30': 'false'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10': 'false'
       'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'false'
-      ...(enableGrpc ? { 'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'true' } : {})
-    }
+    }, existingApimCustomProperties[?names.apim] ?? {}, {
+      'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'
+    })
   }
 }
 

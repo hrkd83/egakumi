@@ -586,7 +586,8 @@ class GatewayQueryPublicationTests(unittest.TestCase):
             symbol, resource = matches[0]
             self.fragment_names[name] = symbol
             self.assertEqual(resource["properties"]["format"], "rawxml")
-            source = ET.fromstring(render_audit_policy((POLICIES / (name + ".xml")).read_text(encoding="utf-8")))
+            source = ET.fromstring(render_audit_policy(
+                (POLICIES / (name + ".xml")).read_text(encoding="utf-8"), source_comments="compact"))
             resolver = PolicyExpression("[true()]", self.template["variables"], functions=self.template.get("functions"))
             generated = ET.fromstring(resolver.resolve(resource["properties"]["value"], {"queryGuards": MODES}))
             self.assertEqual(ET.tostring(generated), ET.tostring(source))
@@ -597,10 +598,14 @@ class GatewayQueryPublicationTests(unittest.TestCase):
     def test_compiled_templates_default_to_observe_and_preserve_per_route_reject_settings(self):
         self.assertEqual(self.template["parameters"]["queryGuards"]["defaultValue"], MODES)
         for modes in (MODES, {**MODES, "liveCreate": "reject"}, {**MODES, "piiMcp": "reject"}):
-            for variable in ("gatewayPolicyTemplate", "mcpPolicyTemplate"):
+            expressions = {
+                "gatewayPolicyTemplate": "[__bicep.configuredApiTemplate(true(), variables('gatewayPolicyTemplate'), variables('protocolPolicyTemplate'), variables('subscriptionProfileXml'), parameters('queryGuards'))]",
+                "mcpPolicyTemplate": "[__bicep.configuredMcpTemplate(variables('mcpPolicyTemplate'), parameters('queryGuards'))]",
+            }
+            for variable, configured_expression in expressions.items():
                 with self.subTest(modes=modes, template=variable):
                     rendered = PolicyExpression(
-                        "[variables('" + variable + "')]", self.template["variables"],
+                        configured_expression, self.template["variables"],
                         functions=self.template.get("functions"),
                     ).evaluate({"queryGuards": modes})
                     root = ET.fromstring(rendered)

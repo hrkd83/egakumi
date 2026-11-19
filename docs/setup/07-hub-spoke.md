@@ -16,7 +16,7 @@
 | Private DNS | ローカルゾーンを維持するか、中央管理ゾーンへ統合するか |
 | 経路伝搬 | ExpressRoute／VPN経路を使うサブネットと、除外時に必要な社内・DNS宛経路 |
 
-基本構成はAppGW・PE・Firewall・APIM・管理VM・ACAの6サブネット、4NSG、4ルートテーブルです。全区画のCIDRは`network.subnetPrefixes`で指定します。PEと`AzureFirewallSubnet`以外へRTを関連付けます。利用者設定`network.bgpRoutePropagation`の`agw`・`apim`・`management`は既定`true`（伝搬する）ですが、独立VNetには伝搬元ゲートウェイがありません。企業接続時は実効ルートを確認します。
+基本構成はAppGW・PE・Firewall・APIM・管理VM・ACAの6サブネット、5NSG、4ルートテーブルです。全区画のCIDRは`network.subnetPrefixes`で指定します。PEと`AzureFirewallSubnet`以外へRTを関連付けます。利用者設定`network.bgpRoutePropagation`の`agw`・`apim`・`management`は既定`true`（伝搬する）ですが、独立VNetには伝搬元ゲートウェイがありません。企業接続時は実効ルートを確認します。
 
 ## デフォルトルートを変える
 

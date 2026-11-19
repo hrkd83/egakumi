@@ -86,7 +86,10 @@ class AuditWriteQueryTests(unittest.TestCase):
     def test_compiled_alert_uses_canonical_function_with_existing_account_scope(self):
         variables = self.compiled['variables']
         canonical = QUERY.read_text(encoding='utf-8')
-        self.assertEqual(sum(value == canonical for value in variables.values()), 1)
+        # read_text normalizes Windows line endings; Bicep embeds the source
+        # file as read. Compare the complete KQL with only that normalization.
+        self.assertEqual(sum(isinstance(value, str) and value.replace('\r\n', '\n') == canonical
+                             for value in variables.values()), 1)
         query = variables['auditWriteQuery']
         self.assertIn('AuditWriteFailures(StorageBlobLogs, now(), dynamic(["{1}", "{2}"]))', query)
         self.assertIn("parameters('storage').collectJapan.name", query)

@@ -28,7 +28,15 @@ class ContractRatePublicationTests(unittest.TestCase):
         raw=bound_external_coverage()
         # Explicit external test fixtures exercise every supported protocol; they are not standard Core APIs.
         cls.config=configuration.normalize_configuration(raw,base_directory=CORE/"config")
-        cls.parameters={"apiDefinitions":cls.config["apiDefinitions"],
+        # The publication module receives the resolved Core backend URLs.
+        # Supply independent synthetic endpoints while preserving external URLs.
+        definitions=copy.deepcopy(cls.config['apiDefinitions'])
+        for api in definitions:
+            api.setdefault('backendUrl','https://backend.example.invalid'+api.get('backendPath',''))
+            for operation in api['operations']:
+                if 'backendOverride' in operation:
+                    operation['backendOverride'].setdefault('backendUrl','https://backend.example.invalid')
+        cls.parameters={"apiDefinitions":definitions,
             "credentialLogin":{},
             "subscriptionKeyHeader":cls.config["gateway"]["authentication"]["subscriptionKeyHeader"],
             "publicHostName":cls.config["gateway"]["publicHostName"],
@@ -78,12 +86,19 @@ class ContractRatePublicationTests(unittest.TestCase):
         generated=ET.fromstring(xml)
         self.assertIsNone(generated.find(".//include-fragment[@fragment-id='core-rate-limit']"))
         self.assertEqual(generated.find("on-error/choose/when/return-response/set-status").attrib["code"],"429")
-        xml=self.evaluate("[variables('piiPolicyTemplate')]")
-        pii=ET.fromstring(xml)
-        first=list(pii.find("on-error"))[0]
-        self.assertEqual(first.tag,"choose")
-        self.assertEqual(first.find("when/return-response/set-status").attrib["code"],"429")
-        self.assertNotIn("__RATE_LIMIT_",xml)
+        # The raw PII template deliberately retains the rate-error marker.
+        # Verify the final operation assignment that ARM actually deploys.
+        entries=self.evaluate("[variables('operationEntries')]")
+        pii_indexes=[index for index,entry in enumerate(entries) if entry['constraint']['kind']=='pii']
+        self.assertTrue(pii_indexes)
+        for index in pii_indexes:
+            xml=compiled_policy_value(self.template,self.parameters,index,resource_name='operationPolicies')
+            pii=ET.fromstring(xml)
+            first=list(pii.find("on-error"))[0]
+            self.assertEqual(first.tag,"choose")
+            self.assertIn('core-rate-limit',first.find('when').get('condition'))
+            self.assertEqual(first.find("when/return-response/set-status").attrib["code"],"429")
+            self.assertNotIn("__RATE_LIMIT_",xml)
 
     def test_shared_fragment_has_single_central_limits_and_no_deferred_counting(self):
         settings={"user":{"enabled":False,"calls":12,"renewalPeriodSeconds":30},

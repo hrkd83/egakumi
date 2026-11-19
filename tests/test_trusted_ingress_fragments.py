@@ -42,10 +42,11 @@ def with_expected_observation_explanation(xml):
         raise AssertionError("Expected only the known ingress explanation difference")
     messages[0].text = full
     branch = root.find("inbound/choose[@id='core-trusted-ingress']/when")
-    previous_condition = ET.fromstring(render_trusted_ingress_fragment(source_comments="omit")).find("choose/when").get("condition")
+    from deployment.helpers.apim_ingress import render_legacy_trusted_ingress_fragment
+    previous_condition = ET.fromstring(render_legacy_trusted_ingress_fragment()).find("choose/when").get("condition")
     full_condition = full_root.find("choose/when").get("condition")
-    if branch.get("condition") != previous_condition or executable_tokens(previous_condition) != executable_tokens(full_condition):
-        raise AssertionError("Expected only the known ingress condition explanation difference")
+    if executable_tokens(branch.get("condition")) != executable_tokens(previous_condition):
+        raise AssertionError("Expected the fixed previous gRPC exemption before projecting its retirement")
     branch.set("condition", full_condition)
     return ET.tostring(root, encoding="unicode")
 

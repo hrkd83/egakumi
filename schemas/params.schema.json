@@ -203,9 +203,6 @@
           "backendHeaders": {
             "type": "object"
           },
-          "grpc": {
-            "type": "object"
-          },
           "mcpProxy": {
             "type": "object"
           },
@@ -311,17 +308,26 @@
           "properties": {
             "liveCreate": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             },
             "realtimeCreate": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             },
             "piiMcp": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             }
           }
@@ -431,16 +437,6 @@
         "existingWafPolicyId": {
           "type": "string",
           "default": ""
-        },
-        "grpc": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "publicHostName": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
         },
         "rateLimits": {
           "type": "object",
@@ -730,37 +726,6 @@
             }
           }
         },
-        "operatorAddressPrefixes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "examples": [
-            [
-              "10.20.30.0/24"
-            ]
-          ],
-          "description": "管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できます。指定時だけNSGのAllow・220（既定TCP22）を作成し、空配列・省略時は作成しません。設定を外した場合は構築前処理で現行Allow・220を削除します。未許可通信は4096で拒否します。Bastion利用時は通常AzureBastionSubnetのCIDRを指定します。管理VMへの経路やpublic IPを作成する設定ではありません。"
-        },
-        "ntpAddressPrefixes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true,
-          "minItems": 1,
-          "default": [
-            "Internet"
-          ]
-        },
-        "managementAdditionalSecurityRules": {
-          "type": "array",
-          "items": {
-            "type": "object"
-          },
-          "default": []
-        },
         "firewall": {
           "type": "object",
           "additionalProperties": false,
@@ -845,17 +810,6 @@
               "description": "管理VMから追加で許可するHTTPS宛先。Ubuntu・Azure・証明書の必須宛先に追加します。"
             }
           }
-        },
-        "ntpFqdns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "default": [
-            "ntp.ubuntu.com"
-          ],
-          "description": "Linux管理VMが時刻同期に使うNTPサーバーのFQDN。"
         }
       }
     },
@@ -907,7 +861,11 @@
       "type": "object",
       "additionalProperties": false,
       "description": "業務APIへ追加する社員のEntra委任認証です。tenantはentraTenantIdを使い、対象は業務APIの正本と生成MCPから自動的に求めます。購読キーがある要求はキー認証、キーなしBearer要求は委任トークン認証を使います。有効・無効やクライアント・APIの選択は設けず、指定時は全項目を必須とします。Entra設定を省略した既存構成はキー認証との互換性を維持します。",
-      "required": ["audience", "requiredScope", "userLimits"],
+      "required": [
+        "audience",
+        "requiredScope",
+        "userLimits"
+      ],
       "properties": {
         "audience": {
           "$ref": "#/$defs/guid",
@@ -922,31 +880,73 @@
         "userLimits": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requestRate", "tokensPerMinute", "tokenQuota"],
+          "required": [
+            "requestRate",
+            "tokensPerMinute",
+            "tokenQuota"
+          ],
           "description": "全社員共通の利用制限を3項目すべて明示します。各nullはその制限の無効化で、非nullには有限の値が必要です。有効なcounterは検証済みtid/oidごとに分け、既存キーの購読counterは維持します。",
           "properties": {
             "requestRate": {
-              "type": ["object", "null"],
+              "type": [
+                "object",
+                "null"
+              ],
               "description": "本人別HTTP要求回数の制限です。nullで無効化します。人の入力回数とは異なり、ツール継続・retry・並列要求も計数します。",
               "additionalProperties": false,
-              "required": ["calls", "renewalPeriodSeconds"],
+              "required": [
+                "calls",
+                "renewalPeriodSeconds"
+              ],
               "properties": {
-                "calls": { "type": "integer", "minimum": 1, "maximum": 1000000 },
-                "renewalPeriodSeconds": { "type": "integer", "minimum": 1, "maximum": 300 }
+                "calls": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "renewalPeriodSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 300
+                }
               }
             },
             "tokensPerMinute": {
-              "type": ["integer", "null"], "minimum": 1, "maximum": 2147483647,
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 2147483647,
               "description": "本人別の毎分トークン上限です。nullで無効化します。"
             },
             "tokenQuota": {
-              "type": ["object", "null"],
+              "type": [
+                "object",
+                "null"
+              ],
               "description": "本人別の期間トークン枠です。nullで無効化します。",
               "additionalProperties": false,
-              "required": ["tokens", "period"],
+              "required": [
+                "tokens",
+                "period"
+              ],
               "properties": {
-                "tokens": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
-                "period": { "type": "string", "enum": ["Hourly", "Daily", "Weekly", "Monthly", "Yearly"] }
+                "tokens": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "period": {
+                  "type": "string",
+                  "enum": [
+                    "Hourly",
+                    "Daily",
+                    "Weekly",
+                    "Monthly",
+                    "Yearly"
+                  ]
+                }
               }
             }
           }
@@ -956,12 +956,23 @@
     "credentialLoginIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tenantId", "clientId", "clientSecretFile"],
+      "required": [
+        "tenantId",
+        "clientId",
+        "clientSecretFile"
+      ],
       "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認です。省略時は選択CM provider由来の現行設定を維持します。",
       "properties": {
-        "tenantId": { "$ref": "#/$defs/guid" },
-        "clientId": { "$ref": "#/$defs/guid" },
-        "clientSecretFile": { "type": "string", "minLength": 1 }
+        "tenantId": {
+          "$ref": "#/$defs/guid"
+        },
+        "clientId": {
+          "$ref": "#/$defs/guid"
+        },
+        "clientSecretFile": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "guid": {

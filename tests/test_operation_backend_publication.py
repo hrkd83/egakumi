@@ -3,7 +3,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 import test_websocket_publication as publication_support
-from arm_helpers import PolicyExpression
+from arm_helpers import PolicyExpression, compiled_policy_value
 
 
 class OperationBackendPublicationTests(unittest.TestCase):
@@ -24,9 +24,14 @@ class OperationBackendPublicationTests(unittest.TestCase):
                                                     "backendHeaders": {"X-Upstream": "stt"}}}]}
 
     def evaluate(self, expression, api):
+        parameters = {**{name: definition['defaultValue']
+                         for name, definition in self.template['parameters'].items()
+                         if 'defaultValue' in definition},
+                      "apiDefinitions": [api], "names": {"apim": "apim-fixture"}}
+        if expression == "[variables('policyValues')]":
+            return [compiled_policy_value(self.template, parameters)]
         return PolicyExpression(expression, self.template["variables"], functions=self.template["functions"]).evaluate(
-            {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"},
-             "queryGuards": self.template["parameters"]["queryGuards"]["defaultValue"]})
+            parameters)
 
     def test_operation_backend_branch_does_not_execute_api_default_authentication_first(self):
         api = self.fixture()
@@ -34,7 +39,8 @@ class OperationBackendPublicationTests(unittest.TestCase):
         inbound = policy.find("inbound")
         self.assertEqual(inbound.findall("authentication-managed-identity"), [])
         self.assertEqual(inbound.findall("set-backend-service"), [])
-        selection = inbound.find('./choose/otherwise/choose')
+        selection = next(item for item in inbound.findall('choose')
+                         if item.find('when').get('condition') == '@(context.Operation.Id == "stt")')
         branch = selection.find("when")
         self.assertEqual(branch.get("condition"), '@(context.Operation.Id == "stt")')
         backend_id = branch.find("set-backend-service").get("backend-id")
@@ -59,7 +65,10 @@ class OperationBackendPublicationTests(unittest.TestCase):
         api["operations"][1].pop("backendOverride")
         policy = ET.fromstring(self.evaluate("[variables('policyValues')]", api)[0])
         self.assertEqual(len(policy.findall("./inbound/set-backend-service")), 1)
-        self.assertIsNotNone(policy.find('./inbound/choose/otherwise/authentication-managed-identity'))
+        authentication = policy.find('./inbound/authentication-managed-identity')
+        self.assertIsNotNone(authentication)
+        self.assertEqual(authentication.get('resource'), api['backendAudience'])
+        self.assertIn('tts-resource', policy.find('./inbound/set-header[@name="Authorization"]/value').text)
         self.assertEqual(self.evaluate("[variables('operationBackendEntries')]", api), [])
 
     def test_operation_backend_names_do_not_confuse_hyphenated_pairs_or_exceed_length(self):

@@ -5,7 +5,7 @@ import test_ssml_waf as waf
 
 
 class McpGatewayChallengeTests(unittest.TestCase):
-    """Check compiled HTTP/TCP routes and the L7 ingress proof."""
+    """Check compiled HTTP routes and the permanent L7 ingress proof."""
 
     @classmethod
     def setUpClass(cls):
@@ -27,19 +27,17 @@ class McpGatewayChallengeTests(unittest.TestCase):
             self.assertNotIn('mcpOAuthChallenges', template['variables'])
 
     def test_gateway_only_rewrites_trusted_ingress_request_header(self):
-        for enabled in (False, True):
-            with self.subTest(grpc=enabled):
-                properties = self.properties(grpcEnabled=enabled)
-                rules = [rule for group in properties.get('rewriteRuleSets', [])
-                         for rule in group['properties']['rewriteRules']]
-                self.assertEqual(len(rules), 1 if enabled else 0)
-                for rule in rules:
-                    self.assertEqual(rule['name'], 'replace-untrusted-edge-proof')
-                    self.assertEqual(rule['actionSet'], {'requestHeaderConfigurations': [
-                        {'headerName': 'X-Core-L7-Ingress', 'headerValue': 'SYNTHETIC_PRIVATE_INPUT'}]})
-                self.assertTrue(properties['sslCertificates'])
-                self.assertTrue(properties['requestRoutingRules'])
-                self.assertTrue(properties['backendAddressPools'])
+        properties = self.properties()
+        rules = [rule for group in properties.get('rewriteRuleSets', [])
+                 for rule in group['properties']['rewriteRules']]
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]['name'], 'replace-untrusted-edge-proof')
+        self.assertEqual(rules[0]['actionSet'], {'requestHeaderConfigurations': [
+            {'headerName': 'X-Core-L7-Ingress', 'headerValue': 'SYNTHETIC_PRIVATE_INPUT'}]})
+        self.assertTrue(properties['sslCertificates'])
+        self.assertTrue(properties['requestRoutingRules'])
+        self.assertTrue(properties['backendAddressPools'])
+        self.assertNotIn('grpcEnabled', self.template['parameters'])
 
 
 if __name__ == '__main__':

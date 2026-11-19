@@ -332,35 +332,40 @@ class DnsNsgTests(unittest.TestCase):
 
 
 class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
-    def test_core_cleans_before_discovery_and_monitoring_does_not_clean(self):
+    def test_core_uses_fixed_migration_and_monitoring_does_not_change_dns_rules(self):
         events = []
-        self.dns_nsg_cleanup.side_effect = lambda *args: events.append("dns")
-        self.operator_cleanup.side_effect = lambda *args: events.append("operator")
+        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
+        outputs = self.outputs()
         for phase in ("core", "monitoring"):
             transport = ScriptedTransport([{"statusCode": 201}, {"statusCode": 200,
-                "body": {"properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
+                "body": {"properties": {"provisioningState": "Succeeded",
+                    "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
             with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                     mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                     mock.patch.object(lifecycle, "discover_existing_network_security_groups",
                                       side_effect=lambda *args: events.append("discover") or []), \
                     mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
-                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False):
-                lifecycle.deploy_phase(self.config, phase)
-        self.assertEqual(events, ["dns", "operator", "discover"])
-        self.dns_nsg_cleanup.assert_called_once()
+                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
+                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
+                    mock.patch.object(lifecycle, "cleanup_dns_nsg_rules") as legacy_cleanup:
+                lifecycle.deploy_phase(self.config, phase, secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+            legacy_cleanup.assert_not_called()
+        self.assertEqual(events, ["fixed-stage", "discover"])
+        self.prepare_nsg.assert_called_once()
 
-    def test_core_stops_before_other_mutations_when_dns_verification_fails(self):
-        self.dns_nsg_cleanup.side_effect = lifecycle.DeploymentError("DNS verification stopped")
+    def test_core_stops_before_deployment_when_custom_dns_rule_is_unverified(self):
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("DNS rule verification stopped")
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport") as factory, \
                 self.assertRaises(lifecycle.DeploymentError):
             lifecycle.deploy_phase(self.config, "core")
-        self.operator_cleanup.assert_not_called()
+        self.complete_nsg.assert_not_called()
         factory.return_value.request.assert_not_called()
 
     def test_native_preprovision_stops_before_core_inputs_when_dns_is_unverified(self):
-        self.dns_nsg_cleanup.side_effect = lifecycle.DeploymentError("DNS verification stopped")
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("DNS rule verification stopped")
         transport = ScriptedTransport([{"statusCode": 404, "body": None}])
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
                 mock.patch.object(lifecycle, "register_providers"), \
@@ -372,8 +377,8 @@ class LifecycleDnsNsgTests(LifecycleFixture, unittest.TestCase):
                 mock.patch.object(lifecycle, "configure_app_insights_cap"), \
                 contextlib.redirect_stdout(io.StringIO()), self.assertRaises(lifecycle.DeploymentError):
             lifecycle.preprovision(self.config)
-        self.dns_nsg_cleanup.assert_called_once_with(self.config, transport)
-        self.operator_cleanup.assert_not_called()
+        self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
+        self.complete_nsg.assert_not_called()
         self.assertFalse(self.paths.parameters.exists())
 
 

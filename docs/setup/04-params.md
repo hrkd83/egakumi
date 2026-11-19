@@ -40,7 +40,7 @@ test -f "$DEPLOY_PARAMS_FILE"
 
 1. `subscriptionId`・`azureTenantId`・`entraTenantId`・`productName`・`environmentName`・3つのリージョンを、第1章の確定値へ揃える。
 2. `network.addressSpaces`と全`network.subnetPrefixes`を自社のIP計画へ設定する。管理接続元CIDR、Azure提供DNSの採用条件・追加宛先も確認する。
-3. `gateway.publicHostName`と`gateway.grpc.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
+3. `gateway.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
 4. `certificate.plugin`は`Azure`とし、第3章で確認したDNS側Subscription IDとUAMIのリソースIDを`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`へ必ず記入する。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止する。
 5. Azure RBACの対象Object IDを設定する。CM providerの`clientId`を第2章で作成したEntraアプリのIDへ置き換え、本人接続の有効期間等を確認する。
 6. `gateway.authentication.entra.audience`をegakumi-apiのClient IDへ置き換える。委任scopeは`Gateway.Invoke`。クライアントID一覧や対象API一覧は入力しない。
@@ -137,7 +137,7 @@ API公開のBicep出力`entraPublicationSource`は、コードから生成した
 
 更新時には社員Bearer経路の短時間停止が発生します。Product／APIの関連付け操作には条件付きETagの保証がないため、専用Productの所有marker、global／API／ProductのETag、関連付け集合を前後で確認します。未知のProduct、追加revision、独自fragment、NamedValue変更などを自動で採用しません。失敗時は今回追加した関連付けを先に解除し、この処理が書いたXMLとETagがまだ一致するときだけglobalを戻します。閉鎖・復旧を確認できない場合はその状態を報告し、管理者の確認を必要とします。
 
-入口認証の対象はAPI正本から自動生成します。API／操作の下流認証は入口と別で、Graph等はCM本人接続、モデルはManaged Identityや登録済みの下流資格情報を使います。CM接続、非同期Document、Realtimeの結果・接続は検証済み本人へ結び付け、別人が引き継げないことを確認します。HTTP／SSE／MCP／WebSocket／gRPCごとに、既存キーの状態・範囲・利用枠、無効キー＋有効JWTの拒否、継承順序、所有者・更新・復旧を実APIMで別途確認します。合成試験を全経路の実接続完了と扱いません。[作業計画](../reference/entra-app-rollout-plan.md)と[追加受入項目](../testing/integration-tests.md#entra-gateway-oauthと専用open-productの追加受入)を参照してください。
+入口認証の対象はAPI正本から自動生成します。API／操作の下流認証は入口と別で、Graph等はCM本人接続、モデルはManaged Identityや登録済みの下流資格情報を使います。CM接続、非同期Document、Realtimeの結果・接続は検証済み本人へ結び付け、別人が引き継げないことを確認します。HTTP／SSE／MCP／WebSocketごとに、既存キーの状態・範囲・利用枠、無効キー＋有効JWTの拒否、継承順序、所有者・更新・復旧を実APIMで別途確認します。合成試験を全経路の実接続完了と扱いません。[作業計画](../reference/entra-app-rollout-plan.md)と[追加受入項目](../testing/integration-tests.md#entra-gateway-oauthと専用open-productの追加受入)を参照してください。
 
 ### 基盤作成とAPI利用を分けて選ぶ
 
@@ -158,7 +158,7 @@ API公開のBicep出力`entraPublicationSource`は、コードから生成した
 
 1. [標準API定義](../../apps/gateway/apim/apis/)から必要なAPIファイルを選び、そのJSONオブジェクトをparamsの`apiDefinitions`配列へ記載します。モデルだけなら[openai-inference-v1.json](../../apps/gateway/apim/apis/openai-inference-v1.json)、PIIなら[pii-v1.json](../../apps/gateway/apim/apis/pii-v1.json)を選べます。各ファイルは1つのAPI定義です。
 2. 利用するProductと購読を設定し、CM接続の条件が必要なAPIにはその設定を加えます。下の省略条件と[認証設定と購読](04-params.md#認証設定と購読)を確認し、`__NAME__`の置換欄を実値へ置換します。
-3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの入口は有効・公開8443・APIM443に固定し、paramsで有効状態やポートを変更する項目はありません。モデル名と許可モデルの整合も確認します。
+3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの提供要件は廃止し、`gateway.grpc`全体とgRPC API／proto入力を拒否します。モデル名と許可モデルの整合も確認します。
 4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
 
 | 利用する方式 | 必要な定義と省略できるもの |
@@ -231,7 +231,6 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 | `apiDefinitions` | `[]` | `azd up`のGateway工程と個別のGateway配備で、空配列なら標準19 API、定義があれば指定したAPIを登録。標準APIはメモリー内で解決し、paramsは書き換えない。 |
 | `publishApis` | `true` | 全体の`azd up`とGatewayの`--execute`を許可する。falseではupを課金前に停止し、個別の登録計画だけを生成できる。基盤だけなら`azd provision`を使う。falseへの変更で稼働中APIを停止しない。 |
 | `gateway.existingWafPolicyId` | `""` | 既存WAF policyのResource ID。空なら資材が作成。外部policyの実効設定は別途確認。 |
-| `gateway.grpc.publicHostName` | `"<GATEWAY_FQDN>"` | gRPCの公開FQDN。現実装では親のgateway.publicHostNameと同じ値を指定。 |
 | `gateway.rateLimits.subscriptionKey.overrides` | `[]` | 有効時の呼出主体別calls/renewalPeriodSeconds。区分内のcallerId重複不可。 |
 | `gateway.rateLimits.application.overrides` | `[]` | 追加アプリ区分は無効のまま保持する。共通上限はsubscriptionKeyへ設定する。 |
 | `monitoring.auditReaders` | `[]` | 監査コンテナーの読取主体。各要素principalId/principalType/collector/containerName。 |
@@ -252,11 +251,11 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須です。全サブネットをVNet範囲内へ重複なく割り当て、企業の既存IP計画・接続予定先と照合して指定します。公開例の10.40系CIDRを、導入先でも未使用と推測しません。
 
-選択項目も公開params例に配列で記載しています。`[]`は`operatorAddressPrefixes`では管理者の許可元なし、追加規則では追加なしを表します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。外部NTP先と追加接続先FQDNも、企業の接続先に合わせる値なのでparamsへ記載します。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+Firewallの追加接続先はparamsに配列で記載し、`[]`は追加なしを表します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。NSGの初期集合・管理VMのSSH許可・Azure提供DNS・標準NTPはBicepで固定し、有効フラグや任意のNSG規則をparamsへ指定しません。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
 
-AppGW用NSGの初期構築ルールはBicepで固定します。利用者の送信元は全IPv4（`0.0.0.0/0`）で、WebのTCP80/443とgRPCのTCP8443を許可します。`network.clientAddressPrefixes`は入力項目ではなく、params・config・合成設定ファイルに残っていると、固定値と同じ配列でもAzure変更前の入力検査で拒否します。以前の入力から削除してください。管理VMの接続元は`network.operatorAddressPrefixes`で指定します。APIの認証・認可は別途維持します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
+各サブネットのNSG初期集合はBicepで固定します。規則の送信元・宛先には、このVNet内のサブネットCIDRと構築した資源の割当IPを組み込みます。AppGWの公開Web TCP80／443は別規則で許可し、同VNetのFirewall公開IPからのHTTPSも明示します。gRPCのTCP8443は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`は廃止した入力です。以前のJSONから削除してください。企業のIP制限・管理接続元・ハブ接続等の変更は構築後にAzureポータルで行い、再構築・再適用時に初期集合との差を確認します。APIの認証・認可は維持します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
-VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標準config](05-config.md#ネットワークの通信機能network)でどちらも`[]`に固定し、Azure提供DNSを使います。paramsには指定できず、残っていると入力検査で拒否します。以前のparamsにこれらの項目がある場合は、両方とも削除してください。既存の独自DNSを使う環境では、Azure提供DNSへの切り替えによる影響を確認してから移行します。実ファイルの自動移行は行いません。
+VNetとFirewallはBicep内でAzure提供DNSへ固定します。`network.dnsServers`と`network.firewall.dnsServers`はconfig／params／合成設定ファイルの入力項目から削除し、空配列でも指定を拒否します。以前のJSONから両方とも取り除いてください。標準NTPもBicep内で管理VMの`ntp.ubuntu.com`、APIMの`time.windows.com`へ固定します。企業の独自DNSへ切り替える際は、構築後にポータルでDNS・必要な53番規則・名前解決を確認します。
 
 | パラメタ名 | 指定値・公開例 | 意味 |
 | --- | --- | --- |
@@ -268,12 +267,8 @@ VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標
 | `network.subnetPrefixes.management` | `"10.40.2.128/26"` | Linux管理VM用サブネット。 |
 | `network.subnetPrefixes.aca` | `"10.40.2.192/26"` | Core管理ポータルのACA専用サブネット。基本/26、最小/27。他の5区画と同じ一覧で指定。 |
 | `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
-| `network.operatorAddressPrefixes` | `[]` | 管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できる。指定ありの場合だけAllow・220を作成し、[]または省略時は作成しない。設定を外した場合は構築前処理で現行Allow・220を削除し、未許可通信は4096で拒否。接続経路は別途必要。 |
-| `network.ntpAddressPrefixes` | `["Internet"]` | Linux管理VMの時刻同期宛先範囲／サービス・タグ。空配列は不可。 |
-| `network.ntpFqdns` | `["ntp.ubuntu.com"]` | Linux管理VMに設定する外部NTP先FQDN。既存Chrony/PTPは保持し、外部通信をFWでも制限する。 |
 | `network.firewall.apimAllowedFqdns` | `[]` | APIMから追加で接続するHTTPS宛先。標準のplatform通信は別に作成。 |
 | `network.firewall.managementAllowedFqdns` | `[]` | 管理VMから追加で接続するHTTPS宛先。証明書取得・PowerShell導入に必要な共通宛先は資材が追加。 |
-| `network.managementAdditionalSecurityRules` | `[]` | 管理VM用NSGに追加するAzure形式の規則配列。名前・優先度の重複を避ける。 |
 | `network.firewall.snatPrivateRanges` | `["IANAPrivateRanges"]` | SNATせずprivate宛先とみなす範囲。API往復の送信元保持も考慮。 |
 | `network.firewall.idpsPrivateRanges` | `[]` | Premium IDPSのprivate判定範囲を上書き。[]は独自の範囲を指定しない。 |
 | `network.firewall.bypassTrafficSettings` | `[]` | Premium IDPSの検査除外。[]は追加除外なし。Standardでは指定しない。 |
@@ -283,18 +278,18 @@ VNetの`network.dnsServers`とFirewallの`network.firewall.dnsServers`は、[標
 | `network.firewall.managementAdditionalApplicationRules` | `[]` | 管理VMの追加Application規則。 |
 | `monitoring.auditAllowedIpAddresses` | `[]` | 監査Storageへの公開アクセス許可元IPv4/CIDR。[]は公開IP許可を追加しない。API入口の制限とは別。 |
 
-予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、接続元CIDRを指定しただけではインターネットからSSH接続できません。
+予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、SSH許可規則があってもインターネットからの経路は作られません。
 
 管理VMのNICにpublic IPはありません。この資材はBastion・VPN・ExpressRoute・管理VMへのDNAT入口を自動構築しません。
 公開入口のあるBastionを別途利用する場合は「管理者PC → Bastion → 管理VMのprivate IP」の経路になり、
-`operatorAddressPrefixes` には通常AzureBastionSubnetのCIDRを指定します。管理者PCやBastionのpublic IPをVM側の送信元として指定するものではありません。
+企業の管理接続元を絞る場合は、構築後にNSGをAzureポータルで編集します。Bastionの利用時は通常AzureBastionSubnetのCIDRがVM側の送信元になり、管理者PCやBastionのpublic IPではありません。
 VPN・既存踏み台・NATを利用する場合も、VMに届く実際の送信元IPv4/CIDRと往復経路を確認します。
 [MicrosoftのBastion対象VM側NSG要件](https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg#target-vm-subnet)
 
 資材の証明書処理などは、VM Agent経由のManaged Run Commandを使います。これらの標準処理のためにSSHの受信許可を追加する必要はありません。
 [MicrosoftのManaged Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)
 
-AppGWの固定入口での到達・API認証と、管理VMの設定済みCIDRによる許可／拒否は[動作テスト](../testing/integration-tests.md)で確認します。固定NSG規則の初期構築・再配備と、廃止入力のAzure変更前の拒否は[構築テスト](../testing/construction-tests.md)で確認します。`operatorAddressPrefixes:[]`は管理VMの接続許可元なしを表します。
+AppGWの固定入口・API認証と、管理VMの標準SSH／企業向け編集後の接続境界は[動作テスト](../testing/integration-tests.md)で確認します。NSGの初期構築・再配備での再現性と廃止入力の拒否は[構築テスト](../testing/construction-tests.md)で確認します。
 
 ### API・権限の記述形式
 
@@ -471,7 +466,7 @@ AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査�
 
 接続先が異なる操作には`operations[].backendOverride`を指定できます。指定できるのは`backendService`・`backendUrl`・`backendAudience`・`backendAuthentication`・`backendHeaders`で、省略値はAPI既定を継承します。下流URLは固定の登録値だけを使います。secretを使う認証のoperation overrideは扱わず、API既定に設定します。公開prefixと下流のパス（例`/rest`）は別に管理します。
 
-#### MCP・gRPC・WebSocket・本人接続
+#### MCP・WebSocket・本人接続
 
 | パラメタ名 | 公開サンプル値 | 意味 |
 | --- | --- | --- |
@@ -483,7 +478,6 @@ AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査�
 | `A.mcpProxy.endpoints` | 方式別endpoint例 | 転送先endpoint配列。 |
 | `A.mcpProxy.endpoints[].name` | message、旧方式はsseも | endpointの役割。 |
 | `A.mcpProxy.endpoints[].uriTemplate` | 相対パス例 | 下流MCPパス。 |
-| `A.grpc.definition` | 自己完結したproto例 | service/rpc定義。外部proto import未対応。 |
 | `A.websocket.allowedModels` | Realtime通常/miniの配列 | 同じWSS URLで選択できる登録モデル。 |
 | `A.websocket.defaultModel` | allowedModels内のモデル | 公開queryのmodelを省略した場合のモデル。 |
 | `A.websocket.queryParameters` | 固定query例 | 上流へ渡す固定query。秘密や動的宛先は不可。動的モデル選択時のmodelはallowedModels/defaultModelで管理。 |

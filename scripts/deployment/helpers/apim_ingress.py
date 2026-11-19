@@ -43,11 +43,20 @@ def _structure(element: ET.Element):
 
 def render_trusted_ingress_fragment(*, source_comments: str = "full") -> str:
     """入口条件と拒否監査の説明を保持する。compact指定は旧生成元の照合に使う。"""
+    return _render_trusted_ingress_fragment("fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml", source_comments)
+
+
+def render_legacy_trusted_ingress_fragment() -> str:
+    """撤去前のgRPC免除を含む固定生成元。旧readbackの所有照合だけに使う。"""
+    return _render_trusted_ingress_fragment("core-trusted-ingress-legacy-grpc.xml", "full")
+
+
+def _render_trusted_ingress_fragment(filename: str, source_comments: str) -> str:
     directory = REPOSITORY / "apps/gateway/apim/policies"
     telemetry = (directory / "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml").read_text(encoding="utf-8")
     telemetry = telemetry.replace("<fragment>", "").replace("</fragment>", "")
     telemetry = credential_login.key_only_gateway_telemetry(telemetry)
-    template = (directory / "fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml").read_text(encoding="utf-8")
+    template = (directory / filename).read_text(encoding="utf-8")
     rendered = render_audit_policy(template.replace("__AUTHENTICATION_TELEMETRY_XML__", telemetry), source_comments=source_comments)
     rendered = rendered.replace("__L7_INGRESS_REQUIRED__", '&quot;{{core-l7-ingress-enabled}}&quot; == &quot;true&quot;')
     rendered = rendered.replace("__L7_INGRESS_EXPECTED__", "{{core-l7-ingress-secret}}")
@@ -55,7 +64,7 @@ def render_trusted_ingress_fragment(*, source_comments: str = "full") -> str:
     return rendered
 
 
-def expand_trusted_ingress_fragment(xml: str, fragment: str | None = None) -> str:
+def expand_trusted_ingress_fragment(xml: str, fragment: str | None = None, *, allow_legacy_source: bool = False) -> str:
     """実式試験と移行照合で、既知の入口部品だけをcommon inboundの元の位置へ展開する。"""
     root = _policy_xml(xml)
     includes = [node for node in root.iter() if node.tag == "include-fragment"
@@ -71,7 +80,8 @@ def expand_trusted_ingress_fragment(xml: str, fragment: str | None = None) -> st
         raise ValueError("Trusted ingress requires one fixed include directly under common inbound")
     expected = _fragment_node(render_trusted_ingress_fragment())
     parsed = expected if fragment is None else _fragment_node(fragment)
-    if _structure(parsed) != _structure(expected):
+    legacy = (_fragment_node(render_legacy_trusted_ingress_fragment()) if allow_legacy_source else None)
+    if _structure(parsed) != _structure(expected) and (legacy is None or _structure(parsed) != _structure(legacy)):
         raise ValueError("Trusted ingress fragment differs from its fixed source")
     include = includes[0]
     position = list(inbound[0]).index(include)

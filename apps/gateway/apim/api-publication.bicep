@@ -288,7 +288,7 @@ var backendHeadersXml = [for api in apiDefinitions: empty(operationBackendSelect
 func replaceCredentialBranch(policy string, startMarker string, endMarker string, fallback string) string => '${split(policy, startMarker)[0]}${fallback}${split(policy, endMarker)[1]}'
 func selectHttpCredentialPolicy(api object, policy string) string => api.apiType != 'http' || contains(api, 'credentialConnection') ? policy
   : replaceCredentialBranch(replaceCredentialBranch(policy, '<!-- core-http-credential-inbound-start -->', '<!-- core-http-credential-inbound-end -->', '__BACKEND_AUTHENTICATION_XML__'), '<!-- core-http-credential-outbound-start -->', '<!-- core-http-credential-outbound-end -->', '')
-func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectHttpCredentialPolicy(api, policyTemplate), '__GRPC_INGRESS_XML__', api.apiType == 'grpc' ? '<set-variable name="coreNativeGrpc" value="@(true)" />' : ''),
+func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectHttpCredentialPolicy(api, policyTemplate),
   '__AUTHORIZATION_BASE64__', base64(string(api.authorization))),
   '__WEBSOCKET_SETTINGS_BASE64__', api.apiType == 'websocket' ? base64(string(api.websocket)) : ''),
   '__KEY_HEADER__', api.subscriptionKeyHeader),
@@ -298,7 +298,7 @@ func baseApiPolicy(api object, policyTemplate string, backendAuthentication stri
   '__CREDENTIAL_CONNECTION_BASE64__', contains(api, 'credentialConnection') ? base64(string(api.credentialConnection)) : ''),
   '__BACKEND_AUTHENTICATION_XML__', backendAuthentication),
   '__BACKEND_HEADERS_XML__', backendHeaders),
-  '__HTTP_VERSION__', api.apiType == 'grpc' ? '2' : '1'),
+  '__HTTP_VERSION__', '1'),
   '__TOKEN_LIMIT_XML__', empty(tokenLimitOperations(api)) ? '' : '<include-fragment fragment-id="core-token-limits" />')
 
 // WebSocketはAPIのwss接続先を維持し、HTTP用backend切替の１行だけを除きます。
@@ -325,7 +325,7 @@ var mcpProxyRoutingXml = [for api in apiDefinitions: api.apiType != 'mcp' ? ''
 // WebSocketはAPI本体のserviceUrl=wss://を使います。HTTP用backend entityの
 // https://へ切り替えると、APIMはWebSocket型に無効な接続先として握手前に拒否します。
 // WSの固定した1行だけを除き、認可・query・MI・header・監査・forward-requestは保ちます。
-// HTTP/gRPC/MCPは従来のbackend entity参照をそのまま使います。
+// HTTP/MCPは従来のbackend entity参照をそのまま使います。
 var protocolRateCleanupXml = [for api in apiDefinitions: api.apiType == 'mcp' ? mcpRateCleanupXml
   : api.apiType == 'websocket' && contains(api.?websocket ?? {}, 'realtimeObserver')
     ? '<set-variable name="gatewayRateLimitExempt" value="@(true)" />'
@@ -470,7 +470,7 @@ resource auditContextFragment 'Microsoft.ApiManagement/service/policyFragments@2
   properties: { format: 'rawxml', description: 'Agent-claimed trace candidates and authorized model metadata; never authorization or ownership.', value: auditContextFragmentXml }
 }
 // 本文の受信完了を前提にするHTTPモデル監査だけを独立させます。
-// native gRPC/WS/MCPからは参照せず、未実行分岐の本文読取りによるbufferも防ぎます。
+// WebSocket/MCPからは参照せず、未実行分岐の本文読取りによるbufferも防ぎます。
 resource auditBodyModelFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-audit-body-model'
@@ -579,7 +579,7 @@ resource operationBackends 'Microsoft.ApiManagement/service/backends@2024-05-01'
     tls: { validateCertificateChain: true, validateCertificateName: true }
   }
 }]
-// HTTP / WebSocket / gRPC / MCP の API 本体。認証方式と公開パスを定義から反映します。
+// HTTP / WebSocket / MCP の API 本体。認証方式と公開パスを定義から反映します。
 resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' = [for (api, index) in apiDefinitions: {
   parent: apim
   name: api.name
@@ -592,14 +592,13 @@ resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' = [for (
     path: api.path
     // 公開 WSS の TLS は AppGW で終端し、FW を通る内部 HTTP 接続は ws になります。
     // Internal APIM の80番でも握手を受け付け、公開側の TLS・NSG・入口証明の検査は維持します。
-    protocols: api.apiType == 'websocket' ? ['ws', 'wss'] : api.apiType == 'grpc' ? ['https'] : ['http', 'https']
+    protocols: api.apiType == 'websocket' ? ['ws', 'wss'] : ['http', 'https']
     // Native key state/scope and Product policies remain active. The no-key Entra
     // route is opened only by controller-managed membership in the fixed open Product.
     subscriptionRequired: true
     subscriptionKeyParameterNames: { header: api.subscriptionKeyHeader, query: 'subscription-key' }
     type: api.apiType
   }, api.apiType == 'websocket' ? { serviceUrl: api.backendUrl }
-    : api.apiType == 'grpc' ? { serviceUrl: api.backendUrl, format: 'grpc', value: api.grpc.definition }
     // 公開設定の配列はそのまま使い、Azureへ送るときだけ接続先名をキーにした辞書へ変換します。
     // Learnの配列例と実サービスに差があるため、Microsoft公式APIM拡張/Foundryサンプルに合わせます。
     // 参照: microsoft/vscode-apimanagement/src/commands/passthroughMcpServer.ts
@@ -916,11 +915,10 @@ output mcpServerPaths array = publishApis ? map(mcpApis, api => '/${api.mcp.path
 func sourceApiProperties(api object) object => union({
   type: api.apiType
   path: api.path
-  protocols: api.apiType == 'websocket' ? ['ws', 'wss'] : api.apiType == 'grpc' ? ['https'] : ['http', 'https']
+  protocols: api.apiType == 'websocket' ? ['ws', 'wss'] : ['http', 'https']
   subscriptionRequired: true
   subscriptionKeyParameterNames: { header: api.subscriptionKeyHeader, query: 'subscription-key' }
 }, api.apiType == 'websocket' ? { serviceUrl: api.backendUrl }
-  : api.apiType == 'grpc' ? { serviceUrl: api.backendUrl, format: 'grpc', value: api.grpc.definition }
   : api.apiType == 'mcp' ? {
       backendId: '${api.name}-backend'
       mcpProperties: {

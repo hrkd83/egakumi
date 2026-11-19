@@ -212,7 +212,8 @@ class OperationContext:
             text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2) + "\n"
             descriptor, name = tempfile.mkstemp(prefix=".operation-", dir=target.parent)
             temporary = Path(name)
-            os.fchmod(descriptor, 0o600)
+            if os.name != "nt":
+                os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 stream.write(text)
                 stream.flush()

@@ -364,7 +364,7 @@ class PolicyStructureTests(unittest.TestCase):
         class RealtimeExpression(PolicyExpression):
             def resolve(self, value, parameters, index=0):
                 if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
-                    return RealtimeExpression(value, self.variables, self.cache).evaluate(parameters, index)
+                    return RealtimeExpression(value, self.variables, self.cache, self.functions).evaluate(parameters, index)
                 return value
 
             def evaluate(self, parameters, index=0, tree=None, bindings=None):
@@ -387,7 +387,10 @@ class PolicyStructureTests(unittest.TestCase):
                "operations": [{"name": "realtime-create"}],
                "authorization": {"operationConstraints": {"realtime-create": {"kind": "realtimeCreate"}}}}
         expression = template["resources"]["operationPolicies"]["properties"]["value"]
-        xml = RealtimeExpression(expression, template["variables"]).evaluate({"apiDefinitions": [api]}, 0)
+        supplied = {name: definition["defaultValue"] for name, definition in template["parameters"].items()
+                    if "defaultValue" in definition}
+        supplied["apiDefinitions"] = [api]
+        xml = RealtimeExpression(expression, template["variables"], functions=template.get("functions", [])).evaluate(supplied, 0)
         root = ET.fromstring(xml)
         self.assertEqual(root.find("./inbound/send-request/set-url").text,
                          "https://registered-fixture.openai.azure.com/openai/v1/realtime/client_secrets")

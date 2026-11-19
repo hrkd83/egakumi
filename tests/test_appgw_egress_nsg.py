@@ -334,34 +334,38 @@ class AppgwEgressNsgTests(unittest.TestCase):
 class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
     def test_core_order_and_monitoring_skip(self):
         events = []
-        self.dns_nsg_cleanup.side_effect = lambda *args: events.append("dns")
-        self.appgw_egress_cleanup.side_effect = lambda *args: events.append("egress")
-        self.operator_cleanup.side_effect = lambda *args: events.append("operator")
+        self.prepare_nsg.side_effect = lambda *args, **kwargs: events.append("fixed-stage") or {"azureWrites": 0}
+        outputs = self.outputs()
         for phase in ("core", "monitoring"):
             transport = ScriptedTransport([
                 {"statusCode": 201}, {"statusCode": 200, "body": {
-                    "properties": {"provisioningState": "Succeeded", "outputs": {}}}}])
+                    "properties": {"provisioningState": "Succeeded",
+                        "outputs": {key: {"value": value} for key, value in outputs.items()}}}}])
             with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                     mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
                     mock.patch.object(lifecycle, "discover_existing_network_security_groups", side_effect=lambda *args: events.append("discover") or []), \
                     mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value={}), \
-                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False):
-                lifecycle.deploy_phase(self.config, phase)
-        self.assertEqual(events, ["dns", "egress", "operator", "discover"])
-        self.appgw_egress_cleanup.assert_called_once()
+                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                    mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
+                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": True}), \
+                    mock.patch.object(lifecycle, "cleanup_appgw_egress_nsg_rules") as legacy_cleanup:
+                lifecycle.deploy_phase(self.config, phase, secrets={"l7IngressSecret": "PRIVATE_INGRESS_FIXTURE"})
+            legacy_cleanup.assert_not_called()
+        self.assertEqual(events, ["fixed-stage", "discover"])
+        self.prepare_nsg.assert_called_once()
 
     def test_failed_cleanup_stops_core_before_operator_or_any_deploy(self):
-        self.appgw_egress_cleanup.side_effect = lifecycle.DeploymentError("stopped")
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("AppGW egress rule is unverified")
         with mock.patch.object(lifecycle, "run", return_value={"resources": []}), \
                 mock.patch.object(lifecycle, "ArmTransport") as factory, \
                 self.assertRaises(lifecycle.DeploymentError):
             lifecycle.deploy_phase(self.config, "core")
-        self.operator_cleanup.assert_not_called()
+        self.complete_nsg.assert_not_called()
         factory.return_value.request.assert_not_called()
 
     def test_preprovision_failure_prevents_parameters_and_later_mutations(self):
-        self.appgw_egress_cleanup.side_effect = lifecycle.DeploymentError("stopped")
+        self.prepare_nsg.side_effect = lifecycle.FixedNsgError("AppGW egress rule is unverified")
         transport = ScriptedTransport([{"statusCode": 404, "body": None}])
         with mock.patch.object(lifecycle, "local_preflight"), \
                 mock.patch.object(lifecycle, "azure_preflight"), \
@@ -377,8 +381,8 @@ class LifecycleAppgwEgressTests(LifecycleFixture, unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()), \
                 self.assertRaises(lifecycle.DeploymentError):
             lifecycle.preprovision(self.config)
-        self.appgw_egress_cleanup.assert_called_once_with(self.config, transport)
-        self.operator_cleanup.assert_not_called()
+        self.assertEqual(self.prepare_nsg.call_args.args, (self.config, transport))
+        self.complete_nsg.assert_not_called()
         self.assertFalse(self.paths.parameters.exists())
 
 

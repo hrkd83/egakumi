@@ -100,7 +100,8 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
     def test_real_preprovision_keeps_published_destinations_and_empty_api_definitions_only_in_generated_file(self):
         policy, group = self.snapshots()
         # 前段の監視、NSG、UDR、APIM、Portal確認を初回状態にし、最後のFWだけを既存にする。
-        transport = ScriptedTransport([{"statusCode": 404}] * 11 + [policy, group])
+        absent_reads = 1 + 5 + 4 + 1 + 1  # 監視・5 NSG・4 UDR・APIM・Portal。
+        transport = ScriptedTransport([{"statusCode": 404}] * absent_reads + [policy, group])
         self.config["apiDefinitions"] = []
         original = copy.deepcopy(self.config)
         source = self.root / "params.json"
@@ -119,6 +120,9 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(self.config, original)
         self.assertEqual(source.read_bytes(), before)
         self.assertFalse(transport.mutations())
+        self.assertEqual(transport.responses, [])
+        self.assertEqual([call['path'] for call in transport.calls[-2:]], [
+            snapshot['body']['id'] + '?api-version=2025-01-01' for snapshot in (policy, group)])
 
 
 if __name__ == "__main__":

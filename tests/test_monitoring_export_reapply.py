@@ -115,13 +115,14 @@ class MonitoringExportReapplyTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=[]), \
              mock.patch.object(lifecycle, 'discover_existing_route_table_routes', return_value={}), \
              mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', return_value={}), \
+             mock.patch.object(lifecycle, 'discover_existing_apim_egress_fqdns', return_value=[]), \
              mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=False), \
              mock.patch.object(lifecycle, '_record_monitoring_reapply', side_effect=record_then_expire, create=True), \
              mock.patch.object(lifecycle.time, 'monotonic', side_effect=clock.monotonic), \
              mock.patch.object(lifecycle.time, 'sleep', side_effect=clock.sleep), \
              contextlib.redirect_stdout(io.StringIO()):
             try:
-                output = lifecycle.deploy_phase(self.config, phase, preserve_collection=True)
+                output = lifecycle.deploy_phase(self.config, phase, preserve_collection=True, secrets={})
                 error = None
             except lifecycle.DeploymentError as failure:
                 output, error = None, failure

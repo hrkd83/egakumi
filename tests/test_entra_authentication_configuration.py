@@ -421,7 +421,8 @@ class EntraPublicationBoundaryTests(unittest.TestCase):
             "requestRate": {"calls": 1000, "renewalPeriodSeconds": 60},
             "tokensPerMinute": None, "tokenQuota": None,
         }
-        approved = copy.deepcopy(api_fixture()["apiDefinitions"][0])
+        approved = configuration.normalize_configuration(
+            api_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]
         approved["name"] = "model"
         config["apiDefinitions"][0] = approved
         original = copy.deepcopy(config)

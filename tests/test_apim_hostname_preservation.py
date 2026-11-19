@@ -217,9 +217,12 @@ class ApimHostnamePreservationTests(LifecycleFixture, unittest.TestCase):
                     mock.patch.object(lifecycle, "discover_existing_network_security_groups", return_value=[]), \
                     mock.patch.object(lifecycle, "discover_existing_route_table_routes", return_value={}), \
                     mock.patch.object(lifecycle, "discover_existing_portal_app", return_value=False), \
+                    mock.patch.object(lifecycle, "discover_existing_apim_egress_fqdns", return_value=[]), \
+                    mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}) as ingress, \
                     mock.patch.object(lifecycle, "discover_existing_apim_hostnames", return_value=self.expected()) as discover:
-                lifecycle.deploy_phase(self.config, phase)
+                lifecycle.deploy_phase(self.config, phase, secrets={})
                 self.assertEqual(discover.call_count, 1 if phase == "core" else 0)
+                self.assertEqual(ingress.call_count, 1 if phase == "core" else 0)
                 values = transport.mutations()[0]["body"]["properties"]["parameters"]
                 self.assertEqual(values["existingApimHostnameConfigurations"]["value"], self.expected() if phase == "core" else {})
 

@@ -176,10 +176,11 @@ class PortalDeploymentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             portal.signing_secret(config, portal.deployment_inputs(config, state), transport)
 
-    def release(self, schema_failure=False, public_failure=False):
+    def release(self, schema_failure=False, public_failure=False, readiness_failure=False):
         config, state = fixture()
         values = portal.deployment_inputs(config, state)
-        values.update(signingSecret='synthetic-signing-value', profileSecret='synthetic-profile-value')
+        values.update(signingSecret='synthetic-signing-value', profileSecret='synthetic-profile-value',
+                      imageDigest='sha256:' + 'a' * 64)
         phases = []
         self.deployment_values = []
         transport = mock.Mock()
@@ -195,17 +196,24 @@ class PortalDeploymentTests(unittest.TestCase):
             phases.append('public')
             if public_failure:
                 raise ValueError('public failed')
+        def http_ready(*args, **kwargs):
+            phases.append('http-ready')
+            self.assertEqual(kwargs['expected_image_digest'], values['imageDigest'])
+            if readiness_failure:
+                raise ValueError('readiness failed')
         with mock.patch.object(portal, 'deploy_template', side_effect=deploy), \
              mock.patch.object(portal, 'wait_schema', side_effect=schema), \
-             mock.patch.object(portal, 'configure_portal_probe', side_effect=lambda *a: phases.append('gateway')), \
+             mock.patch.object(portal, 'configure_portal_probe', side_effect=lambda *a, **k: phases.append('gateway')), \
              mock.patch.object(portal, 'configure_portal_callback_waf', side_effect=lambda *a: phases.append('callback-waf')), \
              mock.patch.object(portal, 'configure_data_waf', side_effect=lambda *a, **k: phases.append('data-waf')), \
-             mock.patch.object(portal, 'wait_application', side_effect=lambda *a: phases.append('ready')), \
+             mock.patch.object(portal, 'wait_application', side_effect=lambda *a, **k: phases.append('ready')), \
+             mock.patch.object(portal, 'verify_portal_http_ready', side_effect=http_ready), \
              mock.patch.object(portal, 'verify_public', side_effect=public), \
              mock.patch.object(portal, 'activate_profile_settings', side_effect=lambda *a: phases.append('profiles')), \
              contextlib.redirect_stdout(io.StringIO()):
-            if schema_failure or public_failure:
-                with self.assertRaisesRegex(ValueError, 'schema failed' if schema_failure else 'public failed'):
+            if schema_failure or public_failure or readiness_failure:
+                error = 'schema failed' if schema_failure else 'public failed' if public_failure else 'readiness failed'
+                with self.assertRaisesRegex(ValueError, error):
                     portal.deploy_release(config, values, {}, transport)
             else:
                 portal.deploy_release(config, values, {}, transport)
@@ -217,7 +225,7 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertEqual(self.release(schema_failure=True), ['database', 'sql'])
 
     def test_update_order_includes_public_verification(self):
-        self.assertEqual(self.release(), ['database', 'sql', 'gateway', 'callback-waf', 'data-waf', 'application', 'ready', 'public', 'profiles'])
+        self.assertEqual(self.release(), ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready', 'gateway', 'public', 'profiles'])
 
     def test_second_phase_reuses_existing_secret_versions(self):
         self.release()
@@ -229,7 +237,37 @@ class PortalDeploymentTests(unittest.TestCase):
 
     def test_public_failure_never_activates_subscription_profiles(self):
         self.assertEqual(self.release(public_failure=True),
-                         ['database', 'sql', 'gateway', 'callback-waf', 'data-waf', 'application', 'ready', 'public'])
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready', 'gateway', 'public'])
+
+    def test_http_readiness_failure_does_not_switch_gateway_or_activate_profiles(self):
+        self.assertEqual(self.release(readiness_failure=True),
+                         ['database', 'sql', 'callback-waf', 'data-waf', 'application', 'ready', 'http-ready'])
+
+    def test_application_waits_for_expected_image_in_both_app_and_ready_revision(self):
+        config, _ = fixture()
+        digest = 'sha256:' + 'a' * 64
+        expected = 'acrtestsample.azurecr.io/portal@' + digest
+        revision = 'ca-test-sample-portal--expected'
+        def app(image):
+            return {'properties': {'provisioningState': 'Succeeded',
+                'latestRevisionName': revision, 'latestReadyRevisionName': revision,
+                'configuration': {'ingress': {'allowInsecure': True, 'targetPort': 3000}},
+                'template': {'containers': [{'name': 'portal', 'image': image}]}}}
+        def ready(image):
+            return {'properties': {'healthState': 'Healthy', 'provisioningState': 'Provisioned',
+                'runningState': 'Running', 'template': {'containers': [{'name': 'portal', 'image': image}]}}}
+        transport = mock.Mock()
+        transport.request.side_effect = [{'statusCode': 200, 'body': body} for body in (
+            app('old-healthy-image'), app(expected), ready('old-healthy-image'), app(expected), ready(expected))]
+        ticks = [0]
+        def sleep(seconds):
+            ticks[0] += seconds
+        result = portal.wait_application(config, transport, expected_image_digest=digest,
+                                        timeout=45, sleep=sleep, monotonic=lambda: ticks[0])
+        self.assertEqual(result, {'revision': revision, 'expectedImageVerified': True})
+        self.assertEqual(ticks[0], 20)
+        self.assertEqual(transport.request.call_count, 5)
+        self.assertTrue(all(call.args[0] == 'GET' for call in transport.request.call_args_list))
 
     def test_public_health_uses_explicit_protocol_headers_and_requires_no_store(self):
         for cacheable in (False, True):

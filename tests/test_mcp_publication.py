@@ -104,16 +104,14 @@ class McpPublicationTests(unittest.TestCase):
         self.assertLess(source.index("<set-backend-service"), source.index("__MCP_PROXY_ROUTE_XML__"))
 
     def test_other_protocols_keep_their_existing_wire_contracts(self):
-        """MCPの変換をHTTP・WebSocket・gRPCへ適用しない。"""
-        for kind, extra in (("http", {}), ("websocket", {}), ("grpc", {"grpc": {"definition": "syntax = \"proto3\";"}})):
+        """MCPの変換をHTTP・WebSocketへ適用しない。"""
+        for kind, extra in (("http", {}), ("websocket", {})):
             with self.subTest(kind=kind):
                 actual = self.properties({"apiType": kind, **extra})
                 self.assertNotIn("mcpProperties", actual)
                 self.assertNotIn("backendId", actual)
                 if kind != "http":
                     self.assertEqual(actual["serviceUrl"], "https://backend.example.com")
-                if kind == "grpc":
-                    self.assertEqual(actual["format"], "grpc")
 
     def test_legacy_server_advertisement_matches_the_registered_public_post_and_backend(self):
         """単体サーバーの相対案内を変えず、prefix付与後の要求が元のPOSTへ戻る。

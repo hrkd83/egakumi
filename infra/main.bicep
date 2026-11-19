@@ -37,6 +37,7 @@ param existingNetworkSecurityGroupNames array = []
 param existingRouteTableRoutes object = {}
 @description('azd が同じ環境の APIM から確認した、実 APIM 名ごとの公開ドメイン・証明書参照。再 up で postprovision の設定を消さないための内部入力です。')
 param existingApimHostnameConfigurations object = {}
+param existingApimCustomProperties object = {}
 @description('azd が対象 CA の配置先を照合して確認した実在状態。初回だけ初期イメージで作成し、既存アプリの更新はアプリ配備工程が担当します。内部入力です。')
 param existingPortalApp bool = false
 @description('監視先から読み取った取り込み変換DCRの実ID。再配備時の関連付けを保持する内部入力です。')
@@ -59,15 +60,13 @@ var managementConfig = configuration.management
 var monitoringConfig = configuration.monitoring
 var portalConfig = configuration.portal
 var gatewayConfig = configuration.gateway
-// gRPC は通常 HTTPS と同じホストで常設し、公開 8443 から内部 APIM 443 へ転送します。
-var grpcConfig = { enabled: true, publicPort: 8443, publicHostName: gatewayConfig.publicHostName, backendPort: 443 }
-var grpcEnabled = grpcConfig.enabled
 // 公開API配列は変更せず、基盤に必要な経路・本文形式だけを参照します。
 var infrastructureApis = configuration.?infrastructureApiDefinitions ?? configuration.apiDefinitions
 var realtimeEnabled = (gatewayConfig.?realtimeControlEnabled ?? false) || length(filter(configuration.apiDefinitions, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['realtimeCreate', 'realtimeHangup'], entry.value.kind))) > 0)) > 0
 // 文書ジョブとRealtimeは同じサーバー署名鍵を用途別の署名文脈で使用します。
 var ownerTicketEnabled = realtimeEnabled || length(filter(infrastructureApis, api => length(filter(items(api.authorization.operationConstraints), entry => contains(['documentAnalysis', 'documentAnalysisStatus'], entry.value.kind))) > 0)) > 0
-var useIngressSecrets = grpcEnabled || ownerTicketEnabled
+// 通常HTTP(S)の入口証明は初期構成で常設します。
+var useIngressSecrets = true
 var certConfig = configuration.certificate
 var authorization = configuration.authorization
 // Pythonの文書受付と同じ正本POST/binary契約だけに、容量と独立した専用WAFを維持します。
@@ -203,8 +202,8 @@ module services 'modules/services.bicep' = if (deployCore) {
     publisherEmail: servicesConfig.publisherEmail
     apimSkuName: servicesConfig.apimSkuName
     apimCapacity: servicesConfig.apimCapacity
-    enableGrpc: grpcEnabled
     existingApimHostnameConfigurations: existingApimHostnameConfigurations
+    existingApimCustomProperties: existingApimCustomProperties
     vaultSkuName: servicesConfig.vaultSkuName
     vaultRetentionDays: servicesConfig.vaultRetentionDays
     vaultPurgeProtection: servicesConfig.vaultPurgeProtection
@@ -288,14 +287,12 @@ module networkBindings 'modules/network-bindings.bicep' = if (deployCore) {
     firewallPolicyName: network!.outputs.firewallPolicyName
     firewallPrivateIp: network!.outputs.firewallPrivateIp
     firewallPublicIpAddress: network!.outputs.firewallPublicIpAddress
+    appGatewayPublicIpAddress: network!.outputs.appGatewayPublicIpAddress
     apimPrivateIp: services!.outputs.apimPrivateIpAddresses[0]
     apimGatewayFqdn: services!.outputs.apimGatewayHost
     foundryPrivateIps: endpoints!.outputs.foundryPrivateIps
     keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
     managementPrivateIp: management!.outputs.managementVm.privateIp
-    grpcEnabled: grpcEnabled
-    grpcPublicPort: grpcConfig.publicPort
-    grpcBackendPort: grpcConfig.backendPort
   }
 }
 
@@ -308,7 +305,7 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
     principalIds: services!.outputs.principalIds
     certificateIdentityPrincipalId: identity.outputs.principalId
     managementPrincipalId: management!.outputs.managementVm.principalId
-    // gRPC/Realtime の KV 参照にも APIM 自身の ID が必要です。KV 範囲の既存組込ロールだけを使います。
+    // 通常HTTP入口保護・所有者チケットの KV 参照にも APIM 自身の ID が必要です。KV 範囲の既存組込ロールだけを使います。
     grantApimSecretAccess: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
     speechEnabled: servicesConfig.?speechEnabled ?? false
     grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false
@@ -346,7 +343,7 @@ module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore 
 module auditConfiguration 'modules/management-audit.bicep' = if (deployCore) {
   name: '${stem}-management-audit'
   scope: maintGroup
-  params: { vmName: management!.outputs.managementVm.name, location: location, tags: tags, ntpServers: configuration.network.ntpFqdns }
+  params: { vmName: management!.outputs.managementVm.name, location: location, tags: tags, ntpServers: ['ntp.ubuntu.com'] }
   dependsOn: [networkBindings]
 }
 
@@ -376,7 +373,7 @@ module certificate 'modules/certificate.bicep' = if (deployCore) {
       dnsSleepSeconds: certConfig.?dnsSleepSeconds ?? 60
       validationTimeoutSeconds: certConfig.?validationTimeoutSeconds ?? 120
       minimumValidDays: certConfig.?minimumValidDays ?? 7
-      l7IngressEnabled: grpcEnabled
+      l7IngressEnabled: true
       realtimeTicketEnabled: ownerTicketEnabled
     }
     dnsPluginArgumentsJson: dnsPluginArgumentsJson
@@ -419,6 +416,8 @@ module portalNetwork 'modules/portal-network.bicep' = if (deployCore) {
     pepSubnetId: network!.outputs.subnetIds.pep
     managementPrefix: network!.outputs.subnetPrefixes.management
     managementNsgName: network!.outputs.nsgNames.management
+    managementPrivateIp: management!.outputs.managementVm.privateIp
+    acaNsgName: network!.outputs.nsgNames.aca
     acaPrefix: network!.outputs.subnetPrefixes.aca
     agwPrefix: network!.outputs.subnetPrefixes.agw
     firewallPolicyName: network!.outputs.firewallPolicyName
@@ -451,6 +450,10 @@ module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deplo
     staticIp: portal!.outputs.staticIp
     vnetId: network!.outputs.vnetId
     agwRouteTableName: network!.outputs.routeTableNames.agw
+    agwNsgName: network!.outputs.nsgNames.agw
+    managementNsgName: network!.outputs.nsgNames.management
+    agwPrefix: network!.outputs.subnetPrefixes.agw
+    managementPrivateIp: management!.outputs.managementVm.privateIp
     firewallIp: network!.outputs.firewallPrivateIp
   }
 }
@@ -473,9 +476,12 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
     acaPrivateIp: portal!.outputs.staticIp
     firewallPolicyName: network!.outputs.firewallPolicyName
     managementPrefix: network!.outputs.subnetPrefixes.management
+    acaNsgName: network!.outputs.nsgNames.aca
+    managementNsgName: network!.outputs.nsgNames.management
+    managementPrivateIp: management!.outputs.managementVm.privateIp
     enableCredentialBroker: !empty(configuration.credentialProfiles)
   }
-  dependsOn: [networkBindings]
+  dependsOn: [portalNetworkBindings]
 }
 // 証明書とネットワーク側の経路が揃ったら、公開入口を構築します。
 module gateway 'modules/application-gateway.bicep' = if (deployCore) {
@@ -515,9 +521,6 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     documentUploadPaths: documentUploadPaths
     speechRawBodyPaths: speechRawBodyPaths
     backendRequestTimeoutSeconds: gatewayConfig.backendRequestTimeoutSeconds
-    grpcEnabled: grpcEnabled
-    grpcPublicPort: grpcConfig.publicPort
-    grpcBackendPort: grpcConfig.backendPort
     l7IngressSecret: l7IngressSecret
   }
   dependsOn: [monitoring, portalNetworkBindings]
@@ -571,23 +574,18 @@ output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpo
 output managementVm object = deployCore ? management!.outputs.managementVm : {}
 output AZURE_LOCATION string = location
 output gateway object = deployCore ? gateway!.outputs.applicationGateway : {}
-// Applied by postprovision only after the certificate exists, avoiding an
-// APIM creation -> private bindings -> VM certificate bootstrap dependency cycle.
-output grpc object = deployCore && grpcEnabled ? {
+// 通常HTTP(S)の入口保護を常設します。APIM保守は標準FQDNのHTTPSを使用します。
+// 公開証明書URIは、旧gRPC専用domainの所有照合と撤去にだけ使用します。
+output ingressSecrets object = deployCore ? {
   enabled: true
-  publicUrl: 'https://${grpcConfig.publicHostName}:${grpcConfig.publicPort}'
-  publicHostName: grpcConfig.publicHostName
-  apimId: services!.outputs.serviceResourceIds.apim
-  certificateSecretUri: certificate!.outputs.certificateSecretUri
-  namedValueId: '${services!.outputs.serviceResourceIds.apim}/namedValues/core-l7-ingress-secret'
-  edgeProofTrustBoundary: 'AppGW control-plane configuration readers are trusted; WAF is not applied to the TCP listener.'
-} : { enabled: false }
-output ingressSecrets object = deployCore && useIngressSecrets ? {
-  enabled: true
-  grpcEnabled: grpcEnabled
+  l7IngressEnabled: true
   realtimeEnabled: realtimeEnabled
   ownerTicketEnabled: ownerTicketEnabled
   apimId: services!.outputs.serviceResourceIds.apim
+  apimGatewayHost: services!.outputs.apimGatewayHost
+  publicHostName: gatewayConfig.publicHostName
+  certificateSecretUri: certificate!.outputs.certificateSecretUri
+  namedValueId: '${services!.outputs.serviceResourceIds.apim}/namedValues/core-l7-ingress-secret'
 } : { enabled: false }
 // Expected IDs are available even if the subsequent core deployment fails.
 // Cleanup verifies the actual resources at these exact IDs before acting.
@@ -643,6 +641,6 @@ output gatewayFoundation object = deployCore ? {
   registryName: portalRegistry!.outputs.name
   registryServer: portalRegistry!.outputs.server
   vaultName: serviceNames.keyVault
-  l7IngressSecretIdentifier: grpcEnabled ? 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-l7-ingress-secret' : ''
+  l7IngressSecretIdentifier: 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-l7-ingress-secret'
   realtimeTicketSecretIdentifier: ownerTicketEnabled ? 'https://${serviceNames.keyVault}${environment().suffixes.keyvaultDns}/secrets/core-realtime-ticket-key' : ''
 } : {}

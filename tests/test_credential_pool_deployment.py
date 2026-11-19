@@ -114,8 +114,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 state['apimInstanceId'] = apim_instance_id(config)
                 host = config['gateway']['publicHostName']
                 state['outputs'] = {'gatewayFoundation': foundation,
-                    'grpc': {'enabled': True, 'publicHostName': host, 'publicUrl': 'https://' + host + ':8443'},
-                    'ingressSecrets': {'enabled': True, 'grpcEnabled': True}}
+                    'ingressSecrets': {'enabled': True, 'l7IngressEnabled': True, 'publicHostName': host}}
                 original = copy.deepcopy(state)
                 inputs = foundation_inputs(config, state)
                 self.assertEqual(names['sqlServer'], 'sql-' + stem)

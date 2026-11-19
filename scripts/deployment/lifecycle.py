@@ -62,8 +62,8 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
   3. 実際のリソースIDなどを.local/<environment>/state/latest.jsonへ保存する。入口の仕上げが
      失敗しても、後の更新・撤去に必要な構築記録を残すため、先に保存する。
   4. deployment/helpers/grpc_lifecycle.pyのconfigure_endpoint()を呼び、
-     常設gRPC用にAPIMのカスタムドメインへ発行済み証明書のKey Vault参照を
-     設定し、HTTP/2を有効化して、反映完了を確認する。
+     所有する旧gRPC用ドメインだけを撤去し、標準名のHTTPS保守を維持する。
+     APIM受信HTTP/2をfalseへ限定更新し、他設定の保全と反映完了を確認する。
      Named Valueの配置・Key Vault参照の確認は後続のGateway配備が担当する。
   5. 仕上げの確認結果を.local/<environment>/state/ingress-bootstrap.jsonへ保存する。
   6. Azure Public DNSを選んだ場合は、DNS用Subscriptionの公開ゾーンを照合し、
@@ -75,7 +75,7 @@ main.bicepのcoreフェーズによる本体配備が成功した後、実際の
 PortalのCAはcoreフェーズで初期イメージを使って作成する。
 azd upでは続くpostupがGatewayとPortalの専用コマンドを順に呼び、
 API定義・バックエンド・Productとアプリ本体を配備する。azd provisionは基盤工程で終了する。
-入口設定の反映確認と、gRPC・Realtimeなどの実際の疎通試験も別の確認として扱う。
+入口設定の反映確認と、通常API・Realtimeなどの実際の疎通試験も別の確認として扱う。
 """
 from __future__ import annotations
 
@@ -100,6 +100,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -128,6 +129,8 @@ from .helpers.grpc_lifecycle import apim_name_matches, configure_endpoint as con
 from .helpers.operator_access import OperatorAccessError, cleanup_disabled_operator
 from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
+from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
+from .helpers.portal_backend_http import require_portal_http_core_ready
 
 ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
@@ -169,6 +172,40 @@ def cleanup_appgw_egress_nsg_rules(config: dict, transport) -> dict:
             config, transport, execute=True, record=record)
     except AppgwEgressNsgError as error:
         record("failed", {"status": "stopped", "responseMayBeUnknown": True})
+        raise DeploymentError(str(error)) from None
+
+
+def upgrade_journal(config: dict, category: str):
+    """一回の操作ごとに分離し、同じイベントも上書きせず保護記録へ保存する。"""
+    if not re.fullmatch(r"[a-z0-9-]+", category):
+        raise ValueError("Upgrade journal category is invalid")
+    directory = local_paths(config, ROOT).state / category / uuid.uuid4().hex
+    sequence = 0
+    def record(event, value):
+        nonlocal sequence
+        if not isinstance(event, str) or not re.fullmatch(r"[a-zA-Z0-9-]+", event):
+            raise ValueError("Upgrade journal event is invalid")
+        sequence += 1
+        protected_json(directory / f"{sequence:04d}-{event}.json", value)
+    return record
+
+
+def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> dict:
+    """既存PortalのHTTP段階移行を確認してから、全NSGの旧子規則を安全に移す。"""
+    require_portal_http_core_ready(config, transport)
+    record = upgrade_journal(config, "fixed-nsg-prepare")
+    try:
+        return prepare_fixed_nsg_rules(config, transport, execute=execute, record=record)
+    except FixedNsgError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def complete_core_network_upgrade(config: dict, transport) -> dict:
+    """Bicepから作成された全72条件を読み戻し、照合済み旧子規則だけを回収する。"""
+    record = upgrade_journal(config, "fixed-nsg-complete")
+    try:
+        return complete_fixed_nsg_rules(config, transport, execute=True, record=record)
+    except FixedNsgError as error:
         raise DeploymentError(str(error)) from None
 
 
@@ -235,7 +272,31 @@ def _application_insights_failure(arguments: list[str], stdout: str) -> dict | N
 
 def run(arguments: list[str], *, payload: dict | None = None, environment: dict | None = None) -> dict:
     """子プロセスのJSON出力を受け取る。失敗時に資格情報を含み得る生出力を表示しない。"""
+    if os.name == "nt" and arguments[0] == "az":
+        compiler = None
+        if arguments[1:3] == ["bicep", "build"]:
+            # Azure CLIのWindows console変換を通すと日本語JSONがCP932になる版がある。
+            # 同じ公式compilerを直接使い、Azure操作のCLI・Entra認証はWindows側に保つ。
+            candidate = (environment or {}).get("BICEP_CLI") or os.environ.get("BICEP_CLI") or shutil.which("bicep")
+            candidate = Path(candidate) if candidate else Path.home() / ".azure/bin/bicep.exe"
+            if candidate.is_file():
+                compiler = str(candidate)
+        if compiler:
+            build_arguments = list(arguments[3:])
+            # standalone Bicepは--fileを持たず、同じファイルを位置引数で受け取る。
+            if "--file" in build_arguments:
+                build_arguments.remove("--file")
+            arguments = [compiler, "build", *build_arguments]
+        else:
+            executable = shutil.which("az")
+            if not executable:
+                raise DeploymentError("Install Azure CLI on Windows before deployment")
+            arguments = [executable, *arguments[1:]]
+    if os.name == "nt":
+        environment = {**os.environ, **(environment or {}),
+                       "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     result = subprocess.run(arguments, cwd=ROOT, text=True, capture_output=True, env=environment,
+                            encoding="utf-8" if os.name == "nt" else None,
                             input=None if payload is None else json.dumps(payload))
     if result.returncode:
         if "-CheckDependencies" in arguments:
@@ -263,11 +324,20 @@ def protected_json(path: Path, value: dict) -> None:
     path = private_parent(path)
     handle, temporary = tempfile.mkstemp(prefix=".core-", dir=path.parent)
     try:
-        os.fchmod(handle, 0o600)
+        if os.name != "nt":
+            os.fchmod(handle, 0o600)
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             json.dump(value, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+        if os.name != "nt":
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -282,7 +352,7 @@ def write_arm_parameters(config: dict, document: dict) -> None:
 def check_parameter_bridge(config: dict) -> None:
     """Azure変更前に、秘密なしの合成入力でBicep bridgeの実読取を確かめる。"""
     override = os.environ.get("BICEP_CLI")
-    executable = override or shutil.which("bicep") or str(Path.home() / ".azure/bin/bicep")
+    executable = override or shutil.which("bicep") or str(Path.home() / ".azure/bin" / ("bicep.exe" if os.name == "nt" else "bicep"))
     if not Path(executable).is_file() or not os.access(executable, os.X_OK):
         raise DeploymentError("Install Bicep CLI and set BICEP_CLI before deployment")
     target = local_paths(config, ROOT).parameters
@@ -317,6 +387,7 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                existing_nsg_names: list[str] | None = None,
                existing_route_table_routes: dict | None = None,
                existing_apim_hostname_configurations: dict | None = None,
+               existing_apim_custom_properties: dict | None = None,
                existing_portal_app: bool = False,
                existing_apim_egress_fqdns: list[str] | None = None,
                existing_workspace_privacy_dcr_id: str = "",
@@ -344,6 +415,7 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
               "existingNetworkSecurityGroupNames": list(existing_nsg_names or []),
               "existingRouteTableRoutes": copy.deepcopy(existing_route_table_routes or {}),
               "existingApimHostnameConfigurations": copy.deepcopy(existing_apim_hostname_configurations or {}),
+              "existingApimCustomProperties": copy.deepcopy(existing_apim_custom_properties or {}),
               "existingPortalApp": existing_portal_app,
               "existingWorkspaceDataCollectionRuleResourceId": existing_workspace_privacy_dcr_id}
     return {"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
@@ -480,7 +552,7 @@ def require_success(response: dict, operation: str, allowed=(200, 201, 204)) -> 
 
 
 def discover_existing_network_security_groups(config: dict, transport: ArmTransport) -> list[str]:
-    """今回の4個のNSGだけを読み、同じ環境の既存資源を名前で返す。
+    """今回の5個のNSGだけを読み、同じ環境の既存資源を名前で返す。
 
     再upでNSG本体を空のpropertiesで更新すると、AppGWが必要とする既存規則を
     Azureが認識できず拒否する場合がある。本体の新規作成が必要かを先に確認し、
@@ -492,7 +564,7 @@ def discover_existing_network_security_groups(config: dict, transport: ArmTransp
     expected_tags = {"product": config["productName"], "environment": config["environmentName"],
                      "azd-env-name": config["environmentName"]}
     existing = []
-    for suffix in ("agw", "apim", "pep", "vm"):
+    for suffix in ("agw", "apim", "pep", "vm", "aca"):
         name = f"nsg-{config['resourceStem']}-{suffix}"
         resource_id = prefix + name
         response = transport.request("GET", resource_id + "?api-version=2025-01-01")
@@ -682,7 +754,7 @@ def discover_existing_portal_app(config: dict, transport: ArmTransport) -> bool:
     return True
 
 
-def discover_existing_apim_hostnames(config: dict, transport: ArmTransport) -> dict:
+def discover_existing_apim_hostnames(config: dict, transport: ArmTransport, *, custom_properties_out: dict | None = None) -> dict:
     """同じ環境の APIM を読み、再 PUT で消してはいけない公開ドメイン設定を引き継ぐ。
 
     証明書の初回発行は APIM 作成後なので、ドメインは postprovision が設定する。
@@ -725,6 +797,12 @@ def discover_existing_apim_hostnames(config: dict, transport: ArmTransport) -> d
     if (not isinstance(properties, dict) or properties.get("provisioningState") != "Succeeded"
             or not isinstance(properties.get("hostnameConfigurations"), list)):
         raise DeploymentError("Existing API Management hostname configuration is not ready for a new deployment")
+    custom = properties.get("customProperties", {})
+    if (not isinstance(custom, dict) or any(
+            not isinstance(key, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9.]{0,255}", key)
+            or not isinstance(value, str) or value.lower() not in ("true", "false")
+            for key, value in custom.items())):
+        raise DeploymentError("Existing API Management protocol settings cannot be safely preserved")
     sanitized, seen = [], set()
     writable = {"type", "hostName", "keyVaultId", "identityClientId", "defaultSslBinding",
                 "negotiateClientCertificate", "certificateSource"}
@@ -763,6 +841,8 @@ def discover_existing_apim_hostnames(config: dict, transport: ArmTransport) -> d
             raise DeploymentError("Existing API Management certificate requires explicit review before redeployment")
         sanitized.append({key: copy.deepcopy(value) for key, value in domain.items()
                           if key in writable and (value is not None or key == "identityClientId")})
+    if custom_properties_out is not None:
+        custom_properties_out[name.casefold()] = copy.deepcopy(custom)
     return {name.casefold(): sanitized}
 
 
@@ -1107,17 +1187,21 @@ def _record_monitoring_reapply(config: dict, proof: dict) -> tuple[Path, dict]:
               'maximumAdditionalPuts': 1, 'additionalPutAttempts': 1,
               'observedAtUtc': datetime.now(timezone.utc).isoformat()}
     with os.fdopen(handle, 'w') as stream:
-        os.fchmod(stream.fileno(), 0o600); json.dump(record, stream, indent=2); stream.write('\n')
+        if os.name != 'nt':
+            os.fchmod(stream.fileno(), 0o600)
+        json.dump(record, stream, indent=2); stream.write('\n')
         stream.flush(); os.fsync(stream.fileno())
-    directory_fd = os.open(directory, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+    if os.name != 'nt':
+        directory_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     return Path(name), record
 
 
 def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_collection=False,
+                 secrets: dict | None = None,
                  retained_policy_ids: list[str] | None = None, diagnostic_setting_properties: dict | None = None) -> dict:
     """Bicepをコンパイルし、azdと同じ所有タグで対象フェーズをARM配備する。
 
@@ -1131,32 +1215,33 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
     transport = ArmTransport(config)
     if phase == "core":
-        cleanup_dns_nsg_rules(config, transport)
-        cleanup_appgw_egress_nsg_rules(config, transport)
-        try:
-            cleanup_disabled_operator(config, transport)
-        except OperatorAccessError as error:
-            raise DeploymentError(str(error)) from None
+        prepare_core_network_upgrade(config, transport)
     # monitoring はネットワークを配備しない。core の直接呼出しでも native azd と
     # 同じ既存確認を行い、途中まで作成済みの場合にも残った動的規則を維持する。
     existing_nsg_names = discover_existing_network_security_groups(config, transport) if phase == "core" else []
     existing_routes = discover_existing_route_table_routes(config, transport) if phase == "core" else {}
-    existing_apim_hostnames = discover_existing_apim_hostnames(config, transport) if phase == "core" else {}
+    existing_apim_custom_properties = {}
+    existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties) if phase == "core" else {}
+    existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport) if phase == "core" else []
     existing_portal_app = discover_existing_portal_app(config, transport) if phase == "core" else False
     existing_workspace_privacy_dcr_id = read_workspace_privacy_link(config, transport)
     if diagnostic_setting_properties is None:
         diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, phase, preserve_collection)
+    if phase == "core" and secrets is None:
+        secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
 
     request_body = {
         "location": config["location"],
         "tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME, "azd-layer-name": ""},
         "properties": {"mode": "Incremental", "template": template,
-                       "parameters": parameters(config, phase, manage_policies=manage_policies,
+                       "parameters": parameters(config, phase, secrets=secrets, manage_policies=manage_policies,
                                                 retained_policy_ids=retained_policy_ids,
                                                 preserve_collection=preserve_collection,
                                                 existing_nsg_names=existing_nsg_names,
                                                 existing_route_table_routes=existing_routes,
                                                 existing_apim_hostname_configurations=existing_apim_hostnames,
+                                                existing_apim_custom_properties=existing_apim_custom_properties,
+                                                existing_apim_egress_fqdns=existing_apim_egress_fqdns,
                                                 existing_portal_app=existing_portal_app,
                                                 existing_workspace_privacy_dcr_id=existing_workspace_privacy_dcr_id,
                                                 diagnostic_setting_properties=diagnostic_setting_properties)["parameters"]},
@@ -1171,7 +1256,14 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         if status == "Succeeded":
             if reapply is not None:
                 protected_json(reapply[0], {**reapply[1], 'status': 'reapply-succeeded'})
-            return {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
+            outputs = {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
+            if phase == "core":
+                _save_deployment_state(config, outputs)
+                complete_core_network_upgrade(config, transport)
+                protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
+                               configure_grpc_endpoint(config, outputs, transport,
+                                                       mutation_recorder=upgrade_journal(config, "ingress-endpoint")))
+            return outputs
         if status == "Failed" and phase == "monitoring" and reapply is None and time.monotonic() < deadline:
             proof = _monitoring_export_reapply_ready(config, template, deployment, transport, deadline)
             if proof is not None and time.monotonic() < deadline:
@@ -1434,7 +1526,6 @@ def _preprovision(config: dict) -> None:
     _assert_current_apim_instance(config)
     _read_application_infrastructure_checkpoint(config)
     local_preflight(config)
-    secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
     # 第2段階: ログイン先・固定名・残り利用枠を読取で確認する。
     # 誤ったテナントや不足した利用枠へ構築を開始しない。
     azure_preflight(config)
@@ -1442,6 +1533,8 @@ def _preprovision(config: dict) -> None:
     # 先に済ませる。RG・監視・VM等の課金資源は、以下の確認が終わるまで作らない。
     register_providers(config)
     transport = ArmTransport(config)
+    require_portal_http_core_ready(config, transport)
+    secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
     # 回避名のAPIMを増やさず、同名で再実行できる状態かだけを読み取る。
     apim_name_receipt = local_paths(config, ROOT).state / "apim-name-preparation.json"
@@ -1506,15 +1599,11 @@ def _preprovision(config: dict) -> None:
     })
     # 第5段階: 最後にコア構築用のsecure入力を生成する。通常のazd provisionへ
     # 引き渡し、成功後またはhook失敗時にこの生成ファイルを回収する。
-    cleanup_dns_nsg_rules(config, transport)
-    cleanup_appgw_egress_nsg_rules(config, transport)
-    try:
-        cleanup_disabled_operator(config, transport)
-    except OperatorAccessError as error:
-        raise DeploymentError(str(error)) from None
+    prepare_core_network_upgrade(config, transport)
     existing_nsg_names = discover_existing_network_security_groups(config, transport)
     existing_routes = discover_existing_route_table_routes(config, transport)
-    existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)
+    existing_apim_custom_properties = {}
+    existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties)
     existing_portal_app = discover_existing_portal_app(config, transport)
     existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport)
     core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
@@ -1524,6 +1613,7 @@ def _preprovision(config: dict) -> None:
         existing_nsg_names=existing_nsg_names,
         existing_route_table_routes=existing_routes,
         existing_apim_hostname_configurations=existing_apim_hostnames,
+        existing_apim_custom_properties=existing_apim_custom_properties,
         existing_portal_app=existing_portal_app,
         existing_apim_egress_fqdns=existing_apim_egress_fqdns,
         existing_workspace_privacy_dcr_id=workspace_privacy_dcr_id,
@@ -1560,7 +1650,9 @@ def postprovision(config: dict) -> None:
         # 以前の成功記録を、今回の仕上げに成功した記録として残さない。
         dns_receipt_path.unlink(missing_ok=True)
         transport = ArmTransport(config)
-        grpc_receipt = configure_grpc_endpoint(config, outputs, transport)
+        complete_core_network_upgrade(config, transport)
+        grpc_receipt = configure_grpc_endpoint(config, outputs, transport,
+                                               mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
         if grpc_receipt["enabled"]:
             protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json", grpc_receipt)
         # DNS専用Subscriptionへの操作は別の接続に限定する。認証するテナントは
@@ -1626,13 +1718,15 @@ def main(argv=None) -> int:
             # 認証先を確認した後、ARM読取とazd環境設定の前に登録完了を待つ。
             # preprovisionにも同じ確認を残し、azd provision単独でも前提を満たす。
             register_providers(config)
+            transport = ArmTransport(config)
+            require_portal_http_core_ready(config, transport)
             for key, value in (("AZURE_SUBSCRIPTION_ID", config["subscriptionId"]), ("AZURE_TENANT_ID", config["azureTenantId"]), ("AZURE_LOCATION", config["location"])):
                 run(["azd", "env", "set", key, value, "--environment", config["environmentName"]])
             # azdがpreup後に読む入力枠を用意する。秘密入りの実入力は監視基盤の準備後に作る。
-            transport = ArmTransport(config)
             existing_nsg_names = discover_existing_network_security_groups(config, transport)
             existing_routes = discover_existing_route_table_routes(config, transport)
-            existing_apim_hostnames = discover_existing_apim_hostnames(config, transport)
+            existing_apim_custom_properties = {}
+            existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties)
             existing_portal_app = discover_existing_portal_app(config, transport)
             core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
@@ -1640,6 +1734,7 @@ def main(argv=None) -> int:
                 existing_nsg_names=existing_nsg_names,
                 existing_route_table_routes=existing_routes,
                 existing_apim_hostname_configurations=existing_apim_hostnames,
+                existing_apim_custom_properties=existing_apim_custom_properties,
                 existing_portal_app=existing_portal_app,
                 diagnostic_setting_properties=core_diagnostics))
         elif args.command == "preprovision":

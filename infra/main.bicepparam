@@ -19,6 +19,7 @@ param preserveAuditCollection = input.parameters.?preserveAuditCollection.?value
 param existingNetworkSecurityGroupNames = input.parameters.?existingNetworkSecurityGroupNames.?value ?? []
 param existingRouteTableRoutes = input.parameters.?existingRouteTableRoutes.?value ?? {}
 param existingApimHostnameConfigurations = input.parameters.?existingApimHostnameConfigurations.?value ?? {}
+param existingApimCustomProperties = input.parameters.?existingApimCustomProperties.?value ?? {}
 param existingPortalApp = input.parameters.?existingPortalApp.?value ?? false
 param existingWorkspaceDataCollectionRuleResourceId = input.parameters.?existingWorkspaceDataCollectionRuleResourceId.?value ?? ''
 

@@ -142,49 +142,6 @@
             }
           }
         },
-        "operatorAddressPrefixes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "examples": [
-            [
-              "10.20.30.0/24"
-            ]
-          ],
-          "description": "管理VMから見える管理接続元のIPv4/CIDR。private範囲も指定できます。指定時だけNSGのAllow・220（既定TCP22）を作成し、空配列・省略時は作成しません。設定を外した場合は構築前処理で現行Allow・220を削除します。未許可通信は4096で拒否します。Bastion利用時は通常AzureBastionSubnetのCIDRを指定します。管理VMへの経路やpublic IPを作成する設定ではありません。"
-        },
-        "operatorProtocol": {
-          "type": "string",
-          "enum": [
-            "Tcp",
-            "Udp",
-            "*"
-          ],
-          "default": "Tcp"
-        },
-        "operatorPorts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "22"
-          ],
-          "description": "Linux管理VMへ許可する宛先ポート。既定はSSHの22です。管理VMへの経路は別途必要です。"
-        },
-        "dnsServers": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "format": "ipv4"
-          },
-          "default": [],
-          "description": "VNetのDNSはAzure提供DNS（168.63.129.16）に固定するため、空配列だけを受け付けます。",
-          "maxItems": 0
-        },
         "bgpRoutePropagation": {
           "type": "object",
           "additionalProperties": false,
@@ -260,16 +217,6 @@
               "uniqueItems": true,
               "default": [],
               "description": "Firewallの可用性ゾーン番号。空配列は番号を明示しません。"
-            },
-            "dnsServers": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "FirewallのDNSもAzure提供DNSに固定するため、空配列だけを受け付けます。",
-              "maxItems": 0
             },
             "idpsPrivateRanges": {
               "type": "array",
@@ -415,45 +362,11 @@
           ],
           "additionalProperties": false
         },
-        "apimKeyVaultAccessEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "APIMからKey Vault Private Endpointへの通信を許可します。証明書・Realtime制御に使用。Azure RBACは別途構成します。"
-        },
-        "ntpFqdns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "default": [
-            "ntp.ubuntu.com"
-          ],
-          "description": "Linux管理VMが時刻同期に使うNTPサーバーのFQDN。"
-        },
         "dnsTtl": {
           "type": "integer",
           "minimum": 1,
           "maximum": 86400,
           "default": 300
-        },
-        "managementAdditionalSecurityRules": {
-          "type": "array",
-          "items": {
-            "type": "object"
-          },
-          "default": []
-        },
-        "ntpAddressPrefixes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true,
-          "minItems": 1,
-          "default": [
-            "Internet"
-          ]
         }
       },
       "additionalProperties": false,
@@ -773,17 +686,6 @@
           "type": "boolean",
           "default": false
         },
-        "grpc": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "gRPC入口は常設です。入力できるのは通常HTTPSと同じ公開ホスト名だけです。",
-          "properties": {
-            "publicHostName": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
         "queryGuards": {
           "type": "object",
           "additionalProperties": false,
@@ -796,17 +698,26 @@
           "properties": {
             "liveCreate": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             },
             "realtimeCreate": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             },
             "piiMcp": {
               "type": "string",
-              "enum": ["observe", "reject"],
+              "enum": [
+                "observe",
+                "reject"
+              ],
               "default": "observe"
             }
           }
@@ -1480,9 +1391,6 @@
             "type": "string"
           },
           "backendHeaders": {
-            "type": "object"
-          },
-          "grpc": {
             "type": "object"
           },
           "mcpProxy": {

@@ -1,207 +1,1261 @@
 {
-  "version": 1,
+  "version": 2,
   "groups": {
     "agw": {
       "suffix": "agw",
       "rules": {
-        "allow-client-web": {
+        "allow-firewall-public-https-ingress": {
+          "designRecordId": "N-AGW-IN-01",
           "direction": "Inbound",
-          "priority": 120
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:firewallPublic"
+          ],
+          "destination": [
+            "subnet:agw"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-client-grpc": {
+        "allow-client-http-ingress": {
+          "designRecordId": "N-AGW-IN-02-HTTP",
           "direction": "Inbound",
-          "priority": 125
+          "priority": 121,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "literal:0.0.0.0/0"
+          ],
+          "destination": [
+            "subnet:agw"
+          ],
+          "destinationPorts": [
+            "80"
+          ]
         },
-        "allow-firewall-public-ingress": {
+        "allow-client-https-ingress": {
+          "designRecordId": "N-AGW-IN-02-HTTPS",
           "direction": "Inbound",
-          "priority": 220
+          "priority": 122,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "literal:0.0.0.0/0"
+          ],
+          "destination": [
+            "subnet:agw"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-gateway-manager": {
+        "allow-gateway-manager-ingress": {
+          "designRecordId": "N-AGW-IN-04",
           "direction": "Inbound",
-          "priority": 225
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "tag:GatewayManager"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "65200-65535"
+          ]
         },
-        "allow-load-balancer": {
+        "allow-azure-load-balancer-ingress": {
+          "designRecordId": "N-AGW-IN-05",
           "direction": "Inbound",
-          "priority": 230
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "tag:AzureLoadBalancer"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         },
-        "deny-other-inbound": {
+        "deny-any-ingress": {
+          "designRecordId": "N-AGW-IN-TERMINAL",
           "direction": "Inbound",
-          "priority": 4096
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-apim-http-egress": {
+          "designRecordId": "N-AGW-OUT-01",
+          "direction": "Outbound",
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "ip:apim"
+          ],
+          "destinationPorts": [
+            "80"
+          ]
+        },
+        "allow-aca-http-egress": {
+          "designRecordId": "N-AGW-OUT-03",
+          "direction": "Outbound",
+          "priority": 121,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "ip:aca"
+          ],
+          "destinationPorts": [
+            "80"
+          ]
+        },
+        "allow-key-vault-https-egress": {
+          "designRecordId": "N-AGW-OUT-04",
+          "direction": "Outbound",
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         }
       }
     },
     "apim": {
       "suffix": "apim",
       "rules": {
-        "allow-agw-api": {
+        "allow-appgw-http-ingress": {
+          "designRecordId": "N-APIM-IN-01",
           "direction": "Inbound",
-          "priority": 120
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "80"
+          ]
         },
-        "allow-agw-grpc": {
+        "allow-mgmt-vm-https-ingress": {
+          "designRecordId": "N-APIM-IN-VM-CANDIDATE",
           "direction": "Inbound",
-          "priority": 125
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-apim-management": {
+        "allow-api-management-ingress": {
+          "designRecordId": "N-APIM-IN-03",
           "direction": "Inbound",
-          "priority": 220
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "tag:ApiManagement"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "3443"
+          ]
         },
-        "allow-load-balancer": {
+        "allow-apim-ratelimits-counter-sync-ingress": {
+          "designRecordId": "N-APIM-IN-COUNTER",
           "direction": "Inbound",
-          "priority": 225
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "Udp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "4290"
+          ]
         },
-        "allow-counter-sync-inbound": {
+        "allow-apim-internal-cache-ingress": {
+          "designRecordId": "N-APIM-IN-CACHE",
           "direction": "Inbound",
-          "priority": 230
+          "priority": 322,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "6381-6383"
+          ]
         },
-        "allow-management-grpc": {
+        "allow-azure-load-balancer-ingress": {
+          "designRecordId": "N-APIM-IN-04",
           "direction": "Inbound",
-          "priority": 235
+          "priority": 323,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "tag:AzureLoadBalancer"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         },
-        "deny-other-inbound": {
+        "deny-any-ingress": {
+          "designRecordId": "N-APIM-IN-TERMINAL",
           "direction": "Inbound",
-          "priority": 4096
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         },
-        "allow-private-backends": {
+        "allow-foundry-https-egress": {
+          "designRecordId": "N-APIM-OUT-01",
           "direction": "Outbound",
-          "priority": 120
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-credential-broker": {
+        "allow-aca-https-egress": {
+          "designRecordId": "N-APIM-OUT-02",
           "direction": "Outbound",
-          "priority": 125
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ip:aca"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-key-vault-pe": {
+        "allow-key-vault-https-egress": {
+          "designRecordId": "N-APIM-OUT-03",
           "direction": "Outbound",
-          "priority": 220
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-storage": {
+        "allow-storage-egress": {
+          "designRecordId": "N-APIM-OUT-04",
           "direction": "Outbound",
-          "priority": 225
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:Storage"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-sql-platform": {
+        "allow-sql-egress": {
+          "designRecordId": "N-APIM-OUT-05",
           "direction": "Outbound",
-          "priority": 230
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:Sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
         },
-        "allow-key-vault-platform": {
+        "allow-key-vault-egress": {
+          "designRecordId": "N-APIM-OUT-06",
           "direction": "Outbound",
-          "priority": 235
+          "priority": 322,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:AzureKeyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-monitor": {
+        "allow-monitor-egress": {
+          "designRecordId": "N-APIM-OUT-07",
           "direction": "Outbound",
-          "priority": 240
+          "priority": 323,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:AzureMonitor"
+          ],
+          "destinationPorts": [
+            "1886",
+            "443"
+          ]
         },
-        "allow-monitor-event-hubs": {
+        "allow-event-hubs-egress": {
+          "designRecordId": "N-APIM-OUT-08",
           "direction": "Outbound",
-          "priority": 245
+          "priority": 324,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:EventHub"
+          ],
+          "destinationPorts": [
+            "443",
+            "5671",
+            "5672"
+          ]
         },
-        "allow-entra": {
+        "allow-entra-egress": {
+          "designRecordId": "N-APIM-OUT-09",
           "direction": "Outbound",
-          "priority": 250
+          "priority": 325,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:AzureActiveDirectory"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-credential-manager": {
+        "allow-credential-manager-egress": {
+          "designRecordId": "N-APIM-OUT-10",
           "direction": "Outbound",
-          "priority": 255
+          "priority": 326,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:AzureConnectors"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-web-dependencies": {
+        "allow-internet-egress": {
+          "designRecordId": "N-APIM-OUT-11",
           "direction": "Outbound",
-          "priority": 260
+          "priority": 327,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "80",
+            "443"
+          ]
         },
-        "allow-time-sync": {
+        "allow-time-sync-egress": {
+          "designRecordId": "N-APIM-OUT-12",
           "direction": "Outbound",
-          "priority": 265
+          "priority": 328,
+          "access": "Allow",
+          "protocol": "Udp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "123"
+          ]
         },
-        "allow-counter-sync-outbound": {
+        "allow-apim-ratelimits-counter-sync-egress": {
+          "designRecordId": "N-APIM-OUT-COUNTER",
           "direction": "Outbound",
-          "priority": 270
+          "priority": 329,
+          "access": "Allow",
+          "protocol": "Udp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "4290"
+          ]
         },
-        "deny-other-outbound": {
+        "allow-apim-internal-cache-egress": {
+          "designRecordId": "N-APIM-OUT-CACHE",
           "direction": "Outbound",
-          "priority": 4096
+          "priority": 330,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "6381-6383"
+          ]
+        },
+        "deny-any-egress": {
+          "designRecordId": "N-APIM-OUT-TERMINAL",
+          "direction": "Outbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         }
       }
     },
     "pep": {
       "suffix": "pep",
       "rules": {
-        "allow-apim-foundry": {
+        "allow-apim-foundry-https-ingress": {
+          "designRecordId": "B-PE-05",
           "direction": "Inbound",
-          "priority": 120
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-key-vault": {
+        "allow-appgw-key-vault-https-ingress": {
+          "designRecordId": "B-PE-01",
           "direction": "Inbound",
-          "priority": 220
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-vm-https": {
+        "allow-apim-key-vault-https-ingress": {
+          "designRecordId": "B-PE-02",
           "direction": "Inbound",
-          "priority": 225
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-aca-acr": {
+        "allow-aca-key-vault-https-ingress": {
+          "designRecordId": "B-PE-03",
           "direction": "Inbound",
-          "priority": 230
+          "priority": 222,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-credential-broker-sql": {
+        "allow-mgmt-vm-key-vault-https-ingress": {
+          "designRecordId": "B-PE-04",
           "direction": "Inbound",
-          "priority": 235
+          "priority": 223,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-credential-broker-vault": {
+        "allow-mgmt-vm-foundry-https-ingress": {
+          "designRecordId": "B-PE-06",
           "direction": "Inbound",
-          "priority": 240
+          "priority": 224,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "deny-other-inbound": {
+        "allow-mgmt-vm-sql-1433-ingress": {
+          "designRecordId": "N-PE-IN-MGMT-SQL",
           "direction": "Inbound",
-          "priority": 4096
+          "priority": 225,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
+        },
+        "allow-aca-sql-1433-ingress": {
+          "designRecordId": "B-PE-07",
+          "direction": "Inbound",
+          "priority": 226,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
+        },
+        "allow-aca-acr-https-ingress": {
+          "designRecordId": "B-PE-08",
+          "direction": "Inbound",
+          "priority": 227,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mgmt-vm-acr-https-ingress": {
+          "designRecordId": "B-PE-09",
+          "direction": "Inbound",
+          "priority": 228,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "deny-any-ingress": {
+          "designRecordId": "B-PE-14",
+          "direction": "Inbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         }
       }
     },
     "management": {
       "suffix": "vm",
       "rules": {
-        "allow-operator-management": {
+        "deny-any-ingress": {
+          "designRecordId": "B-MGMT-19",
           "direction": "Inbound",
-          "priority": 220
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
         },
-        "deny-other-inbound": {
+        "allow-key-vault-https-egress": {
+          "designRecordId": "B-MGMT-02",
+          "direction": "Outbound",
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-acr-https-egress": {
+          "designRecordId": "B-MGMT-03",
+          "direction": "Outbound",
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-apim-https-egress": {
+          "designRecordId": "B-MGMT-18",
+          "direction": "Outbound",
+          "priority": 222,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "subnet:apim"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-foundry-https-egress": {
+          "designRecordId": "B-MGMT-21",
+          "direction": "Outbound",
+          "priority": 223,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:foundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-sql-1433-egress": {
+          "designRecordId": "N-MGMT-OUT-SQL",
+          "direction": "Outbound",
+          "priority": 224,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
+        },
+        "allow-aca-http-egress": {
+          "designRecordId": "N-MGMT-OUT-ACA-HTTP",
+          "direction": "Outbound",
+          "priority": 225,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ip:aca"
+          ],
+          "destinationPorts": [
+            "80"
+          ]
+        },
+        "allow-aca-https-egress": {
+          "designRecordId": "N-MGMT-OUT-ACA-HTTPS",
+          "direction": "Outbound",
+          "priority": 226,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ip:aca"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-azure-resource-manager-egress": {
+          "designRecordId": "B-MGMT-06",
+          "direction": "Outbound",
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:AzureResourceManager"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-entra-egress": {
+          "designRecordId": "B-MGMT-07",
+          "direction": "Outbound",
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:AzureActiveDirectory"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-monitor-egress": {
+          "designRecordId": "B-MGMT-08",
+          "direction": "Outbound",
+          "priority": 322,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:AzureMonitor"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-storage-egress": {
+          "designRecordId": "B-MGMT-09",
+          "direction": "Outbound",
+          "priority": 323,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:Storage"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-internet-egress": {
+          "designRecordId": "B-MGMT-10",
+          "direction": "Outbound",
+          "priority": 324,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "80",
+            "443"
+          ]
+        },
+        "allow-time-sync-egress": {
+          "designRecordId": "B-MGMT-11",
+          "direction": "Outbound",
+          "priority": 325,
+          "access": "Allow",
+          "protocol": "Udp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "123"
+          ]
+        },
+        "deny-any-egress": {
+          "designRecordId": "B-MGMT-20",
+          "direction": "Outbound",
+          "priority": 4096,
+          "access": "Deny",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "literal:*"
+          ],
+          "destination": [
+            "literal:*"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        }
+      }
+    },
+    "aca": {
+      "suffix": "aca",
+      "rules": {
+        "allow-appgw-http-ingress": {
+          "designRecordId": "B-ACA-03",
           "direction": "Inbound",
-          "priority": 4096
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:agw"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "80",
+            "31080"
+          ]
         },
-        "allow-private-services": {
-          "direction": "Outbound",
-          "priority": 220
+        "allow-apim-https-ingress": {
+          "designRecordId": "B-ACA-04",
+          "direction": "Inbound",
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:apim"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "443",
+            "31443"
+          ]
         },
-        "allow-apim-grpc-comparison": {
-          "direction": "Outbound",
-          "priority": 225
+        "allow-mgmt-vm-http-ingress": {
+          "designRecordId": "N-ACA-IN-MGMT-HTTP",
+          "direction": "Inbound",
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "80",
+            "31080"
+          ]
         },
-        "allow-runner-acr": {
-          "direction": "Outbound",
-          "priority": 230
+        "allow-mgmt-vm-https-ingress": {
+          "designRecordId": "N-ACA-IN-MGMT-HTTPS",
+          "direction": "Inbound",
+          "priority": 222,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "443",
+            "31443"
+          ]
         },
-        "allow-approved-entra": {
-          "direction": "Outbound",
-          "priority": 235
+        "allow-azure-load-balancer-ingress": {
+          "designRecordId": "B-ACA-05",
+          "direction": "Inbound",
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "tag:AzureLoadBalancer"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "30000-32767"
+          ]
         },
-        "allow-approved-management-api": {
+        "allow-appgw-https-egress": {
+          "designRecordId": "B-ACA-11",
           "direction": "Outbound",
-          "priority": 240
+          "priority": 120,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ip:appGatewayPublic"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-approved-monitor": {
+        "allow-key-vault-https-egress": {
+          "designRecordId": "B-ACA-06",
           "direction": "Outbound",
-          "priority": 245
+          "priority": 220,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:keyVault"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-approved-agent-storage": {
+        "allow-sql-1433-egress": {
+          "designRecordId": "B-ACA-07",
           "direction": "Outbound",
-          "priority": 250
+          "priority": 221,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:sql"
+          ],
+          "destinationPorts": [
+            "1433"
+          ]
         },
-        "allow-web-dependencies": {
+        "allow-acr-https-egress": {
+          "designRecordId": "B-ACA-08",
           "direction": "Outbound",
-          "priority": 255
+          "priority": 222,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "ips:registry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "allow-time-sync": {
+        "allow-arm-https-egress": {
+          "designRecordId": "B-ACA-13",
           "direction": "Outbound",
-          "priority": 260
+          "priority": 223,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:AzureResourceManager"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         },
-        "deny-other-outbound": {
+        "allow-aca-internal-egress": {
+          "designRecordId": "B-ACA-02",
           "direction": "Outbound",
-          "priority": 4096
+          "priority": 320,
+          "access": "Allow",
+          "protocol": "*",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "subnet:aca"
+          ],
+          "destinationPorts": [
+            "*"
+          ]
+        },
+        "allow-entra-egress": {
+          "designRecordId": "B-ACA-12",
+          "direction": "Outbound",
+          "priority": 321,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:AzureActiveDirectory"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-monitor-egress": {
+          "designRecordId": "B-ACA-14",
+          "direction": "Outbound",
+          "priority": 322,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:AzureMonitor"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mcr-egress": {
+          "designRecordId": "B-ACA-15",
+          "direction": "Outbound",
+          "priority": 323,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:MicrosoftContainerRegistry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-afd-first-party-egress": {
+          "designRecordId": "B-ACA-16",
+          "direction": "Outbound",
+          "priority": 324,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:aca"
+          ],
+          "destination": [
+            "tag:AzureFrontDoor.FirstParty"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
         }
       }
     }

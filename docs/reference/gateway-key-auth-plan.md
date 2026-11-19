@@ -50,7 +50,7 @@ APIM標準の購読検証と、共通ポリシーの`context.Subscription.Id`確
 
 キー用には専用のヘッダー名を使います。`x-ms-client-request-id`は各APIが要求IDへ書き換え、`x-appgw-trace-id`はAppGWの相関に使うため、配備前の設定検査でキー用への指定を拒否します。既定の`api-key`、`Ocp-Apim-Subscription-Key`、内部処理と衝突しない独自のヘッダーは引き続き利用できます。
 
-Entra設定を持つ構成では、HTTP・WebSocket・gRPC・MCP・Realtime・CMを含む全業務APIで、キーなし要求に有効なEntraユーザー委任tokenを要求します。CMのブラウザー受付の例外を除く通常要求は、設定キーheaderの有無だけで認証方法を選び、実行時のAPI名一覧でBearer対応を判定しません。有効キー＋既存用途のAuthorizationはキー側の従来動作を維持します。無効キー＋有効JWT、空・重複・queryの提示は救済しません。操作・モデル・入力の既存契約は両方式で検証します。
+Entra設定を持つ構成では、HTTP・WebSocket・MCP・Realtime・CMを含む全業務APIで、キーなし要求に有効なEntraユーザー委任tokenを要求します。CMのブラウザー受付の例外を除く通常要求は、設定キーheaderの有無だけで認証方法を選び、実行時のAPI名一覧でBearer対応を判定しません。有効キー＋既存用途のAuthorizationはキー側の従来動作を維持します。無効キー＋有効JWT、空・重複・queryの提示は救済しません。操作・モデル・入力の既存契約は両方式で検証します。
 
 公開Entra設定は`audience`・`requiredScope`・`userLimits`の3項目だけです。`enabled`・`allowedClientIds`・`apiNames`は公開入力として拒否し、APIMにクライアント許可リストを設けません。署名・期限・tenant/issuer・v2 aud・委任scp・有効なtid+oidを要求し、azpは単一の有効GUIDだけを監査へ記録します。azpの欠落・不正・重複で認可範囲を狭めません。Entra設定を省略した旧構成はキー方式を維持します。
 
@@ -84,7 +84,7 @@ Graph `/me`は、入口のキーまたはBearer認可に加えて`X-Core-Connect
 
 Realtimeの作成・終了・observerは、キー経路は検証済み購読ID、Bearer経路は検証済みtid+oidのcaller IDを所有者とし、署名ticket・call ID・期限を照合します。既存キーticket v3を保持し、ユーザーticket v4は別人・別tenant・キーとの相互流用を拒否します。同じ共有キーを使うPortal利用者間の分離は、Portalが保持する実行とログイン本人の対応でも確認します。
 
-HTTP・SSE・WebSocketの接続開始・gRPCのRPC開始には、対象ポリシーの購読単位の利用上限を適用します。Portalの購読プロファイルと共通設定の扱いは [購読単位の制限・観測](../testing/subscription-limits.md)を参照してください。WebSocket接続後のframeとWebRTCメディアは、APIMのHTTP本文検査・要求回数とは別の境界です。
+HTTP・SSE・WebSocketの接続開始には、対象ポリシーの購読単位の利用上限を適用します。Portalの購読プロファイルと共通設定の扱いは [購読単位の制限・観測](../testing/subscription-limits.md)を参照してください。WebSocket接続後のframeとWebRTCメディアは、APIMのHTTP本文検査・要求回数とは別の境界です。
 
 追加する社員の業務API利用は基本無制限とし、`userLimits.tokensPerMinute`・`tokenQuota`を`null`で明示的に無効化します。3つの制限項目をすべて指定し、`requestRate`も`null`で無効化できます。欠落・空object・未知項目・不正値を無制限へ変換せず、非nullには有限の正整数等を要求します。有効な制限はAPI・clientをまたいで検証済み`tid+oid`で計数し、既存キーのcounterは維持します。
 

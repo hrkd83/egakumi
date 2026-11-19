@@ -13,10 +13,39 @@ param apimNsgName string
 param acaPrivateIp string
 param firewallPolicyName string
 param managementPrefix string
+param managementPrivateIp string
+param managementNsgName string
+param acaNsgName string
 param keyVaultPrivateIps array
 @description('CM未使用時はAPIMから認証窓口への経路を追加しません。')
 param enableCredentialBroker bool = true
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
+
+// NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
+func allowRule(ruleName string, priority int, direction string, protocol string, sources array, destinations array, ports array) object => {
+  name: ruleName
+  properties: union({
+    description: 'Initial fixed communication: ${ruleName}'
+    priority: priority
+    direction: direction
+    access: 'Allow'
+    protocol: protocol
+    sourcePortRange: '*'
+  }, length(sources) == 1 ? {
+    sourceAddressPrefix: sources[0]
+  } : {
+    sourceAddressPrefixes: sources
+  }, length(destinations) == 1 ? {
+    destinationAddressPrefix: destinations[0]
+  } : {
+    destinationAddressPrefixes: destinations
+  }, length(ports) == 1 ? {
+    destinationPortRange: ports[0]
+  } : {
+    destinationPortRanges: ports
+  })
+}
+
 resource zone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.database.windows.net'
   location: 'global'
@@ -48,22 +77,34 @@ module addresses 'private-endpoint-addresses.bicep' = {
 }
 var ips = union([], flatten(addresses.outputs.privateIpsByNic))
 resource pepNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: pepNsgName }
+resource apimNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: apimNsgName }
+resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: managementNsgName }
+resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
 resource sqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
-  name: 'allow-credential-broker-sql'
-  properties: { priority: nsgPriorities.groups.pep.rules['allow-credential-broker-sql'].priority, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: ips, sourcePortRange: '*', destinationPortRange: '1433' }
+  name: 'allow-aca-sql-1433-ingress'
+  properties: allowRule('allow-aca-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-aca-sql-1433-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
-// 認証窓口のIDが、Private Endpoint経由でKey Vaultの秘密参照を解決します。
-resource vaultIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+resource managementSqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
-  name: 'allow-credential-broker-vault'
-  properties: { priority: nsgPriorities.groups.pep.rules['allow-credential-broker-vault'].priority, direction: 'Inbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: acaPrefix, destinationAddressPrefixes: keyVaultPrivateIps, sourcePortRange: '*', destinationPortRange: '443' }
+  dependsOn: [sqlIn]
+  name: 'allow-mgmt-vm-sql-1433-ingress'
+  properties: allowRule('allow-mgmt-vm-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-sql-1433-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
-resource apimNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: apimNsgName }
-resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = if (enableCredentialBroker) {
+resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: apimNsg
-  name: 'allow-credential-broker'
-  properties: { priority: nsgPriorities.groups.apim.rules['allow-credential-broker'].priority, direction: 'Outbound', access: 'Allow', protocol: 'Tcp', sourceAddressPrefix: apimPrefix, destinationAddressPrefix: acaPrivateIp, sourcePortRange: '*', destinationPortRange: '443' }
+  name: 'allow-aca-https-egress'
+  properties: allowRule('allow-aca-https-egress', nsgPriorities.groups.apim.rules['allow-aca-https-egress'].priority, 'Outbound', 'Tcp', [apimPrefix], ['${acaPrivateIp}/32'], ['443']).properties
+}
+resource acaSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: acaNsg
+  name: 'allow-sql-1433-egress'
+  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.aca.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
+}
+resource managementSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
+  parent: managementNsg
+  name: 'allow-sql-1433-egress'
+  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.management.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433']).properties
 }
 resource firewall 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
 resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {
@@ -86,3 +127,5 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   }
 }
 output endpointId string = endpoint.id
+
+output sqlPrivateIps array = ips

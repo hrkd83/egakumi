@@ -51,21 +51,16 @@
 
 `OPS-04`は容量変更を実測の代表とする。追加モデルや版変更の全組合せを実行する項目ではない。実モデルとconfigの不一致検出は、`tests/test_publish_apis.py`の`PublicationTests.test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes`等の偽ARM応答でローカル確認する。Gの計画は実モデルを読み取らず、G実行のAPI公開検査までにBroker・SQL等も配備されるため、不一致入力を実環境へ渡して全書込0の試験にしない。
 
-### AppGWの重複送信規則を回収する場合の確認
+### NSG初期集合と通常HTTP入口へ更新する場合の確認
 
-[限定回収の手順](../operations/platform-settings.md#appgwの重複する送信規則を回収する)
-に従い、実施前後の結果を環境別の保護実施票へ記録する。
-次は受入条件であり、各環境で実測する前にPASSとはしない。
+[NSGの初期仕様](../operations/network-security-groups.md)と、現在の構築資材から作成した限定移行計画を照合し、実施前後の結果を環境別の保護実施票へ記録します。以前の「AppGW受信6本・送信0本と既知3本の送信規則だけの回収」は旧仕様であり、今回の固定集合へ適用しません。下記は現在の受入条件で、各環境の実測前にPASSとはしません。
 
-- ソースのコンパイル結果はAppGWのカスタム受信6本・送信0本。
-  APIM・PEの受信Allow、他NSGの規則と優先度を維持する。
-- 合成ARMで、全3本の照合が終わる前の書込0、誤った所有・方向・優先度・
-  条件の拒否、既定許可や宛先の不一致、送信Deny、競合、応答不明、
-  部分完了からの再計画、再実行0書込を確認する。
-- 実Azureの変更はAppGWの既知の3子DELETEだけ。他3 NSG、AppGW受信6本、
-  既定規則・関連付け、UDR・Firewall・DNSが不変であることを読戻し比較する。
-- 新しい接続で通常API、gRPC経路、Portal転送、公開TLSとVault証明書参照を
-  確認する。認証拒否・TLSのみ・実推論成功を区別し、未測定の層を記録する。
+- 各サブネットのカスタム規則を通信要件・名称・方向・優先度・送信元・宛先・ポート単位で比較する。AppGW／ACAの必要な既定許可と、明示Denyを作成するサブネットを区別する。
+- 新規構築と既存環境への限定適用が同じ初期集合を再現することを確認する。未知の手動規則・競合・所有不一致は削除前に停止し、企業向けの変更を無条件に初期値へ戻さない。
+- 廃止したNSG／標準DNS／NTP入力と`gateway.grpc`全体・gRPC API定義を、params・config・合成入力で拒否する。VNet／FirewallはAzure提供DNSを使い、標準NTPを固定する。
+- AppGWの専用L4入口・公開8443・gRPC許可を撤去し、通常APIM／ACA向けのHTTP80と管理VMのHTTPS443保守を確認する。APIMの旧所有customProxyだけを除去し、native FQDN／Host／SNIでHTTPS保守できることを確認する。
+- 所有ETag、保護された変更journal、受理後の読戻し、部分完了からの再開、再実行時の無変更を確認する。APIMの他custom domain・customProperties、WAF・認証・認可・監査・CM・所有者署名を維持する。
+- 新規接続で通常API、Portal転送、SSE／WebSocket／MCP、公開TLS、L7入口証明不備の拒否を確認する。設定読戻し、認証拒否、実推論・ストリーミング成功を分けて記録する。
 
 ## 実施順とまとめ方
 
