@@ -14,6 +14,11 @@ param apiKeyCatalogProducts array = []
 param apiKeyVerificationSubscriptions array = []
 param runtimeIdentity object
 param schemaIdentity object
+@minLength(1)
+@description('Coreが構築した管理VM自身のprincipalId。公開設定ではなく構築stateから取得します。')
+param managementPrincipalId string
+@description('Coreが構築した保守ロールのID。作成フラグや利用者の任意入力は設けません。')
+param managementRoleDefinitionIds object
 param sqlServer string
 param databaseSettings object
 param vaultName string
@@ -132,6 +137,20 @@ module groupReconciliation 'group-reconciliation-job.bicep' = if (deployApplicat
   }
 }
 
+// 初回はSQL初期化Job、更新時はAppと定期Jobも対象にし、予定名へは割り当てません。
+module managementAccess '../../../infra/modules/management-aca-bindings.bicep' = {
+  name: '${stem}-portal-management-access'
+  params: {
+    principalId: managementPrincipalId
+    roleDefinitionIds: managementRoleDefinitionIds
+    applicationNames: deployApplication ? [last(split(application!.outputs.id, '/'))] : []
+    jobNames: deployApplication
+      ? [last(split(schema.outputs.id, '/')), last(split(groupReconciliation!.outputs.id, '/'))]
+      : [last(split(schema.outputs.id, '/'))]
+    environmentNames: [last(split(schema.outputs.environmentId, '/'))]
+  }
+}
+
 // URLと鍵参照は配備時だけ更新。有効化はアプリ疎通確認後のスクリプトが行います。
 module profileConnection 'subscription-profile.bicep' = {
   name: '${stem}-portal-subscription-profile'
@@ -148,6 +167,11 @@ output migrationJob string = schema.outputs.name
 output applicationName string = 'ca-${stem}-portal'
 output databaseId string = database.outputs.databaseId
 output apimResourceId string = apiKeys.outputs.apimResourceId
+output managementMaintenance object = {
+  applicationIds: deployApplication ? [application!.outputs.id] : []
+  jobIds: deployApplication ? [schema.outputs.id, groupReconciliation!.outputs.id] : [schema.outputs.id]
+  environmentIds: [schema.outputs.environmentId]
+}
 output authentication object = {
   sqlServer: sqlServer
   sqlServerId: database.outputs.sqlServerId

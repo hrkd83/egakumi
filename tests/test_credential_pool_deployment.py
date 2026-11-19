@@ -18,6 +18,7 @@ from broker_deployment import wait_for_schema
 from deploy_gateway import foundation_inputs
 from configuration_fixtures import fixture
 from arm_helpers import ArmExpression
+from management_fixtures import maintenance_metadata, client_core_outputs
 
 
 def raw_fixture():
@@ -100,6 +101,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                            + config['resourceGroupNames']['id']
                            + '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/')
                 foundation = {
+                    'managementMaintenance': maintenance_metadata(config['subscriptionId']),
                     'resourceGroup': config['resourceGroupNames']['svc'],
                     'identityResourceGroup': config['resourceGroupNames']['id'],
                     'apimName': apim_name(config),
@@ -114,6 +116,7 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 state['apimInstanceId'] = apim_instance_id(config)
                 host = config['gateway']['publicHostName']
                 state['outputs'] = {'gatewayFoundation': foundation,
+                    **client_core_outputs(config),
                     'ingressSecrets': {'enabled': True, 'l7IngressEnabled': True, 'publicHostName': host}}
                 original = copy.deepcopy(state)
                 inputs = foundation_inputs(config, state)

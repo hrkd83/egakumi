@@ -16,6 +16,7 @@ import deploy_gateway as gateway
 from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
+from management_fixtures import maintenance_metadata, client_core_outputs
 
 
 def fixture():
@@ -24,6 +25,7 @@ def fixture():
     state['apimInstanceId'] = apim_instance_id(config)
     stem, groups = config['resourceStem'], config['resourceGroupNames']
     state['outputs']['gatewayFoundation'] = {
+        'managementMaintenance': maintenance_metadata(config['subscriptionId']),
         'resourceGroup': groups['svc'], 'identityResourceGroup': groups['id'],
         'apimName': apim_name(config), 'vaultName': 'kv-' + stem,
         'schemaIdentity': copy.deepcopy(state['outputs']['credentialBroker']['schemaIdentity']),
@@ -35,10 +37,20 @@ def fixture():
     host = config['gateway']['publicHostName']
     state['outputs'].pop('grpc', None)
     state['outputs'].setdefault('ingressSecrets', {}).update(enabled=True, l7IngressEnabled=True, publicHostName=host)
+    state['outputs'].update(client_core_outputs(config))
     return config, state
 
 
 class GatewayDeploymentTests(unittest.TestCase):
+    def setUp(self):
+        # These tests mock CLI subprocesses and clear the process environment.
+        # Real Windows DACLs are exercised by the dedicated Serial suite;
+        # POSIX runs retain actual private-file mode checks here.
+        if os.name == 'nt':
+            acl = mock.patch('deployment.helpers.private_permissions._windows_owner_acl')
+            acl.start()
+            self.addCleanup(acl.stop)
+
     @contextmanager
     def isolated_cli(self, config, state):
         """実ファイル・Azureに書き込まず、公開入口の順序と失敗時の境界を検査する。"""
@@ -81,7 +93,30 @@ class GatewayDeploymentTests(unittest.TestCase):
         foundation = gateway.foundation_inputs(config, state)
         self.assertEqual(foundation['sqlServer'], 'sql-' + config['resourceStem'] + '.database.windows.net')
         self.assertEqual(foundation['schemaIdentity'], state['outputs']['credentialBroker']['schemaIdentity'])
+        self.assertEqual(foundation['managementMaintenance'], state['outputs']['gatewayFoundation']['managementMaintenance'])
         self.assertEqual(state, original)
+
+    def test_missing_maintenance_output_stops_before_building_or_azure_without_fallback(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        metadata = state['outputs']['gatewayFoundation'].pop('managementMaintenance')
+        state['outputs']['managementMaintenance'] = metadata
+        config['managementMaintenance'] = metadata
+        with self.isolated_cli(config, state) as (arguments, observed):
+            with self.assertRaisesRegex(ValueError, 'Current Core management maintenance output'):
+                gateway.main(arguments)
+            for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release', 'publication_plan'):
+                observed[boundary].assert_not_called()
+
+    def test_old_core_without_client_inventory_stops_before_build_or_azure(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        del state['outputs']['managementClientInventory']
+        with self.isolated_cli(config, state) as (arguments, observed):
+            with self.assertRaisesRegex(ValueError, 'management client inventory is required'):
+                gateway.main(arguments)
+            for boundary in ('source_bundle', 'run_json', 'transport', 'build_image', 'deploy_release'):
+                observed[boundary].assert_not_called()
 
     def test_other_or_missing_apim_instance_stops_before_build_or_deployment(self):
         for value in (None, 'def456'):
@@ -204,6 +239,7 @@ class GatewayDeploymentTests(unittest.TestCase):
                 deploy=deploy, schema_wait=schema, readiness_wait=ready,
                 refresh=lambda *args: events.append('named-values'), publish=publish, callback_waf=callback,
                 data_waf=lambda *args, **kwargs: events.append('data-waf'),
+                client_prepare=lambda *args, **kwargs: None,
                 progress=lambda *args, **kwargs: None)
         return result, events
 

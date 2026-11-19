@@ -54,7 +54,7 @@ def _scope(config):
                     for key in (*GROUPS, 'firewall')}
         if any(ipaddress.ip_network(v).version != 4 for v in prefixes.values()): raise ValueError()
         expected = {key: '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames'][key]
-                    for key in ('nw', 'svc', 'maint')}
+                    for key in ('nw', 'svc', 'maint', 'monitor')}
         apim_name(config)
         return expected, stem, prefixes
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -201,10 +201,19 @@ def _verify_group(config, transport, identity):
         raise FixedNsgError('Network resource group ownership is unverified')
 
 
-def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False):
+def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False, permit_pending_audit_endpoints=False,
+                            _required_bindings=None):
     """Read and verify resource identities, subnet links, PE targets and all NIC IPs."""
-    if type(permit_unassociated_aca) is not bool:
+    if type(permit_unassociated_aca) is not bool or type(permit_pending_audit_endpoints) is not bool:
         raise FixedNsgError('The internal ACA association phase is invalid')
+    allowed_bindings = {('ips', key) for key in ('firewallPublic', 'appGatewayPublic', 'apim', 'aca', 'management')}
+    allowed_bindings.update(('ipSets', key) for key in
+                            ('foundry', 'keyVault', 'registry', 'sql', 'auditStorageJapan', 'auditStorageFoundry'))
+    if (_required_bindings is not None and (not isinstance(_required_bindings, frozenset)
+                                           or not _required_bindings <= allowed_bindings)):
+        raise FixedNsgError('The internal partial-build binding inventory is invalid')
+    def required(kind, key):
+        return _required_bindings is None or (kind, key) in _required_bindings
     groups, stem, prefixes = _scope(config)
     for identity in groups.values(): _verify_group(config, transport, identity)
     nw = groups['nw'] + '/providers/Microsoft.Network/'
@@ -231,6 +240,8 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False)
         if not isinstance(p, dict): raise FixedNsgError('The owned subnet properties are unavailable')
         address_prefixes = p.get('addressPrefixes') or ([p['addressPrefix']] if p.get('addressPrefix') else [])
         if address_prefixes != [prefixes[key]]: raise FixedNsgError('The owned subnet CIDR differs')
+        if key == 'pep' and p.get('privateEndpointNetworkPolicies') != 'NetworkSecurityGroupEnabled':
+            raise FixedNsgError('The initial Private Endpoint subnet NSG enforcement policy differs')
         associated = _ref(p.get('networkSecurityGroup'))
         if key == 'firewall':
             if associated: raise FixedNsgError('AzureFirewallSubnet must not have a customer NSG')
@@ -249,53 +260,65 @@ def read_fixed_nsg_bindings(config, transport, *, permit_unassociated_aca=False)
         subnet_ids[key] = identity
     ips = {}
     for key, name in (('firewallPublic', 'pip-afw-'), ('appGatewayPublic', 'pip-agw-')):
+        if not required('ips', key): continue
         public = _read(config, transport, nw + 'publicIPAddresses/' + name + stem, 'Microsoft.Network/publicIPAddresses')
         if public['properties'].get('publicIPAllocationMethod') != 'Static': raise FixedNsgError('The owned public IP allocation differs')
         ips[key] = _address(public['properties'].get('ipAddress'))
     service_prefix = groups['svc'] + '/providers/'
-    apim_id = service_prefix + 'Microsoft.ApiManagement/service/' + apim_name(config)
-    apim = _read(config, transport, apim_id, 'Microsoft.ApiManagement/service', api='2024-05-01')
-    p = apim['properties']; addresses = p.get('privateIPAddresses')
-    if (p.get('virtualNetworkType') != 'Internal' or not isinstance(p.get('virtualNetworkConfiguration'), dict)
-            or str(p['virtualNetworkConfiguration'].get('subnetResourceId', '')).casefold() != subnet_ids['apim'].casefold()
-            or not isinstance(addresses, list) or not addresses): raise FixedNsgError('The owned APIM network differs')
-    checked = [_address(v, prefixes['apim']) for v in addresses]
-    if len(set(checked)) != len(checked): raise FixedNsgError('The owned APIM address inventory is ambiguous')
-    ips['apim'] = checked[0]
-    environment = _read(config, transport, service_prefix + 'Microsoft.App/managedEnvironments/cae-' + stem,
-                        'Microsoft.App/managedEnvironments')
-    configuration = environment['properties'].get('vnetConfiguration')
-    if (not isinstance(configuration, dict) or configuration.get('internal') is not True
-            or str(configuration.get('infrastructureSubnetId', '')).casefold() != subnet_ids['aca'].casefold()):
-        raise FixedNsgError('The owned ACA environment subnet differs')
-    ips['aca'] = _address(environment['properties'].get('staticIp'), prefixes['aca'])
-    vm_id = groups['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + stem + '-mgmt'
-    vm = _read(config, transport, vm_id, 'Microsoft.Compute/virtualMachines', api='2024-07-01')
-    nic_id = groups['maint'] + '/providers/Microsoft.Network/networkInterfaces/nic-' + stem + '-mgmt'
-    nics = vm['properties'].get('networkProfile', {}).get('networkInterfaces')
-    if not isinstance(nics, list) or len(nics) != 1 or _ref(nics[0]) != nic_id.casefold():
-        raise FixedNsgError('The owned management VM NIC differs')
-    nic = _read(config, transport, nic_id, 'Microsoft.Network/networkInterfaces')
-    configurations = nic['properties'].get('ipConfigurations')
-    if (not isinstance(configurations, list) or len(configurations) != 1
-            or _ref(nic['properties'].get('virtualMachine')) != vm_id.casefold()):
-        raise FixedNsgError('The owned management NIC configuration differs')
-    primary = configurations[0].get('properties', {})
-    if _ref(primary.get('subnet')) != subnet_ids['management'].casefold() or primary.get('publicIPAddress'):
-        raise FixedNsgError('The owned management NIC subnet or public exposure differs')
-    ips['management'] = _address(primary.get('privateIPAddress'), prefixes['management'])
+    if required('ips', 'apim'):
+        apim_id = service_prefix + 'Microsoft.ApiManagement/service/' + apim_name(config)
+        apim = _read(config, transport, apim_id, 'Microsoft.ApiManagement/service', api='2024-05-01')
+        p = apim['properties']; addresses = p.get('privateIPAddresses')
+        if (p.get('virtualNetworkType') != 'Internal' or not isinstance(p.get('virtualNetworkConfiguration'), dict)
+                or str(p['virtualNetworkConfiguration'].get('subnetResourceId', '')).casefold() != subnet_ids['apim'].casefold()
+                or not isinstance(addresses, list) or not addresses): raise FixedNsgError('The owned APIM network differs')
+        checked = [_address(v, prefixes['apim']) for v in addresses]
+        if len(set(checked)) != len(checked): raise FixedNsgError('The owned APIM address inventory is ambiguous')
+        ips['apim'] = checked[0]
+    if required('ips', 'aca'):
+        environment = _read(config, transport, service_prefix + 'Microsoft.App/managedEnvironments/cae-' + stem,
+                            'Microsoft.App/managedEnvironments')
+        configuration = environment['properties'].get('vnetConfiguration')
+        if (not isinstance(configuration, dict) or configuration.get('internal') is not True
+                or str(configuration.get('infrastructureSubnetId', '')).casefold() != subnet_ids['aca'].casefold()):
+            raise FixedNsgError('The owned ACA environment subnet differs')
+        ips['aca'] = _address(environment['properties'].get('staticIp'), prefixes['aca'])
+    if required('ips', 'management'):
+        vm_id = groups['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + stem + '-mgmt'
+        vm = _read(config, transport, vm_id, 'Microsoft.Compute/virtualMachines', api='2024-07-01')
+        nic_id = groups['maint'] + '/providers/Microsoft.Network/networkInterfaces/nic-' + stem + '-mgmt'
+        nics = vm['properties'].get('networkProfile', {}).get('networkInterfaces')
+        if not isinstance(nics, list) or len(nics) != 1 or _ref(nics[0]) != nic_id.casefold():
+            raise FixedNsgError('The owned management VM NIC differs')
+        nic = _read(config, transport, nic_id, 'Microsoft.Network/networkInterfaces')
+        configurations = nic['properties'].get('ipConfigurations')
+        if (not isinstance(configurations, list) or len(configurations) != 1
+                or _ref(nic['properties'].get('virtualMachine')) != vm_id.casefold()):
+            raise FixedNsgError('The owned management NIC configuration differs')
+        primary = configurations[0].get('properties', {})
+        if _ref(primary.get('subnet')) != subnet_ids['management'].casefold() or primary.get('publicIPAddress'):
+            raise FixedNsgError('The owned management NIC subnet or public exposure differs')
+        ips['management'] = _address(primary.get('privateIPAddress'), prefixes['management'])
     targets = {
         'foundry': ('foundry', service_prefix+'Microsoft.CognitiveServices/accounts/aif-'+stem, ['account'], 'Microsoft.CognitiveServices/accounts', '2025-06-01'),
         'keyVault': ('kv', service_prefix+'Microsoft.KeyVault/vaults/kv-'+stem, ['vault'], 'Microsoft.KeyVault/vaults', '2024-11-01'),
         'registry': ('acr', service_prefix+'Microsoft.ContainerRegistry/registries/acr'+stem.replace('-', ''), ['registry'], 'Microsoft.ContainerRegistry/registries', '2023-07-01'),
         'sql': ('sql', service_prefix+'Microsoft.Sql/servers/sql-'+stem, ['sqlServer'], 'Microsoft.Sql/servers', '2023-08-01'),
+        'auditStorageJapan': ('audit-japan-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'jp', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
+        'auditStorageFoundry': ('audit-foundry-blob', groups['monitor']+'/providers/Microsoft.Storage/storageAccounts/st'+stem.replace('-', '')+'us', ['blob'], 'Microsoft.Storage/storageAccounts', '2023-05-01'),
     }
     sets = {}; seen_ips = set()
     for key, (suffix, target_id, group_ids, kind, api) in targets.items():
-        _read(config, transport, target_id, kind, api=api, state=False,
-              location=config.get('foundryLocation') if key == 'foundry' else None)
+        if not required('ipSets', key): continue
         pe_id = nw + 'privateEndpoints/pe-' + stem + '-' + suffix
-        pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints')
+        pe = _read(config, transport, pe_id, 'Microsoft.Network/privateEndpoints',
+                   required=not (_required_bindings is None and permit_pending_audit_endpoints and key.startswith('auditStorage')))
+        if pe is None:
+            # Core preparation precedes creation of the two audit endpoints.
+            # No missing binding is supplied to a rule or completion check.
+            continue
+        _read(config, transport, target_id, kind, api=api, state=False,
+              location=config.get('foundryLocation') if key in ('foundry', 'auditStorageFoundry') else None)
         p = pe['properties']; connections = p.get('privateLinkServiceConnections')
         if (p.get('manualPrivateLinkServiceConnections', []) not in ([], None)
                 or _ref(p.get('subnet')) != subnet_ids['pep'].casefold()
@@ -450,7 +473,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
     expected = {groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[key]
                 + '/securityRules/' + name: _definition(rule, bindings)
                 for key in GROUPS for name, rule in catalog['groups'][key]['rules'].items()}
-    if len(expected) != 72: raise FixedNsgError('The NSG-only manifest must contain exactly 72 children')
+    if len(expected) != 76: raise FixedNsgError('The NSG-only manifest must contain exactly 76 children')
     expected = {identity.casefold(): value for identity, value in expected.items()}
     aca = (groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca').casefold()
     observed = set()
@@ -496,8 +519,8 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
                     raise FixedNsgError('The predicted ACA parent children differ from the fixed set')
         elif action not in ('Ignore', 'NoChange'):
             raise FixedNsgError('NSG-only what-if would write an unrelated resource or an existing parent')
-    if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all 72 fixed children')
-    return {'fixedChildrenVerified': 72, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
+    if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all fixed children')
+    return {'fixedChildrenVerified': 76, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
 
 
 def _subnet_reference(value):
@@ -557,7 +580,7 @@ def _writable_aca_subnet(body, identity):
 
 def associate_fixed_aca_nsg(config, transport, *, bindings, execute=False, record=None,
                             max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """After all 72 children exist, change only the owned ACA subnet NSG link."""
+    """After all fixed children exist, change only the owned ACA subnet NSG link."""
     if (execute and not callable(record)) or (record is not None and not callable(record)):
         raise FixedNsgError('ACA NSG association requires a protected per-attempt journal')
     _limits(max_checks, wait_seconds)
@@ -683,14 +706,37 @@ def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, ma
                 static_only = False; break
     if static_only:
         return {'status': 'fixed-static-build', 'plannedMoves': 0, 'azureWrites': 0}
-    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True)
+    # Initial construction can also stop after dynamic children, before the
+    # later ACA/SQL/ACR stages exist. Validate every existing child's actual
+    # dependencies; completion and legacy migration still require the full set.
+    required_bindings = set(); fixed_names_only = True
+    for key, parent in parents.items():
+        for name in _inventory(parent):
+            rule = fixed['groups'][key]['rules'].get(name)
+            if rule is None:
+                fixed_names_only = False; break
+            for token in rule['source'] + rule['destination']:
+                kind, value = token.split(':', 1)
+                if kind in ('ip', 'address'): required_bindings.add(('ips', value))
+                elif kind in ('ips', 'addresses'): required_bindings.add(('ipSets', value))
+    required_bindings = frozenset(required_bindings) if fixed_names_only else None
+    bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
+                                      permit_pending_audit_endpoints=True, _required_bindings=required_bindings)
+    if required_bindings is not None and any(
+            _properties(child) != _definition(fixed['groups'][key]['rules'][name], bindings)
+            for key, parent in parents.items() for name, child in _inventory(parent).items()):
+        # A matching name alone never bypasses the legacy/modified-rule audit.
+        required_bindings = None
+        bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
+                                          permit_pending_audit_endpoints=True)
     plan = _classify(parents, bindings)
     emit = record if callable(record) else (lambda event, value: None)
     emit('plan', {'operation': 'stage', 'parents': parents, 'bindings': bindings, 'targets': plan, 'execute': execute})
     writes = _apply(config, transport, parents, plan, deleting=False, record=record, max_checks=max_checks,
                     wait_seconds=wait_seconds, sleep=sleep) if execute else 0
     if execute:
-        current_bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True)
+        current_bindings = read_fixed_nsg_bindings(config, transport, permit_unassociated_aca=True,
+                                                  permit_pending_audit_endpoints=True, _required_bindings=required_bindings)
         if current_bindings != bindings: raise FixedNsgError('Resource addresses changed during NSG migration')
         remaining = _classify(_parents(config, transport), bindings)
         if any(r['properties']['priority'] != r['temporaryPriority'] for r in remaining):
@@ -700,7 +746,7 @@ def prepare_fixed_nsg_rules(config, transport, *, execute=False, record=None, ma
 
 
 def complete_fixed_nsg_rules(config, transport, *, execute=False, record=None, max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """Verify all 72 desired tuples before deleting any exact owned legacy child."""
+    """Verify all fixed desired tuples before deleting any exact owned legacy child."""
     if execute and not callable(record):
         raise FixedNsgError('NSG mutation requires a protected record callback')
     _limits(max_checks, wait_seconds)

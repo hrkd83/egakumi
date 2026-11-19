@@ -9,6 +9,7 @@ var input = loadJsonContent('../${readEnvironmentVariable('EGAKUMI_ARM_PARAMETER
 param configuration = input.parameters.configuration.value
 param phase = input.parameters.?phase.?value ?? 'core'
 param sshPublicKey = input.parameters.?sshPublicKey.?value ?? ''
+param managementAdminPassword = input.parameters.?managementAdminPassword.?value ?? ''
 param dnsPluginArgumentsJson = input.parameters.?dnsPluginArgumentsJson.?value ?? ''
 param credentialProviderSecrets = input.parameters.?credentialProviderSecrets.?value ?? {}
 param l7IngressSecret = input.parameters.?l7IngressSecret.?value ?? ''

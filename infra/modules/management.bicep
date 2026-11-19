@@ -46,6 +46,9 @@ param adminUsername string
 @minLength(1)
 @description('管理 VM の SSH 公開鍵。秘密鍵は渡さず、手元で安全に保持します。')
 param sshPublicKey string
+@secure()
+@description('初期VMのローカル管理認証用に正式CLIが生成する秘密値。既存VMには空文字を渡し、SSHパスワード認証は有効にしません。')
+param adminPassword string = ''
 @description('VM ログインの組み込み Azure ロールを付与する対象。一般ログインか管理者ログインかを指定します。')
 param loginAssignments array = []
 @description('Azure DNS更新用の事前作成済みユーザー割り当てMIの完全なリソースID。権限はDNS側で事前付与します。')
@@ -101,6 +104,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     osProfile: {
       computerName: computerName
       adminUsername: adminUsername
+      ...(!empty(adminPassword) ? { adminPassword: adminPassword } : {})
       allowExtensionOperations: true
       linuxConfiguration: {
         disablePasswordAuthentication: true

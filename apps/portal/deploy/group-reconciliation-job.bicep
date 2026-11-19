@@ -53,3 +53,4 @@ resource reconciliation 'Microsoft.App/jobs@2025-01-01' = {
 }
 
 output name string = reconciliation.name
+output id string = reconciliation.id

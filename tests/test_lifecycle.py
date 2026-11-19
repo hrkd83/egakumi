@@ -115,6 +115,24 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertTrue(all(call.args[0].resolve().is_relative_to(self.root.resolve())
                             for call in lifecycle.protected_json.call_args_list))
 
+    def test_preprovision_hands_its_confirmed_initial_serial_password_to_native_azd(self):
+        transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
+        with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
+             mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
+             mock.patch.object(lifecycle, "capacity_preflight"), mock.patch.object(lifecycle, "lock_and_verify_policies"), \
+             mock.patch.object(lifecycle, "load_secret_inputs", return_value={}), \
+             mock.patch.object(lifecycle, "deploy_phase", return_value=self.outputs()), \
+             mock.patch.object(lifecycle, "configure_app_insights_cap"), \
+             mock.patch.object(lifecycle, "_prepare_management_serial_password", return_value="PRIVATE_SERIAL_FIXTURE") as prepare, \
+             mock.patch.object(lifecycle, "_confirm_management_serial_target") as confirm, \
+             contextlib.redirect_stdout(io.StringIO()):
+            lifecycle.preprovision(self.config)
+        prepare.assert_called_once_with(self.config, transport)
+        confirm.assert_called_once_with(self.config, transport, "PRIVATE_SERIAL_FIXTURE")
+        values = json.loads(self.paths.parameters.read_text())["parameters"]
+        self.assertEqual(values["managementAdminPassword"]["value"], "PRIVATE_SERIAL_FIXTURE")
+        self.assertNotIn("PRIVATE_SERIAL_FIXTURE", json.dumps(values["configuration"]))
+
     def test_api_center_recovery_runs_after_monitoring_and_before_core_inputs(self):
         """5RGを作る監視段階の出力を使い、復元成功後だけ本体入力を用意する。"""
         events = []
@@ -560,6 +578,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'load_configuration', return_value=self.config), \
                  mock.patch.object(lifecycle, 'local_preflight'), mock.patch.object(lifecycle, 'azure_preflight'), \
                  mock.patch.object(lifecycle, 'register_providers'), mock.patch.object(lifecycle, 'ArmTransport'), \
+                 mock.patch.object(lifecycle, '_prepare_management_serial_password', side_effect=lambda *a:
+                     events.append('serial-preparation') or ('' if existing else 'PRIVATE_SERIAL_FIXTURE')), \
+                 mock.patch.object(lifecycle, '_confirm_management_serial_target', side_effect=lambda *a:
+                     events.append('serial-confirmation')), \
                  mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
                  mock.patch.object(lifecycle, 'run', side_effect=environment), \
                  mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=names), \
@@ -567,7 +589,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'discover_existing_apim_hostnames', side_effect=hostnames), \
                  mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=existing):
                 self.assertEqual(lifecycle.main(['preup', '--config', str(self.paths.params)]), 0)
-            self.assertEqual(events, ['portal-gate', 'environment', 'environment', 'environment', 'input-registration'])
+            self.assertEqual(events, ['portal-gate', 'environment', 'environment', 'environment',
+                                     'serial-preparation', 'serial-confirmation', 'input-registration'])
             parameters = json.loads(self.paths.parameters.read_text())['parameters']
             self.assertEqual(parameters['existingNetworkSecurityGroupNames']['value'], names)
             self.assertEqual(parameters['existingPortalApp']['value'], existing)
@@ -575,6 +598,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 'apim-' + self.config['resourceStem'] + '-abc123': {
                     'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}} if existing else {})
             self.assertTrue(parameters['l7IngressSecret']['value'])
+            self.assertEqual(parameters['managementAdminPassword']['value'], '' if existing else 'PRIVATE_SERIAL_FIXTURE')
             self.assertNotIn('grpc', parameters['configuration']['value']['gateway'])
 
     def test_native_core_failed_completion_keeps_outputs_and_cleans_secret_input(self):

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_portal as portal
 from deployment.helpers.paths import local_paths
+from management_fixtures import maintenance_metadata, client_core_outputs
 
 
 def fixture():
@@ -22,7 +23,8 @@ def fixture():
         'azureTenantId': '22222222-2222-4222-8222-222222222222',
         'resourceStem': 'test-sample', 'location': 'japaneast',
         'services': {'apimInstanceId': 'abc123'},
-        'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw'},
+        'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw',
+                               'maint': 'rg-test-sample-maint', 'monitor': 'rg-test-sample-monitor'},
         'network': {'subnetPrefixes': {'aca': '10.20.0.0/26'}},
         'tags': {}, 'productName': 'sample', 'environmentName': 'test',
         'portalAuthentication': {'credentialProviderName': 'graph-delegated'},
@@ -36,8 +38,10 @@ def fixture():
     state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
     state['apimInstanceId'] = 'abc123'
     state['outputs'] = {
+        **client_core_outputs(config),
         'names': {'apim': 'apim-test-sample-abc123'},
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
+            'managementMaintenance': maintenance_metadata(config['subscriptionId']),
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
             'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
@@ -48,6 +52,14 @@ def fixture():
 
 
 class PortalDeploymentTests(unittest.TestCase):
+    def setUp(self):
+        # Native ACL behavior is checked by the dedicated Serial integration
+        # suite. This offline CLI fixture clears environment/subprocess state.
+        if os.name == 'nt':
+            acl = mock.patch('deployment.helpers.private_permissions._windows_owner_acl')
+            acl.start()
+            self.addCleanup(acl.stop)
+
     def test_cli_refuses_public_or_other_environment_inputs_before_building(self):
         """同名ファイルを探したり、別環境の入力からbuildを始めたりしない。"""
         config, state = fixture()
@@ -92,7 +104,26 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(values['apimName'], 'apim-test-sample-abc123')
+        maintenance = state['outputs']['portal']['managementMaintenance']
+        self.assertEqual(values['managementPrincipalId'], maintenance['principalId'])
+        self.assertEqual(values['managementRoleDefinitionIds'], maintenance['roleDefinitionIds'])
         self.assertEqual(state, original)
+
+    def test_missing_maintenance_output_is_not_filled_from_other_state_or_public_params(self):
+        config, state = fixture()
+        existing = state['outputs']['portal'].pop('managementMaintenance')
+        state['outputs']['managementMaintenance'] = existing
+        config['managementMaintenance'] = existing
+        original = copy.deepcopy(state)
+        with self.assertRaisesRegex(ValueError, 'Current Core management maintenance output'):
+            portal.deployment_inputs(config, state)
+        self.assertEqual(state, original)
+
+    def test_old_core_without_client_inventory_cannot_start_app_preparation(self):
+        config, state = fixture()
+        del state['outputs']['managementClientInventory']
+        with self.assertRaisesRegex(ValueError, 'management client inventory is required'):
+            portal.deployment_inputs(config, state)
 
     def test_other_or_missing_apim_instance_and_old_name_cannot_target_portal(self):
         for change in ('missing-id', 'other-id', 'old-name', 'other-name'):
@@ -214,9 +245,9 @@ class PortalDeploymentTests(unittest.TestCase):
             if schema_failure or public_failure or readiness_failure:
                 error = 'schema failed' if schema_failure else 'public failed' if public_failure else 'readiness failed'
                 with self.assertRaisesRegex(ValueError, error):
-                    portal.deploy_release(config, values, {}, transport)
+                    portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
             else:
-                portal.deploy_release(config, values, {}, transport)
+                portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
         transport.request.assert_called_once_with('POST', portal.group_scope(config)
             + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-psql/start?api-version=' + portal.APP_API, None)
         return phases
