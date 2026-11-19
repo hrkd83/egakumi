@@ -876,7 +876,9 @@
       "paths": [
         "apps/portal/deploy/build-image.sh",
         "guest/build-credential-broker.sh",
+        "apps/gateway/deploy/build-image.sh",
         "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py"
@@ -2469,7 +2471,9 @@
       "paths": [
         "apps/portal/deploy/build-image.sh",
         "guest/build-credential-broker.sh",
+        "apps/gateway/deploy/build-image.sh",
         "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
@@ -2491,7 +2495,8 @@
       "value": "2.5.29.17",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "guest/certificate.ps1"
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1"
       ]
     },
     {
@@ -2499,7 +2504,8 @@
       "value": "2.5.29.37",
       "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
       "paths": [
-        "guest/certificate.ps1"
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1"
       ]
     },
     {

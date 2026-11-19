@@ -40,7 +40,7 @@ resource configureCertificate 'Microsoft.Compute/virtualMachines/runCommands@202
     // consumes/removes those values without echoing them or using argv.
     source: {
       // shebangの末尾へCRが残るとLinuxで実行できないため、読込元の改行を正規化します。
-      script: replace(replace(loadTextContent('../../guest/certificate-bootstrap.sh'), '\r\n', '\n'), '__CERTIFICATE_WORKER_BASE64__', base64(replace(loadTextContent('../../guest/certificate.ps1'), '\r\n', '\n')))
+      script: replace(replace(loadTextContent('../guest/certificate-bootstrap.sh'), '\r\n', '\n'), '__CERTIFICATE_WORKER_BASE64__', base64(replace(loadTextContent('../guest/certificate.ps1'), '\r\n', '\n')))
     }
     parameters: [
       { name: 'Action', value: 'Install' }

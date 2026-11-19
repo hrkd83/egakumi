@@ -3,7 +3,7 @@ param([scriptblock]$Transform)
 $certificateTokens=$null
 $certificateParseErrors=$null
 $certificateAst=[Management.Automation.Language.Parser]::ParseFile(
-    (Join-Path $PSScriptRoot '../guest/certificate.ps1'),
+    (Join-Path $PSScriptRoot '../infra/guest/certificate.ps1'),
     [ref]$certificateTokens,[ref]$certificateParseErrors)
 if ($certificateParseErrors.Count) {throw 'Certificate worker parse errors'}
 foreach ($certificateFunction in $certificateAst.FindAll({

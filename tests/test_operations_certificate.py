@@ -429,11 +429,11 @@ else: raise AssertionError('Unexpected fixture command')
 '''
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / 'guest').mkdir(); (root / 'state').mkdir(); (root / 'bin').mkdir()
+            (root / 'infra/guest').mkdir(parents=True); (root / 'state').mkdir(); (root / 'bin').mkdir()
             for leaf in ('cache', 'config', 'data'):
                 (root / 'state' / leaf).mkdir()
             worker = '# synthetic certificate worker\n'
-            (root / 'guest/certificate.ps1').write_text(worker)
+            (root / 'infra/guest/certificate.ps1').write_text(worker)
             (root / 'state/certificate.ps1').write_text(worker)
             (root / 'state/config.json').write_text('{}')
             for command in ('systemctl', 'systemd-run', 'pwsh'):

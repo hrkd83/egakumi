@@ -66,11 +66,11 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(source.read_bytes())
             (root / "infra/nsg-rule-priorities.json").write_bytes((CORE / "infra/nsg-rule-priorities.json").read_bytes())
-            (root / "guest").mkdir()
+            (root / "infra/guest").mkdir()
             for newline in (b"\n", b"\r\n"):
                 for name in ("configure-audit.sh", "certificate-bootstrap.sh", "certificate.ps1"):
-                    content = (CORE / "guest" / name).read_bytes().replace(b"\r\n", b"\n")
-                    (root / "guest" / name).write_bytes(content.replace(b"\n", newline))
+                    content = (CORE / "infra/guest" / name).read_bytes().replace(b"\r\n", b"\n")
+                    (root / "infra/guest" / name).write_bytes(content.replace(b"\n", newline))
                 for name in ("management-audit", "certificate", "portal-network"):
                     output = root / (name + ".json")
                     result = subprocess.run(
@@ -110,7 +110,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                             self.assertEqual(result.returncode, 0, result.stderr)
                             self.assertEqual(result.stdout, "ready\n")
                     if name == "certificate":
-                        worker = (CORE / "guest/certificate.ps1").read_bytes().replace(b"\r\n", b"\n")
+                        worker = (CORE / "infra/guest/certificate.ps1").read_bytes().replace(b"\r\n", b"\n")
                         self.assertIn(base64.b64encode(worker).decode(), script)
 
     def test_portal_firewall_uses_hosts_without_url_separators_in_each_cloud(self):

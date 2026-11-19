@@ -19,7 +19,7 @@ class LinuxTimeConfigurationTests(unittest.TestCase):
     """時刻設定の関数だけを一時フォルダーで実行し、ホストのサービスには触れない。"""
     @classmethod
     def setUpClass(cls):
-        source = (CORE / "guest/configure-audit.sh").read_text()
+        source = (CORE / "infra/guest/configure-audit.sh").read_text()
         cls.helpers = source.split("# BEGIN TIME CONFIG HELPERS\n", 1)[1].split("# END TIME CONFIG HELPERS", 1)[0]
 
     def run_helper(self, expression, *arguments):

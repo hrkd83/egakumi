@@ -648,7 +648,7 @@ if ($script:Reads -ne $beforeReads -or $script:Writes -ne $beforeWrites) {throw 
             fixture = Path(directory) / "guest-fixture.ps1"
             fixture.write_text(script, encoding="utf-8")
             result = subprocess.run([runtime, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(fixture),
-                                     "-Source", str(core / "guest/certificate.ps1")],
+                                     "-Source", str(core / "infra/guest/certificate.ps1")],
                                     capture_output=True, text=True, timeout=30, check=False,
                                     env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -87,7 +87,7 @@ except Exception:
 def remote_script(vault, name, *, renew=False, thumbprint=None):
     directory = '/var/lib/egakumi-certificates/' + vault + '-' + name
     unit = 'egakumi-certificate-' + vault + '-' + name
-    expected = hashlib.sha256((ROOT / 'guest/certificate.ps1').read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+    expected = hashlib.sha256((ROOT / 'infra/guest/certificate.ps1').read_bytes().replace(b'\r\n', b'\n')).hexdigest()
     lines = ['#!/bin/bash', 'set -euo pipefail', 'set +x', 'umask 077',
              f"dir='{directory}'", f"unit='{unit}'",
              '[ ! -L "$dir" ] && [ ! -L "$dir/certificate.ps1" ] && [ ! -L "$dir/config.json" ]',

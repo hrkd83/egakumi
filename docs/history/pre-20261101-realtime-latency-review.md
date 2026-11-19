@@ -29,7 +29,7 @@
 
 | 差分 | 確認した実装 | 今回の評価への影響 |
 | --- | --- | --- |
-| Azure DNSの認証を事前作成したユーザー割り当てMIへ変更 | [証明書worker](../../guest/certificate.ps1#L425)がIMDSの`mi_res_id`でDNS用IDを選び、ARM tokenを実行時に取得する | 証明書の初回取得・更新の認証が変わる。通話中の音声フレームを処理する変更ではない |
+| Azure DNSの認証を事前作成したユーザー割り当てMIへ変更 | [証明書worker](../../infra/guest/certificate.ps1#L425)がIMDSの`mi_res_id`でDNS用IDを選び、ARM tokenを実行時に取得する | 証明書の初回取得・更新の認証が変わる。通話中の音声フレームを処理する変更ではない |
 | 管理VMへDNS用MIを追加 | [管理VM](../../infra/modules/management.bicep#L87)は従来のシステム割り当てMIも維持。[親Bicep](../../infra/main.bicep#L273)がAzure DNS選択時だけ既存IDを渡す | 管理VMの変更であり、APIMのMIやWebRTCのメディア終端は変わらない |
 | Azure DNSの準備入力と送信先を変更 | `certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`を入力し、旧SP資格情報は使わない。管理VMのAzure DNS用自動追加FQDNは`management.azure.com`になる | 旧Azure DNS入力のまま再構築する場合は新しいID参照と権限が必要。これは証明書のDNS-01用で、VNetの名前解決先を変更するものではない |
 | 音声・ネットワークの受入 | [動作テスト仕様書](../testing/integration-tests.md) に従い、採用構成の音声と経路を確認する | WebRTCの制御とmediaを分けて測定する |
