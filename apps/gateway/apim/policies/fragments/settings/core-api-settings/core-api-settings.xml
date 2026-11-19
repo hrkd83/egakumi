@@ -1,0 +1,12 @@
+<fragment>
+  <!-- 目的：各APIが渡す設定データから、監査と制御で使う2つの変数を準備します。 -->
+  <!-- 処理：API定義から生成したBase64を設定データへ戻し、監査情報と操作制約を別々の変数へ格納します。ここでは認証や入力の検査を実行しません。 -->
+  <!-- 入力：呼出元APIが、baseより前にgatewayApiSettingsSourceへ設定データを保存します。復元するとAPIの種類・監査JSON・制御JSONの3行になり、要求本文や資格情報は読みません。 -->
+  <set-variable name="gatewayApiSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String((string)context.Variables[&quot;gatewayApiSettingsSource&quot;])))" />
+  <!-- 監査情報：同名C#をこの位置へ展開します。通常HTTPでは、選ばれた操作に専用の接続先があれば、そのサービス分類と認証方式を監査用に選択します。実際の接続先は変更しません。 -->
+  <set-variable name="gatewayAuditSettings" value="@{
+    __CORE_API_SETTINGS_CSHARP__
+  }" />
+  <!-- 制御設定：操作制約とトークン計数対象のJSON文字列をそのまま渡します。制約の適用や、認証後に選んだprofileによる更新は、後続のAPI処理が担当します。 -->
+  <set-variable name="gatewayControlSettings" value="@(((string)context.Variables[&quot;gatewayApiSettings&quot;]).Split('\n')[2])" />
+</fragment>

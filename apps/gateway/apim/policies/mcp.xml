@@ -1,16 +1,20 @@
 <policies>
-  <!--
-    APIM が REST 操作を native MCP として公開する表口の認可です。共通認証を継承し、MCP proxy の転送規則とは分けます。
-    この表口も共通の購読キーまたはBearerで利用範囲を確認し、公開した REST 操作を実行します。
-    REST側の入力検査と下流認証は、対応する操作のポリシーへ引き継ぎます。
-  -->
+  <!-- REST操作から生成するMCP表口用テンプレート。 -->
   <inbound>
-    <set-variable name="gatewayAuditSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUDIT_SETTINGS_BASE64__&quot;)))" />
-    <set-variable name="gatewayControlSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__CONTROL_SETTINGS_BASE64__&quot;)))" />
+    <!-- ========== API設定の準備（core-api-settings） ========== -->
+    <!-- 目的：共通処理へ、MCP表口の監査と元のREST操作の制御設定を渡します。 -->
+    <!-- 処理：API固有データを共通部品で読み、監査・制御の2変数へ格納します。 -->
+    <set-variable name="gatewayApiSettingsSource" value="__API_SETTINGS_BASE64__" />
+    <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
+    <!-- === -->
     <!-- 予約済みの認証メタデータ用パスを、公開toolの操作へ転送しません。 -->
     <choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
-    <!-- MCP表口も検証済み利用者をREST操作へ引き継ぎます。 -->
+    <!-- === -->
+    <!-- ========== 共通ポリシーの適用 ========== -->
+    <!-- 目的：共通の入口確認・認証・監査情報の準備を実行します。 -->
+    <!-- 処理：上位のInboundを実行します。拒否されなければ、このAPIの後続処理へ戻ります。 -->
     <base />
+    <!-- === -->
     <set-header name="X-Core-Caller-Id" exists-action="delete" />
     <set-header name="X-Core-Subscription-Id" exists-action="delete" />
     <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>

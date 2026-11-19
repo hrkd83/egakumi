@@ -1,4 +1,5 @@
 """合成ARMでopen Product切替のreadback/競合/閉鎖/回復を検証する。実接続はしない。"""
+import base64
 import copy
 from pathlib import Path
 import sys
@@ -7,6 +8,7 @@ import unittest
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / "scripts"),
                str(Path(__file__).resolve().parents[1] / "apps/gateway/deploy")]
 import entra_publication as publication
+from deployment.helpers.apim_api_settings import render_api_settings_fragment
 
 APIM = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-fixture/providers/Microsoft.ApiManagement/service/fixture"
 GLOBAL = APIM + "/policies/policy"
@@ -73,6 +75,8 @@ class SyntheticTransport:
 def fixture():
     api_names = ["model-a", "model-b"]
     policies = {GLOBAL: xml("old"), APIM + "/policyFragments/model-audit": '<fragment><set-variable name="audit" value="ok" /></fragment>'}
+    policies[APIM + "/policyFragments/core-api-settings"] = render_api_settings_fragment()
+    api_settings = base64.b64encode(b"http\n{}\n{}").decode()
     operations, products, api_properties, backends, named = {}, {}, {}, {}, {}
     inventory = {GLOBAL: response(GLOBAL, {"format": "rawxml", "value": policies[GLOBAL]}),
                  NATIVE: response(NATIVE, {"subscriptionRequired": True}),
@@ -89,8 +93,8 @@ def fixture():
         products[api_id] = ("model-users",)
         backends[APIM + "/backends/" + name + "-backend"] = {"protocol": "http", "url": "https://model.example.com/openai/v1", "tls": {"validateCertificateChain": True, "validateCertificateName": True}}
         named[APIM + "/namedValues/" + name + "-audience"] = {"displayName": name + "-audience", "secret": False, "value": "https://cognitiveservices.azure.com"}
-        policies[api_id + "/policies/policy"] = ('<policies><inbound><set-variable name="gatewayAuditSettings" value="source" />'
-            '<base /><include-fragment fragment-id="model-audit" />'
+        policies[api_id + "/policies/policy"] = ('<policies><inbound><set-variable name="gatewayApiSettingsSource" value="' + api_settings + '" />'
+            '<include-fragment id="core-api-settings" fragment-id="core-api-settings" /><base /><include-fragment fragment-id="model-audit" />'
             '<set-backend-service backend-id="' + name + '-backend" /><authentication-managed-identity resource="{{' + name + '-audience}}" />'
             '</inbound><backend><forward-request buffer-response="false" /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>')
         policies[api_id + "/operations/responses/policies/policy"] = publication.OPEN_PRODUCT_POLICY
@@ -223,7 +227,10 @@ class GraphTests(unittest.TestCase):
                 if mutation in ("marker", "base", "preheader"):
                     properties = transport.inventory[api_id + "/policies/policy"]["body"]["properties"]
                     if mutation == "marker":
-                        properties["value"] = properties["value"].replace('value="source"', 'value="changed"')
+                        previous = properties["value"]
+                        properties["value"] = previous.replace('name="gatewayApiSettingsSource"',
+                                                                 'name="changed-settings-source"', 1)
+                        self.assertNotEqual(properties["value"], previous)
                     elif mutation == "base":
                         properties["value"] = properties["value"].replace('<base />', '', 1)
                     else:

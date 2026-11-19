@@ -147,6 +147,16 @@ class EntraRenderingTests(unittest.TestCase):
                 self.assertNotIn("gatewayEntraOperationSupported", policy)
                 self.assertIn("gatewayCommonAuthenticationValidated", policy)
                 self.assertIn("gatewayEntraAuthenticationValidated", policy)
+                inbound = list(ET.fromstring(policy).find("inbound"))
+                source = next(node for node in inbound if node.get("name") == "gatewayApiSettingsSource")
+                call = next(node for node in inbound if node.get("fragment-id") == "core-api-settings")
+                base = next(node for node in inbound if node.tag == "base")
+                self.assertEqual(source.get("value"), "__API_SETTINGS_BASE64__")
+                self.assertEqual(inbound.index(call), inbound.index(source) + 1)
+                self.assertLess(inbound.index(call), inbound.index(base))
+                for node in inbound[:inbound.index(base)]:
+                    self.assertNotIn("context.Request.Headers", ET.tostring(node, encoding="unicode"))
+                    self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
         policy = (POLICIES / "gateway.xml").read_text(encoding="utf-8")
         self.assertLess(policy.index("<base />"), policy.index('<set-header name="Authorization" exists-action="delete"'))
 

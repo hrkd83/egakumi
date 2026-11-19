@@ -263,6 +263,12 @@ class AuditContextTests(unittest.TestCase):
  def test_all_protocols_strip_claims_and_capture_backend_before_base(self):
   for name in ['gateway.xml','protocol.xml','mcp.xml']:
    root=ET.parse(CORE/'apps/gateway/apim/policies'/name).getroot()
+   inbound=list(root.find('inbound'))
+   source=root.find('./inbound/set-variable[@name="gatewayApiSettingsSource"]')
+   settings=root.find('./inbound/include-fragment[@fragment-id="core-api-settings"]')
+   self.assertEqual(source.get('value'),'__API_SETTINGS_BASE64__')
+   self.assertEqual(inbound.index(settings),inbound.index(source)+1)
+   self.assertLess(inbound.index(settings),inbound.index(root.find('./inbound/base')))
    self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-audit-context"]'))
    first=list(root.find('outbound'))[0]
    self.assertEqual(first.attrib.get('fragment-id'),'core-backend-audit')

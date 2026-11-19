@@ -6,6 +6,8 @@ WebSocketの実接続やAzure側のpolicy検証は、別の実機確認で行う
 from arm_helpers import compiled_policy_value
 from bicep_helpers import compile_bicep
 
+import base64
+import json
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -62,10 +64,24 @@ class WebSocketPublicationTests(unittest.TestCase):
                     self.assertIsNone(root.find('.//validate-azure-ad-token'))
                     inbound = root.find("./inbound")
                     self.assertIsNotNone(inbound.find("base"))
-                    self.assertLess(list(inbound).index(inbound.find('set-variable[@name="gatewayAuditSettings"]')),
-                                    list(inbound).index(inbound.find("base")))
-                    self.assertLess(list(inbound).index(inbound.find('set-variable[@name="gatewayControlSettings"]')),
-                                    list(inbound).index(inbound.find("base")))
+                    source = inbound.find('set-variable[@name="gatewayApiSettingsSource"]')
+                    call = inbound.find('include-fragment[@fragment-id="core-api-settings"]')
+                    self.assertIsNotNone(source)
+                    self.assertIsNotNone(call)
+                    self.assertEqual(call.attrib, {"id": "core-api-settings", "fragment-id": "core-api-settings"})
+                    self.assertEqual(list(inbound).index(call), list(inbound).index(source) + 1)
+                    self.assertLess(list(inbound).index(call), list(inbound).index(inbound.find("base")))
+                    lines = base64.b64decode(source.get("value"), validate=True).decode("utf-8").split("\n")
+                    self.assertEqual(len(lines), 3)
+                    self.assertEqual(lines[0], "websocket")
+                    self.assertEqual(json.loads(lines[1])["websocketModel"],
+                                     api.get("websocket", {}).get("queryParameters", {}).get("model", ""))
+                    self.assertEqual(json.loads(lines[2])["operationConstraints"],
+                                     api["authorization"]["operationConstraints"])
+                    updates = root.findall('.//set-variable[@name="gatewayAuditSettings"]')
+                    self.assertEqual(len(updates), 1)
+                    self.assertIn('context.Variables["gatewayAuditSettings"]', updates[0].get("value"))
+                    self.assertIsNone(inbound.find('set-variable[@name="gatewayControlSettings"]'))
                     self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
                     self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayProtocolQueryAllowed"]'))
                     for key, expected in api.get("websocket", {}).get("queryParameters", {}).items():
@@ -101,7 +117,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         unsupported = {"mock-response", "cache-lookup", "cache-store", "cross-domain", "cors", "jsonp",
                        "set-method", "set-body", "xml-to-json", "json-to-xml", "xsl-transform",
                        "validate-content", "validate-parameters", "validate-headers", "validate-status-code"}
-        for filename in ("protocol.xml", "service.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
+        for filename in ("protocol.xml", "service.xml", "core-api-settings.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
             root = ET.parse(SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)).getroot()
             with self.subTest(filename=filename):
                 self.assertFalse({node.tag for node in root.iter()} & unsupported)
@@ -114,7 +130,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         self.assertIsNotNone(protocol.find('./inbound/set-variable[@name="gatewayDecision"]'))
         self.assertIsNotNone(protocol.find('./inbound/set-variable[@name="gatewayProtocolQueryAllowed"]'))
         fragments = {node.get("fragment-id") for node in protocol.iter("include-fragment")}
-        self.assertEqual(fragments, {"core-gateway-telemetry", "core-rate-limit", "core-audit-context", "core-backend-audit"})
+        self.assertEqual(fragments, {"core-api-settings", "core-gateway-telemetry", "core-rate-limit", "core-audit-context", "core-backend-audit"})
         observer = ET.parse(POLICIES / "realtime-observer.xml")
         self.assertIsNotNone(observer.find('./set-variable[@name="realtimeObserverOwnerValid"]'))
         self.assertEqual(observer.find('./choose/when/return-response/set-status').get("code"), "403")

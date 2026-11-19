@@ -127,7 +127,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertFalse(any(api["name"].startswith("sample-") for api in self.parameters["apiDefinitions"]))
         expanded = expand(self.template, copy.deepcopy(self.parameters))
         size = len(json.dumps(expanded, ensure_ascii=False, separators=(",", ":")).encode())
-        # 4MiB境界を狙わず、メタデータ等の余裕を残して350万bytes未満にする。
+        # 公式4MB境界を狙わず、メタデータ等の余裕を残して350万bytes未満にする。
         self.assertLess(size, 3_500_000, "Expanded publication bytes: " + str(size))
         self.assertEqual(sum(resource["type"] == "Microsoft.ApiManagement/service/apis" for resource in expanded["resources"]), len(self.parameters["apiDefinitions"]) + sum("mcp" in api for api in self.parameters["apiDefinitions"]))
 

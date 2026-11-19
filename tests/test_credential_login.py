@@ -113,6 +113,13 @@ class CredentialPolicyTests(unittest.TestCase):
   self.assertIn('context.Operation.Id == "identity-callback"',value)
   for name in ("start","status","logout"):
    self.assertNotIn('context.Operation.Id == "'+name+'"',value)
+  # ブラウザー取引と管理操作は、モデルAPI用の設定入力を追加せず共通認証を継承します。
+  for name in {**credential_login.OPERATIONS,**credential_login.BROWSER_OPERATIONS}:
+   root=self.roots[name]
+   with self.subTest(operation=name):
+    self.assertIsNotNone(root.find('inbound/base'))
+    self.assertIsNone(root.find('.//set-variable[@name="gatewayApiSettingsSource"]'))
+    self.assertIsNone(root.find('.//include-fragment[@fragment-id="core-api-settings"]'))
 
  def test_result_pages_are_static_and_explain_closing_the_window(self):
   for response in self.roots["callback"].findall(".//return-response"):

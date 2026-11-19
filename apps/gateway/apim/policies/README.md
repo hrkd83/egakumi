@@ -9,6 +9,11 @@
 policies/
 ├── service.xml
 ├── fragments/
+│   ├── settings/
+│   │   └── core-api-settings/
+│   │       ├── core-api-settings.xml
+│   │       ├── core-api-settings.cs
+│   │       └── README.md
 │   ├── audit/
 │   │   ├── core-request-context/
 │   │   │   ├── core-request-context.xml
@@ -58,6 +63,19 @@ policies/
 同じフラグメント名でも、表示する段階が異なるため、ファイルの見た目がそのまま一致するとは限らない。
 入口確認の具体的な差し込み内容は [core-trusted-ingressの説明](fragments/ingress/core-trusted-ingress/README.md) を参照する。
 接続ログインの開始・戻り先の受付で共通認証を省略する理由は [core-credential-browser-exceptionの説明](fragments/authentication/core-credential-browser-exception/README.md) を参照する。
+
+## 各APIの設定準備
+
+通常HTTP・WebSocketの接続開始・MCPでは、API固有の設定データを`gatewayApiSettingsSource`へ保存し、`<base />`より前で`core-api-settings`を呼ぶ。
+この部品が`gatewayAuditSettings`と`gatewayControlSettings`を準備してから、共通Inboundへ進む。
+設定値の正本はAPI定義に残し、監査と制御の用途も分けたままにする。CMの管理・ブラウザー受付へAIモデル用設定を追加しない。
+入力・出力とHTTPの操作別選択は [設定部品の説明](fragments/settings/core-api-settings/README.md) を参照する。
+
+各APIの`<base />`は「共通ポリシーの適用」という独立した見出し・目的・処理のブロックで示す。
+上位のInboundをその位置で実行し、拒否されなければ後続のAPI固有処理へ戻る。WebSocketでは`onHandshake`の操作ポリシーから上位を継承する。
+HTTPの操作制約・下流接続、WebSocketのモデル・固定query、生成MCPからREST操作への入力検査・下流認証の引継ぎは、それぞれ後続の処理で確認する。
+`__...__`はBicepから埋め込むAPI契約、`{{...}}`は名前付きの値への参照を示す。監査では本文・資格情報を記録せず、SSEは読み切らず中継する。
+テンプレートの冒頭は種類の短い説明だけにし、各ブロックと重複する全体説明をAPIごとに繰り返して埋め込まない。
 
 ## STEP4の認証部品
 

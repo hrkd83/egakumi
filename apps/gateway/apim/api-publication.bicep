@@ -116,6 +116,10 @@ func controlSettings(api object, operation string, generatedMcp bool) object => 
   operationConstraints: api.authorization.operationConstraints
   tokenLimitOperationIds: generatedMcp ? [] : tokenLimitOperations(api)
 }
+// API種別・監査JSON・制御JSONの3行を一つの入力にまとめ、共通部品が用途別に展開します。
+// JSONをさらにJSON文字列へ包まず、既存の1行JSONをそのまま渡して二重エスケープを避けます。
+// 生成MCPは対応するREST APIと区別し、REST操作の接続先を外側の監査へ流用しません。
+func apiSettings(api object, operation string, generatedMcp bool) string => format('{0}\n{1}\n{2}', generatedMcp ? 'mcp' : api.apiType, string(auditSettings(api, operation, generatedMcp)), string(controlSettings(api, operation, generatedMcp)))
 // 公開設定を書き込む既存 APIM を参照します。
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = { name: names.apim }
 
@@ -240,12 +244,14 @@ func configuredMcpTemplate(template string, guards object) string => replace(tem
 // template. Both deployment assignments and protected source use these values.
 // 未展開の正本は各1回だけ読み、同じ原文が配備と生成元で二重に読み込まれるのを防ぎます。
 var auditObservationSource = loadTextContent('policies/expressions/legacy/audit-subject-observation.cs')
+var apiSettingsSource = loadTextContent('policies/fragments/settings/core-api-settings/core-api-settings.cs')
 var requestContextSource = loadTextContent('policies/fragments/audit/core-request-context/core-request-context.cs')
 var authenticatedSubjectSource = loadTextContent('policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs')
 var trustedIngressSource = loadTextContent('policies/fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs')
 var browserExceptionSource = loadTextContent('policies/fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs')
 var commonAuthenticationSource = loadTextContent('policies/fragments/authentication/core-common-authentication/core-common-authentication.cs')
 var gatewayTelemetrySource = loadTextContent('policies/fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs')
+var apiSettingsTemplate = loadTextContent('policies/fragments/settings/core-api-settings/core-api-settings.xml')
 var requestContextTemplate = loadTextContent('policies/fragments/audit/core-request-context/core-request-context.xml')
 var authenticatedSubjectTemplate = loadTextContent('policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.xml')
 var trustedIngressTemplate = loadTextContent('policies/fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml')
@@ -262,6 +268,7 @@ var auditSubjectObservationCompactXml = replace(xmlText(compactObservationSource
 // C#の正本は別ファイルで管理し、ここでXML属性用に変換します。外部通信は追加しません。
 // 配備と生成元は同じ関数を呼び、C#とXMLの全文を中間変数へ重複して保存しません。
 func auditSourceXml(source string) string => replace(xmlText(sourceWithExplanations(source)), '\'', '&apos;')
+func apiSettingsFragmentValue(template string, source string) string => replace(template, '__CORE_API_SETTINGS_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n    '))
 func requestContextFragmentValue(template string, source string) string => replace(template, '__CORE_REQUEST_CONTEXT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
 func authenticatedSubjectFragmentValue(template string, source string) string => replace(template, '__CORE_AUTHENTICATED_SUBJECT_CSHARP__', auditSourceXml(source))
 func trustedIngressConditionValue(template string, source string) string => replace(template, '__CORE_TRUSTED_INGRESS_CSHARP__', replace(trim(auditSourceXml(source)), '\n', '\n        '))
@@ -348,10 +355,9 @@ var policySettings = [for (api, index) in apiDefinitions: {
 }]
 func apiPolicyValue(api object, template string, errorXml string, values object) string =>
   replace(replace(replace(replace(replace(replace(replace(selectBackendPolicy(api,
-    replace(replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers),
+    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers),
       '__RATE_LIMIT_ERROR_XML__', errorXml), '__RATE_LIMIT_CLEANUP_XML__', values.cleanup),
-      '__AUDIT_SETTINGS_BASE64__', base64(string(auditSettings(api, '', false)))),
-      '__CONTROL_SETTINGS_BASE64__', base64(string(controlSettings(api, '', false))))),
+      '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false)))),
     '__PROTOCOL_QUERY_XML__', values.queries), '__WEBSOCKET_QUERY_BASE64__', values.websocketQuery),
     '__PROTOCOL_SESSION_XML__', values.observer), '__MCP_PROXY_ROUTE_XML__', values.mcpRoute),
     '__MCP_PRM_GUARD_XML__', values.metadataGuard), '__CREDENTIAL_CONNECTION_INBOUND_XML__', values.credentialInbound),
@@ -373,7 +379,7 @@ var documentApis = filter(apiDefinitions, api => length(filter(api.operations, o
 var mcpApis = filter(apiDefinitions, api => contains(api, 'mcp'))
 // MCPも同じ購読キーで認可します。APIのOperation構成は維持します。
 // 最終XMLを配列変数にも複製せず、配備先と生成元へ同じ内容を直接渡します。
-func mcpApiPolicyValue(api object, template string, errorXml string) string => replace(replace(replace(replace(template, '__AUTHORIZATION_BASE64__', base64(string(api.authorization))), '__RATE_LIMIT_ERROR_XML__', errorXml), '__AUDIT_SETTINGS_BASE64__', base64(string(auditSettings(api, api.mcp.operationNames[0], true)))), '__CONTROL_SETTINGS_BASE64__', base64(string(controlSettings(api, api.mcp.operationNames[0], true))))
+func mcpApiPolicyValue(api object, template string, errorXml string) string => replace(replace(replace(template, '__AUTHORIZATION_BASE64__', base64(string(api.authorization))), '__RATE_LIMIT_ERROR_XML__', errorXml), '__API_SETTINGS_BASE64__', base64(apiSettings(api, api.mcp.operationNames[0], true)))
 
 // Share individual fragment XML with protected outputs without another full-XML object.
 var rateLimitFragmentXml = replace(loadTextContent('policies/rate-limit.xml'), '__RATE_LIMITS_BASE64__', base64(string(rateLimits)))
@@ -411,6 +417,12 @@ var queryGuardFragmentXml = loadTextContent('policies/query-guard.xml')
 var queryTelemetryFragmentXml = replace(loadTextContent('policies/query-telemetry.xml'), '__AUDIT_SUBJECT_OBSERVATION_CSHARP__', auditSubjectObservationCompactXml)
 var modelLimitsFragmentXml = loadTextContent('policies/model-limits.xml')
 
+// 各APIがbaseより前で呼び、API固有の監査・制御設定を準備するleaf部品です。
+resource apiSettingsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-api-settings'
+  properties: { format: 'rawxml', description: 'APIから渡された公開設定を読み、監査情報と制御設定に分けて共通ポリシーの実行前に準備する。モデルや要求本文は変更しない。', value: apiSettingsFragmentValue(apiSettingsTemplate, apiSettingsSource) }
+}
 // All APIsの共通ポリシーが参照する入口確認と監査のleaf部品。fragment同士の入れ子は作りません。
 resource requestContextFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
@@ -703,7 +715,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
   parent: apis[index]
   name: 'policy'
   properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml, queryGuards), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, modelLimitsFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
+  dependsOn: [apiSettingsFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, modelLimitsFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -714,7 +726,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
 resource websocketPolicies 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = [for (api, index) in apiDefinitions: if (api.apiType == 'websocket') {
   name: '${apim.name}/${api.name}/onHandshake/policy'
   properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml, queryGuards), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [apiPolicies, auditContextFragment, backendAuditFragment, rateLimitFragment, entraUserProfileFragment, apis, backends, backendAudienceNamedValues, gatewayTelemetryFragment, backendSecretNamedValues, realtimeObserverFragment]
+  dependsOn: [apiPolicies, apiSettingsFragment, auditContextFragment, backendAuditFragment, rateLimitFragment, entraUserProfileFragment, apis, backends, backendAudienceNamedValues, gatewayTelemetryFragment, backendSecretNamedValues, realtimeObserverFragment]
 }]
 // Explicit request/response schemas drive the native REST-backed MCP tool.
 // Native Language bodies and entity strings are never the public contract.
@@ -844,7 +856,7 @@ resource mcpPolicies 'Microsoft.ApiManagement/service/apis/policies@2025-09-01-p
   parent: mcpServers[index]
   name: 'policy'
   properties: { format: 'rawxml', value: mcpApiPolicyValue(api, configuredMcpTemplate(mcpPolicyTemplate, queryGuards), rateLimitErrorXml) }
-  dependsOn: [auditContextFragment, backendAuditFragment, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, mcpTools]
+  dependsOn: [apiSettingsFragment, auditContextFragment, backendAuditFragment, gatewayTelemetryFragment, queryGuardFragment, queryTelemetryFragment, mcpTools]
 }]
 // Azure Monitorへの送信を表すAPIM内のloggerを先に作成します。
 // 診断設定のloggerIdを文字列で書くだけでは、この送信先は作成されません。
@@ -962,6 +974,7 @@ output entraPublicationSource object = {
       })
     ) : [],
     [
+      { suffix: '/policyFragments/core-api-settings', value: apiSettingsFragmentValue(apiSettingsTemplate, apiSettingsSource) }
       { suffix: '/policyFragments/core-request-context', value: requestContextFragmentValue(requestContextTemplate, requestContextSource) }
       { suffix: '/policyFragments/core-trusted-ingress', value: trustedIngressFragmentValue(trustedIngressTemplate, trustedIngressSource, gatewayTelemetryTemplate, gatewayTelemetrySource) }
       { suffix: '/policyFragments/core-credential-browser-exception', value: browserExceptionFragmentValue(browserExceptionTemplate, browserExceptionSource, credentialLoginEnabled) }

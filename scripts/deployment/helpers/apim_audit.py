@@ -17,6 +17,7 @@ CORE_AUTHENTICATED_SUBJECT_MARKER = "__CORE_AUTHENTICATED_SUBJECT_CSHARP__"
 CORE_GATEWAY_TELEMETRY_MARKER = "__CORE_GATEWAY_TELEMETRY_CSHARP__"
 CORE_TRUSTED_INGRESS_MARKER = "__CORE_TRUSTED_INGRESS_CSHARP__"
 CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER = "__CORE_CREDENTIAL_BROWSER_EXCEPTION_CSHARP__"
+CORE_API_SETTINGS_MARKER = "__CORE_API_SETTINGS_CSHARP__"
 AUDIT_FRAGMENT_FILES = {
     "core-request-context": ("fragments/audit/core-request-context/core-request-context.xml", "gatewayRequestContext"),
     "core-audit-authenticated-subject": ("fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.xml", "gatewayAuthenticatedSubject"),
@@ -27,6 +28,7 @@ SOURCE_EXPRESSION_FILES = {
     CORE_GATEWAY_TELEMETRY_MARKER: "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs",
     CORE_TRUSTED_INGRESS_MARKER: "fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs",
     CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER: "fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs",
+    CORE_API_SETTINGS_MARKER: "fragments/settings/core-api-settings/core-api-settings.cs",
     AUTHENTICATED_SUBJECT_MARKER: "expressions/legacy/audit-authenticated-subject.cs",
     SUBJECT_OBSERVATION_MARKER: "expressions/legacy/audit-subject-observation.cs",
     REQUEST_CONTEXT_MARKER: "expressions/legacy/request-context.cs",
@@ -107,7 +109,7 @@ def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
         raise ValueError("Audit source comments require full, compact or legacy omit mode")
     if source_comments in {"compact", "omit"} and CORE_GATEWAY_TELEMETRY_MARKER in xml:
         xml = _without_telemetry_explanation_lines(xml)
-    indented_markers = {REQUEST_CONTEXT_MARKER, CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER}
+    indented_markers = {REQUEST_CONTEXT_MARKER, CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, CORE_API_SETTINGS_MARKER}
     observation_markers = {SUBJECT_OBSERVATION_MARKER, CORE_GATEWAY_TELEMETRY_MARKER}
     for marker, filename in SOURCE_EXPRESSION_FILES.items():
         if marker in indented_markers:
