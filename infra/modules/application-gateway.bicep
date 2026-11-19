@@ -1,6 +1,6 @@
 // 公開 HTTPS の入口と WAF を作り、通常の HTTP API を Firewall 経由で内部 APIM へ送ります。
 // 証明書は Key Vault をマネージド ID で参照し、秘密鍵をこのファイルや出力に書きません。
-// gRPC 有効時は別 TCP/TLS リスナーを使います。この経路は HTTP WAF の検査対象ではありません。
+// 公開入口は HTTP/HTTPS に限定し、専用 TCP/TLS リスナーは作成しません。
 
 targetScope = 'resourceGroup'
 
@@ -43,7 +43,7 @@ param portalHostName string
 @description('internal ACA環境の実VIP。AppGWからFirewall経由で接続します。')
 @minLength(7)
 param portalBackendIp string
-@description('ACAアプリの既定FQDN。HTTPSのHostとSNIに使用します。')
+@description('ACAアプリの既定FQDN。HTTPバックエンド要求のHostヘッダーに使用します。')
 @minLength(4)
 param portalBackendHost string
 @minLength(4)
@@ -57,7 +57,7 @@ param keyVaultCertificateSecretId string
 @description('証明書参照用ユーザー割り当てマネージド ID のリソース ID。Entra アプリの ID ではありません。')
 param certificateIdentityId string
 @allowed(['WAF_v2', 'Standard_v2'])
-@description('AppGW の SKU。WAF_v2 は HTTP WAF を提供し、gRPC の TCP リスナーには適用されません。')
+@description('AppGW の SKU。WAF_v2 は公開 HTTP/HTTPS 入口の WAF を提供します。')
 param skuName string = 'WAF_v2'
 @minValue(0)
 @maxValue(100)

@@ -30,7 +30,7 @@
   }" />
   <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
   <!-- 認可で許可したモデル名だけを選びます。この共通fragmentでは本文を読みません。
-       APIMは未実行分岐にもBody.Asがあると、gRPC等の要求全体を待つ場合があります。
+       Body.Asは本文全体の読み取りを伴うため、ストリーミング中継でも使う共通処理には含めません。
        HTTPのモデル本文は専用fragmentで読み、ここへ検査済みの名前だけを渡します。 -->
   <set-variable name="gatewayAuditModel" value="@{
     try {

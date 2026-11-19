@@ -39,7 +39,7 @@ export async function handleGatewayProfile(request: Request, dependencies: Gatew
     if (!/^[a-f0-9]{128}$/.test(received) || !timingSafeEqual(Buffer.from(received), Buffer.from(settings.secret))) {
       throw new ApiKeyError("AccessDenied", 403);
     }
-    // WS/gRPCでもset-bodyを使わず照会できるよう、検証済みIDを専用ヘッダーで受けます。
+    // WebSocketでもset-bodyを使わず照会できるよう、検証済みIDを専用ヘッダーで受けます。
     const parsed = gatewaySubscriptionIdSchema.safeParse(request.headers.get("X-Core-Profile-Subscription"));
     if (!parsed.success) throw new ApiKeyError("InvalidRequest", 400);
     const found = await dependencies.readProfile(settings.tenantId, parsed.data);

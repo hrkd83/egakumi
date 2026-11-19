@@ -13,8 +13,8 @@
     <include-fragment id="core-request-context" fragment-id="core-request-context" />
     <!-- === -->
     <!-- ========== STEP2 信頼したHTTP入口の確認（core-trusted-ingress） ========== -->
-    <!-- 目的：HTTP要求がWAFのあるAppGW入口を通ったことを確認し、gRPC用TCP入口からの迂回を防ぎます。 -->
-    <!-- 処理：入口確認が必要なHTTP要求のX-Core-L7-Ingressを検証し、欠落・不一致・重複なら監査を記録して403で終了します。専用gRPCは対象外です。 -->
+    <!-- 目的：HTTP要求がWAFのあるAppGW入口を通ったことを確認します。 -->
+    <!-- 処理：入口確認が必要なHTTP要求のX-Core-L7-Ingressを検証し、欠落・不一致・重複なら監査を記録して403で終了します。 -->
     <include-fragment id="core-trusted-ingress" fragment-id="core-trusted-ingress" />
     <!-- === -->
     <!-- ========== STEP3 CMのブラウザー用APIの判定（core-credential-browser-exception） ========== -->

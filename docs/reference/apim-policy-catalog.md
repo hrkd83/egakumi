@@ -1,6 +1,6 @@
 # APIMポリシー一覧
 
-2026年11月18日更新。Graphと文書解析を含む標準19 API、生成MCP、CM補助APIの登録資材を説明する。業務APIの同じURLで購読キーとEntraアクセストークンの両方を受け付ける。登録資材の構成と対象環境への反映・受入状況は分け、実際の適用と接続結果は環境ごとの保護された証跡で確認する。
+2026年11月19日更新。Graphと文書解析を含む標準19 API、生成MCP、CM補助APIの登録資材を説明する。業務APIの同じURLで購読キーとEntraアクセストークンの両方を受け付ける。登録資材の構成と対象環境への反映・受入状況は分け、実際の適用と接続結果は環境ごとの保護された証跡で確認する。
 
 ## 要求が通る順序
 
@@ -119,7 +119,20 @@ Entraの共通認証には、次の4つの非秘密の名前付きの値を使�
 
 この明示的な工程には[reconcile_apim_source.py](../../scripts/reconcile_apim_source.py)を使う。`--config .local/<environment>/params.local.json`だけではローカル計画を作り、`--execute`を追加すると事前確認後にAPIMを反映する。Gatewayの通常配備とは入口を分け、Broker・SQL・Portalの配備を自動で含めない。必要なBrokerやDBの準備が未完了なら、API更新前に停止する。保護されたバックアップは`.local/<environment>/evidence/`、照合済みの新生成元は`.local/<environment>/state/gateway-api-source.json`へ保存する。
 
+## 廃止前の生成元を照合するXML
+
+次のファイルは、過去の保護された生成元と実ポリシーを厳密に照合するために保持する固定テンプレートで、新規構築の配備対象ではない。ファイル内のgRPC経路・入口免除の記述は当時の仕様であり、現在の提供通信を示さない。所有照合を壊さないよう、旧XMLの本文とコメントは保持する。
+
+| 旧生成元 | 照合対象 |
+| --- | --- |
+| `core-trusted-ingress-legacy-grpc.xml` | 廃止前のgRPC入口免除を含むleaf fragment |
+| `service-inline-trusted-ingress.xml` | 入口確認を全体ポリシーへ埋め込んでいた版 |
+| `service-inline-audit-v2.xml`、`service-audit-v1.xml` | 監査・認証を全体ポリシーへ埋め込んでいた版 |
+| `service-legacy-entra.xml`、`service-literal-entra.xml` | 以前のEntra設定を全体ポリシーへ埋め込んでいた版 |
+
 ## 全体で共通のポリシー
+
+現行の公開資材はHTTP・WebSocket・MCPを対象とする。gRPCの専用入口・API・入口確認の免除は廃止した。
 
 | 処理 | 実施内容 | 主なファイル |
 | --- | --- | --- |

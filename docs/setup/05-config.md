@@ -114,7 +114,7 @@ Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもA
 
 共通認可の`gateway.authentication.subscriptionKeyHeader`は企業固有のparamsで設定します。全体ポリシーが購読キーと利用範囲を検証し、API側が操作・モデル・入力の制約と下流認証を設定します。本人接続が必要なAPIはCMを利用します。[共通認証の設定](04-params.md#gateway全体の認証とapiごとの認可)を参照してください。
 
-公開入口はAppGWのHTTP／HTTPSです。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーが入口証明を検査します。この保護はgRPC等の有効フラグに依存せず常設します。APIMへ直接届く要求の拒否は実機試験でも確認します。
+公開入口はAppGWのHTTP／HTTPSです。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーが入口証明を常設で検査します。APIMへ直接届く要求の拒否は実機試験でも確認します。
 
 WAFの用途別ポリシーとデータ欄の除外は[WAFの公開仕様](../testing/waf-compatibility.md#用途別のポリシー構成)で確認します。Chatの画像URL、ResponsesのPDF入力などの条件は`apps/gateway/waf-data-exclusions.json`を正本とし、APIの入力profileから別のポリシーや除外を自動追加しません。
 

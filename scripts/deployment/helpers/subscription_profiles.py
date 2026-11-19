@@ -117,7 +117,7 @@ def verify_inline_profiles(apim_id, transport, api_definitions):
                 continue
             name, api_type, inline = expected[key]
             # 現行API契約のtypeは任意。HTTP設定の一覧で属性が省略された場合だけ許容する。
-            # 明示的なnull・別の型や、WS/gRPC/MCP設定での省略は一致としない。
+            # 明示的なnull・別の型や、WS/MCPと旧gRPC生成元での省略は一致としない。
             if (key in seen or not isinstance(api.get('id'), str)
                     or api['id'].casefold() != (apim_id + '/apis/' + name).casefold()
                     or not isinstance(api.get('properties'), dict) or api['properties'].get('type', 'http') != api_type):

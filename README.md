@@ -26,7 +26,7 @@ APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。第1章の準�
 
 業務APIの入口は、購読キーを提示した場合はAPIM購読キー、キーなしのBearer要求はEntraユーザートークンにより認可します。不正なキーをBearerで救済しません。Graph等の本人OAuth接続を使うAPIは、入口認可に続いて[Credential Managerの共通接続機能](docs/setup/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/gateway/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。
 
-HTTP・WebSocket・gRPC・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成し、ブラウザーの一時取引認証は専用経路に保持します。Entra設定を省略した旧構成はキー方式を維持します。この全API対応の変更はAzureへ再配備しておらず、実接続の受入は対象環境ごとに確認します。[認可設定と確認範囲](docs/setup/04-params.md)を参照してください。
+HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成し、ブラウザーの一時取引認証は専用経路に保持します。Entra設定を省略した旧構成はキー方式を維持します。この全API対応の変更はAzureへ再配備しておらず、実接続の受入は対象環境ごとに確認します。[認可設定と確認範囲](docs/setup/04-params.md)を参照してください。
 
 ## 新規クローンから構築する
 
@@ -89,11 +89,12 @@ Azure構築先は`azureTenantId`、CM等の認証テナントの既定値は`ent
 | --- | --- |
 | APIのHTTPS入口 | 利用端末またはPortalサーバー → AppGW:443 → Firewall → Internal APIM → Foundry PE／登録済みbackend |
 | PortalのHTTPS入口 | 利用端末 → AppGW:443 → Core内Portal。API実行はPortalサーバーがGatewayを呼び出す |
-| 汎用外部中継（個別連携時） | APIM → 許可した外向き経路 → 外部REST／MCP／A2A／gRPC。サンプル入口はCore標準APIに含めない |
-| native gRPC（個別連携時） | AppGWのTCP入口 → Firewall → APIM:443 → gRPC backend。TLS終端はAPIM |
+| 汎用外部中継（個別連携時） | APIM → 許可した外向き経路 → 外部REST／MCP／A2A。サンプル入口はCore標準APIに含めない |
 | WebSocket音声 | 制御・音声をAppGW → Firewall → APIMで中継 |
 | WebRTC音声 | 接続準備・制御はGateway。音声本体は端末とAzureの間 |
 | 運用 | Linux管理VM、Key Vault、Log Analytics／Application Insights、監査Storage、API Center |
+
+gRPCは基盤の提供要件から廃止しました。専用TCP入口と新規gRPC APIは作成せず、以前の設備・生成元は所有照合と撤去に限って扱います。
 
 | 作成するRG名の形式 | 用途 |
 | --- | --- |

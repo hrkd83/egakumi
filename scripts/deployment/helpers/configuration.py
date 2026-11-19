@@ -864,7 +864,7 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
                     _fail(p + ".credentialConnection.connectionName", "must identify a fixed service connection")
             elif "connectionName" in connection:
                 _fail(p + ".credentialConnection.connectionName", "personal connections are selected by the verified connection session")
-        # WebSocket/gRPC/MCPのフレームへHTTPのJSON検査を適用しない。
+        # WebSocket/MCPのフレームへHTTPのJSON検査を適用しない。
         # 接続時の認可と、各プロトコル固有の契約を分けて検査する。
         if api_type != "http":
             if len(operations) != 1 or operations[0]["name"] != "invoke":
@@ -909,8 +909,6 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
                     _fail(p + ".websocket.realtimeObserver", "requires the independent Entra-only caller gate and fixed Cognitive Services managed-identity backend")
         elif "websocket" in api:
             _fail(p + ".websocket", "is allowed only on a WebSocket API")
-        # gRPC定義は単独で解決できるprotoに限定する。未取得のimportを
-        # 配備時に探す仕様にせず、公開するサービスとRPCを事前に確定する。
         # Streamable HTTPはmessage、従来SSEはsseとmessageを必要とする。
         # 別の通信方式を同じ入口数で扱わず、公式の接続先の組合せを検査する。
         if api_type == "mcp":
@@ -1154,8 +1152,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         if "quotaUsageName" in model:
             _string(model["quotaUsageName"], p + ".quotaUsageName", maximum=256)
     c["services"] = s
-    # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限、
-    # gRPCで使う証明書のホスト名も、独立した値のまま矛盾させない。
+    # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限も整合させる。
     g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
     # 共通入口は購読キーの提示を優先し、キーなしBearer要求にはEntra認証を使います。

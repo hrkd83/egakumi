@@ -2,7 +2,7 @@
   <!-- 通常HTTPのモデルAPIだけで、認可済み要求からモデル名を取り出します。
        preserveContentは後続の実モデル呼出しへ同じ本文を渡すために必要です。
        本文全体や入力文は変数・ログへ保存せず、共通監査へモデル名だけを渡します。
-       native gRPC/WS/MCPにはこのfragmentを含めません。APIMは未実行分岐の
+       WebSocketやMCPの中継にはこのfragmentを含めません。APIMは未実行分岐の
        Body.Asも事前bufferの対象にするため、単なるif分岐での共用は避けます。 -->
   <set-variable name="gatewayAuditBodyModel" value="@{
     try {
