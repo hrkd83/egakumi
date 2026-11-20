@@ -874,11 +874,13 @@
     {
       "rule": "nonpublic-host",
       "value": "169.254.169.254",
-      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "reason": "Public Azure IMDS link-local endpoint for managed identity; not a deployment-specific host. Exact path/value only.",
       "paths": [
+        "apps/gateway/deploy/build-image.sh",
         "apps/portal/deploy/build-image.sh",
         "guest/build-credential-broker.sh",
         "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
         "tests/test_publish_apis.py"
@@ -2467,11 +2469,13 @@
     {
       "rule": "nonpublic-ip",
       "value": "169.254.169.254",
-      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "reason": "Public Azure IMDS link-local endpoint for managed identity; not a deployment-specific address. Exact path/value only, no private-range exemption.",
       "paths": [
+        "apps/gateway/deploy/build-image.sh",
         "apps/portal/deploy/build-image.sh",
         "guest/build-credential-broker.sh",
         "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
@@ -2491,17 +2495,19 @@
     {
       "rule": "nonpublic-ip",
       "value": "2.5.29.17",
-      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "reason": "Public X.509 subjectAlternativeName extension OID misidentified as IPv4; not a network address. Exact path/value only.",
       "paths": [
-        "guest/certificate.ps1"
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1"
       ]
     },
     {
       "rule": "nonpublic-ip",
       "value": "2.5.29.37",
-      "reason": "Existing synthetic instructional/test network or configuration example address; exact path/value only, no private-range exemption",
+      "reason": "Public X.509 extendedKeyUsage extension OID misidentified as IPv4; not a network address. Exact path/value only.",
       "paths": [
-        "guest/certificate.ps1"
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1"
       ]
     },
     {
@@ -3156,6 +3162,7 @@
         "tests/test_audit_identification.py",
         "tests/test_entra_gateway_authentication.py",
         "tests/test_api_request_preparation.py",
+        "tests/test_gateway_query_guard.py",
         "tests/test_gateway_query_observation.py"
       ]
     },
@@ -3567,6 +3574,14 @@
     {
       "rule": "credential-assignment",
       "value": " . $apiKey],\\n    CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 0,\\n]);\\n$result = curl_exec($curl);\\n$status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);\\nif ($result === false || $status >= 400) { throw new RuntimeException(",
+      "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
+      "paths": [
+        "apps/portal/lib/image-integration.ts"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": " . $apiKey${profile ? `, ",
       "reason": "Generated PHP integration-code fragment concatenates a runtime key variable; no hardcoded credential.",
       "paths": [
         "apps/portal/lib/image-integration.ts"
