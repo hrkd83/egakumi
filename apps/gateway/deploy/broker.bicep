@@ -145,3 +145,7 @@ resource reconciliation 'Microsoft.App/jobs@2025-01-01' = if (deployApplication)
 }
 output migrationJob string = migration.name
 output applicationName string = 'ca-${stem}-credentials'
+// 管理VMの保守割当は、各段階で実際に作成した資源だけを対象にします。
+output applicationIds array = deployApplication ? [app!.id] : []
+output jobIds array = deployApplication ? [migration.id, reconciliation!.id] : [migration.id]
+output environmentId string = environment.id

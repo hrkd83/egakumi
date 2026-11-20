@@ -1,3 +1,6 @@
 # Linux guest scripts must keep LF even when checked out with Windows Git.
 *.sh text eol=lf
 guest/*.ps1 text eol=lf
+
+# Keep exact reviewed SVG byte hashes stable across Windows checkouts.
+*.svg text eol=lf

@@ -408,7 +408,7 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: concat(map(apimPlatformDependencies, dependency => {
-          name: 'apim-${dependency.name}'
+          name: dependency.name == 'storage' ? 'allow-apim-storage' : 'apim-${dependency.name}'
           ruleType: 'NetworkRule'
           sourceAddresses: [subnetPrefixes.apim]
           destinationAddresses: dependency.destinations
@@ -444,7 +444,9 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
             name: 'apim-platform-time'
             ruleType: 'NetworkRule'
             sourceAddresses: [subnetPrefixes.apim]
-            destinationFqdns: ['time.windows.com']
+            // APIM and Firewall resolve NTP independently; allow UDP123 without an FQDN.
+            // The subnet NSG separately limits this UDP123 flow to Internet.
+            destinationAddresses: ['*']
             destinationPorts: ['123']
             ipProtocols: ['UDP']
           }

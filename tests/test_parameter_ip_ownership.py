@@ -384,6 +384,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         template = self.templates[module]
         parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
+            "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
             "existingNetworkSecurityGroupNames": [],
@@ -467,13 +468,15 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(firewall["dnsSettings"], {"enableProxy": True, "servers": []})
         collections = expression.resolve(resources["platformRules"]["properties"], supplied)["ruleCollections"]
         rules = {rule["name"]: rule for collection in collections for rule in collection["rules"]}
-        for name, source, fqdn in (("management-time", "10.70.2.128/26", "ntp.ubuntu.com"),
-                                    ("apim-platform-time", "10.70.2.64/26", "time.windows.com")):
+        for name, source in (("management-time", "10.70.2.128/26"),
+                             ("apim-platform-time", "10.70.2.64/26")):
             with self.subTest(rule=name):
                 self.assertEqual(rules[name]["sourceAddresses"], [source])
-                self.assertEqual(rules[name]["destinationFqdns"], [fqdn])
                 self.assertEqual(rules[name]["destinationPorts"], ["123"])
                 self.assertEqual(rules[name]["ipProtocols"], ["UDP"])
+        self.assertEqual(rules["management-time"]["destinationFqdns"], ["ntp.ubuntu.com"])
+        self.assertEqual(rules["apim-platform-time"]["destinationAddresses"], ["*"])
+        self.assertNotIn("destinationFqdns", rules["apim-platform-time"])
 
     def test_firewall_arm_keeps_platform_sku_and_parameter_ip_settings_together(self):
         config = self.configuration()

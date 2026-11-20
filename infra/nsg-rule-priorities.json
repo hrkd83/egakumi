@@ -715,6 +715,40 @@
             "443"
           ]
         },
+        "allow-mgmt-vm-audit-storage-foundry-https-ingress": {
+          "designRecordId": "N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS",
+          "direction": "Inbound",
+          "priority": 230,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:auditStorageFoundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-mgmt-vm-audit-storage-japan-https-ingress": {
+          "designRecordId": "N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS",
+          "direction": "Inbound",
+          "priority": 229,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:auditStorageJapan"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
         "deny-any-ingress": {
           "designRecordId": "B-PE-14",
           "direction": "Inbound",
@@ -868,6 +902,40 @@
           ],
           "destination": [
             "ip:aca"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-storage-foundry-https-egress": {
+          "designRecordId": "N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS",
+          "direction": "Outbound",
+          "priority": 228,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:auditStorageFoundry"
+          ],
+          "destinationPorts": [
+            "443"
+          ]
+        },
+        "allow-audit-storage-japan-https-egress": {
+          "designRecordId": "N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS",
+          "direction": "Outbound",
+          "priority": 227,
+          "access": "Allow",
+          "protocol": "Tcp",
+          "sourcePort": "*",
+          "source": [
+            "ip:management"
+          ],
+          "destination": [
+            "ips:auditStorageJapan"
           ],
           "destinationPorts": [
             "443"

@@ -68,13 +68,13 @@ class FixedNsgUpgradeTests(unittest.TestCase):
     def setUp(self):
         self.config = fixture_config(); self.bindings = fixture_bindings(self.config)
 
-    def test_compiled_upgrade_emits_only_72_manifest_children_and_missing_aca_parent(self):
+    def test_compiled_upgrade_emits_only_76_manifest_children_and_missing_aca_parent(self):
         parameters = {'resourcePrefix': self.config['resourceStem'], 'location': self.config['location'],
             'tags': {}, 'bindings': self.bindings,
             'existingNetworkSecurityGroupNames': ['nsg-' + self.config['resourceStem'] + '-' + nsg.SUFFIXES[k] for k in nsg.GROUPS if k != 'aca']}
         expression = UpgradeExpression('[createObject()]', self.template)
         rules = expression.resolve("[variables('rules')]", parameters)
-        self.assertEqual(len(rules), 72)
+        self.assertEqual(len(rules), 76)
         for row in rules:
             parent, name = row['name'].split('/')
             group = next(k for k in nsg.GROUPS if parent.endswith('-' + nsg.SUFFIXES[k]))
@@ -88,7 +88,7 @@ class FixedNsgUpgradeTests(unittest.TestCase):
         parameters['existingNetworkSecurityGroupNames'].append('nsg-' + self.config['resourceStem'] + '-aca')
         self.assertEqual(UpgradeExpression('[createObject()]', self.template).resolve("[variables('missing')]", parameters), [])
 
-    def test_stage_create_associate_complete_converges_to_all_72_without_parent_flush(self):
+    def test_stage_create_associate_complete_converges_to_all_76_without_parent_flush(self):
         transport = AssociationTransport(self.config, legacy=True); events = []
         recorder = lambda event, value: events.append(event)
         nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=recorder, sleep=lambda _: None)
@@ -104,7 +104,7 @@ class FixedNsgUpgradeTests(unittest.TestCase):
             record=recorder, sleep=lambda _: None)
         nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=recorder, sleep=lambda _: None)
         final = nsg._parents(self.config, transport)
-        self.assertEqual(sum(len(nsg._inventory(parent)) for parent in final.values()), 72)
+        self.assertEqual(sum(len(nsg._inventory(parent)) for parent in final.values()), 76)
         self.assertEqual(nsg._classify(final, self.bindings, require_complete=True), [])
         self.assertEqual(len(transport.puts), 1)
         self.assertTrue(all('/securityRules/' in call['path'] for call in transport.mutations()))
@@ -149,7 +149,7 @@ class FixedNsgUpgradeTests(unittest.TestCase):
             'after': {'location': self.config['location'], 'tags': transport.tags,
                       'properties': {'securityRules': children}}})
         rest = {'status': 'Succeeded', 'properties': {'changes': doc['changes']}}
-        self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, rest, self.bindings)['fixedChildrenVerified'], 72)
+        self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, rest, self.bindings)['fixedChildrenVerified'], 76)
         for mode in ('nested-diagnostic', 'conflict', 'unexpected-child', 'duplicate-child', 'child-tuple'):
             bad = copy.deepcopy(rest)
             if mode == 'nested-diagnostic': bad['properties']['diagnostics'] = [{'code': 'Skipped'}]
@@ -181,7 +181,7 @@ class FixedNsgUpgradeTests(unittest.TestCase):
             child['changeType'] = action
             child['before'] = child.pop('after')
             if action == 'NoChange':
-                self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, doc, self.bindings)['fixedChildrenVerified'], 72)
+                self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, doc, self.bindings)['fixedChildrenVerified'], 76)
             else:
                 with self.subTest(action=action), self.assertRaises(nsg.FixedNsgError):
                     nsg.verify_fixed_nsg_upgrade_what_if(self.config, doc, self.bindings)
@@ -196,7 +196,7 @@ class FixedNsgUpgradeTests(unittest.TestCase):
 
     def test_what_if_requires_all_expanded_exact_children_and_no_other_writes(self):
         doc = self.what_if()
-        self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, doc, self.bindings)['fixedChildrenVerified'], 72)
+        self.assertEqual(nsg.verify_fixed_nsg_upgrade_what_if(self.config, doc, self.bindings)['fixedChildrenVerified'], 76)
         for mode in ('diagnostic', 'missing', 'ignored', 'foreign', 'parent', 'tuple'):
             bad = copy.deepcopy(doc)
             if mode == 'diagnostic': bad['diagnostics'] = [{'code': 'NestedDeploymentShortCircuited'}]
