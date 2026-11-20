@@ -170,6 +170,12 @@ metadata返却先・replicaの`logStreamEndpoint`を照合し、TLS、ライブ�
 
 ## ACA（aca）
 
+APIM→ACAのHTTPS443、ACA→SQL PEのTCP1433、ACA→Key Vault PEのHTTPS443は、
+初期構成ではVNet内の直接経路を使います。ACA／APIMの既定の`0.0.0.0/0`経路より、
+VNet・Private Endpointへの具体的な経路が優先されるため、Firewall規則には登録しません。
+通信の許可は送信元と宛先のNSGに記録します。Firewallには現在の経路で通過する通信だけを登録し、
+将来の経路変更用の許可は含めません。
+
 ### Inbound
 
 | 優先度 | 規則名 | 送信元 | 宛先 | プロトコル／宛先ポート | 設計ID |

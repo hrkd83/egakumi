@@ -547,7 +547,6 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
     location: location
     tags: tags
     sqlServerId: credentialSql!.outputs.id
-    keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
     vnetId: network!.outputs.vnetId
     pepSubnetId: network!.outputs.subnetIds.pep
     pepNsgName: network!.outputs.nsgNames.pep
