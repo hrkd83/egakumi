@@ -37,7 +37,24 @@ class ManagementClientBicepTests(unittest.TestCase):
         cls.client = compile_bicep('infra/modules/management-maintenance-client.bicep')
         cls.core = compile_bicep('infra/main.bicep')
         cls.network = compile_bicep('infra/modules/network.bicep')
+        cls.portal = compile_bicep('infra/modules/portal-platform.bicep')
         cls.credential_network = compile_bicep('infra/modules/credential-broker-network.bicep')
+
+    def test_aca_dev_firewall_and_environment_use_the_same_constructed_region(self):
+        _, nodes = dependency_graph(self.core)
+        network, = [node for node in nodes.values()
+                    if same_template(node.get('properties', {}).get('template'), self.network)]
+        portal, = [node for node in nodes.values()
+                   if same_template(node.get('properties', {}).get('template'), self.portal)]
+        network_region = network['properties']['parameters']['location']['value']
+        portal_region = portal['properties']['parameters']['location']['value']
+        self.assertEqual(network_region, "[variables('location')]")
+        self.assertEqual(portal_region, network_region)
+        self.assertEqual(self.core['variables']['location'], "[parameters('configuration').location]")
+        resources = portal['properties']['template']['resources']
+        environment, = [node for node in (resources.values() if isinstance(resources, dict) else resources)
+                        if node['type'].casefold() == 'microsoft.app/managedenvironments']
+        self.assertEqual(environment['location'], "[parameters('location')]")
 
     def fixture(self):
         config = fixture_config()

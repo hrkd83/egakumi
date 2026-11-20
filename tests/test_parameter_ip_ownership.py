@@ -353,7 +353,7 @@ class NetworkArmExpression(ArmExpression):
             return self.resolve(function["output"]["value"], supplied)
         if name == "resourceId":
             return "/mock/" + "/".join(str(self.evaluate(parameters, index, item, bindings)) for item in arguments)
-        extra = {"length", "empty", "concat", "range", "map", "flatten", "union", "shallowMerge", "true", "false", "and", "string", "environment", "contains"}
+        extra = {"length", "empty", "concat", "range", "map", "flatten", "union", "shallowMerge", "true", "false", "and", "string", "environment", "contains", "toLower", "replace"}
         if name not in extra:
             return super().evaluate(parameters, index, tree, bindings)
         values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
@@ -367,6 +367,8 @@ class NetworkArmExpression(ArmExpression):
         if name == "false": return False
         if name == "and": return all(values)
         if name == "contains": return values[1] in values[0]
+        if name == "toLower": return values[0].lower()
+        if name == "replace": return values[0].replace(values[1], values[2])
         if name == "string": return str(values[0])
         # 公開Azureクラウドの既知suffixを合成する。実環境やAzure APIは読まない。
         if name == "environment": return {"suffixes": {"storage": "core.windows.net"}}
@@ -396,7 +398,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
 
     def resolver(self, module, config):
         template = self.templates[module]
-        parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
+        parameters = {"config": config["network"], "location": config["location"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "generatedApimServiceFqdns": config["generatedApimServiceFqdns"],
             "gatewayPublicHostName": config["gateway"]["publicHostName"],
             "portalPublicHostName": config["portal"]["publicHostName"],
