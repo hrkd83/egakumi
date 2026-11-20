@@ -408,7 +408,7 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: concat(map(apimPlatformDependencies, dependency => {
-          name: 'apim-${dependency.name}'
+          name: dependency.name == 'storage' ? 'allow-apim-storage' : 'apim-${dependency.name}'
           ruleType: 'NetworkRule'
           sourceAddresses: [subnetPrefixes.apim]
           destinationAddresses: dependency.destinations
