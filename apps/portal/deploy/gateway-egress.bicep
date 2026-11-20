@@ -12,7 +12,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   parent: policy
   name: 'rcg-portal-gateway'
   properties: {
-    priority: 360
+    priority: 370
     ruleCollections: [{
       name: 'portal-gateway'
       priority: 100
