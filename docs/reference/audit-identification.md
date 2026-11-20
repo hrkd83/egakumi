@@ -10,7 +10,7 @@
 
 STEP4の認証本体は`fragments/authentication/core-common-authentication/`に置く。同名XMLが分岐と検証順序を示し、同名C#の5区画を対応する式へ生成時に埋め込む。認証成功を示す2変数と確認済みの内部JSONを、後続の監査部品が照合する。標準Entra検証が失敗した場合は、共通`on-error`の`core-entra-authentication-error`が失敗を記録して401を返す。短いXML式だけのため、このエラー部品にC#ファイルは置かない。
 
-監査の3部品は`policies/fragments/audit/<部品名>/`、入口確認は`policies/fragments/ingress/core-trusted-ingress/`へ置く。各部品フォルダには同名のXMLとC#を置き、`core-gateway-telemetry.cs`は同名XMLの認証主体の読取処理を担当する。まだ棚卸していないCM・query・接続応答の監査は`expressions/legacy/audit-subject-observation.cs`を移行期間だけ維持し、棚卸完了までに旧資材と旧参照を撤去する。配置先と移設手順は[管理構成](../../apps/gateway/apim/policies/README.md)を参照する。
+監査の3部品は`policies/fragments/audit/<部品名>/`、入口確認は`policies/fragments/ingress/core-trusted-ingress/`へ置く。各部品フォルダには同名のXMLとC#を置き、`core-gateway-telemetry.cs`は同名XMLの認証主体の読取処理を担当する。query監査は`fragments/audit/core-query-telemetry/`の専用XML／C#へ整理する。まだ棚卸していないCM・接続応答の監査は`expressions/legacy/audit-subject-observation.cs`を移行期間だけ維持し、棚卸完了までに旧資材と旧参照を撤去する。配置先と移設手順は[管理構成](../../apps/gateway/apim/policies/README.md)を参照する。
 
 C#は生成時にXMLへ組み込み、APIM内で実行するため、新しい外部通信は発生しない。部品化とフォルダ移設で、出力項目、未確認の扱い、長さ・形式の確認、保存先・保持期間を変更しない。
 
@@ -27,7 +27,13 @@ flowchart LR
   J --> I[接続元peer IP<br/>client申告User-Agent]
 ```
 
-APIM nativeの`CorrelationId`を要求の主キーとする。custom traceの`requestId`と同じGUIDであることを確認して、新しい認証主体と要求contextを採用する。`gateway-request`はGateway／Credentialのtrace、`query-guard`はquery guardのtraceで記録する。独立した`context`イベントは追加せず、各traceの`requestContext`に共通情報を含める。既存の`schemaVersion:1`とイベント名を維持し、追加部分を`auditSchemaVersion:2`で識別する。
+APIM nativeの`CorrelationId`を要求の主キーとする。custom traceの`requestId`と同じGUIDであることを確認して、新しい認証主体と要求contextを採用する。`gateway-request`はGateway／Credentialのtrace、`query-guard`はquery観測のtraceで記録する。独立した`context`イベントは追加せず、各traceの`requestContext`に共通情報を含める。共通識別情報は`auditSchemaVersion:2`で識別する。イベント名は維持し、`schemaVersion`は`query-guard`だけ2、`gateway-request`等の他イベントは既存の1を使う。
+
+クエリ検査⑥で承認した有無・複数値の取得を維持し、利用目的が明確でない件数区分`countBucket`の計算・出力を削除する。棚卸⑦で`core-query-observation`へ観測専用化し、要求ごとの`gatewayQueryObservation`は`route`・`httpMethod`・`presence`・`duplicates`だけを持つ。監査側は要求・認証済み主体と`phase`・`statusClass`を合わせ、mode・`query-rejected`・`guard-error`は新規出力しない。段階は`received`・`backend-response`・`policy-error`である。過去の旧phase・modeは移行前の記録として区別し、旧`query-guard`のschema 1もKQLで読み取れる互換を維持する方針である。
+
+query観測のローカル改修・検証は完了し、Azureには未反映で、Azureへのまとめ反映と実接続の受入は未実施である。旧API参照・旧fragment・旧Named Valueは、新参照の反映・読戻し後にAzureから撤去する。後続の入口検査と不備時の400監査もローカル整備済みで、Azureには未反映である。設定選択は操作の基本設定とモデル別差分へ整理し、旧profileヘッダーを使わない。本文／モデル制約・URI変換・WAFに残る処理は別に棚卸し、観測専用化だけでqueryの通過や機能互換性が整ったとは扱わない。以後の推奨は必要性・効果・負荷・複雑さを比較して判断する。
+
+入口検査の`gatewayApiInputValidationPassed`がfalseの場合は、共有HTTP APIテンプレートで`rejected`・`INVALID_CONTENT_TYPE_HEADER`・400を監査へ記録し、理由`Invalid Content-Type header`の本文なし400を返す。`apim-request-id`と`Cache-Control: no-store`を維持する。既存の要求情報と確認済みの利用者情報を使い、この段階で未確認のモデルやAPI個別の利用許可、Content-Typeの生の値は記録しない。trueは宣言条件の通過または対象外による検査省略を表し、完全なMIME構文や要求全体の妥当性を保証しない。監査JSONの項目・版番号は変更せず、保存済みの旧理由コードも書き換えない。過去の広い入力検査による拒否を、すべてContent-Type不備として再解釈しない。
 
 AppGWの`x-appgw-trace-id`は、要求headerを読んだ時点では相関候補である。GUID形式や信頼した入口の検査は、本人の認証を意味しない。既存AppGWログの`TransactionId`とGUIDを正規化してjoinし、一致するログがあるかを別に確認する。native診断で既に収集する同headerも候補のfallbackに使う。contextの採用を見送った場合も、同じ要求へ結び付くtrace ID候補は保持する。contextとnativeを含む候補が異なる場合は、片方を選ばず`inconsistent-candidate`とする。
 

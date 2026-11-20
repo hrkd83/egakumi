@@ -217,7 +217,7 @@ export async function handleTextGeneration(request: Request, dependencies: Model
   try {
     const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, gateway.origin), {
       method: "POST", redirect: "error", cache: "no-store", signal,
-      headers: { ...getTextGenerationHeaders(model, input.stream), "api-key": subscriptionKey },
+      headers: { ...getTextGenerationHeaders(input.stream), "api-key": subscriptionKey },
       body,
     });
     identifier = requestId(upstream.headers);

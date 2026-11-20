@@ -39,23 +39,30 @@ test("テキスト一覧は正本の許可モデルを網羅し、各モデル�
   const definition = sourceDefinitions().find((item) => item.name === "openai-inference-v1");
   const constraints = definition.authorization.operationConstraints;
   const expected = ["chat-completions", "responses-create"].flatMap((operationId) =>
-    constraints[operationId].allowedModels.map((modelId: string) => `${operationId}/${modelId}`)).sort();
+    constraints[operationId].allowedModels.map((modelId: string) => `${operationId}/${modelId}`));
   const models = getTextGenerationModels();
-  assert.deepEqual(models.map((model) => `${model.operationId}/${model.id}`).sort(), expected);
+  assert.deepEqual(models.map((model) => `${model.operationId}/${model.id}`), expected);
   assert.equal(new Set(models.map((model) => `${model.operationId}/${model.id}`)).size, models.length);
   for (const model of models) {
     const constraint = constraints[model.operationId];
-    const profile = constraint.profiles.find((item: { profileId: string }) => item.profileId === model.profileId);
-    assert.ok(profile.allowedModels.includes(model.id));
-    assert.deepEqual(profile.modalities, ["text"]);
+    const settings = { ...constraint, ...constraint.modelSettings?.[model.id] };
     const capabilities = JSON.parse(readFileSync(new URL("../../gateway/apim/model-capabilities.json", import.meta.url), "utf8"));
     const capability = capabilities.entries.find((entry: { modelId: string; apiIds: string[]; operationIds: string[] }) => entry.modelId === model.id && entry.apiIds.includes(model.apiId) && entry.operationIds.includes(model.operationId));
     assert.equal(model.maxOutputTokens, capability.maxOutputTokens);
-    assert.equal(model.outputTokenParameter, profile.outputTokenParameter);
-    assert.equal(model.maxRequestBytes, profile.maxRequestBytes);
+    assert.equal(model.outputTokenParameter, settings.outputTokenParameter);
+    assert.equal(model.maxRequestBytes, settings.maxRequestBytes);
   }
   assert.deepEqual(models.filter((model) => model.id === "gpt-6.1-sol").map((model) => model.operationId).sort(),
     ["chat-completions", "responses-create"]);
+  for (const [id, operationId, parameter] of [
+    ["gpt-6.1-sol", "chat-completions", "max_completion_tokens"],
+    ["DeepSeek-V4-Flash", "chat-completions", "max_tokens"],
+    ["Mistral-Large-3", "chat-completions", "max_tokens"],
+    ["grok-4.7", "chat-completions", "max_tokens"],
+    ["model-router", "chat-completions", "max_completion_tokens"],
+    ["gpt-6.1-sol", "responses-create", "max_output_tokens"],
+  ]) assert.equal(models.find((model) => model.id === id && model.operationId === operationId)?.outputTokenParameter, parameter);
+  assert.ok(models.every((model) => !Object.hasOwn(model, "profileId") && !Object.hasOwn(model, "settingId")));
   assert.ok(models.every((model) => !/^gpt-5\.(?:4|5)(?:-|$)/.test(model.id)));
   assert.ok(getModelCatalog().find((category) => category.id === "text")?.operations
     .every((operation) => operation.models.every((model) => !/^gpt-5\.(?:4|5)(?:-|$)/.test(model))));
@@ -98,7 +105,7 @@ test("リランクと意思決定の公開モデル・要求上限を正本か�
   assert.ok(!JSON.stringify([...rerank, ...decision]).includes("backendAudience"));
 });
 
-test("画像の生成用一覧へ編集操作を混ぜず、FLUXはモデルに一致する生成プロファイルを使用する", () => {
+test("画像の生成用一覧へ編集操作を混ぜず、FLUXはモデルに一致する設定を使用する", () => {
   const models = getImageGenerationModels();
   assert.equal(models.length, 5);
   assert.equal(new Set(models.map((model) => model.id)).size, models.length);
@@ -115,17 +122,16 @@ test("画像の生成用一覧へ編集操作を混ぜず、FLUXはモデルに�
       assert.ok(model.qualities.includes("high"));
       assert.ok(model.formats.includes("webp"));
     } else {
-      const profile = constraint.profiles.find((item: { profileId: string }) => item.profileId === model.profileId);
-      assert.deepEqual(profile.allowedModels, [model.id]);
-      assert.deepEqual(profile.modalities, ["text"]);
-      assert.equal(model.minWidth, profile.integerLimits?.width?.minimum ?? 1);
-      assert.equal(model.maxWidth, profile.integerLimits?.width?.maximum ?? Number.MAX_SAFE_INTEGER);
-      assert.equal(model.minHeight, profile.integerLimits?.height?.minimum ?? 1);
-      assert.equal(model.maxHeight, profile.integerLimits?.height?.maximum ?? Number.MAX_SAFE_INTEGER);
-      assert.deepEqual(model.formats, profile.stringChoices.output_format);
+      const settings = { ...constraint, ...constraint.modelSettings?.[model.id] };
+      assert.equal(model.minWidth, settings.integerLimits?.width?.minimum ?? 1);
+      assert.equal(model.maxWidth, settings.integerLimits?.width?.maximum ?? Number.MAX_SAFE_INTEGER);
+      assert.equal(model.minHeight, settings.integerLimits?.height?.minimum ?? 1);
+      assert.equal(model.maxHeight, settings.integerLimits?.height?.maximum ?? Number.MAX_SAFE_INTEGER);
+      assert.deepEqual(model.formats, settings.stringChoices.output_format);
     }
   }
   assert.ok(!JSON.stringify(models).includes("backendUrl"));
+  assert.ok(models.every((model) => !Object.hasOwn(model, "profileId") && !Object.hasOwn(model, "settingId")));
 });
 
 test("音声は正本の3操作を形式・本文上限に結び付け、OpenAIのモデルはパスに束縛する", () => {

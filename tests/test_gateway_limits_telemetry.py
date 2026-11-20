@@ -40,14 +40,14 @@ def expression(path, xpath, attribute=None):
     return value.strip()[2:-1]
 
 
-LIMIT_EXPRESSION = expression(POLICIES / "model-limits.xml", "./set-variable", "value")
+LIMIT_EXPRESSION = expression(policy_fixture_path(POLICIES, "core-model-limits.xml"), "./set-variable", "value")
 TELEMETRY_EXPRESSION = expression(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml"), "./trace/message")
 REQUEST_CONTEXT_EXPRESSION = expression(POLICIES / "service.xml", "./inbound/set-variable[@name='gatewayRequestContext']", "value")
 SUBJECT_EXPRESSION = expression(POLICIES / "service.xml", "./inbound/set-variable[@name='gatewayAuthenticatedSubject']", "value")
 
 # 本番XMLから例外時のstatus式を抽出します。C#で実行し、既定200を成功と誤記しないことを確認します。
 ERROR_STATUS_EXPRESSIONS = {
-    name: ET.parse(POLICIES / name).find("./on-error/set-variable[@name='gatewayAuditStatus']").get("value")
+    name: ET.parse(policy_fixture_path(POLICIES, name)).find("./on-error/set-variable[@name='gatewayAuditStatus']").get("value")
     for name in ("gateway.xml", "protocol.xml", "mcp.xml")
 }
 ERROR_STATUS_EXPRESSION = ERROR_STATUS_EXPRESSIONS["gateway.xml"]
@@ -134,6 +134,9 @@ public static class PolicyFixture {
       if (item["configuredTenant"] != null) context.Variables["gatewayEntraTenantId"] = (string)item["configuredTenant"];
       if (item["userAuthentication"] != null) context.Variables["gatewayUserAuthentication"] = item["userAuthentication"].Type == JTokenType.String ? (string)item["userAuthentication"] : item["userAuthentication"].ToString(Formatting.None);
       context.Variables["gatewayOperationConstraint"] = (item["constraint"] ?? new JObject()).ToString(Formatting.None);
+      // 内部設定の読取り不備は、要求本文の不備と分けて実式へ渡します。
+      if (item.Property("constraintRaw") != null) context.Variables["gatewayOperationConstraint"] = ((JValue)item["constraintRaw"]).Value;
+      if ((bool?)item["constraintMissing"] == true) context.Variables.Remove("gatewayOperationConstraint");
       foreach (var field in new string[] { "gatewayAuditPhase", "gatewayAuditCode" }) {
         if (item[field] != null) context.Variables[field] = (string)item[field];
       }
@@ -154,7 +157,7 @@ public static class PolicyFixture {
       }
       if (item.Property("controlRaw") != null) context.Variables["gatewayControlSettings"] =
         item["controlRaw"].Type == JTokenType.Null ? null : (string)item["controlRaw"];
-      if (item["selection"] != null) context.Variables["gatewayProfileSelection"] = item["selection"].ToString(Formatting.None);
+      if (item["selection"] != null) context.Variables["gatewayOperationSelection"] = item["selection"].ToString(Formatting.None);
       if (item["auditModel"] != null) context.Variables["gatewayAuditModel"] = (string)item["auditModel"];
       if (item["connectionExpiry"] != null) context.Variables["gatewayConnectionExpiresOn"] = ((JValue)item["connectionExpiry"]).Value;
       if (item["claims"] != null) {
@@ -181,9 +184,13 @@ public static class PolicyFixture {
 
 def limit_case(case_id, body, constraint=None):
     """要求と上限を変えた1ケースを組み立て、境界値と拒否理由を比較できるようにする。"""
+    selected = dict(constraint or {"kind": "statelessResponses", "maxRequestBytes": 1024,
+                                   "maxOutputTokens": 100, "outputTokenParameter": "max_output_tokens"})
+    # 本文ありHTTP操作は配備normalizerでjsonを補います。noneを含む明示値は変更しません。
+    # 設定不備の試験は、補完後に欠落させるか、明示した不正値をこのまま実式へ渡します。
+    selected.setdefault("bodyFormat", "json")
     return {"id": case_id, "body": json.dumps(body, ensure_ascii=False, separators=(",", ":")) if not isinstance(body, str) else body,
-            "constraint": constraint or {"kind": "statelessResponses", "maxRequestBytes": 1024,
-                                        "maxOutputTokens": 100, "outputTokenParameter": "max_output_tokens"}}
+            "constraint": selected}
 
 
 CASES = [
@@ -199,7 +206,7 @@ CASES = [
                {"kind": "bodyModel", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_completion_tokens"}),
     limit_case("chat-wrong-field", {"messages": [], "max_output_tokens": 25},
                {"kind": "bodyModel", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_completion_tokens"}),
-    limit_case("get-connection", "", {"kind": "registeredOperation", "maxRequestBytes": 32768}),
+    limit_case("get-connection", "", {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 32768}),
     limit_case("embedding", {"model": "synthetic-embedding", "input": "synthetic text"},
                {"kind": "bodyModel", "maxRequestBytes": 32768, "allowedModels": ["synthetic-embedding"]}),
     limit_case("invalid-json", "{synthetic malformed JSON"),
@@ -240,6 +247,51 @@ CASES = [
      "auditModel":"synthetic-model","settings":{"operationId":"chat-create","llmOperationIds":["chat-create"],
        "serviceClass":"platform","backendService":"foundryOpenAi","backendAuthentication":"managedIdentity","measurementRole":"facade"}},
 ]
+
+# この5ケースは設定JSONの読取りだけを失敗させます。本文を読む前に停止することを確認します。
+CONSTRAINT_READER_FAILURES = ["constraint-reader-missing"]
+CASES.append({**limit_case("constraint-reader-missing", "SENTINEL_RAW_CLIENT_REQUEST"), "constraintMissing": True})
+for label, raw in (("null", None), ("non-string", 1), ("malformed", "{"), ("array", "[]")):
+    identifier = "constraint-reader-" + label
+    CONSTRAINT_READER_FAILURES.append(identifier)
+    CASES.append({**limit_case(identifier, "SENTINEL_RAW_CLIENT_REQUEST"), "constraintRaw": raw})
+
+# JSON整数として読めてもlongに収まらない設定値は、本文を読む前に設定不備として扱います。
+CASES.append(limit_case("max-request-bytes-overflow", "SENTINEL_RAW_CLIENT_REQUEST",
+                       {"kind": "registeredOperation", "maxRequestBytes": 9223372036854775808}))
+MAX_BYTES_FAILURES = ["max-request-bytes-overflow"]
+for body_format in ("binary", "multipart", "text"):
+    identifier = "max-request-bytes-overflow-" + body_format
+    MAX_BYTES_FAILURES.append(identifier)
+    CASES.append(limit_case(identifier, "SENTINEL_RAW_CLIENT_REQUEST",
+                           {"kind": "registeredOperation", "bodyFormat": body_format,
+                            "maxRequestBytes": 9223372036854775808}))
+# noneは本文を扱いません。JSONと形式を確認できれば、本文上限の欠落・不正を読まずに成功します。
+NO_BODY_SIZE_CASES = ["none-size-missing", "none-size-overflow"]
+CASES.extend([
+    limit_case("none-size-missing", "SENTINEL_RAW_CLIENT_REQUEST",
+               {"kind": "registeredOperation", "bodyFormat": "none"}),
+    limit_case("none-size-overflow", "SENTINEL_RAW_CLIENT_REQUEST",
+               {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 9223372036854775808}),
+])
+# runtimeへ届く内部設定不備を再現するため、欠落ケースだけは配備相当の補完後に項目を削除します。
+BODY_FORMAT_FAILURES = ["body-format-missing"]
+missing_format = limit_case("body-format-missing", "SENTINEL_RAW_CLIENT_REQUEST",
+                            {"kind": "registeredOperation", "maxRequestBytes": 128})
+missing_format["constraint"].pop("bodyFormat")
+CASES.append(missing_format)
+for label, value in (("null", None), ("unknown", "xml"), ("empty", ""), ("number", 1),
+                     ("boolean", True), ("object", {}), ("array", [])):
+    identifier = "body-format-" + label
+    BODY_FORMAT_FAILURES.append(identifier)
+    CASES.append(limit_case(identifier, "SENTINEL_RAW_CLIENT_REQUEST",
+                           {"kind": "registeredOperation", "maxRequestBytes": 128, "bodyFormat": value}))
+# PIIのcompact上限12バイトに対する、エスケープを含む受信表現の6倍境界を小さな本文で確認します。
+PII_WIRE_BODY = r'{"text":"\u0061"}'
+CASES.extend([
+    limit_case("pii-wire-boundary", PII_WIRE_BODY.ljust(72), {"kind": "pii", "maxRequestBytes": 12}),
+    limit_case("pii-wire-excess", PII_WIRE_BODY.ljust(73), {"kind": "pii", "maxRequestBytes": 12}),
+])
 
 # 認証は共通入口で完了し、認可decisionが未作成/拒否でも主体を保持するケース。
 _subject_tenant = "11111111-1111-4111-8111-111111111111"
@@ -325,15 +377,58 @@ for _format, _media in (("binary", "audio/wav"), ("multipart", "multipart/form-d
                                ("unknown", {"Content-Type": _media}),
                                ("too-large", {"Content-Type": _media, "Content-Length": "1025"}),
                                ("chunked", {"Content-Type": _media, "Content-Length": "12", "Transfer-Encoding": "chunked"}),
-                               ("wrong-type", {"Content-Type": "application/json", "Content-Length": "12"})):
+                               ("wrong-type", {"Content-Type": "application/json", "Content-Length": "12"}),
+                               ("missing-types", {"Content-Type": _media, "Content-Length": "12"})):
         _case = limit_case(_format + "-" + _suffix, "not JSON!", {"kind": "registeredOperation", "bodyFormat": _format, "maxRequestBytes": 1024, "contentTypes": [_media]})
+        if _suffix == "missing-types":
+            _case["constraint"].pop("contentTypes")
         _case["headers"] = _headers
         CASES.append(_case)
+# HTTP層での受付は再現せず、APIMポリシー式へ既に渡されたヘッダーの扱いだけを検証します。
+for _suffix, _length in (("invalid-length", "not-a-number"), ("negative-length", "-1")):
+    _case = limit_case("binary-" + _suffix, "not JSON!",
+                       {"kind": "registeredOperation", "bodyFormat": "binary", "maxRequestBytes": 1024})
+    _case["headers"] = {"Content-Type": "application/json", "Content-Length": _length}
+    CASES.append(_case)
 for _suffix, _headers in (("lengthless", {}), ("understated", {"Content-Length": "1"}), ("chunked", {"Transfer-Encoding": "chunked"})):
     _case = limit_case("actual-upload-" + _suffix, "a" * 1025,
-                       {"kind": "registeredOperation", "bodyFormat": "binary", "maxRequestBytes": 1024, "contentTypes": ["audio/wav"]})
+                       {"kind": "registeredOperation", "bodyFormat": "binary", "maxRequestBytes": 1024})
     _case["headers"] = {"Content-Type": "audio/wav", **_headers}
     CASES.append(_case)
+# 非JSONの宣言値のみを確認する3形式と、同じ本文を全量確認する明示actualを比較します。
+# 合成ヘッダーを式へ直接渡すため、HTTP層での受付や下流への転送は検証していません。
+for _format, _headers in (("binary", {}), ("multipart", {"Content-Length": "1"}),
+                           ("text", {"Content-Length": "not-a-number"})):
+    _case = limit_case("declared-upload-" + _format, "a" * 1025,
+                       {"kind": "registeredOperation", "bodyFormat": _format,
+                        "maxRequestBytes": 1024, "requestBodySizeCheck": "declared"})
+    _case["headers"] = _headers
+    CASES.append(_case)
+    CASES.append({**_case, "id": "explicit-actual-upload-" + _format,
+                  "constraint": {**_case["constraint"], "requestBodySizeCheck": "actual"}})
+_case = limit_case("declared-upload-excess", "a" * 1025,
+                   {"kind": "registeredOperation", "bodyFormat": "binary",
+                    "maxRequestBytes": 1024, "requestBodySizeCheck": "declared"})
+_case["headers"] = {"Content-Length": "1025"}
+CASES.append(_case)
+# JSON/noneではこの指定を配備できません。式へ直接渡しても既存の本文処理を変えない境界を確認します。
+for _format in ("json", "none"):
+    CASES.append(limit_case("declared-upload-" + _format, "a" * 1025,
+                           {"kind": "registeredOperation", "bodyFormat": _format,
+                            "maxRequestBytes": 1024, "requestBodySizeCheck": "declared"}))
+
+NATIVE_UPLOAD_OPERATIONS = (
+    ("azure-speech-v1", "stt", "declared"),
+    ("openai-audio-v1", "audio-transcriptions", "declared"),
+    ("openai-images-v1", "image-edit", "declared"),
+    ("azure-speech-v1", "tts", "declared"),
+    ("document-analysis-v1", "analyze_document", "actual"),
+)
+for _api, _operation, _mode in NATIVE_UPLOAD_OPERATIONS:
+    _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
+    # 標準操作の形式・検査方法を使い、500 MiBの本文を作らずに小さなサイズ境界で実式を確認します。
+    CASES.append(limit_case("native-upload-" + _api + "-" + _operation, "a" * 1025,
+                           {**_constraint, "maxRequestBytes": 1024}))
 CASES.append(limit_case("native-rerank-default", {"query": "query", "documents": ["document"] * 17},
                        {"kind": "rerank", "maxRequestBytes": 65536}))
 CASES.append(limit_case("protocol-unread", "opaque protocol frames", {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 1024}))
@@ -486,19 +581,72 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_binary_multipart_and_protocol_frames_are_never_read_as_json(self):
         for body_format in ("binary", "multipart", "text"):
-            for suffix, status in (("valid", 200), ("unknown", 200), ("too-large", 413), ("chunked", 200), ("wrong-type", 415)):
+            for suffix, status in (("valid", 200), ("unknown", 200), ("too-large", 413), ("chunked", 200), ("wrong-type", 200), ("missing-types", 200)):
                 case_id = body_format + "-" + suffix
                 with self.subTest(case_id=case_id):
                     self.assertEqual(self.decision(case_id)["status"], status)
                     self.assertEqual(self.results[case_id]["reads"], 1 if status == 200 else 0)
-        self.assertTrue(self.decision("protocol-unread")["allowed"])
-        self.assertEqual(self.results["protocol-unread"]["reads"], 0)
+                    self.assertTrue(self.results[case_id]["preserved"])
+                    self.assertEqual(self.results[case_id]["bodyAfter"], "not JSON!")
+        for case_id in ("binary-invalid-length", "binary-negative-length"):
+            with self.subTest(content_length=case_id):
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "BOUNDED_UPLOAD"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], "not JSON!")
+        for case_id in ("protocol-unread", *NO_BODY_SIZE_CASES):
+            with self.subTest(no_body=case_id):
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "NO_BODY_CONTRACT"})
+                self.assertEqual(self.results[case_id]["reads"], 0)
+                self.assertTrue(self.results[case_id]["preserved"])
 
     def test_native_optional_counts_and_actual_chunked_byte_bounds(self):
         self.assertTrue(self.decision("native-rerank-default")["allowed"])
         for suffix in ("lengthless", "understated", "chunked"):
             self.assertEqual(self.decision("actual-upload-" + suffix)["status"], 413)
             self.assertEqual(self.results["actual-upload-" + suffix]["reads"], 1)
+            self.assertTrue(self.results["actual-upload-" + suffix]["preserved"])
+            self.assertEqual(self.results["actual-upload-" + suffix]["bodyAfter"], "a" * 1025)
+
+    def test_declared_upload_size_check_preserves_body_without_full_reads(self):
+        for body_format in ("binary", "multipart", "text"):
+            case_id = "declared-upload-" + body_format
+            with self.subTest(declared=body_format):
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "DECLARED_SIZE_ONLY"})
+                self.assertEqual(self.results[case_id]["reads"], 0)
+            actual_id = "explicit-actual-upload-" + body_format
+            with self.subTest(actual=body_format):
+                self.assertEqual(self.decision(actual_id), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+                self.assertEqual(self.results[actual_id]["reads"], 1)
+            for identifier in (case_id, actual_id):
+                self.assertTrue(self.results[identifier]["preserved"])
+                self.assertEqual(self.results[identifier]["bodyAfter"], "a" * 1025)
+        self.assertEqual(self.decision("declared-upload-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+        self.assertEqual(self.results["declared-upload-excess"]["reads"], 0)
+        self.assertEqual(self.decision("declared-upload-json"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+        self.assertEqual(self.results["declared-upload-json"]["reads"], 1)
+        self.assertEqual(self.decision("declared-upload-none"), {"allowed": True, "status": 200, "code": "NO_BODY_CONTRACT"})
+        self.assertEqual(self.results["declared-upload-none"]["reads"], 0)
+        for identifier in ("declared-upload-excess", "declared-upload-json", "declared-upload-none"):
+            self.assertTrue(self.results[identifier]["preserved"])
+            self.assertEqual(self.results[identifier]["bodyAfter"], "a" * 1025)
+
+    def test_native_upload_size_check_matches_standard_operation_settings(self):
+        declared = set()
+        for path in (CORE / "apps/gateway/apim/apis").glob("*.json"):
+            definition = json.loads(path.read_text())
+            for operation, constraint in definition.get("authorization", {}).get("operationConstraints", {}).items():
+                if constraint.get("requestBodySizeCheck") == "declared":
+                    declared.add((definition["name"], operation))
+        self.assertEqual(declared, {(api, operation) for api, operation, mode in NATIVE_UPLOAD_OPERATIONS if mode == "declared"})
+        for api, operation, mode in NATIVE_UPLOAD_OPERATIONS:
+            case_id = "native-upload-" + api + "-" + operation
+            with self.subTest(api=api, operation=operation):
+                expected = {"allowed": True, "status": 200, "code": "DECLARED_SIZE_ONLY"} if mode == "declared" else {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"}
+                self.assertEqual(self.decision(case_id), expected)
+                self.assertEqual(self.results[case_id]["reads"], 0 if mode == "declared" else 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], "a" * 1025)
 
     def test_standard_apis_accept_provider_inputs_beyond_old_trial_limits(self):
         for case_id in ("native-responses-history", "native-image-multiple", "native-image-default",
@@ -525,7 +673,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
     def test_read_only_connection_and_embedding_do_not_require_generation_tokens(self):
         for case_id in ("get-connection", "embedding"):
             with self.subTest(case_id=case_id):
-                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                expected_code = "NO_BODY_CONTRACT" if case_id == "get-connection" else "REQUEST_WITHIN_LIMITS"
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": expected_code})
 
     def test_output_limit_is_optional_and_uses_provider_maximum_when_supplied(self):
         self.assertTrue(self.decision("missing-output-limit")["allowed"])
@@ -540,13 +689,40 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertFalse(self.decision(case_id)["allowed"])
 
     def test_missing_or_incompatible_deployment_limits_fail_closed(self):
-        for case_id in ("missing-config", "invalid-responses-alias"):
+        for case_id in ("missing-config", "invalid-responses-alias", *MAX_BYTES_FAILURES):
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
+        for case_id in MAX_BYTES_FAILURES:
+            self.assertEqual(self.results[case_id]["reads"], 0, case_id)
+            self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST", case_id)
+
+    def test_internal_constraint_read_failures_are_500_before_request_body_reads(self):
+        for case_id in CONSTRAINT_READER_FAILURES:
+            with self.subTest(case_id=case_id):
+                self.assertEqual(self.decision(case_id), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
+                self.assertEqual(self.results[case_id]["reads"], 0)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST")
+
+    def test_invalid_internal_body_formats_are_500_before_request_body_reads(self):
+        for case_id in BODY_FORMAT_FAILURES:
+            with self.subTest(case_id=case_id):
+                self.assertEqual(self.decision(case_id), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
+                self.assertEqual(self.results[case_id]["reads"], 0)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST")
 
     def test_real_utf8_bytes_and_exact_boundary(self):
         self.assertTrue(self.decision("byte-boundary")["allowed"])
         self.assertEqual(self.decision("multibyte-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+
+    def test_pii_wire_representation_keeps_its_reserved_byte_boundary(self):
+        self.assertEqual(self.decision("pii-wire-boundary"), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+        self.assertEqual(self.decision("pii-wire-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+        for case_id, size in (("pii-wire-boundary", 72), ("pii-wire-excess", 73)):
+            self.assertEqual(self.results[case_id]["reads"], 1)
+            self.assertTrue(self.results[case_id]["preserved"])
+            self.assertEqual(self.results[case_id]["bodyAfter"], PII_WIRE_BODY.ljust(size))
 
     def test_invalid_json_has_safe_error_without_input(self):
         self.assertEqual(self.decision("invalid-json"), {"allowed": False, "status": 400, "code": "INVALID_REQUEST"})

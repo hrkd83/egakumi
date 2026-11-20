@@ -14,7 +14,8 @@
       "method": "POST",
       "urlTemplate": "/embed",
       "templateParameters": [],
-      "backendUrlTemplate": "/providers/cohere/v2/embed"
+      "backendUrlTemplate": "/providers/cohere/v2/embed",
+      "inputContract": {}
     },
     {
       "name": "rerank",
@@ -22,7 +23,8 @@
       "method": "POST",
       "urlTemplate": "/rerank",
       "templateParameters": [],
-      "backendUrlTemplate": "/providers/cohere/v2/rerank"
+      "backendUrlTemplate": "/providers/cohere/v2/rerank",
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],

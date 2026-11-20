@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from arm_helpers import PolicyExpression, compiled_policy_value
 from bicep_helpers import compile_bicep
 from configuration_fixtures import CORE, configuration
+from deployment.helpers.apim_input_contract import render_input_validation_fragment
 from schema_helpers import local_schema_validator
 from test_api_protocols import CSHARP, actual_expression, bound_coverage
 from test_gateway_limits_telemetry import LIMIT_EXPRESSION, PWSH
@@ -123,11 +124,12 @@ class EmbeddingExpressionTests(unittest.TestCase):
          public static string Run(string input) {
           var result=new JObject();foreach(JObject item in JArray.Parse(input)) {
            var c=new Context();c.Operation.Id=(string)item["operation"];c.Request.Body=new Body{Data=item["wire"] == null ? item["body"].ToString(Formatting.None) : (string)item["wire"]};c.Variables["config"]=item["config"].ToString(Formatting.None);var before=c.Request.Body.Data;
+           c.Variables["gatewayControlSettings"]=new JObject(new JProperty("operationConstraints", item["config"]["operationConstraints"])).ToString(Formatting.None);
            var profile=JObject.Parse(Profile(c));bool p=(bool)profile["allowed"],l=false,t=false;if(p){c.Variables["gatewayOperationConstraint"]=profile["constraint"].ToString(Formatting.None);l=(bool)JObject.Parse(Limits(c))["allowed"];t=Target(c);}
            result[(string)item["id"]]=new JObject(new JProperty("profileAllowed",p),new JProperty("limitsAllowed",l),new JProperty("targetAllowed",t),new JProperty("requestNotRewritten",before==c.Request.Body.Data));
           }return result.ToString(Formatting.None);
          }
-        }'''.replace('__PROFILE__',actual_expression('gateway.xml','gatewayProfileSelection')).replace('__LIMITS__',LIMIT_EXPRESSION).replace('__TARGET__',actual_expression('gateway.xml','gatewayTargetAllowed'))
+        }'''.replace('__PROFILE__',actual_expression('gateway.xml','gatewayOperationSelection')).replace('__LIMITS__',LIMIT_EXPRESSION).replace('__TARGET__',actual_expression('gateway.xml','gatewayTargetAllowed'))
         with tempfile.TemporaryDirectory(prefix='embedding-direct-contract-')as temporary:
          p=Path(temporary);(p/'policy.cs').write_text(source);(p/'cases.json').write_text(json.dumps(cases));(p/'run.ps1').write_text("$ErrorActionPreference='Stop'\n$refs=@(Get-ChildItem (Join-Path $PSHOME 'ref/*.dll')|ForEach-Object FullName)+@([Newtonsoft.Json.Linq.JObject].Assembly.Location)\nAdd-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')) -ReferencedAssemblies $refs -CompilerOptions '/nowarn:1701'\n[EmbeddingDirectFixture]::Run((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))\n")
          for q in p.iterdir():q.chmod(0o600)
@@ -169,8 +171,7 @@ class EmbeddingExpressionTests(unittest.TestCase):
     def test_compiled_embedding_policies_publish_the_guard_without_rewriting_native_queries(self):
         template = compile_bicep("apps/gateway/apim/api-publication.bicep")
         apis = configuration.normalize_configuration(bound_coverage(), base_directory=CORE / "config")["apiDefinitions"]
-        source_guard = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").find(
-            './inbound/set-variable[@name="gatewayInferenceRequestAllowed"]').get("value")
+        source_guard = ET.fromstring(render_input_validation_fragment())
         resources = template["resources"]
         resources = list(resources.values()) if isinstance(resources, dict) else resources
         operation_policy = next(resource for resource in resources
@@ -180,18 +181,26 @@ class EmbeddingExpressionTests(unittest.TestCase):
             if api["name"] not in ("openai-embeddings-v1", "cohere-inference-v1"):
                 continue
             api["backendUrl"] = "https://provider.example.com/openai/v1" if api["name"] == "openai-embeddings-v1" else "https://provider.example.com"
-            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"},
-                          "queryGuards": template["parameters"]["queryGuards"]["defaultValue"]}
+            parameters = {"apiDefinitions": [api], "publicHostName": "gateway.example.com", "names": {"apim": "apim-fixture"}}
 
             def evaluate(value):
                 return PolicyExpression(value, template["variables"], functions=template["functions"]).evaluate(parameters)
 
             root = ET.fromstring(compiled_policy_value(template, parameters))
-            authorization = base64.b64encode(json.dumps(api["authorization"], ensure_ascii=False, separators=(",", ":")).encode()).decode()
-            self.assertEqual(root.find('./inbound/set-variable[@name="gatewayInferenceRequestAllowed"]').get("value"),
-                             source_guard.replace("__AUTHORIZATION_BASE64__", authorization))
+            fragment = next(resource for resource in resources if resource["type"] == "Microsoft.ApiManagement/service/policyFragments"
+                            and "core-api-input-validation" in resource["name"])
+            actual_guard = ET.fromstring(evaluate(fragment["properties"]["value"]))
+            self.assertEqual(ET.tostring(actual_guard), ET.tostring(source_guard))
+            output = actual_guard.find('set-variable').get('name')
+            self.assertEqual(output, 'gatewayApiInputValidationPassed')
+            self.assertIsNone(root.find('./inbound/set-variable[@name="gatewayApiInputValidationPassed"]'))
             inbound = list(root.find("inbound"))
-            guard = root.find('./inbound/set-variable[@name="gatewayInferenceRequestAllowed"]')
+            guard = root.find('./inbound/include-fragment[@fragment-id="core-api-input-validation"]')
+            rejection = inbound[inbound.index(guard) + 1].find('when')
+            self.assertEqual(rejection.get('condition'), '@(!(bool)context.Variables["' + output + '"])')
+            self.assertEqual(rejection.find('set-variable[@name="gatewayAuditCode"]').get('value'), 'INVALID_CONTENT_TYPE_HEADER')
+            self.assertEqual(rejection.find('return-response/set-status').attrib,
+                             {'code': '400', 'reason': 'Invalid Content-Type header'})
             limit = root.find('./inbound/include-fragment[@fragment-id="core-model-limits"]')
             self.assertLess(inbound.index(guard), inbound.index(limit))
             self.assertEqual({node.get("name") for node in root.findall(".//set-query-parameter")}, {"api-key", "subscription-key"})

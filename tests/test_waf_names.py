@@ -4,7 +4,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from deployment.helpers.waf_names import DATA_POLICY_KEYS, POLICY_KEYS, policy_id, policy_name
+from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS, DATA_POLICY_PREDECESSORS,
+                                          policy_id, policy_name, predecessor_policy_id)
 
 
 class WafNamesTests(unittest.TestCase):
@@ -15,7 +16,7 @@ class WafNamesTests(unittest.TestCase):
 
     def test_names_are_stable_and_scoped_to_the_purpose_and_prepared_id(self):
         config = self.configuration()
-        for key in ("g-base", "p-base", "g-chat-completions", "g-pii-redact", "p-speech"):
+        for key in ("g-base", "p-base", "g-chat-completions", "g-pii-rest", "g-pii-mcp", "p-speech"):
             with self.subTest(key=key):
                 self.assertEqual(policy_name(config, key), f"wafpol-{key}-abc123")
                 self.assertEqual(policy_name(config, key), policy_name(config, key))
@@ -36,16 +37,26 @@ class WafNamesTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 policy_name(self.configuration(), key)
 
-    def test_only_the_defined_28_purposes_can_produce_a_policy_name(self):
-        self.assertEqual(len(POLICY_KEYS), 28)
-        self.assertEqual(len(DATA_POLICY_KEYS), 22)
-        self.assertEqual(sum(key.startswith("g-") for key in POLICY_KEYS), 16)
+    def test_only_the_defined_29_purposes_can_produce_a_policy_name(self):
+        self.assertEqual(len(POLICY_KEYS), 29)
+        self.assertEqual(len(DATA_POLICY_KEYS), 23)
+        self.assertEqual(sum(key.startswith("g-") for key in POLICY_KEYS), 17)
         self.assertEqual(sum(key.startswith("p-") for key in POLICY_KEYS), 12)
         generated = {policy_name(self.configuration(), key) for key in POLICY_KEYS}
-        self.assertEqual(len(generated), 28)
+        self.assertEqual(len(generated), 29)
         for key in ("g-other", "p-other", "g-unlisted-purpose", "p-unlisted-purpose"):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 policy_name(self.configuration(), key)
+
+    def test_only_split_pii_profiles_have_an_owned_predecessor_and_old_name_is_not_active(self):
+        config = self.configuration()
+        self.assertEqual(DATA_POLICY_PREDECESSORS, {"g-pii-rest": "g-pii-redact", "g-pii-mcp": "g-pii-redact"})
+        old = policy_id(config, "g-pii-rest").rsplit("/", 1)[0] + "/wafpol-g-pii-redact-abc123"
+        for key in POLICY_KEYS:
+            self.assertEqual(predecessor_policy_id(config, key), old if key in DATA_POLICY_PREDECESSORS else None)
+        self.assertNotIn("g-pii-redact", POLICY_KEYS)
+        with self.assertRaises(ValueError):
+            policy_name(config, "g-pii-redact")
 
 
 if __name__ == "__main__":

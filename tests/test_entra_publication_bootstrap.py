@@ -179,6 +179,7 @@ class BootstrapControllerTests(unittest.TestCase):
                 ("namedValues", "MODEL-BACKEND-AUDIENCE"),
                 ("namedValues", "MODEL-BACKEND-SECRET"),
                 ("namedValues", "OP-ALIAS-BACKEND-SECRET"),
+                ("namedValues", "CORE-QUERY-GUARD-MODES"),
                 ("subscriptions", "EXAMPLE"),
                 ("loggers", "AZUREMONITOR"),
                 ("diagnostics", "AZUREMONITOR")):

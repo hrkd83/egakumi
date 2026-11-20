@@ -32,7 +32,7 @@
 | --- | --- | --- | --- |
 | OPS-01 | [更新・引継ぎの準備](../operations/common.md)：正規の保護入力・state・ソースを確認してP／Gを計画する | 認証先・現物との一致、今回の変更範囲、旧digest・戻す値を確認する。不一致の隔離入力は変更前に止め、元の入力を破壊せず計画し直す | PASS |
 | OPS-02 | [Portalの改修・FIXをリリース](../operations/portal.md)：代表画面の文言・ガイド等を小さく変更する | 変更に必要なlint・テスト・buildを通し、Pで更新、稼働digestと実画面・代表APIを確認する。不正候補はローカルで止め、確認済み旧版への切戻しも行う | PASS |
-| OPS-03 | [API定義・ポリシーを修正](../operations/apim.md)：Chat profileの本文上限を変更して、生成されるポリシーを反映する | Gで実反映し、4096／4097 bytesの正常・413拒否、APIポリシーの実値、未認証拒否を確認する。旧定義・ポリシーへ戻し、購読・他APIを保持する | PASS |
+| OPS-03 | [API定義・ポリシーを修正](../operations/apim.md)：Chatの検証モデルの本文上限を変更して、生成されるポリシーを反映する | Gで実反映し、4096／4097 bytesの正常・413拒否、APIポリシーの実値、未認証拒否を確認する。旧定義・ポリシーへ戻し、購読・他APIを保持する | PASS |
 | OPS-04 | [Foundryモデルを保守](../operations/foundry.md)：既存配備の容量を小さく変更する | `scripts/operations/model.py`でconfigの採用値を反映し、実容量を揃え、同じGateway・Portal要求を確認する。容量だけならG／Pは不要。旧容量・configへ戻す。モデル追加・版変更時の公開先整合も手順で確認する | PASS |
 | OPS-05 | [共用Entra client secretを更新](../operations/secrets-and-certificates.md)：`entra_secret.py`のcreate→switch→retireを新旧併存で実施する | 保護ファイル、共有KVの全対象、全CM provider、Broker・Portal・同期jobの参照を揃える。新規認証を確認して旧secretを廃止し、その後も認証成功を確認する。新値を継続採用する | PASS |
 | OPS-06 | [TLS証明書を更新](../operations/secrets-and-certificates.md)：`certificate.py --stage renew --rotate`で既存workerの計画更新を行う | 新しいKV版・SAN・期限、APIM／AppGWの同期、公開HTTPSの新leafと信頼を確認する。timerと通常APIを保持し、作業用タグを戻す。新証明書を継続利用する | PASS |
@@ -47,7 +47,7 @@
 
 ### API・モデル変更の代表条件
 
-`OPS-03`は、`chat-completions.profiles[profileId=chat].maxRequestBytes`の現在値を記録し、隔離した試験だけ4096へ変更して、UTF-8本文全体が4096／4097 bytesの正しいJSONを使う。現行の標準値は500 MiBで、試験後は記録した元の値へ復旧する。下表の過去PASSを、容量緩和後の再検証結果として扱わない。共通認可・要求ID・`<base />`の継承を維持し、制約から生成される実ポリシーを確認する。XMLを扱う共通管理ブロックの改修は[開発手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)へ分け、この代表試験には含めない。
+`OPS-03`は、`chat-completions.modelSettings[検証モデル名].maxRequestBytes`の現在値または未指定の状態を記録し、隔離した試験だけ4096へ変更して、UTF-8本文全体が4096／4097 bytesの正しいJSONを使う。本文の`model`に同じ検証モデル名を指定し、profileヘッダーは付けない。操作の基本値とほかのモデルの差分は維持する。現行の標準値は500 MiBで、試験後は記録した元の値または未指定へ復旧する。下表の過去PASSを、容量緩和や設定構造変更後の再検証結果として扱わない。共通認可・要求ID・`<base />`の継承を維持し、制約から生成される実ポリシーを確認する。XMLを扱う共通管理ブロックの改修は[開発手順](../../DEVELOPMENT.md#apim共通ポリシーを改修する)へ分け、この代表試験には含めない。
 
 `OPS-04`は容量変更を実測の代表とする。追加モデルや版変更の全組合せを実行する項目ではない。実モデルとconfigの不一致検出は、`tests/test_publish_apis.py`の`PublicationTests.test_model_deployment_and_scoped_role_prerequisites_are_checked_before_firewall_changes`等の偽ARM応答でローカル確認する。Gの計画は実モデルを読み取らず、G実行のAPI公開検査までにBroker・SQL等も配備されるため、不一致入力を実環境へ渡して全書込0の試験にしない。
 

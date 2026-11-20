@@ -37,9 +37,17 @@ def context(number, **changes):
     value.update(changes)
     return value
 
-def event(number, subject=None, *, kind='gateway-request', phase='accepted', ctx=None, version=2):
-    value = {'schemaVersion': 1, 'event': kind, 'requestId': request_id(number),
+def event(number, subject=None, *, kind='gateway-request', phase='accepted', ctx=None, version=2, schema_version=1):
+    value = {'schemaVersion': schema_version, 'event': kind, 'requestId': request_id(number),
         'apiId': 'synthetic-api', 'operationId': 'synthetic-operation', 'phase': phase, 'code': 'SYNTHETIC', 'status': 200}
+    if kind == 'query-guard':
+        value.pop('code'); value.pop('status')
+        value.update(route='liveCreate', httpMethod='POST', presence='present',
+                     duplicates='no', statusClass='unknown' if phase == 'received' else '2xx')
+        # 旧保存ログだけが持つ項目です。新版の生成式/出力へ戻すための設定ではありません。
+        if type(schema_version) is int and schema_version == 1:
+            value['countBucket'] = '1'
+            value['mode'] = 'observe'
     if version is not None:
         value.update(auditSchemaVersion=version, requestContext=context(number) if ctx is None else ctx,
                      authenticatedSubject={'status': 'unverified'} if subject is None else subject)
@@ -114,6 +122,20 @@ def fixture():
     add(30, [event(30, key_subject(), ctx=context(30, requestReceivedAt='2026-01-01T10:00:00+09:00'))],
         context_status='inconsistent')
     expected[request_id(30)].update(malformedContextCount=1)
+    # queryの保存済み形式1と新版形式2を同じ識別queryで扱うための合成入力/期待値。
+    # このfixtureはKQLを準備するだけです。下の期待値を実engineの検証結果とは扱いません。
+    add(31, [event(31, key_subject(), kind='query-guard', phase='received', schema_version=1)])
+    expected[request_id(31)].update(callerId='subscription:synthetic-subscription')
+    add(32, [event(32, user_subject(), kind='query-guard', phase='received', schema_version=2)])
+    expected[request_id(32)].update(callerId=user_subject()['callerId'], tenantId=TENANT, principalId=PRINCIPAL, clientId=CLIENT)
+    add(33, [event(33, key_subject(), kind='query-guard', schema_version=3)],
+        subject_status='unverified', context_status='missing')
+    add(34, [event(34, key_subject(), schema_version=2)], subject_status='unverified', context_status='missing')
+    add(35, [event(35, user_subject(), kind='query-guard', phase='received', schema_version=1),
+             event(35, user_subject(), kind='query-guard', phase='backend-response', schema_version=2)])
+    expected[request_id(35)].update(callerId=user_subject()['callerId'], tenantId=TENANT, principalId=PRINCIPAL, clientId=CLIENT)
+    add(36, [event(36, key_subject(), kind='query-guard', schema_version=True)],
+        subject_status='unverified', context_status='missing')
     return {'native': native, 'appgw': appgw, 'expected': expected,
             'expectedRows': len(expected), 'syntheticDataOnly': True}
 

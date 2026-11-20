@@ -24,6 +24,8 @@ from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES
 from deployment.helpers.apim_api_settings import (
     API_SETTINGS_ID, API_SETTINGS_SOURCE_VARIABLE, validate_api_settings_inheritance, validate_api_settings_scope,
 )
+from deployment.helpers.apim_api_request import validate_api_request_preparation_scope
+from deployment.helpers.apim_query_observation import validate_query_observation_scope
 from deployment.helpers.apim_ingress import (
     TRUSTED_INGRESS_ID, render_trusted_ingress_fragment, render_legacy_trusted_ingress_fragment,
 )
@@ -287,6 +289,8 @@ def _same_xml(actual, expected, *, fragment=False, inherited=False):
 def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
     """共通入口の部品を固定位置へ限定し、認証例外の拡大や変数上書きを防ぐ。"""
     validate_api_settings_scope(policies, apim_id, api_properties=api_properties)
+    validate_api_request_preparation_scope(policies, apim_id, api_properties=api_properties)
+    validate_query_observation_scope(policies, apim_id, api_properties=api_properties)
     global_id = apim_id + "/policies/policy"
     ingress_id = TRUSTED_INGRESS_ID
     common_ids = set(AUDIT_FRAGMENT_FILES) | {ingress_id, BROWSER_EXCEPTION_ID} | set(AUTHENTICATION_FRAGMENT_IDS)
@@ -458,18 +462,27 @@ def _read(transport, resource_id, snapshot, *, raw=False, missing=False, collect
     return body
 
 
-def read_policy_graph(manifest: PolicyManifest, transport):
+def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: PolicyManifest | None = None):
     """global/Product/API/全operationと参照fragment/backend/NamedValueを実読取する。
 
     初回互換性範囲はコード生成元の既知Productだけ。購読必須Productの
     native制御を保持し、専用open Productはbase-onlyに固定する。
+
+    scope_manifestは、直前に検証済みの過去生成元を移行前に実読取りする場合だけ使う。
+    非policy構成が同じ現行候補で固定配置を検査し、過去のXML・参照先・ETagは
+    manifestの期待値との完全照合を保つ。過去XMLを現行XMLへ読み替えない。
     """
     apim = manifest.apim_id
     if not isinstance(apim, str) or not apim.startswith("/subscriptions/"):
         raise ValueError("A canonical APIM resource ID is required")
     if not manifest.operations or set(manifest.operations) != set(manifest.products) or set(manifest.operations) != set(manifest.api_properties):
         raise ValueError("The complete target API manifest is required")
-    _audit_fragment_scope(manifest.policies, apim, api_properties=manifest.api_properties)
+    scope = manifest if scope_manifest is None else scope_manifest
+    if (not isinstance(scope, PolicyManifest) or any(
+            getattr(scope, name) != getattr(manifest, name)
+            for name in ("apim_id", "operations", "products", "api_properties", "api_children", "backends", "source_version"))):
+        raise ValueError("A historical policy baseline requires the same complete current API scope")
+    _audit_fragment_scope(scope.policies, apim, api_properties=scope.api_properties)
     snapshot, visited = {}, set()
 
     def dependency(kind, name, expected):

@@ -97,10 +97,10 @@ class McpPublicationTests(unittest.TestCase):
         self.assertEqual(observed, {"sample-mcp-v1": "/mcp"})
         self.assertEqual(self.routing.evaluate({"apiDefinitions": [{"apiType": "http"}]}, 0), "")
         # native MCP型と入口ポリシーを保ち、rewriteのためのHTTP APIへ置き換えない。
-        policy = ET.parse(CORE / "apps/gateway/apim/policies/protocol.xml")
+        policy = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/protocol.xml")
         backend = policy.find("./inbound/set-backend-service")
         self.assertIsNotNone(backend)
-        source = (CORE / "apps/gateway/apim/policies/protocol.xml").read_text()
+        source = (CORE / "apps/gateway/apim/policies/api-templates/protocol.xml").read_text()
         self.assertLess(source.index("<set-backend-service"), source.index("__MCP_PROXY_ROUTE_XML__"))
 
     def test_other_protocols_keep_their_existing_wire_contracts(self):

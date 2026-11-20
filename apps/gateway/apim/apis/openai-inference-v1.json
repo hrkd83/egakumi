@@ -13,14 +13,16 @@
       "displayName": "Chat Completions",
       "method": "POST",
       "urlTemplate": "/chat/completions",
-      "templateParameters": []
+      "templateParameters": [],
+      "inputContract": {}
     },
     {
       "name": "responses-create",
       "displayName": "Create stateless response",
       "method": "POST",
       "urlTemplate": "/responses",
-      "templateParameters": []
+      "templateParameters": [],
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],
@@ -45,68 +47,48 @@
         ],
         "maxRequestBytes": 524288000,
         "outputTokenParameter": "max_completion_tokens",
-        "defaultProfile": "chat",
-        "profiles": [
-          {
-            "kind": "bodyModel",
-            "allowedModels": [
-              "gpt-6.1-sol",
-              "gpt-6-luna",
-              "gpt-6-sol",
-              "gpt-6-astra",
-              "gpt-5.6-luna",
-              "gpt-5.6-sol",
-              "gpt-5.6-terra"
-            ],
-            "maxRequestBytes": 524288000,
-            "outputTokenParameter": "max_completion_tokens",
-            "profileId": "chat",
-            "modalities": [
-              "text"
-            ]
+        "modelSettings": {
+          "gpt-6.1-sol": {
+            "settingId": "chat"
           },
-          {
-            "kind": "bodyModel",
-            "maxRequestBytes": 524288000,
-            "bodyFormat": "json",
-            "allowedModels": [
-              "gpt-6.1-sol"
-            ],
-            "outputTokenParameter": "max_completion_tokens",
-            "profileId": "vision",
-            "modalities": [
-              "text",
-              "image"
-            ]
+          "gpt-6-luna": {
+            "settingId": "chat"
           },
-          {
-            "kind": "bodyModel",
-            "allowedModels": [
-              "DeepSeek-V4-Flash",
-              "DeepSeek-V4-Pro",
-              "Mistral-Large-3",
-              "grok-4.7"
-            ],
-            "maxRequestBytes": 524288000,
-            "outputTokenParameter": "max_tokens",
-            "profileId": "compatible",
-            "modalities": [
-              "text"
-            ]
+          "gpt-6-sol": {
+            "settingId": "chat"
           },
-          {
-            "kind": "bodyModel",
-            "allowedModels": [
-              "model-router"
-            ],
-            "maxRequestBytes": 524288000,
-            "outputTokenParameter": "max_completion_tokens",
-            "profileId": "router",
-            "modalities": [
-              "text"
-            ]
+          "gpt-6-astra": {
+            "settingId": "chat"
+          },
+          "gpt-5.6-luna": {
+            "settingId": "chat"
+          },
+          "gpt-5.6-sol": {
+            "settingId": "chat"
+          },
+          "gpt-5.6-terra": {
+            "settingId": "chat"
+          },
+          "DeepSeek-V4-Flash": {
+            "settingId": "compatible",
+            "outputTokenParameter": "max_tokens"
+          },
+          "DeepSeek-V4-Pro": {
+            "settingId": "compatible",
+            "outputTokenParameter": "max_tokens"
+          },
+          "Mistral-Large-3": {
+            "settingId": "compatible",
+            "outputTokenParameter": "max_tokens"
+          },
+          "grok-4.7": {
+            "settingId": "compatible",
+            "outputTokenParameter": "max_tokens"
+          },
+          "model-router": {
+            "settingId": "router"
           }
-        ]
+        }
       },
       "responses-create": {
         "kind": "statelessResponses",
@@ -121,44 +103,32 @@
         ],
         "maxRequestBytes": 524288000,
         "outputTokenParameter": "max_output_tokens",
-        "defaultProfile": "response",
-        "profiles": [
-          {
-            "kind": "statelessResponses",
-            "allowedModels": [
-              "gpt-6.1-sol",
-              "gpt-6-luna",
-              "gpt-6-sol",
-              "gpt-6-astra",
-              "gpt-5.6-luna",
-              "gpt-5.6-sol",
-              "gpt-5.6-terra"
-            ],
-            "maxRequestBytes": 524288000,
-            "outputTokenParameter": "max_output_tokens",
-            "profileId": "response",
-            "modalities": [
-              "text"
-            ],
-            "modelAliases": {
-              "codex-auto-review": "gpt-5.6-luna"
-            }
+        "modelAliases": {
+          "codex-auto-review": "gpt-5.6-luna"
+        },
+        "modelSettings": {
+          "gpt-6.1-sol": {
+            "settingId": "response"
           },
-          {
-            "kind": "statelessResponses",
-            "maxRequestBytes": 524288000,
-            "bodyFormat": "json",
-            "allowedModels": [
-              "gpt-6.1-sol"
-            ],
-            "outputTokenParameter": "max_output_tokens",
-            "profileId": "pdf",
-            "modalities": [
-              "text",
-              "file"
-            ]
+          "gpt-6-luna": {
+            "settingId": "response"
+          },
+          "gpt-6-sol": {
+            "settingId": "response"
+          },
+          "gpt-6-astra": {
+            "settingId": "response"
+          },
+          "gpt-5.6-luna": {
+            "settingId": "response"
+          },
+          "gpt-5.6-sol": {
+            "settingId": "response"
+          },
+          "gpt-5.6-terra": {
+            "settingId": "response"
           }
-        ]
+        }
       }
     }
   },

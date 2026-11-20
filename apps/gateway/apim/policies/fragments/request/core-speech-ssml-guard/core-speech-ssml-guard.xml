@@ -1,0 +1,11 @@
+<fragment>
+  <!-- ========== 音声合成の本文検査（core-speech-ssml-guard） ========== -->
+  <!-- 目的：音声合成の本文サイズと、SSMLのDTD・ENTITY宣言を転送前に確認します。 -->
+  <!-- 処理：本文を一度だけ読み、実サイズを確認してから宣言を検査し、gatewaySpeechSsmlDecisionへ結果を格納します。 -->
+  <!-- 同名C#と説明コメントをここへ展開します。元の本文を保持し、XML解析・実体解決は行いません。 -->
+  <!-- 結果はサイズ超過413、宣言等の不備400、成功200です。監査記録と応答はAPI側が行います。 -->
+  <set-variable id="core-speech-ssml-guard" name="gatewaySpeechSsmlDecision" value="@{
+      __CORE_SPEECH_SSML_GUARD_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

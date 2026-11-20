@@ -1,0 +1,9 @@
+<fragment>
+<!-- ========== クエリ概要の観測と記録 ========== -->
+<!-- 目的：外部MCPの各受付が明示した観測ラベルから、URLクエリの概要を監査へ渡します。 -->
+<!-- 処理：要求準備の後に観測部品を呼び、receivedを記録して後続へ進みます。この処理ではクエリを理由に要求を拒否せず、名前・値や本文も記録しません。 -->
+<include-fragment fragment-id="core-query-observation" />
+<set-variable name="gatewayQueryPhase" value="received" />
+<include-fragment fragment-id="core-query-telemetry" />
+<!-- === -->
+</fragment>

@@ -17,7 +17,7 @@ from waf_policy import (exclusion, load_manifest, selected_profiles, published_p
 from waf_contracts import contract_fields, APP_GROUPS
 from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
-                                           policy_id as waf_policy_id, policy_name)
+                                           policy_id as waf_policy_id, policy_name, predecessor_policy_id)
 from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 from test_waf_contracts import common_data_before_manifest
@@ -204,32 +204,32 @@ class DataWafTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     policy_name(CONFIG, name)
 
-    def test_standard_profile_merges_keep_the_approved_full_exclusion_unions(self):
+    def test_standard_profiles_keep_the_approved_path_specific_exclusions(self):
         profiles = {item['name']: item for item in load_manifest()['profiles']}
         self.assertEqual(set(profiles), {
             'g-chat-completions', 'g-responses', 'g-embeddings', 'g-rerank', 'g-decision',
-            'g-images', 'g-transcribe', 'g-realtime', 'g-live', 'g-pii-redact',
+            'g-images', 'g-transcribe', 'g-realtime', 'g-live', 'g-pii-rest', 'g-pii-mcp',
             'g-document-status', 'g-realtime-ticket',
             'p-generate', 'p-embeddings', 'p-rerank', 'p-decision', 'p-images',
             'p-speech', 'p-realtime', 'p-document-upload', 'p-pii-redact',
             'p-document-status'})
         self.assertEqual(set(profiles), DATA_POLICY_KEYS)
         self.assertEqual(POLICY_KEYS, DATA_POLICY_KEYS | RESERVED_POLICY_KEYS)
-        self.assertEqual(len(POLICY_KEYS), 28)
-        expected = {'g-pii-redact': {'params.arguments.text', 'text'},
+        self.assertEqual(len(POLICY_KEYS), 29)
+        expected = {'g-pii-rest': {'text'}, 'g-pii-mcp': {'params.arguments.text'},
                     'p-pii-redact': {'text'}}
         for name, selectors in expected.items():
             profile = profiles[name]
             with self.subTest(profile=name):
-                self.assertEqual(len(profile['paths']), 2)
+                self.assertEqual(len(profile['paths']), 2 if name == 'p-pii-redact' else 1)
                 self.assertEqual({entry['selector'] for entry in profile['exclusions']}, selectors)
                 for entry in profile['exclusions']:
                     self.assertTrue(exclusion_is_covered(
                         legacy_data_exclusion(entry['selector']), entry))
         self.assertEqual(set(profiles['g-embeddings']['paths']),
                          {'/models/cohere/v1/embed', '/models/openai-embeddings/v1/embeddings'})
-        self.assertEqual(set(profiles['g-pii-redact']['paths']),
-                         {'/tools/pii/v1/redact', '/tools/pii-v1-mcp/mcp'})
+        self.assertEqual(profiles['g-pii-rest']['paths'], ['/tools/pii/v1/redact'])
+        self.assertEqual(profiles['g-pii-mcp']['paths'], ['/tools/pii-v1-mcp/mcp'])
         self.assertEqual(set(profiles['p-pii-redact']['paths']),
                          {'/api/tools/pii', '/api/tools/pii-mcp'})
 
@@ -1294,30 +1294,38 @@ class DataWafTests(unittest.TestCase):
 
     def test_common_compatibility_update_keeps_all_other_waf_settings(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
-        for previous in common_data_before_manifest()['profiles']:
-            with self.subTest(profile=previous['name']):
-                profile = profiles[previous['name']]
-                base = policy()
-                old_policy = desired_policy(base, previous, configuration())
-                updated = desired_policy(base, profile, configuration(), sources=(old_policy,))
-                properties = updated['properties']
-                self.assertEqual(properties['policySettings'], old_policy['properties']['policySettings'])
-                self.assertEqual(properties['policySettings']['mode'], 'Prevention')
-                self.assertIs(properties['policySettings']['requestBodyCheck'], True)
-                self.assertEqual(properties['managedRules']['managedRuleSets'],
-                                 old_policy['properties']['managedRules']['managedRuleSets'])
-                self.assertEqual(properties.get('customRules', []),
-                                 old_policy['properties'].get('customRules', []))
-                exclusions = properties['managedRules']['exclusions']
-                self.assertTrue(all(any(exclusion_is_covered(old, new) for new in exclusions)
-                                    for old in old_policy['properties']['managedRules']['exclusions']))
+        for frozen in common_data_before_manifest()['profiles']:
+            # 凍結した旧共有profileを改変せず、各selectorを新しい公開入口へ対応させます。
+            successors = ('g-pii-rest', 'g-pii-mcp') if frozen['name'] == 'g-pii-redact' else (frozen['name'],)
+            for name in successors:
+                profile = profiles[name]
+                previous = copy.deepcopy(frozen)
+                if len(successors) == 2:
+                    selectors = {entry['selector'] for entry in profile['exclusions']}
+                    previous.update(name=name, paths=profile['paths'], exclusions=[
+                        entry for entry in frozen['exclusions'] if entry['selector'] in selectors])
+                    self.assertEqual({entry['selector'] for entry in previous['exclusions']}, selectors)
+                with self.subTest(profile=name):
+                    base = policy()
+                    old_policy = desired_policy(base, previous, configuration())
+                    updated = desired_policy(base, profile, configuration(), sources=(old_policy,))
+                    properties = updated['properties']
+                    self.assertEqual(properties['policySettings'], old_policy['properties']['policySettings'])
+                    self.assertEqual(properties['policySettings']['mode'], 'Prevention')
+                    self.assertIs(properties['policySettings']['requestBodyCheck'], True)
+                    self.assertEqual(properties['managedRules']['managedRuleSets'],
+                                     old_policy['properties']['managedRules']['managedRuleSets'])
+                    self.assertEqual(properties.get('customRules', []), old_policy['properties'].get('customRules', []))
+                    exclusions = properties['managedRules']['exclusions']
+                    self.assertTrue(all(any(exclusion_is_covered(old, new) for new in exclusions)
+                                        for old in old_policy['properties']['managedRules']['exclusions']))
 
     def test_text_sdp_and_opaque_upgrades_cover_the_individual_conditions(self):
         profiles = {p['name']: p for p in load_manifest()['profiles']}
         fields = {
             'g-rerank': {'documents', 'query'}, 'p-rerank': {'documents', 'query'},
             'g-transcribe': {'prompt'}, 'g-live': {'instructions', 'sdp'},
-            'g-realtime': {'sdp'}, 'g-pii-redact': {'params.arguments.text', 'text'},
+            'g-realtime': {'sdp'}, 'g-pii-rest': {'text'}, 'g-pii-mcp': {'params.arguments.text'},
             'p-generate': {'message'}, 'p-speech': {'text'}, 'p-pii-redact': {'text'},
             'g-decision': {'state', 'state.', 'questions.'},
             'p-decision': {'state', 'state.', 'questions.'},
@@ -1782,6 +1790,82 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(set(actual), published_paths({'apiDefinitions': []}))
         self.assertIn('/tools/pii-v1-mcp/mcp', actual)
         self.assertFalse(any('{' in value for value in actual))
+
+
+class PiiSplitMigrationTests(unittest.TestCase):
+    """実Azureを使わず、既知の共有PIIからの限定移行と退役前の維持を検証する。"""
+
+    def setUp(self):
+        profiles = {item['name']: item for item in load_manifest()['profiles']}
+        self.profiles = [profiles['g-pii-rest'], profiles['g-pii-mcp']]
+        self.config = configuration()
+        self.shared = desired_policy(policy(), self.profiles[0], self.config)
+        self.old_id = predecessor_policy_id(self.config, 'g-pii-rest')
+        self.shared.update(id=self.old_id, name=self.old_id.rsplit('/', 1)[-1], etag='"old-pii"')
+        self.shared['properties']['managedRules']['exclusions'].extend(copy.deepcopy(self.profiles[1]['exclusions']))
+
+    def test_owned_shared_source_is_unchanged_and_only_the_other_text_selector_is_removed(self):
+        before = copy.deepcopy(self.shared)
+        for profile, other in zip(self.profiles, ('params.arguments.text', 'text')):
+            with self.subTest(profile=profile['name']):
+                actual = desired_policy(policy(), profile, self.config, sources=(self.shared,))
+                expected = desired_policy(policy(), profile, self.config)
+                self.assertEqual(actual, expected)
+                self.assertFalse(any(entry['selector'] == other for entry in actual['properties']['managedRules']['exclusions']))
+                self.assertEqual(self.shared, before)
+
+    def test_foreign_source_and_noncanonical_destination_cannot_drop_the_other_selector(self):
+        foreign = copy.deepcopy(self.shared)
+        foreign['id'] = waf_policy_id(self.config, 'g-responses')
+        for profile in self.profiles:
+            with self.subTest(profile=profile['name'], source='foreign'), self.assertRaises(ValueError):
+                desired_policy(policy(), profile, self.config, sources=(foreign,))
+            changed = {**profile, 'paths': [profile['paths'][0] + '/neighbor']}
+            with self.subTest(profile=profile['name'], destination='neighbor'), self.assertRaises(ValueError):
+                desired_policy(policy(), changed, self.config, sources=(self.shared,))
+
+    def test_unknown_exclusions_or_changed_settings_and_custom_rules_are_not_silently_removed(self):
+        changes = []
+        unknown = copy.deepcopy(self.shared)
+        unknown['properties']['managedRules']['exclusions'].append(exclusion(
+            'unexpectedField', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100']))
+        changes.append(unknown)
+        wider = copy.deepcopy(self.shared)
+        retiring = next(entry for entry in wider['properties']['managedRules']['exclusions'] if entry['selector'] == 'params.arguments.text')
+        retiring['exclusionManagedRuleSets'][0]['ruleGroups'].append({'ruleGroupName': 'UNKNOWN-GROUP'})
+        changes.append(wider)
+        settings = copy.deepcopy(self.shared)
+        settings['properties']['policySettings']['requestBodyCheck'] = False
+        changes.append(settings)
+        custom = copy.deepcopy(self.shared)
+        custom['properties'].setdefault('customRules', []).append({'name': 'unexpected-rule', 'priority': 99, 'action': 'Allow'})
+        changes.append(custom)
+        for index, source in enumerate(changes):
+            before = copy.deepcopy(source)
+            with self.subTest(change=index), self.assertRaises(ValueError):
+                desired_policy(policy(), self.profiles[0], self.config, sources=(source,))
+            self.assertEqual(source, before)
+
+    def test_reconcile_moves_both_paths_without_updating_or_deleting_the_old_policy(self):
+        source = gateway(path_based=True)
+        paths = [profile['paths'][0] for profile in self.profiles]
+        api_mapping(source)['pathRules'].insert(0, {'name': 'waf-data-g-pii-redact', 'properties': {
+            'paths': paths, 'firewallPolicy': {'id': self.old_id},
+            'backendAddressPool': POOL, 'backendHttpSettings': BACKEND, 'rewriteRuleSet': REWRITE}})
+        self.config['apiDefinitions'] = [{'path': path.rsplit('/', 1)[0].lstrip('/'), 'operations': [{
+            'name': 'operation', 'method': 'POST', 'urlTemplate': '/' + path.rsplit('/', 1)[1]}]} for path in paths]
+        transport = ArmMemory(source, {self.old_id: copy.deepcopy(self.shared)})
+        before = copy.deepcopy(transport.resources[self.old_id])
+        value = {'version': 2, 'profiles': self.profiles}
+        reconcile(self.config, transport, scopes=('gateway',), manifest=value)
+        rules = api_mapping(transport.resources[GATEWAY_ID])['pathRules']
+        for profile in self.profiles:
+            rule, = [rule for rule in rules if rule['name'] == 'waf-data-' + profile['name']]
+            self.assertEqual(rule['properties']['paths'], profile['paths'])
+            self.assertEqual(rule['properties']['firewallPolicy']['id'], waf_policy_id(self.config, profile['name']))
+        self.assertEqual(transport.resources[self.old_id], before)
+        self.assertFalse(any(method == 'DELETE' or method == 'PUT' and identifier == self.old_id
+                             for method, identifier, *_ in transport.calls))
 
 
 if __name__ == '__main__':

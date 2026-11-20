@@ -18,10 +18,9 @@ const operationLimits = {
   integerLimits: z.record(z.string(), integerLimitSchema).optional(),
   stringChoices: z.record(z.string(), z.array(z.string()).min(1)).optional(),
 };
-const profileSchema = z.object({
-  profileId: z.string(),
-  allowedModels: z.array(z.string()).optional(),
-  modalities: z.array(z.string()).optional(),
+/** モデル別に上書きできる、カタログが使う操作設定です。設定IDは利用者へ公開しません。 */
+const modelSettingSchema = z.object({
+  settingId: z.string().optional(),
   maxRequestBytes: z.number().int().positive().optional(),
   ...outputLimitFields,
   outputTokenParameter: outputTokenParameterSchema.optional(),
@@ -43,8 +42,7 @@ const constraintSchema = z.object({
   contentTypes: z.array(z.string()).optional(),
   allowedModels: z.array(z.string()).optional(),
   model: z.string().optional(),
-  defaultProfile: z.string().optional(),
-  profiles: z.array(profileSchema).optional(),
+  modelSettings: z.record(z.string(), modelSettingSchema).optional(),
   maxRequestBytes: z.number().int().positive().optional(),
   ...outputLimitFields,
   outputTokenParameter: outputTokenParameterSchema.optional(),
@@ -73,12 +71,18 @@ const capabilities = z.object({ schemaVersion: z.literal(1), entries: z.array(z.
 })) }).optional().parse((snapshot as Record<string, unknown>).modelCapabilities);
 
 /** nullも有効な「固定上限なし」の値として保持し、外側の数値へ誤って戻しません。 */
-function outputLimitFor(constraint: z.infer<typeof constraintSchema> | z.infer<typeof profileSchema>, modelId: string): number | null | undefined {
+function outputLimitFor(constraint: z.infer<typeof modelSettingSchema>, modelId: string): number | null | undefined {
   if (constraint.maxOutputTokensByModel) {
     if (!Object.hasOwn(constraint.maxOutputTokensByModel, modelId)) throw new Error("Model output limit is missing");
     return constraint.maxOutputTokensByModel[modelId];
   }
   return constraint.maxOutputTokens;
+}
+
+/** 操作の基本設定にモデル別項目を上書きします。入れ子の表も項目単位で置き換え、再結合しません。 */
+function modelSettingsFor(constraint: z.infer<typeof constraintSchema>, modelId: string): z.infer<typeof modelSettingSchema> {
+  const { modelSettings, ...base } = constraint;
+  return { ...base, ...modelSettings?.[modelId] };
 }
 
 /** JSONで宣言されたAPIの機能をタブへ割り当てます。Cohereだけ操作単位で分けます。 */
@@ -147,10 +151,10 @@ function providerFor(model: string): { providerId: TextModelProviderId; provider
 }
 
 /**
- * テキスト生成モデルを、API側のプロファイルとトークン上限に結び付けます。
+ * テキスト生成モデルを、操作の基本設定とモデル別設定から作ります。
  * @remarks 両形式を使えるモデルは、同じ実モデル名のまま操作ごとに一覧へ含めます。
  * 選択時はモデル名とoperationIdの組合せで識別し、片方のAPIへ暗黙に置き換えません。
- * 画像・PDF用プロファイルは選ばないため、テキスト画面から不適切な制約で実行しません。
+ * モデル別設定がない項目は操作の基本設定を使い、設定IDや転送先は画面へ渡しません。
  */
 export function getTextGenerationModels(): TextGenerationModel[] {
   const definition = definitions.find((item) => item.name === "openai-inference-v1")!;
@@ -160,21 +164,18 @@ export function getTextGenerationModels(): TextGenerationModel[] {
     const constraint = definition.authorization.operationConstraints[operationId];
     if (!operation || !constraint) throw new Error("Text generation API definition is incomplete");
     for (const id of constraint.allowedModels ?? []) {
-      const textProfiles = (constraint.profiles ?? []).filter((profile) =>
-        profile.allowedModels?.includes(id) &&
-        profile.modalities?.includes("text") && profile.modalities.every((modality) => modality === "text"));
-      const profile = textProfiles.find((item) => item.profileId === constraint.defaultProfile) ?? textProfiles[0];
-      const maxRequestBytes = profile?.maxRequestBytes ?? constraint.maxRequestBytes;
-      const maxOutputTokens = outputLimitFor(profile ?? constraint, id);
-      const outputTokenParameter = profile?.outputTokenParameter ?? constraint.outputTokenParameter;
-      if (!profile || !maxRequestBytes || maxOutputTokens === undefined || !outputTokenParameter) {
-        throw new Error("Text generation model has no complete text profile");
+      const settings = modelSettingsFor(constraint, id);
+      const maxRequestBytes = settings.maxRequestBytes;
+      const maxOutputTokens = outputLimitFor(settings, id);
+      const outputTokenParameter = settings.outputTokenParameter;
+      if (!maxRequestBytes || maxOutputTokens === undefined || !outputTokenParameter) {
+        throw new Error("Text generation model settings are incomplete");
       }
       models.push({
         id, label: id, ...providerFor(id), apiId: definition.name, operationId,
-        path: `/${definition.path}${operation.urlTemplate}`, profileId: profile.profileId,
-        maxRequestBytes, maxOutputTokens, minOutputTokens: (profile.integerLimits ?? constraint.integerLimits)?.[outputTokenParameter]?.minimum ?? (operationId === "responses-create" ? 16 : 1),
-        outputTokenParameter, outputTokenLimitKind: profile.outputTokenLimitKinds?.[id] ?? "configured",
+        path: `/${definition.path}${operation.urlTemplate}`,
+        maxRequestBytes, maxOutputTokens, minOutputTokens: settings.integerLimits?.[outputTokenParameter]?.minimum ?? (operationId === "responses-create" ? 16 : 1),
+        outputTokenParameter, outputTokenLimitKind: settings.outputTokenLimitKinds?.[id] ?? "configured",
       });
     }
   }
@@ -232,7 +233,7 @@ export function getDecisionModels(): DecisionModel[] {
   }));
 }
 
-/** 画像生成のサイズ・品質・画像形式を、モデルに適用されるプロファイルから取得します。 */
+/** 画像生成のサイズ・品質・画像形式を、操作の基本設定とモデル別設定から取得します。 */
 export function getImageGenerationModels(): ImageGenerationModel[] {
   const models: ImageGenerationModel[] = [];
   for (const [apiId, operationId, providerId, provider] of [
@@ -244,17 +245,15 @@ export function getImageGenerationModels(): ImageGenerationModel[] {
     const constraint = definition?.authorization.operationConstraints[operationId];
     if (!definition || !operation || !constraint?.maxRequestBytes) throw new Error("Image generation API definition is incomplete");
     for (const id of constraint.allowedModels ?? []) {
-      const profile = constraint.profiles?.find((item) => item.allowedModels?.includes(id) && item.modalities?.includes("text") && item.modalities.every((modality) => modality === "text"));
-      if (providerId === "black-forest-labs" && !profile) throw new Error("Image generation model has no text profile");
-      const choices = profile?.stringChoices ?? constraint.stringChoices;
-      const limits = profile?.integerLimits ?? constraint.integerLimits;
+      const settings = modelSettingsFor(constraint, id);
+      const choices = settings.stringChoices;
+      const limits = settings.integerLimits;
       const width = limits?.width;
       const height = limits?.height;
       const formats = (choices?.output_format ?? (providerId === "openai" ? ["png", "jpeg", "webp"] : ["png", "jpeg"])).filter((format): format is "png" | "jpeg" | "webp" => format === "png" || format === "jpeg" || format === "webp");
       models.push({ id, label: id, providerId, provider, apiId, operationId,
         path: `/${definition.path}${operation.urlTemplate}`,
-        ...(profile ? { profileId: profile.profileId } : {}),
-        maxRequestBytes: profile?.maxRequestBytes ?? constraint.maxRequestBytes,
+        maxRequestBytes: settings.maxRequestBytes ?? constraint.maxRequestBytes,
         sizes: choices?.size ?? (providerId === "openai" ? ["1024x1024", "1536x1024", "1024x1536", "auto"] : []),
         qualities: choices?.quality ?? (providerId === "openai" ? (id.startsWith("gpt-image-2.5") ? ["auto", "low", "medium", "high", "xhigh", "max"] : ["low", "medium", "high"]) : []), formats,
         minImages: limits?.[providerId === "openai" ? "n" : "num_images"]?.minimum ?? 1,

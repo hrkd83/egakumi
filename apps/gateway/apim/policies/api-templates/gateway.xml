@@ -12,205 +12,90 @@
     <!-- 処理：上位のInboundを実行します。拒否されなければ、このAPIの後続処理へ戻ります。 -->
     <base />
     <!-- === -->
-    <set-header name="X-Core-Caller-Id" exists-action="delete" />
-    <set-header name="X-Core-Subscription-Id" exists-action="delete" />
-    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-    <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
-    <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
-    <!-- Live・Realtimeのquery拒否は、profile選択や本文読取りより前に実行します。 -->
-    <set-variable name="gatewayQueryGuardModes" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__QUERY_GUARD_MODES_BASE64__&quot;)))" />
-    <include-fragment fragment-id="core-query-guard" />
+    <!-- ========== API要求の準備（core-api-request-preparation） ========== -->
+    <!-- 目的：共通Inboundから戻った要求を、このAPIの後続処理へ渡せる状態にします。 -->
+    <!-- 処理：内部IDの申告ヘッダーを削除し、要求IDをAPIMの値へ揃え、共通認証の完了を確認します。 -->
+    <include-fragment id="core-api-request-preparation" fragment-id="core-api-request-preparation" />
+    <!-- === -->
+    <!-- ========== クエリ概要の観測と記録 ========== -->
+    <!-- 目的：HTTP操作が明示した観測ラベルから、URLクエリの概要を監査へ渡します。 -->
+    <!-- 処理：要求準備の後、操作・モデル設定の選択や本文読取りより前に観測部品を呼び、receivedを記録します。有無と複数値を観測するだけで、クエリを理由に要求を拒否しません。 -->
+    <include-fragment fragment-id="core-query-observation" />
     <set-variable name="gatewayQueryPhase" value="received" />
     <include-fragment fragment-id="core-query-telemetry" />
-    <choose id="core-query-rejection"><when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;allowed&quot;])">
-      <set-variable name="gatewayQueryPhase" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;] == 400 ? &quot;query-rejected&quot; : &quot;guard-error&quot;)" />
-      <include-fragment fragment-id="core-query-telemetry" />
-      <return-response>
-        <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;])" reason="Query parameters are not allowed" />
-        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
-        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
-        <set-body>@{ return new JObject(new JProperty("error", new JObject(new JProperty("code", (int)JObject.Parse((string)context.Variables["gatewayQueryGuardDecision"])["status"] == 400 ? "QUERY_PARAMETERS_NOT_ALLOWED" : "QUERY_GUARD_NOT_CONFIGURED"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None); }</set-body>
-      </return-response>
-    </when></choose>
-    <!-- Validate media type and query before body reads. Only OpenAI embeddings
-         retains its documented optional API version, despite WAF exclusions. -->
-    <set-variable name="gatewayInferenceRequestAllowed" value="@{
-      var api = context.Api.Id.Split(';')[0];
-      if (api != &quot;openai-inference-v1&quot; &amp;&amp; api != &quot;openai-images-v1&quot; &amp;&amp; api != &quot;blackforest-images-v1&quot;
-          &amp;&amp; api != &quot;openai-embeddings-v1&quot; &amp;&amp; api != &quot;cohere-inference-v1&quot;
-          &amp;&amp; api != &quot;microsoft-decision-v1&quot; &amp;&amp; api != &quot;openai-audio-v1&quot;
-          &amp;&amp; api != &quot;azure-speech-v1&quot;) { return true; }
-      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-      var constraint = config[&quot;operationConstraints&quot;]?[context.Operation.Id];
-      var kind = (string)constraint?[&quot;kind&quot;];
-      var format = (string)constraint?[&quot;bodyFormat&quot;] ?? &quot;json&quot;;
-      var operation = context.Operation.Id;
-      var path = context.Operation.UrlTemplate;
-      var inference = api == &quot;openai-inference-v1&quot; &amp;&amp; ((path == &quot;/responses&quot; &amp;&amp; kind == &quot;statelessResponses&quot;)
-        || (path == &quot;/chat/completions&quot; &amp;&amp; kind == &quot;bodyModel&quot;));
-      var imageOperation = (api == &quot;openai-images-v1&quot; &amp;&amp; (operation == &quot;image-generate&quot; || operation == &quot;image-edit&quot;))
-        || (api == &quot;blackforest-images-v1&quot; &amp;&amp; (operation == &quot;flux2-generate&quot; || operation == &quot;flux2-edit&quot;));
-      var imageJson = kind == &quot;bodyModel&quot; &amp;&amp; format == &quot;json&quot;
-        &amp;&amp; ((api == &quot;openai-images-v1&quot; &amp;&amp; operation == &quot;image-generate&quot; &amp;&amp; path == &quot;/generations&quot;)
-          || (api == &quot;blackforest-images-v1&quot; &amp;&amp; ((operation == &quot;flux2-generate&quot; &amp;&amp; path == &quot;/flux-2/generations&quot;)
-            || (operation == &quot;flux2-edit&quot; &amp;&amp; path == &quot;/flux-2/edits&quot;))));
-      var imageMultipart = api == &quot;openai-images-v1&quot; &amp;&amp; operation == &quot;image-edit&quot;
-        &amp;&amp; path == &quot;/deployments/{deployment}/edits&quot; &amp;&amp; kind == &quot;pathModel&quot; &amp;&amp; format == &quot;multipart&quot;;
-      if (imageOperation &amp;&amp; !imageJson &amp;&amp; !imageMultipart) { return false; }
-      var embeddingOperation = (api == &quot;openai-embeddings-v1&quot; &amp;&amp; operation == &quot;embeddings&quot;)
-        || (api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;cohere-embeddings&quot;);
-      var openaiEmbedding = api == &quot;openai-embeddings-v1&quot; &amp;&amp; operation == &quot;embeddings&quot; &amp;&amp; path == &quot;/embeddings&quot;
-        &amp;&amp; kind == &quot;textEmbeddings&quot; &amp;&amp; format == &quot;json&quot; &amp;&amp; (string)constraint?[&quot;embeddingInputField&quot;] == &quot;input&quot;;
-      var cohereEmbedding = api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;cohere-embeddings&quot; &amp;&amp; path == &quot;/embed&quot;
-        &amp;&amp; kind == &quot;textEmbeddings&quot; &amp;&amp; format == &quot;json&quot; &amp;&amp; (string)constraint?[&quot;embeddingInputField&quot;] == &quot;texts&quot;;
-      if (embeddingOperation &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding) { return false; }
-      var decisionOperation = api == &quot;microsoft-decision-v1&quot; &amp;&amp; operation == &quot;systemone&quot;;
-      var decision = decisionOperation &amp;&amp; path == &quot;/systemone&quot; &amp;&amp; kind == &quot;bodyModel&quot; &amp;&amp; format == &quot;json&quot;;
-      if (decisionOperation &amp;&amp; !decision) { return false; }
-      var rerankOperation = api == &quot;cohere-inference-v1&quot; &amp;&amp; operation == &quot;rerank&quot;;
-      var rerank = rerankOperation &amp;&amp; path == &quot;/rerank&quot; &amp;&amp; kind == &quot;rerank&quot; &amp;&amp; format == &quot;json&quot;;
-      if (rerankOperation &amp;&amp; !rerank) { return false; }
-      var transcriptionOperation = api == &quot;openai-audio-v1&quot; &amp;&amp; operation == &quot;audio-transcriptions&quot;;
-      var transcription = transcriptionOperation &amp;&amp; path == &quot;/deployments/{deployment}/transcriptions&quot;
-        &amp;&amp; kind == &quot;pathModel&quot; &amp;&amp; format == &quot;multipart&quot;;
-      if (transcriptionOperation &amp;&amp; !transcription) { return false; }
-      var speechOperation = api == &quot;azure-speech-v1&quot; &amp;&amp; (operation == &quot;tts&quot; || operation == &quot;stt&quot;);
-      var speechTts = api == &quot;azure-speech-v1&quot; &amp;&amp; operation == &quot;tts&quot; &amp;&amp; path == &quot;/synthesize&quot;
-        &amp;&amp; kind == &quot;registeredOperation&quot; &amp;&amp; format == &quot;text&quot;;
-      var speechStt = api == &quot;azure-speech-v1&quot; &amp;&amp; operation == &quot;stt&quot; &amp;&amp; path == &quot;/recognize&quot;
-        &amp;&amp; kind == &quot;registeredOperation&quot; &amp;&amp; format == &quot;binary&quot;;
-      if (speechOperation &amp;&amp; !speechTts &amp;&amp; !speechStt) { return false; }
-      if (!inference &amp;&amp; !imageJson &amp;&amp; !imageMultipart &amp;&amp; !openaiEmbedding &amp;&amp; !cohereEmbedding
-          &amp;&amp; !decision &amp;&amp; !rerank &amp;&amp; !transcription &amp;&amp; !speechTts &amp;&amp; !speechStt) { return true; }
-      var queryAllowed = openaiEmbedding
-        ? context.Request.Url.Query.Count &lt;= 1 &amp;&amp; context.Request.Url.Query.All(q =&gt; q.Key == &quot;api-version&quot;
-          &amp;&amp; q.Value.Length == 1 &amp;&amp; (q.Value[0] == &quot;v1&quot; || q.Value[0] == &quot;preview&quot;))
-        : context.Request.Url.Query.Count == 0;
-      var contentType = imageMultipart || transcription ? &quot;multipart/form-data&quot;
-        : speechTts ? &quot;application/ssml+xml&quot; : speechStt ? &quot;audio/wav&quot; : &quot;application/json&quot;;
-      return context.Request.Method == &quot;POST&quot; &amp;&amp; queryAllowed
-        &amp;&amp; context.Request.Headers.ContainsKey(&quot;Content-Type&quot;)
-        &amp;&amp; context.Request.Headers[&quot;Content-Type&quot;].Length == 1
-        &amp;&amp; String.Equals(context.Request.Headers.GetValueOrDefault(&quot;Content-Type&quot;, &quot;&quot;).Split(';')[0].Trim(), contentType, StringComparison.OrdinalIgnoreCase);
-    }" />
-    <choose><when condition="@(!(bool)context.Variables[&quot;gatewayInferenceRequestAllowed&quot;])">
-      <set-variable name="gatewayAuditPhase" value="rejected" />
-      <set-variable name="gatewayAuditCode" value="INVALID_INFERENCE_REQUEST" />
-      <set-variable name="gatewayAuditStatus" value="@(400)" />
-      <include-fragment fragment-id="core-gateway-telemetry" />
-      <return-response>
-        <set-status code="400" reason="Invalid inference request" />
-        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
-      </return-response>
-    </when></choose>
-    <!-- JSONを読む前に本文サイズを確認し、要求された入力profileのモデル・形式を検査します。 -->
-    <set-variable name="gatewayProfileSelection" value="@{
-      var result = new JObject(new JProperty(&quot;allowed&quot;, false), new JProperty(&quot;status&quot;, 403), new JProperty(&quot;profileId&quot;, &quot;&quot;));
-      try {
-        var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-        var constraint = config[&quot;operationConstraints&quot;][context.Operation.Id] as JObject;
-        if (constraint == null) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var profiles = constraint[&quot;profiles&quot;] as JArray;
-        var header = &quot;X-Egakumi-Profile&quot;;
-        if (profiles == null) {
-          if (context.Request.Headers.ContainsKey(header)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-          result[&quot;constraint&quot;] = constraint;
-          result[&quot;allowed&quot;] = true;
-          return result.ToString(Newtonsoft.Json.Formatting.None);
-        }
-        if (profiles.Count == 0) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var maxBytes = profiles.Max(p =&gt; (long)p[&quot;maxRequestBytes&quot;]);
-        if (maxBytes &lt; 1 || maxBytes &gt; 524288000) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var bytes = context.Request.Body == null ? new byte[0] : context.Request.Body.As&lt;byte[]&gt;(preserveContent: true);
-        if (bytes.Length &gt; maxBytes) { result[&quot;status&quot;] = 413; return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var profileId = (string)constraint[&quot;defaultProfile&quot;];
-        if (context.Request.Headers.ContainsKey(header)) {
-          if (context.Request.Headers[header].Length != 1) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-          profileId = context.Request.Headers.GetValueOrDefault(header, &quot;&quot;);
-        }
-        var matches = profiles.Where(p =&gt; (string)p[&quot;profileId&quot;] == profileId).ToArray();
-        if (matches.Length != 1) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var selected = (JObject)matches[0];
-        var body = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes));
-        if (body[&quot;model&quot;]?.Type != JTokenType.String) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        var requestedModel = (string)body[&quot;model&quot;];
-        var aliases = selected[&quot;modelAliases&quot;] as JObject;
-        var effectiveModel = aliases?.Property(requestedModel) == null ? requestedModel : (string)aliases[requestedModel];
-        if (!((JArray)selected[&quot;allowedModels&quot;]).Any(m =&gt; (string)m == effectiveModel)) { return result.ToString(Newtonsoft.Json.Formatting.None); }
-        /* Resolve only the selected profile's exact alias. Preserve original
-           bytes until authorization, input limits and target checks all pass. */
-        result[&quot;requestedModel&quot;] = requestedModel;
-        result[&quot;effectiveModel&quot;] = effectiveModel;
-        /* Profile selection binds a fixed route and approved model. Native
-           modality support belongs to the provider; arbitrary tool JSON Schema
-           property names and nested type values must not classify the request. */
-        result[&quot;profileId&quot;] = profileId;
-        result[&quot;constraint&quot;] = selected;
-        result[&quot;allowed&quot;] = true;
-        return result.ToString(Newtonsoft.Json.Formatting.None);
-      } catch { return result.ToString(Newtonsoft.Json.Formatting.None); }
-    }" />
-    <choose><when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;allowed&quot;])">
-      <set-variable name="gatewayAuditPhase" value="rejected" />
-      <set-variable name="gatewayAuditCode" value="PROFILE_NOT_AUTHORIZED" />
-      <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;status&quot;])" />
-      <include-fragment fragment-id="core-gateway-telemetry" />
-      <return-response><set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="Request profile is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
-    </when></choose>
-    <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
-    <!-- 処理：共通入口の認証結果を照合し、キー優先で購読または社員情報を引き継ぎます。 -->
-    <set-variable name="gatewayDecision" value="@{
-      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
-      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
-      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot;) { return deny.ToString(); }
-      JObject decision;
-      if (context.Request.Headers.ContainsKey(keyHeader)) {
-        /* 購読とキー用ヘッダーの形式は共通認証で確認済みです。検証済み購読IDを呼出主体へ引き継ぎます。 */
-        decision = new JObject(new JProperty(&quot;allowed&quot;, true),
-          new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
-      } else {
-        try {
-          if (context.Subscription != null
-              || !context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;]
-              || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return deny.ToString(); }
-          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
-          Guid tenant, principal;
-          if ((int?)user[&quot;schemaVersion&quot;] != 1
-              || !Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
-              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return deny.ToString(); }
-          var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
-          if ((string)user[&quot;callerId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller) { return deny.ToString(); }
-          decision = new JObject(new JProperty(&quot;allowed&quot;, true), new JProperty(&quot;method&quot;, &quot;user&quot;),
-            new JProperty(&quot;callerId&quot;, caller), new JProperty(&quot;allocationId&quot;, caller),
-            new JProperty(&quot;verifiedTenantId&quot;, tenant.ToString(&quot;D&quot;)), new JProperty(&quot;verifiedPrincipalId&quot;, principal.ToString(&quot;D&quot;)),
-            new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
-        } catch { return deny.ToString(); }
-      }
-      if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
-        var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
-        if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
-      }
-      return decision.ToString(Newtonsoft.Json.Formatting.None);
-    }" />
+    <!-- === -->
+    <!-- ========== 操作の入力契約の確認（core-api-input-validation） ========== -->
+    <!-- 目的：検査対象の操作で、本文を読む前にContent-Typeの宣言を確認します。 -->
+    <!-- 処理：共通部品がContent-Typeの欠落・複数値・空欄を検査し、gatewayApiInputValidationPassedへ結果を格納します。falseなら宣言不備を監査へ記録し、要求ID付きの400を返して後続処理を止めます。 -->
+    <!-- 対象外の操作は検査を省略して後続へ進みます。MIMEの許可一覧は使わず、メソッドとURLの照合はAPIMが担当します。 -->
+    <include-fragment id="core-api-input-validation" fragment-id="core-api-input-validation" />
+    <!-- 部品の設定不備はポリシーエラーへ進み、Content-Type宣言不備の400応答とは区別します。 -->
     <choose>
-      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+      <when condition="@(!(bool)context.Variables[&quot;gatewayApiInputValidationPassed&quot;])">
+        <!-- 拒否理由と応答コードを監査へ渡します。不正なヘッダーの値や本文は記録しません。 -->
         <set-variable name="gatewayAuditPhase" value="rejected" />
-        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
-        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <set-variable name="gatewayAuditCode" value="INVALID_CONTENT_TYPE_HEADER" />
+        <set-variable name="gatewayAuditStatus" value="@(400)" />
         <include-fragment fragment-id="core-gateway-telemetry" />
-        <return-response><set-status code="403" reason="API operation is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+        <!-- ログ照合用の要求IDを返し、応答を保存しないようno-storeを指定します。応答本文は作りません。 -->
+        <return-response>
+          <set-status code="400" reason="Invalid Content-Type header" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
       </when>
     </choose>
-    <!-- 登録済みの操作制約を選びます。利用者入力を制約には使いません。 -->
+    <!-- === -->
+    <!-- ========== 操作設定とモデル別設定の準備（core-api-operation-settings） ========== -->
+    <!-- 目的：この操作と要求したモデルに対応する設定を、後続処理へ渡します。 -->
+    <!-- 処理：共通部品が操作の基本設定を読み、モデル別の指定項目を上書きしてgatewayOperationSelectionへ格納します。モデルを読む場合は先に元の本文サイズを確認します。 -->
+    <!-- モデル設定を使わない操作は本文を読まずに進みます。失敗理由と応答は直後の処理で監査へ渡します。 -->
+    <include-fragment id="core-api-operation-settings" fragment-id="core-api-operation-settings" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;allowed&quot;])">
+        <!-- 選択処理が返した原因とHTTPコードを監査へ渡します。本文やmodelの申告値は記録しません。 -->
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;code&quot;] ?? &quot;OPERATION_SETTINGS_INVALID&quot;)" />
+        <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;status&quot;])" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <!-- 本文・modelの形式不備400、本文超過413、設定不備500を原因に合う理由で返し、要求IDでログを照合できるようにします。 -->
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="@((string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;OPERATION_SETTINGS_INVALID&quot; ? &quot;API operation settings are invalid&quot;
+            : (string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;INVALID_REQUEST_BODY&quot; ? &quot;Invalid request body&quot;
+            : (string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;INVALID_REQUEST_MODEL&quot; ? &quot;Invalid request model&quot;
+            : (string)context.Variables[&quot;gatewayAuditCode&quot;] == &quot;REQUEST_TOO_LARGE&quot; ? &quot;Request too large&quot; : &quot;API operation settings are invalid&quot;)" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- === -->
+    <!-- ========== 認証済み利用者情報の引き渡し（core-api-authentication-result） ========== -->
+    <!-- 目的：共通入口で認証した利用者を、このAPIの後続処理と監査へ引き渡します。 -->
+    <!-- 処理：APIMの検証済み購読があれば購読情報を、なければ共通認証済みのBearer本人情報を引き継ぎます。内部情報を引き継げない場合は監査を記録し、500で終了します。 -->
+    <include-fragment id="core-api-authentication-result" fragment-id="core-api-authentication-result" />
+    <choose>
+      <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
+        <!-- 認証後の内部情報の引き渡し不備を、利用者の権限不足と区別して記録します。 -->
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="AUTHENTICATION_PROCESSING_ERROR" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        </return-response>
+      </when>
+    </choose>
+    <!-- === -->
+    <!-- ========== 本文サイズと項目条件の確認（core-model-limits） ========== -->
+    <!-- 目的：選択済みの操作設定に従い、受信本文のサイズと指定項目の条件を確認します。 -->
+    <!-- 処理：選択結果から操作設定と解決済みモデル名を取り出し、共通部品で検査します。停止する場合は結果の理由・応答コードを監査へ渡して終了します。 -->
     <set-variable name="gatewayOperationConstraint" value="@{
-      return JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None);
+      return JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;constraint&quot;].ToString(Newtonsoft.Json.Formatting.None);
     }" />
-    <set-variable name="gatewayEffectiveModel" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;effectiveModel&quot;] ?? &quot;&quot;)" />
-    <!-- Bound JSON bytes before any target-specific parsing. -->
-    <include-fragment fragment-id="core-model-limits" />
+    <set-variable name="gatewayEffectiveModel" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;effectiveModel&quot;] ?? &quot;&quot;)" />
+    <!-- 本文の書き換えや下流認証より前に検査し、元の本文を後続へ渡せるよう保持します。 -->
+    <include-fragment id="core-model-limits" fragment-id="core-model-limits" />
     <choose>
       <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayLimitDecision&quot;])[&quot;allowed&quot;])">
         <set-variable name="gatewayAuditPhase" value="rejected" />
@@ -237,6 +122,46 @@
         </return-response>
       </when>
     </choose>
+    <!-- === -->
+    <!-- ========== 音声合成の本文検査（core-speech-ssml-guard） ========== -->
+    <!-- 目的：音声合成のサイズとSSMLを、利用枠処理・下流認証・正常受付の記録より前に確認します。 -->
+    <!-- 処理：配備時に生成した対象操作IDの表を読み、対象だけを専用部品で検査します。本文は一度だけ読み、超過413・宣言等の不備400を監査へ渡して終了します。 -->
+    <choose id="core-speech-ssml-guard">
+      <when condition="@{
+        var controls = JObject.Parse((string)context.Variables[&quot;gatewayControlSettings&quot;]);
+        return (controls[&quot;speechSsmlOperationIds&quot;] as JArray)?.Any(id =&gt; (string)id == context.Operation.Id) == true;
+      }">
+        <include-fragment id="core-speech-ssml-guard" fragment-id="core-speech-ssml-guard" />
+        <choose>
+          <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewaySpeechSsmlDecision&quot;])[&quot;allowed&quot;])">
+            <!-- 本文や宣言の内容は記録せず、検査結果の理由と応答コードだけを監査へ渡します。 -->
+            <set-variable name="gatewayAuditPhase" value="rejected" />
+            <set-variable name="gatewayAuditCode" value="@((string)JObject.Parse((string)context.Variables[&quot;gatewaySpeechSsmlDecision&quot;])[&quot;code&quot;])" />
+            <set-variable name="gatewayAuditStatus" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewaySpeechSsmlDecision&quot;])[&quot;status&quot;])" />
+            <include-fragment fragment-id="core-gateway-telemetry" />
+            <choose>
+              <when condition="@((int)context.Variables[&quot;gatewayAuditStatus&quot;] == 413)">
+                <!-- 実サイズ超過は、共有サイズ検査と同じ413・要求ID付きJSONを返します。 -->
+                <return-response>
+                  <set-status code="413" reason="Request limit validation failed" />
+                  <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+                  <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+                  <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (string)context.Variables["gatewayAuditCode"]))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+                </return-response>
+              </when>
+            </choose>
+            <!-- SSMLの拒否は従来の400と公開エラー本文を維持します。 -->
+            <return-response>
+              <set-status code="400" reason="Invalid Speech markup" />
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+              <set-body>{"error":{"code":"InvalidSpeechMarkup","message":"DTD and entity declarations are not allowed in Speech markup."}}</set-body>
+            </return-response>
+          </when>
+        </choose>
+      </when>
+    </choose>
+    <!-- === -->
     <!-- JSON 内のモデル名やパスの実対象を検査し、同じ API URL から未許可モデル等を呼ばせないようにします。 -->
     <set-variable name="gatewayTargetAllowed" value="@{
       try {
@@ -345,7 +270,7 @@
     <!-- Normalize only after original-byte limits and authorization succeed.
          Existing audit and native token limits then see the actual deployment. -->
     <choose id="core-model-alias">
-      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayEffectiveModel&quot;]) &amp;&amp; (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;requestedModel&quot;] != (string)context.Variables[&quot;gatewayEffectiveModel&quot;])">
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayEffectiveModel&quot;]) &amp;&amp; (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;requestedModel&quot;] != (string)context.Variables[&quot;gatewayEffectiveModel&quot;])">
         <set-body>@{
           var body = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
           body[&quot;model&quot;] = (string)context.Variables[&quot;gatewayEffectiveModel&quot;];
@@ -389,8 +314,9 @@
         }</set-body>
       </when>
     </choose>
-    <!-- 裏側への転送前に、入口の資格情報をヘッダーから取り除きます。 -->
+    <!-- 旧クライアントのprofile申告は無視し、下流へも渡さないよう削除します。認証情報ではありません。 -->
     <set-header name="X-Egakumi-Profile" exists-action="delete" />
+    <!-- 下流へ転送する前に、入口の資格情報をヘッダーから取り除きます。 -->
     <set-header name="Authorization" exists-action="delete" />
     <set-header name="__KEY_HEADER__" exists-action="delete" />
     <set-header name="Ocp-Apim-Subscription-Key" exists-action="delete" />

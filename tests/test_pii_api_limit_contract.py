@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 from arm_helpers import compiled_policy_value
 from bicep_helpers import compile_bicep
-from test_gateway_limits_telemetry import PWSH, expression
+from test_gateway_limits_telemetry import LIMIT_EXPRESSION, PWSH, expression
 import test_pii_policy as fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +22,8 @@ class PiiApiLimitContractTests(unittest.TestCase):
             raise unittest.SkipTest("PowerShell is required for real C# expressions")
         template = compile_bicep("apps/gateway/apim/api-publication.bicep")
         api = json.loads((ROOT / "apps/gateway/apim/apis/pii-v1.json").read_text())
+        # 配備normalizerがPOST操作に補う本文形式を、生読込みfixtureにも用意します。
+        api["authorization"]["operationConstraints"]["pii_redact_text"].setdefault("bodyFormat", "json")
         api.update(apiType="http", backendUrl="https://backend.example.com",
                    backendAuthentication={"mode": "none"}, backendHeaders={})
         def policy(resource):
@@ -85,7 +87,7 @@ public static class PiiApiLimitFixture {
   }
 }'''
         source = fixtures.CSHARP.split("public static class PiiPolicyFixture", 1)[0] + methods
-        source = source.replace("__LIMITS__", expression(POLICIES / "model-limits.xml", "./set-variable", "value"))
+        source = source.replace("__LIMITS__", LIMIT_EXPRESSION)
         source = source.replace("__CONDITION__", condition[2:-1]).replace("__BODY__", mapped_body[2:-1])
         source = source.replace("__INPUT__", fixtures.INPUT_EXPRESSION).replace("__REQUEST__", fixtures.REQUEST_EXPRESSION)
         source = source.replace("__INPUT_ERROR__", input_error[2:-1])
@@ -128,7 +130,7 @@ public static class PiiApiLimitFixture {
                            ("extra", '{"text":"synthetic","language":"en","extra":true}')):
             cls.cases.append({"id": name, "input": body, "constraint": settings})
         cls.cases.append({"id": "other-kind", "input": "x" * 32769,
-                          "constraint": {"kind": "registeredOperation", "maxRequestBytes": 32768}})
+                          "constraint": {"kind": "registeredOperation", "bodyFormat": "json", "maxRequestBytes": 32768}})
         for name, status, code in (("other-status", 400, "REQUEST_TOO_LARGE"),
                                    ("other-code", 413, "INVALID_REQUEST"),
                                    ("auth-denial", 403, "AUTHORIZATION_DENIED")):

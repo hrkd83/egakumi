@@ -332,6 +332,9 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 | `O.displayName` | 操作ごとの例 | 操作表示名。 |
 | `O.method` | 操作ごとの例 | HTTPメソッド。 |
 | `O.urlTemplate` | 操作ごとの例 | 公開操作パス。 |
+| `O.queryObservation` | 観測する操作だけ指定 | URLクエリの観測ラベル。ASCII英字で始まる1～64文字の英数字・`_`・`-`。小文字の`none`／`unknown`は予約。省略時は観測対象外で、許可／拒否や認証を切り替える設定ではない。 |
+| `A.mcp.queryObservation` | 観測する生成MCP表口だけ指定 | 生成MCPのメソッド・公開相対pathから選ぶ観測ラベル。HTTP操作と同じラベル書式。 |
+| `A.mcpProxy.endpoints[].queryObservation` | 観測する外部MCP受付だけ指定 | 外部MCPのHTTPメソッド・公開相対pathから選ぶ観測ラベル。下流の`uriTemplate`とは区別する。 |
 | `O.templateParameters` | 不要なら[] | URL変数の配列。 |
 | `O.templateParameters[].name` | URL変数名 | URL変数名。 |
 | `O.templateParameters[].type` | 記入例はstring | URL変数の型。 |
@@ -348,11 +351,13 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 | `A.backendAuthentication.resourceId` | SpeechリソースIDの置換欄 | Speech Entraの対象Resource ID。 |
 | `A.authorization.mode` | `subscriptionKey` | APIMの購読キーとProduct/APIの利用範囲を検査する。 |
 | `A.authorization.operationConstraints` | 全操作の制約例 | 本文・モデル・出力等の制約。 |
-| `C.profiles[].backendUrlTemplate` | FLUX flex／proの固定URI | モデルとprofileを検査した後に選ぶ上流相対URI。同じOperationの全profileに設定する。 |
+| `C.modelSettings.<モデル名>.backendUrlTemplate` | FLUX flex／proの固定URI | 本文のモデル名から選ぶ固定の上流相対URI。モデル別転送先を使う操作では、`allowedModels`の全モデルに設定する。 |
 | `A.websocket.session.kind` | `live`／`transcription` | 接続後イベントの契約。接続時に固定パスとqueryを検査する。 |
 | `A.websocket.session.models` | 配備済みモデル名の配列 | クライアントがsessionイベントで指定するモデル。イベントの処理はアプリと上流サービスが担当する。 |
 
 各検査・転送・認証ポリシーの役割は[APIMポリシー一覧](../reference/apim-policy-catalog.md)を参照してください。
+
+棚卸⑦ではquery部品を観測専用へ変更する。`queryObservation`はAPI定義で対象を指定するだけで、paramsに観測／拒否modeや専用Named Valueを用意しない。旧`gateway.queryGuards`・`queryGuard`参照は廃止対象であり、現行入力に使わない。観測専用化だけでクエリの下流転送やモデル・ツールの互換性が整ったとは扱わず、後続の入力検査・URI変換・WAFを別に棚卸する。ローカル改修・検証は完了し、Azureには未反映で、Azureへのまとめ反映と受入は別工程である。[対象設定と移行手順](../operations/apim.md#操作mcp受付のurlクエリ観測)を参照する。
 
 #### 認証設定と購読
 
@@ -426,13 +431,15 @@ R0では、必要に応じて`gateway.authentication.credentialLogin.identity`�
 
 | パラメタ名 | 公開サンプル値 | 意味 |
 | --- | --- | --- |
-| `C.defaultProfile` | `chat`または`response` | profile選択headerを省略した場合の入力profile。 |
-| `C.profiles` | profile定義の配列 | 各entryにprofileId、modalitiesと既存のkind・許可モデル・本文/出力上限を保持。 |
+| `C.modelSettings` | 必要なモデルだけ指定 | モデル名をキーにした設定差分のオブジェクト。本文のモデル名から一意に取得し、未指定モデル・項目には操作の基本設定を使う。 |
+| `C.modelSettings.<モデル名>.settingId` | `chat`／`compatible`／`router`／`response`／`flex`／`pro`など | 任意の内部設定識別名。監査で設定を区別するために使い、クライアントの選択や認可には使わない。 |
+| `C.modelAliases` | `{ "codex-auto-review": "gpt-5.6-luna" }` | Foundry OpenAIのJSONモデル操作で使う、操作直下のモデル別名表。対象は同じ操作の`allowedModels`にある配備モデル。許可範囲の追加・配備モデル名の上書き・別名の連鎖は不可。 |
 | `C.kind` | 操作ごとの例 | registeredOperation/pathModel/bodyModel/textEmbeddings/rerank/statelessResponses/hostedAgentPost/a2aJsonRpc/realtimeCreate/realtimeHangup/liveCreate/pii/documentAnalysis/documentAnalysisStatus。 |
 | `C.bodyFormat` | HTTP書込はjson、GET等はnone | 本文形式。native protocolはnone。 |
+| `C.requestBodySizeCheck` | 未指定／`actual`、非JSONの指定操作は`declared` | 共有部品のサイズ確認方法。`actual`は申告・実サイズ、`declared`は申告サイズだけを確認する。`declared`はbinary／multipart／textに限定する。標準のSTT・転記・画像編集・TTSが指定し、TTSは専用SSML部品で実サイズも確認する。 |
 | `C.maxRequestBytes` | 通常AIは524288000 | APIM Classicの500 MiBバッファー枠。文書は500000000、PIIは1000000。提供元の制約が先に適用される場合がある。管理対象AI以外は既定WAFの容量とも整合させる。 |
 | `C.contentTypes` | 必要な操作だけ設定 | 許可するmedia type。binary/multipart/textで必須。 |
-| `C.allowedModels` | モデル例ごとに指定 | 許可モデル。基盤モデルは配備定義と照合。 |
+| `C.allowedModels` | モデル例ごとに指定 | 設定対象のモデル一覧。配備時は基盤モデルを配備定義と照合する。モデル選択部品ではこの一覧による先行403を撤去し、後段の照合は続く棚卸の対象とする。 |
 | `C.parameter` | pathModel例だけ指定 | モデル名を持つURL変数。 |
 | `C.maxOutputTokens` | 操作・モデルごとに指定 | モデル別上限の外側の最大値。標準APIは`model-capabilities.json`から生成し、不定値だけの場合はnull。 |
 | `C.maxOutputTokensByModel` | 標準APIは生成 | モデル名ごとの出力上限。不定・未対応・未確認はnullとして区別。 |
@@ -458,9 +465,15 @@ R0では、必要に応じて`gateway.authentication.credentialLogin.identity`�
 
 `textEmbeddings`は登録済みのOpenAI `POST /embeddings`またはCohere `POST /embed`のテキスト埋め込み用です。固定16件の上限は設けません。`embeddingDimensionsByModel`は`allowedModels`と同じモデル名を過不足なく持ち、各モデルの`default`と`maximum`を指定します。`allowed`を省略した場合は1から`maximum`までの整数を許可し、指定する場合は重複なく`default`と`maximum`を含めます。Cohereでは`allowed`が必須です。ベクトル次元は生成の出力トークン上限とは別のため、出力トークンの設定は使用しません。
 
-`rerank`はFoundryのJSON `POST /rerank`用です。標準定義では独自の文書件数枠・`top_n`必須指定を設けません。query・各文書は非空白の文字列、文書は1件以上、`top_n`を指定した場合は文書数以下としてGatewayでも検査します。本文を切り詰めたり返却件数を補正したりしません。出力トークンの設定やprofilesは使用しません。
+`rerank`はFoundryのJSON `POST /rerank`用です。標準定義では独自の文書件数枠・`top_n`必須指定を設けません。query・各文書は非空白の文字列、文書は1件以上、`top_n`を指定した場合は文書数以下としてGatewayでも検査します。本文を切り詰めたり返却件数を補正したりしません。出力トークンの設定や`modelSettings`は使用しません。
 
-`openai-inference-v1`の入力profileは`X-Egakumi-Profile` headerで選びます。`chat-completions`は`chat`（default）・`vision`・`compatible`・`router`、`responses-create`は`response`（default）・`pdf`です。ヘッダーを省略した場合はdefaultを使い、選択したprofileのモデル・入力形式・本文サイズを照合します。出力トークン項目は省略でき、指定時だけモデル別上限を検査します。提供元の必須条件・利用クォータ・認証は維持します。
+`openai-inference-v1`では、クライアントがAPI・操作と本文の`model`を指定し、APIMがモデル名・別名から内部設定を選びます。`X-Egakumi-Profile`は設定例・Portal・試験CLIへ追加しません。残る旧ヘッダーは選択や値の検査に使わず、下流転送前に削除します。
+
+内部設定は、操作直下の基本設定へ`modelSettings.<モデル名>`の差分を重ねます。差分に指定した項目を項目単位で置き換え、例えば`integerLimits`を指定した場合はその制限表全体を置き換えます。`modelSettings`は省略・空・部分指定が可能で、`allowedModels`とは役割を分けます。モデル別差分に`allowedModels`・`modelAliases`・入れ子の`modelSettings`は指定しません。`maxOutputTokensByModel`と`outputTokenLimitKinds`も操作直下へ一度だけ保持します。モデル名を使わない業務APIは操作の基本設定だけで扱います。
+
+標準ChatはGPT群の`settingId`が`chat`、互換モデル群が`compatible`、model-routerが`router`です。互換モデル群だけ出力項目を`max_tokens`へ置き換えます。Responsesの`settingId`は`response`です。同じモデルの画像・PDF用候補を重複登録する構造を廃止し、本文のモデル名から設定を一意に選びます。FLUXは`flex`／`pro`それぞれのモデル別差分に固定上流URIを保持します。モデル別の小さい本文上限がある場合は、モデル選択前の操作上限を最大値にまとめても、そのモデルの上限を差分に残します。
+
+画像・PDFにもprofileヘッダーは不要です。この構造整理では既存の受付条件を維持し、登録外モデルや本文・ツールに残る制御は続く棚卸で個別に判断します。新しい画像・PDF入力の実機受入結果を示すものではありません。`settingId`は購読利用枠やCMの接続profileとは別の内部設定です。
 
 AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査して超過部分も受け付けます。認証・管理系は既存のサイズ強制を維持します。文書は開始POSTの202受付後に所有者付きGETで結果を取得します。[WAFの範囲](../testing/waf-compatibility.md)・[文書解析](../reference/document-analysis.md)
 

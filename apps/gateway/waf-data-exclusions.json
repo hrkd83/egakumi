@@ -6257,17 +6257,16 @@
       ]
     },
     {
-      "name": "g-pii-redact",
+      "name": "g-pii-rest",
       "scope": "gateway",
       "paths": [
-        "/tools/pii-v1-mcp/mcp",
         "/tools/pii/v1/redact"
       ],
       "exclusions": [
         {
           "matchVariable": "RequestArgValues",
           "selectorMatchOperator": "Equals",
-          "selector": "params.arguments.text",
+          "selector": "text",
           "exclusionManagedRuleSets": [
             {
               "ruleSetType": "OWASP",
@@ -6330,11 +6329,20 @@
               ]
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "g-pii-mcp",
+      "scope": "gateway",
+      "paths": [
+        "/tools/pii-v1-mcp/mcp"
+      ],
+      "exclusions": [
         {
           "matchVariable": "RequestArgValues",
           "selectorMatchOperator": "Equals",
-          "selector": "text",
+          "selector": "params.arguments.text",
           "exclusionManagedRuleSets": [
             {
               "ruleSetType": "OWASP",

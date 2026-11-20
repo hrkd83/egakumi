@@ -40,9 +40,6 @@ from integration_client import auth_headers, correlations, endpoint, json_shape,
 from deployment.helpers.paths import private_parent
 
 KINDS = ("embedding", "rerank", "messages", "image-generate", "image-edit", "vision", "pdf", "audio-chat", "tts", "stt", "agent")
-PROFILE_REQUESTS = {("chat-completions", "vision"): "vision",
-                    ("responses-create", "pdf"): "pdf",
-                    ("chat-completions", "audio-chat"): "audio-chat"}
 MAX_BODY = 32 * 1024 * 1024
 PDF_MARKER = "WORKFORCE-PDF-CHECK-42"
 PII_INPUT = "Contact: alice@example.com."
@@ -166,27 +163,15 @@ class Request:
     files: dict | None = None
     headers: dict = field(default_factory=dict)
     expected_text: str | None = None
-    operation_id: str | None = None
-    profile_id: str | None = None
 
 
-def request_for(kind: str, *, model=None, voice=None, audio=None, stream=False, expected_text=None, agent_mode="fixed", max_tokens=1024,
-                operation_id=None, profile_id=None) -> Request:
+def request_for(kind: str, *, model=None, voice=None, audio=None, stream=False, expected_text=None, agent_mode="fixed", max_tokens=1024) -> Request:
     """試験種別に合った短い固定要求を作る。ネットワーク送信はまだ行わない。"""
     if kind not in KINDS: raise ValueError("Unsupported modality")
     if kind not in ("tts", "stt", "agent") and not model: raise ValueError("An explicit approved model deployment is required")
     if stream and kind not in ("messages", "agent"): raise ValueError("Streaming is supported here only for Messages and Agent Responses")
     request = Request(kind, expected_text=expected_text)
-    if kind in PROFILE_REQUESTS.values():
-        expected = next(pair for pair, value in PROFILE_REQUESTS.items() if value == kind)
-        selected = (operation_id or expected[0], profile_id or expected[1])
-        if selected != expected:
-            raise ValueError("The input profile must match its canonical operation")
-        request.operation_id, request.profile_id = selected
-        # 同じURLの通常Chat/Responsesへ入力権限を暗黙追加せず、明示profileを選ぶ。
-        request.headers["X-Egakumi-Profile"] = request.profile_id
-    elif operation_id is not None or profile_id is not None:
-        raise ValueError("Operation/profile selection is supported for profiled input probes")
+    # kindは試験本文の種類だけを選びます。Gatewayの設定選択はURL・操作とmodelに任せます。
     if kind == "embedding": request.json = {"model": model, "input": ["gateway", "network"], "encoding_format": "float"}
     elif kind == "rerank": request.json = {"model": model, "query": "gateway", "documents": ["API gateway", "a blue flower"], "top_n": 2}
     elif kind == "messages":
@@ -243,14 +228,6 @@ def request_for(kind: str, *, model=None, voice=None, audio=None, stream=False, 
         if agent_mode not in ("fixed", "model", "pii"): raise ValueError("Unknown Hosted Agent sample mode")
         request.json = {"input": PII_INPUT if agent_mode == "pii" else "Reply with OK.", "stream": stream, "store": False, "metadata": {"sample_mode": agent_mode}}
     return request
-
-
-def request_for_operation(operation_id, profile_id, **kwargs):
-    """統合後の操作IDと入力profileから、既存の合成試験payloadを選ぶ。"""
-    kind = PROFILE_REQUESTS.get((operation_id, profile_id))
-    if kind is None:
-        raise ValueError("Unsupported canonical operation/input profile probe")
-    return request_for(kind, operation_id=operation_id, profile_id=profile_id, **kwargs)
 
 
 def output_text(value):
@@ -387,8 +364,6 @@ async def probe(url, request, headers, *, stream=False, transport=None, artifact
     started = time.monotonic()
     result = {"kind": request.kind, "startedAt": datetime.now(timezone.utc).isoformat(), "requestId": str(uuid.uuid4()),
               "status": None, "httpAttempts": 0, "succeeded": False, "inferenceRetryCount": 0}
-    if request.operation_id:
-        result.update(operationId=request.operation_id, profileId=request.profile_id)
     request_headers = {**headers, **request.headers, "x-ms-client-request-id": result["requestId"]}
     kwargs = {k: getattr(request, k) for k in ("json", "content", "data", "files") if getattr(request, k) is not None}
     try:
@@ -436,8 +411,6 @@ def main():
     convert = commands.add_parser("convert-audio"); convert.add_argument("--input", type=Path, required=True); convert.add_argument("--output", type=Path, required=True)
     run = commands.add_parser("run"); run.add_argument("kind", choices=KINDS); run.add_argument("--url", required=True)
     run.add_argument("--model"); run.add_argument("--voice"); run.add_argument("--audio-file", type=Path)
-    run.add_argument("--operation-id", choices=("chat-completions", "responses-create"))
-    run.add_argument("--profile-id", choices=("vision", "pdf", "audio-chat"))
     run.add_argument("--expected-text"); run.add_argument("--stream", action="store_true")
     run.add_argument("--agent-mode", choices=("fixed", "model", "pii"), default="fixed")
     run.add_argument("--max-tokens", type=int, default=1024, help="Messages only; bounded allowance also covers adaptive-thinking output")
@@ -455,8 +428,7 @@ def main():
         args.output = private_parent(Path(args.output))
         if args.artifact:
             args.artifact = private_parent(args.artifact)
-        request = request_for(args.kind, model=args.model, voice=args.voice, audio=args.audio_file.read_bytes() if args.audio_file else None, stream=args.stream, expected_text=args.expected_text, agent_mode=args.agent_mode, max_tokens=args.max_tokens,
-                              operation_id=args.operation_id, profile_id=args.profile_id)
+        request = request_for(args.kind, model=args.model, voice=args.voice, audio=args.audio_file.read_bytes() if args.audio_file else None, stream=args.stream, expected_text=args.expected_text, agent_mode=args.agent_mode, max_tokens=args.max_tokens)
         result = asyncio.run(probe(args.url, request, auth_headers(args.token_file, args.key_file), stream=args.stream, artifact=args.artifact, timeout=args.timeout))
         private_write(args.output, json.dumps(result, indent=2))
     print(json.dumps(result))

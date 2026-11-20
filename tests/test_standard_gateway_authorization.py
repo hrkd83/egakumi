@@ -44,6 +44,9 @@ class StandardAuthorizationExpressionTests(unittest.TestCase):
         add("anonymous",claims=None)
         add("empty-subscription",claims=None,subscription="")
         add("unsupported-mode",subscription="standard-key",config={"mode":"unknown"})
+        add("missing-mode",subscription="standard-key",config={})
+        add("unsupported-mode-anonymous",claims=None,config={"mode":"unknown"})
+        add("unsupported-mode-token-only",config={"mode":"unknown"})
         base = CSHARP.split("public static class ExpandedPolicyFixture")[0]
         source = base + r'''
 public static class StandardAuthFixture {
@@ -73,6 +76,9 @@ public static class StandardAuthFixture {
     continue;
    }
    c.Variables["gatewayCommonAuthenticationValidated"] = true;
+   // 実APIで先行する操作設定準備の成功結果を、直接式fixtureにも用意します。
+   c.Variables["gatewayOperationSelection"] = new JObject(new JProperty("allowed", true),
+      new JProperty("settingId", "")).ToString(Formatting.None);
    results[(string)item["id"]] = new JObject(new JProperty("http", JObject.Parse(Http(c))),
       new JProperty("protocol", JObject.Parse(Protocol(c))), new JProperty("mcp", JObject.Parse(Mcp(c))));
   }
@@ -110,7 +116,14 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertEqual(decision["method"],"subscriptionKey")
                 self.assertEqual(decision["callerId"],"subscription:"+("another-key" if name=="other-key" else "standard-key"))
 
-    def test_tokens_alone_empty_subscription_and_unknown_modes_do_not_authorize(self):
-        for name in ("token-only","anonymous","empty-subscription","unsupported-mode"):
+    def test_unverified_requests_do_not_authorize_even_if_mode_configuration_changes(self):
+        for name in ("token-only","anonymous","empty-subscription","unsupported-mode-anonymous","unsupported-mode-token-only"):
             for protocol in ("http","protocol","mcp"):
                 self.assertFalse(self.results[name][protocol]["allowed"],(name,protocol))
+
+    def test_http_inherits_common_authentication_without_using_the_mode_configuration(self):
+        for name in ("unsupported-mode", "missing-mode"):
+            self.assertEqual(self.results[name]["http"], self.results["key"]["http"], name)
+            # ほかのテンプレートに残る方式確認は、今回の変更対象ではありません。
+            for protocol in ("protocol", "mcp"):
+                self.assertFalse(self.results[name][protocol]["allowed"], (name, protocol))

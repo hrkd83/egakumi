@@ -38,7 +38,7 @@ class ApiMigrationTests(unittest.TestCase):
         self.assertEqual({api["name"]: api for api in migrated}, {api["name"]: api for api in definitions})
         self.assertEqual(migrate_api_definitions(migrated), migrated)
 
-    def test_same_person_keeps_different_contracts_for_text_and_vision(self):
+    def test_duplicate_model_uses_first_legacy_settings_and_retains_its_byte_limit(self):
         text = legacy_api("models", "chat-completions", contract="text-contract")
         vision = legacy_api("model-multimodal", "vision", contract="vision-contract")
         vision["authorization"]["operationConstraints"]["vision"]["maxRequestBytes"] = 2048000
@@ -48,13 +48,124 @@ class ApiMigrationTests(unittest.TestCase):
         self.assertEqual(source, before)
         self.assertEqual(len(api["operations"]), 1)
         constraint = api["authorization"]["operationConstraints"]["chat-completions"]
-        self.assertEqual(constraint["defaultProfile"], "chat")
-        self.assertEqual(constraint["maxRequestBytes"], 32768)
-        profiles = {item["profileId"]: item for item in constraint["profiles"]}
-        self.assertEqual(profiles["vision"]["maxRequestBytes"], 2048000)
-        self.assertEqual(profiles["chat"]["modalities"], ["text"])
-        self.assertEqual(profiles["vision"]["modalities"], ["text", "image"])
+        self.assertEqual(constraint["allowedModels"], ["approved-model"])
+        self.assertEqual(constraint["maxRequestBytes"], 2048000)
+        self.assertEqual(constraint["modelSettings"], {
+            "approved-model": {"maxRequestBytes": 32768, "settingId": "chat"},
+        })
+        for field in ("profiles", "defaultProfile", "modalities"):
+            self.assertNotIn(field, constraint)
+        self.assertEqual(migrate_api_definitions([vision, text]), [api])
+        self.assertEqual(migrate_api_definitions([api]), [api])
 
+    def test_distinct_models_keep_output_settings_and_replace_nested_settings(self):
+        text = legacy_api("models", "chat-completions", model="text-model")
+        text_settings = text["authorization"]["operationConstraints"]["chat-completions"]
+        text_settings["integerLimits"] = {"width": {"minimum": 1, "maximum": 4096}}
+        vision = legacy_api("model-multimodal", "vision", model="vision-model")
+        vision_settings = vision["authorization"]["operationConstraints"]["vision"]
+        vision_settings.update(maxRequestBytes=2048000, maxOutputTokens=None,
+                               outputTokenParameter="max_tokens",
+                               integerLimits={"height": {"minimum": 64, "maximum": 2048}})
+        constraint = migrate_api_definitions([vision, text])[0]["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(constraint["allowedModels"], ["text-model", "vision-model"])
+        self.assertEqual(constraint["modelSettings"], {
+            "text-model": {"maxRequestBytes": 32768, "settingId": "chat"},
+            "vision-model": {"maxOutputTokens": None, "outputTokenParameter": "max_tokens",
+                             "integerLimits": {"height": {"minimum": 64, "maximum": 2048}},
+                             "settingId": "vision"},
+        })
+        effective = {**constraint, **constraint["modelSettings"]["vision-model"]}
+        self.assertIsNone(effective["maxOutputTokens"])
+        self.assertNotIn("width", effective["integerLimits"])
+
+    def test_canonical_settings_win_and_uncovered_legacy_models_are_added(self):
+        canonical = legacy_api("openai-inference-v1", "chat-completions", model="canonical-model")
+        canonical_settings = canonical["authorization"]["operationConstraints"]["chat-completions"]
+        canonical_settings.update(
+            modelAliases={"synthetic-alias": "canonical-model"},
+            modelSettings={"canonical-model": {"maxOutputTokens": None, "settingId": "canonical"}},
+        )
+        legacy = legacy_api("models", "chat-completions", model="canonical-model")
+        legacy_settings = legacy["authorization"]["operationConstraints"]["chat-completions"]
+        legacy_settings.update(allowedModels=["canonical-model", "legacy-only-model"],
+                               maxRequestBytes=65536, maxOutputTokens=1024)
+        result = migrate_api_definitions([legacy, canonical])
+        constraint = result[0]["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(constraint["allowedModels"], ["canonical-model", "legacy-only-model"])
+        self.assertEqual(constraint["maxRequestBytes"], 65536)
+        self.assertEqual(constraint["modelAliases"], {"synthetic-alias": "canonical-model"})
+        self.assertEqual(constraint["modelSettings"], {
+            "canonical-model": {"maxRequestBytes": 32768, "maxOutputTokens": None, "settingId": "canonical"},
+            "legacy-only-model": {"maxOutputTokens": 1024, "settingId": "chat"},
+        })
+        self.assertEqual(migrate_api_definitions(result), result)
+
+    def test_omitted_optional_settings_do_not_inherit_another_models_restrictions(self):
+        text = legacy_api("models", "chat-completions", model="text-model")
+        text_settings = text["authorization"]["operationConstraints"]["chat-completions"]
+        text_settings.update(integerLimits={"width": {"minimum": 1, "maximum": 4096}},
+                             allowedWarningCodes=["SyntheticWarning"])
+        vision = legacy_api("model-multimodal", "vision", model="vision-model")
+        del vision["authorization"]["operationConstraints"]["vision"]["maxOutputTokens"]
+        result = migrate_api_definitions([text, vision])
+        constraint = result[0]["authorization"]["operationConstraints"]["chat-completions"]
+        for field in ("integerLimits", "allowedWarningCodes", "maxOutputTokens"):
+            self.assertNotIn(field, constraint)
+            self.assertNotIn(field, constraint["modelSettings"]["vision-model"])
+            self.assertEqual(constraint["modelSettings"]["text-model"][field], text_settings[field])
+        self.assertEqual(migrate_api_definitions(result), result)
+
+    def test_model_aliases_are_merged_and_repeated_targets_are_kept_once(self):
+        text = legacy_api("models", "chat-completions", model="text-model")
+        text["authorization"]["operationConstraints"]["chat-completions"]["modelAliases"] = {
+            "shared-alias": "text-model", "text-alias": "text-model",
+        }
+        vision = legacy_api("model-multimodal", "vision", model="vision-model")
+        vision["authorization"]["operationConstraints"]["vision"]["allowedModels"] = ["text-model", "vision-model"]
+        vision["authorization"]["operationConstraints"]["vision"]["modelAliases"] = {
+            "shared-alias": "text-model", "vision-alias": "vision-model",
+        }
+        before = deepcopy([vision, text])
+        result = migrate_api_definitions([vision, text])
+        constraint = result[0]["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(constraint["modelAliases"], {
+            "shared-alias": "text-model", "text-alias": "text-model", "vision-alias": "vision-model",
+        })
+        self.assertEqual([vision, text], before)
+        self.assertEqual(migrate_api_definitions(result), result)
+
+    def test_conflicting_model_aliases_are_rejected(self):
+        text = legacy_api("models", "chat-completions", model="text-model")
+        vision = legacy_api("model-multimodal", "vision", model="vision-model")
+        text["authorization"]["operationConstraints"]["chat-completions"]["modelAliases"] = {"same-alias": "text-model"}
+        vision["authorization"]["operationConstraints"]["vision"]["modelAliases"] = {"same-alias": "vision-model"}
+        with self.assertRaisesRegex(MigrationError, "Conflicting model aliases"):
+            migrate_api_definitions([text, vision])
+
+    def test_model_aliases_cannot_target_a_model_missing_from_the_merged_operation(self):
+        api = legacy_api("models", "chat-completions")
+        api["authorization"]["operationConstraints"]["chat-completions"]["modelAliases"] = {"alias": "missing-model"}
+        with self.assertRaisesRegex(MigrationError, "must target an allowed model"):
+            migrate_api_definitions([api])
+
+    def test_model_tables_keep_first_candidate_values_once_at_operation_level(self):
+        text = legacy_api("models", "chat-completions", model="shared-model")
+        text["authorization"]["operationConstraints"]["chat-completions"].update(
+            maxOutputTokensByModel={"shared-model": 512},
+            outputTokenLimitKinds={"shared-model": "documented"},
+        )
+        vision = legacy_api("model-multimodal", "vision", model="shared-model")
+        vision["authorization"]["operationConstraints"]["vision"].update(
+            allowedModels=["shared-model", "vision-model"], maxOutputTokens=None,
+            maxOutputTokensByModel={"shared-model": 1024, "vision-model": None},
+            outputTokenLimitKinds={"shared-model": "documented", "vision-model": "dynamic"},
+        )
+        constraint = migrate_api_definitions([vision, text])[0]["authorization"]["operationConstraints"]["chat-completions"]
+        self.assertEqual(constraint["maxOutputTokensByModel"], {"shared-model": 512, "vision-model": None})
+        self.assertEqual(constraint["outputTokenLimitKinds"], {"shared-model": "documented", "vision-model": "dynamic"})
+        self.assertTrue(all("maxOutputTokensByModel" not in entry and "outputTokenLimitKinds" not in entry
+                            for entry in constraint["modelSettings"].values()))
 
     def test_realtime_merges_same_contract_but_keeps_disjoint_models_for_other_contracts(self):
         apis = []

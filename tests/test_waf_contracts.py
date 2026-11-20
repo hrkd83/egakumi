@@ -47,23 +47,25 @@ class WireContractTests(unittest.TestCase):
     def test_static_bicep_asset_is_the_exact_deterministic_rendering(self):
         self.assertEqual(render(check=True), generated_manifest())
 
-    def test_every_old_route_field_variable_and_rule_scope_is_contained(self):
+    def test_legacy_oracle_reports_only_the_approved_pii_profile_split(self):
         before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
-        self.assertEqual(check_legacy_coverage(before, generated_manifest()), [])
+        self.assertEqual(check_legacy_coverage(before, generated_manifest()), ['g-pii-redact: route scope'])
 
     def test_prior_coverage_oracle_detects_omitted_selector_and_rule(self):
         before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
         value = generated_manifest()
         value['profiles'][0]['exclusions'].clear()
-        self.assertTrue(check_legacy_coverage(before, value))
+        omissions = check_legacy_coverage(before, value)
+        self.assertIn('g-pii-redact: route scope', omissions)
+        self.assertGreater(len(omissions), 1)
 
     def test_prior_coverage_oracle_detects_omitted_route(self):
         before = json.loads((ROOT / 'tests/fixtures/waf-legacy-coverage.json').read_text())
         value = generated_manifest()
         value['profiles'][0]['paths'].append('/unrelated')
-        self.assertFalse(check_legacy_coverage(before, value))
+        self.assertEqual(check_legacy_coverage(before, value), ['g-pii-redact: route scope'])
         value['profiles'][0]['paths'].clear()
-        self.assertTrue(check_legacy_coverage(before, value))
+        self.assertGreater(len(check_legacy_coverage(before, value)), 1)
 
     def test_canonical_media_type_is_reused_at_message_and_tool_result_positions(self):
         catalog = load_contracts()
@@ -134,8 +136,18 @@ class WireContractTests(unittest.TestCase):
                     for p in manifest['profiles'] for e in p['exclusions']}
 
         previous, current = scopes(before), scopes(after)
+        # 旧2入口の共有profileを、本文のselectorに対応する新しい1入口へ写して比較します。
+        # 凍結fixture自体を更新せず、名前変更以外のfield/rule欠落は引き続き検出します。
+        projected = {}
+        for key, groups in previous.items():
+            if key[0] == 'g-pii-redact':
+                target, path = {'text': ('g-pii-rest', '/tools/pii/v1/redact'),
+                                'params.arguments.text': ('g-pii-mcp', '/tools/pii-v1-mcp/mcp')}[key[5]]
+                key = (target, key[1], (path,), *key[3:])
+            projected[key] = groups
+        previous = projected
         self.assertEqual(len(before['profiles']), 22)
-        self.assertEqual(len(after['profiles']), 22)
+        self.assertEqual(len(after['profiles']), 23)
         self.assertEqual(len(previous), 120)
         self.assertEqual(sum(len(p['exclusions']) for p in after['profiles']), 121)
         correlation_scope = ('g-responses', 'gateway', ('/models/openai/v1/responses',),
@@ -145,7 +157,7 @@ class WireContractTests(unittest.TestCase):
         expected_scopes = {key for key, groups in previous.items()
                            if {name for name, rules in groups.items() if rules is None} == old_groups}
         self.assertEqual(len(expected_scopes), 117)
-        self.assertEqual(len({key[0] for key in expected_scopes}), 21)
+        self.assertEqual(len({key[0] for key in expected_scopes}), 22)
         java = 'REQUEST-944-APPLICATION-ATTACK-JAVA'
         protocol = 'REQUEST-921-PROTOCOL-ATTACK'
         self.assertEqual({key for key, groups in current.items()
@@ -161,7 +173,7 @@ class WireContractTests(unittest.TestCase):
             with self.subTest(profile=key[0], variable=key[3], selector=key[5]):
                 self.assertEqual(current[key], expected)
         frozen = json.loads((ROOT / 'tests/fixtures/waf-common-data-before.json').read_text())
-        self.assertEqual(check_legacy_coverage(frozen, after), [])
+        self.assertEqual(check_legacy_coverage(frozen, after), ['g-pii-redact: route scope'])
 
     def test_catalog_rejects_unreviewed_common_protocol_rules_and_whole_protocol_group(self):
         for change in ('rule', 'group'):

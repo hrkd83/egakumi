@@ -8,7 +8,9 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 各profileはGatewayまたはPortalの完全パスを指定し、`RequestArgValues`と、動的JSONキーで必要な場合の`RequestArgKeys`を使います。署名付き文書状態参照・通話終了だけは既存operationの可変ID位置を限定patternへ写し、その専用profileで正確なticket名の`RequestHeaderValues / Equals`を使います。任意のAPI templateやheaderを対象にしません。`StartsWith`は`state.`、`questions.`、JSON Schemaやobject形式の引数配下など、区切りを含むデータ構造に限定します。集計規則949110は除外しません。
 
-Responsesの`input.call_id`は、ツール呼び出しと結果を結ぶ相関IDとして`control`分類を維持します。`g-responses`の完全パスだけで、`RequestArgValues / Equals / input.call_id`からSQL Hex検知の`942450`だけを除外します。7グループのデータ欄除外、他のSQL規則、Keys・Header・兄弟欄へは広げません。WAFはitemのtypeやIDの形式を検証する条件ではないため、この除外で特定のID形式だけが受理されるとは扱いません。同名queryにも引数除外が作用し得るため、既存APIMのquery拒否を維持します。
+Responsesの`input.call_id`は、ツール呼び出しと結果を結ぶ相関IDとして`control`分類を維持します。`g-responses`の完全パスだけで、`RequestArgValues / Equals / input.call_id`からSQL Hex検知の`942450`だけを除外します。7グループのデータ欄除外、他のSQL規則、Keys・Header・兄弟欄へは広げません。WAFはitemのtypeやIDの形式を検証する条件ではないため、この除外で特定のID形式だけが受理されるとは扱いません。同名queryにも引数除外が作用し得るため、WAFの適用範囲とAPIM後続処理の受付・拒否・転送を別に確認します。
+
+APIM棚卸⑦では、query部品を`core-query-observation`へ観測専用化する方針を承認しました。この部品は有無・複数値の記録だけを行い、queryを理由とする400／500の分岐やmode設定を持ちません。その後の[入力検査](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)では、標準13操作のquery制限・HTTPメソッド再確認・入口MIME一覧比較の撤去を承認しました。操作登録とAPIMの照合、Content-Type宣言の存在・1値・非空MIME部分、URL資格情報拒否は維持します。後段の`core-model-limits`のMIME許可一覧比較と415も撤去しました。`operationConstraints.contentTypes`を使う個別処理、Speech転送、Documentの個別形式検査、URI変換、WAFのルール・除外は未変更で別棚卸です。Live／Realtime等の未一致queryの非転送も変更しません。観測専用化と共有MIME比較撤去のローカル改修・検証、Azureへのまとめ反映・読戻しは完了しました。[限定受入](../../apps/gateway/apim/policies/README.md)ではキー／BearerのResponses JSON・SSE、認証・入力拒否、TTS WAV・DTD拒否と対応する監査照合を確認しました。大容量413、他モデル・transport、Content-Typeの追加異常系は未実施です。以下の既存試験結果を、現在の入口MIME拒否の保証や、query転送・任意形式の下流受付・機能互換性の確認完了へ読み替えません。
 
 ## 受付容量と検査範囲
 
@@ -25,7 +27,7 @@ Responsesの`input.call_id`は、ツール呼び出しと結果を結ぶ相関ID
 
 名前はGatewayが`wafpol-g-<用途>-<ID>`、Portalが`wafpol-p-<用途>-<ID>`です。`<ID>`にはparamsの`services.apimInstanceId`に保存した6文字の構築識別子を共通利用します。Bicepと個別配備は同じ名前を計算し、更新や途中再開で識別子を生成し直しません。APIのURLは変更しません。
 
-ポリシーの用途はGatewayが16個、Portalが12個の計28個です。Gatewayは公開対象に選んだ経路だけを関連付け、APIの登録だけで未知の用途のポリシーを追加生成しません。
+ローカルの最終候補では、ポリシーの用途はGatewayが17個、Portalが12個の計29個です。Gatewayは公開対象に選んだ経路だけを関連付け、APIの登録だけで未知の用途のポリシーを追加生成しません。この数はAzure上の配備済み資源数ではなく、PII分割後の用途数です。移行中は復旧用の旧PIIポリシーも保持します。
 
 | 用途 | Gatewayの用途名 | Portalの用途名 |
 | --- | --- | --- |
@@ -42,11 +44,37 @@ Responsesの`input.call_id`は、ツール呼び出しと結果を結ぶ相関ID
 | Realtime | `realtime`（HTTP calls） | `realtime`（停止用handle） |
 | Realtimeの署名付き制御 | `realtime-ticket`（hangup・observer） | 上記`realtime` |
 | Live | `live`（HTTP sessions） | 個別のデータ欄除外なし |
-| PIIのAPI・MCP | `pii-redact` | `pii-redact` |
+| PII REST | `pii-rest` | `pii-redact` |
+| PII MCP | `pii-mcp` | 上記`pii-redact` |
 | 文書アップロード | `document-upload` | `document-upload` |
 | 文書の状態参照 | `document-status` | `document-status` |
 
-Gatewayの画像、埋め込み、PIIは複数の完全パスを1つのポリシーへまとめ、各パスに必要な除外の集合和を適用します。画像の`input_image`、埋め込みの`input`と`texts`、PIIの`text`と`params.arguments.text`の除外は、同じポリシーの全経路に作用します。PortalのPIIは両入口とも`text`と同じCookie除外なので、除外範囲を追加せず共有します。
+Gatewayの画像と埋め込みは複数の完全パスを1つのポリシーへまとめ、各パスに必要な除外の集合和を適用します。画像の`input_image`、埋め込みの`input`と`texts`の除外は、同じポリシーの全経路に作用します。GatewayのPIIは、以下の承認した最終候補ではRESTとMCPを分けます。PortalのPIIは両入口とも`text`と同じCookie除外なので、`p-pii-redact`をそのまま共有します。
+
+### PII入口の除外をRESTとMCPへ分ける
+
+今回の変更は**App GatewayのWAFポリシーと公開パスとの関連付け**です。APIMのAPI定義・キー／Bearer認証・本文変換・モデル機能・OBOを変更するものではありません。APIのURLと正規の送信本文も維持します。
+
+| 最終候補のprofile | 公開パス | データ欄の除外 |
+| --- | --- | --- |
+| `g-pii-rest` | `/tools/pii/v1/redact` | `RequestArgValues / Equals / text`だけ |
+| `g-pii-mcp` | `/tools/pii-v1-mcp/mcp` | `RequestArgValues / Equals / params.arguments.text`だけ |
+| `p-pii-redact`（維持） | `/api/tools/pii`・`/api/tools/pii-mcp` | 従来の`text`とPortalセッションCookieの除外 |
+
+これまでは`g-pii-redact`に2つのパスと2つのselectorをまとめ、両方の入口で除外の集合和が作用していました。分割後は、RESTへMCP用の`params.arguments.text`、MCPへREST用の`text`のデータ欄除外を追加しません。各正規欄に使う7グループと個別規則の組合せ、Prevention・本文検査・容量・機密値のマスクは維持します。
+
+確認した現行testsと文書には、MCPの入れ子JSONに対して末端名`text`も必要になる根拠はありません。ただし、ローカルの生成・構成照合だけではAzureのJSON解析と正規本文の通過を証明できません。`params.arguments.text`だけの候補で正常なMCP初期化・ツール照会・PII実行を確認し、RESTの正常本文も別に確認します。
+
+`RequestArgValues`は本文だけを選ぶ設定ではありません。分割後も、それぞれの入口で同名queryに引数除外が作用し得ます。queryの拒否・転送、URI制約、他のWAF規則は未棚卸のまま保持し、この変更でqueryを全面許可／拒否したとは扱いません。
+
+PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期化・ツール照会・PII実行の通過・マスキング確認は完了しました。旧`g-pii-redact`は参照不在を確認して退役しました。未実施の異常系、同名queryへの除外の挙動とログ帰属は残件です。移行時は次の順序で適用・受入・旧資源退役を分け、一連の承認済み変更を一括コミットします。
+
+1. 旧`g-pii-redact`は移行元として限定して認識し、通常reconcileでは削除しません。所有・現在値と既存bindingを照合し、復旧用に旧ポリシーを保持します。
+2. 新しい2ポリシーを用意してから、各公開パスのbindingを新ポリシーへ切り替え、設定を読み戻します。
+3. 正常なREST要求とMCP初期化・ツール照会・PII実行の実WAF通過を確認します。WAF通過、APIM認証、PII処理の成功を分けて記録します。失敗した場合は保持した旧bindingへ戻せる状態を維持します。
+4. 両入口の確認が成功し、旧ポリシーへの参照がないことを照合した後にだけ、旧ポリシーを退役します。その後に保存した構成と期待値を整理します。
+
+旧`g-pii-redact`は移行・復旧用途で保持した資源であり、正常な両入口と参照不在を確認して退役しました。通常の新規構成には選びません。移行時も旧資源の存在だけを理由に自動削除せず、反映・退役をローカル資材から推定しません。
 
 用途名は検査するHTTP入口を表します。署名ticketを使うRealtime observer以外のRealtime／Live WebSocket入口など、個別のデータ欄除外がない経路は`base`を使います。データ欄の除外はmanifestに明記した条件から生成し、APIのMIMEや機能名によって別の除外を自動追加しません。外部管理ポリシーの指定時は、そのポリシーを再利用します。
 
@@ -60,7 +88,7 @@ Responses／Chat Completionsの承認済み自由文Valuesと、Schema・構造�
 
 HTTP要求の例文やログを含む既存のR/C通常本文Valuesには、`921120`の個別除外を従来の範囲で保持します。対象は従来指定したexact自由文とSchema・構造化引数の値prefixです。新規自由文、不透明な暗号化・Base64・音声ID、画像URL、metadata、SDPや他profileへ、`921120`を自動追加しません。`921130`は下記の既存117条件へ共通適用し、HTTPログ中の`HTTP/1.1`にも対応します。本文中のHTTP構文と実際のHTTP要求のheader・URI・query・framingを区別し、921グループ全体の除外やruleの無効化は行いません。
 
-Responsesのtool結果本文には、HTTP要求の例文やJavaのクラス参照を含む正当なコード・ログが入り、後続要求の履歴でも検査されます。`input.output.text`だけの個別対処にせず、従来6グループを除外していた全117条件・21profileへ、同じvariable・operator・selectorのままJava（944）グループと個別規則`921110`・`921130`を共通適用します。`921130`はChatの18条件・Responsesの29条件の計47条件で既に除外されており、その条件を保持して残る70条件へ追加します。既存のSchema Keys、Decisionの従来のexact `state`、媒体URL・不透明値・SDP・封印handle・専用ticket headerも対象です。従来6グループを持たないmetadata・設定JSON・認証code・セッションCookie等へは追加しません。新しいselectorやprefix、URLパスは増やさず、既存の個別例外を包含します。認証・query・MIME・本文形式・容量制約の受付挙動も変更しません。構成照合・合成本文の試験は、HTTP/WAFの実経路検証や提供元への受付確認と区別します。
+Responsesのtool結果本文には、HTTP要求の例文やJavaのクラス参照を含む正当なコード・ログが入り、後続要求の履歴でも検査されます。`input.output.text`だけの個別対処にせず、従来6グループを除外していた全117条件へ、同じvariable・operator・selectorのままJava（944）グループと個別規則`921110`・`921130`を共通適用します。PII分割後の最終候補では、この117条件は22profileに分かれます。`921130`はChatの18条件・Responsesの29条件の計47条件で既に除外されており、その条件を保持して残る70条件へ追加します。既存のSchema Keys、Decisionの従来のexact `state`、媒体URL・不透明値・SDP・封印handle・専用ticket headerも対象です。従来6グループを持たないmetadata・設定JSON・認証code・セッションCookie等へは追加しません。共通規則の追加では新しいselectorやprefix、URLパスを増やさず、既存の個別例外を包含します。PII入口の分割は前節で別に管理し、認証・query・MIME・本文形式・容量制約の受付挙動は変更しません。構成照合・合成本文の試験は、HTTP/WAFの実経路検証や提供元への受付確認と区別します。
 
 | 今回の追加対象 | profile |
 | --- | --- |
@@ -72,9 +100,9 @@ Responsesのtool結果本文には、HTTP要求の例文やJavaのクラス参�
 | 音声の既存データ欄 | `g-transcribe`、`p-speech` |
 | Realtime／Live | `g-realtime`、`g-live`、`p-realtime` |
 | 署名付き状態参照・制御 | `g-document-status`、`g-realtime-ticket`、`p-document-status` |
-| PII | `g-pii-redact`、`p-pii-redact` |
+| PII | `g-pii-rest`、`g-pii-mcp`、`p-pii-redact` |
 
-Schema・構造化引数のKeysは、下表の既存11個の承認prefixに7グループと`921110`・`921130`・`800100`・`921150`を適用します。JSONのプロパティ名はエスケープした改行やコードを含められ、モデルへ渡すデータ名がpayload中のCR/LF検知に一致することがあります。このため`921150`は既存の`RequestArgKeys / StartsWith`の有限prefixに限って保持します。既存Keysの`920270`・`920271`等の追加例外も保持し、新規prefixや全キーへ一律に追加しません。921のグループ全体、header、兄弟fieldへこの個別例外を広げません。引数除外は同名queryにも作用するため、APIMの既存のquery禁止を維持して拒否します。
+Schema・構造化引数のKeysは、下表の既存11個の承認prefixに7グループと`921110`・`921130`・`800100`・`921150`を適用します。JSONのプロパティ名はエスケープした改行やコードを含められ、モデルへ渡すデータ名がpayload中のCR/LF検知に一致することがあります。このため`921150`は既存の`RequestArgKeys / StartsWith`の有限prefixに限って保持します。既存Keysの`920270`・`920271`等の追加例外も保持し、新規prefixや全キーへ一律に追加しません。921のグループ全体、header、兄弟fieldへこの個別例外を広げません。引数除外は同名queryにも作用するため、非本文への適用範囲とAPIM後続処理を独立して確認します。query観測部品を補償用の拒否機能として扱わず、後続のquery・URI制約の採否は別の棚卸で判断します。
 
 | 用途 | Responsesの例 | Chat Completionsの例 |
 | --- | --- | --- |
@@ -93,7 +121,7 @@ Schema・構造化引数のKeysは、下表の既存11個の承認prefixに7グ�
 
 | 種類 | 対象 | 除外の方針 |
 | --- | --- | --- |
-| 通常自由文・動的データ | rerankの`documents`・`query`、Decisionの`state`・`questions.`・`state.`、transcribeの`prompt`、Liveの`instructions`、PIIの`text`・`params.arguments.text`、Portalの`message`・speechの`text` | Valuesは7群と`921110`・`921130`、既存の800100・920230・920270・920271の個別例外を保持。Decision Keysも7群と`921110`・`921130`、既存の800100・921150・920系例外を保持 |
+| 通常自由文・動的データ | rerankの`documents`・`query`、Decisionの`state`・`questions.`・`state.`、transcribeの`prompt`、Liveの`instructions`、PII RESTの`text`・MCPの`params.arguments.text`、Portalの`message`・speechの`text` | Valuesは7群と`921110`・`921130`、既存の800100・920230・920270・920271の個別例外を保持。Decision Keysも7群と`921110`・`921130`、既存の800100・921150・920系例外を保持 |
 | SDP | `g-realtime`・`g-live`のexact `sdp` | 7群と`921110`・`921130`、既存の個別例外を保持。URI・ICE接続先の受付制御を緩める指定ではない |
 | 不透明な履歴・ファイル値 | Responsesの`input.encrypted_content`・`input.encrypted_function_args`、`input.content`と`input.output`内の`encrypted_content`・`file_data`、画像生成履歴の`input.result`、Chatの`messages.content.input_audio.data`・`messages.content.file.file_data`・`messages.audio.id` | exact Valuesへ7群と`921110`・`921130`。暗号化・Base64・参照IDを自然文と区別し、Known-CVEsや920の新規例外は追加せず、旧例外だけ保持 |
 | Portalの封印handle | `p-realtime`・`p-document-status`のexact `handle` | 7群と`921110`・`921130`、旧例外だけ。復号・本人／購読の束縛・期限をアプリで検証 |
@@ -116,7 +144,7 @@ native toolの履歴は[Responsesの公式入力型](https://developers.openai.c
 
 Chat Completionsの`messages.reasoning_content`も、モデルが生成した推論テキストを履歴へ戻す正規の自由文として同じValuesセットで扱います。[Azureのreasoning応答例](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-chat-reasoning)と[DeepSeekのthinking modeの履歴契約](https://api-docs.deepseek.com/guides/thinking_mode)は区別し、Azureの応答例だけで後続要求の受理を実証したとは扱いません。除外の根拠は公式型とデータの用途であり、特定モデルの推論成功を除外の前提にしません。実経路でのWAF通過と、モデルによる要求受理・推論成功を別々に検証します。
 
-同名queryにも引数除外が効くため、標準OpenAIの2操作にはAPIMの入口制約を組み合わせます。認証済み購読を確認した後、POST、単一の`application/json`のContent-Type、query引数がないことを検査します。`charset`等のmedia typeパラメーターは許容し、`api-version`を含めてquery引数は全拒否します。APIMのモデル許可、受信byte制約、Responsesのstateless制約、下流認証は維持します。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
+同名queryにも引数除外が効くため、そのWAFの効果とAPIMの受付・下流への転送は別に確認します。標準OpenAIの2操作はPOSTとURLの登録を維持し、APIMが操作照合を担当します。キー／Bearer認証後の入力検査はContent-Type宣言の1値・非空MIME部分だけを確認し、会社のMIME一覧と比較しません。この部品のメソッド再確認とquery拒否も撤去します。WAFのJSON形式規則やAPIMのJSON本文・モデル許可・受信byte制約・Responsesのstateless制約・下流認証は今回変更せず、入口での通過を下流成功とは扱いません。全本文の厳密Schema検証や、全購読でのrate/token制限が既に有効だとは扱いません。画像・ファイルのURL取得、ツール実行先の引数・権限・sandboxは別の実行境界です。
 
 画像生成・編集では、`g-images`・`p-images`の`RequestArgValues / Equals / prompt`へ7グループと`921110`・`921130`、既存の`800100`・`920230`・`920270`・`920271`の個別除外を適用します。`g-images`のFLUX参照画像欄`input_image`・`input_image_2`～`input_image_8`も、同じ不透明データ型としてexact Valuesで7グループと`921110`・`921130`を除外し、従来のSQL規則`942340`・`942390`・`942450`を包含します。未確認の9・10枚目のfield名は推測して追加しません。PortalセッションCookie、model等の制御欄は変更せず、編集multipartのimage／maskバイナリーpartへ新たな項目除外を追加しません。Responsesの画像tool用mask URLは別の本文型・profileで扱います。これは画像APIの正規データ欄に限定した構成判断であり、画像生成モデル専用のMicrosoft推奨ルール一覧を採用したものではありません。
 
@@ -134,11 +162,11 @@ Chat Completionsの`messages.reasoning_content`も、モデルが生成した推
 
 埋め込みでは、`g-embeddings`の2完全パス`/models/cohere/v1/embed`・`/models/openai-embeddings/v1/embeddings`にある`RequestArgValues / Equals / texts`と`input`、`p-embeddings`の`/api/models/embeddings`にある同条件の`texts`だけに、同じ7グループと`921110`・`921130`を適用します。各欄の旧45個別IDのうち41 IDをグループで包含し、`800100`・`920230`・`920270`・`920271`は各欄の個別除外として保持します。Gatewayの旧90組とPortalの旧45組、PortalセッションCookieの942450をすべて維持し、共有ポリシーの両fieldを一方の経路から撤去しません。model、dimensions、input_type、encoding_format、画像やmetadataへグループ除外を追加しません。
 
-埋め込みの入口制約は、公開契約のAPI名・操作・パスと`textEmbeddings`/JSON契約に一致する2操作だけを対象とし、共通認証の後にPOST、単一の`application/json`を検査します。OpenAIはqueryなし、または単一の`api-version=v1`/`preview`だけを許可し、元の値を転送します。未知名・同名input/texts・重複・不正なversionは拒否します。CohereとPortalはqueryを全拒否し、Cohereのrerank等の別操作へ広げません。Portalの既存のOrigin・セッション・JSON・入力schemaの検査を保ちます。OpenAIの単一文字列、文字列配列、token配列・二重token配列とCohereの文字列配列を変更せず、モデル・次元・provider固有オプションの検査を維持します。検査先頭2000 KiBと既存の受信byte制約は変更せず、検査枠を超えた本文を全検査したとは扱いません。これはチャット向け指針を本文の文書データに適用する構成判断であり、embedding専用のMicrosoft推奨ルール一覧ではありません。[公式APIの任意api-versionと入力型](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/embeddings)を維持します。
+APIMの埋め込み2操作は`inputContract={}`で対象を明示し、共通認証の後にContent-Type宣言の1値・非空MIME部分だけを確認します。POSTとURLは操作登録へ残し、APIMが照合します。入口のMIME一覧比較、メソッド再確認、OpenAIの版限定・Cohereのquery禁止は撤去します。URL資格情報拒否を維持し、query転送とWAFのJSON形式制御・除外は別の未棚卸項目です。Portalのquery拒否、Origin・セッション・JSON・入力schemaは変更しません。OpenAIの単一文字列、文字列配列、token配列・二重token配列とCohereの文字列配列を変更せず、モデル・次元・provider固有オプションの検査を維持します。検査先頭2000 KiBと受信byte制約は変更せず、検査枠を超えた本文を全検査したとは扱いません。これはチャット向け指針を本文の文書データに適用する構成判断であり、embedding専用のMicrosoft推奨ルール一覧ではありません。[公式APIの任意api-versionと入力型](https://learn.microsoft.com/en-us/rest/api/microsoft-foundry/azureopenai/embeddings)を参照してください。
 
-JSONを受ける用途別WAF 18 profileでは、MIMEの大小文字による誤検知を避けるため、そのpath policy内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ有限のprofile・scope・完全パス・MIME形式を使います。対象はGatewayの既存9 profileと、`p-document-status`を含むPortalの9 profileです。`g-document-status`・`g-realtime-ticket`、基底・認証・正本にないJSON入口へは自動展開しません。
+PII分割後の最終候補では、JSONを受ける用途別WAF 19 profileで、MIMEの大小文字による誤検知を避けるため、そのpath policy内だけ920420の許可リスト判定をcustom Blockへ置き換えます。正本は`apps/gateway/waf-json-content-controls.json`で、PythonとBicepが同じ有限のprofile・scope・完全パス・MIME形式を使います。対象は`g-pii-rest`・`g-pii-mcp`を含むGatewayの10 profileと、`p-document-status`を含むPortalの9 profileです。`g-document-status`・`g-realtime-ticket`、基底・認証・正本にないJSON入口へは自動展開しません。
 
-`Content-Type`が非空の場合だけ照合用に小文字化し、単一の`application/json`と正規のtoken／quoted-stringパラメーターを許可します。`Application/JSON; charset=UTF-8`は同じJSONとして扱い、`application/jsonp`、`text/plain`、カンマで結合した複数のMIME、不正なパラメーターは許可しません。共有の`g-images`と`p-speech`はJSONと`multipart/form-data`の集合和を許可し、各操作のAPIM／Portalでの形式検査を維持します。MCPの本文なしGET/DELETE等に新たなMIME必須条件を追加せず、欠落ヘッダーは既存の920340等のプロトコル規則とアプリ側受付条件に従います。[HTTP仕様のMIME比較](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)に沿うAPI契約上の構成判断です。
+このWAF規則は`Content-Type`が非空の場合だけ照合用に小文字化し、単一の`application/json`と正規のtoken／quoted-stringパラメーターを許可します。`Application/JSON; charset=UTF-8`は同じJSONとして扱い、`application/jsonp`、`text/plain`、カンマで結合した複数のMIME、不正なパラメーターは許可しません。共有の`g-images`と`p-speech`はJSONと`multipart/form-data`の集合和を許可します。APIM入口のMIME一覧比較は撤去しますが、このWAF規則、後段の本文・MIME制御、Portalの形式検査は今回変更しません。MCPの本文なしGET/DELETE等へMIME必須条件を追加せず、欠落ヘッダーは既存の920340等とアプリ側受付に従います。[HTTP仕様のMIME比較](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.3.1)に沿うWAF側の構成判断です。
 
 custom Allowは使わず、920470等の他の管理規則・JSON本文検査・既存のデータ欄除外・認証・入口制約を維持します。照合変換はヘッダーの実値を書き換えません。非JSON専用の`g-transcribe`と、raw本文用の`p-document-upload`、Speech／Gateway文書の既存調整も変更しません。PortalのRealtime JSON handlerは他のJSON handlerと同じ大小文字非依存の判定を使い、認証と読取り順を保ちます。
 
@@ -160,7 +188,9 @@ Log4j/JNDIの例文で検知する`Known-CVEs / 800100`は、従来のmanifest�
 
 画像・音声のモデル内容参照と不透明データは、入力型台帳に定義した有限selectorで上記7グループと`921110`・`921130`を除外します。Chat Completionsの`messages.content.image_url.url`、Responsesの`input.content.image_url`・`input.output.image_url`等のURL兼用欄も同じ条件へ統合し、従来のXSS・SQLi・RFI個別IDを包含します。これらの媒体の本文欄は、承認された完全パスの`RequestArgValues / Equals`に限定します。取得先・制御用のURL欄、隣接field、headerへは広げず、URLの形式・実際の取得先・アクセス権の検証はアプリケーション／提供元で行います。Schemaキーの除外は前述の承認prefixに限定し、集計規則949110と共通の保護条件を維持します。
 
-SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/speech-ssml-guard.xml`です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。独自の8192byte枠は撤廃し、継承した認証・受信byte検査の後、上流へ転送する前に宣言を検査します。元本文と上流URIは保持します。匿名401だけではガード成功とせず、認証付きの正常音声生成と明示400応答も確認します。SSML全体のschema検証は下流Speech側の責務です。
+SSMLのDTD/ENTITY宣言は、WAF本文カスタム規則のMIME対応に依存せず、正規TTS操作のAPIMガードで400 `InvalidSpeechMarkup`として拒否します。正本は`apps/gateway/apim/policies/fragments/request/core-speech-ssml-guard/`の同名XML／C#です。XMLや外部エンティティのparserを呼ばず、UTF-8/16/32を認識して実宣言だけを検査し、escaped例文・コメント・CDATAは許容します。独自の8192byte枠は引き続き設けません。TTSの共有部品は申告サイズだけを確認し、次の専用部品が本文を一度読み、選択済み上限との実サイズ比較を文字列化前に行ってから宣言を検査します。生成済みの`speechSsmlOperationIds`で対象を選び、認証・共有サイズ確認の後、利用枠・下流認証準備・`accepted`監査より前で呼びます。結果の監査と400／413応答はHTTP API側が行い、元本文と上流URIは保持します。SSML全体のschema検証は下流Speech側の責務です。
+
+このTTS集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413と残る異常系は未実施です。従来の試験結果や匿名401を、新しい構成の未確認条件の受入完了へ読み替えません。
 
 `infra/modules/application-gateway.bicep`と`scripts/waf_policy.py`は同じ正本を使用します。個別Gateway／Portal配備も照合するため、Azure上だけの手動例外が次回配備で消える構成を避けます。専用ポリシーは親を継承しないため、Prevention・本文検査・ログのマスク・customRulesと、manifestのデータ欄除外・上記のAI専用サイズ設定を合成します。企業管理の外部WAFは変更しません。既存の固有保護を表現できない場合は停止します。
 
@@ -210,13 +240,13 @@ ResponsesとChat Completionsの対応するデータ欄を、PHPの変数関数�
 
 `exclusion_coverage`は、caseの`payload_field`ラベルから合格を作らず、実際のJSON、multipartのfield、header、Cookieを読み、profile・variable・operator・selectorごとの存在を照合します。値や動的キーの実文字列はcoverage記録へ保存しません。query対照を本文coverageへ加算せず、raw本文やJSONでないサイズblobもJSON selectorの検証に数えません。配列indexの省略やmultipart内JSONの展開はローカルの候補投影であり、`waf_extraction_verified`は常に`false`です。Azureが同じ項目を抽出した証明は、相関した実WAFログで別途確認します。
 
-同じhex patternは、承認欄に近い名前の兄弟field、同名query、隣接パスへも移します。同名queryはWAFの値除外にも作用し得るため、WAF403を一律の期待値にせず、認証済み入口でqueryが拒否されることを別に確認します。匿名401だけではその入口検証に合格を付けません。従来の`size-boundary`の大容量`p`反復は形式検証用の不正JSONであり、600 KiBの正規履歴とは区別します。
+同じhex patternは、承認欄に近い名前の兄弟field、同名query、隣接パスへも移します。同名queryはWAFの値除外にも作用し得るため、WAF403を一律の期待値にせず、認証済み入口の観測ログと後続処理による受付・拒否・転送を別に確認します。観測専用部品は拒否を担当しません。匿名401だけではその入口検証に合格を付けません。従来の`size-boundary`の大容量`p`反復は形式検証用の不正JSONであり、600 KiBの正規履歴とは区別します。
 
 任意の未知headerにSQLやBase64を置くだけでは、WAFが検査・遮断すべき攻撃対照にはなりません。ヘッダーの独立した活性対照には、[CRS 3.2のXSSルール](https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf)が明示的に検査する`Referer`と既知の合成XSS構文を使います。raw本文のLFI対照では、[CRS 930](https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf)が`Referer`を除くヘッダー全体を検査するため、独立した`X-Header`のパストラバーサルを維持します。不透明な値のselectorが未知headerへ広がらないことは、ローカルの完全一致・対象variable不変条件でも確認します。
 
 ticketの合成opaque値を兄弟headerや隣接経路のheaderへ置く6ケースは、実際の攻撃シグネチャとは限りません。これらは`expected_boundary: observation`・非必須として従来のexhaustive corpusへ残し、遮断の合格数へ加算しません。既定のrequired suiteでは、ticketのheader完全一致と経路限定をローカルの不変条件で確認し、同じ3経路に各1件の必須`Referer` XSS対照を置いて、ネットワーク上の検査有効性も確認します。CRS対象を確認せず、この6ケースを「検出すべき攻撃が通過した」と扱うこともありません。
 
-SSMLのDTD・entity宣言はAPIMの`speech-ssml-guard`が拒否する境界です。その負例は`application_reject`を期待し、匿名401だけでは合格にしません。認証付きの空SSML負例で400と`InvalidSpeechMarkup`を確認し、WAFで遮断したという記録とは分けます。
+SSMLのDTD・entity宣言はAPIMの`core-speech-ssml-guard`が拒否する境界です。その負例は`application_reject`を期待し、匿名401だけでは合格にしません。認証付きの空SSML負例で400と`InvalidSpeechMarkup`を確認し、WAFで遮断したという記録とは分けます。
 
 実通信前に`--dry-run`と`--case-filter`で対象を絞り、経路・データ型・対照をレビューします。既定corpusの全件を一括送信した結果だけで、新規selectorや型の検証を置き換えません。
 

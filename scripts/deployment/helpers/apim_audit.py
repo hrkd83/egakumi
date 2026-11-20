@@ -18,6 +18,18 @@ CORE_GATEWAY_TELEMETRY_MARKER = "__CORE_GATEWAY_TELEMETRY_CSHARP__"
 CORE_TRUSTED_INGRESS_MARKER = "__CORE_TRUSTED_INGRESS_CSHARP__"
 CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER = "__CORE_CREDENTIAL_BROWSER_EXCEPTION_CSHARP__"
 CORE_API_SETTINGS_MARKER = "__CORE_API_SETTINGS_CSHARP__"
+CORE_API_INPUT_VALIDATION_MARKER = "__CORE_API_INPUT_VALIDATION_CSHARP__"
+CORE_API_OPERATION_SETTINGS_MARKER = "__CORE_API_OPERATION_SETTINGS_CSHARP__"
+CORE_API_AUTHENTICATION_RESULT_MARKER = "__CORE_API_AUTHENTICATION_RESULT_CSHARP__"
+CORE_MODEL_LIMITS_MARKER = "__CORE_MODEL_LIMITS_CSHARP__"
+CORE_SPEECH_SSML_GUARD_MARKER = "__CORE_SPEECH_SSML_GUARD_CSHARP__"
+CORE_QUERY_OBSERVATION_MARKER = "__CORE_QUERY_OBSERVATION_CSHARP__"
+CORE_QUERY_TELEMETRY_MARKER = "__CORE_QUERY_TELEMETRY_CSHARP__"
+CORE_QUERY_TELEMETRY_PREDICATE_MARKER = "__CORE_QUERY_TELEMETRY_PREDICATE_CSHARP__"
+QUERY_TELEMETRY_SECTIONS = {
+    "predicate": CORE_QUERY_TELEMETRY_PREDICATE_MARKER,
+    "message": CORE_QUERY_TELEMETRY_MARKER,
+}
 AUDIT_FRAGMENT_FILES = {
     "core-request-context": ("fragments/audit/core-request-context/core-request-context.xml", "gatewayRequestContext"),
     "core-audit-authenticated-subject": ("fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.xml", "gatewayAuthenticatedSubject"),
@@ -29,6 +41,13 @@ SOURCE_EXPRESSION_FILES = {
     CORE_TRUSTED_INGRESS_MARKER: "fragments/ingress/core-trusted-ingress/core-trusted-ingress.cs",
     CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER: "fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs",
     CORE_API_SETTINGS_MARKER: "fragments/settings/core-api-settings/core-api-settings.cs",
+    CORE_API_INPUT_VALIDATION_MARKER: "fragments/request/core-api-input-validation/core-api-input-validation.cs",
+    CORE_API_OPERATION_SETTINGS_MARKER: "fragments/request/core-api-operation-settings/core-api-operation-settings.cs",
+    CORE_API_AUTHENTICATION_RESULT_MARKER: "fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs",
+    CORE_MODEL_LIMITS_MARKER: "fragments/request/core-model-limits/core-model-limits.cs",
+    CORE_SPEECH_SSML_GUARD_MARKER: "fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.cs",
+    CORE_QUERY_OBSERVATION_MARKER: "fragments/request/core-query-observation/core-query-observation.cs",
+    CORE_QUERY_TELEMETRY_MARKER: "fragments/audit/core-query-telemetry/core-query-telemetry.cs",
     AUTHENTICATED_SUBJECT_MARKER: "expressions/legacy/audit-authenticated-subject.cs",
     SUBJECT_OBSERVATION_MARKER: "expressions/legacy/audit-subject-observation.cs",
     REQUEST_CONTEXT_MARKER: "expressions/legacy/request-context.cs",
@@ -103,13 +122,69 @@ def portal_source_explanation_blocks() -> dict[str, tuple[str, ...]]:
     return blocks
 
 
+def extract_query_telemetry_sections(source: str) -> dict[str, str]:
+    """同名C#のpredicate/messageだけを読み、区画外コード・重複・閉じ忘れを拒否する。"""
+    if not isinstance(source, str):
+        raise ValueError("Query telemetry expression source must be text")
+    source = source.replace("\r\n", "\n")
+    sections, active, lines = {}, None, []
+    for line in source.split("\n"):
+        delimiter = re.fullmatch(r"// (BEGIN|END) (predicate|message)", line)
+        if delimiter:
+            action, name = delimiter.groups()
+            if action == "BEGIN":
+                if active is not None or name in sections:
+                    raise ValueError("Query telemetry sections must be unique and cannot be nested")
+                active, lines = name, []
+            else:
+                if active != name or not lines or not any(
+                        item.strip() and not item.lstrip().startswith("//") for item in lines):
+                    raise ValueError("Query telemetry sections need matching END and executable content")
+                sections[name] = "\n".join(lines)
+                active, lines = None, []
+        elif re.match(r"// (?:BEGIN|END)(?:\s|$)", line.lstrip()):
+            raise ValueError("Query telemetry section delimiters must use only the fixed two names")
+        elif active is not None:
+            lines.append(line)
+        elif line.strip() and not line.lstrip().startswith("//"):
+            raise ValueError("Query telemetry code must belong to a named section")
+    if active is not None or tuple(sections) != tuple(QUERY_TELEMETRY_SECTIONS):
+        raise ValueError("Query telemetry source must contain predicate and message in their fixed order")
+    return sections
+
+
+def _render_query_telemetry_sections(xml: str, source_comments: str) -> str:
+    """同名XMLの2式へ区画を埋め込み、利用者情報の共通式も説明付きで展開する。"""
+    if not any(marker in xml for marker in QUERY_TELEMETRY_SECTIONS.values()):
+        return xml
+    if any(xml.count(marker) != 1 for marker in QUERY_TELEMETRY_SECTIONS.values()):
+        raise ValueError("Each query telemetry section needs exactly one XML insertion point")
+    directory = REPOSITORY / "apps/gateway/apim/policies"
+    source = (directory / SOURCE_EXPRESSION_FILES[CORE_QUERY_TELEMETRY_MARKER]).read_text(encoding="utf-8")
+    sections = extract_query_telemetry_sections(source)
+    if sections["predicate"].count(SUBJECT_OBSERVATION_MARKER) or sections["message"].count(SUBJECT_OBSERVATION_MARKER) != 1:
+        raise ValueError("Query telemetry must read the shared subject only once in its message section")
+    # compactは他部品への複製用です。この正本では共通の利用者情報の説明も保持します。
+    mode = "omit" if source_comments == "omit" else "full"
+    subject = (directory / SOURCE_EXPRESSION_FILES[SUBJECT_OBSERVATION_MARKER]).read_text(encoding="utf-8")
+    for name, marker in QUERY_TELEMETRY_SECTIONS.items():
+        body = sections[name].replace(SUBJECT_OBSERVATION_MARKER, _source_expression(subject, mode))
+        encoded = escape(_source_expression(body, mode), {'"': "&quot;", "'": "&apos;"})
+        xml = re.sub(r"(?m)^([ \t]*)" + marker,
+                     lambda match: match[1] + encoded.replace("\n", "\n" + match[1]), xml)
+        if marker in xml:
+            raise ValueError("Query telemetry C# insertion points must occupy their own line")
+    return xml
+
+
 def render_audit_policy(xml: str, *, source_comments: str = "full") -> str:
     """生C#と説明をXMLへ埋め込む。compactは複製する主体監査だけ、omitは旧生成元照合だけに使う。"""
     if source_comments not in {"full", "compact", "omit"}:
         raise ValueError("Audit source comments require full, compact or legacy omit mode")
+    xml = _render_query_telemetry_sections(xml, source_comments)
     if source_comments in {"compact", "omit"} and CORE_GATEWAY_TELEMETRY_MARKER in xml:
         xml = _without_telemetry_explanation_lines(xml)
-    indented_markers = {REQUEST_CONTEXT_MARKER, CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, CORE_API_SETTINGS_MARKER}
+    indented_markers = {REQUEST_CONTEXT_MARKER, CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, CORE_API_SETTINGS_MARKER, CORE_API_INPUT_VALIDATION_MARKER, CORE_API_OPERATION_SETTINGS_MARKER, CORE_API_AUTHENTICATION_RESULT_MARKER, CORE_MODEL_LIMITS_MARKER, CORE_SPEECH_SSML_GUARD_MARKER, CORE_QUERY_OBSERVATION_MARKER}
     observation_markers = {SUBJECT_OBSERVATION_MARKER, CORE_GATEWAY_TELEMETRY_MARKER}
     for marker, filename in SOURCE_EXPRESSION_FILES.items():
         if marker in indented_markers:

@@ -1,4 +1,4 @@
-"""Run the actual APIM SSML declaration expression, then verify its IaC scope/order.
+"""実C#でSpeechの本文サイズと宣言検査を確認し、生成側の対象範囲を検査する。
 
 No XML parser, entity resolver, network request, authentication or backend runs in
 this guard. These local checks do not replace an authenticated APIM replay.
@@ -14,14 +14,17 @@ import xml.etree.ElementTree as ET
 
 from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
-from test_gateway_limits_telemetry import PWSH, expression
+from test_gateway_limits_telemetry import PWSH
+from deployment.helpers.apim_audit import render_audit_policy
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = ROOT / 'apps/gateway/apim/policies/speech-ssml-guard.xml'
+POLICY = ROOT / 'apps/gateway/apim/policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.xml'
+GUARD_SOURCE = POLICY.with_suffix('.cs')
 SPEECH = json.loads((ROOT / 'apps/gateway/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8'))
 
 CSHARP = r'''
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json.Linq;
 public sealed class Body {
@@ -35,18 +38,23 @@ public sealed class Body {
   }
 }
 public sealed class Request { public Body Body = new Body(); }
-public sealed class Context { public Request Request = new Request(); }
+public sealed class Context {
+  public Request Request = new Request();
+  public Dictionary<string, object> Variables = new Dictionary<string, object>();
+}
 public static class SpeechGuardFixture {
-  public static bool Reject(Context context) { __GUARD__ }
+  public static string Decide(Context context) { __GUARD__ }
   public static string Run(string cases) {
     var results = new JObject();
     foreach(JObject item in JArray.Parse(cases)) {
       var context = new Context();
       context.Request.Body.Data = Convert.FromBase64String((string)item["data"]);
       if ((bool?)item["noBody"] == true) context.Request.Body = null;
-      var rejected = Reject(context);
+      context.Variables["gatewayOperationConstraint"] = new JObject(
+        new JProperty("maxRequestBytes", (long?)item["maxBytes"] ?? 524288000L)).ToString();
+      var decision = JObject.Parse(Decide(context));
       results[(string)item["id"]] = new JObject(
-        new JProperty("rejected", rejected), new JProperty("reads", context.Request.Body == null ? 0 : context.Request.Body.Reads),
+        new JProperty("decision", decision), new JProperty("reads", context.Request.Body == null ? 0 : context.Request.Body.Reads),
         new JProperty("preserved", context.Request.Body == null || context.Request.Body.Preserved),
         new JProperty("data", context.Request.Body == null ? "" : Convert.ToBase64String(context.Request.Body.Data)));
     }
@@ -98,7 +106,14 @@ class SpeechSsmlDeclarationTests(unittest.TestCase):
         for index, data in enumerate((b'\x4c\x6f\xa7\x94', b'\x00\x00\xff\xfe', b'\xfe\xff\x00\x00', b'\x00\x00\x3c\x00', b'\x00\x3c\x00\x00')):
             cls.cases.append({'id': 'unsupported-xml-encoding-' + str(index), 'data': base64.b64encode(data).decode(), 'expected': True})
         cls.cases.append({'id': 'absent-body', 'data': '', 'expected': False, 'noBody': True})
-        source = CSHARP.replace('__GUARD__', expression(POLICY, './set-variable', 'value'))
+        # 小さい合成上限で境界と処理順を確認し、500 MiBの本文は確保しません。
+        normal = b'<speak>ok</speak>'
+        cls.cases.extend((
+            {'id': 'size-exact', 'data': base64.b64encode(normal).decode(), 'expected': False, 'maxBytes': len(normal)},
+            {'id': 'size-over', 'data': base64.b64encode(normal).decode(), 'expected': False, 'maxBytes': len(normal) - 1, 'status': 413},
+            {'id': 'size-before-declaration', 'data': base64.b64encode(inputs['unused-dtd'][0].encode()).decode(),
+             'expected': True, 'maxBytes': len(normal), 'status': 413}))
+        source = CSHARP.replace('__GUARD__', GUARD_SOURCE.read_text(encoding='utf-8'))
         with tempfile.TemporaryDirectory(prefix='core-speech-guard-') as directory:
             folder = Path(directory)
             (folder / 'fixture.cs').write_text(source, encoding='utf-8')
@@ -117,7 +132,9 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
     def test_declarations_reject_and_literal_examples_pass_with_all_utf_encodings(self):
         for case in self.cases:
             with self.subTest(case=case['id']):
-                self.assertEqual(self.results[case['id']]['rejected'], case['expected'])
+                status = case.get('status', 400 if case['expected'] else 200)
+                self.assertEqual(self.results[case['id']]['decision'], {'allowed': status == 200, 'status': status,
+                    'code': 'REQUEST_TOO_LARGE' if status == 413 else 'INVALID_SPEECH_MARKUP' if status == 400 else 'SPEECH_MARKUP_ALLOWED'})
 
     def test_only_preserved_bytes_are_read_and_no_xml_parser_or_logging_runs(self):
         for case in self.cases:
@@ -126,16 +143,23 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                 self.assertEqual(result['reads'], 0 if case.get('noBody') else 1)
                 self.assertTrue(result['preserved'])
                 self.assertEqual(result['data'], case['data'])
-        source = POLICY.read_text(encoding='utf-8')
+        source = POLICY.read_text(encoding='utf-8') + GUARD_SOURCE.read_text(encoding='utf-8')
         for forbidden in ('XDocument', 'XmlReader', 'XmlDocument', '<trace', '<send-request', '<set-backend-service'):
             self.assertNotIn(forbidden, source)
 
     def test_rejection_is_safe_400_with_machine_readable_code(self):
         root = ET.parse(POLICY).getroot()
-        response = root.find('./choose/when/return-response')
-        self.assertEqual(response.find('set-status').get('code'), '400')
-        self.assertEqual(json.loads(response.find('set-body').text)['error']['code'], 'InvalidSpeechMarkup')
-        self.assertNotIn('context.Request.Body', response.find('set-body').text)
+        self.assertEqual([child.tag for child in root], ['set-variable'])
+        self.assertEqual(root.find('set-variable').get('name'), 'gatewaySpeechSsmlDecision')
+        for name in ('unused-dtd', 'internal-entity', 'external-entity'):
+            decision = self.results['utf-8-False-' + name]['decision']
+            self.assertEqual(decision, {'allowed': False, 'status': 400, 'code': 'INVALID_SPEECH_MARKUP'})
+
+    def test_exact_size_passes_and_excess_size_is_reported_before_markup_rejection(self):
+        self.assertEqual(self.results['size-exact']['decision'], {'allowed': True, 'status': 200, 'code': 'SPEECH_MARKUP_ALLOWED'})
+        for name in ('size-over', 'size-before-declaration'):
+            self.assertEqual(self.results[name]['decision'], {'allowed': False, 'status': 413, 'code': 'REQUEST_TOO_LARGE'})
+            self.assertEqual(self.results[name]['reads'], 1)
 
 
 class SpeechSsmlGuardPublicationTests(unittest.TestCase):
@@ -154,17 +178,46 @@ class SpeechSsmlGuardPublicationTests(unittest.TestCase):
         return {'apiName': SPEECH['name'], 'operation': next(operation for operation in SPEECH['operations'] if operation['name'] == 'tts'),
             'constraint': copy.deepcopy(SPEECH['authorization']['operationConstraints']['tts'])}
 
-    def test_deployed_guard_runs_after_authentication_and_size_checks_before_forwarding(self):
+    def test_operation_inherits_the_api_guard_without_expanding_another_body_reader(self):
         entry = self.entry()
         rendered = self.evaluate(entry).replace("\r\n", "\n")
-        fragment = POLICY.read_text(encoding='utf-8').replace('<fragment>', '').replace('</fragment>', '')
-        self.assertIn('<inbound><base />' + fragment, rendered)
         root = ET.fromstring(rendered)
-        self.assertEqual([child.tag for child in root.find('inbound')][:3], ['base', 'set-variable', 'choose'])
+        self.assertEqual([child.tag for child in root.find('inbound')], ['base', 'rewrite-uri'])
+        self.assertNotIn('gatewaySpeechSsmlDecision', rendered)
+        self.assertNotIn('Body.As', rendered)
         entry['apiName'] = 'unrelated-api'
-        self.assertEqual(rendered.replace(fragment, ''), self.evaluate(entry).replace('\r\n', '\n'))
+        self.assertEqual(rendered, self.evaluate(entry).replace('\r\n', '\n'))
         self.assertIn('copy-unmatched-params="false"', rendered)
         self.assertNotIn('<validate-content ', rendered)
+
+    def test_registered_fragment_matches_the_canonical_xml_and_csharp_renderer(self):
+        resources = self.template['resources']
+        resource = resources['speechSsmlGuardFragment'] if isinstance(resources, dict) else next(
+            item for item in resources if 'core-speech-ssml-guard' in item.get('name', ''))
+        rendered = PolicyExpression(resource['properties']['value'], self.template['variables'],
+                                    functions=self.template['functions']).evaluate({})
+        expected = render_audit_policy(POLICY.read_text(encoding='utf-8'))
+        self.assertEqual(rendered.replace('\r\n', '\n'), expected.replace('\r\n', '\n'))
+        self.assertNotIn('__CORE_SPEECH_SSML_GUARD_CSHARP__', rendered)
+
+    def test_control_settings_register_only_tts_and_exclude_stt_other_xml_and_generated_mcp(self):
+        members = next(item for item in self.template['functions'] if item['namespace'] == '__bicep')['members']
+        condition = members['controlSettings']['output']['value']['speechSsmlOperationIds']
+        api = {**copy.deepcopy(SPEECH), 'apiType': 'http'}
+        variants = [('tts', api, False, ['tts'])]
+        stt = copy.deepcopy(api)
+        stt['operations'] = [operation for operation in stt['operations'] if operation['name'] == 'stt']
+        variants.append(('stt', stt, False, []))
+        other_xml = copy.deepcopy(api)
+        other_xml['authorization']['operationConstraints']['tts']['contentTypes'] = ['text/xml']
+        variants.extend((('other-xml', other_xml, False, []), ('generated-mcp', api, True, [])))
+        other_api = {**copy.deepcopy(api), 'name': 'synthetic-other-speech'}
+        variants.append(('other-api', other_api, False, []))
+        for label, definition, generated, expected in variants:
+            with self.subTest(case=label):
+                result = PolicyExpression(condition, self.template['variables'], functions=self.template['functions']).evaluate(
+                    {'api': definition, 'operation': '', 'generatedMcp': generated})
+                self.assertEqual(result, expected)
 
     def test_scope_is_exact_canonical_tts_contract_not_other_xml_or_stt_operations(self):
         entry = self.entry()

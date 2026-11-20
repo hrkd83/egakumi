@@ -38,6 +38,7 @@ if __package__ in (None, ""):
 
 from .catalog_descriptions import with_catalog_descriptions
 from .apim_naming import apim_instance_id
+from .apim_input_contract import validate_input_contract
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
 
 
@@ -51,7 +52,8 @@ class DnsProviderMismatchError(ConfigurationError):
 
 RG_KINDS = ("id", "nw", "monitor", "svc", "maint")
 SUBNET_KINDS = ("agw", "firewall", "apim", "pep", "management", "aca")
-QUERY_GUARD_DEFAULTS = {"liveCreate": "observe", "realtimeCreate": "observe", "piiMcp": "observe"}
+# 観測対象の操作・受付へ付けるラベルです。サービスやモデルの種類を列挙しません。
+QUERY_OBSERVATION_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 TOP_KEYS = {
     "$schema", "$comment",
     "schemaVersion", "productName", "environmentName", "subscriptionId",
@@ -93,7 +95,7 @@ PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
     "network": PARAMETER_NETWORK_IP_KEYS | {"firewall"},
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
-    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "rateLimits", "queryGuards"},
+    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "rateLimits"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
     "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
     "certificate": {"contactEmail", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
@@ -108,7 +110,6 @@ PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS | {"apimAllowedFqdns", "man
 PARAMETER_GATEWAY_NESTED_KEYS = {
     "authentication": {"subscriptionKeyHeader", "credentialLogin", "entra"},
     "rateLimits": {"subscriptionKey", "application"},
-    "queryGuards": set(QUERY_GUARD_DEFAULTS),
 }
 PARAMETER_OWNED_PATHS = (
     *((key,) for key in ("schemaVersion", "productName", "environmentName", "subscriptionId", "azureTenantId", "entraTenantId",
@@ -197,12 +198,12 @@ def _choice(value: Any, path: str, choices: tuple[str, ...]) -> str:
     return value
 
 
-def normalize_query_guards(raw: Any) -> dict:
-    """固定した3入口のquery動作だけを選び、省略時は観測を維持する。"""
-    modes = copy.deepcopy(_object(raw, "gateway.queryGuards", set(QUERY_GUARD_DEFAULTS)))
-    for entry, default in QUERY_GUARD_DEFAULTS.items():
-        _choice(modes.setdefault(entry, default), "gateway.queryGuards." + entry, ("observe", "reject"))
-    return modes
+def _query_observation_reference(value: Any, path: str) -> str:
+    """操作・受付の観測ラベルを検査する。URLやサービス名から推測しない。"""
+    identifier = _string(value, path, maximum=64)
+    if not QUERY_OBSERVATION_ID.fullmatch(identifier) or identifier in ("none", "unknown"):
+        _fail(path, "must be an ASCII observation label of at most 64 characters, excluding none and unknown")
+    return identifier
 
 
 def _guid(value: Any, path: str) -> str:
@@ -463,23 +464,29 @@ def _normalize_api_backend(api: dict, p: str, api_type: str, entra_tenant_id: st
 
 
 def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict,
-                                    deployed_models: set[str], q: str, *, allow_profiles: bool = True):
-    """Validate each JSON profile with the same limits as an ordinary operation."""
+                                    deployed_models: set[str], q: str, *, allow_model_settings: bool = True):
+    """操作の基本設定とモデル別の差分を、同じ契約で検査する。"""
     p, op_name = q, operation["name"]
     backend, api_type, mode = api["backendService"], api["apiType"], api["authorization"]["mode"]
-    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "profiles", "defaultProfile", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel", "embeddingInputField", "modelAliases"})
+    _object(constraint, q, {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "requestBodySizeCheck", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "modelSettings", "backendUrlTemplate", "maxResponseBytes", "apiVersion", "timeoutSeconds", "embeddingDimensionsByModel", "embeddingInputField", "modelAliases"})
     kind = _choice(constraint.get("kind"), q + ".kind", ("registeredOperation", "pathModel", "bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "realtimeHangup", "liveCreate", "pii", "documentAnalysis", "documentAnalysisStatus"))
-    # profileの上流URIは、登録時に検査した固定表としてBicepへ渡します。
-    # 選択済みprofileのモデルと転送先を一体で扱います。
+    # モデル別の上流URIは、登録時に検査した固定表としてBicepへ渡します。
+    # 本文のモデル名から、そのモデルに対応する転送先を一意に選びます。
     if "backendUrlTemplate" in constraint:
-        if allow_profiles or kind != "bodyModel" or backend != "foundryServices" or "backendUrlTemplate" in operation:
-            _fail(q + ".backendUrlTemplate", "requires a Foundry provider JSON profile with profile-owned routing")
+        if allow_model_settings or kind != "bodyModel" or backend != "foundryServices" or "backendUrlTemplate" in operation:
+            _fail(q + ".backendUrlTemplate", "requires a Foundry provider JSON model setting with model-owned routing")
         _backend_url_template(constraint["backendUrlTemplate"], q + ".backendUrlTemplate", set())
     if kind == "statelessResponses" and (operation["method"] != "POST" or operation["urlTemplate"] != "/responses" or backend != "foundryOpenAi"):
         _fail(q, "statelessResponses permits only resource Models POST /responses on foundryOpenAi")
     if "backendUrlTemplate" in operation and not ((backend in ("external") and kind in ("registeredOperation", "bodyModel", "pathModel", "hostedAgentPost", "a2aJsonRpc")) or (backend == "foundryOpenAi" and kind == "pathModel") or (backend == "foundryServices" and kind in ("bodyModel", "textEmbeddings", "rerank", "hostedAgentPost"))):
         _fail(p + ".operations." + op_name + ".backendUrlTemplate", "requires an explicit external or Foundry model-provider contract")
     body_format = _choice(constraint.setdefault("bodyFormat", "none" if operation["method"] in ("GET", "HEAD", "DELETE", "OPTIONS") or api_type != "http" else "json"), q + ".bodyFormat", ("json", "binary", "multipart", "text", "none"))
+    # 未指定は既存の実サイズ確認を使い、配備データへ既定値を追加しません。
+    # サイズ確認のための本文読取りを省くdeclaredは、binary／multipart／textの3形式に限定します。
+    if "requestBodySizeCheck" in constraint:
+        size_check = _choice(constraint["requestBodySizeCheck"], q + ".requestBodySizeCheck", ("actual", "declared"))
+        if size_check == "declared" and body_format not in ("binary", "multipart", "text"):
+            _fail(q + ".requestBodySizeCheck", "declared requires a binary, multipart or text body format")
     if kind in ("bodyModel", "textEmbeddings", "rerank", "statelessResponses", "hostedAgentPost", "a2aJsonRpc", "realtimeCreate", "liveCreate", "pii") and body_format != "json":
         _fail(q + ".bodyFormat", "this operation contract requires JSON")
     if api_type != "http" and (kind != "registeredOperation" or body_format != "none"):
@@ -625,11 +632,11 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
         allowed = _strings(constraint.get("allowedModels"), q + ".allowedModels", minimum=1)
         if backend in ("foundryOpenAi", "foundryServices") and not set(allowed) <= deployed_models:
             _fail(q + ".allowedModels", "must reference explicitly configured model deployments")
-    # Aliases are profile-owned names for existing deployments, never new
+    # Aliases are operation-owned names for existing deployments, never new
     # permissions, deployments or a chain of routing instructions.
     if "modelAliases" in constraint:
-        if allow_profiles or api_type != "http" or backend != "foundryOpenAi" or kind not in ("bodyModel", "statelessResponses") or body_format != "json":
-            _fail(q + ".modelAliases", "requires a Foundry OpenAI JSON model profile")
+        if not allow_model_settings or api_type != "http" or backend != "foundryOpenAi" or kind not in ("bodyModel", "statelessResponses") or body_format != "json":
+            _fail(q + ".modelAliases", "requires a Foundry OpenAI JSON model operation")
         aliases = _object(constraint["modelAliases"], q + ".modelAliases")
         if not 1 <= len(aliases) <= 32:
             _fail(q + ".modelAliases", "must contain 1 through 32 exact aliases")
@@ -689,42 +696,48 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
     elif any(field in constraint for field in ("maxResponseBytes", "apiVersion", "timeoutSeconds")):
         _fail(q, "document response bounds and API version belong only to documentAnalysis")
 
-    if "profiles" not in constraint:
-        if "defaultProfile" in constraint:
-            _fail(q + ".defaultProfile", "requires explicit profiles")
+    if "modelSettings" not in constraint:
         return
-    if not allow_profiles or api_type != "http" or kind not in ("bodyModel", "statelessResponses") or body_format != "json":
-        _fail(q + ".profiles", "requires a non-recursive JSON model operation")
-    profiles = _list(constraint["profiles"], q + ".profiles", minimum=1)
-    profile_ids = set()
-    normalized = []
-    # Individual profiles may carry the complete ordinary constraint contract.
-    ordinary_fields = {"kind", "parameter", "allowedModels", "maxRequestBytes", "maxOutputTokens", "maxOutputTokensByModel", "outputTokenLimitKinds", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "backendUrlTemplate", "modelAliases"}
-    for index, entry in enumerate(profiles):
-        label = f"{q}.profiles[{index}]"
-        _object(entry, label, ordinary_fields | {"profileId", "modalities"})
-        profile_id = _string(entry.get("profileId"), label + ".profileId", maximum=64)
-        if not API_NAME.fullmatch(profile_id) or profile_id in profile_ids:
-            _fail(label + ".profileId", "must be a unique profile identifier")
-        profile_ids.add(profile_id)
-        modalities = _strings(entry.get("modalities"), label + ".modalities", minimum=1)
-        if not set(modalities) <= {"text", "image", "file", "audio"}:
-            _fail(label + ".modalities", "must explicitly allow supported text/image/file/audio capabilities")
-        item = {key: copy.deepcopy(value) for key, value in entry.items() if key not in ("profileId", "modalities")}
+    if not allow_model_settings or api_type != "http" or kind not in ("bodyModel", "statelessResponses") or body_format != "json":
+        _fail(q + ".modelSettings", "requires a non-recursive JSON model operation")
+    settings = _object(constraint["modelSettings"], q + ".modelSettings")
+    # 許可モデルは基本設定が管理します。この表は設定の差分だけを持ち、
+    # 未指定モデルへは基本設定を使います。入れ子の制限表は項目単位で置換します。
+    override_fields = {"kind", "parameter", "maxRequestBytes", "maxOutputTokens", "initialOutputTokens", "outputTokenParameter", "modelVersion", "allowedLanguages", "allowedWarningCodes", "bodyFormat", "contentTypes", "allowedMethods", "integerLimits", "arrayLimits", "stringChoices", "model", "sessionTtlSeconds", "publicCallPath", "backendUrlTemplate", "settingId"}
+    base = {key: copy.deepcopy(value) for key, value in constraint.items() if key not in ("modelSettings", "modelAliases")}
+    base_bytes = constraint["maxRequestBytes"]
+    for model, entry in settings.items():
+        if not isinstance(model, str) or model not in constraint["allowedModels"]:
+            _fail(q + ".modelSettings", "must identify an allowed model in this operation")
+        label = q + ".modelSettings." + model
+        _object(entry, label, override_fields)
+        if "settingId" in entry:
+            setting_id = _string(entry["settingId"], label + ".settingId", maximum=64)
+            if not API_NAME.fullmatch(setting_id):
+                _fail(label + ".settingId", "must be a setting identifier")
+        item = {**copy.deepcopy(base), **{key: copy.deepcopy(value) for key, value in entry.items() if key != "settingId"}}
         if item.get("kind") != kind or item.get("bodyFormat", "json") != "json":
             _fail(label, "must retain this operation's JSON model contract")
-        _normalize_operation_constraint(item, api, operation, deployed_models, label, allow_profiles=False)
-        item.update(profileId=profile_id, modalities=modalities)
-        normalized.append(item)
-    if constraint.get("defaultProfile") not in profile_ids:
-        _fail(q + ".defaultProfile", "must reference an explicit profile")
-    if any("backendUrlTemplate" in entry for entry in normalized) and not all("backendUrlTemplate" in entry for entry in normalized):
-        _fail(q + ".profiles", "each profile must specify its fixed upstream route when profile routing is used")
-    constraint["profiles"] = normalized
-    # This outer envelope bounds pre-parsing only. Authorization selects a profile;
-    # each selected profile retains its original models, bytes and output limits.
-    constraint["allowedModels"] = list(dict.fromkeys(model for entry in normalized for model in entry["allowedModels"]))
-    constraint["maxRequestBytes"] = max(entry["maxRequestBytes"] for entry in normalized)
+        # 検査用だけに能力表を当該モデルへ絞ります。配備データには基本表を
+        # 一度だけ保存し、モデル別差分へ全モデルの表を複製しません。
+        item["allowedModels"] = [model]
+        if "maxOutputTokensByModel" in item:
+            item["maxOutputTokensByModel"] = {model: item["maxOutputTokensByModel"][model]}
+            item["outputTokenLimitKinds"] = {model: item["outputTokenLimitKinds"][model]}
+            if "maxOutputTokens" not in entry:
+                item["maxOutputTokens"] = item["maxOutputTokensByModel"][model]
+        _normalize_operation_constraint(item, api, operation, deployed_models, label, allow_model_settings=False)
+        for field in set(entry) - {"settingId"}:
+            entry[field] = copy.deepcopy(item[field])
+    if any("backendUrlTemplate" in entry for entry in settings.values()) and any(
+            "backendUrlTemplate" not in settings.get(model, {}) for model in constraint["allowedModels"]):
+        _fail(q + ".modelSettings", "each allowed model must specify its fixed upstream route when model routing is used")
+    # モデル選択前には最大の本文上限を使います。拡大後も、もとの基本上限を
+    # 使うモデルには差分を補い、モデルごとの受付上限を変えません。
+    constraint["maxRequestBytes"] = max([base_bytes] + [entry.get("maxRequestBytes", base_bytes) for entry in settings.values()])
+    if constraint["maxRequestBytes"] != base_bytes:
+        for model in constraint["allowedModels"]:
+            settings.setdefault(model, {}).setdefault("maxRequestBytes", base_bytes)
 
 
 def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_origin: str,
@@ -775,7 +788,11 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
         op_names, op_routes = set(), set()
         for j, operation in enumerate(operations):
             q = f"{p}.operations[{j}]"
-            _object(operation, q, {"name", "displayName", "method", "urlTemplate", "templateParameters", "request", "backendUrlTemplate", "staticResponse", "backendOverride"})
+            _object(operation, q, {"name", "displayName", "method", "urlTemplate", "templateParameters", "request", "backendUrlTemplate", "staticResponse", "backendOverride", "queryObservation", "inputContract"})
+            if "queryObservation" in operation:
+                if api_type != "http":
+                    _fail(q + ".queryObservation", "belongs to an HTTP operation; native MCP uses its endpoint setting")
+                _query_observation_reference(operation["queryObservation"], q + ".queryObservation")
             op_name = _string(operation.get("name"), q + ".name", maximum=80)
             if not API_NAME.fullmatch(op_name) or op_name.casefold() in {value.casefold() for value in op_names}:
                 _fail(q + ".name", "must be a unique operation identifier")
@@ -831,6 +848,10 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
             effective_api = dict(api, **operation.get("backendOverride", {}))
             _normalize_operation_constraint(constraint, effective_api, operation, deployed_models,
                                             p + ".authorization.operationConstraints." + op_name)
+            try:
+                validate_input_contract(operation, api_type)
+            except ValueError as error:
+                _fail(p + ".operations." + op_name + ".inputContract", str(error))
         # 通話の作成と終了は同じ経路・期限の対にする。作成だけ公開して
         # 終了操作が欠ける設定は受け付けない。
         realtime = [item for item in constraints.values() if item["kind"] in ("realtimeCreate", "realtimeHangup")]
@@ -839,7 +860,9 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
         if "mcp" in api:
             if api_type != "http":
                 _fail(p + ".mcp", "REST-generated MCP belongs to an HTTP API, not a protocol proxy")
-            mcp = _object(api["mcp"], p + ".mcp", {"name", "path", "displayName", "operationNames"})
+            mcp = _object(api["mcp"], p + ".mcp", {"name", "path", "displayName", "operationNames", "queryObservation"})
+            if "queryObservation" in mcp:
+                _query_observation_reference(mcp["queryObservation"], p + ".mcp.queryObservation")
             _string(mcp.get("displayName"), p + ".mcp.displayName")
             if not API_NAME.fullmatch(_string(mcp.get("name"), p + ".mcp.name", maximum=80)) or mcp["name"].casefold() in names or mcp["name"].casefold() in ("credential-manager-login", "credential-manager-browser"):
                 _fail(p + ".mcp.name", "must be a distinct API identifier")
@@ -917,7 +940,9 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
             endpoints = _list(proxy.get("endpoints"), p + ".mcpProxy.endpoints", minimum=1)
             endpoint_names = set()
             for endpoint in endpoints:
-                _object(endpoint, p + ".mcpProxy.endpoints", {"name", "uriTemplate"})
+                _object(endpoint, p + ".mcpProxy.endpoints", {"name", "uriTemplate", "queryObservation"})
+                if "queryObservation" in endpoint:
+                    _query_observation_reference(endpoint["queryObservation"], p + ".mcpProxy.endpoints.queryObservation")
                 endpoint_names.add(endpoint.get("name"))
                 endpoint_path = _backend_url_template(endpoint.get("uriTemplate"), p + ".mcpProxy.endpoints.uriTemplate", set())
                 # 同じ値をAPIMの公開POST先・転送先・WAFの完全一致へ使うため、
@@ -1153,7 +1178,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
             _string(model["quotaUsageName"], p + ".quotaUsageName", maximum=256)
     c["services"] = s
     # AppGW本体とPublic IPのゾーンは一致させる。WAFの本文上限と検査上限も整合させる。
-    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits", "queryGuards"})
+    g = _object(c.get("gateway", {}), "gateway", {"publicHostName", "authentication", "skuName", "autoscaleMinCapacity", "autoscaleMaxCapacity", "zones", "existingWafPolicyId", "wafMode", "wafCustomRules", "wafExclusions", "backendRequestTimeoutSeconds", "wafMaxRequestBodySizeInKb", "wafRequestBodyInspectLimitInKb", "wafFileUploadLimitInMb", "realtimeControlEnabled", "rateLimits"})
     g["publicHostName"] = _host(g.get("publicHostName"), "gateway.publicHostName")
     # 共通入口は購読キーの提示を優先し、キーなしBearer要求にはEntra認証を使います。
     authentication = _object(g.get("authentication"), "gateway.authentication", {"subscriptionKeyHeader", "credentialLogin", "entra"})
@@ -1210,7 +1235,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _list(g.setdefault(key, []), "gateway." + key)
     g.setdefault("existingWafPolicyId", "")
     _bool(g.setdefault("realtimeControlEnabled", False), "gateway.realtimeControlEnabled")
-    g["queryGuards"] = normalize_query_guards(g.get("queryGuards", {}))
     # 本人とアプリ単独は検証済み tid+oid、共有キーは APIM 購読 ID ごとに計数します。
     # overrides はこの計数枠の上限を個別調整します。
     limits_path = "gateway.rateLimits"

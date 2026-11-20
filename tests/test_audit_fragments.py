@@ -1,4 +1,5 @@
 """監査の2部品だけを生成・展開し、元の処理順と変数の契約を守る。"""
+from policy_fixture_paths import policy_fixture_path
 import copy
 from pathlib import Path
 import unittest
@@ -88,7 +89,7 @@ class AuditFragmentTests(unittest.TestCase):
             ("__CORE_AUTHENTICATED_SUBJECT_CSHARP__", "fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs"),
             ("__AUDIT_AUTHENTICATED_SUBJECT_CSHARP__", "expressions/legacy/audit-authenticated-subject.cs"),
         ):
-            source = (POLICIES / filename).read_text(encoding="utf-8")
+            source = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             with self.subTest(marker=marker):
                 self.assertEqual(render_audit_policy(marker),
                                  escape(_with_source_line_comments(source), {'"': "&quot;", "'": "&apos;"}))
