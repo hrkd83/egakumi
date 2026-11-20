@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from deployment.helpers import fixed_nsg as nsg
 from deployment.helpers.management_maintenance import management_maintenance_inputs
-from deployment.helpers.credential_pools import logical_profiles
 from deployment.helpers.paths import REPOSITORY
 from deployment.helpers.portal_resources import resource_names
 from deployment.lifecycle import ArmTransport, DeploymentError, run
@@ -358,10 +357,9 @@ class MaintenanceUpgrade:
         svc = f"/subscriptions/{self.config['subscriptionId']}/resourceGroups/{self.config['resourceGroupNames']['svc']}/providers/Microsoft.App/"
         app_names = [outputs['portal']['applicationName']]
         job_names = list(resource_names(self.config).values())
-        # Broker jobs exist only when the initial configuration constructs it.
-        if logical_profiles(self.config):
-            app_names.append('ca-' + self.config['resourceStem'] + '-credentials')
-            job_names.extend(['caj-' + self.config['resourceStem'] + '-schema', 'caj-' + self.config['resourceStem'] + '-recon'])
+        # Broker and its jobs are initial infrastructure, including without login profiles.
+        app_names.append('ca-' + self.config['resourceStem'] + '-credentials')
+        job_names.extend(['caj-' + self.config['resourceStem'] + '-schema', 'caj-' + self.config['resourceStem'] + '-recon'])
         for kind, names in (('containerApps', app_names), ('jobs', job_names), ('managedEnvironments', [outputs['portal']['environmentName']])):
             for name in names:
                 self.context.verify_resource(svc + kind + '/' + name, '2025-01-01', 'Microsoft.App/' + kind)

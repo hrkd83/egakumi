@@ -682,7 +682,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(events, ['portal-gate', 'nsg-stage', 'saved-state', 'nsg-complete', 'l7-bootstrap'])
         self.assertEqual(parameters['sshPublicKey']['value'], 'PRIVATE_SSH_FIXTURE')
         self.assertEqual(parameters['l7IngressSecret']['value'], 'PRIVATE_L7_FIXTURE')
-        self.assertIn('api.example.invalid', parameters['configuration']['value']['network']['firewall']['apimAllowedFqdns'])
+        self.assertIn('api.example.invalid', parameters['configuration']['value']['generatedApimServiceFqdns'])
+        self.assertNotIn('apimAllowedFqdns', parameters['configuration']['value']['network']['firewall'])
         self.assertEqual(parameters['existingApimCustomProperties']['value'], {
             'apim-' + self.config['resourceStem'] + '-abc123': {
                 'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}})

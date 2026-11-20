@@ -759,56 +759,6 @@
               },
               "default": [],
               "description": "Premium IDPS検査を除外する通信。追加しない場合は空配列。"
-            },
-            "apimAdditionalNetworkRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "APIM送信元の追加ネットワーク規則。"
-            },
-            "managementAdditionalNetworkRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "管理VM送信元の追加ネットワーク規則。"
-            },
-            "apimAdditionalApplicationRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "APIM送信元の追加アプリケーション規則。"
-            },
-            "managementAdditionalApplicationRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "管理VM送信元の追加アプリケーション規則。"
-            },
-            "apimAllowedFqdns": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "APIMから追加で許可するHTTPS宛先。組み込みのプラットフォーム必須宛先に追加します。"
-            },
-            "managementAllowedFqdns": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "管理VMから追加で許可するHTTPS宛先。Ubuntu・Azure・証明書の必須宛先に追加します。"
             }
           }
         }

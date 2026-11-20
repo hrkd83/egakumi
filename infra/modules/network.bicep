@@ -16,6 +16,17 @@ param tags object = {}
 
 @description('親から受け取る検証済みの設定値。このモジュールが担当する項目だけを参照します。')
 param config object = {}
+@description('検証済みの業務APIと本人情報取得設定だけから生成したAPIM宛先。公開FW追加入力ではありません。')
+param generatedApimServiceFqdns array = []
+@minLength(1)
+@description('Gateway構築と共用する公開ホスト名。証明書取得前から初期経路を用意します。')
+param gatewayPublicHostName string
+@minLength(1)
+@description('Portal構築と共用する公開ホスト名。独立したFW宛先選択ではありません。')
+param portalPublicHostName string
+@allowed(['production', 'staging'])
+@description('証明書業務設定と共用するACME directory。固定の公式CA宛先を選択します。')
+param certificateDirectory string = 'production'
 @description('azd の構築前処理が実在を確認した、この基盤の NSG 名。公開 config では指定しません。')
 param existingNetworkSecurityGroupNames array = []
 @description('azd の読取結果から渡す実ルート表名と既存経路の対応。初回は空、再 up は後続段階で作った経路も保持します。')
@@ -383,7 +394,7 @@ var apimPlatformDependencies = [
   { name: 'sql', destinations: ['Sql'], ports: ['1433'] }
   { name: 'key-vault', destinations: ['AzureKeyVault'], ports: ['443'] }
   { name: 'monitor', destinations: ['AzureMonitor'], ports: ['1886', '443'] }
-  // Azure Monitor の内部ログ転送にも使う依存先です。任意の Internet 通信は許可しません。
+  // Log to Event Hubs / Azure Monitor の任意機能向け到達性を初期常設で備えます。
   { name: 'monitor-event-hubs', destinations: ['EventHub'], ports: ['443', '5671', '5672'] }
   { name: 'entra', destinations: ['AzureActiveDirectory'], ports: ['443'] }
   { name: 'credential-manager', destinations: ['AzureConnectors'], ports: ['443'] }
@@ -408,40 +419,17 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: concat(map(apimPlatformDependencies, dependency => {
-          name: dependency.name == 'storage' ? 'allow-apim-storage' : 'apim-${dependency.name}'
+          name: dependency.name == 'storage' ? 'allow-apim-storage' : dependency.name == 'sql' ? 'allow-apim-sql' : dependency.name == 'key-vault' ? 'allow-apim-key-vault' : dependency.name == 'monitor' ? 'allow-apim-monitor' : dependency.name == 'monitor-event-hubs' ? 'allow-apim-event-hubs' : dependency.name == 'entra' ? 'allow-apim-entra' : dependency.name == 'credential-manager' ? 'allow-apim-credential-manager' : 'apim-${dependency.name}'
           ruleType: 'NetworkRule'
           sourceAddresses: [subnetPrefixes.apim]
           destinationAddresses: dependency.destinations
           destinationPorts: dependency.ports
           ipProtocols: ['TCP']
-        }), firewallSettings.?apimAdditionalNetworkRules ?? [])
-      }
-      {
-        name: 'allow-vm-platform'
-        priority: 210
-        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-        action: { type: 'Allow' }
-        rules: concat(map(managementPlatformDependencies, dependency => {
-          name: 'vm-${dependency.name}'
-          ruleType: 'NetworkRule'
-          sourceAddresses: [subnetPrefixes.management]
-          destinationAddresses: dependency.destinations
-          destinationPorts: ['443']
-          ipProtocols: ['TCP']
         }), [
-
-          {
-            name: 'management-time'
-            ruleType: 'NetworkRule'
-            sourceAddresses: [subnetPrefixes.management]
-            destinationFqdns: ['ntp.ubuntu.com']
-            destinationPorts: ['123']
-            ipProtocols: ['UDP']
-          }
           {
             // APIM's managed platform has its own time dependency. It is
             // independent of the Linux management host's configured NTP.
-            name: 'apim-platform-time'
+            name: 'allow-apim-ntp'
             ruleType: 'NetworkRule'
             sourceAddresses: [subnetPrefixes.apim]
             // APIM and Firewall resolve NTP independently; allow UDP123 without an FQDN.
@@ -450,7 +438,33 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
             destinationPorts: ['123']
             ipProtocols: ['UDP']
           }
-        ], firewallSettings.?managementAdditionalNetworkRules ?? [])
+        ])
+      }
+      {
+        name: 'allow-vm-platform'
+        priority: 210
+        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+        action: { type: 'Allow' }
+        rules: concat(map(managementPlatformDependencies, dependency => {
+          name: 'allow-mgmt-vm-${dependency.name}'
+          ruleType: 'NetworkRule'
+          sourceAddresses: [subnetPrefixes.management]
+          destinationAddresses: dependency.destinations
+          destinationPorts: ['443']
+          ipProtocols: ['TCP']
+        }), [
+
+          {
+            name: 'allow-mgmt-vm-ntp'
+            ruleType: 'NetworkRule'
+            sourceAddresses: [subnetPrefixes.management]
+            // Standard-DNS clients and Firewall resolve independently; match UDP123 without an FQDN.
+            // The management NSG limits this flow to Internet; guest time sources are managed separately.
+            destinationAddresses: ['*']
+            destinationPorts: ['123']
+            ipProtocols: ['UDP']
+          }
+        ])
       }
 
 
@@ -458,7 +472,8 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
   }
 }
 
-// TLS の証明書チェーンや失効情報を確認する既知宛先。TLS の検証を無効にする代わりに必要な取得先を許可します。
+// APIM の TLS 証明書確認6宛先と内部 PKI 1宛先。証明書の発行・購入 API ではありません。
+// 管理 VM でも既存の互換到達性を保持します。全7宛先の必須利用は未確認です。
 var certificateFqdns = [
   'mscrl.microsoft.com'
   'crl.microsoft.com'
@@ -468,6 +483,16 @@ var certificateFqdns = [
   'csp.digicert.com'
   'issuer.pki.azure.com'
 ]
+// 共通配布先は固定。CAの業務選択と、この基盤で構築する2公開Hostだけを差し込みます。
+var managementServiceFqdns = union([
+  certificateDirectory == 'production' ? 'acme-v02.api.letsencrypt.org' : 'acme-staging-v02.api.letsencrypt.org'
+  'management.azure.com'
+  'cdn.oneget.org'
+  'cdn.powershellgallery.com'
+  '*.powershellgallery.com'
+  'go.microsoft.com'
+  'aka.ms'
+], [gatewayPublicHostName, portalPublicHostName])
 // これは APIM の Azure 管理基盤の依存先です。管理 VM が Windows という意味ではありません。
 var windowsUpdateFqdns = [
   '*.update.microsoft.com'
@@ -478,7 +503,7 @@ var windowsUpdateFqdns = [
   '*.delivery.mp.microsoft.com'
   'go.microsoft.com'
 ]
-// 管理 VM の Ubuntu パッケージと固定版 PowerShell の取得先。証明書初期化前から疎通が必要です。
+// 管理 VM の Ubuntu パッケージと固定版 PowerShell / Azure CLI の取得先。初期準備にも使用します。
 var linuxPackageFqdns = [
   'azure.archive.ubuntu.com'
   'archive.ubuntu.com'
@@ -511,31 +536,74 @@ resource egressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@20
         priority: 200
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
-        rules: concat([
+        rules: [
           {
-            name: 'apim-certificate-and-update'
+            name: 'allow-apim-certificate-validation'
             ruleType: 'ApplicationRule'
             sourceAddresses: [subnetPrefixes.apim]
             protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
-            targetFqdns: concat(certificateFqdns, windowsUpdateFqdns)
+            targetFqdns: certificateFqdns
             terminateTLS: false
           }
           {
-            name: 'apim-infrastructure'
+            name: 'allow-apim-windows-update'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.apim]
+            protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
+            targetFqdns: filter(windowsUpdateFqdns, fqdn => fqdn != 'go.microsoft.com')
+            terminateTLS: false
+          }
+          {
+            // Microsoft's FWLink host is an APIM internal infrastructure dependency.
+            name: 'allow-apim-microsoft-redirect'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.apim]
+            protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
+            targetFqdns: filter(windowsUpdateFqdns, fqdn => fqdn == 'go.microsoft.com')
+            terminateTLS: false
+          }
+          {
+            name: 'allow-apim-platform-diagnostics'
             ruleType: 'ApplicationRule'
             sourceAddresses: [subnetPrefixes.apim]
             protocols: [{ protocolType: 'Https', port: 443 }]
-            targetFqdns: apimInfrastructureFqdns
+            targetFqdns: filter(apimInfrastructureFqdns, fqdn => !contains([
+              'wdcp.microsoft.com'
+              'wdcpalt.microsoft.com'
+              'dc.services.visualstudio.com'
+            ], fqdn))
             terminateTLS: false
           }
-        ], empty(firewallSettings.?apimAllowedFqdns ?? []) ? [] : [{
-          name: 'apim-approved-services'
-          ruleType: 'ApplicationRule'
-          sourceAddresses: [subnetPrefixes.apim]
-          protocols: [{ protocolType: 'Https', port: 443 }]
-          targetFqdns: firewallSettings.apimAllowedFqdns
-          terminateTLS: false
-        }], firewallSettings.?apimAdditionalApplicationRules ?? [])
+          {
+            name: 'allow-apim-windows-defender'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.apim]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: filter(apimInfrastructureFqdns, fqdn => contains([
+              'wdcp.microsoft.com'
+              'wdcpalt.microsoft.com'
+            ], fqdn))
+            terminateTLS: false
+          }
+          {
+            // Retain the existing diagnostic allowance; the APIM instance sender is unconfirmed.
+            name: 'allow-apim-portal-diagnostics'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.apim]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: filter(apimInfrastructureFqdns, fqdn => fqdn == 'dc.services.visualstudio.com')
+            terminateTLS: false
+          }
+          {
+            name: 'allow-apim-approved-services'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.apim]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            // 常設の基底は既FIX証明書規則の同src/HTTPS443/TLSfalseと重複し、許可を拡張しません。
+            targetFqdns: union(['oneocsp.microsoft.com'], generatedApimServiceFqdns)
+            terminateTLS: false
+          }
+        ]
       }
 
       {
@@ -543,25 +611,32 @@ resource egressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@20
         priority: 210
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
-        rules: concat([
+        rules: [
           {
-            name: 'vm-certificate-and-linux-packages'
+            name: 'allow-mgmt-vm-certificate-validation'
             ruleType: 'ApplicationRule'
             sourceAddresses: [subnetPrefixes.management]
             protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
-            targetFqdns: concat(certificateFqdns, linuxPackageFqdns)
+            targetFqdns: certificateFqdns
             terminateTLS: false
           }
-        ], empty(firewallSettings.?managementAllowedFqdns ?? []) ? [] : [{
-          name: 'vm-approved-services'
-          ruleType: 'ApplicationRule'
-          sourceAddresses: [subnetPrefixes.management]
-          protocols: [{ protocolType: 'Https', port: 443 }]
-          // ACME CA, selected DNS provider and public hostname are supplied by
-          // the certificate settings. No DNS provider is assumed here.
-          targetFqdns: firewallSettings.managementAllowedFqdns
-          terminateTLS: false
-        }], firewallSettings.?managementAdditionalApplicationRules ?? [])
+          {
+            name: 'allow-mgmt-vm-linux-packages'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.management]
+            protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
+            targetFqdns: linuxPackageFqdns
+            terminateTLS: false
+          }
+          {
+            name: 'allow-mgmt-vm-approved-services'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.management]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: managementServiceFqdns
+            terminateTLS: false
+          }
+        ]
       }
     ]
   }

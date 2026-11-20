@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_gateway as gateway
 from deployment.helpers.paths import local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
+from deployment.helpers import credential_broker_lifecycle
 from test_credential_broker_initial_deployment import fixture as broker_fixture, DIGEST, ok
 from management_fixtures import maintenance_metadata, client_core_outputs
 
@@ -39,6 +40,18 @@ def fixture():
     state['outputs'].setdefault('ingressSecrets', {}).update(enabled=True, l7IngressEnabled=True, publicHostName=host)
     state['outputs'].update(client_core_outputs(config))
     return config, state
+
+
+def speech_fixture():
+    """正規化後のCLI境界を使うため、未展開tokenを独立した合成URLへ置き換える。"""
+    definition = (ROOT / 'apps/gateway/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8')
+    for marker, value in {
+        '__SPEECH_TTS_BASE_URL__': 'https://speech-tts.example.invalid',
+        '__SPEECH_STT_BASE_URL__': 'https://speech-stt.example.invalid',
+        '__SPEECH_RESOURCE_ID__': '/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-fixture-svc/providers/Microsoft.CognitiveServices/accounts/speech-fixture',
+    }.items():
+        definition = definition.replace(marker, value)
+    return json.loads(definition)
 
 
 class GatewayDeploymentTests(unittest.TestCase):
@@ -207,6 +220,26 @@ class GatewayDeploymentTests(unittest.TestCase):
                 gateway.broker_secret(config, gateway.foundation_inputs(config, state), transport)
         generate.assert_not_called()
 
+    def test_empty_business_login_still_prepares_key_and_discovers_existing_broker(self):
+        config, state = fixture()
+        config['gateway']['authentication'].pop('credentialLogin')
+        config['credentialProviders'] = []
+        writer = mock.Mock()
+        with mock.patch.object(credential_broker_lifecycle, '_prepare_credential', return_value='synthetic-key') as prepare:
+            self.assertEqual(gateway.prepare_secret(config, ROOT, writer), {'credentialBrokerKey': 'synthetic-key'})
+        prepare.assert_called_once_with(config, ROOT, 'credential-broker', writer)
+        prefix = (gateway.group_scope(config) + '/providers/Microsoft.App/')
+        transport = mock.Mock()
+        transport.request.return_value = ok({
+            'id': prefix + 'containerApps/' + state['outputs']['credentialBroker']['applicationName'],
+            'properties': {'managedEnvironmentId': prefix + 'managedEnvironments/cae-' + config['resourceStem'],
+                           'provisioningState': 'Succeeded'},
+        })
+        self.assertTrue(credential_broker_lifecycle.discover_existing_application(config, transport))
+        self.assertEqual(transport.request.call_args.args[0], 'GET')
+        transport.request.return_value = ok(code=404)
+        self.assertFalse(credential_broker_lifecycle.discover_existing_application(config, transport))
+
     def release(self, fail=None):
         config, state = fixture()
         values = {'deployApplication': False, 'imageDigest': DIGEST, 'brokerKey': 'private-key'}
@@ -316,32 +349,39 @@ class GatewayDeploymentTests(unittest.TestCase):
             self.assertNotIn('entraPublicationSource', sys.stdout.getvalue())
             self.assertEqual(result['apiPublication']['entraPublicationSource'], source)
 
-    def test_broker_disabled_updates_settings_and_apis_without_sql_or_readiness(self):
+    def test_empty_business_profiles_still_initialize_broker_before_publication(self):
         config, state = fixture()
+        config['gateway']['authentication'].pop('credentialLogin')
+        config['credentialProviders'] = []
         events = []
         transport = mock.Mock()
-        schema_wait, readiness_wait = mock.Mock(), mock.Mock()
+        transport.request.side_effect = lambda *args: events.append('schema-start') or ok({'name': 'schema-run'})
+        schema_wait = mock.Mock(side_effect=lambda *args: events.append('schema-wait'))
+        readiness_wait = mock.Mock(side_effect=lambda *args: events.append('ready'))
         callback_waf = mock.Mock()
-        values = {'deployApplication': False, 'imageDigest': ''}
+        values = {'deployApplication': False, 'imageDigest': DIGEST, 'brokerKey': 'synthetic-initial-key'}
         def settings(*args):
-            events.append('settings')
-            self.assertTrue(values['deployApplication'])
-            return {}
-        with mock.patch.object(gateway, 'broker_enabled', return_value=False), \
-                mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
+            events.append('app' if values['deployApplication'] else 'database')
+            if values['deployApplication']:
+                self.assertEqual(values['brokerKey'], '')
+            return {'credentialBroker': state['outputs']['credentialBroker']}
+        with mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
             result = gateway.deploy_release(config, state, values, {'gateway': {}, 'apis': {}}, transport,
                 deploy=settings, schema_wait=schema_wait, readiness_wait=readiness_wait,
                 refresh=lambda *args: events.append('named-values'),
                 publish=lambda *args: events.append('apis') or {'status': 'management-plane-published'},
                 callback_waf=callback_waf, data_waf=lambda *args, **kwargs: events.append('data-waf'),
+                client_prepare=lambda *args, **kwargs: events.append('maintenance'),
                 progress=lambda *args, **kwargs: None)
-        self.assertEqual(events, ['settings', 'named-values', 'apis', 'data-waf'])
-        schema_wait.assert_not_called()
-        readiness_wait.assert_not_called()
+        self.assertEqual(events, ['database', 'maintenance', 'schema-start', 'schema-wait',
+                                 'app', 'maintenance', 'ready', 'named-values', 'apis', 'data-waf'])
+        schema_wait.assert_called_once_with(config, 'schema-run', transport)
+        readiness_wait.assert_called_once_with(config, transport)
         callback_waf.assert_not_called()
-        transport.request.assert_not_called()
-        self.assertFalse(result['sqlInitialized'])
-        self.assertFalse(result['applicationReady'])
+        self.assertEqual(transport.request.call_args.args[0], 'POST')
+        self.assertTrue(result['sqlInitialized'])
+        self.assertTrue(result['applicationReady'])
+        self.assertNotIn('credentialLogin', config['gateway']['authentication'])
 
     def test_default_plan_is_offline_and_does_not_read_secrets_or_edit_parameters(self):
         config, state = fixture()
@@ -374,17 +414,20 @@ class GatewayDeploymentTests(unittest.TestCase):
             self.assertNotIn('credentialProviderSecrets', plan['parameters'])
             self.assertNotIn('brokerKey', plan['parameters'])
 
-    def test_speech_waf_follows_api_publication_without_requiring_the_broker(self):
+    def test_speech_waf_follows_api_publication_without_business_login(self):
         config, state = fixture()
-        config['apiDefinitions'].append(json.loads(
-            (ROOT / 'apps/gateway/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8')))
+        config['gateway']['authentication'].pop('credentialLogin')
+        config['apiDefinitions'].append(speech_fixture())
         events = []
         speech = mock.Mock(side_effect=lambda *args: events.append('speech-waf') or {'paths': ['/speech']})
-        with mock.patch.object(gateway, 'broker_enabled', return_value=False), \
-                mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
-            result = gateway.deploy_release(config, state, {'imageDigest': ''}, {'gateway': {}, 'apis': {}}, mock.Mock(),
+        transport = mock.Mock()
+        transport.request.return_value = ok({'name': 'schema-run'})
+        with mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
+            result = gateway.deploy_release(config, state, {'imageDigest': DIGEST, 'deployApplication': False}, {'gateway': {}, 'apis': {}}, transport,
                 deploy=lambda *args: {}, refresh=lambda *args: None,
                 publish=lambda *args: events.append('apis') or {}, speech_waf=speech,
+                schema_wait=lambda *args: None, readiness_wait=lambda *args: None,
+                client_prepare=lambda *args, **kwargs: None, data_waf=lambda *args, **kwargs: None,
                 progress=lambda *args, **kwargs: None)
         self.assertEqual(events, ['apis', 'speech-waf'])
         self.assertEqual(result['speechWaf'], {'paths': ['/speech']})
@@ -392,20 +435,22 @@ class GatewayDeploymentTests(unittest.TestCase):
 
     def test_speech_waf_failure_is_not_reported_as_successful_deployment(self):
         config, state = fixture()
-        config['apiDefinitions'].append(json.loads(
-            (ROOT / 'apps/gateway/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8')))
-        with mock.patch.object(gateway, 'broker_enabled', return_value=False), \
-                mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
+        config['gateway']['authentication'].pop('credentialLogin')
+        config['apiDefinitions'].append(speech_fixture())
+        transport = mock.Mock()
+        transport.request.return_value = ok({'name': 'schema-run'})
+        with mock.patch.object(gateway.api_publication, 'prepare_plan', return_value={}):
             with self.assertRaisesRegex(ValueError, 'speech WAF failed'):
-                gateway.deploy_release(config, state, {'imageDigest': ''}, {'gateway': {}, 'apis': {}}, mock.Mock(),
+                gateway.deploy_release(config, state, {'imageDigest': DIGEST, 'deployApplication': False}, {'gateway': {}, 'apis': {}}, transport,
                     deploy=lambda *args: {}, refresh=lambda *args: None, publish=lambda *args: {},
                     speech_waf=mock.Mock(side_effect=ValueError('speech WAF failed')),
+                    schema_wait=lambda *args: None, readiness_wait=lambda *args: None,
+                    client_prepare=lambda *args, **kwargs: None,
                     progress=lambda *args, **kwargs: None)
 
     def test_offline_plan_includes_the_speech_waf_step_for_reconstruction(self):
         config, state = fixture()
-        config['apiDefinitions'].append(json.loads(
-            (ROOT / 'apps/gateway/apim/apis/azure-speech-v1.json').read_text(encoding='utf-8')))
+        config['apiDefinitions'].append(speech_fixture())
         with self.isolated_cli(config, state) as (arguments, observed):
             arguments.remove('--execute')
             self.assertEqual(gateway.main(arguments), 0)
@@ -417,18 +462,26 @@ class GatewayDeploymentTests(unittest.TestCase):
 
     def test_document_waf_follows_publication_and_is_required_for_success(self):
         config,state=fixture()
+        config['gateway']['authentication'].pop('credentialLogin')
         config['apiDefinitions'].append(json.loads((ROOT/'apps/gateway/apim/apis/document-analysis-v1.json').read_text(encoding='utf-8')))
         events=[]
         document=mock.Mock(side_effect=lambda *args: events.append('document-waf') or {'paths':['/tools/documents/v1/analyze']})
-        with mock.patch.object(gateway,'broker_enabled',return_value=False), mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
-            result=gateway.deploy_release(config,state,{'imageDigest':''},{'gateway':{},'apis':{}},mock.Mock(),
+        transport = mock.Mock()
+        transport.request.return_value = ok({'name': 'schema-run'})
+        with mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
+            result=gateway.deploy_release(config,state,{'imageDigest':DIGEST,'deployApplication':False},{'gateway':{},'apis':{}},transport,
                 deploy=lambda *args:{},refresh=lambda *args:None,publish=lambda *args:events.append('apis') or {},document_waf=document,
+                schema_wait=lambda *args:None,readiness_wait=lambda *args:None,client_prepare=lambda *args,**kwargs:None,
                 data_waf=lambda *args,**kwargs:events.append('data-waf') or {},progress=lambda *args,**kwargs:None)
         self.assertEqual(events,['apis','document-waf','data-waf'])
         self.assertEqual(result['documentWaf']['paths'],['/tools/documents/v1/analyze'])
-        with mock.patch.object(gateway,'broker_enabled',return_value=False), mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
+        with mock.patch.object(gateway.api_publication,'prepare_plan',return_value={}):
             with self.assertRaisesRegex(ValueError,'document WAF failed'):
-                gateway.deploy_release(config,state,{'imageDigest':''},{'gateway':{},'apis':{}},mock.Mock(),deploy=lambda *args:{},refresh=lambda *args:None,publish=lambda *args:{},document_waf=mock.Mock(side_effect=ValueError('document WAF failed')),progress=lambda *args,**kwargs:None)
+                gateway.deploy_release(config,state,{'imageDigest':DIGEST,'deployApplication':False},{'gateway':{},'apis':{}},transport,
+                    deploy=lambda *args:{},refresh=lambda *args:None,publish=lambda *args:{},
+                    document_waf=mock.Mock(side_effect=ValueError('document WAF failed')),
+                    schema_wait=lambda *args:None,readiness_wait=lambda *args:None,client_prepare=lambda *args,**kwargs:None,
+                    progress=lambda *args,**kwargs:None)
 
     def test_offline_plan_includes_document_waf_without_writing_azure(self):
         config,state=fixture()

@@ -114,14 +114,24 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
         priority: 150
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
-        rules: [{
-          name: 'aca-monitor-https'
-          ruleType: 'NetworkRule'
-          sourceAddresses: [acaPrefix]
-          destinationAddresses: ['AzureMonitor', 'AzureActiveDirectory']
-          destinationPorts: ['443']
-          ipProtocols: ['TCP']
-        }]
+        rules: [
+          {
+            name: 'allow-aca-monitor'
+            ruleType: 'NetworkRule'
+            sourceAddresses: [acaPrefix]
+            destinationAddresses: ['AzureMonitor']
+            destinationPorts: ['443']
+            ipProtocols: ['TCP']
+          }
+          {
+            name: 'allow-aca-entra'
+            ruleType: 'NetworkRule'
+            sourceAddresses: [acaPrefix]
+            destinationAddresses: ['AzureActiveDirectory']
+            destinationPorts: ['443']
+            ipProtocols: ['TCP']
+          }
+        ]
       }
       {
         name: 'portal-runner'
@@ -129,7 +139,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: [{
-          name: 'github-docker-node-build'
+          name: 'allow-mgmt-vm-github-docker-node-build'
           ruleType: 'ApplicationRule'
           sourceAddresses: [managementPrefix]
           protocols: [{ protocolType: 'Https', port: 443 }]
@@ -154,7 +164,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
         rules: [{
-          name: 'agw-aca-http'
+          name: 'allow-appgw-aca-http'
           ruleType: 'NetworkRule'
           sourceAddresses: [agwPrefix]
           destinationAddresses: [acaPrefix]
@@ -167,25 +177,38 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
         priority: 200
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
-        rules: [{
-          name: 'platform-and-fixed-egress-check'
-          ruleType: 'ApplicationRule'
-          sourceAddresses: [acaPrefix]
-          protocols: [{ protocolType: 'Https', port: 443 }]
-          targetFqdns: [
-            'mcr.microsoft.com'
-            '*.data.mcr.microsoft.com'
-            'packages.aks.azure.com'
-            'acs-mirror.azureedge.net'
-            '*.identity.azure.net'
-            entraLoginHost
-            '*.${entraLoginHost}'
-            '*.login.microsoft.com'
-            'login.microsoft.com'
-            'api.ipify.org'
-          ]
-          terminateTLS: false
-        }]
+        rules: [
+          {
+            name: 'allow-aca-mcr'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [acaPrefix]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: ['mcr.microsoft.com', '*.data.mcr.microsoft.com']
+            terminateTLS: false
+          }
+          {
+            name: 'allow-aca-platform-packages'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [acaPrefix]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: ['packages.aks.azure.com', 'acs-mirror.azureedge.net']
+            terminateTLS: false
+          }
+          {
+            name: 'allow-aca-managed-identity'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [acaPrefix]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: [
+              '*.identity.azure.net'
+              entraLoginHost
+              '*.${entraLoginHost}'
+              '*.login.microsoft.com'
+              'login.microsoft.com'
+            ]
+            terminateTLS: false
+          }
+        ]
       }
     ]
   }

@@ -41,7 +41,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・Firewallの追加接続先・権限は前節のparamsへ記載します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSGの初期集合と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・業務APIの接続先と認証・権限は前節のparamsへ記載します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
@@ -68,6 +68,10 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 企業ハブへの接続・DNS・中央ゾーン・出口・ルート伝搬の変更は[ハブ＆スポークの参考資料](07-hub-spoke.md)で確認します。
 
 #### Firewallの機能設定（network.firewall）
+
+規則の作成有無・任意追加規則・追加FQDNは公開設定にしません。廃止した`apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は、config／paramsの空値も拒否します。[固定初期集合と内部宛先生成](04-params.md#ネットワーク監査の接続設定)を確認してください。
+
+APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、業務API、認証入力や以下のSKU／IDPS／SNAT設定を削除するものではありません。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -147,9 +151,9 @@ API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7�
 
 #### Linux管理VM（management）
 
-管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。パスワード認証・RDPは構成しません。証明書取得・更新は固定版PowerShell 7.6.7をLinuxで動かし、定期実行はsystemd timer、OSログ収集はLinux AMA/DCRで行います。
+管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](06-deploy.md)で別に準備します。証明書取得・更新は固定版PowerShell 7.6.7をLinuxで動かし、定期実行はsystemd timer、OSログ収集はLinux AMA/DCRで行います。
 
-時刻同期は既存Chronyを優先し、Ubuntu標準の`/etc/chrony/sources.d/90-core-platform.sources`にBicepで固定した`ntp.ubuntu.com`を設定します。既存PHC/refclock・confdir/sourcedir・OS側のsource設定は保持し、未知の企業設定や既定poolを自動削除しません。外部NTPの到達先はNSGとFirewallの許可先でも制限します。timesyncdのみのイメージでは専用drop-inを使い、両方のサービスが無い場合は明示的に失敗します。サービス稼働・構文確認と、実際の同期元・精度の確認は別に行います。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
+時刻同期は既存Chronyを優先し、Ubuntu標準の`/etc/chrony/sources.d/90-core-platform.sources`にBicepで固定した`ntp.ubuntu.com`を設定します。既存PHC/refclock・confdir/sourcedir・OS側のsource設定は保持し、未知の企業設定や既定poolを自動削除しません。NSGはInternet宛UDP123、Firewallは管理サブネットから宛先`*`へのUDP123を許可し、FQDNでは限定しません。既存の他Internet NTP sourceも到達可能なため、`ntp.ubuntu.com`だけが選ばれるとは扱いません。timesyncdのみのイメージでは専用drop-inを使い、両方のサービスが無い場合は明示的に失敗します。サービス稼働・構文確認と、実際の同期元・精度の確認は別に行います。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
 
 認証監査はSSH・PAMの認証/account/sessionを保持します。コマンド本文を含むsudoの`COMMAND=`行とcron本文は、AMA転送前のrsyslog規則でイベントごと収集対象から除外し、マスク済み行は新造しません。DCR側の追加マスクは維持します。rsyslogの構文検査とサービス操作は失敗段階を分けて返します。
 

@@ -76,11 +76,7 @@ def build_trial_configuration(base: dict, *, base_directory: Path, output_direct
     for provider in result["credentialProviders"]:
         path = Path(provider["clientSecretFile"]).expanduser()
         provider["clientSecretFile"] = str((base_directory / path).resolve() if not path.is_absolute() else path.resolve())
-    # ここで加える外部宛先は、本人委任のGraph /meだけ。APIM本体のEntra・
-    # Credential Manager用の通信許可とは役割を分けて追加する。
-    apim_fqdns = result["network"]["firewall"].setdefault("apimAllowedFqdns", [])
-    if "graph.microsoft.com" not in apim_fqdns:
-        apim_fqdns.append("graph.microsoft.com")
+    # FW宛先はこの業務API定義と本人情報取得設定から配備時に生成します。
     # 出力はparamsへの参照ではなく、configとAPI定義を取り込んだ合成済み設定。
     result["$schema"] = os.path.relpath(CORE / "schemas/configuration.schema.json", output_directory)
     normalize_configuration(result, base_directory=output_directory)

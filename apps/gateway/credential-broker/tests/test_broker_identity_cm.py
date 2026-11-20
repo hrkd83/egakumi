@@ -1,6 +1,7 @@
 """Real JWT signature checks and isolated MSAL/ARM protocol contracts."""
 from __future__ import annotations
 
+import copy
 import json
 import time
 import unittest
@@ -307,6 +308,23 @@ class SettingsTests(unittest.TestCase):
             "OIDC_SECRET_0": "super-secret", "AZURE_SUBSCRIPTION_ID": INFRA,
             "AZURE_RESOURCE_GROUP": "rg-test-svc", "APIM_NAME": "apim-test", "APIM_PRINCIPAL_ID": PRINCIPAL,
             "AZURE_TENANT_ID": INFRA, "AZURE_CLIENT_ID": CLIENT}
+
+    def test_empty_profiles_need_no_oidc_secret_but_keep_infrastructure_validation(self):
+        env = dict(self.env(), BROKER_PROFILES_JSON="{}")
+        env.pop("OIDC_SECRET_0")
+        before = copy.deepcopy(env)
+        settings = Settings.from_environment(env)
+        self.assertEqual(settings.profiles, {})
+        self.assertEqual(env, before)
+        self.assertEqual(settings.apim_principal_id, PRINCIPAL)
+        for name in ("BROKER_SHARED_KEY", "APIM_PRINCIPAL_ID", "AZURE_CLIENT_ID"):
+            missing = dict(env)
+            missing.pop(name)
+            with self.subTest(name=name), self.assertRaises(SettingsError):
+                Settings.from_environment(missing)
+        for value in ("[]", "null", '{"missing-pools":{}}'):
+            with self.subTest(value=value), self.assertRaises(SettingsError):
+                Settings.from_environment(dict(env, BROKER_PROFILES_JSON=value))
 
     def test_secret_not_in_repr_and_missing_config_or_ttl_fail_closed(self):
         env = self.env()

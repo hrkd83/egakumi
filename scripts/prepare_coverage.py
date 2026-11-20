@@ -141,15 +141,7 @@ def prepare(base, overlay, bindings, *, base_directory, phase="full", overlay_di
         product = "model-users" if api.get("path", "").startswith("models/") else "tool-users"
         api.setdefault("productId", product)
     result["apiDefinitions"] = list(apis.values())
-    firewall = result["network"].setdefault("firewall", {})
-    destinations = firewall.setdefault("apimAllowedFqdns", [])
-    for api in apis.values():
-        backends = [api, *[{**api, **operation["backendOverride"]} for operation in api.get("operations", [])
-                            if operation.get("backendOverride")]]
-        for backend in backends:
-            if backend.get("backendService") == "external":
-                host = urlsplit(backend.get("backendUrl", "")).hostname
-                if host and host not in destinations: destinations.append(host)
+    # FW宛先の独立入力は作らず、確定した業務API定義から配備時に生成します。
     result["publishApis"] = False
     # 出力先が変わっても、元設定の秘密ファイル参照が同じ場所を指すよう絶対化する。
     path_fields = [(result.get("management", {}), "sshPublicKeyFile")]

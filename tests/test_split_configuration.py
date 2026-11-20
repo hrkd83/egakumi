@@ -19,9 +19,7 @@ from deployment.helpers.configuration import (ConfigurationError, build_bicep_co
 
 
 NETWORK_IP_KEYS = ("addressSpaces", "subnetPrefixes")
-FIREWALL_IP_KEYS = ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
-                    "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
-                    "apimAdditionalApplicationRules", "managementAdditionalApplicationRules")
+FIREWALL_IP_KEYS = ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")
 
 
 def adopt_azure_dns_references(document):
@@ -170,12 +168,29 @@ class SplitConfigurationTests(unittest.TestCase):
 
     def test_ip_parameters_merge_with_operational_config_and_partial_loader_inputs_stay_supported(self):
         result = self.sources({"network": {"firewall": {"sku": "Premium", "idpsMode": "Deny"}}},
-                              {"network": {"firewall": {"apimAdditionalNetworkRules": [{"name": "approved", "destinationAddresses": ["192.0.2.1"]}]}},
+                              {"network": {"firewall": {"idpsPrivateRanges": ["10.70.0.0/16"]}},
                                "monitoring": {"auditAllowedIpAddresses": ["198.51.100.10/32"]}})
         self.assertEqual(result["network"]["firewall"]["sku"], "Premium")
-        self.assertEqual(len(result["network"]["firewall"]["apimAdditionalNetworkRules"]), 1)
+        self.assertEqual(result["network"]["firewall"]["idpsPrivateRanges"], ["10.70.0.0/16"])
         self.assertNotIn("dnsServers", result["network"])
         self.assertEqual(self.sources(parameters={"network": {}})["network"], {})
+
+    def test_public_schemas_reject_retired_firewall_arrays_even_when_empty(self):
+        retired = {
+            "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
+            "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
+            "apimAllowedFqdns", "managementAllowedFqdns",
+        }
+        for name in ("params", "options", "configuration"):
+            schema = json.loads((CORE / f"schemas/{name}.schema.json").read_text(encoding="utf-8"))
+            firewall = schema["properties"]["network"]["properties"]["firewall"]
+            validator = local_schema_validator(firewall)
+            for key in sorted(retired):
+                populated = ["support.example.com"] if key.endswith("Fqdns") else [{"name": "not-created"}]
+                for value in ([], populated):
+                    with self.subTest(schema=name, key=key, value=value):
+                        errors = list(validator.iter_errors({key: value}))
+                        self.assertTrue(any(error.validator == "additionalProperties" for error in errors))
 
     def test_azure_dns_input_is_rejected_in_both_split_files_even_when_empty(self):
         for owner in ("config", "params"):

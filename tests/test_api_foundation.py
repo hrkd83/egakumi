@@ -38,24 +38,25 @@ class ApiFoundationProjectionTests(unittest.TestCase):
                     self.assertEqual(set(profile), {'modalities'})
         self.assertNotIn('__OPENAI_RESOURCE_BASE_URL__', json.dumps(built['infrastructureApiDefinitions']))
 
-    def test_projection_keeps_explicit_custom_media_profiles_without_aliasing_inputs(self):
+    def test_projection_keeps_explicit_contract_metadata_without_aliasing_inputs(self):
         api = {'apiType': 'http', 'path': 'company/models/v2',
                'backendUrl': 'https://private-backend.example', 'backendAuthentication': {'mode': 'managedIdentity'},
                'operations': [{'name': 'chat', 'method': 'POST', 'urlTemplate': '/chat/completions', 'displayName': 'Chat'}],
                'authorization': {'mode': 'subscriptionKey', 'operationConstraints': {
                    'chat': {'kind': 'bodyModel', 'bodyFormat': 'json', 'allowedModels': ['private-deployment-name'],
-                            'profiles': [{'profileId': 'image', 'modalities': ['text', 'image']},
-                                         {'profileId': 'audio', 'modalities': ['text', 'audio']}]}}}}
+                            'contentTypes': ['application/json'], 'maxRequestBytes': 65536}}}}
         before = copy.deepcopy(api)
         projected, = standard_apis.infrastructure_api_definitions([api])
         self.assertEqual(projected['path'], api['path'])
-        self.assertEqual(projected['authorization']['operationConstraints']['chat']['profiles'],
-                         [{'modalities': ['text', 'image']}, {'modalities': ['text', 'audio']}])
+        constraint = projected['authorization']['operationConstraints']['chat']
+        self.assertEqual(constraint['contentTypes'], ['application/json'])
+        self.assertEqual(constraint['maxRequestBytes'], 65536)
+        self.assertNotIn('profiles', constraint)
         self.assertNotIn('backendUrl', projected)
         self.assertNotIn('backendAuthentication', projected)
         self.assertEqual(projected['authorization']['operationConstraints']['chat']['allowedModels'], ['private-deployment-name'])
         projected['authorization']['operationConstraints']['chat']['allowedModels'].append('another-public-deployment')
-        projected['authorization']['operationConstraints']['chat']['profiles'][0]['modalities'].append('file')
+        constraint['contentTypes'].append('application/octet-stream')
         self.assertEqual(api, before)
 
     def test_explicit_mcp_configuration_keeps_only_its_declared_routes(self):

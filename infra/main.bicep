@@ -168,6 +168,10 @@ module network 'modules/network.bicep' = if (deployCore) {
     location: location
     tags: tags
     config: configuration.network
+    generatedApimServiceFqdns: configuration.generatedApimServiceFqdns
+    gatewayPublicHostName: gatewayConfig.publicHostName
+    portalPublicHostName: portalConfig.publicHostName
+    certificateDirectory: configuration.certificate.directory
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
   }
@@ -212,7 +216,7 @@ module services 'modules/services.bicep' = if (deployCore) {
     vaultPurgeProtection: servicesConfig.vaultPurgeProtection
     // APIM の証明書等の管理処理だけに必要な trusted services 例外。
     // KV の一般公開は無効を維持し、通常のデータ通信は PE を使います。
-    allowApimKeyVaultControlPlane: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
+    allowApimKeyVaultControlPlane: true
     applicationInsightsResourceId: monitoring.outputs.monitoring.appInsightsId
     applicationInsightsConnectionString: monitoring.outputs.monitoring.appInsightsConnectionString
     modelDeployments: servicesConfig.modelDeployments
@@ -372,7 +376,7 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
     certificateIdentityPrincipalId: identity.outputs.principalId
     managementPrincipalId: management!.outputs.managementVm.principalId
     // 通常HTTP入口保護・所有者チケットの KV 参照にも APIM 自身の ID が必要です。KV 範囲の既存組込ロールだけを使います。
-    grantApimSecretAccess: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
+    grantApimSecretAccess: true
     speechEnabled: servicesConfig.?speechEnabled ?? false
     grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false
     projectAdministrators: authorization.projectAdministrators
@@ -398,7 +402,7 @@ module credentialSql 'modules/shared-sql.bicep' = if (deployCore) {
   scope: svcGroup
   params: { stem: stem, location: location, tags: tags, tenantId: configuration.azureTenantId, schemaIdentity: credentialIdentities!.outputs.schema }
 }
-module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore && !empty(configuration.credentialProfiles)) {
+module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore) {
   name: '${stem}-shared-entra-secrets'
   scope: svcGroup
   params: { vaultName: serviceNames.keyVault, profiles: configuration.credentialProfiles, providerSecrets: credentialProviderSecrets }
@@ -556,7 +560,6 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
     acaNsgName: network!.outputs.nsgNames.aca
     managementNsgName: network!.outputs.nsgNames.management
     managementPrivateIp: management!.outputs.managementVm.privateIp
-    enableCredentialBroker: !empty(configuration.credentialProfiles)
   }
   dependsOn: [portalNetworkBindings]
 }

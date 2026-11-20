@@ -31,8 +31,10 @@ class BackendRewriteDeploymentTests(unittest.TestCase):
         functions = next(item for item in self.template["functions"] if item["namespace"] == "__bicep")
         expression = functions["members"]["operationPolicyValue"]["output"]["value"]
         self.assertRegex(expression, r'<policies>(?:<!--[^>]*-->)*<inbound>')
-        # Inherit authentication before inspecting large SSML request bodies.
-        self.assertLess(expression.index("'<base />'"), expression.index('__bicep.requiresSpeechSsmlGuard('))
+        # The API now completes SSML validation before the operation selects its
+        # fixed model route. The operation must still inherit authentication first.
+        self.assertNotIn('__bicep.requiresSpeechSsmlGuard(', expression)
+        self.assertLess(expression.index('<base />'), expression.index('__bicep.modelRoutingPolicy('))
         self.assertIn('copy-unmatched-params="false"', expression)
         self.assertIn('<backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error>', expression)
 

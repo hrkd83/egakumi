@@ -158,7 +158,7 @@ API公開のBicep出力`entraPublicationSource`は、コードから生成した
 
 1. [標準API定義](../../apps/gateway/apim/apis/)から必要なAPIファイルを選び、そのJSONオブジェクトをparamsの`apiDefinitions`配列へ記載します。モデルだけなら[openai-inference-v1.json](../../apps/gateway/apim/apis/openai-inference-v1.json)、PIIなら[pii-v1.json](../../apps/gateway/apim/apis/pii-v1.json)を選べます。各ファイルは1つのAPI定義です。
 2. 利用するProductと購読を設定し、CM接続の条件が必要なAPIにはその設定を加えます。下の省略条件と[認証設定と購読](04-params.md#認証設定と購読)を確認し、`__NAME__`の置換欄を実値へ置換します。
-3. Graph等の正式な外部接続APIでは、実backend URL・認証と`network.firewall.apimAllowedFqdns`をparamsへ設定します。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの提供要件は廃止し、`gateway.grpc`全体とgRPC API／proto入力を拒否します。モデル名と許可モデルの整合も確認します。
+3. Graph等の正式な外部接続APIでは、backend URL・認証をAPI定義へ設定します。APIMの外向き宛先は、外部backend・操作別override・本人情報取得の業務設定から配備時に生成します。FWの追加配列へ同じFQDNを転記しません。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの提供要件は廃止し、`gateway.grpc`全体とgRPC API／proto入力を拒否します。モデル名と許可モデルの整合も確認します。
 4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
 
 | 利用する方式 | 必要な定義と省略できるもの |
@@ -251,11 +251,15 @@ python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_P
 
 paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須です。全サブネットをVNet範囲内へ重複なく割り当て、企業の既存IP計画・接続予定先と照合して指定します。公開例の10.40系CIDRを、導入先でも未使用と推測しません。
 
-Firewallの追加接続先はparamsに配列で記載し、`[]`は追加なしを表します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。NSGの初期集合・管理VMのSSH許可・Azure提供DNS・標準NTPはBicepで固定し、有効フラグや任意のNSG規則をparamsへ指定しません。FirewallのSKU・ゾーン・標準動作はconfigへ記載します。
+NSGとFirewallの初期規則はBicepで固定します。FW専用の追加規則4配列と追加FQDN2配列は廃止し、空配列でも入力検査で拒否します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。SKU・ゾーン・IDPS・SNATの機能設定は引き続き使用できます。管理VMへのSSH許可は初期不作成とし、Azure提供DNS・標準NTPも固定します。作成有無フラグや任意規則はparamsへ指定しません。
+
+以前のJSONにある`network.firewall.apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は取り除いてください。APIMの`allow-apim-approved-services`は常設で、既存証明書規則と同じHTTPS許可の`oneocsp.microsoft.com`を基底に、正規の外部APIと本人情報取得先だけを生成します。外部接続はHTTPS／WSS・443・DNS名に限定し、IP・別ポート・資格情報入りURLはCoreの変更前に検査で停止します。
+
+管理VMの`allow-mgmt-vm-approved-services`も常設です。固定のARM・PowerShell取得先6件、`certificate.directory`に対応する公式ACME宛先1件、Gateway／Portal構築と共用する公開ホスト2件を組み合わせます。証明書・業務API・認証の設定は維持し、FW専用の選択入力には置き換えません。Core再配備では、厳密に所有確認した旧／新APIM規則の既存宛先を生成ARM入力だけへ保持します。公開paramsは変更せず、規則名の重複や別通信境界は停止します。
 
 各サブネットのNSG初期集合はBicepで固定します。規則の送信元・宛先には、このVNet内のサブネットCIDRと構築した資源の割当IPを組み込みます。AppGWの公開Web TCP80／443は別規則で許可し、同VNetのFirewall公開IPからのHTTPSも明示します。gRPCのTCP8443は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`は廃止した入力です。以前のJSONから削除してください。企業のIP制限・管理接続元・ハブ接続等の変更は構築後にAzureポータルで行い、再構築・再適用時に初期集合との差を確認します。APIの認証・認可は維持します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
-VNetとFirewallはBicep内でAzure提供DNSへ固定します。`network.dnsServers`と`network.firewall.dnsServers`はconfig／params／合成設定ファイルの入力項目から削除し、空配列でも指定を拒否します。以前のJSONから両方とも取り除いてください。標準NTPもBicep内で管理VMの`ntp.ubuntu.com`、APIMの`time.windows.com`へ固定します。企業の独自DNSへ切り替える際は、構築後にポータルでDNS・必要な53番規則・名前解決を確認します。
+VNetとFirewallはBicep内でAzure提供DNSへ固定します。`network.dnsServers`と`network.firewall.dnsServers`はconfig／params／合成設定ファイルの入力項目から削除し、空配列でも指定を拒否します。以前のJSONから両方とも取り除いてください。管理VMのguestには標準NTPとして`ntp.ubuntu.com`を設定します。管理VMとAPIMのNTP通信は、NSGでInternet宛UDP123、Firewallで各サブネットから宛先`*`へのUDP123を固定許可し、Firewall判定をFQDNの名前解決結果に依存させません。既存のPHCやOS側source設定は保持し、実際の同期元・精度は別途確認します。[NTP設計と確認](../operations/network-security-groups.md)を参照してください。企業の独自DNSへ切り替える際は、構築後にポータルでDNS・必要な53番規則・名前解決を確認します。
 
 | パラメタ名 | 指定値・公開例 | 意味 |
 | --- | --- | --- |
@@ -267,15 +271,9 @@ VNetとFirewallはBicep内でAzure提供DNSへ固定します。`network.dnsServ
 | `network.subnetPrefixes.management` | `"10.40.2.128/26"` | Linux管理VM用サブネット。 |
 | `network.subnetPrefixes.aca` | `"10.40.2.192/26"` | Core管理ポータルのACA専用サブネット。基本/26、最小/27。他の5区画と同じ一覧で指定。 |
 | `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
-| `network.firewall.apimAllowedFqdns` | `[]` | APIMから追加で接続するHTTPS宛先。標準のplatform通信は別に作成。 |
-| `network.firewall.managementAllowedFqdns` | `[]` | 管理VMから追加で接続するHTTPS宛先。証明書取得・PowerShell導入に必要な共通宛先は資材が追加。 |
 | `network.firewall.snatPrivateRanges` | `["IANAPrivateRanges"]` | SNATせずprivate宛先とみなす範囲。API往復の送信元保持も考慮。 |
 | `network.firewall.idpsPrivateRanges` | `[]` | Premium IDPSのprivate判定範囲を上書き。[]は独自の範囲を指定しない。 |
 | `network.firewall.bypassTrafficSettings` | `[]` | Premium IDPSの検査除外。[]は追加除外なし。Standardでは指定しない。 |
-| `network.firewall.apimAdditionalNetworkRules` | `[]` | APIMの追加Network規則。Azure Firewall API形式。 |
-| `network.firewall.managementAdditionalNetworkRules` | `[]` | 管理VMの追加Network規則。 |
-| `network.firewall.apimAdditionalApplicationRules` | `[]` | APIMの追加Application規則。 |
-| `network.firewall.managementAdditionalApplicationRules` | `[]` | 管理VMの追加Application規則。 |
 | `monitoring.auditAllowedIpAddresses` | `[]` | 監査Storageへの公開アクセス許可元IPv4/CIDR。[]は公開IP許可を追加しない。API入口の制限とは別。 |
 
 予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、SSH許可規則があってもインターネットからの経路は作られません。

@@ -15,15 +15,15 @@ WebSocket APIを公開するときは、既存の監査先を維持して接続�
 from __future__ import annotations
 
 import copy
-import ipaddress
 import json
 import re
 import time
-from urllib.parse import parse_qsl, urlsplit
 import uuid
 
 from deployment.helpers.configuration import API_NAME, entra_tenant_id
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
+from deployment.helpers.apim_egress import APIM_EGRESS_RULE_NAME, APIM_EGRESS_RULE_NAMES, validate_apim_egress_rule
+from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
 from deployment.helpers.catalog_descriptions import with_catalog_descriptions
 from deployment.helpers.apim_authentication import (
     COMMON_NAMED_VALUES, ENTRA_NAMED_VALUES, MIGRATION_REQUIRED, common_authentication_settings, entra_authentication_settings,
@@ -139,29 +139,13 @@ def prepare_plan(config: dict, state: dict) -> dict:
             raise ValueError("API publication supports HTTP, WebSocket and MCP only; retired gRPC inputs are not accepted")
         if not _same(api.get("subscriptionKeyHeader"), authentication["core-subscription-key-header"]):
             raise ValueError("API key headers must match the foundation gateway.authentication settings")
-    resolved, external_hosts = [], set()
+    # 初期CoreとAPI再公開が同じ業務設定・同じTLS/FQDN検査から宛先を生成します。
+    resolved, external_hosts = [], generated_apim_service_fqdns(config)
     bases = {"foundryOpenAi": "https://" + names["foundry"] + ".openai.azure.com/openai/v1",
              "foundryCognitive": "https://" + names["foundry"] + ".cognitiveservices.azure.com",
              "foundryServices": "https://" + foundry_host}
     def resolve_backend(api):
-        if api["backendService"] == "external":
-            try:
-                parsed = urlsplit(api["backendUrl"])
-                port = parsed.port
-            except ValueError:
-                raise ValueError("External backend URL is invalid; private input suppressed") from None
-            if (parsed.scheme not in ("https", "wss") or port not in (None, 443) or not parsed.hostname
-                or parsed.username or parsed.password or parsed.fragment
-                or any(re.search(r"key|token|secret|password|^sig$", key, re.I) for key, _ in parse_qsl(parsed.query))):
-                raise ValueError("External backends require fixed TLS FQDNs without credential-bearing URLs")
-            try:
-                ipaddress.ip_address(parsed.hostname)
-            except ValueError:
-                pass
-            else:
-                raise ValueError("External Firewall application rules require an explicit DNS name")
-            external_hosts.add(parsed.hostname.lower())
-        else:
+        if api["backendService"] != "external":
             api["backendUrl"] = bases[api["backendService"]] + api.get("backendPath", "")
 
     for source in config["apiDefinitions"]:
@@ -171,10 +155,6 @@ def prepare_plan(config: dict, state: dict) -> dict:
             if "backendOverride" in operation:
                 resolve_backend(operation["backendOverride"])
         resolved.append(api)
-    login = credential_login.settings(config)
-    if login:
-        external_hosts.add("management.azure.com")
-        external_hosts.update(urlsplit(p["identityEndpoint"]).hostname for p in login["providers"])
     resolved = with_catalog_descriptions(config, resolved)
     vault_base = "https://" + names["keyVault"] + ".vault.azure.net/secrets/"
     params = {"names": names,
@@ -327,9 +307,9 @@ def _etag(response):
 
 
 def merge_firewall(response: dict, plan: dict) -> tuple[dict, bool, str]:
-    """APIM送信元のHTTPS宛先FQDNだけを追加し、他のFW規則をすべて保持する。
+    """APIM送信元のHTTPS宛先を追加し、既知の旧規則名を移行する。
 
-    同名の既存規則でも送信元やプロトコルが異なれば、勝手に置換せず停止する。
+    他のFW規則を保持し、旧新の重複や異なる通信境界では変更せず停止する。
     """
     body = require_success(response, "Read existing Firewall egress rules")
     _assert_same(body.get("id"), plan["firewall"]["groupId"], "Firewall rule group")
@@ -351,7 +331,7 @@ def merge_firewall(response: dict, plan: dict) -> tuple[dict, bool, str]:
     rules = collection.get("rules")
     if not isinstance(rules, list) or any(not isinstance(rule, dict) for rule in rules):
         raise ValueError("Firewall APIM rules are invalid")
-    selected_rules = [rule for rule in rules if rule.get("name") == "apim-approved-services"]
+    selected_rules = [rule for rule in rules if rule.get("name") in APIM_EGRESS_RULE_NAMES]
     if len(selected_rules) > 1:
         raise ValueError("Firewall APIM FQDN rule is duplicated")
     hosts = plan["firewall"]["externalFqdns"]
@@ -359,17 +339,18 @@ def merge_firewall(response: dict, plan: dict) -> tuple[dict, bool, str]:
         return {"properties": properties}, False, etag
     if selected_rules:
         rule = selected_rules[0]
-        if (rule.get("ruleType") != "ApplicationRule" or rule.get("sourceAddresses") != [plan["firewall"]["sourcePrefix"]]
-            or rule.get("protocols") != [{"protocolType": "Https", "port": 443}]
-            or rule.get("terminateTLS", False) is not False or not isinstance(rule.get("targetFqdns"), list)
-            or any(not isinstance(host, str) for host in rule.get("targetFqdns", []))):
-            raise ValueError("The existing APIM FQDN rule has a different source/protocol boundary")
+        validate_apim_egress_rule(rule, plan["firewall"]["sourcePrefix"])
         old = rule["targetFqdns"]
         missing = [host for host in hosts if host.lower() not in {entry.lower() for entry in old}]
+        renamed = rule["name"] != APIM_EGRESS_RULE_NAME
+        # 空targetの名称変更PUTは受理を確認していない。宛先の補完・削除はしない。
+        if renamed and not old and not missing:
+            raise ValueError("An empty legacy APIM FQDN rule requires an explicit migration review")
         rule["targetFqdns"] += missing
-        changed = bool(missing)
+        rule["name"] = APIM_EGRESS_RULE_NAME
+        changed = renamed or bool(missing)
     else:
-        rules.append({"name": "apim-approved-services", "ruleType": "ApplicationRule",
+        rules.append({"name": APIM_EGRESS_RULE_NAME, "ruleType": "ApplicationRule",
             "sourceAddresses": [plan["firewall"]["sourcePrefix"]], "protocols": [{"protocolType": "Https", "port": 443}],
             "targetFqdns": hosts, "terminateTLS": False})
         changed = True

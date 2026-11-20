@@ -17,8 +17,6 @@ param managementPrivateIp string
 param managementNsgName string
 param acaNsgName string
 param keyVaultPrivateIps array
-@description('CM未使用時はAPIMから認証窓口への経路を追加しません。')
-param enableCredentialBroker bool = true
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 
 // NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
@@ -113,15 +111,16 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   properties: {
     priority: 360
     ruleCollections: [
-      { name: 'credential-broker-internal', priority: 100, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: concat(enableCredentialBroker ? [
-        { name: 'apim-broker', ruleType: 'NetworkRule', sourceAddresses: [apimPrefix], destinationAddresses: [acaPrivateIp], destinationPorts: ['443'], ipProtocols: ['TCP'] }
-      ] : [], [
-        { name: 'broker-sql', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: ips, destinationPorts: ['1433'], ipProtocols: ['TCP'] }
-        { name: 'broker-vault', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: keyVaultPrivateIps, destinationPorts: ['443'], ipProtocols: ['TCP'] }
-      ]) }
+      // APIMからBrokerへの初期許可は、認証プロファイルの有無に依存させません。
+      { name: 'credential-broker-internal', priority: 100, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
+        { name: 'allow-apim-aca-https', ruleType: 'NetworkRule', sourceAddresses: [apimPrefix], destinationAddresses: [acaPrivateIp], destinationPorts: ['443'], ipProtocols: ['TCP'] }
+        { name: 'allow-aca-sql', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: ips, destinationPorts: ['1433'], ipProtocols: ['TCP'] }
+        { name: 'allow-aca-key-vault', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: keyVaultPrivateIps, destinationPorts: ['443'], ipProtocols: ['TCP'] }
+      ] }
       { name: 'credential-broker-azure', priority: 200, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
-        { name: 'broker-identity-management', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com', 'management.azure.com'], terminateTLS: false }
-        { name: 'broker-image-build', ruleType: 'ApplicationRule', sourceAddresses: [managementPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['pypi.org', 'files.pythonhosted.org', 'packages.microsoft.com', 'deb.debian.org', 'security.debian.org'], terminateTLS: false }
+        { name: 'allow-aca-entra-login', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com'], terminateTLS: false }
+        { name: 'allow-aca-arm', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['management.azure.com'], terminateTLS: false }
+        { name: 'allow-mgmt-vm-python-build', ruleType: 'ApplicationRule', sourceAddresses: [managementPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['pypi.org', 'files.pythonhosted.org', 'packages.microsoft.com', 'deb.debian.org', 'security.debian.org'], terminateTLS: false }
       ] }
     ]
   }

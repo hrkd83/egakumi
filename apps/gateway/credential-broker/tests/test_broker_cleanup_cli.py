@@ -69,6 +69,25 @@ class CleanupCliTests(unittest.TestCase):
         return cli.reconcile(store, lambda _: (503, None), APIM, profiles=PROFILES,
                              delete_connection=delete, **kwargs)
 
+    def test_empty_profiles_only_purge_expired_state_and_preserve_existing_connections(self):
+        for execute in (False, True):
+            with self.subTest(execute=execute):
+                store = CleanupStore([connection()])
+                before = copy.deepcopy(store.candidates)
+                store.reconciliation_candidates = mock.Mock(side_effect=AssertionError("No configured pools"))
+                store.cleanup_candidates = mock.Mock(side_effect=AssertionError("No configured pools"))
+                arm, delete = mock.Mock(), mock.Mock()
+                result = cli.reconcile(store, arm, APIM, profiles={}, execute=execute, delete_connection=delete)
+                self.assertEqual(store.purges, int(execute))
+                self.assertEqual(store.candidates, before)
+                self.assertEqual((store.claims, store.finished, store.blocks), ([], [], []))
+                self.assertEqual(result["deletedConnections"], 0)
+                self.assertFalse(result["cmCleanupAttempted"])
+                store.reconciliation_candidates.assert_not_called()
+                store.cleanup_candidates.assert_not_called()
+                arm.assert_not_called()
+                delete.assert_not_called()
+
     def test_default_plan_never_claims_purges_deletes_or_finishes(self):
         store = CleanupStore([connection()])
         store.cleanup_candidates = mock.Mock(side_effect=AssertionError("Plan must not claim cleanup work"))

@@ -127,16 +127,22 @@ class ManagementClientBicepTests(unittest.TestCase):
         upgraded = MaintenanceUpgrade(context).client_inventory(plan)
         self.assertEqual(upgraded, combined)
 
-    def test_official_package_firewall_path_exists_even_without_broker(self):
+    def test_broker_and_official_package_firewall_paths_are_initial_fixed_rules(self):
         template = self.credential_network
         resource = template['resources']['rules']
-        parameters = {'enableCredentialBroker': False, 'managementPrefix': '10.70.2.128/26',
+        parameters = {'managementPrefix': '10.70.2.128/26',
                       'acaPrefix': '10.70.2.192/26', 'apimPrefix': '10.70.2.64/26',
                       'acaPrivateIp': '10.70.2.196', 'keyVaultPrivateIps': ['10.70.1.6'],
                       'stem': 'test-fixture', 'privateEndpointNicIds': [], 'referencePrivateIps': ['10.70.1.10']}
         from test_nsg_rule_priorities import FixedExpression
         rules = FixedExpression('[true()]', template).resolve(resource['properties']['ruleCollections'], parameters)
-        build = next(rule for collection in rules for rule in collection['rules'] if rule['name'] == 'broker-image-build')
+        broker = next(rule for collection in rules for rule in collection['rules'] if rule['name'] == 'allow-apim-aca-https')
+        self.assertEqual(broker['sourceAddresses'], [parameters['apimPrefix']])
+        self.assertEqual(broker['destinationAddresses'], [parameters['acaPrivateIp']])
+        self.assertEqual(broker['destinationPorts'], ['443'])
+        self.assertEqual(broker['ipProtocols'], ['TCP'])
+        self.assertNotIn('enableCredentialBroker', template['parameters'])
+        build = next(rule for collection in rules for rule in collection['rules'] if rule['name'] == 'allow-mgmt-vm-python-build')
         self.assertEqual(build['sourceAddresses'], [parameters['managementPrefix']])
         self.assertTrue({'pypi.org', 'files.pythonhosted.org'} <= set(build['targetFqdns']))
         self.assertEqual(build['protocols'], [{'protocolType': 'Https', 'port': 443}])

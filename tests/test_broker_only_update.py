@@ -10,7 +10,7 @@ sys.path[:0] = [str(Path(__file__).resolve().parents[1] / 'scripts'),
                str(Path(__file__).resolve().parents[1] / 'apps/gateway/deploy')]
 import broker_deployment as release
 from bicep_helpers import compile_bicep
-from deployment.helpers.credential_pools import logical_profiles, resource_names
+from deployment.helpers.credential_pools import broker_session_settings, logical_profiles, resource_names
 from test_deploy_gateway import fixture
 from test_credential_broker_initial_deployment import DIGEST
 
@@ -94,15 +94,20 @@ class BrokerTransport:
         raise AssertionError('Broker-only update attempted an unrelated resource mutation')
 
 
-def broker_fixture():
+def broker_fixture(*, business_login=True):
     config, state = fixture()
+    if not business_login:
+        config['gateway']['authentication'].pop('credentialLogin')
+        config['credentialProviders'] = []
     # Explicitly separate resource tenant from user sign-in tenant.
     config['entraTenantId'] = '98765432-9876-4987-8987-987654321000'
     foundation = state['outputs']['gatewayFoundation']
     names, scope = resource_names(config), release.group_scope(config)
     broker = state['outputs']['credentialBroker']
     runtime, schema = broker['runtimeIdentity'], foundation['schemaIdentity']
-    profiles, login = logical_profiles(config), config['gateway']['authentication']['credentialLogin']
+    profiles = logical_profiles(config)
+    login = config['gateway']['authentication'].get('credentialLogin', {})
+    session = broker_session_settings(config)
     registry_id = scope + '/providers/Microsoft.ContainerRegistry/registries/' + foundation['registryName']
     registry_server = foundation['registryName'] + '.azurecr.io'
     app_id = scope + '/providers/Microsoft.App/containerApps/' + names['application']
@@ -113,7 +118,7 @@ def broker_fixture():
         'APIM_NAME': foundation['apimName'], 'APIM_PRINCIPAL_ID': broker['apimPrincipalId'],
         'BROKER_PUBLIC_ORIGIN': 'https://' + config['gateway']['publicHostName'],
         'BROKER_PROFILES_JSON': json.dumps(profiles),
-        **{target: str(login[key]) for key, target in TIMING.items()},
+        **{target: str(session[key]) for key, target in TIMING.items()},
     }
     rows = [{'name': key, 'value': value} for key, value in env.items()]
     rows.append({'name': 'BROKER_SHARED_KEY', 'secretRef': 'broker-key'})
@@ -217,6 +222,22 @@ class BrokerOnlyUpdateTests(unittest.TestCase):
         backup_app = next(value['body'] for path, value in plan['snapshot'].items() if path.split('?')[0] == transport.application_id)
         self.assertEqual(backup_app['properties']['template']['containers'][0]['probes'][0]['httpGet']['path'], '/health')
         self.assertNotIn('brokerKey', plan['parameters'])
+
+    def test_empty_profiles_preserve_existing_broker_secrets_and_sql_during_preparation(self):
+        config, state, transport = broker_fixture(business_login=False)
+        before = copy.deepcopy(transport.inventory)
+        plan = release.prepare_broker_only_update(config, state, transport)
+        self.assertEqual(plan['parameters']['profiles'], {})
+        self.assertEqual(plan['parameters']['oidcSecrets'], [])
+        self.assertEqual(plan['parameters']['database'], resource_names(config)['database'])
+        self.assertEqual(plan['parameters']['runtimeIdentity']['id'], state['outputs']['credentialBroker']['runtimeIdentity']['id'])
+        existing_key = before[transport.application_id]['body']['properties']['configuration']['secrets'][0]['keyVaultUrl']
+        self.assertEqual(plan['parameters']['brokerKeySecretUri'], existing_key)
+        for name in TIMING:
+            self.assertEqual(plan['parameters'][name], broker_session_settings(config)[name])
+        self.assertNotIn('credentialLogin', config['gateway']['authentication'])
+        self.assertEqual(transport.inventory, before)
+        self.assertTrue(all(method == 'GET' for method, *_ in transport.calls))
 
     def test_backup_and_successful_actual_observation_precede_migration_and_new_application(self):
         result, transport, plan, backups, records = self.run_release()

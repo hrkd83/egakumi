@@ -62,8 +62,19 @@ def deployment_inputs(config, state, image_digest=None):
         raise ValueError('Core deployment state differs from the selected configuration')
     stem = config['resourceStem']
     outputs = state.get('outputs', {})
+    if not isinstance(outputs, dict):
+        raise ValueError('Current Core deployment outputs are required')
     if outputs.get('names', {}).get('apim') != apim_name(config):
         raise ValueError('Core APIM name differs from the selected construction instance')
+    gateway = outputs.get('gateway')
+    if (not isinstance(gateway, dict)
+            or not isinstance(gateway.get('publicUrl'), str) or not gateway['publicUrl']):
+        raise ValueError('Current Core Gateway public URL output is required')
+    # load_configurationで検証済みの公開ホストと正式出力を厳密に照合します。
+    # 別ホストやポート・パス等を持つURLを補完・正規化して配備を続けません。
+    gateway_origin = 'https://' + config['gateway']['publicHostName']
+    if gateway['publicUrl'] != gateway_origin:
+        raise ValueError('Core Gateway public URL differs from the selected configuration')
     portal = outputs.get('portal', {})
     svc = group_scope(config) + '/providers/'
     identities = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
@@ -109,8 +120,8 @@ def deployment_inputs(config, state, image_digest=None):
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
         'credentialProviderName': profile_name, 'clientId': profile['clientId'], 'tenantId': profile['oauthTenantId'],
         'publicOrigin': 'https://' + config['portal']['publicHostName'],
-        # load_configurationで検証した公開ドメインだけを使用し、共通購読キーは配備しません。
-        'gatewayOrigin': 'https://' + config['gateway']['publicHostName'],
+        # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
+        'gatewayOrigin': gateway_origin,
         'networkResourceGroup': config['resourceGroupNames']['nw'],
         'acaPrefix': config['network']['subnetPrefixes']['aca'],
         'expectedEgressIp': portal.get('expectedEgressIp', ''),

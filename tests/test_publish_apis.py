@@ -817,6 +817,82 @@ class PublicationTests(unittest.TestCase):
         observed.update(size="0.002000000 MB", provisioningState="Succeeded")
         self.assertTrue(publish._contains(observed, body["properties"]))
 
+    def test_legacy_firewall_rule_is_renamed_without_losing_targets_or_changing_other_rules(self):
+        group = copy.deepcopy(self.group)
+        legacy = {"name": "apim-approved-services", "ruleType": "ApplicationRule",
+                  "sourceAddresses": [self.plan["firewall"]["sourcePrefix"]],
+                  "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
+                  "targetFqdns": ["*.example.com", "Known.EXAMPLE.com"]}
+        group["properties"]["ruleCollections"][0]["rules"].append(legacy)
+        before = copy.deepcopy(group)
+        plan = copy.deepcopy(self.plan)
+        plan["firewall"]["externalFqdns"] = ["known.example.com"]
+        body, changed, etag = publish.merge_firewall(ok(group), plan)
+        self.assertTrue(changed)
+        self.assertEqual(etag, '"fixture-etag"')
+        expected = copy.deepcopy(group["properties"])
+        expected.pop("provisioningState", None)
+        expected["ruleCollections"][0]["rules"][-1]["name"] = "allow-apim-approved-services"
+        self.assertEqual(body, {"properties": expected})
+        self.assertEqual(group, before)
+        repeated = {"id": group["id"], "etag": '"next"', **body}
+        self.assertFalse(publish.merge_firewall(ok(repeated), plan)[1])
+
+    def test_duplicate_current_and_legacy_firewall_rules_fail_before_any_merge(self):
+        names = ("allow-apim-approved-services", "apim-approved-services")
+        for pair in ((names[0], names[0]), (names[1], names[1]), names):
+            group = copy.deepcopy(self.group)
+            group["properties"]["ruleCollections"][0]["rules"] += [{"name": name} for name in pair]
+            before = copy.deepcopy(group)
+            with self.subTest(names=pair), self.assertRaisesRegex(ValueError, "duplicated"):
+                publish.merge_firewall(ok(group), self.plan)
+            self.assertEqual(group, before)
+
+    def test_empty_legacy_target_requires_a_destination_before_rename(self):
+        plan = copy.deepcopy(self.plan)
+        plan["firewall"]["externalFqdns"] = []
+        self.assertFalse(publish.merge_firewall(ok(self.group), plan)[1])
+        for name in ("apim-approved-services", "allow-apim-approved-services"):
+            group = copy.deepcopy(self.group)
+            rule = {"name": name, "ruleType": "ApplicationRule",
+                    "sourceAddresses": [plan["firewall"]["sourcePrefix"]],
+                    "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
+                    "targetFqdns": []}
+            group["properties"]["ruleCollections"][0]["rules"].append(rule)
+            with self.subTest(name=name):
+                if name == "apim-approved-services":
+                    with self.assertRaisesRegex(ValueError, "empty legacy"):
+                        publish.merge_firewall(ok(group), plan)
+                else:
+                    self.assertFalse(publish.merge_firewall(ok(group), plan)[1])
+                plan_with_host = copy.deepcopy(plan)
+                plan_with_host["firewall"]["externalFqdns"] = ["backend.example.com"]
+                body, changed, _ = publish.merge_firewall(ok(group), plan_with_host)
+                self.assertTrue(changed)
+                self.assertEqual(body["properties"]["ruleCollections"][0]["rules"][-1]["targetFqdns"],
+                                 ["backend.example.com"])
+
+    def test_firewall_name_migration_rejects_extra_permissions_and_invalid_fqdns(self):
+        changes = ({"sourceIpGroups": ["fixture-group"]}, {"destinationAddresses": ["*"]},
+                   {"fqdnTags": ["fixture-tag"]}, {"targetUrls": ["example.com/restricted"]},
+                   {"webCategories": ["fixture-category"]}, {"ipv6Rule": True}, {"ipv6Rule": 0},
+                   {"terminateTLS": True}, {"terminateTLS": 0},
+                   {"httpHeadersToInsert": [{"headerName": "X-Test", "headerValue": "fixture"}]},
+                   {"targetFqdns": ["*"]}, {"targetFqdns": ["https://example.com"]},
+                   {"targetFqdns": ["192.0.2.1"]})
+        for name in ("apim-approved-services", "allow-apim-approved-services"):
+            for fields in changes:
+                group = copy.deepcopy(self.group)
+                rule = {"name": name, "ruleType": "ApplicationRule",
+                        "sourceAddresses": [self.plan["firewall"]["sourcePrefix"]],
+                        "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
+                        "targetFqdns": ["known.example.com"], **fields}
+                group["properties"]["ruleCollections"][0]["rules"].append(rule)
+                before = copy.deepcopy(group)
+                with self.subTest(name=name, fields=fields), self.assertRaises(ValueError):
+                    publish.merge_firewall(ok(group), self.plan)
+                self.assertEqual(group, before)
+
     def test_firewall_readback_still_rejects_changed_priorities_actions_sources_protocols_and_rules(self):
         """sizeだけを除外し、予想外の許可拡大や既存規則の欠落・変更は拒否する。"""
         body, _, _ = publish.merge_firewall(ok(self.group), self.plan)

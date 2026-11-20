@@ -55,6 +55,16 @@ class BrokerHttpTests(BrokerTestCase):
             self.assertEqual("ConnectionUnavailable",
                              response.json()["error"]["code"])
 
+    def test_empty_profile_broker_starts_healthy_and_cannot_start_personal_login(self):
+        self.service.settings = replace(self.service.settings, profiles={})
+        with self.client() as client:
+            for path in ("/health", "/health/gateway-caller-v1"):
+                self.assertEqual(client.get(path).status_code, 200)
+            response = client.post("/v1/start", json={"providerName": PROFILE}, headers=self.headers())
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["error"]["code"], "InvalidProvider")
+            self.assertFalse(self.store.transactions)
+
     def test_session_body_cannot_override_trusted_subscription(self):
         with self.client() as client:
             response = client.post("/v2/session/authorize", json={"connectionSession": "cs2." + "0" * 64 + "." + "1" * 64,

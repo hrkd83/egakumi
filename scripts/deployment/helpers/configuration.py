@@ -88,8 +88,11 @@ RETIRED_NETWORK_INPUTS = {
 }
 PARAMETER_FIREWALL_IP_KEYS = {
     "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
+}
+RETIRED_FIREWALL_INPUTS = {
     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
     "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
+    "apimAllowedFqdns", "managementAllowedFqdns",
 }
 PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
@@ -106,7 +109,7 @@ PARAMETER_SECTION_KEYS = {
 # 企業固有の情報はparamsだけが所有します。親の一部だけがparamsの項目
 # （rateLimitsの契約別上書き等）は、最下層のパスで明示します。
 # 空配列や空文字でもconfigへ置けば拒否し、他企業の値を黙って継承させません。
-PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS | {"apimAllowedFqdns", "managementAllowedFqdns"}
+PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS
 PARAMETER_GATEWAY_NESTED_KEYS = {
     "authentication": {"subscriptionKeyHeader", "credentialLogin", "entra"},
     "rateLimits": {"subscriptionKey", "application"},
@@ -387,9 +390,7 @@ def _network(raw: Any) -> dict:
     _strings(n.setdefault("appGatewayZones", ["1", "2", "3"]), "network.appGatewayZones")
     f = _object(n.setdefault("firewall", {}), "network.firewall", {
         "sku", "idpsMode", "threatIntelMode", "zones", "idpsPrivateRanges", "signatureOverrides",
-        "bypassTrafficSettings", "snatPrivateRanges", "apimAllowedFqdns",
-        "managementAllowedFqdns", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
-        "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
+        "bypassTrafficSettings", "snatPrivateRanges",
     })
     tier = _choice(f.setdefault("sku", "Premium"), "network.firewall.sku", ("Standard", "Premium"))
     _choice(f.setdefault("threatIntelMode", "Alert"), "network.firewall.threatIntelMode", ("Alert", "Deny", "Off"))
@@ -404,11 +405,7 @@ def _network(raw: Any) -> dict:
     if tier == "Standard" and any(f.get(key) for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings")):
         _fail("network.firewall", "IDPS configuration requires Premium")
     _strings(f.setdefault("zones", []), "network.firewall.zones")
-    for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
-        if key in f:
-            for fqdn in _strings(f[key], "network.firewall." + key):
-                _host(fqdn, "network.firewall." + key, wildcard=True)
-    for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges", "apimAdditionalNetworkRules", "managementAdditionalNetworkRules", "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
+    for key in ("idpsPrivateRanges", "signatureOverrides", "bypassTrafficSettings", "snatPrivateRanges"):
         if key in f:
             _list(f[key], "network.firewall." + key)
     return n
@@ -1360,11 +1357,6 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("certificate.contactEmail", "must be an ACME account email address")
     # Azure Public DNS is the only supported issuance backend. Other DNS
     # plugin converters remain internal and cannot widen this deployment path.
-    allowed = c["network"]["firewall"].setdefault("managementAllowedFqdns", [])
-    ca_host = "acme-v02.api.letsencrypt.org" if cert["directory"] == "production" else "acme-staging-v02.api.letsencrypt.org"
-    for host in [ca_host, "management.azure.com", g["publicHostName"], "cdn.oneget.org", "cdn.powershellgallery.com", "*.powershellgallery.com", "go.microsoft.com", "aka.ms"]:
-        if host not in allowed:
-            allowed.append(host)
     c["certificate"] = cert
     auth = _object(c.get("authorization", {}), "authorization", {"projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"})
     for key in ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"):
@@ -1427,27 +1419,24 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
                         provider["oauthTenantId"] != identity["tenantId"]
                         or provider["clientId"].lower() != identity["clientId"]):
                     _fail(q + ".identity.clientSecretFile", "must not share a credential file with a different Entra application")
-        allowed = c["network"]["firewall"].setdefault("apimAllowedFqdns", [])
-        if "management.azure.com" not in allowed:
-            allowed.append("management.azure.com")
-        # SQL台帳と認証窓口は構築側の設定で管理し、企業固有IDは既存providerから渡します。
-        broker = _object(c.setdefault("credentialBroker", {}), "credentialBroker", {
-            "sqlSkuName", "sqlTier", "sqlCapacity", "sqlMaxSizeGB", "backupRetentionDays",
-            "zoneRedundant", "backupRedundancy", "minReplicas", "maxReplicas"})
-        _choice(broker.setdefault("sqlTier", "GeneralPurpose"), "credentialBroker.sqlTier", ("GeneralPurpose", "BusinessCritical"))
-        _string(broker.setdefault("sqlSkuName", "GP_Gen5_2"), "credentialBroker.sqlSkuName")
-        _integer(broker.setdefault("sqlCapacity", 2), "credentialBroker.sqlCapacity", 2, 128)
-        _integer(broker.setdefault("sqlMaxSizeGB", 32), "credentialBroker.sqlMaxSizeGB", 1, 4096)
-        _integer(broker.setdefault("backupRetentionDays", 14), "credentialBroker.backupRetentionDays", 7, 35)
-        _bool(broker.setdefault("zoneRedundant", False), "credentialBroker.zoneRedundant")
-        _choice(broker.setdefault("backupRedundancy", "Geo"), "credentialBroker.backupRedundancy", ("Local", "Zone", "Geo", "GeoZone"))
-        minimum = _integer(broker.setdefault("minReplicas", 2), "credentialBroker.minReplicas", 1, 30)
-        _integer(broker.setdefault("maxReplicas", 4), "credentialBroker.maxReplicas", minimum, 30)
-        from .credential_pools import physical_providers
-        physical = physical_providers(c)
-        names = [item["name"].casefold() for item in physical]
-        if len(names) != len(set(names)) or len(names) > 1000:
-            _fail("credentialProviders", "physical provider names must be unique within the APIM provider limit")
+    # SQL台帳と認証窓口は常設。業務の本人接続設定がなくても構築設定を検査します。
+    broker = _object(c.setdefault("credentialBroker", {}), "credentialBroker", {
+        "sqlSkuName", "sqlTier", "sqlCapacity", "sqlMaxSizeGB", "backupRetentionDays",
+        "zoneRedundant", "backupRedundancy", "minReplicas", "maxReplicas"})
+    _choice(broker.setdefault("sqlTier", "GeneralPurpose"), "credentialBroker.sqlTier", ("GeneralPurpose", "BusinessCritical"))
+    _string(broker.setdefault("sqlSkuName", "GP_Gen5_2"), "credentialBroker.sqlSkuName")
+    _integer(broker.setdefault("sqlCapacity", 2), "credentialBroker.sqlCapacity", 2, 128)
+    _integer(broker.setdefault("sqlMaxSizeGB", 32), "credentialBroker.sqlMaxSizeGB", 1, 4096)
+    _integer(broker.setdefault("backupRetentionDays", 14), "credentialBroker.backupRetentionDays", 7, 35)
+    _bool(broker.setdefault("zoneRedundant", False), "credentialBroker.zoneRedundant")
+    _choice(broker.setdefault("backupRedundancy", "Geo"), "credentialBroker.backupRedundancy", ("Local", "Zone", "Geo", "GeoZone"))
+    minimum = _integer(broker.setdefault("minReplicas", 2), "credentialBroker.minReplicas", 1, 30)
+    _integer(broker.setdefault("maxReplicas", 4), "credentialBroker.maxReplicas", minimum, 30)
+    from .credential_pools import physical_providers
+    physical = physical_providers(c)
+    names = [item["name"].casefold() for item in physical]
+    if len(names) != len(set(names)) or len(names) > 1000:
+        _fail("credentialProviders", "physical provider names must be unique within the APIM provider limit")
     publish = _bool(c.get("publishApis"), "publishApis")
     c["apiDefinitions"] = _apis(c.get("apiDefinitions"), c["entraTenantId"], model_names, "https://" + g["publicHostName"], authentication)
     if g["skuName"] == "WAF_v2" and not g["existingWafPolicyId"]:
@@ -1486,10 +1475,13 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _fail("portal.publicHostName", "must be a distinct portal subdomain")
     if not any(name == host or (name.startswith("*.") and host.split(".", 1)[1] == name[2:]) for name in cert["domainNames"]):
         _fail("certificate.domainNames", "must cover the Portal hostname")
-    # 管理サブネットのActions runnerが公開入口を検証するための固定宛先。
-    management_fqdns = c["network"]["firewall"].setdefault("managementAllowedFqdns", [])
-    if host not in management_fqdns:
-        management_fqdns.append(host)
+    # Coreの最初の変更より前に、API公開と同じFW表現可能性を検査します。
+    # 内部生成値を公開設定へ保存せず、秘密やURLをエラーへ含めません。
+    from .firewall_destinations import generated_apim_service_fqdns
+    try:
+        generated_apim_service_fqdns(c)
+    except ValueError:
+        _fail("apiDefinitions", "external destinations require HTTPS/WSS on port 443 and DNS hosts without embedded credentials; private input suppressed")
     return c
 
 
@@ -1598,8 +1590,10 @@ def _reject_config_environment_inputs(standard: dict) -> None:
         if unsupported:
             _fail("config.network", "contains unsupported field(s): " + ", ".join(sorted(unsupported)))
         firewall = network.get("firewall", {})
-        if isinstance(firewall, dict) and "dnsServers" in firewall:
-            _fail("config.network.firewall", "contains unsupported field(s): dnsServers")
+        if isinstance(firewall, dict):
+            unsupported = (RETIRED_FIREWALL_INPUTS | {"dnsServers"}).intersection(firewall)
+            if unsupported:
+                _fail("config.network.firewall", "contains unsupported field(s): " + ", ".join(sorted(unsupported)))
 
 
 def load_configuration_source(path: Path | str) -> dict:
@@ -1676,9 +1670,12 @@ def build_bicep_configuration(configuration: dict) -> dict:
     identity = result.get("gateway", {}).get("authentication", {}).get("credentialLogin", {}).get("identity")
     if identity:
         identity.pop("clientSecretFile", None)
-    from .credential_pools import physical_providers, logical_profiles
+    from .credential_pools import physical_providers, logical_profiles, broker_session_settings
     result["credentialPhysicalProviders"] = physical_providers(result)
     result["credentialProfiles"] = logical_profiles(result)
+    result["credentialBrokerSession"] = broker_session_settings(result)
+    from .firewall_destinations import generated_apim_service_fqdns
+    result["generatedApimServiceFqdns"] = generated_apim_service_fqdns(result)
     return result
 
 

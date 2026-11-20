@@ -4,18 +4,20 @@ APIM経由で本人接続を管理する内部FastAPIサービスです。MSAL�
 
 初期配備は`azd up`のGateway工程で行います。構築済み環境を個別に更新する場合は、リポジトリのルートから`python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute`を実行します。既存管理VMでのイメージ作成・非公開ACR登録、credentials DB・CM・実行用ID、SQL初期化、本体と照合ジョブ、APIMのAPI登録まで一括実行します。`--execute`なしはローカル計画だけです。[配備手順](../../../docs/setup/credential-sql.md#4-gatewayを配備する)と[CM共通接続手順](../../../docs/setup/credential-manager-login.md)を参照してください。
 
+Broker本体・実行用ID・credentials DB・SQL初期化ジョブ・定期照合ジョブ・保守割当は初期常設です。本人接続の認証プロファイルが未設定でも構築し、`BROKER_PROFILES_JSON={}`で起動します。OIDCのproviderや秘密を補完せず、本人接続APIとcallback用WAFは業務認証の設定に応じて用意します。空プロファイルでのSQL初期化はスキーマと実行IDの権限を準備し、既存プールを無効化しません。定期照合は期限切れ状態だけを掃除し、CM接続の照合・削除や既存割当の変更は行いません。
+
 ## 起動に必要な設定
 
 - `BROKER_PUBLIC_ORIGIN`: GatewayのHTTPS origin。
 - `BROKER_SHARED_KEY`: APIMと共有する32バイト以上の専用秘密。Key Vaultの参照から設定します。
-- `BROKER_PROFILES_JSON`: 論理プロファイルごとのtenantId、clientId、clientSecretEnv、identityEndpoint、identityIdProperty、poolsのJSON。
-- `OIDC_SECRET_0`など: clientSecretEnvが指す秘密の環境変数。
+- `BROKER_PROFILES_JSON`: 論理プロファイルごとのtenantId、clientId、clientSecretEnv、identityEndpoint、identityIdProperty、poolsのJSON。未設定の本人接続には空オブジェクトを渡します。
+- `OIDC_SECRET_0`など: 設定済みプロファイルのclientSecretEnvが指す秘密の環境変数。
 - `AZURE_SUBSCRIPTION_ID`、`AZURE_RESOURCE_GROUP`、`APIM_NAME`、`APIM_PRINCIPAL_ID`、`AZURE_TENANT_ID`、`AZURE_CLIENT_ID`: 接続先APIMとbrokerのマネージドID。
 - `AZURE_SQL_SERVER`、`AZURE_SQL_DATABASE`: 暗号化接続する台帳。Azure SQLはbrokerのマネージドIDで認証します。
 - `BROKER_TRANSACTION_TTL_SECONDS`: 60〜600、既定300。
 - `BROKER_LOGIN_CALLS_PER_MINUTE`: 検証済み購読またはユーザーごとの認証開始回数上限。既定10。`start`と`challenge`の合計をSQLで直近60秒間集計します。
 
-本人セッションの設定は、`gateway.authentication.credentialLogin`から次の環境変数へ渡します。秒単位です。
+本人セッションの設定は、`gateway.authentication.credentialLogin`の設定値または次の標準値を環境変数へ渡します。秒単位です。
 
 | 環境変数 | paramsの項目 | 既定値 |
 | --- | --- | --- |

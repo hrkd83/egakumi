@@ -19,7 +19,7 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
       ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
       action: { type: 'Allow' }
       rules: [{
-        name: 'aca-public-gateway-https'
+        name: 'allow-aca-appgw-https'
         ruleType: 'ApplicationRule'
         sourceAddresses: [acaPrefix]
         protocols: [{ protocolType: 'Https', port: 443 }]

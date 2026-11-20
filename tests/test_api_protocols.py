@@ -60,16 +60,10 @@ def bound_coverage():
 
 def bound_external_coverage():
     """汎用protocol能力の試験だけに、外部5 APIのfixtureを明示追加する。"""
-    from urllib.parse import urlsplit
     raw = bound_coverage()
     fixture_data = json.loads((CORE / "tests/fixtures/external-api-definitions.json").read_text())
     external = prepare_coverage.substitute(fixture_data, _test_bindings(fixture_data, raw))
     raw["apiDefinitions"].extend(external["apiDefinitions"])
-    for api in external["apiDefinitions"]:
-        hostname = urlsplit(api.get("backendUrl", "")).hostname
-        destinations = raw["network"]["firewall"]["apimAllowedFqdns"]
-        if hostname and hostname not in destinations:
-            destinations.append(hostname)
     return raw
 
 
