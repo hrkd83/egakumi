@@ -493,6 +493,9 @@ var managementServiceFqdns = union([
   'go.microsoft.com'
   'aka.ms'
 ], [gatewayPublicHostName, portalPublicHostName])
+// ACA と同じ構築リージョンの共有 Dev gateway。各資源の操作認可は MI/RBAC で制限します。
+// https://github.com/Azure/azure-cli/blob/51552fd56854d33f646a031bbbf024cf1fbc4d42/src/azure-cli/azure/cli/command_modules/containerapp/custom.py
+var acaDevFqdn = '${toLower(replace(location, ' ', ''))}.azurecontainerapps.dev'
 // これは APIM の Azure 管理基盤の依存先です。管理 VM が Windows という意味ではありません。
 var windowsUpdateFqdns = [
   '*.update.microsoft.com'
@@ -626,6 +629,14 @@ resource egressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@20
             sourceAddresses: [subnetPrefixes.management]
             protocols: [{ protocolType: 'Http', port: 80 }, { protocolType: 'Https', port: 443 }]
             targetFqdns: linuxPackageFqdns
+            terminateTLS: false
+          }
+          {
+            name: 'allow-mgmt-vm-aca-dev-https'
+            ruleType: 'ApplicationRule'
+            sourceAddresses: [subnetPrefixes.management]
+            protocols: [{ protocolType: 'Https', port: 443 }]
+            targetFqdns: [acaDevFqdn]
             terminateTLS: false
           }
           {

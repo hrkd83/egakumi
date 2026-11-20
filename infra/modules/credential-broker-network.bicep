@@ -16,7 +16,6 @@ param managementPrefix string
 param managementPrivateIp string
 param managementNsgName string
 param acaNsgName string
-param keyVaultPrivateIps array
 var nsgPriorities = loadJsonContent('../nsg-rule-priorities.json')
 
 // NSGには固定の初期集合を登録し、構築資材のCIDR・割当IPだけを宛先に差し込みます。
@@ -111,12 +110,8 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   properties: {
     priority: 360
     ruleCollections: [
-      // APIMからBrokerへの初期許可は、認証プロファイルの有無に依存させません。
-      { name: 'credential-broker-internal', priority: 100, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
-        { name: 'allow-apim-aca-https', ruleType: 'NetworkRule', sourceAddresses: [apimPrefix], destinationAddresses: [acaPrivateIp], destinationPorts: ['443'], ipProtocols: ['TCP'] }
-        { name: 'allow-aca-sql', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: ips, destinationPorts: ['1433'], ipProtocols: ['TCP'] }
-        { name: 'allow-aca-key-vault', ruleType: 'NetworkRule', sourceAddresses: [acaPrefix], destinationAddresses: keyVaultPrivateIps, destinationPorts: ['443'], ipProtocols: ['TCP'] }
-      ] }
+      // APIM→ACA、ACA→SQL/Key Vault PE は VNet 内の直接経路です。
+      // Firewall を通過しないため、この規則群には登録せず各サブネットの NSG で許可します。
       { name: 'credential-broker-azure', priority: 200, ruleCollectionType: 'FirewallPolicyFilterRuleCollection', action: { type: 'Allow' }, rules: [
         { name: 'allow-aca-entra-login', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['login.microsoftonline.com'], terminateTLS: false }
         { name: 'allow-aca-arm', ruleType: 'ApplicationRule', sourceAddresses: [acaPrefix], protocols: [{ protocolType: 'Https', port: 443 }], targetFqdns: ['management.azure.com'], terminateTLS: false }

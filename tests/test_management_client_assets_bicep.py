@@ -39,6 +39,26 @@ class ManagementClientBicepTests(unittest.TestCase):
         cls.network = compile_bicep('infra/modules/network.bicep')
         cls.credential_network = compile_bicep('infra/modules/credential-broker-network.bicep')
 
+    def test_aca_dev_firewall_and_environment_use_the_same_constructed_region(self):
+        _, nodes = dependency_graph(self.core)
+        def constructs(node, resource_type):
+            resources = node.get('properties', {}).get('template', {}).get('resources', {})
+            return any(resource['type'].casefold() == resource_type.casefold()
+                       for resource in (resources.values() if isinstance(resources, dict) else resources))
+        network, = [node for node in nodes.values()
+                    if constructs(node, 'Microsoft.Network/virtualNetworks')]
+        portal, = [node for node in nodes.values()
+                   if constructs(node, 'Microsoft.App/managedEnvironments')]
+        network_region = network['properties']['parameters']['location']['value']
+        portal_region = portal['properties']['parameters']['location']['value']
+        self.assertEqual(network_region, "[variables('location')]")
+        self.assertEqual(portal_region, network_region)
+        self.assertEqual(self.core['variables']['location'], "[parameters('configuration').location]")
+        resources = portal['properties']['template']['resources']
+        environment, = [node for node in (resources.values() if isinstance(resources, dict) else resources)
+                        if node['type'].casefold() == 'microsoft.app/managedenvironments']
+        self.assertEqual(environment['location'], "[parameters('location')]")
+
     def fixture(self):
         config = fixture_config()
         config['azureTenantId'] = '22222222-2222-4222-8222-222222222222'
@@ -127,20 +147,18 @@ class ManagementClientBicepTests(unittest.TestCase):
         upgraded = MaintenanceUpgrade(context).client_inventory(plan)
         self.assertEqual(upgraded, combined)
 
-    def test_broker_and_official_package_firewall_paths_are_initial_fixed_rules(self):
+    def test_broker_firewall_has_only_routed_azure_and_package_traffic(self):
         template = self.credential_network
         resource = template['resources']['rules']
         parameters = {'managementPrefix': '10.70.2.128/26',
                       'acaPrefix': '10.70.2.192/26', 'apimPrefix': '10.70.2.64/26',
-                      'acaPrivateIp': '10.70.2.196', 'keyVaultPrivateIps': ['10.70.1.6'],
+                      'acaPrivateIp': '10.70.2.196',
                       'stem': 'test-fixture', 'privateEndpointNicIds': [], 'referencePrivateIps': ['10.70.1.10']}
         from test_nsg_rule_priorities import FixedExpression
         rules = FixedExpression('[true()]', template).resolve(resource['properties']['ruleCollections'], parameters)
-        broker = next(rule for collection in rules for rule in collection['rules'] if rule['name'] == 'allow-apim-aca-https')
-        self.assertEqual(broker['sourceAddresses'], [parameters['apimPrefix']])
-        self.assertEqual(broker['destinationAddresses'], [parameters['acaPrivateIp']])
-        self.assertEqual(broker['destinationPorts'], ['443'])
-        self.assertEqual(broker['ipProtocols'], ['TCP'])
+        self.assertEqual([collection['name'] for collection in rules], ['credential-broker-azure'])
+        self.assertEqual({rule['ruleType'] for collection in rules for rule in collection['rules']}, {'ApplicationRule'})
+        self.assertNotIn('keyVaultPrivateIps', template['parameters'])
         self.assertNotIn('enableCredentialBroker', template['parameters'])
         build = next(rule for collection in rules for rule in collection['rules'] if rule['name'] == 'allow-mgmt-vm-python-build')
         self.assertEqual(build['sourceAddresses'], [parameters['managementPrefix']])

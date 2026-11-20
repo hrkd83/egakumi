@@ -154,7 +154,27 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 
 管理VMのNTPはFirewallの`allow-mgmt-vm-ntp`で管理サブネットから宛先`*`へのUDP123を許可し、NSGの325でInternet宛に制限します。VNet標準DNSとFirewallの独立した回答差による遮断を避ける設計です。guestへ設定する標準外部NTPは`ntp.ubuntu.com`ですが、既存PHC・OS側pool等も保持します。変更後は他のInternet NTP sourceも到達できるため、実際の選択元・到達性・時刻精度を確認します。Firewall Allowやdaemon稼働だけで外部同期の成功とは扱いません。資材・Azure読戻し・同期結果は別に記録します。
 
+### ACA Dev API向けFirewall許可
+
+管理VMのACAライブ保守通信は、NSGのInternet宛TCP443許可に加え、Firewallの
+`rcg-egress`（400）／`allow-vm-egress`（210）にある`allow-mgmt-vm-aca-dev-https`で許可します。
+送信元は構築した管理サブネットのCIDR、宛先はACAと同じ構築リージョンから生成する
+単一の`<region>.azurecontainerapps.dev`、プロトコルはHTTPS443です。初期常設とし、
+作成フラグや追加FQDNの公開入力は設けません。TLS inspectionは無効です。
+
+この宛先はリージョン共用のDev gatewayです。Firewallは資源パスやテナントを限定しないため、
+構築したApp・環境・Jobへの操作は管理VMのMI／RBACと保守clientのinventoryで制限します。
+[公式CLI](https://github.com/Azure/azure-cli/blob/51552fd56854d33f646a031bbbf024cf1fbc4d42/src/azure-cli/azure/cli/command_modules/containerapp/custom.py)が扱う
+metadata返却先・replicaの`logStreamEndpoint`を照合し、TLS、ライブログ本文、execを個別に検証します。
+規則の作成・読戻しだけで、各保守操作の成功とは判定しません。
+
 ## ACA（aca）
+
+APIM→ACAのHTTPS443、ACA→SQL PEのTCP1433、ACA→Key Vault PEのHTTPS443は、
+初期構成ではVNet内の直接経路を使います。ACA／APIMの既定の`0.0.0.0/0`経路より、
+VNet・Private Endpointへの具体的な経路が優先されるため、Firewall規則には登録しません。
+通信の許可は送信元と宛先のNSGに記録します。Firewallには現在の経路で通過する通信だけを登録し、
+将来の経路変更用の許可は含めません。
 
 ### Inbound
 

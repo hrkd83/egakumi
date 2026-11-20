@@ -108,6 +108,30 @@ class NsgRulePriorityTests(unittest.TestCase):
                             for tag in ('AzureMonitor', 'AzureActiveDirectory')}
                 self.assertEqual(observed, previous)
 
+    def test_management_aca_dev_firewall_allow_is_constant_and_region_scoped(self):
+        resource = self.templates['network']['resources']['egressRules']
+        self.assertNotIn('condition', resource)
+        self.assertEqual(resource['properties']['priority'], 400)
+        collection, = [c for c in resource['properties']['ruleCollections']
+                       if c['name'] == 'allow-vm-egress']
+        self.assertEqual(collection['priority'], 210)
+        self.assertEqual(collection['action'], {'type': 'Allow'})
+        rule, = [r for r in collection['rules'] if r['name'] == 'allow-mgmt-vm-aca-dev-https']
+        self.assertNotIn('condition', rule)
+        for location, host in (('japaneast', 'japaneast.azurecontainerapps.dev'),
+                               ('Japan East', 'japaneast.azurecontainerapps.dev'),
+                               ('EAST US 2', 'eastus2.azurecontainerapps.dev')):
+            for prefix in ('10.40', '10.70'):
+                with self.subTest(location=location, prefix=prefix):
+                    parameters = {**self.parameters(prefix=prefix), 'location': location}
+                    actual = self.resolve('network', rule, parameters)
+                    self.assertEqual(actual, {
+                        'name': 'allow-mgmt-vm-aca-dev-https',
+                        'ruleType': 'ApplicationRule',
+                        'sourceAddresses': [parameters['subnetPrefixes']['management']],
+                        'protocols': [{'protocolType': 'Https', 'port': 443}],
+                        'targetFqdns': [host], 'terminateTLS': False})
+
     def _application_rule_tuples(self, rules, purposes, source):
         self.assertEqual(len(rules), len(purposes))
         self.assertEqual({r['name'] for r in rules}, set(purposes))
