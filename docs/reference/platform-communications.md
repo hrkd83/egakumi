@@ -57,7 +57,7 @@ Private DNS zone、VNet link、PEのDNS zone groupが正しい回答を作る条
 
 [VM IMDSの仕様](https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service)は、primary NIC／primary IP、guest DHCP、経路、プロキシ回避等の条件を持つ。通常のAny末尾DenyだけでIMDSを遮断する説明にはしない。専用`AzurePlatformIMDS`タグによる規則、guestのlocal Firewall・route・proxyは別の条件である。[サービス・タグの仕様](https://learn.microsoft.com/en-us/azure/virtual-network/service-tags-overview)
 
-証明書の[guest worker](../../guest/certificate.ps1)は、IMDS要求に`Metadata: true`を付け、自動redirectを禁止してproxyを無効にする。Key Vault用はVMのSystemAssigned ID、Azure DNS更新用は構築時に割り当てた所定のUserAssigned IDを明示する。audienceの指定はトークンの対象サービスを示し、IMDS取得時にそのサービスへHTTPS接続する意味ではない。Key Vault、Azure DNSのARM操作、ACME発行先への通信は別要件である。
+証明書の[guest worker](../../infra/guest/certificate.ps1)は、IMDS要求に`Metadata: true`を付け、自動redirectを禁止してproxyを無効にする。Key Vault用はVMのSystemAssigned ID、Azure DNS更新用は構築時に割り当てた所定のUserAssigned IDを明示する。audienceの指定はトークンの対象サービスを示し、IMDS取得時にそのサービスへHTTPS接続する意味ではない。Key Vault、Azure DNSのARM操作、ACME発行先への通信は別要件である。
 
 [証明書保守helper](../../scripts/operations/certificate.py)の公開certificate metadata取得も、IMDS専用の`ProxyHandler({})`とredirect禁止を使用する。Vault HTTPS用openerは分離し、従来のproxy動作を維持する。秘密／PFXの取得はこのmetadata処理へ追加しない。[合成通信試験](../../tests/test_operations_certificate.py)は、環境proxyを設定してIMDSの直接接続、Vaultのproxy選択、両宛先のredirect拒否をソケット接続前に検証する。実VMのproxy設定や実障害を観測した試験ではない。
 
@@ -83,13 +83,13 @@ Azure DHCPはNSGの基本サービス例外として扱う。最初のIP取得�
 
 [公式Syslog収集](https://learn.microsoft.com/en-us/azure/azure-monitor/vm/data-collection-syslog)の標準例はloopback TCP28330を使う。実portはAMAの`config-cache/syslog.port`と生成forwarderで確認する。Unix Domain Socket方式を使う版・構成にはIP／portを割り当てない。両方式が常に同時稼働する説明にも、28330が全版の固定契約である説明にもしない。[Linux rsyslogの確認方法](https://learn.microsoft.com/en-us/azure/azure-monitor/agents/azure-monitor-agent-troubleshoot-linux-vm-rsyslog)と[AMA版履歴](https://learn.microsoft.com/en-us/azure/azure-monitor/agents/azure-monitor-agent-extension-versions)
 
-[guest監査設定](../../guest/configure-audit.sh)は、コマンド本文を含むsudo／cronイベントをAMA転送前に除外し、rsyslog構文検査と稼働確認を行う。AMAのforwarder自体を手製の固定port設定へ置き換えない。DCRの関連付けと収集条件、実Agent版、listener／socket、queue、local Firewallやsocket権限、実ログ到着を確認する。AMAから外部Monitorへの通信は別のNSG送信要件である。
+[guest監査設定](../../infra/guest/configure-audit.sh)は、コマンド本文を含むsudo／cronイベントをAMA転送前に除外し、rsyslog構文検査と稼働確認を行う。AMAのforwarder自体を手製の固定port設定へ置き換えない。DCRの関連付けと収集条件、実Agent版、listener／socket、queue、local Firewallやsocket権限、実ログ到着を確認する。AMAから外部Monitorへの通信は別のNSG送信要件である。
 
 ### ホスト時刻と外部NTP
 
 [Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)には、VMICTimeSyncによる起動・保守復帰時の補正と、Chrony等がPHCを使う継続同期がある。VMICTimeSync単独で恒久的な同期を保証する説明にしない。Linuxの[Hyper-V実装](https://github.com/torvalds/linux/blob/master/drivers/hv/hv_util.c)は機構の参考であり、実VMのkernel版一致や同期精度の証明ではない。
 
-[guest監査設定](../../guest/configure-audit.sh)は既存PHC／refclock／OS設定を保持し、既存Chronyまたはtimesyncdへ標準外部NTP `ntp.ubuntu.com`を設定する。NSGの`allow-time-sync-egress`はInternet宛UDP123、Firewallの`allow-mgmt-vm-ntp`は管理サブネットから宛先`*`へのUDP123を許可する。FQDNのDNS回答一致には依存せず、既存の他Internet sourceも到達可能となる。実際の選択元・同期・精度の確認は別に行う。APIM独自のNTP依存も別要件として維持する。
+[guest監査設定](../../infra/guest/configure-audit.sh)は既存PHC／refclock／OS設定を保持し、既存Chronyまたはtimesyncdへ標準外部NTP `ntp.ubuntu.com`を設定する。NSGの`allow-time-sync-egress`はInternet宛UDP123、Firewallの`allow-mgmt-vm-ntp`は管理サブネットから宛先`*`へのUDP123を許可する。FQDNのDNS回答一致には依存せず、既存の他Internet sourceも到達可能となる。実際の選択元・同期・精度の確認は別に行う。APIM独自のNTP依存も別要件として維持する。
 
 今回、PTPデバイスの新規構成、同期元の強制選択switch、UDP319／320のNSG Allowは追加しない。実driver、PHC device／symlink、選択source、時刻同期・精度・復帰補正を運用で確認する。企業のNTPへ手動変更する場合はguest／NSG／Firewallを揃え、再配備による標準外部NTPの再適用を考慮する。
 

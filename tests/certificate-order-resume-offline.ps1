@@ -5,7 +5,7 @@ Resume existing ACME orders with synthetic dependency substitutes and no network
 Covers control flow and order identity guards only. Real PFX/private-key/chain behavior
 remains covered by certificate-rotation-offline.ps1 on Linux. No cloud credentials are used.
 #>
-param([string]$WorkerPath=(Join-Path $PSScriptRoot '../guest/certificate.ps1'))
+param([string]$WorkerPath=(Join-Path $PSScriptRoot '../infra/guest/certificate.ps1'))
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop';$WarningPreference='SilentlyContinue'
 if(-not $IsLinux){throw 'Run certificate control-flow suites on Linux; cryptographic implementation is not weakened for macOS.'}

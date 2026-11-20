@@ -131,7 +131,7 @@ else:
 class CertificateBootstrapTests(unittest.TestCase):
     """Ubuntu用の証明書初期化shellを、偽の外部コマンドで実行検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def run_fixture(self, fail_stage="", already_installed=False, cli_installed=False):
-        source = (CORE / "guest/certificate-bootstrap.sh").read_text()
+        source = (CORE / "infra/guest/certificate-bootstrap.sh").read_text()
         # Keep the executable bootstrap intact apart from platform-only gates
         # and virtual filesystem mount locations needed to run on a nonroot Mac.
         self.assertIn('[ "$EUID" = 0 ] || exit 1', source)
@@ -192,7 +192,7 @@ class CertificateBootstrapTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is required for worker entry validation")
     def test_worker_entry_rejects_unsupported_providers_before_state_or_secret_access(self):
         """実入口のOS条件だけを代替し、未対応方式が副作用へ届かないことを確認する。"""
-        source = (CORE / "guest/certificate.ps1").read_text()
+        source = (CORE / "infra/guest/certificate.ps1").read_text()
         platform_gate = "if (-not $IsLinux -or (Get-UnixIdentity) -ne 0) {throw 'Run certificate maintenance as root on Linux'}"
         self.assertEqual(source.count(platform_gate), 1)
         source = source.replace(platform_gate, "# Controlled offline platform gate")
@@ -262,7 +262,7 @@ if($env:HOME -cne $beforeHome -or $env:PSModulePath -cne $beforeModulePath){thro
                 environment = dict(os.environ)
                 if missing:
                     environment.pop("HOME", None)
-                command = [shutil.which("pwsh"), "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script), "-SourcePath", str(CORE / "guest/certificate.ps1"), "-FixtureRoot", str(fixture / "private-acme-state")]
+                command = [shutil.which("pwsh"), "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script), "-SourcePath", str(CORE / "infra/guest/certificate.ps1"), "-FixtureRoot", str(fixture / "private-acme-state")]
                 if missing:
                     command.append("-MissingHome")
                 result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=20, check=False)

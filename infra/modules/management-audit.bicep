@@ -24,7 +24,7 @@ resource audit 'Microsoft.Compute/virtualMachines/runCommands@2024-07-01' = {
   tags: tags
   properties: {
     // Windowsで編集したCRLFも、Linuxへ渡す前にLFへ揃えます。
-    source: { script: replace(replace(loadTextContent('../../guest/configure-audit.sh'), '\r\n', '\n'), '__CORE_NTP_SERVERS_BASE64__', base64(string(ntpServers))) }
+    source: { script: replace(replace(loadTextContent('../guest/configure-audit.sh'), '\r\n', '\n'), '__CORE_NTP_SERVERS_BASE64__', base64(string(ntpServers))) }
     asyncExecution: false
     timeoutInSeconds: 300
     treatFailureAsDeploymentFailure: true
