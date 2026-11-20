@@ -200,7 +200,7 @@ resource ingressRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
       ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
       action: { type: 'Allow' }
       rules: concat([{
-        name: 'agw-to-apim-http'
+        name: 'allow-appgw-apim-http'
         ruleType: 'NetworkRule'
         sourceAddresses: [subnetPrefixes.agw]
         destinationAddresses: [apimPrivateIp]
