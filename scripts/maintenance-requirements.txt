@@ -1,0 +1,3 @@
+# Matches the repository's pinned WebSocket runtime. All other client operations
+# use the Python standard library and the VM's SystemAssigned identity via IMDS.
+websockets==17.2

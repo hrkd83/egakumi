@@ -103,6 +103,94 @@ Coreの診断ログ・LAW export・監査Storageと、企業共通監査は所�
 
 APIキー管理・購読同期はPortalの管理画面を使います。[購読別の制限・観測](testing/subscription-limits.md)ではSQLの制限設定、APIMへの反映、欠測を分けて確認します。
 
+## 管理VMから保守データを取得する
+
+構築した管理VM自身のSystemAssignedマネージドID（MI）で、監査Blob、保存済みログ、ACAのログを取得し、明示したAppのコンテナーへ有限のexecを行います。入口は[management_client.py](../scripts/management_client.py)です。人間のAzure CLI認証・既存環境への資材適用はWindows側で行い、このclientはLinux管理VM内だけで実行します。VM内で人間の`az login`、Windowsの認証キャッシュのコピー、別のIDの指定は行いません。clientはIMDSでVM資源とMIの主体・テナントをinventoryへ照合し、tokenをメモリーだけで扱います。
+
+### 初期資材と既存環境への適用を分ける
+
+初期構築はBicepで権限・監査Blob PE・DNS・NSG・clientを準備します。Gateway／Portal配備は、実際に構築したApp・Jobを同じinventoryへ追加します。client本体、固定依存、inventoryはVM内の公開インストーラ配置契約`/opt/core/maintenance/`へroot所有で配置されます。inventoryは`inventory.json`、Pythonは`venv/bin/python`です。実資源を含むinventoryは公開資材ではありません。
+
+今回の資材をまだ適用していない既存環境では、同じparamsとCore stateを保持し、[maintenance.py](../scripts/operations/maintenance.py)で読取計画を確認してから、対象限定の適用を行います。通常運用で基盤全体の`azd up`を再実行しません。次はWindows PowerShellで、構築時の保護paramsを指す`DEPLOY_PARAMS_FILE`を選択した後に実行する例です。
+
+```powershell
+python -B scripts/operations/maintenance.py --config $env:DEPLOY_PARAMS_FILE
+python -B scripts/operations/maintenance.py --config $env:DEPLOY_PARAMS_FILE --execute
+```
+
+計画時にもAzureの所有資源・既存NSG・権限・監査PE/DNSを読み取ります。反映では、同じMIの同じscopeに既にあるBlob／WorkspaceのReader割当を維持し、異なる主体の既存権限を追加対象へ流用しません。手動DNS、未知のNSG、所有不一致、読み切れていない権限一覧などは停止条件です。`assets-applied`・`clientPrepared`と`runtimeVerified: false`は資材工程の結果であり、実データ取得の成功を表しません。
+
+### inventoryと権限の範囲
+
+inventoryは構築出力から生成し、VM・MI・テナント・Subscription、App、Job、ACA環境、Workspace、監査Storageとコンテナーを記録します。対象のResource IDを明示して操作し、名前から別資源を推測したり、inventoryを手動で広げたりしません。Core stateは端末の`.local/<environment>/state/latest.json`、実情報を含む入力・証跡は同じ環境の保護領域で管理します。VM内にcheckoutがある場合も、その中での保守入出力は直下の`.local/`に限定します。
+
+| 対象 | 常設する権限・scope | 読めるもの／扱えるもの |
+| --- | --- | --- |
+| 監査Blob | 構築した監査コンテナー単位のStorage Blob Data Reader | collectJapan／collectFoundryの指定Blob。書込み・削除権限は追加しない |
+| 保存ログ | 構築Workspace単位のLog Analytics Data Reader | ACA以外も含めたWorkspace全体の保存ログ。将来同じWorkspaceへ追加するログも対象 |
+| ACA Appログ | 構築App単位のカスタムロール | App／revision／replica情報、App自身のtoken取得、console／systemログ。設定metadataや平文環境変数も閲覧範囲に含む |
+| ACA App exec | 構築App単位の別カスタムロール | コンテナー内コマンドの実行。コンテナーが読めるマウント済み秘密やアプリのIDで利用できる接続先にも影響する |
+| ACA環境ログ | 構築managedEnvironment単位のreadとgetAuthToken | 環境情報とDev API用token。tokenがログ専用であるという保証は置かない |
+| ACA Jobログ | 構築Job単位のカスタムロール | Jobと子資源の情報、Job自身のtoken取得、実行ログ。Job起動・listSecrets・exec権限は追加しない |
+
+カスタムロールの定義はSubscription scopeに作りますが、割当scopeは上表の構築資源です。VM内のプログラム・ログイン者はMIを利用でき、保存先から見えるアクセス主体もVMのMIです。人間ごとのID認可・監査に置き換わる機能ではありません。clientが提供する操作を限定していても、環境tokenのAzure側利用範囲までログ専用に制限したとは扱いません。
+
+### 保護入出力と7種類の操作
+
+次はLinux管理VM内の例です。配置契約以外のID・名前はプレースホルダーであり、対象は保護inventoryと現在のApp／Job metadataから選びます。root所有のinventoryを読むため、以下では`sudo`でclientを実行します。出力先と入力先はroot所有・700、入力ファイルは600で事前準備し、リンクや他人の共有フォルダーを使いません。
+
+```sh
+MAINTENANCE_PYTHON=/opt/core/maintenance/venv/bin/python
+MAINTENANCE_CLIENT=/opt/core/maintenance/management_client.py
+MAINTENANCE_INVENTORY=/opt/core/maintenance/inventory.json
+MAINTENANCE_INPUT_DIRECTORY=/opt/core/maintenance/input
+MAINTENANCE_OUTPUT_DIRECTORY=/opt/core/maintenance/evidence/'<RUN_ID>'
+sudo install -d -m 700 "$MAINTENANCE_INPUT_DIRECTORY" /opt/core/maintenance/evidence "$MAINTENANCE_OUTPUT_DIRECTORY"
+sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" --help
+```
+
+各操作は`--inventory`と、まだ存在しない新規`--output`を共通で指定します。本文は600の出力ファイルだけへ保存し、通常の端末出力には取得内容・tokenを出しません。既存出力は上書きせず、失敗で部分出力が残った場合も成功とは扱いません。表示・転送する前に保護記録として確認し、Git・公開ログ・配布物へ混ぜません。
+
+```sh
+sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
+  --inventory "$MAINTENANCE_INVENTORY" \
+  --output "$MAINTENANCE_OUTPUT_DIRECTORY/blob.bin" \
+  blob-read --resource-id '<AUDIT_STORAGE_RESOURCE_ID>' \
+  --container '<CONSTRUCTED_CONTAINER_NAME>' --blob '<BLOB_NAME>'
+```
+
+同じ呼出しの末尾を次の表で選び、`--output`も操作ごとに新しいファイル名へ変えます。6個のサブコマンドで、Appログのconsole／systemを分けた7種類の操作です。
+
+| 操作 | サブコマンドと追加引数 | 選択・確認事項 |
+| --- | --- | --- |
+| 監査Blobの取得 | `blob-read --resource-id '<AUDIT_STORAGE_RESOURCE_ID>' --container '<CONSTRUCTED_CONTAINER_NAME>' --blob '<BLOB_NAME>'` | inventory内のStorageとコンテナーだけ。Blob PE/DNS到達と読取権限を確認 |
+| 保存ログの照会 | `workspace-query --resource-id '<WORKSPACE_RESOURCE_ID>' --query-file "$MAINTENANCE_INPUT_DIRECTORY/query.kql"` | KQLは保護ファイルで渡す。本文を引数へ直書きしない |
+| App consoleログ | `app-logs --resource-id '<APP_RESOURCE_ID>' --type console --revision '<REVISION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --tail 50` | revision・replica・containerをすべて明示する |
+| App systemログ | `app-logs --resource-id '<APP_RESOURCE_ID>' --type system --tail 50` | console用のrevision・replica・containerは指定しない |
+| ACA環境systemログ | `environment-logs --resource-id '<ENVIRONMENT_RESOURCE_ID>' --tail 50` | App単位のsystemログと区別する。環境tokenで取得 |
+| Job実行ログ | `job-logs --resource-id '<JOB_RESOURCE_ID>' --execution '<EXECUTION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --tail 50` | 過去の実行を明示し、Jobを起動せずに読む |
+| Appへの限定exec | `app-exec --resource-id '<APP_RESOURCE_ID>' --revision '<REVISION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --command-file "$MAINTENANCE_INPUT_DIRECTORY/command.txt" --seconds 60` | 明示したコンテナーへ、保護コマンドファイルの内容だけを送る |
+
+ログ取得は`follow=false`の有限tailで、`--tail`は0〜300です。JobログはPreview APIを使い、client内でmetadata用とreplica／token用のAPI版を固定しています。実環境での提供状況・認可・実行ログ保持を確認するまでは取得成功を保証しません。
+
+execの`command.txt`には、目的が明確で短時間で終了するコマンドだけを保護保存します。最初の確認なら`pwd`などを選び、対話shell、長時間の待受け、無制限な追尾、環境変数や秘密の一括表示を避けます。`--seconds`は1〜600で、既定60秒です。この値が制限するのはclientの取得待機時間であり、切断時にリモートコマンドが必ず終了するという保証ではありません。protocol上、正常切断でもコマンドの終了コードは確認できません。保存出力と対象の事後状態を確認し、応答不明の更新コマンドを無条件で再送しません。
+
+### 実環境の確認結果を記録する
+
+今回の資材はBicepコンパイルと独立した合成入力によるローカル試験で確認しています。初期Azure配備、MIの実token取得、Blob／Workspaceの実データ、App／環境／JobのDev API、WebSocket exec、Serialの実ログインは別の実環境試験です。未実施の操作を検証済みにしません。7操作それぞれについて、対象、権限scope、ネットワーク到達、取得内容、必要なら拒否条件を保護証跡へ記録します。
+
+## Serial Consoleのローカル認証を準備する
+
+初期構築は`management.adminUsername`へローカル認証用パスワードを設定し、SSHのパスワード認証無効と公開鍵を維持します。このパスワードはSerial専用の認可機能ではなく、VM内のローカル認証にも使えます。Serial Consoleへ接続する人間には、Azure側の接続権限・サービス条件と、VM内のユーザー名／パスワードの両方が必要です。[Linux Serial Consoleの公式条件](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/serial-console-linux)も確認します。
+
+生成秘密は端末の`.local/<environment>/secrets/management-serial-credential.json`に保持します。POSIXではディレクトリ700・ファイル600、Windowsでは実DACLを検査・保護し、既存の共有ACLを黙って書き換えません。パスワードをparams/config、通常ログ、チャットへ転載せず、接続時だけ保護ファイルから非公開で参照します。構築成功後の`boundVmId`と秘密世代はVM個体との対応確認用であり、ログイン成功を示す値ではありません。
+
+接続時はWindows端末でAzure Portalへ認証し、Core stateと同じ管理VMの「Serial console（シリアルコンソール）」を開きます。ログインプロンプトを確認して、同じ秘密ファイルの`adminUsername`と`password`を入力します。まず`id`・`pwd`など状態を変えない操作でTTYを確認し、作業後はローカルセッションからログアウトします。既存VMで手動設定したパスワードを使っている場合は、その運用秘密を使い、未結び付けの初期生成ファイルから現在のパスワードを推測しません。
+
+同じ未作成VMの初期再試行ではpendingの同じ秘密を使います。配備成功後に同名VMを撤去し、新規構築するときは旧世代を保護archiveへ残して新しい秘密を作ります。既存VMがGET200で読めた場合は秘密を読まず、手動設定済みのパスワードも上書きしません。部分失敗でVMだけが作成済みになった場合や、一時secure入力・秘密の対応が失われた場合は、成功したものと推測して結び付け直しません。元の保護入力・配備記録を保持して現在のVM個体と照合します。
+
+Serialの接続・ローカルログイン・TTY操作と、SSH鍵認証が維持されていることを別々に実確認します。初期VMのsecure password受付、固定Ubuntuイメージでの動作、実Serialログインは、ローカル試験通過だけで合格とは扱いません。既存利用者の有無も確認してから接続します。
+
 ## 本人接続のSQL台帳
 
 Brokerの本人対応・セッションはAzure SQL、下流OAuth tokenはCMが管理します。Portalのログイン・キー台帳と、本人接続状態は別用途です。DB障害、照合ジョブ、SQL復元後の失効・再開は [SQL台帳とGateway配備](setup/credential-sql.md)と [接続セッションの契約](reference/credential-pool-design.md)に従います。ローカルSQLの試験状態をAzureの業務台帳へ同期しません。

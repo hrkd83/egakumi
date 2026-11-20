@@ -74,3 +74,5 @@ resource migration 'Microsoft.App/jobs@2025-01-01' = {
   dependsOn: [schemaImageAccess]
 }
 output name string = migration.name
+output id string = migration.id
+output environmentId string = environment.id

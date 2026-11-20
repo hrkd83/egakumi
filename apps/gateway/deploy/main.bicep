@@ -116,6 +116,17 @@ module broker 'broker.bicep' = if (brokerEnabled) {
   }
   dependsOn: [brokerAccess]
 }
+// Brokerの各配備段階で実際に作成したApp/Jobと、その環境だけに保守権限を付けます。
+module managementAccess '../../../infra/modules/management-aca-bindings.bicep' = if (brokerEnabled) {
+  name: '${stem}-gateway-management-access'
+  params: {
+    principalId: foundation.managementMaintenance.principalId
+    roleDefinitionIds: foundation.managementMaintenance.roleDefinitionIds
+    applicationNames: map(broker!.outputs.applicationIds, id => last(split(id, '/')))
+    jobNames: map(broker!.outputs.jobIds, id => last(split(id, '/')))
+    environmentNames: [last(split(broker!.outputs.environmentId, '/'))]
+  }
+}
 module settings 'apim-settings.bicep' = if (deployApplication) {
   name: '${stem}-gateway-apim-settings'
   params: {
@@ -133,6 +144,11 @@ module settings 'apim-settings.bicep' = if (deployApplication) {
 output migrationJob string = brokerEnabled ? broker!.outputs.migrationJob : ''
 output applicationName string = brokerEnabled ? broker!.outputs.applicationName : ''
 output databaseId string = brokerEnabled ? database!.outputs.databaseId : ''
+output managementMaintenance object = brokerEnabled ? {
+  applicationIds: broker!.outputs.applicationIds
+  jobIds: broker!.outputs.jobIds
+  environmentIds: [broker!.outputs.environmentId]
+} : { applicationIds: [], jobIds: [], environmentIds: [] }
 output credentialBroker object = brokerEnabled ? {
   applicationName: broker!.outputs.applicationName
   apimPrincipalId: foundation.apimPrincipalId

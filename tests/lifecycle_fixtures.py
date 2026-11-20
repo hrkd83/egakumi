@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
 from deployment.helpers import cleanup
 from deployment.helpers import prepare_secrets as secret_preparation
+from deployment.helpers import private_permissions
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.paths import local_paths
 from configuration_fixtures import connection_fixture, fixture, ssh_fixture_key
@@ -96,6 +97,20 @@ class LifecycleFixture:
         process_guard = mock.patch.object(lifecycle.subprocess, "run", side_effect=AssertionError("No CLI process is permitted in lifecycle tests"))
         process_guard.start()
         self.addCleanup(process_guard.stop)
+        if os.name == "nt":
+            acl = mock.patch.object(private_permissions, "_windows_owner_acl")
+            acl.start()
+            self.addCleanup(acl.stop)
+        # Serialの所有・世代・DACLは専用結合試験で検査する。他のhook試験には
+        # VM/RGのHTTP要求やnative ACL processを追加せず、入口の呼出しだけを残す。
+        for name, value in (("_prepare_management_serial_password", ""),
+                            ("_confirm_management_serial_target", None),
+                            ("_bind_management_serial_password", None),
+                            ("require_serial_storage_permissions", None),
+                            ("protect_serial_storage", None)):
+            patch = mock.patch.object(lifecycle, name, return_value=value)
+            patch.start()
+            self.addCleanup(patch.stop)
         # 通常hook試験でも生成JSONの保護保存を通す。azd環境へのパス登録だけを
         # process境界で受け、未知のCLI要求は実行せず失敗させる。
         def environment_only(arguments, **kwargs):

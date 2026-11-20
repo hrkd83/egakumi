@@ -21,6 +21,7 @@ from deployment.helpers.cleanup import CleanupError, _validate_state
 from deployment.helpers.apim_generations import assert_current_instance
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import LocalPaths, local_paths, private_parent
+from deployment.helpers.private_permissions import check_private_permissions, protect_new_path
 from deployment.lifecycle import ArmTransport
 
 
@@ -67,11 +68,14 @@ class OperationContext:
         return self.workspace.state / "latest.json"
 
     @classmethod
-    def load(cls, config_path: str | Path) -> OperationContext:
+    def load(cls, config_path: str | Path, *, runtime_root: str | Path | None = None) -> OperationContext:
         """保護入力とCore stateを照合する。Azure通信・入力の上書きはしない。"""
         try:
             config = load_configuration(config_path)
-            workspace = local_paths(config)
+            # An isolated source checkout may use another explicitly selected
+            # checkout's protected runtime. Never discover or copy inputs/state.
+            workspace = (local_paths(config) if runtime_root is None
+                         else local_paths(config, Path(runtime_root)))
             checked = workspace.checked(Path(config_path))
             workspace.check_selection(config)
             state_path = workspace.checked(workspace.state / "latest.json")
@@ -212,9 +216,11 @@ class OperationContext:
             text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2) + "\n"
             descriptor, name = tempfile.mkstemp(prefix=".operation-", dir=target.parent)
             temporary = Path(name)
+            # Protect the empty file before any private content is written.
             if os.name != "nt":
                 os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                protect_new_path(temporary)
                 stream.write(text)
                 stream.flush()
                 os.fsync(stream.fileno())

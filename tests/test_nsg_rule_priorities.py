@@ -1,4 +1,4 @@
-"""Compile all 72 fixed NSG rules with synthetic addresses; no Azure calls."""
+"""Compile all 76 fixed NSG rules with synthetic addresses; no Azure calls."""
 import copy
 import json
 from pathlib import Path
@@ -50,12 +50,15 @@ class NsgRulePriorityTests(unittest.TestCase):
         subnets = {'agw': prefix+'.0.0/24', 'pep': prefix+'.1.0/24', 'firewall': prefix+'.2.0/26',
                    'apim': prefix+'.2.64/26', 'management': prefix+'.2.128/26', 'aca': prefix+'.2.192/26'}
         sets = {k: [prefix+'.1.'+str(i), prefix+'.1.'+str(i+1)] for k, i in
-                (('foundry', 4), ('keyVault', 6), ('registry', 8), ('sql', 10))}
+                (('foundry', 4), ('keyVault', 6), ('registry', 8), ('sql', 10),
+                 ('auditStorageJapan', 12), ('auditStorageFoundry', 14))}
         if not multiple: sets = {k: v[:1] for k, v in sets.items()}
         ips = {'apim': prefix+'.2.68', 'aca': prefix+'.2.196', 'management': prefix+'.2.132',
                'firewallPublic': '192.0.2.10', 'appGatewayPublic': '198.51.100.10'}
         return {'config': {'subnetPrefixes': subnets}, 'resourcePrefix': 'test-fixture', 'subnetPrefixes': subnets,
                 'foundryPrivateIps': sets['foundry'], 'keyVaultPrivateIps': sets['keyVault'],
+                'auditStorageJapanPrivateIps': sets['auditStorageJapan'],
+                'auditStorageFoundryPrivateIps': sets['auditStorageFoundry'],
                 'managementPrivateIp': ips['management'], 'firewallPublicIpAddress': ips['firewallPublic'],
                 'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
                 'staticIp': ips['aca'], 'acaPrivateIp': ips['aca'], 'acaPrefix': subnets['aca'],
@@ -109,7 +112,7 @@ class NsgRulePriorityTests(unittest.TestCase):
     def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
         self.assertEqual(self.contract['version'], 2)
         self.assertEqual(set(self.contract['groups']), set(GROUPS))
-        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 11, 'management': 15}
+        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 13, 'management': 17}
         record_ids = set(); terminal = 0
         for g, group in self.contract['groups'].items():
             self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
@@ -125,9 +128,9 @@ class NsgRulePriorityTests(unittest.TestCase):
                     bands.setdefault((rule['direction'], start), []).append(rule['priority'])
             for (_, start), priorities in bands.items():
                 self.assertEqual(sorted(priorities), list(range(start, start+len(priorities))))
-        self.assertEqual((len(record_ids), terminal), (72, 6))
+        self.assertEqual((len(record_ids), terminal), (76, 6))
 
-    def test_all_72_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
+    def test_all_76_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
         for multiple, prefix in ((False, '10.70'), (True, '10.80')):
             p = self.parameters(multiple, prefix); actual = self.compiled_rules(p)
             for g, rules in actual.items():

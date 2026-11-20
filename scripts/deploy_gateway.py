@@ -29,6 +29,8 @@ from deployment.helpers.credential_image import (
 )
 from deployment.helpers.credential_broker_lifecycle import prepare_secret
 from deployment.helpers.credential_pools import broker_enabled, resource_names
+from deployment.helpers.management_maintenance import management_maintenance_inputs
+from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from standard_apis import resolve_publication_configuration
@@ -79,6 +81,8 @@ def foundation_inputs(config, state):
     schema = foundation.get('schemaIdentity')
     if not isinstance(schema, dict) or str(schema.get('id', '')).lower() != identity.lower():
         raise ValueError('Core schema identity differs from this environment')
+    foundation['managementMaintenance'] = management_maintenance_inputs(config, foundation.get('managementMaintenance'))
+    management_client_inventory(config, state)
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
     foundation['l7IngressSecretIdentifier'] = vault + 'core-l7-ingress-secret' if features.get('l7IngressEnabled') is True else ''
@@ -167,12 +171,13 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
                    callback_waf=configure_gateway_identity_callback_waf,
                    speech_waf=configure_gateway_speech_waf,
                    document_waf=configure_gateway_document_waf, data_waf=configure_data_waf, progress=print,
-                   publication_checkpoint=None):
+                   publication_checkpoint=None, client_prepare=update_management_client_assets):
     """SQL成功後だけアプリとAPIを更新する。共有鍵・CM接続・既存SQLデータは維持する。"""
     enabled = broker_enabled(config)
     if enabled:
         progress('Gateway: 資格情報DB・CM・SQL初期化ジョブを配備します。', flush=True)
-        deploy(config, values, templates['gateway'], transport)
+        initialized = deploy(config, values, templates['gateway'], transport)
+        client_prepare(config, state, initialized, transport, component='gateway')
         values['brokerKey'] = ''  # 2段階目に同じ鍵の新バージョンを作らない。
         job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
         execution = checked(transport, 'POST', job + '/start?api-version=' + APP_API,
@@ -182,6 +187,7 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
     values['deployApplication'] = True
     deployed = deploy(config, values, templates['gateway'], transport)
     if enabled:
+        client_prepare(config, state, deployed, transport, component='gateway')
         readiness_wait(config, transport)
     current = copy.deepcopy(state)
     current['outputs']['credentialBroker'] = deployed.get('credentialBroker', {})

@@ -384,6 +384,7 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         template = self.templates[module]
         parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
+            "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
             "apimPrivateIp": "10.70.2.68", "appGatewayPublicIpAddress": "198.51.100.10",
             "existingNetworkSecurityGroupNames": [],
