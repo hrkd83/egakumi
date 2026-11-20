@@ -348,42 +348,6 @@
           "type": "boolean",
           "default": false
         },
-        "queryGuards": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Live・Realtimeの作成とnative PII MCPのquery処理を入口ごとに切り替えます。observeで通常利用を比較してからrejectへ移行します。",
-          "default": {
-            "liveCreate": "observe",
-            "realtimeCreate": "observe",
-            "piiMcp": "observe"
-          },
-          "properties": {
-            "liveCreate": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            },
-            "realtimeCreate": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            },
-            "piiMcp": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            }
-          }
-        },
         "rateLimits": {
           "type": "object",
           "additionalProperties": false,

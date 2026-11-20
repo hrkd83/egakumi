@@ -117,7 +117,7 @@ test("同じモデルIDのResponsesを明示選択してから中継・ブラウ
   const response = await generate(fragment(raw, 5), { modelId: selected.id, operationId: "responses-create", readModels: () => [chatModel, selected], fetch: async (url, init) => {
     calls++; assert.equal(String(url), "https://gateway.example.invalid/models/openai/v1/responses");
     const body = JSON.parse(String(init?.body)); assert.equal(body.store, false); assert.equal(body.input, SAMPLE_TEXT_PROMPT); assert.equal(body.max_output_tokens, 128); assert.equal("messages" in body, false);
-    assert.equal(new Headers(init?.headers).get("X-Egakumi-Profile"), selected.profileId);
+    assert.equal(new Headers(init?.headers).get("X-Egakumi-Profile"), null);
     return new Response(fragment(raw, 5), { headers: { "content-type": "text/event-stream" } });
   } });
   assert.equal(response.status, 200);

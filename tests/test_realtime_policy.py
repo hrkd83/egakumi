@@ -2,6 +2,7 @@
 
 実XMLから取り出した式を合成入力で実行し、署名ticket、所有者、期限、call IDの結び付きを調べる。SDPや秘密値を通常出力へ残さない。
 """
+from policy_fixture_paths import policy_fixture_path
 import json
 import os
 import re
@@ -22,7 +23,7 @@ if not PWSH:
 
 def expression(filename, xpath, attribute=None):
     """XML内の指定位置からAPIMの実C#式を取り出す。想定外の形式なら試験を止める。"""
-    node = ET.parse(POLICIES / filename).find(xpath)
+    node = ET.parse(policy_fixture_path(POLICIES, filename)).find(xpath)
     value = node.get(attribute) if attribute else node.text
     assert value.strip().startswith("@{") and value.strip().endswith("}")
     return value.strip()[2:-1].replace("{{core-realtime-ticket-key}}", "a" * 128)
@@ -306,7 +307,7 @@ class PolicyStructureTests(unittest.TestCase):
         通常のC#コンパイルだけではこの制約を検出できないため、全公開XMLも調べる。
         """
         constructors = []
-        for path in POLICIES.glob("*.xml"):
+        for path in [*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml")]:
             for name in re.findall(r"\bthrow\s+new\s+([A-Za-z_][A-Za-z0-9_.]*)\s*\(", path.read_text()):
                 constructors.append(name)
                 with self.subTest(policy=path.name, exception=name):

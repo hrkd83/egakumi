@@ -13,14 +13,16 @@
       "displayName": "Image Generation",
       "method": "POST",
       "urlTemplate": "/flux-2/generations",
-      "templateParameters": []
+      "templateParameters": [],
+      "inputContract": {}
     },
     {
       "name": "flux2-edit",
       "displayName": "Image Editing",
       "method": "POST",
       "urlTemplate": "/flux-2/edits",
-      "templateParameters": []
+      "templateParameters": [],
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],
@@ -51,67 +53,16 @@
             "png"
           ]
         },
-        "defaultProfile": "flex",
-        "profiles": [
-          {
-            "kind": "bodyModel",
-            "bodyFormat": "json",
-            "maxRequestBytes": 524288000,
-            "allowedModels": [
-              "FLUX.2-flex"
-            ],
-            "integerLimits": {
-              "num_images": {
-                "minimum": 1,
-                "maximum": 1
-              },
-              "n": {
-                "minimum": 1,
-                "maximum": 1
-              }
-            },
-            "stringChoices": {
-              "output_format": [
-                "jpeg",
-                "png"
-              ]
-            },
-            "profileId": "flex",
-            "modalities": [
-              "text"
-            ],
+        "modelSettings": {
+          "FLUX.2-flex": {
+            "settingId": "flex",
             "backendUrlTemplate": "/providers/blackforestlabs/v1/flux-2-flex?api-version=preview"
           },
-          {
-            "kind": "bodyModel",
-            "bodyFormat": "json",
-            "maxRequestBytes": 524288000,
-            "allowedModels": [
-              "FLUX.2-pro"
-            ],
-            "integerLimits": {
-              "num_images": {
-                "minimum": 1,
-                "maximum": 1
-              },
-              "n": {
-                "minimum": 1,
-                "maximum": 1
-              }
-            },
-            "stringChoices": {
-              "output_format": [
-                "jpeg",
-                "png"
-              ]
-            },
-            "profileId": "pro",
-            "modalities": [
-              "text"
-            ],
+          "FLUX.2-pro": {
+            "settingId": "pro",
             "backendUrlTemplate": "/providers/blackforestlabs/v1/flux-2-pro?api-version=preview"
           }
-        ]
+        }
       },
       "flux2-edit": {
         "kind": "bodyModel",
@@ -137,69 +88,16 @@
             "png"
           ]
         },
-        "defaultProfile": "flex",
-        "profiles": [
-          {
-            "kind": "bodyModel",
-            "bodyFormat": "json",
-            "maxRequestBytes": 524288000,
-            "allowedModels": [
-              "FLUX.2-flex"
-            ],
-            "integerLimits": {
-              "num_images": {
-                "minimum": 1,
-                "maximum": 1
-              },
-              "n": {
-                "minimum": 1,
-                "maximum": 1
-              }
-            },
-            "stringChoices": {
-              "output_format": [
-                "jpeg",
-                "png"
-              ]
-            },
-            "profileId": "flex",
-            "modalities": [
-              "text",
-              "image"
-            ],
+        "modelSettings": {
+          "FLUX.2-flex": {
+            "settingId": "flex",
             "backendUrlTemplate": "/providers/blackforestlabs/v1/flux-2-flex?api-version=preview"
           },
-          {
-            "kind": "bodyModel",
-            "bodyFormat": "json",
-            "maxRequestBytes": 524288000,
-            "allowedModels": [
-              "FLUX.2-pro"
-            ],
-            "integerLimits": {
-              "num_images": {
-                "minimum": 1,
-                "maximum": 1
-              },
-              "n": {
-                "minimum": 1,
-                "maximum": 1
-              }
-            },
-            "stringChoices": {
-              "output_format": [
-                "jpeg",
-                "png"
-              ]
-            },
-            "profileId": "pro",
-            "modalities": [
-              "text",
-              "image"
-            ],
+          "FLUX.2-pro": {
+            "settingId": "pro",
             "backendUrlTemplate": "/providers/blackforestlabs/v1/flux-2-pro?api-version=preview"
           }
-        ]
+        }
       }
     }
   },

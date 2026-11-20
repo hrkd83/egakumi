@@ -14,7 +14,8 @@
       "method": "POST",
       "urlTemplate": "/generations",
       "templateParameters": [],
-      "backendUrlTemplate": "/openai/v1/images/generations?api-version=preview"
+      "backendUrlTemplate": "/openai/v1/images/generations?api-version=preview",
+      "inputContract": {}
     },
     {
       "name": "image-edit",
@@ -29,7 +30,8 @@
           "required": true
         }
       ],
-      "backendUrlTemplate": "/openai/deployments/{deployment}/images/edits?api-version=2025-04-01-preview"
+      "backendUrlTemplate": "/openai/deployments/{deployment}/images/edits?api-version=2025-04-01-preview",
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],
@@ -57,6 +59,7 @@
         "kind": "pathModel",
         "maxRequestBytes": 524288000,
         "bodyFormat": "multipart",
+        "requestBodySizeCheck": "declared",
         "parameter": "deployment",
         "allowedModels": [
           "gpt-image-2.5-flare",

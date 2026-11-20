@@ -55,7 +55,7 @@ def load_model_capabilities(path=CAPABILITIES_FILE):
 
 
 def apply_model_capabilities(definitions, capabilities=None, bindings=None):
-    """既存profile IDを保ち、モデル別の上限と不明理由だけを付与する。"""
+    """操作の基本設定へ、モデル別の上限と不明理由を一度だけ付与する。"""
     capabilities = capabilities if capabilities is not None else load_model_capabilities()
     bindings = bindings or {}
     index = {(api, operation, entry["modelId"]): entry for entry in capabilities["entries"] for api in entry["apiIds"] for operation in entry["operationIds"]}
@@ -65,20 +65,14 @@ def apply_model_capabilities(definitions, capabilities=None, bindings=None):
         for operation, constraint in api.get("authorization", {}).get("operationConstraints", {}).items():
             if (api["name"], operation) not in covered:
                 continue
-            for selected in constraint.get("profiles", [constraint]):
-                websocket = api.get("websocket", {})
-                models = selected.get("allowedModels") or ([selected["model"]] if selected.get("model") else websocket.get("allowedModels") or websocket.get("session", {}).get("models") or [websocket.get("queryParameters", {}).get("model")])
-                resolved = [bindings.get(model[2:-2], model) if isinstance(model, str) and model.startswith("__") and model.endswith("__") else model for model in models]
-                if not resolved or any((api["name"], operation, model) not in index for model in resolved):
-                    raise ValueError("A published model has no verified capability entry")
-                limits = {model: index[(api["name"], operation, model)]["maxOutputTokens"] for model in resolved}
-                selected["maxOutputTokensByModel"] = limits
-                selected["outputTokenLimitKinds"] = {model: index[(api["name"], operation, model)]["limitKind"] for model in resolved}
-                numbers = [number for number in limits.values() if number is not None]
-                selected["maxOutputTokens"] = max(numbers) if numbers else None
-            if constraint.get("profiles"):
-                constraint["maxOutputTokensByModel"] = {model: limit for selected in constraint["profiles"] for model, limit in selected["maxOutputTokensByModel"].items()}
-                constraint["outputTokenLimitKinds"] = {model: kind for selected in constraint["profiles"] for model, kind in selected["outputTokenLimitKinds"].items()}
-                numbers = [number for number in constraint["maxOutputTokensByModel"].values() if number is not None]
-                constraint["maxOutputTokens"] = max(numbers) if numbers else None
+            websocket = api.get("websocket", {})
+            models = constraint.get("allowedModels") or ([constraint["model"]] if constraint.get("model") else websocket.get("allowedModels") or websocket.get("session", {}).get("models") or [websocket.get("queryParameters", {}).get("model")])
+            resolved = [bindings.get(model[2:-2], model) if isinstance(model, str) and model.startswith("__") and model.endswith("__") else model for model in models]
+            if not resolved or any((api["name"], operation, model) not in index for model in resolved):
+                raise ValueError("A published model has no verified capability entry")
+            limits = {model: index[(api["name"], operation, model)]["maxOutputTokens"] for model in resolved}
+            constraint["maxOutputTokensByModel"] = limits
+            constraint["outputTokenLimitKinds"] = {model: index[(api["name"], operation, model)]["limitKind"] for model in resolved}
+            numbers = [number for number in limits.values() if number is not None]
+            constraint["maxOutputTokens"] = max(numbers) if numbers else None
     return result

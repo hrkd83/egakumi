@@ -60,9 +60,9 @@ WebRTCの音声と主DataChannel
 | 実装 | 確認した内容 | 遅延評価への意味 |
 | --- | --- | --- |
 | [Realtime作成policy](../../apps/gateway/apim/policies/realtime-create.xml#L1) | APIMが短期資格情報を取得し、続いてSDPを送る。資格情報を要求内に保持する | 接続開始には直列の上流処理がある。確立後の音声フレームごとにこの処理を行う構成ではない |
-| [WebSocket policy](../../apps/gateway/apim/policies/protocol.xml#L1) | 初回handshakeの認可と上流への接続 | 通話中の音声はAPIMを経由するが、各メッセージに通常RESTのpolicyを適用する仕組みではない |
+| [WebSocket policy](../../apps/gateway/apim/policies/api-templates/protocol.xml#L1) | 初回handshakeの認可と上流への接続 | 通話中の音声はAPIMを経由するが、各メッセージに通常RESTのpolicyを適用する仕組みではない |
 | [AppGW](../../infra/modules/application-gateway.bicep#L325) | 応答バッファリング無効、backend timeoutは設定値600秒 | SSEの逐次転送を支える。600秒は会話の応答速度を表す値ではない |
-| [APIM転送](../../apps/gateway/apim/policies/protocol.xml#L152) | `buffer-response="false"`、timeout 240秒 | 応答の逐次転送とtimeoutの設定であり、TCPの再送待ちやモデル処理を除去しない |
+| [APIM転送](../../apps/gateway/apim/policies/api-templates/protocol.xml#L152) | `buffer-response="false"`、timeout 240秒 | 応答の逐次転送とtimeoutの設定であり、TCPの再送待ちやモデル処理を除去しない |
 | [往復ルート](../../infra/modules/network.bicep#L580)・[APIM VIP宛ルート](../../infra/modules/network-bindings.bicep#L169) | AppGWとAPIMの往復をFirewallへ向け、PE宛はVNet内経路を維持 | APIM→Foundry PEが、既定ルートによって必ずFirewallをもう一度通るわけではない |
 
 ## 電話サービス→自社サーバー→WebRTC→AIへの対応
@@ -83,7 +83,7 @@ WebRTCの音声と主DataChannel
 | Core：Realtime mini | 現行CoreはminiのWebRTCを公開しない | miniが必要な場合だけ、固定モデルの作成・終了・所有者契約を追加設計する |
 | Core：Voice Liveを選ぶ場合 | WebRTC用WSS制御契約はある。RealtimeのREST契約とは別 | 専用の制御URL・モデル・API版・認可を使用し、サービス固有のメディア経路と終了を受け入れる |
 
-根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network-bindings.bicep#L144)。
+根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/api-templates/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/api-templates/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network-bindings.bicep#L144)。
 
 ### 既存Coreを利用する接続手順
 
@@ -131,7 +131,7 @@ Voice Liveを選ぶ場合、自社アプリはCoreの`wss://<Gateway>/models/voi
 
 **長い電話通話では600秒の所有者チケット期限を見直す。** 公開例の`sessionTtlSeconds`は、Azure側の通話時間上限や自動切断タイマーではない。期限が切れれば、Coreのhangupと新規sideband接続が403になる。設定検証の許容範囲は60〜3600秒で、作成・終了・利用するobserverの値を一致させる必要がある。想定通話時間に終了・再試行の余裕を加えて設定し、アプリ側にも時間上限を持たせる。範囲を超える要件では、チケット更新または別の通話継続契約を追加設計する。単に設定上限を広げるだけでは、所有者の再認可やAzure側の制限の確認は完了しない。[制御APIの期限](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[observerの期限](../../apps/gateway/apim/apis/openai-realtime-observer-v1.json)、[期限の検証](../../scripts/deployment/helpers/configuration.py#L475)、[observerとの整合](../../scripts/deployment/helpers/configuration.py#L901)
 
-また、購読単位の共通回数制限は既定で無効（無制限）であり、60要求／60秒は有効化した場合の初期値にすぎない。同時通話数の上限でもない。Realtimeのhangupとobserverは共通回数制限から除外されている。新規通話・再接続・共用API負荷を見て必要な場合にだけ共通回数制限と購読別overrideを設定し、同時通話・キュー・CPUの制限は自社アプリ側でも管理する。[Coreの回数制限](../../apps/gateway/apim/policies/rate-limit.xml#L6)、[停止操作の除外](../../apps/gateway/apim/policies/gateway.xml#L227)、[observerの除外](../../apps/gateway/apim/api-publication.bicep#L144)
+また、購読単位の共通回数制限は既定で無効（無制限）であり、60要求／60秒は有効化した場合の初期値にすぎない。同時通話数の上限でもない。Realtimeのhangupとobserverは共通回数制限から除外されている。新規通話・再接続・共用API負荷を見て必要な場合にだけ共通回数制限と購読別overrideを設定し、同時通話・キュー・CPUの制限は自社アプリ側でも管理する。[Coreの回数制限](../../apps/gateway/apim/policies/rate-limit.xml#L6)、[停止操作の除外](../../apps/gateway/apim/policies/api-templates/gateway.xml#L227)、[observerの除外](../../apps/gateway/apim/api-publication.bicep#L144)
 
 ### 配置先の基盤で確認するネットワーク条件
 

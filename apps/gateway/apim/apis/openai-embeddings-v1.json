@@ -13,7 +13,8 @@
       "displayName": "Embeddings",
       "method": "POST",
       "urlTemplate": "/embeddings",
-      "templateParameters": []
+      "templateParameters": [],
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],

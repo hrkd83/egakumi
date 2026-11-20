@@ -43,8 +43,7 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                    for name, definition in self.template['parameters'].items()
                    if 'defaultValue' in definition},
                 "apiDefinitions": self.definitions if definitions is None else definitions,
-                "publishApis": True, "l7IngressSecretIdentifier": "",
-                "queryGuards": self.config["gateway"]["queryGuards"]}
+                "publishApis": True, "l7IngressSecretIdentifier": ""}
 
     def value(self, expression, definitions=None, index=0):
         return DiscoveryExpression(expression, self.template["variables"], functions=self.template["functions"]).evaluate(self.parameters(definitions), index)
@@ -100,7 +99,8 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 self.assertEqual(json.loads(lines[2]), {
                     "operationId": api["mcp"]["operationNames"][0],
                     "operationConstraints": api["authorization"]["operationConstraints"],
-                    "tokenLimitOperationIds": []})
+                    "tokenLimitOperationIds": [], "queryObservations": {}, "inputContracts": {},
+                    "mcpQueryObservations": {method+" /mcp": api["mcp"]["queryObservation"] for method in ("POST","GET","DELETE")} if "queryObservation" in api["mcp"] else {}})
                 inbound = list(root.find("inbound"))
                 calls = root.findall('./inbound/include-fragment[@fragment-id="core-api-settings"]')
                 self.assertEqual(len(calls), 1)
@@ -161,7 +161,10 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
             with self.subTest(api=api["name"]):
                 root = ET.fromstring(policy)
                 self.assertNotRegex(policy, r"__[A-Z][A-Z0-9_]*__")
-                self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
+                if api["apiType"] == "http":
+                    self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-api-authentication-result"]'))
+                else:
+                    self.assertIsNotNone(root.find('./inbound/set-variable[@name="gatewayDecision"]'))
                 self.assertNotEqual(api["apiType"], "grpc")
                 if api["apiType"] == "websocket":
                     self.assertEqual(root.findall('.//set-body'), [])

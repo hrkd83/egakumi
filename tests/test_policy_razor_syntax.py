@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from policy_fixture_paths import policy_fixture_path
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -33,7 +34,11 @@ def policy_expressions():
     """配備と同じ監査rendererでC#正本を展開し、XML内のAPIM式を集める。"""
     cases = []
     for path in sorted(set([*POLICIES.glob("*.xml"),
-                            *(POLICIES / "credential-login").glob("*.xml"), SERVICE_POLICY])):
+                            *(POLICIES / "api-templates").glob("*.xml"),
+                            *(POLICIES / "credential-login").glob("*.xml"), SERVICE_POLICY,
+                            POLICIES / "fragments/request/core-query-observation/core-query-observation.xml",
+                            POLICIES / "fragments/request/core-api-input-validation/core-api-input-validation.xml",
+                            policy_fixture_path(POLICIES, "core-model-limits.xml")])):
         rendered = render_audit_policy(path.read_text(encoding="utf-8"))
         if any(marker in rendered for marker in SOURCE_EXPRESSION_FILES):
             raise AssertionError(f"Audit source markers remain unexpanded in {path.name}")
@@ -119,6 +124,16 @@ class PolicyRazorSyntaxTests(unittest.TestCase):
         for name in ("start", "status", "launch-post", "callback", "logout"):
             with self.subTest(operation=name):
                 self.assertTrue(any(case["id"].startswith(name + ".xml:") for case in self.cases))
+
+    def test_core_query_guard_expression_is_checked_from_its_canonical_fragment(self):
+        cases = [case for case in self.cases if case["id"].startswith("core-query-observation.xml:")]
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(self.results[cases[0]["id"]], [])
+
+    def test_core_input_validation_expression_is_checked_from_its_canonical_fragment(self):
+        cases = [case for case in self.cases if case["id"].startswith("core-api-input-validation.xml:")]
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(self.results[cases[0]["id"]], [])
 
     def test_audit_detects_legal_csharp_that_razor_rejects(self):
         for case_id in ("invalid-if-foreach", "invalid-loop", "invalid-else"):

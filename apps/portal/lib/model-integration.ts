@@ -17,7 +17,7 @@ export type TextGenerationOptions = { message: string; maxOutputTokens?: number 
 export type IntegrationJsonSchema = Record<string, unknown>;
 
 /**
- * 選択したAPIプロファイルに適合する、利用者の入力を含むリクエスト本文を生成します。
+ * 選択したモデルとAPI操作に合わせて、利用者の入力を含むリクエスト本文を生成します。
  * @remarks サーバーと画面で同じ関数を使い、表示例と実際の送信内容のずれを防ぎます。
  */
 export function buildTextGenerationRequest(model: TextGenerationModel, options: TextGenerationOptions): Record<string, unknown> {
@@ -53,12 +53,11 @@ export function getTextGenerationEndpoint(model: Pick<TextGenerationModel, "path
 }
 
 /** APIキーは例の中でも環境変数として表現し、実値を受け取る引数を設けません。 */
-export function getTextGenerationHeaders(model: TextGenerationModel, stream: boolean): Record<string, string> {
+export function getTextGenerationHeaders(stream: boolean): Record<string, string> {
   return {
     "Content-Type": "application/json",
     Accept: stream ? "text/event-stream" : "application/json",
     "api-key": "${GATEWAY_API_KEY}",
-    "X-Egakumi-Profile": model.profileId,
   };
 }
 
@@ -168,7 +167,7 @@ function shellQuote(value: string): string { return `'${value.replaceAll("'", "'
 function phpQuote(value: string): string { return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`; }
 
 /** TypeScriptのサーバー実装例です。SSEはチャンク単位のまま表示し、イベント境界を仮定しません。 */
-function typescriptExample(url: string, profile: string, body: string, stream: boolean): string {
+function typescriptExample(url: string, body: string, stream: boolean): string {
   return `import process from "node:process";
 
 // Node.jsのサーバー側で実行します。キーをブラウザーへ渡さないでください。
@@ -181,7 +180,6 @@ const response = await fetch(${JSON.stringify(url)}, {
     "Content-Type": "application/json",
     Accept: "${stream ? "text/event-stream" : "application/json"}",
     "api-key": apiKey,
-    "X-Egakumi-Profile": ${JSON.stringify(profile)},
   },
   body: JSON.stringify(${body}),
   redirect: "error",
@@ -204,7 +202,7 @@ console.log(JSON.stringify(result, null, 2));`}
 }
 
 /** Python標準ライブラリだけで実行できる、サーバー側の組み込み例です。 */
-function pythonExample(url: string, profile: string, body: string, stream: boolean): string {
+function pythonExample(url: string, body: string, stream: boolean): string {
   const pythonJson = body.replaceAll("'", "\\u0027");
   return `import json
 import os
@@ -227,7 +225,6 @@ request = urllib.request.Request(
         "Content-Type": "application/json",
         "Accept": "${stream ? "text/event-stream" : "application/json"}",
         "api-key": api_key,
-        "X-Egakumi-Profile": ${JSON.stringify(profile)},
     },
     method="POST",
 )
@@ -241,7 +238,7 @@ ${stream ? `    # SSEの生データを確認します。空行がイベント�
 }
 
 /** PHPのサーバー側で環境変数とcURLを使う組み込み例です。 */
-function phpExample(url: string, profile: string, body: string, stream: boolean): string {
+function phpExample(url: string, body: string, stream: boolean): string {
   return `<?php
 $apiKey = getenv('GATEWAY_API_KEY');
 if (!$apiKey) { throw new RuntimeException('GATEWAY_API_KEY is required'); }
@@ -255,7 +252,6 @@ curl_setopt_array($curl, [
         'Content-Type: application/json',
         'Accept: ${stream ? "text/event-stream" : "application/json"}',
         'api-key: ' . $apiKey,
-        ${phpQuote(`X-Egakumi-Profile: ${profile}`)},
     ],
     CURLOPT_POSTFIELDS => $body,
     CURLOPT_FOLLOWLOCATION => false,
@@ -275,7 +271,7 @@ ${stream ? "" : "echo json_encode(json_decode($result, true, 512, JSON_THROW_ON_
 }
 
 /** C#のサーバー側でHttpClientを使う組み込み例です。 */
-function csharpExample(url: string, profile: string, body: string, stream: boolean): string {
+function csharpExample(url: string, body: string, stream: boolean): string {
   return `using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -287,7 +283,6 @@ using var handler = new HttpClientHandler { AllowAutoRedirect = false };
 using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
 using var request = new HttpRequestMessage(HttpMethod.Post, ${JSON.stringify(url)});
 request.Headers.Add("api-key", apiKey);
-request.Headers.Add("X-Egakumi-Profile", ${JSON.stringify(profile)});
 request.Headers.Add("Accept", "${stream ? "text/event-stream" : "application/json"}");
 request.Content = new StringContent("""
 ${body}
@@ -305,7 +300,7 @@ Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { W
 }
 
 /** コマンドラインで同じ本文を送信する例です。キーは履歴に直書きしません。 */
-function curlExample(url: string, profile: string, body: string, stream: boolean): string {
+function curlExample(url: string, body: string, stream: boolean): string {
   return `: "\${GATEWAY_API_KEY:?GATEWAY_API_KEY is required}"
 curl --silent --show-error --fail-with-body${stream ? " --no-buffer" : ""} \\
   --connect-timeout 10 \\
@@ -313,7 +308,6 @@ curl --silent --show-error --fail-with-body${stream ? " --no-buffer" : ""} \\
   --header 'Content-Type: application/json' \\
   --header 'Accept: ${stream ? "text/event-stream" : "application/json"}' \\
   --header "api-key: $GATEWAY_API_KEY" \\
-  --header ${shellQuote(`X-Egakumi-Profile: ${profile}`)} \\
   --data-binary @- <<'JSON'
 ${body}
 JSON
@@ -328,10 +322,10 @@ export function getIntegrationExample(language: IntegrationLanguage, model: Text
   const url = getTextGenerationEndpoint(model, gatewayOrigin);
   const body = JSON.stringify(buildTextGenerationRequest(model, options), null, 2);
   switch (language) {
-    case "typescript": return typescriptExample(url, model.profileId, body, options.stream);
-    case "python": return pythonExample(url, model.profileId, body, options.stream);
-    case "php": return phpExample(url, model.profileId, body, options.stream);
-    case "csharp": return csharpExample(url, model.profileId, body, options.stream);
-    case "curl": return curlExample(url, model.profileId, body, options.stream);
+    case "typescript": return typescriptExample(url, body, options.stream);
+    case "python": return pythonExample(url, body, options.stream);
+    case "php": return phpExample(url, body, options.stream);
+    case "csharp": return csharpExample(url, body, options.stream);
+    case "curl": return curlExample(url, body, options.stream);
   }
 }

@@ -1,4 +1,10 @@
 <fragment>
+  <!-- 同名XML/C#への移設前に固定した公開fixture。実C#差分テストの比較元として保持し、新正本から再生成しません。 -->
+  <!-- ========== 共有のquery設定の読み込み ========== -->
+  <!-- 目的：Live・Realtime・PII MCPの観測・拒否設定を、APIごとの複製ではなく一箇所で管理します。 -->
+  <!-- 処理：名前付きの値core-query-guard-modesのJSONを、この要求のgatewayQueryGuardModesへ保存します。後の判定で対象入口の設定だけを読みます。 -->
+  <set-variable name="gatewayQueryGuardModes" value="{{core-query-guard-modes}}" />
+  <!-- === -->
   <!-- 認証済みの固定入口だけを検査します。本文やquery値を読み取ったり書き換えたりしません。 -->
   <set-variable name="gatewayQueryGuardDecision" value="@{
     var result = new JObject(new JProperty(&quot;route&quot;, &quot;none&quot;), new JProperty(&quot;mode&quot;, &quot;observe&quot;),

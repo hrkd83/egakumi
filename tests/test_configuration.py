@@ -190,6 +190,38 @@ class PublicSampleTests(unittest.TestCase):
                 configuration.load_configuration(CORE / "params" / (name + ".example.json"))
 
 
+class QueryObservationConfigurationTests(unittest.TestCase):
+    """操作/受付に観測ラベルを任意指定し、廃止設定の入力を拒否する。"""
+
+    def test_retired_gateway_modes_and_operation_names_are_rejected(self):
+        for value in ({}, {"liveCreate":"reject"}, None):
+            raw=pii_fixture()
+            raw["gateway"]["queryGuards"]=value
+            with self.subTest(value=value), self.assertRaises(configuration.ConfigurationError):
+                configuration.normalize_configuration(raw,base_directory=CORE/"config")
+        raw=pii_fixture()
+        raw["apiDefinitions"][0]["operations"][0]["queryGuard"]="piiRestRule"
+        with self.assertRaises(configuration.ConfigurationError):
+            configuration.normalize_configuration(raw,base_directory=CORE/"config")
+
+    def test_http_and_generated_mcp_references_are_independent_and_optional(self):
+        raw = pii_fixture()
+        api = raw["apiDefinitions"][0]
+        api["operations"][0]["queryObservation"] = "piiRestRule"
+        api["mcp"]["queryObservation"] = "piiFacadeRule"
+        result = configuration.normalize_configuration(raw, base_directory=CORE / "config")["apiDefinitions"][0]
+        self.assertEqual(result["operations"][0]["queryObservation"], "piiRestRule")
+        self.assertEqual(result["mcp"]["queryObservation"], "piiFacadeRule")
+        self.assertNotIn("queryObservation", configuration.normalize_configuration(pii_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]["mcp"])
+        for scope in ("operation", "mcp"):
+            for value in (None, False, {}, "none", "unknown", "invalid.rule"):
+                changed = pii_fixture()
+                target = changed["apiDefinitions"][0]
+                (target["operations"][0] if scope == "operation" else target["mcp"])["queryObservation"] = value
+                with self.subTest(scope=scope, value=value), self.assertRaises(configuration.ConfigurationError):
+                    configuration.normalize_configuration(changed, base_directory=CORE / "config")
+
+
 class CanonicalApiConfigurationTests(unittest.TestCase):
     """統合でURLの境界がなくなっても、元契約・権限・上限を保持する。"""
 
@@ -221,7 +253,7 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "maxRequestBytes"):
             self.normalize(raw)
 
-    def test_same_identity_can_keep_disjoint_text_and_pdf_contracts(self):
+    def test_operation_defaults_and_model_settings_preserve_limits(self):
         actual = self.normalize(profiled_api_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["name"], "openai-inference-v1")
         self.assertEqual(actual["serviceClass"], "platform")
@@ -229,25 +261,26 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         self.assertEqual(authorization["mode"], "subscriptionKey")
         self.assertEqual(set(authorization), {"mode", "operationConstraints"})
         constraint = authorization["operationConstraints"]["responses-create"]
-        self.assertEqual(constraint["defaultProfile"], "response")
-        profiles = {entry["profileId"]: entry for entry in constraint["profiles"]}
-        self.assertEqual(profiles["response"]["maxRequestBytes"], 32768)
-        self.assertEqual(profiles["pdf"]["maxRequestBytes"], 2048000)
-        self.assertEqual(profiles["response"]["maxOutputTokens"], 128)
-        self.assertEqual(profiles["pdf"]["maxOutputTokens"], 512)
-        self.assertEqual(profiles["response"]["modalities"], ["text"])
-        self.assertEqual(profiles["pdf"]["modalities"], ["text", "file"])
+        settings = constraint["modelSettings"]
+        self.assertEqual(constraint["allowedModels"], ["gpt-approved", "gpt-secondary"])
+        self.assertEqual(constraint["maxRequestBytes"], 2048000)
+        self.assertEqual(settings["gpt-approved"]["maxRequestBytes"], 32768)
+        self.assertEqual(settings["gpt-secondary"]["maxRequestBytes"], 2048000)
+        self.assertEqual(constraint["maxOutputTokens"], 128)
+        self.assertNotIn("maxOutputTokens", settings["gpt-approved"])
+        self.assertEqual(settings["gpt-secondary"]["maxOutputTokens"], 512)
+        self.assertEqual(settings["gpt-approved"]["settingId"], "response")
 
 
-    def test_profiles_cannot_be_recursive_unknown_or_missing_from_grants(self):
-        for mutation in ("recursive", "unknownDefault", "unknownModality", "wrongKind"):
+    def test_model_settings_cannot_be_recursive_unknown_or_change_the_contract(self):
+        for mutation in ("recursive", "unknownModel", "invalidSettingId", "wrongKind"):
             raw = profiled_api_fixture()
             authorization = raw["apiDefinitions"][0]["authorization"]
             constraint = authorization["operationConstraints"]["responses-create"]
-            if mutation == "recursive": constraint["profiles"][0]["profiles"] = []
-            if mutation == "unknownDefault": constraint["defaultProfile"] = "unregistered"
-            if mutation == "unknownModality": constraint["profiles"][0]["modalities"] = ["arbitrary"]
-            if mutation == "wrongKind": constraint["profiles"][0]["kind"] = "bodyModel"
+            if mutation == "recursive": constraint["modelSettings"]["gpt-approved"]["modelSettings"] = {}
+            if mutation == "unknownModel": constraint["modelSettings"]["unregistered"] = {}
+            if mutation == "invalidSettingId": constraint["modelSettings"]["gpt-approved"]["settingId"] = "invalid*"
+            if mutation == "wrongKind": constraint["modelSettings"]["gpt-approved"]["kind"] = "bodyModel"
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
                 self.normalize(raw)
 
@@ -261,10 +294,10 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "classified as sample"):
             self.normalize(raw)
 
-    def test_flat_custom_api_without_optional_profiles_is_supported(self):
+    def test_flat_custom_api_without_optional_model_settings_is_supported(self):
         actual = self.normalize(api_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["name"], "models")
-        self.assertNotIn("profiles", actual["authorization"]["operationConstraints"]["responses-create"])
+        self.assertNotIn("modelSettings", actual["authorization"]["operationConstraints"]["responses-create"])
 
 
 class PortableFileReferenceTests(unittest.TestCase):
@@ -1144,7 +1177,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
 class PolicySourceTests(unittest.TestCase):
     """公開サンプルと配備設定の型・値・組合せ・秘密ファイル境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
-        self.root = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").getroot()
+        self.root = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot()
         self.guard = next(element.attrib["value"] for element in self.root.iter("set-variable") if element.attrib.get("name") == "gatewayTargetAllowed")
 
     def test_stateless_post_has_exact_route_and_allowed_models(self):

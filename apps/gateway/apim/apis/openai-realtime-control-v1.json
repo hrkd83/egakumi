@@ -13,6 +13,7 @@
       "displayName": "Realtime Create",
       "method": "POST",
       "urlTemplate": "/calls",
+      "queryObservation": "realtimeCreate",
       "templateParameters": []
     },
     {

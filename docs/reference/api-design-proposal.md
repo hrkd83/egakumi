@@ -28,20 +28,20 @@ APIは引き続き、**公開契約 × 公開major version × 通信方式 × �
 |---|---|---|
 | API | 要求・応答・認証境界・通信方式としてまとまった公開契約 | OpenAI互換推論、Cohere、FLUX、Realtime WebSocket |
 | Operation | HTTPメソッドとルートで表す操作 | Chat Completions、Responses、画像生成、画像編集 |
-| 入力profile | 同じOperation内の入力・要求上限・モデル別パラメーターの違い | 通常会話、画像入力、互換Chat、PDF入力 |
+| 操作設定 | Operationの基本設定とモデル名別の差分。クライアントはモデルを指定する | 出力token項目、モデル別の固定上流URI |
 | モデル配備 | 実行する配備名・固定版・SKU・容量 | `gpt-6.1-sol`、`DeepSeek-V4-Pro`、`FLUX.2-pro` |
 | Product | APIを提供・購読するまとまり | `released-apis`、`model-users`、`pii-users`、`connection-users` |
 
-OpenAI互換のChat要求は、既存の`openai-inference-v1`へまとめる。このAPI名のOpenAIは公開プロトコルを表す。DeepSeek・Mistral・Grok・Routerの追加は、そのChat Operationの許可モデルとprofileの拡張として扱う。[AzureのOpenAI互換v1 API](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle)
+OpenAI互換のChat要求は、既存の`openai-inference-v1`へまとめる。このAPI名のOpenAIは公開プロトコルを表す。DeepSeek・Mistral・Grok・Routerの追加は、そのChat Operationの許可モデルとモデル別設定の追加として扱う。[AzureのOpenAI互換v1 API](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle)
 
-同じ要求・応答形式のモデル差は、Operation内のモデル選択・profile・固定ルーティング表へ寄せる。独立した会話セッション契約を持つLiveとRealtimeは、APIを分ける。WebSocket内のイベントは、その接続契約のメッセージとして管理する。
+同じ要求・応答形式のモデル差は、Operation内のモデル選択・モデル別設定・固定ルーティング表へ寄せる。独立した会話セッション契約を持つLiveとRealtimeは、APIを分ける。WebSocket内のイベントは、その接続契約のメッセージとして管理する。
 
 ```mermaid
 flowchart TD
     API[OpenAI互換推論 API] --> Chat[Chat Completions Operation]
     API --> Responses[Responses Operation]
-    Chat --> Text[chat / compatible / vision profile]
-    Responses --> Input[response / pdf profile]
+    Chat --> Text[操作の基本設定とモデル別差分]
+    Responses --> Input[操作の基本設定とモデル別差分]
     Text --> Models[許可した配備名を選択]
     Input --> Models
 ```
@@ -104,10 +104,10 @@ flowchart TD
 | 5 | `gpt-5.6-luna` | `openai-inference-v1` | Chat／Responses |
 | 6 | `gpt-5.6-sol` | `openai-inference-v1` | Chat／Responses |
 | 7 | `gpt-5.6-terra` | `openai-inference-v1` | Chat／Responses |
-| 8 | `DeepSeek-V4-Flash` | `openai-inference-v1` | Chatのcompatible profile |
-| 9 | `DeepSeek-V4-Pro` | `openai-inference-v1` | Chatのcompatible profile |
-| 10 | `Mistral-Large-3` | `openai-inference-v1` | Chatのcompatible profile |
-| 11 | `grok-4.7` | `openai-inference-v1` | Chatのcompatible profile |
+| 8 | `DeepSeek-V4-Flash` | `openai-inference-v1` | Chatのモデル別出力項目`max_tokens` |
+| 9 | `DeepSeek-V4-Pro` | `openai-inference-v1` | Chatのモデル別出力項目`max_tokens` |
+| 10 | `Mistral-Large-3` | `openai-inference-v1` | Chatのモデル別出力項目`max_tokens` |
+| 11 | `grok-4.7` | `openai-inference-v1` | Chatのモデル別出力項目`max_tokens` |
 | 12 | `gpt-live-1` | `openai-live-control-v1`・`openai-live-ws-v1` | Liveセッション作成／接続 |
 | 13 | `gpt-realtime-2.1` | `openai-realtime-control-v1`・`openai-realtime-ws-v1`・`openai-realtime-observer-v1` | WebRTC制御／WSS／sideband |
 | 14 | `gpt-realtime-2.1-mini` | `openai-realtime-ws-v1` | WSSのmodelクエリー選択 |
@@ -116,49 +116,49 @@ flowchart TD
 | 17 | `gpt-image-2.5-flare` | `openai-images-v1` | 画像生成／編集 |
 | 18 | `gpt-image-2.5-sunburst` | `openai-images-v1` | 画像生成／編集 |
 | 19 | `gpt-image-2` | `openai-images-v1` | 画像生成／編集 |
-| 20 | `FLUX.2-flex` | `blackforest-images-v1` | FLUX 2生成／編集、flex profile |
-| 21 | `FLUX.2-pro` | `blackforest-images-v1` | FLUX 2生成／編集、pro profile |
+| 20 | `FLUX.2-flex` | `blackforest-images-v1` | FLUX 2生成／編集、モデル別のflex上流URI |
+| 21 | `FLUX.2-pro` | `blackforest-images-v1` | FLUX 2生成／編集、モデル別のpro上流URI |
 | 22 | `text-embedding-3-large` | `openai-embeddings-v1` | embeddings |
 | 23 | `text-embedding-3-small` | `openai-embeddings-v1` | embeddings |
 | 24 | `embed-v-4-0` | `cohere-inference-v1` | cohere-embeddings |
 | 25 | `Cohere-rerank-v4.0-fast` | `cohere-inference-v1` | rerankのモデル選択 |
 | 26 | `Cohere-rerank-v4.0-pro` | `cohere-inference-v1` | rerankのモデル選択 |
-| 27 | `model-router` | `openai-inference-v1` | Chatのrouter profile |
+| 27 | `model-router` | `openai-inference-v1` | Chat、出力上限は提供元が決定 |
 | 28 | `decision-1` | `microsoft-decision-v1` | systemone。提供モデル名は`Microsoft-Decision-1` |
 
-モデル対応はOperationの許可モデル・profile・固定上流、および音声セッションの接続契約で定義する。
+モデル対応はOperationの許可モデル・モデル別設定・固定上流、および音声セッションの接続契約で定義する。
 
 ## モデル別の制約と上流の選択
 
-### Chat・Responsesと入力profile
+### Chat・Responsesとモデル別設定
 
-ChatとResponsesの2つのOperationを使い、同じ操作内の差をprofileで分ける。profileは`X-Egakumi-Profile`で選び、省略時は`chat`／`response`を使う。
+ChatとResponsesの2つのOperationを使い、それぞれに基本設定を持たせる。モデル固有の違いだけを`modelSettings`へ記述し、基本設定へ項目単位で上書きする。モデル名をキーにするため重複候補やdefaultProfileは不要で、クライアントはAPI・操作と本文のmodelだけを指定する。旧X-Egakumi-Profileは下流転送前に削除する。
 
-| Operation | profile | 対象 | 出力token項目・モデル別上限 |
+`settingId`は既存監査へ渡すラベルで、画像・PDF等の本文機能を選ぶヘッダーではない。今回の構造整理では旧既定候補が選んでいた設定と受付条件を維持する。購読利用枠profileやCMのprofileNameは変更しない。
+
+| Operation | 監査用settingId | 対象 | 出力token項目・モデル別上限 |
 |---|---|---|---|
-| `chat-completions` | `chat` | 上表1〜7のOpenAIモデル | `max_completion_tokens`、128,000 |
-| `chat-completions` | **`compatible`** | DeepSeek 2種・Mistral・Grok | `max_tokens`、DeepSeek 384,000／Grok 500,000。Mistralは未確認のため数値を表示しない |
-| `chat-completions` | **`router`** | Model Router | 振り分け先によって変わるため、自動値を使用 |
-| `chat-completions` | `vision` | `gpt-6.1-sol` | 既存の画像入力形式、128,000 |
-| `responses-create` | `response` | 上表1〜7のOpenAIモデル | `max_output_tokens`、128,000 |
-| `responses-create` | `pdf` | `gpt-6.1-sol` | 既存のPDF入力形式、128,000 |
+| chat-completions | chat | OpenAIモデル | max_completion_tokens、128,000 |
+| chat-completions | compatible | DeepSeek・Mistral・Grok | max_tokens、DeepSeek 384,000／Grok 500,000。Mistralは未確認 |
+| chat-completions | router | Model Router | 振り分け先で変わるため自動値 |
+| responses-create | response | OpenAIモデル | max_output_tokens、128,000 |
 
 上限と確認元は [model-capabilities.json](../../apps/gateway/apim/model-capabilities.json) で一元管理し、API配備とPortalカタログの双方へ展開する。要求の初期値とモデル上限は別の値であり、初期値を最大値まで増やすものではない。実際に出力できる量は入力とコンテキスト残量によっても変わる。
 
-モデルごとに受け付ける推論設定・出力token項目・ストリーミング形式を確認して登録する。compatible内に追加の差がある場合も、同じOperation内のprofile／モデル別制約へ分ける。現行のAzureカタログでChat対応を確認したモデルをChatに、Responses対応を確認したモデルをResponsesに対応付ける。
+モデルごとに受け付ける推論設定・出力token項目・ストリーミング形式を確認して登録する。compatible内に追加の差がある場合も、同じOperation内のmodelSettings差分へ分ける。現行のAzureカタログでChat対応を確認したモデルをChatに、Responses対応を確認したモデルをResponsesに対応付ける。
 
 Routerは`model-router`配備をChatから呼び出す。候補モデルとルーティング方針はFoundryのRouter設定で管理する。APIMは要求した配備名を監査し、実際の選択先はFoundry側の記録や応答で確認する。[Azure Model Router](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/model-router)
 
 ### FLUX 2の生成・編集
 
-公開Operationは`flux2-generate`・`flux2-edit`の2件を共用する。flex／proはprofileと許可配備名で選び、検証済みprofileの`backendUrlTemplate`から上流を選択する。
+公開Operationは`flux2-generate`・`flux2-edit`の2件を共用する。クライアントが指定した許可配備名から内部のflex／pro設定を自動選択し、そのmodelSettingsにあるbackendUrlTemplateから固定上流を選択する。
 
-| profile | 許可配備名 | Azure provider route |
+| 監査用settingId | 許可配備名 | Azure provider route |
 |---|---|---|
-| `flex`（default） | `FLUX.2-flex` | `/providers/blackforestlabs/v1/flux-2-flex?api-version=preview` |
+| `flex` | `FLUX.2-flex` | `/providers/blackforestlabs/v1/flux-2-flex?api-version=preview` |
 | `pro` | `FLUX.2-pro` | `/providers/blackforestlabs/v1/flux-2-pro?api-version=preview` |
 
-両モデルのprovider routeと受け付ける生成パラメーターには差がある。profileごとに上限・追加パラメーターを定義し、公開側の既存の要求上限を引き継ぐ。profileとモデルの一致を検査してから固定URIへ転送する。[AzureのFLUX仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-flux)
+両モデルのprovider routeと受け付ける生成パラメーターには差がある。モデル別に上限・追加パラメーターを定義し、公開側の既存の要求上限を引き継ぐ。解決済みモデル名から対応する固定URIへ転送する。[AzureのFLUX仕様](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-flux)
 
 ### Embedding・Rerank・画像・Decision
 
@@ -206,7 +206,7 @@ TTSはAzure Speech、PII分析はAzure Languageを使う。文書OCRは既存Fou
 |---|---|
 | 初期構築 | 購読キーヘッダー、入口経路、Realtime署名鍵等の名前付きの値とCM providerを設定 |
 | API登録時の共通ポリシー | APIM Subscription key、購読ID、信頼した入口経路、要求ID |
-| API・Operation・profile | 購読キーによる共通認可、操作・モデル・本文形式・サイズ・出力上限。CMの接続セッション検査は必要なAPIで設定 |
+| API・Operation・モデル設定 | 共通のキー／Bearer認証、操作・モデル・本文形式・サイズ・出力上限。CMの接続セッション検査は必要なAPIで設定 |
 | セッション制御 | 検証済みの呼出主体とsession／callの所有関係、ticketの署名・期限 |
 | バックエンド | サービスごとのマネージドID・audience・接続先、CMの委任設定 |
 
@@ -223,11 +223,11 @@ Graph等の本人接続APIは、セッション未指定・期限切れ・CM再�
 | 順序 | 対象 | 内容 |
 |---|---|---|
 | 1 | Azure／提供元の接続仕様 | 固定上流と音声契約を公式資料に照合。実環境のURL・権限・到達を確認 |
-| 2 | `apps/gateway/apim/apis/<API名>.json` | 対象APIの許可モデル・profile・固定上流を変更する。新規APIは1ファイルを追加する |
+| 2 | `apps/gateway/apim/apis/<API名>.json` | 対象APIの許可モデル・モデル別設定・固定上流を変更する。新規APIは1ファイルを追加する |
 | 3 | `schemas/`・`scripts/deployment/helpers/configuration.py` | モデル別ルーティングとLive系入力・WSS設定の検査を追加 |
 | 4 | `scripts/configure_trial.py`・`prepare_coverage.py`・`deploy_gateway.py` | 新しい接続定義の合成・検査・登録計画を生成 |
 | 5 | `apps/gateway/apim/api-publication.bicep`・`apps/gateway/apim/policies/` | FLUXモデル別の固定上流選択、Liveセッション制御、文字起こしWSSの登録・ポリシー生成を実装 |
-| 6 | 接続クライアントの確認 | モデル選択・profile・新しい音声イベントを扱うクライアントから受入 |
+| 6 | 接続クライアントの確認 | profileヘッダーなしのモデル選択と新しい音声イベントを扱うクライアントから受入 |
 | 7 | ローカル試験・Azureでの受入 | 件数・モデル対応・権限・通常／SSE／音声の正常終端を確認し、APIMへ公開 |
 
 モデル配備とAPI登録は内部工程を分ける。`azd up`が共通基盤とFoundryモデルを準備し、続くGateway工程がDB・Brokerの準備とAPI・Operation・バックエンド・Product・ポリシーを登録してからPortalを配備する。個別更新も同じ`deploy_gateway.py`を使う。

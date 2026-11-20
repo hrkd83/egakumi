@@ -235,7 +235,7 @@ export function TextGenerationPanel({ models, dictionary, locale, gatewayOrigin 
         </div>
         {language !== "json" && <div className="space-y-1 text-sm leading-6 text-muted-foreground"><p>{guide.keySetup}</p><p>{runtimes[language]}</p>{input.stream && <p>{guide.streamCodeNotice}</p>}</div>}
         <CodeBlock key={`${language}-${model.id}-${input.maxOutputTokens}-${input.stream}`} code={requestCode} title={language === "json" ? guide.json : languageNames[language]} copyLabel={language === "json" ? guide.copyJson : guide.copyCode} dictionary={dictionary} />
-        {language === "json" && <CodeBlock code={JSON.stringify(getTextGenerationHeaders(model, input.stream), null, 2)} title={guide.headers} copyLabel={guide.copyJson} dictionary={dictionary} />}
+        {language === "json" && <CodeBlock code={JSON.stringify(getTextGenerationHeaders(input.stream), null, 2)} title={guide.headers} copyLabel={guide.copyJson} dictionary={dictionary} />}
         <p className="text-sm leading-6 text-muted-foreground">{guide.previewNote}</p>
     </div>}
     schema={<div className="space-y-6">

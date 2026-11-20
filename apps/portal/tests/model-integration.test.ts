@@ -45,12 +45,12 @@ test("同じモデル名でも選択したAPIの本文・パス・ヘッダー�
     assert.equal("max_output_tokens" in body, isResponses); assert.equal("max_completion_tokens" in body, !isResponses);
     assert.equal(schema.required.includes(isResponses ? "input" : "messages"), true);
     assert.equal("store" in schema.properties, isResponses);
-    assert.equal(getTextGenerationHeaders(model, true)["X-Egakumi-Profile"], model.profileId);
+    assert.equal(getTextGenerationHeaders(true)["X-Egakumi-Profile"], undefined);
     for (const language of INTEGRATION_LANGUAGES) {
       const example = getIntegrationExample(language, model, options, origin);
       assert.ok(example.includes(`${origin}${model.path}`));
       assert.ok(example.includes(model.outputTokenParameter));
-      assert.ok(example.includes(model.profileId));
+      assert.ok(!example.includes("X-Egakumi-Profile"));
       assert.ok(!example.includes(isResponses ? "/chat/completions" : "/responses"));
     }
   }
@@ -66,9 +66,9 @@ test("公開APIのモデル上限を超える設定や不正なstream値から�
 test("URLやヘッダーの例には公開パスと環境変数だけを載せる", () => {
   assert.equal(getTextGenerationEndpoint(chat, origin), `${origin}${chat.path}`);
   assert.equal(getTextGenerationEndpoint(chat, `${origin}/`), `${origin}${chat.path}`);
-  assert.equal(getTextGenerationHeaders(chat, false)["api-key"], "${GATEWAY_API_KEY}");
-  assert.equal(getTextGenerationHeaders(chat, true).Accept, "text/event-stream");
-  assert.equal(getTextGenerationHeaders(compatible, false)["X-Egakumi-Profile"], "compatible");
+  assert.equal(getTextGenerationHeaders(false)["api-key"], "${GATEWAY_API_KEY}");
+  assert.equal(getTextGenerationHeaders(true).Accept, "text/event-stream");
+  assert.equal(getTextGenerationHeaders(false)["X-Egakumi-Profile"], undefined);
   for (const unsafeOrigin of ["http://gateway.example.invalid", "https://user:secret@gateway.example.invalid", `${origin}/path`, `${origin}?key=secret`, `${origin}#secret`]) {
     assert.throws(() => getTextGenerationEndpoint(chat, unsafeOrigin));
   }
@@ -77,7 +77,7 @@ test("URLやヘッダーの例には公開パスと環境変数だけを載せ�
   }
 });
 
-test("全言語の例が選択モデル・プロファイル・パラメーターとストリーム方式へ連動する", () => {
+test("全言語の例が選択モデル・パラメーターとストリーム方式へ連動する", () => {
   for (const language of INTEGRATION_LANGUAGES) {
     for (const model of [chat, compatible, responses]) {
       const normal = getIntegrationExample(language, model, { message: SAMPLE_TEXT_PROMPT, maxOutputTokens: 123, stream: false }, origin);
@@ -85,8 +85,7 @@ test("全言語の例が選択モデル・プロファイル・パラメータ�
       for (const sample of [normal, streaming]) {
         assert.ok(sample.includes(`${origin}${model.path}`), language);
         assert.ok(sample.includes("GATEWAY_API_KEY"), language);
-        assert.ok(sample.includes("X-Egakumi-Profile"), language);
-        assert.ok(sample.includes(model.profileId), language);
+        assert.ok(!sample.includes("X-Egakumi-Profile"), language);
         assert.ok(sample.includes(model.id), language);
         assert.ok(sample.includes(SAMPLE_TEXT_PROMPT), language);
         assert.equal(sample.includes("localhost:3000/api"), false);
@@ -166,6 +165,7 @@ test("TypeScript例はJSON応答を読み、ストリーム時には分割され
     const fakeFetch = async (url: string, init: RequestInit) => {
       assert.equal(url, `${origin}${chat.path}`);
       assert.equal(new Headers(init.headers).get("api-key"), "test-only-value");
+      assert.equal(new Headers(init.headers).get("X-Egakumi-Profile"), null);
       assert.equal(init.redirect, "error");
       assert.deepEqual(JSON.parse(String(init.body)), buildTextGenerationRequest(chat, options));
       if (!stream) return Response.json({ choices: [{ message: { content: "確認" } }] });

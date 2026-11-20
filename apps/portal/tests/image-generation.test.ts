@@ -11,7 +11,8 @@ import { getImageGenerationDictionary } from "../lib/i18n/image-generation.ts";
 
 const models = getImageGenerationModels();
 const openai = models.find((model) => model.operationId === "image-generate")!;
-const flux = models.find((model) => model.operationId === "flux2-generate" && model.profileId === "pro")!;
+const flux = models.find((model) => model.operationId === "flux2-generate" && model.id === "FLUX.2-pro")!;
+const fluxFlex = models.find((model) => model.operationId === "flux2-generate" && model.id === "FLUX.2-flex")!;
 const portalOrigin = "https://portal.example.invalid";
 const gatewayOrigin = "https://gateway.example.invalid";
 const secret = "test-only-private-image-key";
@@ -86,24 +87,25 @@ test("入力プロンプトの引用符・改行を保持し、任意の生成UR
   assert.equal(imageGenerationInputSchema.safeParse({ ...input, prompt: " " }).success, false);
 });
 
-test("FLUXはサイズと形式だけを選び、API専用本文とproプロファイルを生成する", () => {
-  const input = { ...defaultImageInput(flux), width: 512, height: 768, outputFormat: "jpeg" as const };
-  assert.deepEqual(buildImageGenerationRequest(flux, input), { model: flux.id, prompt: SAMPLE_IMAGE_PROMPT, num_images: 1, width: 512, height: 768, output_format: "jpeg" });
-  assert.equal(getImageGenerationHeaders(flux)["X-Egakumi-Profile"], "pro");
-  assert.equal(getImageGenerationHeaders(openai)["X-Egakumi-Profile"], undefined);
-  for (const extra of [{ width: 0 }, { count: 2 }, { width: 512.5 }, { quality: "high" }, { size: "auto" }]) assert.throws(() => buildImageGenerationRequest(flux, { ...input, ...extra }));
+test("FLUXはサイズと形式を選び、proとflexのモデルIDをAPI専用本文へ含める", () => {
+  for (const model of [flux, fluxFlex]) {
+    const input = { ...defaultImageInput(model), width: 512, height: 768, outputFormat: "jpeg" as const };
+    assert.deepEqual(buildImageGenerationRequest(model, input), { model: model.id, prompt: SAMPLE_IMAGE_PROMPT, num_images: 1, width: 512, height: 768, output_format: "jpeg" });
+    for (const extra of [{ width: 0 }, { count: 2 }, { width: 512.5 }, { quality: "high" }, { size: "auto" }]) assert.throws(() => buildImageGenerationRequest(model, { ...input, ...extra }));
+  }
+  assert.equal(getImageGenerationHeaders()["X-Egakumi-Profile"], undefined);
 });
 
-test("コード例は全言語で固定公開URLと現在の本文・プロファイルを使い、秘密実値を含めない", () => {
-  for (const model of [openai, flux]) {
+test("コード例は全言語で固定公開URLと現在のモデル本文を使い、秘密実値を含めない", () => {
+  for (const model of [openai, flux, fluxFlex]) {
     for (const language of ["typescript", "python", "php", "csharp", "curl"] as const) {
       const code = getImageIntegrationExample(language, model, defaultImageInput(model), gatewayOrigin);
       assert.ok(code.includes(`${gatewayOrigin}${model.path}`));
       assert.ok(code.includes(SAMPLE_IMAGE_PROMPT));
+      assert.ok(code.includes(model.id));
       assert.ok(code.includes("GATEWAY_API_KEY"));
       assert.ok(!code.includes(secret));
-      if (model.profileId) assert.ok(code.includes("X-Egakumi-Profile"));
-      else assert.ok(!code.includes("X-Egakumi-Profile"));
+      assert.ok(!code.includes("X-Egakumi-Profile"));
     }
   }
   assert.throws(() => getImageGenerationEndpoint(openai, "http://gateway.example.com"));
@@ -187,13 +189,15 @@ test("購読の失効・権限不足は秘密や内部例外を表示せず拒�
   }
 });
 
-test("FLUX proの実行は定義済みの専用パスとプロファイルを使う", async () => {
-  const response = await handleImageGeneration(request(defaultImageInput(flux)), dependencies({ fetch: async (url, init) => {
-    assert.equal(String(url), `${gatewayOrigin}/models/blackforestlabs/v1/flux-2/generations`); assert.equal(new Headers(init?.headers).get("X-Egakumi-Profile"), "pro");
-    assert.equal(JSON.parse(String(init?.body)).num_images, 1);
-    return Response.json({ created: 1, data: [{ b64_json: jpeg }], request_meta: { cost: 0.01 } });
-  } }));
-  assert.equal(response.status, 200); assert.equal((await response.json()).images[0].mimeType, "image/jpeg");
+test("FLUX proとflexの実行は同じ公開パスへ選択したモデルIDを送る", async () => {
+  for (const model of [flux, fluxFlex]) {
+    const response = await handleImageGeneration(request(defaultImageInput(model)), dependencies({ fetch: async (url, init) => {
+      assert.equal(String(url), `${gatewayOrigin}/models/blackforestlabs/v1/flux-2/generations`); assert.equal(new Headers(init?.headers).get("X-Egakumi-Profile"), null);
+      const body = JSON.parse(String(init?.body)); assert.equal(body.model, model.id); assert.equal(body.num_images, 1);
+      return Response.json({ created: 1, data: [{ b64_json: jpeg }], request_meta: { cost: 0.01 } });
+    } }));
+    assert.equal(response.status, 200); assert.equal((await response.json()).images[0].mimeType, "image/jpeg");
+  }
 });
 
 test("正常な画像応答の追加フィールドへキーが反射されてもブラウザーへ返さない", async () => {

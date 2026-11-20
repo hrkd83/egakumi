@@ -618,7 +618,7 @@ class SubscriptionProfileGatewayContractTests(unittest.TestCase):
         config = configuration.normalize_configuration(bound_external_coverage(), base_directory=ROOT / 'config')
         parameters = {'apiDefinitions': config['apiDefinitions'], 'credentialLogin': {},
             'publicHostName': config['gateway']['publicHostName'], 'entraTenantId': config['entraTenantId'],
-            'rateLimits': config['gateway']['rateLimits'], 'queryGuards': config['gateway']['queryGuards']}
+            'rateLimits': config['gateway']['rateLimits']}
         protocols = set()
         for index, api in enumerate(parameters['apiDefinitions']):
             with self.subTest(name=api['name'], api_type=api['apiType']):

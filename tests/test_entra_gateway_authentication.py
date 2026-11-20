@@ -1,4 +1,5 @@
 """社員認証の実XML式を合成値で実行する。JWT検証器と実APIMの購読挙動は別途受入する。"""
+from policy_fixture_paths import policy_fixture_path
 import base64
 import copy
 import json
@@ -142,11 +143,21 @@ class EntraRenderingTests(unittest.TestCase):
     def test_current_bearer_support_needs_no_runtime_readiness_marker(self):
         self.assertNotIn("gatewayEntraOperationSupported", render_service_policy(entra=settings()))
         for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
-            policy = (POLICIES / filename).read_text(encoding="utf-8")
+            policy = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             with self.subTest(filename=filename):
                 self.assertNotIn("gatewayEntraOperationSupported", policy)
-                self.assertIn("gatewayCommonAuthenticationValidated", policy)
-                self.assertIn("gatewayEntraAuthenticationValidated", policy)
+                authentication = policy
+                preparation = policy
+                if filename == "gateway.xml":
+                    # HTTPの共通認証確認とBearer結果参照は別部品へ移したため、各呼出しと正本を確認します。
+                    self.assertIsNotNone(ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-request-preparation']"))
+                    self.assertIsNotNone(ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-authentication-result']"))
+                    preparation = policy_fixture_path(POLICIES, "core-api-request-preparation.xml").read_text(encoding="utf-8")
+                    authentication = render_audit_policy((POLICIES / "fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml").read_text(encoding="utf-8"))
+                    self.assertNotIn("gatewayEntraOperationSupported", preparation)
+                    self.assertNotIn("gatewayEntraOperationSupported", authentication)
+                self.assertIn("gatewayCommonAuthenticationValidated", preparation)
+                self.assertIn("gatewayEntraAuthenticationValidated", authentication)
                 inbound = list(ET.fromstring(policy).find("inbound"))
                 source = next(node for node in inbound if node.get("name") == "gatewayApiSettingsSource")
                 call = next(node for node in inbound if node.get("fragment-id") == "core-api-settings")
@@ -157,7 +168,7 @@ class EntraRenderingTests(unittest.TestCase):
                 for node in inbound[:inbound.index(base)]:
                     self.assertNotIn("context.Request.Headers", ET.tostring(node, encoding="unicode"))
                     self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
-        policy = (POLICIES / "gateway.xml").read_text(encoding="utf-8")
+        policy = (POLICIES / "api-templates" / "gateway.xml").read_text(encoding="utf-8")
         self.assertLess(policy.index("<base />"), policy.index('<set-header name="Authorization" exists-action="delete"'))
 
     def test_current_bearer_routing_uses_key_presence_without_api_selection(self):
@@ -606,7 +617,7 @@ class EntraExpressionTests(unittest.TestCase):
             raw = raw.replace("{{core-subscription-profile-enabled}}", "false")
             return "static " + return_type + " " + name + "(Context context) { " + csharp_expression(raw) + " }"
         methods += "\n" + "\n".join([
-            method("Decision", "gateway.xml", ".//set-variable[@name='gatewayDecision']"),
+            method("Decision", "core-api-authentication-result.xml", ".//set-variable[@name='gatewayDecision']"),
             method("Protocol", "protocol.xml", ".//set-variable[@name='gatewayDecision']"),
             method("Mcp", "mcp.xml", ".//set-variable[@name='gatewayDecision']"),
             method("UserProfile", "entra-user-profile.xml", "set-variable[@name='gatewaySubscriptionProfile']"),
@@ -616,6 +627,26 @@ class EntraExpressionTests(unittest.TestCase):
             method("Parent", "audit-context.xml", ".//set-variable[@name='gatewayAgentTrace']"),
             method("Telemetry", "core-gateway-telemetry.xml", ".//trace/message", attribute=None),
         ])
+        # Decision直後の失敗分岐だけを実XMLから取り出し、既存アダプターで監査とHTTP応答を実行します。
+        gateway = ET.parse(policy_fixture_path(POLICIES, "gateway.xml")).getroot()
+        decision_failure = next(node for node in gateway.findall("./inbound/choose")
+                                if "gatewayDecision" in node.find("when").get("condition", ""))
+        cls.decision_failure_reason = decision_failure.find("when/return-response/set-status").get("reason")
+        failure_policy = ET.Element("policies")
+        ET.SubElement(failure_policy, "inbound").append(copy.deepcopy(decision_failure))
+        # 共通認証用アダプターが自動展開しない、この既知の監査フラグメントも正本から展開します。
+        failure_branch = failure_policy.find("inbound/choose/when")
+        telemetry_call = failure_branch.find("include-fragment[@fragment-id='core-gateway-telemetry']")
+        telemetry = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml").read_text(encoding="utf-8")))
+        telemetry_position = list(failure_branch).index(telemetry_call)
+        failure_branch.remove(telemetry_call)
+        for offset, node in enumerate(telemetry):
+            failure_branch.insert(telemetry_position + offset, copy.deepcopy(node))
+        failure_methods, failure_inbound = compile_inbound(failure_policy, trace_messages=True)
+        # 同じfixtureへ二つの実XMLブロックを組み込むので、自動生成された補助関数名だけを区別します。
+        failure_methods = re.sub(r"\bExpression(\d+)\b", r"DecisionFailureExpression\1", failure_methods)
+        failure_inbound = re.sub(r"\bExpression(\d+)\b", r"DecisionFailureExpression\1", failure_inbound)
+        methods += "\n" + failure_methods + "\nstatic int DecisionFailure(Context context) { " + failure_inbound + " return 200; }"
         source = base + r'''
 public static class EntraFixture {
  __METHODS__
@@ -695,6 +726,11 @@ public static class EntraFixture {
      if (unit.Property("product") != null) c.Product = unit["product"].Type == JTokenType.Null
        ? null : new Named { Id=(string)unit["product"] };
      if ((bool?)unit["subscription"] == true) c.Subscription = new Named { Id="unexpected-subscription" };
+     if (unit.Property("keyHeader") != null) {
+      var keyHeader = (string)c.Variables["gatewayKeyHeader"];
+      if (unit["keyHeader"].Type == JTokenType.Null) c.Request.Headers.Remove(keyHeader);
+      else c.Request.Headers[keyHeader] = new [] { (string)unit["keyHeader"] };
+     }
      foreach (var marker in new [] { "gatewayCommonAuthenticationValidated", "gatewayEntraAuthenticationValidated" }) {
       if (unit.Property(marker) != null) {
        if (unit[marker].Type == JTokenType.Null) c.Variables.Remove(marker);
@@ -712,9 +748,21 @@ public static class EntraFixture {
      c.Variables["gatewayUserAuthentication"] = user.ToString(Formatting.None);
     }
     if ((bool?)item["dropMarker"] == true) c.Variables.Remove("gatewayEntraAuthenticationValidated");
+    // 実APIでは先行する操作設定の準備が成功した結果を、この位置より前に保存します。
+    c.Variables["gatewayOperationSelection"] = new JObject(new JProperty("allowed", true),
+      new JProperty("settingId", "")).ToString(Formatting.None);
     c.Variables["gatewayDecision"] = Decision(c);
     result["decision"] = JObject.Parse((string)c.Variables["gatewayDecision"]);
-    result["protocol"] = JObject.Parse(Protocol(c)); result["mcp"] = JObject.Parse(Mcp(c));
+    if ((bool?)item["httpDecisionOnly"] != true) {
+     result["protocol"] = JObject.Parse(Protocol(c)); result["mcp"] = JObject.Parse(Mcp(c));
+    }
+    if (!(bool)result["decision"]["allowed"]) {
+     // statusは先に行った共通認証の結果です。API側のHTTP応答と監査は別項目へ保存します。
+     var failureStatus = DecisionFailure(c);
+     result["decisionFailure"] = new JObject(new JProperty("status", failureStatus),
+       new JProperty("headers", JObject.FromObject(c.ResponseHeaders)),
+       new JProperty("audit", JObject.Parse(c.TraceMessages.Last())));
+    }
     if ((bool)result["decision"]["allowed"]) {
      try {
       c.Variables["gatewayRateLimitExempt"] = false;
@@ -780,6 +828,10 @@ public static class EntraFixture {
         # after successful common authentication, proving they trust its result without repeating Product checks.
         add("decision-product-null", decisionContext={"product": None})
         add("decision-product-different", decisionContext={"product": "existing-product"})
+        # 共通認証後のヘッダー変更だけを再現し、HTTPの本人情報引継ぎを確認します。
+        add("decision-key-header-removed", headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Basic arbitrary"},
+            subscription=True, decisionContext={"keyHeader": None}, httpDecisionOnly=True)
+        add("decision-key-header-added", decisionContext={"keyHeader": "SYNTHETIC_LATER_HEADER"}, httpDecisionOnly=True)
         for marker in ("gatewayCommonAuthenticationValidated", "gatewayEntraAuthenticationValidated"):
             for state, value in (("missing", None), ("failed", False)):
                 add("decision-" + marker + "-" + state, decisionContext={"product": None, marker: value})
@@ -790,7 +842,7 @@ public static class EntraFixture {
                              ("allocation", {"allocationId": "user:untrusted"}),
                              ("principal", {"principalId": "invalid"}),
                              ("schema", {"schemaVersion": 2})):
-            add("decision-user-invalid-" + name, decisionContext={"product": None}, tamper=tamper)
+            add("decision-user-" + name + "-changed", decisionContext={"product": None}, tamper=tamper)
         for name, value in (("tid", OTHER), ("oid", "invalid"), ("ver", "1.0"), ("scp", "Gateway.Invoke.Extra")):
             add("wrong-" + name, claims={**claims, name: value})
         for name in ("tid", "oid", "ver", "scp"):
@@ -868,6 +920,7 @@ public static class EntraFixture {
 
     def test_employee_has_verified_identity_finite_limits_and_safe_audit(self):
         row = self.results["employee"]; caller = "user:" + TENANT + ":" + PERSON
+        self.assertNotIn("decisionFailure", row)
         self.assertEqual(row["status"], 200); self.assertEqual(row["decision"]["callerId"], caller)
         self.assertEqual(row["decision"]["allocationId"], caller); self.assertEqual(row["profile"], LIMITS)
         self.assertEqual(row["audit"]["verifiedPrincipalId"], PERSON)
@@ -972,24 +1025,70 @@ public static class EntraFixture {
                 self.assertEqual(row["audit"]["authenticatedSubject"]["status"], "verified")
                 self.assertEqual(row["audit"]["authorization"], "allowed")
                 self.assertNotIn("subscriptionId", row["audit"])
+        for name, baseline_name in (("decision-key-header-removed", "key"),
+                                    ("decision-key-header-added", "employee")):
+            row = self.results[name]
+            with self.subTest(case=name):
+                self.assertEqual(row["status"], 200)
+                self.assertEqual(row["decision"], self.results[baseline_name]["decision"])
+                self.assertNotIn("protocol", row)
+                self.assertNotIn("mcp", row)
 
-    def test_api_decisions_still_require_common_success_and_consistent_bearer_identity(self):
+    def test_http_decision_requires_entra_success_and_inherits_verified_identity(self):
         rejected = [
-            "decision-" + marker + "-" + state
-            for marker in ("gatewayCommonAuthenticationValidated", "gatewayEntraAuthenticationValidated")
+            "decision-gatewayEntraAuthenticationValidated-" + state
             for state in ("missing", "failed")
         ]
-        rejected += ["decision-subscription-mixed", "decision-user-missing", "decision-user-malformed"]
-        rejected += ["decision-user-invalid-" + field for field in ("caller", "allocation", "principal", "schema")]
+        rejected += ["decision-user-missing", "decision-user-malformed"]
         for name in rejected:
             row = self.results[name]
             with self.subTest(case=name):
                 self.assertEqual(row["status"], 200, "The isolated decision fixture starts from successful common authentication")
+                self.assertEqual(row["decision"], {"allowed": False})
                 for api in ("decision", "protocol", "mcp"):
                     self.assertFalse(row[api]["allowed"])
+                failure = row["decisionFailure"]
+                self.assertEqual(failure["status"], 500)
+                self.assertEqual(self.decision_failure_reason, "Gateway processing failed")
+                self.assertEqual(failure["audit"]["phase"], "policy-error")
+                self.assertEqual(failure["audit"]["code"], "AUTHENTICATION_PROCESSING_ERROR")
+                self.assertEqual(failure["audit"]["status"], 500)
+                self.assertEqual(failure["headers"]["apim-request-id"], failure["audit"]["requestId"])
+                for detail in ("{broken", "JsonReaderException", "KeyNotFoundException"):
+                    self.assertNotIn(detail, json.dumps(failure))
                 self.assertNotIn("profile", row)
                 self.assertNotIn("rate", row)
                 self.assertNotIn("tokenKey", row)
+        # 共通処理が本人情報と呼出者・利用枠を照合した後、この単体fixtureだけが値を変更します。
+        # HTTPは再照合せずJSONの値を引き継ぎます。後段の利用枠・監査まで通ることは意味しません。
+        for name, field, value in (("decision-user-caller-changed", "callerId", "user:untrusted"),
+                                   ("decision-user-allocation-changed", "allocationId", "user:untrusted"),
+                                   ("decision-user-principal-changed", "verifiedPrincipalId", "invalid"),
+                                   ("decision-user-schema-changed", None, None),
+                                   ("tamper-caller", "callerId", "user:untrusted")):
+            row = self.results[name]
+            expected = copy.deepcopy(self.results["employee"]["decision"])
+            if field is not None:
+                expected[field] = value
+            with self.subTest(changed_identity=name):
+                self.assertEqual(row["decision"], expected)
+                for api in ("protocol", "mcp"):
+                    self.assertFalse(row[api]["allowed"], api)
+        # この単体fixtureは先行部品を呼ばず、common印を認証後に変更します。
+        # 実際のAPI順序では、common印の欠落・falseはcore-api-request-preparationが503で停止します。
+        # HTTPのDecisionはその確認を繰り返さず、Entra印を確認して共通検証済み本人情報を引き継ぎます。
+        for state in ("missing", "failed"):
+            row = self.results["decision-gatewayCommonAuthenticationValidated-" + state]
+            with self.subTest(common_marker=state):
+                self.assertEqual(row["decision"], self.results["employee"]["decision"])
+                for api in ("protocol", "mcp"):
+                    self.assertFalse(row[api]["allowed"], api)
+        # APIMの購読は通常書換えできません。この人工差替えではHTTPだけが購読主体を選びます。
+        mixed = self.results["decision-subscription-mixed"]
+        self.assertEqual(mixed["decision"], {"allowed": True, "method": "subscriptionKey",
+                                           "callerId": "subscription:unexpected-subscription"})
+        for api in ("protocol", "mcp"):
+            self.assertFalse(mixed[api]["allowed"], api)
 
     def test_configured_null_limits_disable_only_the_selected_enforcement(self):
         for mask in range(8):
@@ -1015,8 +1114,7 @@ public static class EntraFixture {
         for name, row in self.results.items():
             if (name.startswith(("wrong-", "missing-", "duplicate-")) and not name.startswith("missing-limit-")) or name in ("zero-oid", "native-rejected", "no-auth", "basic", "query-credential"):
                 with self.subTest(case=name): self.assertIn(row["status"], (401, 403))
-        for name in ("drop-marker", "tamper-caller"):
-            self.assertFalse(self.results[name]["decision"]["allowed"])
+        self.assertFalse(self.results["drop-marker"]["decision"]["allowed"])
         self.assertTrue(self.results["tamper-unlimited"]["limitsRejected"])
 
     def test_native_required_claims_reject_values_before_the_identity_expression(self):

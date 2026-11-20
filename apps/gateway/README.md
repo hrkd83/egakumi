@@ -38,6 +38,8 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 Azure Speechを公開する場合は、SSMLの`/models/azure-speech/v1/synthesize`とWAVの`/models/azure-speech/v1/recognize`に、`wafpol-g-speech-<ID>`を関連付けます。`<ID>`はparamsの`services.apimInstanceId`に保存した構築識別子です。パスは選択したAPI定義のPOST・本文形式・MIME契約から決めます。共通WAFの設定を保ち、正規のSSML/WAVを拒否する規則`920420`とraw本文の`930110`をこの完全パスで調整します。URI・query・header・Cookieには4本のtraversal Blockを合成し、`920470`（Content-Type構文）、他の管理規則と本文検査は維持します。公開WAVは`Content-Type: audio/wav`とし、codec指定はAPIMのバックエンド用ヘッダーに付与します。日本語の認識言語`ja-JP`は`azure-speech-v1.json`のバックエンドURLに明記します。[WAFの用途別構成と検証](../../docs/testing/waf-compatibility.md)も参照してください。
 
+PIIのREST／MCP入口は、承認したローカル最終候補ではApp GatewayのWAFを分けます。`g-pii-rest`はRESTの`text`だけ、`g-pii-mcp`はMCPの`params.arguments.text`だけを`RequestArgValues / Equals`のデータ欄除外へ指定し、Portalの`p-pii-redact`は維持します。APIのURL・キー／Bearer認証・モデル機能・OBOは変更しません。実WAF確認とAzure反映は未実施で、query関連棚卸後のまとめ工程で移行します。通常reconcileは旧`g-pii-redact`を移行元として保持し、新policyとpath bindingを反映して正常REST／MCPの実WAF通過を確認した後にだけ退役します。確認失敗時に旧bindingへ戻せるよう、旧ポリシーを残します。[PIIの設定と移行順](../../docs/testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)
+
 [詳細な配備手順](../../docs/setup/credential-sql.md)・[API定義](apim/README.md)・[認証窓口](credential-broker/README.md)・[運用と更新](../../docs/operations.md)
 
 ## 継続配備

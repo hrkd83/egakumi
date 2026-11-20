@@ -14,18 +14,22 @@ function definition(name: string, path = `models/${name}`) {
   };
 }
 
-test("同じprofileの複数モデルは個別上限を保ち、可変上限を512へ置き換えない", () => {
-  const source = definition("text");
-  source.authorization.operationConstraints.invoke.allowedModels = ["small", "large", "router"];
+test("操作へ個別上限をまとめ、モデル別の設定差分・別名と可変上限を保持する", () => {
+  const base = definition("text");
+  const modelSettings = { small: { settingId: "small-output", outputTokenParameter: "max_tokens" }, large: { settingId: "large-output" } };
+  const modelAliases = { review: "small" };
+  const source = { ...base, authorization: { operationConstraints: { invoke: {
+    allowedModels: ["small", "large", "router"], modelSettings, modelAliases,
+  } } } };
   const entries = [
     { modelId: "small", maxOutputTokens: 128000, limitKind: "documented" as const },
     { modelId: "large", maxOutputTokens: 384000, limitKind: "documented" as const },
     { modelId: "router", maxOutputTokens: null, limitKind: "dynamic" as const },
   ].map((entry) => ({ ...entry, apiIds: ["text"], operationIds: ["invoke"], sourceUrls: ["https://example.invalid/official-specification"], checkedAt: "2026-10-31" }));
   const value = applyModelCapabilities([source], { schemaVersion: 1, entries });
-  assert.deepEqual(value[0].authorization.operationConstraints.invoke, { allowedModels: ["small", "large", "router"], maxOutputTokens: 384000,
+  assert.deepEqual(value[0].authorization.operationConstraints.invoke, { allowedModels: ["small", "large", "router"], modelSettings, modelAliases, maxOutputTokens: 384000,
     maxOutputTokensByModel: { small: 128000, large: 384000, router: null }, outputTokenLimitKinds: { small: "documented", large: "documented", router: "dynamic" } });
-  assert.deepEqual(source.authorization.operationConstraints.invoke, { allowedModels: ["small", "large", "router"] });
+  assert.deepEqual(source.authorization.operationConstraints.invoke, { allowedModels: ["small", "large", "router"], modelSettings, modelAliases });
   assert.throws(() => applyModelCapabilities([source], { schemaVersion: 1, entries: entries.slice(1) }), /no verified capability/);
 });
 

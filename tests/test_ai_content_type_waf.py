@@ -75,9 +75,27 @@ class AiContentTypeWafTests(unittest.TestCase):
             for value in (None, ""):
                 with self.subTest(profile=name, header=value):
                     self.assertFalse(self.header_is_blocked(value, name))
-        condition, _ = self.json_block(self.content_policy(policy(), "g-pii-redact"))["matchConditions"]
+        condition, _ = self.json_block(self.content_policy(policy(), "g-pii-mcp"))["matchConditions"]
         self.assertFalse(condition["negationConditon"])
         self.assertEqual(condition["matchValues"], [r"[\s\S]"])
+
+    def test_split_pii_profiles_keep_json_and_do_not_require_headers_for_bodyless_mcp(self):
+        paths = {"g-pii-rest": "/tools/pii/v1/redact", "g-pii-mcp": "/tools/pii-v1-mcp/mcp"}
+        for name, path in paths.items():
+            profile = self.profiles[name]
+            self.assertEqual(profile["paths"], [path])
+            self.assertEqual(self.selected[name]["format"], "json")
+            self.assertFalse(self.header_is_blocked("Application/Json; Charset=UTF-8", name))
+            self.assertTrue(self.header_is_blocked("text/plain", name))
+            other = paths["g-pii-mcp" if name == "g-pii-rest" else "g-pii-rest"]
+            self.assertFalse(ai_content_type_profile({**profile, "paths": [other]}))
+        # このカスタム規則はContent-Typeがある場合だけ検査します。
+        # したがって、ヘッダーも本文もないMCPのGET/DELETEに新しいMIME必須条件を加えません。
+        rule = self.json_block(self.content_policy(policy(), "g-pii-mcp"))
+        self.assertTrue(all(condition["matchVariables"] == [{"variableName": "RequestHeaders", "selector": "Content-Type"}]
+                            for condition in rule["matchConditions"]))
+        self.assertFalse(self.header_is_blocked(None, "g-pii-mcp"))
+        self.assertFalse(self.header_is_blocked("", "g-pii-mcp"))
 
     def test_only_image_and_speech_mixed_policies_accept_multipart_beside_json(self):
         multipart = ["multipart/form-data", "Multipart/Form-Data; Boundary=fixture-boundary",
@@ -91,7 +109,7 @@ class AiContentTypeWafTests(unittest.TestCase):
                     self.assertEqual(self.header_is_blocked(value, name), name not in ("g-images", "p-speech"))
             self.assertTrue(self.header_is_blocked("audio/wav", name))
 
-    def test_only_the_18_canonical_profiles_and_published_subsets_are_selected(self):
+    def test_only_defined_profiles_and_published_subsets_are_selected(self):
         self.assertEqual(set(self.selected), set(self.profiles) - {"g-transcribe", "p-document-upload", "g-document-status", "g-realtime-ticket"})
         self.assertEqual(sum(len(p["paths"]) for p in self.selected.values()), 26)
         for name in self.selected:

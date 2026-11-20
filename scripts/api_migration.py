@@ -76,16 +76,12 @@ OPERATION_RENAMES = {
     ("model-flux-2", "flux-generate"): "flux2-generate",
     ("model-flux-2", "flux-edit"): "flux2-edit",
 }
-PROFILE_IDS = {
+LEGACY_SETTING_IDS = {
     ("models", "chat-completions"): "chat",
     ("models", "responses-create"): "response",
     ("model-multimodal", "vision"): "vision",
     ("model-multimodal", "pdf"): "pdf",
     ("model-audio-chat", "audio-chat"): "audio-chat",
-}
-PROFILE_MODALITIES = {
-    "chat": ["text"], "response": ["text"], "vision": ["text", "image"],
-    "pdf": ["text", "file"], "audio-chat": ["text", "audio"],
 }
 FLUX_ROUTES = {
     "flux11-generate": "/flux-1.1/generations", "kontext-generate": "/kontext/generations",
@@ -109,6 +105,75 @@ def _backend(api: dict) -> dict:
     return result
 
 
+def _merge_inference_settings(candidates: list[tuple[dict, str | None]]) -> dict:
+    """旧入口の既定順を保ち、操作の基礎設定とモデル別差分へまとめます。"""
+    if len(candidates) == 1 and candidates[0][1] is None:
+        # 正規APIだけを再処理するときは、任意設定や省略状態も変えません。
+        return candidates[0][0]
+
+    base = deepcopy(candidates[0][0])
+    base.pop("modelSettings", None)
+    base["allowedModels"] = _unique([model for constraint, _ in candidates
+                                    for model in constraint["allowedModels"]])
+    # 別名も操作の表へ集約し、旧入口ごとの別名を失わないようにします。
+    # 同じ別名が異なるモデルを指す場合は、黙って一方を選ばず移行を中止します。
+    if any("modelAliases" in constraint for constraint, _ in candidates):
+        aliases = {}
+        for constraint, _ in candidates:
+            for alias, model in constraint.get("modelAliases", {}).items():
+                if model not in base["allowedModels"]:
+                    raise MigrationError("Model aliases must target an allowed model")
+                if alias in aliases and aliases[alias] != model:
+                    raise MigrationError("Conflicting model aliases")
+                aliases[alias] = model
+        base["modelAliases"] = aliases
+    # 本文を読む前の操作共通上限には、すべての旧候補を収容できる値を使います。
+    # 各モデルの小さい上限は、下の差分計算でモデル別設定へ残します。
+    base["maxRequestBytes"] = max(constraint["maxRequestBytes"] for constraint, _ in candidates)
+    selected = {}
+    for constraint, legacy_setting_id in candidates:
+        for model in constraint["allowedModels"]:
+            if model in selected:
+                # 同じモデルが複数の旧入口にある場合は、従来の最初の候補を選びます。
+                continue
+            settings = {key: deepcopy(value) for key, value in constraint.items()
+                        if key not in {"allowedModels", "modelSettings", "modelAliases"}}
+            settings.update(deepcopy(constraint.get("modelSettings", {}).get(model, {})))
+            if legacy_setting_id is not None:
+                settings["settingId"] = legacy_setting_id
+            selected[model] = settings
+    # 能力・次元のモデル対応表は操作側へ一度だけ保存します。
+    # 各モデルが選んだ旧候補の値を採用し、候補全体の表を差分へ複製しません。
+    model_table_fields = ("maxOutputTokensByModel", "outputTokenLimitKinds", "embeddingDimensionsByModel")
+    for field in model_table_fields:
+        if not any(field in settings for settings in selected.values()):
+            continue
+        table = {}
+        for model, settings in selected.items():
+            values = settings.pop(field, {})
+            if model in values:
+                table[model] = values[model]
+            else:
+                raise MigrationError("Merged model settings require complete model tables")
+        base[field] = table
+    if "maxOutputTokensByModel" in base:
+        maxima = [value for value in base["maxOutputTokensByModel"].values() if value is not None]
+        base["maxOutputTokens"] = max(maxima) if maxima else None
+        for model, settings in selected.items():
+            settings["maxOutputTokens"] = base["maxOutputTokensByModel"][model]
+    # 一部のモデルだけが持つ任意設定は、そのモデル側へ置きます。
+    # 設定を省略した旧候補へ、ほかの候補の制限を継承させないためです。
+    shared_fields = {"kind", "allowedModels", "maxRequestBytes", "modelAliases"} | set(model_table_fields)
+    for key in list(base):
+        if key not in shared_fields and any(key not in settings for settings in selected.values()):
+            del base[key]
+    base["modelSettings"] = {
+        model: {key: value for key, value in settings.items() if key not in base or base[key] != value}
+        for model, settings in selected.items()
+    }
+    return base
+
+
 def _merge_group(target: str, sources: list[dict]) -> dict:
     path, service_class, legacy_sources = CANONICAL_APIS[target]
     order = {name: index for index, name in enumerate((target,) + legacy_sources)}
@@ -126,6 +191,7 @@ def _merge_group(target: str, sources: list[dict]) -> dict:
     }
     default_backend = _backend(result)
     operations = {}
+    inference_candidates = {}
     constraints = result["authorization"]["operationConstraints"]
     for api in sources:
         if api.get("productId") != result.get("productId"):
@@ -153,17 +219,9 @@ def _merge_group(target: str, sources: list[dict]) -> dict:
             if target == "azure-speech-v1" and api["name"] != target:
                 operation["backendOverride"] = _backend(api)
             constraint = deepcopy(api["authorization"]["operationConstraints"][old_name])
-            if target == "openai-inference-v1" and api["name"] != target:
-                profile_id = PROFILE_IDS[(api["name"], old_name)]
-                profile = {**deepcopy(constraint), "profileId": profile_id, "modalities": PROFILE_MODALITIES[profile_id]}
-                if name not in constraints:
-                    constraints[name] = {**constraint, "defaultProfile": profile_id, "profiles": []}
-                profiles = constraints[name].setdefault("profiles", [])
-                matching = next((p for p in profiles if p["profileId"] == profile_id), None)
-                if matching is not None and matching != profile:
-                    raise MigrationError("Conflicting inference profiles")
-                if matching is None:
-                    profiles.append(profile)
+            if target == "openai-inference-v1":
+                setting_id = None if api["name"] == target else LEGACY_SETTING_IDS[(api["name"], old_name)]
+                inference_candidates.setdefault(name, []).append((constraint, setting_id))
             elif name not in constraints:
                 constraints[name] = constraint
             elif constraints[name] != constraint:
@@ -173,6 +231,8 @@ def _merge_group(target: str, sources: list[dict]) -> dict:
             elif ({key: value for key, value in operations[name].items() if key != "displayName"} !=
                   {key: value for key, value in operation.items() if key != "displayName"}):
                 raise MigrationError("Conflicting operations")
+    for name, candidates in inference_candidates.items():
+        constraints[name] = _merge_inference_settings(candidates)
     result["operations"] = list(operations.values())
     if target == "openai-realtime-ws-v1":
         models = []

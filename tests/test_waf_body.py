@@ -51,8 +51,7 @@ class AiWafBodyTests(unittest.TestCase):
         )]
         constraint = contract["authorization"]["operationConstraints"][
             "responses-create"]
-        constraint.pop("defaultProfile", None)
-        constraint.pop("profiles", None)
+        constraint.pop("modelSettings", None)
         contract["authorization"]["operationConstraints"] = {
             "responses-create": constraint,
         }

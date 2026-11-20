@@ -2,6 +2,7 @@
 
 合成した日本語・英語・絵文字・下流エラーを実C#式へ渡す。原文や検出した個人情報を応答へ混入させず、モデル版と文字数境界を守ることを確認する。
 """
+from policy_fixture_paths import policy_fixture_path
 import base64
 import json
 from pathlib import Path
@@ -11,6 +12,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from test_gateway_limits_telemetry import PWSH, expression
+from test_api_protocols import actual_expression
 from deployment.helpers.apim_common_authentication import (
     expand_common_authentication_fragments, render_common_authentication_fragments,
 )
@@ -27,8 +29,8 @@ _native_size = ET.parse(PII).find("./inbound/choose[@id='core-pii-native-request
 NATIVE_SIZE_EXPRESSION = _native_size[2:-1]
 RESULT_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiResult']", "value")
 RETRY_EXPRESSION = expression(PII, "./outbound/set-variable[@name='piiRetryAfter']", "value")
-MCP_AUTH_EXPRESSION = expression(POLICIES / "mcp.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
-REST_AUTH_EXPRESSION = expression(POLICIES / "gateway.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
+MCP_AUTH_EXPRESSION = expression(POLICIES / "api-templates" / "mcp.xml", "./inbound/set-variable[@name='gatewayDecision']", "value")
+REST_AUTH_EXPRESSION = actual_expression("gateway.xml", "gatewayDecision")
 
 CSHARP = r'''
 using System;
@@ -117,6 +119,10 @@ public static class PiiPolicyFixture {
           continue;
         }
         context.Variables["gatewayCommonAuthenticationValidated"]=true;
+        // 実際のHTTP処理では、操作設定の選択が本人情報の引渡しより先に完了します。
+        // この単体fixtureでは、その最小の成功結果だけを用意します。
+        context.Variables["gatewayOperationSelection"]=new JObject(
+          new JProperty("allowed",true), new JProperty("settingId","")).ToString(Formatting.None);
         var decision = mode == "mcp" ? McpAuth(context) : RestAuth(context);
         context.Variables["gatewayDecision"] = decision;
         var decisionResult = JObject.Parse(decision);
@@ -361,13 +367,17 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertEqual(common.findall(".//validate-azure-ad-token"), [])
         self.assertEqual(common.findall(".//set-header[@name='WWW-Authenticate']"), [])
         for filename in ("mcp.xml", "gateway.xml"):
-            tree = ET.parse(POLICIES / filename)
+            tree = ET.parse(policy_fixture_path(POLICIES, filename))
             self.assertEqual(tree.findall(".//set-header[@name='WWW-Authenticate']"), [])
-            decision = tree.find("./inbound/set-variable[@name='gatewayDecision']").get("value")
+            if filename == "gateway.xml":
+                self.assertIsNotNone(tree.find("./inbound/include-fragment[@fragment-id='core-api-authentication-result']"))
+                decision = REST_AUTH_EXPRESSION
+            else:
+                decision = tree.find("./inbound/set-variable[@name='gatewayDecision']").get("value")
             self.assertIn("context.Subscription", decision)
 
     def test_generated_mcp_never_buffers_protocol_response(self):
-        text = (POLICIES / "mcp.xml").read_text()
+        text = (POLICIES / "api-templates" / "mcp.xml").read_text()
         self.assertNotIn("context.Response.Body", text)
         tree = ET.fromstring(text)
         self.assertIsNone(tree.find("./outbound/set-body"))

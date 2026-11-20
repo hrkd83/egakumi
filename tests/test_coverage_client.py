@@ -47,21 +47,17 @@ class ContractTests(unittest.TestCase):
         self.assertIn("data:image/png;base64,", image.json["messages"][0]["content"][1]["image_url"]["url"])
         self.assertIn("data:application/pdf;base64,", pdf.json["input"][0]["content"][1]["file_data"])
 
-    def test_canonical_operation_and_profile_choose_distinct_input_payload_and_header(self):
-        for operation, profile, content_key in (("chat-completions", "vision", "messages"),
-                                                ("responses-create", "pdf", "input"),
-                                                ("chat-completions", "audio-chat", "messages")):
-            request = probe.request_for_operation(operation, profile, model="approved", audio=probe.silence_wav())
-            self.assertEqual((request.operation_id, request.profile_id), (operation, profile))
-            self.assertEqual(request.headers["X-Egakumi-Profile"], profile)
+    def test_kind_selects_input_payload_without_selecting_a_gateway_profile(self):
+        for kind, content_key in (("vision", "messages"), ("pdf", "input"), ("audio-chat", "messages")):
+            request = probe.request_for(kind, model="approved", audio=probe.silence_wav())
+            self.assertEqual(request.kind, kind)
+            self.assertNotIn("X-Egakumi-Profile", request.headers)
             self.assertIn(content_key, request.json)
             self.assertFalse(request.json["store"])
-        audio = probe.request_for_operation("chat-completions", "audio-chat", model="approved", audio=probe.silence_wav())
+        audio = probe.request_for("audio-chat", model="approved", audio=probe.silence_wav())
         self.assertEqual(audio.json["messages"][0]["content"][1]["type"], "input_audio")
-        for pair in (("responses-create", "vision"), ("chat-completions", "pdf"), ("chat-completions", "unknown")):
-            with self.assertRaises(ValueError): probe.request_for_operation(*pair, model="approved")
         with self.assertRaises(ValueError):
-            probe.request_for("vision", operation_id="responses-create", profile_id="pdf", model="approved")
+            probe.request_for("unknown", model="approved")
 
     def test_agent_modes_remain_explicit_and_stateless(self):
         for mode in ("fixed", "model", "pii"):
@@ -163,7 +159,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         request = probe.request_for("pdf", model="approved")
         def handler(incoming):
             self.assertEqual(incoming.headers["authorization"], "Bearer private-token")
-            self.assertEqual(incoming.headers["X-Egakumi-Profile"], "pdf")
+            self.assertNotIn("X-Egakumi-Profile", incoming.headers)
             self.assertFalse(json.loads(incoming.content)["store"])
             self.assertEqual(json.loads(incoming.content)["max_output_tokens"], 512)
             # Azure Responses は正常でも error:null を含む。本文の marker と
@@ -174,7 +170,9 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private-token", json.dumps(result))
         self.assertNotIn(probe.PDF_MARKER, json.dumps(result))
         self.assertEqual(result["httpAttempts"], 1)
-        self.assertEqual((result["operationId"], result["profileId"]), ("responses-create", "pdf"))
+        self.assertEqual(result["kind"], "pdf")
+        self.assertNotIn("profileId", result)
+        self.assertNotIn("operationId", result)
 
     async def test_multipart_edit_uses_binary_part_not_a_json_wrapper(self):
         def handler(incoming):

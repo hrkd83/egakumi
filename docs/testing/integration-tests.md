@@ -10,8 +10,8 @@
 - 対象: 構築済み環境の経路・証明書・監視、APIM認可、CM本人接続、Azure SQL、Entraグループに基づくAPIキー管理、Model Gateway、Tool Gateway、監査・運用。
 - 正式な提供元: [API定義](../../apps/gateway/apim/apis/)、[構築入力](../../params/)、[モデル・API設定](../../config/)、[Gateway資材](../../apps/gateway/)、[Portal](../../apps/portal/)。構築用のexample設定を実環境の設定値と取り違えません。
 - 画面の準備中機能: Hosted Agent APIとA2A。準備中表示・誤操作防止を試験し、未実装の実行成功を受入条件にしません。
-- WAFは[データ欄の個別除外](../../apps/gateway/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/gateway/waf-raw-body-controls.json)、[SSML宣言ガード](../../apps/gateway/apim/policies/speech-ssml-guard.xml)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。
-- API数・モデル数の一致だけでは合格としません。実施時の設定からAPI、operation、モデル、リクエストプロファイル、接続方式を列挙し、該当行を対象ごとに展開します。
+- WAFは[データ欄の個別除外](../../apps/gateway/waf-data-exclusions.json)、[raw本文の限定調整と補完保護](../../apps/gateway/waf-raw-body-controls.json)、[SSML本文検査](../../apps/gateway/apim/policies/fragments/request/core-speech-ssml-guard/README.md)を仕様基準とします。正規データの通過と制御欄・隣接経路の遮断を別々に確認し、匿名401をAPI機能成功と数えません。TTSの本文読取り集約と呼出位置の変更はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施であり、既存のPASSを新構成の未確認条件の結果へ読み替えません。
+- API数・モデル数の一致だけでは合格としません。実施時の設定からAPI、operation、モデル、選択後の操作・モデル設定、接続方式を列挙し、該当行を対象ごとに展開します。モデルAPIのprofileヘッダーは使いません。購読利用枠やCM接続のprofileは別の設定として確認します。
 
 ### 1.1 公開APIの対象一覧
 
@@ -369,7 +369,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | GW-02 | 共通購読キーの認可 | HTTP/MCP/WSの各入口でキーなし・不正値・停止購読・対象外製品を試し、有効購読と比較する。 | 未認証は401、認証済みの許可外操作は公開契約に従って拒否。APIによる認可抜けがなく、上流へ不正要求を通さない。匿名health/認証callbackは用途を限定して別に確認する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | GW-03 | 主副キーの同一購読 | 専用購読のprimary/secondaryで同じ許可APIを実行する。主キー再生成後は旧主キー・副キー・新主キーを比較する。 | 主副とも同一購読・同じ利用枠で動く。再生成された旧主キーを拒否し、副キーと新主キーを継続利用できる。SQLへキーの平文を保存しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | GW-04 | released-apisと検証用製品 | 通常発行キーとmodel-users/pii-users/connection-usersの検証キーを使い、公開API一覧と照合する。 | 通常発行キーはリリース済みAPIと必要な認証補助入口を利用できる。検証キーは各製品の範囲に従う。未リリースAPIをreleased-apisへ自動で広げない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| GW-07 | method・path・profile・backend制約 | 未登録operation、別method、未知profile、許可外model、任意backend指定を代表APIへ送る。上流へ転送するヘッダーも確認する。 | 404/405または公開された認可/入力エラーで拒否する。固定された許可先・方式だけを利用し、サブスクキーや本人セッションを外部backendへ転送しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| GW-07 | method・path・model・backend制約 | 未登録operation、別method、許可外model、任意backend指定を代表APIへ送る。旧profileヘッダーの有無で結果が変わらず、下流へ送られないことも確認する。 | 未登録経路や許可外modelは公開された認可/入力エラーで拒否する。旧ヘッダーだけを理由に拒否せず、固定された許可先・方式を利用し、サブスクキーや本人セッションを外部backendへ転送しない。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 | GW-08 | API Centerと公開ガイド | 採用時、公開後のAPI Center登録とPortalのURL・method・schema・プロトコルを実入口に照合する。 | 現在公開する定義が対応し、サンプルや未配備のAPIを利用可能と案内しない。API Center更新成功と業務API実行成功は別に記録する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | LIM-01 | 既定の制限なし・認証開始の専用枠 | 未変更の新規購読と基盤検証用購読を確認し、少数の正常要求を送る。別の専用購読ではstart/challengeの設定枠内・超過・期間経過後を確認する。 | 業務の回数/トークンプロファイルはnull＝無制限で、一律60回/分を継承しない。認証開始には別の設定枠があり、超過は429と再試行情報、経過後は回復する。サービス固有の容量・入力サイズまで無制限になるとは説明しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | LIM-02 | 回数制限と回復 | 専用購読へ小さい回数枠と短い期間を設定。枠内、超過、期間経過後を少数要求で確認する。 | APIM標準制限が適用され超過は429と再試行情報を返す。期間後に回復する。分散カウンターの許容範囲を記録し、瞬間単位の完全な厳密会計とは扱わない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
@@ -390,7 +390,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 社員利用は基本無制限とし、毎分トークン上限・月間等の期間quotaは`null`で明示的に無効化します。request rateは機械的な大量要求を抑える暫定防御値の例として1000 requests／60秒を置き、対象Codexで調整します。HTTP回数は人のプロンプト数と異なり、ツール継続・retry・並列処理は複数call、1推論内のreasoningだけでは別HTTP要求になりません。rateだけで攻撃を判定せず、既存WAF・Entra認証・client権限・API／モデル制約を維持します。
 
-以下は新方式の実環境受入項目です。**全項目未実施**で、既存の`GW`・`LIM`・`MET`や結果要約のPASSへ加算しません。合成試験・ポリシー読戻し・実要求の結果を区別し、実ID・キー・token・認証code・環境証跡は公開表へ転載しません。状態変更・再生成・serviceキーの確認には、所有と復旧方法を確認した専用試験資源を使います。
+以下は新方式の実環境受入項目です。反映・読戻しと実要求の確認範囲を分け、未確認の条件は未実施として管理します。既存の`GW`・`LIM`・`MET`や結果要約のPASSへ加算しません。合成試験・ポリシー読戻し・実要求の結果を区別し、実ID・キー・token・認証code・環境証跡は公開表へ転載しません。状態変更・再生成・serviceキーの確認には、所有と復旧方法を確認した専用試験資源を使います。
 
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
@@ -411,15 +411,67 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | ENTRA-15 | 閉鎖・途中失敗・rollback | 専用Product所属を先に解除して社員経路を閉じ、内部stagingでのBearer分岐切替と復旧を確認。ETag競合、途中失敗、古い関連付け残存も再現する。 | APIは購読必須のまま。失敗時はBearer受付を停止。閉鎖後はキーなし/無効キーを拒否し正常キーを維持。公開enabled/apiNames入力を使わず、Product非公開化やBicep省略だけを解除完了にせず所有とreadbackを確認する。 | 新方式の実試験未実施。 | 未実施 |
 | ENTRA-16 | 認証tenantとbackend認証の分離 | 同一/別tenant構成の入力・token宛先・Foundry RBAC・検証済みJWT後のbackend認証を照合する。CMのSQL v4・Broker・XML更新と本人照合も確認する。 | employee認証tenantをAzure資源tenant/MIへ流用しない。社員tokenはAPIMで検証後に除去し、FoundryへAPIM MI、Graph本人接続へCM委任token等の正本backend認証を送る。CM本人確認tenantがGateway認証tenantと違うprofileを拒否。APIMのOAuth管理画面設定のみでJWT検証済みと判定しない。 | 新方式の実試験未実施。 | 未実施 |
 
+#### URLクエリ観測専用化の受入（棚卸⑦）
+
+以下は観測専用化の実環境受入項目です。ローカル改修・検証と新fragment・API参照のAzure反映・読戻し、正本checkpoint更新は完了しました。キー／BearerのResponses JSON・SSEと対応する監査照合を確認しました。旧fragment・Named Valueは参照不在を確認して退役し、読戻しで不在を確認しました。現行生成元・構築入力・正本checkpoint・通常配備の期待値にも旧資材を含みません。query観測・転送を含む残る受入は未完です。既存試験のPASSや合成試験を、この工程の実環境結果として転記しません。
+
+| ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| QOBS-01 | 観測対象と呼出し順 | HTTP操作の`queryObservation`、生成MCP、外部MCPの参照を有効ポリシーから照合する。別method・path・未指定入口・`/mcp/`も比較する。 | 操作IDまたはメソッド・公開相対pathの辞書から選ぶ。標準3ラベルと対象を維持し、認証後・本文前に観測する。WebSocketへは追加しない。 | 新参照・呼出位置の読戻しを確認。対象境界の実要求は未確認。 | 一部確認 |
+| QOBS-02 | 観測JSONの契約 | クエリなし・単一値・同名複数値を独立した合成入力で送る。ラベルの型・64文字境界・予約値・メソッド書式の負例はローカル検証結果と区別する。 | `gatewayQueryObservation`は`route`・`httpMethod`・`presence`・`duplicates`だけ。ラベルはURLではない。mode・許可判定・応答status・件数区分を作らず、観測結果で400／500を返さない。 | 実要求の観測未実施。 | 未実施 |
+| QOBS-03 | 監査の項目と段階 | `received`と、下流応答・ポリシーエラーの観測を要求IDで関連付ける。終端記録がない要求も確認する。 | イベント名`query-guard`、schema 2、audit schema 2を維持。要求・認証済み主体と観測4項目にphase・statusClassを合わせる。mode・`query-rejected`・`guard-error`・`countBucket`の新規出力なし。未着・`unknown`を正常成功に数えない。 | ログ到達の実試験未実施。 | 未実施 |
+| QOBS-04 | 両認証方式と機能境界 | 有効キーと社員Bearerで同じ対象APIを呼ぶ。認証拒否・後続入力制約による拒否・URI変換・SSE・MCPの応答を比較する。 | 既存認証を維持し、APIMの操作照合や後続のMIME／モデル本文検査等の拒否を、観測部品による拒否と混同しない。入力検査からのquery制限・メソッド再確認の撤去はINCON項目で確認する。観測専用化だけでquery転送・WAF通過や機能互換性を保証しない。 | キー／BearerのResponses JSON・SSE、無効Bearerの401と対応する監査照合を確認。query観測・転送の境界、MCP等の受入は未確認。 | 一部確認 |
+| QOBS-05 | 非記録項目と旧ログ | 合成query名・値を使い、新traceと過去のschema 1・旧phaseを照合する。既存診断の収集範囲は別に確認する。 | 新traceにquery名・値・URL・本文・資格情報なし。旧ログを移行前として区別する。固定trace schemaだけで全診断宛先の非保持を保証したとは扱わない。 | 新形式の実ログ確認未実施。 | 未実施 |
+| QOBS-06 | 新参照反映と旧資材撤去 | 新fragment・API参照の反映と読戻し後、旧`queryGuard`参照・`core-query-guard`fragment・`core-query-guard-modes` Named Valueの残存を確認する。 | 新参照が整った後に所有・currentの一般照合を維持して旧資材を撤去し、その後にstateと照合用期待値を整理する。現行生成物に旧参照がなく、旧`gateway.queryGuards`を現行入力として使わない。ローカル改修だけでAzure移行完了としない。 | 新参照の反映・読戻しと正本checkpoint更新を完了。旧参照不在確認後に旧fragment・Named Valueを退役し、読戻しで不在を確認。現行生成元・構築入力・通常配備の期待値に旧資材を含まないことも確認。 | PASS |
+
+#### PII入口のWAF分割の受入
+
+以下は承認したApp GatewayのWAF分割の受入項目です。Azure反映・読戻しと正常REST／MCPの通過・マスキング確認、旧共有WAF資源の参照不在確認と退役は完了しました。未実施の異常系・同名queryへの除外の挙動・ログ帰属は残件です。反映・実WAF通過・旧資源退役は別に管理します。このWAF変更はAPIMの入力検査とは独立し、API定義・認証・モデル機能・OBO・URI制約・他のWAF規則を変更しません。[設定と移行順](waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照してください。
+
+| ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| PIWAF-01 | 新ポリシーと公開パス | まとめ反映後に2ポリシーとpath bindingを読み戻し、manifest・MIME設定・共通保護を照合する。 | RESTの`g-pii-rest`は`/tools/pii/v1/redact`で`RequestArgValues / Equals / text`だけ。MCPの`g-pii-mcp`は`/tools/pii-v1-mcp/mcp`で`params.arguments.text`だけ。`p-pii-redact`とAPIのURLを維持する。 | 承認済みWAF構成・bindingのAzure反映・読戻しと正常REST／MCPの通過・マスキングを確認。追加異常系・query除外の境界は未確認。 | 一部確認 |
+| PIWAF-02 | 正常REST／MCPの通過 | 正規REST本文とMCP初期化・ツール照会・PII実行を確認し、自由文・コード例を含む独立した合成本文も比較する。 | 正常要求が新WAFを通過する。MCPの入れ子本文が`params.arguments.text`だけの除外で通ることを実WAFで確認する。WAF通過、APIM認証、PII結果を別に判定し、ローカル生成や匿名401だけで機能成功にしない。 | 正常RESTとMCP初期化・ツール照会・PII実行の通過・マスキングを確認。追加の自由文・コード例対照は未確認。 | 一部確認 |
+| PIWAF-03 | 除外境界とquery | RESTにMCP用field、MCPにREST用fieldを置いた対照と同名queryを確認し、実ログと後続の拒否・転送を区別する。 | 別入口用fieldのデータ欄除外は新WAFにない。同名queryへの除外は残り得るため、本文専用化やquery全面許可／拒否の確認完了としない。WAF分割でURI・他WAF制御を変更せず、APIM入力検査のquery制限撤去はINCON項目で確認する。 | 境界・ログ帰属の実確認未実施。 | 未実施 |
+| PIWAF-04 | 旧bindingへの復旧と退役 | 通常reconcileで旧`g-pii-redact`が保持されることと、確認失敗時の旧bindingへの復旧手段を確認する。両入口の成功後に旧参照の不在を照合する。 | 新ポリシー・binding反映と正常REST／MCPの実WAF通過確認が完了するまで旧ポリシーを残す。確認後にだけ旧資源を退役し、保存構成と期待値を整理する。ローカル改修だけでAzure移行完了にしない。 | 正常REST／MCP確認と旧参照不在確認後に旧資源を退役。失敗時の旧binding復旧は未実施。 | 一部確認 |
+
+#### 操作定義による入力検査の受入
+
+以下は入力検査の対象選択・部品構成の整理と、query制限・HTTPメソッド再確認・入口MIME一覧比較の撤去の実環境受入項目です。Azure反映・読戻しと、空本文・Content-Type未指定の400、キー／BearerのResponses JSON・SSEおよび対応する監査照合を確認しました。Content-Typeの追加異常系、他モデル・transportは未実施です。ローカル資材の生成・検証と、まとめ反映・読戻し・実接続の受入を区別します。Content-Type宣言の存在・1値・非空MIME部分の確認と、操作のmethod・URL登録を維持します。後段のMIME制御・Speech転送・WAFは未変更で、関連受入を分けて確認します。C#がメソッドを見ないローカル検証を、実APIMの未知メソッド拒否の証明には使いません。[入力検査の使い方と13操作の範囲](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)を参照してください。
+
+| ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| INCON-01 | 操作定義と生成・読戻し | 標準13操作の`inputContract={}`、生成した`gatewayControlSettings.inputContracts`とAzureの有効ポリシーを照合する。操作のmethod・URLのARM登録も比較する。 | 対象表は13操作IDだけを記録し、各値は正常な`{}`。全対象の宣言条件は共通で、MIME一覧・メソッド・query条件を持たない。操作登録を維持し、定義と生成表の一致は配備前に確認する。 | 承認済み構成のAzure反映・読戻しと、空本文・Content-Type未指定の400および対応する監査照合を確認。全操作の実要求受入は未完。 | 一部確認 |
+| INCON-02 | 呼出し順と拒否の責務 | 有効キーと社員Bearerで、宣言ありの正常要求と、欠落・空値・空MIME部分・重複値を比較する。読戻しで`TryGetValue`の取得1回と、単一値確認後の`;`分割・空白除去・非空確認を照合する。 | 共通認証・要求準備・query観測の後、本文前に共通宣言条件の真偽値を作る。欠落・複数・空値・空MIME部分はAPI側の既存400と拒否監査へ進む。会社MIME一覧を読まず、新しい構文パーサーを追加しない。APIM解析後の単一値をwire上の重複行不在の証明にせず、AppGW等の正規化や他の拒否と区別する。 | 空本文でContent-Type未指定の400と対応する拒否監査を確認。空値・空MIME部分・重複値は未実施。 | 一部確認 |
+| INCON-03 | 未指定入口と対象外の境界 | 入力契約を指定しないHTTP操作と、既存のLive・Realtime・PII・生成MCP・外部MCP・WebSocketの生成参照を確認する。 | この入力検査を自動追加しない。有効な対応表に操作の契約がない場合のtrueは、この検査だけの対象外を表す。認証と後続の利用許可・本文検査・固有処理は維持する。 | 対象環境の参照・接続未確認。 | 未実施 |
+| INCON-04 | 既存処理とデータ非記録 | 同じモデル・入力を改修前後で比較し、モデルルーティング・URI変換・SSE・ツールの応答と監査出力を照合する。対象表の欠落、操作値のnull・型不正を拒否する資材側の負例はローカル検証と区別する。 | 認証・本文／モデル条件・URI変換を維持し、入力検査がquery名・値・本文・資格情報を新規記録しない。正常な対象値`{}`と表／操作値の不備を区別し、設定不備を対象外のtrueへ変換しない。この受入だけでモデル機能・query転送の全互換性を保証しない。 | キー／BearerのResponses JSON・SSEと対応する監査照合を確認。他モデル・URI・ツールやデータ非記録の追加確認は未実施。 | 一部確認 |
+| INCON-05 | クエリ制限撤去と残る境界 | 登録した操作のメソッド・URLと正常MIMEで、クエリなし・未知名・同名複数値・任意の`api-version`を比較する。別の対照では`api-key`／`subscription-key`をクエリへ指定し、観測・認証・入力検査・URI変換・WAF・下流応答の帰属を確認する。 | 通常のクエリは入力検査で拒否せず、OpenAI embeddingsの版の例外条件もない。URL資格情報は共通認証で従来どおり拒否する。明示した対象の有無・複数値の観測は維持し、値をログへ追加しない。後段や下流の400等を入力検査の拒否と混同せず、すべてのqueryの転送・WAF通過・下流の受付を保証しない。 | クエリ・拒否主体・転送の実確認未実施。 | 未実施 |
+| INCON-06 | 実APIMのメソッド・URL照合 | 登録済みのメソッド・URLによる正常要求と、対象URLに未登録のHTTPメソッド・独立した合成メソッド名・未登録URLの対照を送る。有効ポリシーとAPIM／AppGWのログで照合先・拒否主体・下流への到達を確認する。 | 未登録の要求が対象の操作や下流のモデル呼出しへ到達しない。操作登録を維持した実APIMの照合結果を確認し、WAF・認証・下流の拒否と区別する。C#がメソッドを参照しないことのローカル検証だけでは、この項目に合格を付けない。 | 実APIMの操作照合・下流非到達の確認未実施。 | 未実施 |
+| INCON-07 | 共有MIME一覧撤去と残存制御 | 単一・非空のContent-Type宣言で、JSON以外を含む合成対照を送る。入口とcore-model-limitsのfragmentを読戻し、個別処理・WAF・下流の拒否主体、Speechの上流ヘッダーを照合する。 | 入口とcore-model-limitsのMIME許可一覧比較はなく、宣言・サイズ条件を満たせば後続へ進む。残る`operationConstraints.contentTypes`を使う個別処理、Documentの形式検査、WAFの形式規則、Speechの固定ヘッダーは未変更として区別する。共有部品の通過を任意形式の下流受付や成功へ読み替えず、関連受入をまとめ反映前に整理する。 | 共有部品通過・残存制御・ヘッダー転送の実確認未実施。 | 未実施 |
+
+#### APIとモデルによる内部profile選択の受入
+
+段階2では、Portal・試験CLI・Codexからprofileを選択・付与せず、APIMがAPI・操作とモデル名から内部設定を選びます。残る`X-Egakumi-Profile`は選択や値数・IDの検査に使わず、下流転送前の削除だけを残します。内部設定は操作の基本設定＋modelSettings差分へ整理します。既存の入力・モデル制約、利用枠・監査は保持します。以下は対象環境で確認する受入条件です。ローカル検証・生成専用出力・配備読戻し・端末疎通を区別し、個別環境の結果は保護した証跡で管理します。
+
+| ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| PROF-01 | 旧ヘッダーからの独立と清掃 | 有効キーと社員Bearerの両方で、旧ヘッダーなし・旧正常値・不正値・複数値を同じAPI・操作・modelで比較する。モデル別設定のない操作への旧指定も試す。 | APIMは旧ヘッダーを理由に選択・拒否せず、モデルから同じ内部設定を選ぶ。下流には旧ヘッダーを送らない。HTTP／WAFの別の構文拒否を区別し、共通認証と検証済み利用者の扱いは変えない。 | 対象環境で反映後の経路・ログを確認する。 | 要確認 |
+| PROF-02 | 既定以外のモデルと固定URI | Chatの互換モデル・Router、FLUX flex／proを、登録済みのモデル名で呼ぶ。操作ポリシーと上流URIを読み戻す。 | 旧ヘッダーを指定せず、対応する内部設定と登録済みの固定上流URIへ到達する。既定設定への固定で別モデルを失わず、要求由来の任意URLへ転送しない。 | モデル・固定URIの実確認未実施。 | 未実施 |
+| PROF-03 | 現在のCodex経路とalias | 段階1反映後、現在のCodex設定でResponsesを実行し、主モデルと`codex-auto-review`の解決、SSE完了・会話・ローカルツール継続を確認する。 | 現在のResponses経路が維持される。aliasが登録したdeploymentへ解決し、監査の実モデル・alias適用情報を追跡できる。接続成功だけですべてのモデル機能の受入完了にしない。 | Codexによる実確認未実施。 | 未実施 |
+| PROF-04 | クライアント設定と旧処理撤去 | Codex設定から旧ヘッダーを外し、再起動後の新規要求で疎通する。Portalの要求例・実送信と試験CLIもprofileを指定・付与せず、モデルでpayloadと内部設定が決まることを確認する。 | 旧付与・受付選択・値数/ID検査を撤去し、旧ヘッダーの下流転送前削除だけを保持する。購読利用枠、CM profileNameと認証キャッシュは変更しない。内部設定の構造は別のPROF-06で確認する。 | 対象端末と配備環境で新条件を確認する。 | 要確認 |
+| PROF-05 | まとめ反映と通信維持 | 同じ生成元のGlobal／共有fragment／Named Value／API／操作を読み戻し、旧新query参照とFLUXルーティングを照合する。反映中もBearerによる現在のResponses要求を確認する。 | 新しい参照先を先に登録してから切り替え、参照不在・設定不一致で現在の通信を止めない。旧query資材は新参照確認後に退役する。Foundry容量と既存キー／社員利用枠を維持し、PII WAF分割の実受入をこのAPIM受入と分ける。 | 承認済み資材の反映・全graph読戻し・公開所属不変と、キー／BearerのResponses JSON・SSEおよび対応する監査照合を確認。旧query資材の参照不在確認・退役・不在読戻しと正本checkpoint整理も完了。他モデル・transport等の受入は未完。 | 一部確認 |
+
+| PROF-06 | 操作基本設定とモデル別差分 | 同じ生成元で、新fragment、全操作設定、modelAliases、FLUX固定URI、Portalカタログを照合し、対象のキー／Bearer要求を実行する。 | 一つのモデルの設定が一意に決まり、基本＋差分で出力項目・サイズ・固定URI・監査ラベルが維持される。モデル名を使わないAPIは基本設定だけを使う。 | ローカル検証と対象環境の反映・受入を区別する。 | 要確認 |
+
 ### 3.5 Model Gateway・リアルタイム音声
 
 本節は `main` の `c6ba7ca` にある実装から作成した試験仕様です。この仕様の作成時には試験を実行していません。過去の動作確認結果は転記せず、全行を未実施から開始します。
 
 #### 実施単位・判定方法
 
-- **全件展開**：成功系で「全件」と記した行は、対象環境へ配備する API 定義の `authorization.operationConstraints`、`profiles`、`allowedModels` と解決済み `public-bindings.json` から、`API ID × operation ID × profile ID × model ID × transport` の一覧を作り、該当する全組合せで実施します。各実施を `TXT-01/<model>/<profile>` のような枝番で記録し、未配備・未実施のモデルを他モデルの成功で代用しません。現在のモデル名や件数を将来の固定上限にはしません。
-- **Portal と直接 API の区別**：Portal は `getTextGenerationModels` などが返す候補だけを対象にします。Chat の `vision`、Responses の `pdf`、OpenAI/BFL の画像編集は現行 Portal の実行フォームに含まれないため、直接 Gateway API で確認します。Portal で未提供の機能を不具合や実施済みとして数えません。
-- **上限の参照先**：以下の `L` は当該 operation/profile の `maxRequestBytes`・`arrayLimits`・`integerLimits`・`stringChoices`、`O` は `model-capabilities.json` の当該モデル能力、`P` は Portal の `*-request.ts`・`*-integration.ts` にある追加制限・既定値を指します。数値は試験準備時に読み取り、証跡へ記録します。境界は `L/P/O の許可上限ちょうど` と `その最小単位超過` を分け、UTF-8 のバイト数と文字数を混同しません。モデルの最大出力と、Portal の応答量・待ち時間・音声接続時間の保護上限も別です。
+- **全件展開**：成功系で「全件」と記した行は、対象環境へ配備する API 定義の `authorization.operationConstraints`、`modelSettings`、`allowedModels` と解決済み `public-bindings.json` から、`API ID × operation ID × model ID × transport` の一覧を作ります。モデルから一意に取得するsettingIdを併記し、クライアントに設定を指定させる直積にはしません。各実施を `TXT-01/<model>/<transport>` のような枝番で記録し、未配備・未実施のモデルを他モデルの成功で代用しません。現在のモデル名や件数を将来の固定上限にはしません。
+- **Portal と直接 API の区別**：Portal は `getTextGenerationModels` などが返す候補だけを対象にします。Chatの画像入力、ResponsesのPDF入力、OpenAI/BFLの画像編集は現行Portalの実行フォームに含まれないため、profileヘッダーを付けずに直接Gateway APIで確認します。Portalで未提供の機能を不具合や実施済みとして数えません。
+- **上限の参照先**：以下の `L` は当該operationの基本設定へ`modelSettings[モデル名]`の差分を重ねた設定の`maxRequestBytes`・`arrayLimits`・`integerLimits`・`stringChoices`、`O` は `model-capabilities.json` の当該モデル能力、`P` は Portal の `*-request.ts`・`*-integration.ts` にある追加制限・既定値を指します。数値は試験準備時に読み取り、証跡へ記録します。境界は `L/P/O の許可上限ちょうど` と `その最小単位超過` を分け、UTF-8 のバイト数と文字数を混同しません。モデルの最大出力と、Portal の応答量・待ち時間・音声接続時間の保護上限も別です。
 - **共通前提**：当該 API が許可された有効な検証用購読を選べる Portal 利用者、必要なモデル配備、音声試験ではヘッドセットとマイクを準備します。実行 URL は環境の公開 Gateway/Portal origin を使い、実キーを例へ直書きしません。本文は合成データを使います。正常系の生成内容は完全一致ではなく、返却形式・実モデル・意味的成立・手動判定で確認します。
 - **異常系の方法**：実サービスで再現できない不正上流応答、途中切断、タイムアウト、リダイレクトは、外部公開しない検証環境の制御可能な上流で再現します。製品設定や本番サービスを壊して再現しません。これは自動テストの実施済みを意味しません。
 - **証跡**：各枝番で日時、環境、commit、API/profile/model/transport、選択した購読の非秘密 ID、入力 fixture ID、HTTP 状態・終了理由・request ID、マスキング済みリクエスト/応答またはイベント要約を保存します。API キー、Cookie、通話 ticket、暗号化停止 handle、SDP、音声そのものを共有証跡へ含めません。音声の可聴性・字幕精度・停止は実機で人が判定し、接続成功だけで合格にしません。
@@ -441,16 +493,16 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
-| TXT-01 | Chat Completions 全 text-only profile/model | 全件展開した `chat`・`compatible`・`router` の全モデルについて、Portal で Stream 無効、自由入力「東京と大阪の違いを短く説明」と日本語/英語混在文で実行。公開 API へも同じ本文を送る。 | `/models/openai/v1/chat/completions` と該当 `X-Egakumi-Profile` を使用。`messages`・モデルごとの出力パラメーターが一致し、`choices[].message` と実モデルを表示。router の返却実モデル名を要求の別名と取り違えない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| TXT-01 | Chat Completions 全textモデルと内部設定 | 全件展開したChat対応モデルについて、PortalでStream無効、自由入力「東京と大阪の違いを短く説明」と日本語/英語混在文で実行。公開APIへも同じ本文を送る。 | `/models/openai/v1/chat/completions`へprofileヘッダーなしで送り、modelからchat・compatible・router等の内部設定を選ぶ。`messages`・モデルごとの出力パラメーターが一致し、`choices[].message`と実モデルを表示。Routerの返却実モデル名を要求の別名と取り違えない。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 | TXT-02 | Responses 全 response profile/model | 全件展開した `response` の全モデルで Stream 無効・自由入力を実行。OpenAI 詳細初回と、Responses 専用モデルを選んだ際の方式を確認する。 | `/models/openai/v1/responses`、`input`、`max_output_tokens`、`store:false` を使用。`output` 内の本文/拒否を表示できる。OpenAI の対応モデルは初回 Responses、専用モデルに Chat を選択させない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| TXT-03 | Chat/Responses の方式切替 | 両方式に対応する同一モデルを選び、独自本文と Stream 設定を保持したまま方式を交互に変更し実行。さらに compatible/router へ切り替える。 | モデル名だけで方式を混同しない。path/profile、`messages` 対 `input`、`max_completion_tokens`/`max_tokens`/`max_output_tokens` が正しく切り替わる。本文と Stream は保持、最大出力は切替先能力へ更新される。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| TXT-03 | Chat/Responsesの方式切替 | 両方式に対応する同一モデルを選び、独自本文とStream設定を保持したまま方式を交互に変更し実行。さらに互換ChatやRouter対応モデルへ切り替える。 | モデル名だけで方式を混同しない。公開pathと内部設定、`messages`対`input`、出力トークン項目が正しく切り替わる。profileの選択・付与は不要で、本文とStreamは保持し、最大出力は切替先能力へ更新される。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 | TXT-04 | 出力上限の境界・未確定モデル | 数値上限の各能力クラスで `O` 最大・最小正整数を送る。最大超過、0、小数、文字列を試す。Mistral の unverified と model-router の dynamic は未指定と数値追加を別に試す。 | 許可内は指定通り送信。Portal は最大超過等を拒否し、未確定モデルは数値を勝手に補完せずパラメーター省略で実行。未確定を「無制限に必ず生成可能」と説明しない。出力上限到達を通信エラーと混同しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| TXT-05 | 本文・profile・モデルの境界 | 各 text profile の日本語混在本文を JSON 全体の `L` 境界/超過に調整して直接 API へ送る。Portal の `P` 文字数境界/超過、空白のみ、モデルと profile 不一致、不正 JSON も試す。 | 許可境界は検証を通過し、超過/不一致は上流呼出前に拒否。UTF-8 バイト制限と文字数制限をそれぞれ適用。未知 profile や別提供元モデルを既定の正常要求として転送しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| TXT-05 | 本文・モデルと内部設定の境界 | 各textモデルの日本語混在本文をJSON全体の`L`境界/超過に調整して直接APIへ送る。Portalの`P`文字数境界/超過、空白のみ、許可外モデル、不正JSONも試す。旧profileヘッダーの値だけを変えた対照も送る。 | 許可境界は検証を通過し、既存の本文超過/許可外モデルは上流呼出前に拒否する。UTF-8バイト制限と文字数制限をそれぞれ適用し、旧ヘッダーでモデル選択や拒否結果を変えない。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 | TXT-06 | Chat SSE 全モデル・終端 | TXT-01 の全組合せを Stream 有効で実施。長短の自由入力で断片、finish_reason、usage がある場合の最終フレーム、`[DONE]` を順に確認する。 | 逐次表示され、`finish_reason` の後の `[DONE]` で終了。複数/分割フレーム・日本語の分割を正しく再構成。本文を二重追加せず、終了後も実モデル/終了理由/利用量とイベント要約が対応する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | TXT-07 | Responses SSE 全モデル・終了種別 | TXT-02 の全組合せを Stream 有効で実施。通常完了に加え、検証環境で出力上限到達による incomplete と拒否を再現する。 | delta と完成文の重複がなく、`response.completed`/`response.incomplete` を区別して終了。incomplete を通常完了や通信失敗へ置換せず、拒否も本文として安全に読める。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | TXT-08 | SSE 異常・中断・使用量 | 制御上流で終端前切断、終端だけ、終端後追加イベント、壊れた JSON、response.failed/error、`P` を超えるイベント/応答、利用者中断を作る。usage 欠損と有効な usage を両方式で比較する。 | 正式な終端がなければ成功にしない。各保護上限で停止、取消伝播。usage は実際に提供された有効な数だけ表示し、欠損を0にしない。上流エラー本文・キーを公開しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| TXT-09 | vision profile（直接 Gateway） | `vision` 許可モデル全件へ、識別可能な合成画像と質問を Chat の公開 path/profile で送る。text-only profile、未許可モデル、本文 `L` 超過も試す。 | vision の許可経路で画像を含む質問へ意味的な応答。モダリティ/profile/モデル不一致と過大要求を拒否。Portal のテキストフォームに画像入力があるとは扱わない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| TXT-10 | pdf profile（直接 Gateway） | `pdf` 許可モデル全件へ、合成 PDF のインライン `input_file` と質問を Responses の公開 path/profile で送る。PDF 内の固有の合成語を尋ねる。text-only profile と `L` 超過も試す。 | PDF を使った応答が得られ、上限・モダリティ不一致を拒否。保存済み file ID に依存しない。Portal のテキストフォームで PDF アップロードできるとは記録しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| TXT-09 | Chat画像入力（直接Gateway） | 画像入力に対応する登録済みモデルへ、識別可能な合成画像と質問をChatの公開pathへprofileヘッダーなしで送る。未許可モデルと本文`L`超過も試す。 | モデルから内部設定を選び、画像を含む質問へ意味的な応答を返す。既存の入力・モデル・本文制約を維持する。Portalのテキストフォームに画像入力があるとは扱わない。 | 新方式の画像入力を対象環境で確認する。 | 要確認 |
+| TXT-10 | Responses PDF入力（直接Gateway） | PDF入力に対応する登録済みモデルへ、合成PDFのインライン`input_file`と質問をResponsesの公開pathへprofileヘッダーなしで送る。PDF内の固有の合成語と本文`L`超過を確認する。 | モデルから内部設定を選び、PDFを使った応答を返す。既存の入力・モデル・本文制約を維持し、保存済みfile IDに依存しない。PortalのテキストフォームでPDFアップロードできるとは記録しない。 | 新方式のPDF入力を対象環境で確認する。 | 要確認 |
 | TXT-11 | Stateless Responses の保存・参照・function 契約 | 直接 API で `store:true`、`background:true`、`previous_response_id`/`conversation`、保存済み item/file/vector-store 参照、組み込みツールを個別に試す。別途 function ツールの完全な入出力 Items をクライアントから渡して続行する。 | store は false へ強制される。background・保存状態参照・非 function ツール等は現行許可フィールド/参照検査で拒否。許可された完全 Items はクライアント保持で続行し、別購読の保存状態を検索/共有しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 
 #### 埋め込み
@@ -468,12 +520,12 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | ID | 観点・対象 | 前提・入力・手順 | 期待結果 | 確認結果・残件（公開要約） | 判定 |
 | --- | --- | --- | --- | --- | --- |
 | IMG-01 | OpenAI 画像生成全モデル | 全 OpenAI 画像生成モデルで独自の合成プロンプトを Portal/直接 API から送る。選択した size/quality/output_format と JSON を比較し、画像を人が確認する。 | generation path、モデル、`n` 等が `L/P` と一致。同期応答の許可件数を表示し、内容が入力に概ね沿う。画像/使用量/修正プロンプトは実応答にある範囲で表示される。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| IMG-02 | BFL 画像生成全モデル/profile | 全 `FLUX` 生成モデル/profile で、各許可形式と `L` 範囲内の縦横寸法、自由入力を実行する。 | `flex`/`pro` の profile とモデルを一致させ、`num_images` と width/height/output_format を送る。Azure の同期 `data` 応答を扱い、直販非同期 polling と取り違えない。初期寸法は `P` 最大。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| IMG-02 | BFL画像生成全モデル | 全FLUX生成モデルで、各許可形式と`L`範囲内の縦横寸法、自由入力を実行する。 | profileヘッダーなしでmodelから内部flex/pro設定と固定URIを選び、`num_images`とwidth/height/output_formatを送る。Azureの同期`data`応答を扱い、直販非同期pollingと取り違えない。初期寸法は`P`最大。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 | IMG-03 | 生成入力・寸法・件数の境界 | プロンプト空白、`P` 文字数、`L` 本文の境界/超過、許可外 size/quality/format、寸法下限/上限/超過、小数、複数枚要求を個別に試す。 | 許可内は受理し、不許可値を補正・切詰めせず拒否。対応しないトークン上限/Stream を追加しない。OpenAI/BFL 間で専用パラメーターを混在させない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | IMG-04 | PNG/JPEG・URL 応答の安全表示 | 制御上流で正しい PNG/JPEG Base64、安全な HTTPS 一時 URL、不正 Base64/SVG/HTML/内部 URL、過大応答を返す。通常画像のプレビューと JSON コピーも確認する。 | 検証済みラスターだけをインラインプレビュー。URL 応答は安全な外部リンクとして扱い、BFF が利用者指定 URL を取得しない。不正/過大応答は拒否。画面の Base64 省略は完全 JSON コピーを破壊しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | IMG-05 | OpenAI 画像編集全モデル（直接 Gateway） | 全 image-edit 許可モデルを deployment path に指定し、合成画像と変更指示を multipart で送る。同じモデル名を本文追加/改変した場合も確認する。 | 編集専用公開 path と `pathModel` に束縛され、生成 path と混同しない。許可されたモデル・本文形式で編集画像が得られる。Portal の生成フォームに画像編集 UI があるとは記録しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| IMG-06 | BFL 画像編集全モデル/profile（直接 Gateway） | `flux2-edit` の全 model/profile へ、提供元形式に従う合成元画像と変更指示、許可件数/寸法/形式を JSON で送る。 | 編集用 path/profile とモデルが一致し、元画像へ指示を適用した画像を返す。生成の成功を編集成功に代用しない。現行 Portal は生成のみであることが明瞭。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
-| IMG-07 | 編集の形式・上限・未許可モデル | 編集専用 path で未許可 deployment/model、profile 不一致、誤 Content-Type、壊れた multipart/JSON、`L` 境界/超過を個別に送る。 | path/body/profile 制約を適用し、不正・超過は成功にしない。認可された固定バックエンド以外へ転送しない。上流の画像形式エラーが返る場合も安全な失敗として記録する。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+| IMG-06 | BFL画像編集全モデル（直接Gateway） | `flux2-edit`の全モデルへ、提供元形式に従う合成元画像と変更指示、許可件数/寸法/形式をJSONで送る。 | profileヘッダーなしで編集pathとmodelから内部設定・固定URIを選び、元画像へ指示を適用した画像を返す。生成の成功を編集成功に代用しない。現行Portalは生成のみであることが明瞭。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
+| IMG-07 | 編集の形式・上限・未許可モデル | 編集専用pathで未許可deployment/model、誤Content-Type、壊れたmultipart/JSON、`L`境界/超過を個別に送る。旧profileヘッダーの値だけを変えた対照も送る。 | 既存path/body/model制約を適用し、不正・超過は成功にしない。旧ヘッダーで設定・拒否結果を変えず、認可された固定バックエンド以外へ転送しない。上流の画像形式エラーも安全な失敗として記録する。 | 旧仕様の記録は改修後の判定へ流用せず、新条件で再確認する。 | 要確認 |
 
 #### 音声ファイル STT/TTS
 
@@ -527,7 +579,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 #### 仕様照合に用いたファイル
 
 - `apps/gateway/apim/apis/openai-inference-v1.json`、`openai-embeddings-v1.json`、`cohere-inference-v1.json`、`openai-images-v1.json`、`blackforest-images-v1.json`、`openai-audio-v1.json`、`azure-speech-v1.json`、`microsoft-decision-v1.json` と realtime/live/transcription/voice-live/observer/control API 定義。
-- `apps/gateway/apim/model-capabilities.json`、`public-bindings.json`、`policies/gateway.xml`。
+- `apps/gateway/apim/model-capabilities.json`、`public-bindings.json`、`policies/api-templates/gateway.xml`。
 - `apps/portal/lib/model-catalog.ts`、`model-selection.ts`、`text-model-choices.ts`、`model-request.ts`、`model-integration.ts`、`model-gateway.ts`、`model-stream.ts`、`model-response.ts`。
 - `apps/portal/lib/embedding-*`、`image-*`、`speech-*`、`rerank-*`、`decision-*`、`realtime-*`、`apps/portal/components/realtime-audio-panel.tsx`。
 
@@ -611,7 +663,7 @@ PIIの入力はテスト用に合成した氏名・メール・電話番号等�
 
 #### 容量緩和・非同期化の追加受入
 
-この改修のAzure反映・実経路試験は未実施です。ローカル検証と次の受入を区別します。
+TTS本文読取り集約のAzure反映・読戻しは完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施です。ローカル検証と次の実経路受入を区別します。
 
 | ID | 入力・操作 | 期待結果 | 判定 |
 | --- | --- | --- | --- |

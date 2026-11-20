@@ -1,0 +1,10 @@
+<fragment>
+  <!-- ========== 操作の入力契約の確認 ========== -->
+  <!-- 目的：検査対象の操作で、本文を読む前にContent-Typeの宣言を確認します。 -->
+  <!-- 処理：inputContractsの対象操作でContent-Typeの存在・1値・非空のMIME部分を確認し、gatewayApiInputValidationPassedへ結果を格納します。不備時の監査と400応答は呼出し元が行います。 -->
+  <!-- 対象外の操作は検査を省略してtrueを返します。この結果は、要求全体やMIMEの完全な構文を検証したという意味ではありません。 -->
+  <set-variable name="gatewayApiInputValidationPassed" value="@{
+      __CORE_API_INPUT_VALIDATION_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

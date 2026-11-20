@@ -65,7 +65,7 @@ test("生成入力は文章を受け付け、任意の接続先・秘密・未�
   for (const stream of [undefined, "true", 1, null]) assert.equal(textGenerationInputSchema.safeParse({ ...defaultInput, stream }).success, false);
 });
 
-test("同じ実モデル名でも明示したAPI形式・profile・トークン項目を一貫して使う", async () => {
+test("同じ実モデル名でも明示したAPI形式・トークン項目を一貫して使う", async () => {
   const responseVariant = { ...responsesModel, id: chatModel.id };
   for (const model of [chatModel, responseVariant]) {
     let requests = 0, resolutions = 0;
@@ -77,7 +77,7 @@ test("同じ実モデル名でも明示したAPI形式・profile・トークン�
       fetch: async (url, options) => {
         requests++;
         assert.equal(String(url), `${gatewayOrigin}${model.path}`);
-        assert.equal(new Headers(options?.headers).get("X-Egakumi-Profile"), model.profileId);
+        assert.equal(new Headers(options?.headers).get("X-Egakumi-Profile"), null);
         const body = JSON.parse(String(options?.body));
         assert.equal(body.model, chatModel.id);
         assert.equal(body[model.outputTokenParameter], defaultInput.maxOutputTokens);
@@ -176,7 +176,7 @@ test("APIのモデル・出力上限と入力バイト数を送信前に検証�
   assert.equal(calls, 0);
 });
 
-test("Chat Completionsは定義のパス・プロファイル・出力パラメーターでAPIMを一回だけ呼ぶ", async () => {
+test("Chat Completionsは定義のパス・出力パラメーターでAPIMを一回だけ呼ぶ", async () => {
   let calls = 0;
   const context = dependencies({ fetch: async (url, options) => {
     calls++;
@@ -184,11 +184,10 @@ test("Chat Completionsは定義のパス・プロファイル・出力パラメ�
     assert.equal(options?.redirect, "error");
     assert.equal(options?.cache, "no-store");
     const headers = new Headers(options?.headers);
-    const model = compatibleModel;
-    assert.deepEqual(Object.fromEntries(headers), Object.fromEntries(new Headers({ ...getTextGenerationHeaders(model, false), "api-key": secret })));
+    assert.deepEqual(Object.fromEntries(headers), Object.fromEntries(new Headers({ ...getTextGenerationHeaders(false), "api-key": secret })));
     assert.equal(headers.get("api-key"), secret);
     assert.equal(headers.get("Accept"), "application/json");
-    assert.equal(headers.get("X-Egakumi-Profile"), "compatible");
+    assert.equal(headers.get("X-Egakumi-Profile"), null);
     assert.equal(headers.get("cookie"), null);
     assert.deepEqual(JSON.parse(String(options?.body)), {
       model: compatibleModel.id, messages: [{ role: "user", content: SAMPLE_TEXT_PROMPT }],

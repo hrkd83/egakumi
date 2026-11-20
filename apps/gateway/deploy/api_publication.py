@@ -22,7 +22,7 @@ import time
 from urllib.parse import parse_qsl, urlsplit
 import uuid
 
-from deployment.helpers.configuration import API_NAME, entra_tenant_id, normalize_query_guards
+from deployment.helpers.configuration import API_NAME, entra_tenant_id
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.catalog_descriptions import with_catalog_descriptions
 from deployment.helpers.apim_authentication import (
@@ -41,6 +41,10 @@ from deployment.helpers.apim_samples import cleanup_candidates, cleanup_default_
 from deployment.helpers.released_apis import RELEASED_PRODUCT_ID, selected_api_names, reconcile_unreleased_apis
 from deployment.lifecycle import DeploymentError, PROJECT_NAME, ROOT, require_success, state_from_outputs
 import entra_publication
+from publication_templates import (
+    canonical_publication_template, publication_parameters, split_publication_templates,
+    source_generation_id, validate_source_generation_id,
+)
 
 APIM_API = "2024-05-01"
 NETWORK_API = "2025-01-01"
@@ -48,6 +52,9 @@ DEPLOYMENT_API = "2022-09-01"
 MONITOR_API = "2021-05-01-preview"
 MODULE = ROOT / "apps/gateway/apim/api-publication.bicep"
 LAYERS = ("id", "nw", "monitor", "svc", "maint")
+SOURCE_GENERATION_OUTPUT = "publicationSourceGenerationId"
+SOURCE_PRINCIPAL_OUTPUT = "publicationSourcePrincipalId"
+SOURCE_PRINCIPAL_EXPRESSION = "[reference('apim', '2024-05-01', 'full').identity.principalId]"
 
 
 def _same(left, right):
@@ -174,7 +181,6 @@ def prepare_plan(config: dict, state: dict) -> dict:
         "apiDefinitions": resolved, "publishApis": True,
         "subscriptionKeyHeader": authentication["core-subscription-key-header"],
         "credentialLogin": credential_login.settings(config) or {},
-        "queryGuards": normalize_query_guards(config["gateway"].get("queryGuards", {})),
         "rateLimits": config["gateway"].get("rateLimits", {
             "user": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60},
             "subscriptionKey": {"enabled": False, "calls": 60, "renewalPeriodSeconds": 60, "overrides": []},
@@ -251,6 +257,8 @@ def checkpoint_authentication(saved, plan):
             or not _same(saved.get("apimId"), plan["apimId"])
             or not _same(saved.get("deploymentId"), plan["deploymentId"])):
         raise ValueError("The protected API source checkpoint belongs to a different publication")
+    if "sourceGenerationId" in saved:
+        validate_source_generation_id(plan, saved["sourceGenerationId"])
     fields = {"globalPolicy", "entraAuthentication", "entraNamedValues"}
     if not fields.intersection(saved):
         return None
@@ -275,7 +283,7 @@ def checkpoint_authentication(saved, plan):
             "entraNamedValues": copy.deepcopy(expected)}
 
 
-def source_checkpoint(plan, source, global_policy, *, entra_authentication=None, browser_source=None):
+def source_checkpoint(plan, source, global_policy, *, entra_authentication=None, browser_source=None, generation_id=None):
     """API再配備を要せず、独立した共通policy/NV期待値を保護checkpointへ保存できる形にする。"""
     entra = plan.get("entraAuthentication") if entra_authentication is None else entra_authentication
     expected = entra_authentication_named_values(entra)
@@ -295,6 +303,8 @@ def source_checkpoint(plan, source, global_policy, *, entra_authentication=None,
               "entraAuthentication": copy.deepcopy(entra), "entraNamedValues": expected}
     if browser_source is not None:
         result["browserSource"] = copy.deepcopy(browser_source)
+    if generation_id is not None:
+        result["sourceGenerationId"] = validate_source_generation_id(plan, generation_id)
     return result
 
 
@@ -388,6 +398,183 @@ def _wait_resource(transport, resource_id, api, *, sleep, deadline):
     raise DeploymentError("Owned publication operation is still pending; no redeployment or rollback was attempted")
 
 
+def _publication_parameter_values(parameters):
+    """ARMの読戻しで付くtype情報を除き、指定した入力値そのものを比較できる形にする。"""
+    if (not isinstance(parameters, dict) or not parameters or any(
+            not isinstance(item, dict) or "value" not in item or set(item) - {"value", "type"}
+            for item in parameters.values())):
+        raise ValueError("Publication source generation parameters must contain the reviewed literal inputs")
+    return {name: item["value"] for name, item in parameters.items()}
+
+
+def _checked_source_job(body, config, plan, generation_id, parameters, *, require_complete=True):
+    """生成専用の記録を照合する。別環境・別入力・資源変更を伴う記録は採用しない。"""
+    if not isinstance(body, dict):
+        raise ValueError("Publication source generation record must be an object")
+    validate_source_generation_id(plan, generation_id)
+    _assert_same(body.get("id"), generation_id, "Publication source generation")
+    _assert_same(body.get("type"), "Microsoft.Resources/deployments", "Publication source generation type")
+    tags, properties = body.get("tags"), body.get("properties")
+    if (not isinstance(tags, dict) or tags.get("azd-env-name") != config["environmentName"]
+            or tags.get("azd-project-name") != PROJECT_NAME or not isinstance(properties, dict)
+            or properties.get("mode") != "Incremental"
+            or _publication_parameter_values(properties.get("parameters")) != _publication_parameter_values(parameters)):
+        raise ValueError("Publication source generation does not match its owner and inputs")
+    if properties.get("outputResources") not in (None, []):
+        raise ValueError("Publication source generation must not deploy any resources")
+    if not require_complete:
+        return
+    if properties.get("provisioningState") != "Succeeded":
+        raise ValueError("Publication source generation has not succeeded")
+    outputs = properties.get("outputs")
+    binding = outputs.get(SOURCE_GENERATION_OUTPUT) if isinstance(outputs, dict) else None
+    if not isinstance(binding, dict) or binding.get("value") != generation_id:
+        raise ValueError("Publication source generation binding is missing or inconsistent")
+    source_entry, browser_entry = outputs.get("entraPublicationSource"), outputs.get("credentialBrowserPublicationSource")
+    source = source_entry.get("value") if isinstance(source_entry, dict) else None
+    browser = browser_entry.get("value") if isinstance(browser_entry, dict) else None
+    if not isinstance(source, dict) or not isinstance(browser, dict):
+        raise ValueError("Publication source generation outputs are incomplete")
+    return source, browser
+
+
+def _export_publication_template(transport, resource_id):
+    """登録された配備テンプレートを読み出す。資源の作成・更新は実行しない。"""
+    response = transport.request("POST", resource_id + "/exportTemplate?api-version=" + DEPLOYMENT_API)
+    template = require_success(response, "Export the recorded publication template").get("template")
+    if not isinstance(template, dict):
+        raise ValueError("The recorded publication template could not be exported")
+    return canonical_publication_template(template)
+
+
+def _deployment_signature(body):
+    """テンプレート読取りの途中に記録が上書きされていないか、入力・結果を照合する。"""
+    properties = body.get("properties", {})
+    return {name: properties.get(name) for name in
+            ("provisioningState", "templateHash", "correlationId", "parameters", "outputs")}
+
+
+def _verify_generated_template(transport, generation_id, observed, expected_template, identity_principal_id,
+                               *, recorded_template=None):
+    # 世代IDは入力のハッシュで作りますが、Azure上の同名記録自体は変更できます。
+    # 名前やタグだけを証明にせず、保存されたコードを完全一致で確認します。
+    actual = _export_publication_template(transport, generation_id) if recorded_template is None else recorded_template
+    if actual != canonical_publication_template(expected_template):
+        raise ValueError("Publication source generation template differs from its reviewed code")
+    entry = observed.get("properties", {}).get("outputs", {}).get(SOURCE_PRINCIPAL_OUTPUT)
+    if (not isinstance(entry, dict) or not isinstance(entry.get("value"), str)
+            or entry["value"].casefold() != (identity_principal_id or "").casefold()):
+        raise ValueError("API Management identity changed while publication source was being generated")
+    latest = require_success(transport.request("GET", generation_id + "?api-version=" + DEPLOYMENT_API),
+                             "Confirm unchanged publication source generation")
+    if _deployment_signature(latest) != _deployment_signature(observed):
+        raise ValueError("Publication source generation changed while its template was being verified")
+
+
+def generate_publication_source(config, plan, template, transport, *, identity_principal_id, sleep=time.sleep,
+                                timeout_seconds=1800):
+    """同じBicep式を資源変更のない別要求で評価し、完成XMLの期待値を得る。
+
+    実配備の記録は上書きしない。コード・入力・既存APIMの本人情報から決めたIDを使い、
+    成功済みの同じ生成は再利用する。生成結果だけでは適用済みと判定しない。
+    """
+    validate_publication_template(template)
+    publication_template, source_template = split_publication_templates(template)
+    if source_template is None:
+        return publication_template, None, None, None
+    generation_id = source_generation_id(plan, template, identity_principal_id=identity_principal_id)
+    generation_parameters = publication_parameters(template, plan["parameters"])
+    for value in (publication_template, source_template):
+        value.setdefault("outputs", {})[SOURCE_GENERATION_OUTPUT] = {"type": "string", "value": generation_id}
+    # Bicepの生成式が実際に参照したMIを記録し、事前確認後の再作成も検出します。
+    source_template["outputs"][SOURCE_PRINCIPAL_OUTPUT] = {"type": "string", "value": SOURCE_PRINCIPAL_EXPRESSION}
+    path = generation_id + "?api-version=" + DEPLOYMENT_API
+    response = transport.request("GET", path)
+    deadline = time.monotonic() + timeout_seconds
+    if response.get("statusCode") != 404:
+        observed = require_success(response, "Read publication source generation")
+        _checked_source_job(observed, config, plan, generation_id, generation_parameters, require_complete=False)
+        status = observed["properties"].get("provisioningState")
+        if status not in ("Succeeded", "Failed", "Canceled", "Cancelled", "Accepted", "Running", "Creating", "Updating"):
+            raise ValueError("Publication source generation has an unsupported state")
+        if status in ("Accepted", "Running", "Creating", "Updating"):
+            observed = _wait_resource(transport, generation_id, DEPLOYMENT_API, sleep=sleep, deadline=deadline)
+        if observed["properties"].get("provisioningState") == "Succeeded":
+            source, browser = _checked_source_job(observed, config, plan, generation_id, generation_parameters)
+            _verify_generated_template(transport, generation_id, observed, source_template, identity_principal_id)
+            return publication_template, source, browser, generation_id
+    deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
+                  "properties": {"mode": "Incremental", "template": source_template, "parameters": generation_parameters}}
+    response = transport.request("PUT", path, deployment)
+    require_success(response, "Generate publication source without changing API resources", allowed=(200, 201, 202))
+    observed = _wait_resource(transport, generation_id, DEPLOYMENT_API, sleep=sleep, deadline=deadline)
+    source, browser = _checked_source_job(observed, config, plan, generation_id, generation_parameters)
+    _verify_generated_template(transport, generation_id, observed, source_template, identity_principal_id)
+    return publication_template, source, browser, generation_id
+
+
+def _prior_publication_source(prior_response, config, plan, transport):
+    """適用成功の記録に結び付いた生成元だけを読む。最新の生成記録を探索しない。"""
+    properties = prior_response.get("body", {}).get("properties", {})
+    outputs = properties.get("outputs") or {}
+    if not isinstance(outputs, dict):
+        raise ValueError("Previous publication outputs are invalid")
+    binding = outputs.get(SOURCE_GENERATION_OUTPUT)
+    if binding is None:
+        # 旧配備の完成XML出力は移行元として読める。新しい配備は小さなIDだけを出力する。
+        entry = outputs.get("entraPublicationSource")
+        if entry is not None and not isinstance(entry, dict):
+            raise ValueError("Previous publication source output is invalid")
+        return entry.get("value") if entry else None
+    if properties.get("provisioningState") != "Succeeded" or not isinstance(binding, dict):
+        raise ValueError("Only a successful publication may supply its source generation binding")
+    generation_id = validate_source_generation_id(plan, binding.get("value"))
+    parameters = properties.get("parameters")
+    if not isinstance(parameters, dict) or not parameters:
+        raise ValueError("Previous publication inputs are required for its source generation binding")
+    response = transport.request("GET", generation_id + "?api-version=" + DEPLOYMENT_API)
+    observed = require_success(response, "Read source generation bound to the successful publication")
+    source, _ = _checked_source_job(observed, config, plan, generation_id, parameters)
+    source_template = _export_publication_template(transport, generation_id)
+    publication_template = _export_publication_template(transport, plan["deploymentId"])
+    principal_entry = source_template.get("outputs", {}).get(SOURCE_PRINCIPAL_OUTPUT)
+    if principal_entry != {"type": "string", "value": SOURCE_PRINCIPAL_EXPRESSION}:
+        raise ValueError("Recorded publication source identity binding is missing")
+    principal_result = observed.get("properties", {}).get("outputs", {}).get(SOURCE_PRINCIPAL_OUTPUT)
+    principal = principal_result.get("value") if isinstance(principal_result, dict) else None
+    if not isinstance(principal, str):
+        raise ValueError("Recorded publication source identity output is missing")
+    # 二つの保存テンプレートから分割前のコードを復元し、世代IDとの一致を調べます。
+    # 「最新の生成に見える」だけの記録や、別コードで上書きされた同名記録は採用しません。
+    combined = copy.deepcopy(publication_template)
+    combined["outputs"] = {name: value for name, value in combined.get("outputs", {}).items()
+                           if name != SOURCE_GENERATION_OUTPUT}
+    expected_source_outputs = {name: value for name, value in source_template.get("outputs", {}).items()
+                               if name not in (SOURCE_GENERATION_OUTPUT, SOURCE_PRINCIPAL_OUTPUT)}
+    if set(expected_source_outputs) != {"entraPublicationSource", "credentialBrowserPublicationSource"}:
+        raise ValueError("Recorded publication source template contains unexpected outputs")
+    combined["outputs"].update(expected_source_outputs)
+    validate_publication_template(combined)
+    expected_publication, expected_source = split_publication_templates(combined)
+    for value in (expected_publication, expected_source):
+        value["outputs"][SOURCE_GENERATION_OUTPUT] = {"type": "string", "value": generation_id}
+    expected_source["outputs"][SOURCE_PRINCIPAL_OUTPUT] = principal_entry
+    recorded_plan = {**plan, "parameters": parameters}
+    # ARMの読戻しにだけ付くparameter typeは、元の送信形式へ戻してからIDを再計算します。
+    recorded_plan["parameters"] = {name: {"value": value} for name, value in _publication_parameter_values(parameters).items()}
+    if (source_generation_id(recorded_plan, combined, identity_principal_id=principal or None) != generation_id
+            or canonical_publication_template(expected_publication) != publication_template
+            or canonical_publication_template(expected_source) != source_template):
+        raise ValueError("Successful publication and its source generation do not share the same recorded code")
+    _verify_generated_template(transport, generation_id, observed, expected_source, principal,
+                               recorded_template=source_template)
+    latest = require_success(transport.request("GET", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API),
+                             "Confirm unchanged successful API publication")
+    if _deployment_signature(latest) != _deployment_signature(prior_response["body"]):
+        raise ValueError("Successful publication changed while its source generation was being verified")
+    return source
+
+
 def validate_publication_template(template):
     """配備できる型をAPIMの子定義だけに限定し、ARMの配列・シンボル形式を検査する。
 
@@ -419,7 +606,8 @@ def validate_publication_template(template):
             raise ValueError(message)
         resource_type = resource["type"].lower()
         if (resource_type == "microsoft.apimanagement/service/apis"
-                and resource.get("properties", {}).get("type") == "grpc"):
+                and isinstance(resource.get("properties"), dict)
+                and resource["properties"].get("type") == "grpc"):
             raise ValueError("API publication must not generate retired gRPC APIs")
         if resource_type == "microsoft.apimanagement/service/policies":
             raise ValueError("API publication must preserve the APIM global policy")
@@ -1009,7 +1197,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             if not isinstance(prior_source, dict):
                 raise ValueError("The protected API source checkpoint is incomplete; reconcile it before publication")
         else:
-            prior_source = prior_response.get("body", {}).get("properties", {}).get("outputs", {}).get("entraPublicationSource", {}).get("value")
+            prior_source = _prior_publication_source(prior_response, config, plan, transport)
         if plan["entraAuthentication"].get("enabled") and isinstance(prior_source, dict):
             # Incremental publication does not revoke existing business APIs.
             # Preserve all source-represented owned APIs, then validate the full
@@ -1064,6 +1252,17 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                                                                 authentication_policy["previousValue"])
             current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
             stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
+    # ここではAPIMの子資源を変更せず、同じ式から期待値を先に生成します。
+    # 生成が失敗しても共通認証や社員Productは切り替わらず、既存通信を維持します。
+    publication_template, generated_source, generated_browser, generation_id = generate_publication_source(
+        config, plan, template, transport, identity_principal_id=apim.get("identity", {}).get("principalId"),
+        sleep=sleep, timeout_seconds=max(0, deadline - time.monotonic()))
+    if generation_id is not None:
+        names = {entry.get("name") for entry in generated_source.get("apis", []) if isinstance(entry, dict)}
+        expected_names = {rid.rsplit("/", 1)[-1] for rid in plan["publishedApiIds"]} - {"credential-manager-browser"}
+        if generated_source.get("schemaVersion") != 2 or names != expected_names:
+            raise ValueError("Generated publication source must cover exactly the reviewed protected APIs")
+        entra_publication.source_manifest(generated_source, plan["apimId"], names, authentication_policy["value"])
     stage_result = {}
 
     def publish_closed_stage():
@@ -1076,7 +1275,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
         initialize_profile_settings(plan["apimId"], transport)
         deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
-            "properties": {"mode": "Incremental", "template": template, "parameters": plan["parameters"]}}
+            "properties": {"mode": "Incremental", "template": publication_template,
+                           "parameters": publication_parameters(template, plan["parameters"]) if generation_id is not None else plan["parameters"]}}
         response = transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
         require_success(response, "Start API-only publication", allowed=(200, 201, 202))
         observed = _wait_resource(transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
@@ -1085,7 +1285,12 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         expected = plan["publishedApiIds"]
         if not isinstance(published, list) or {value.lower() for value in published} != {value.lower() for value in expected}:
             raise ValueError("API publication output did not confirm the reviewed API set")
-        browser_source = observed.get("properties", {}).get("outputs", {}).get("credentialBrowserPublicationSource", {}).get("value")
+        outputs = observed.get("properties", {}).get("outputs", {})
+        if generation_id is not None:
+            binding = outputs.get(SOURCE_GENERATION_OUTPUT) if isinstance(outputs, dict) else None
+            if not isinstance(binding, dict) or binding.get("value") != generation_id:
+                raise ValueError("API publication did not confirm the reviewed source generation binding")
+        browser_source = generated_browser if generation_id is not None else outputs.get("credentialBrowserPublicationSource", {}).get("value")
         browser_snapshot = entra_publication.verify_browser_publication_source(plan, browser_source, transport)
         stage_result.update(browserSource=browser_source or {}, browserSnapshot=browser_snapshot)
         # Incremental配備では消えない関連を、今回明示した未リリースAPIに限って解除する。
@@ -1104,7 +1309,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
         except (ValueError, DeploymentError) as error:
             raise DeploymentError("APIs were published, but default APIM sample cleanup did not finish: " + str(error)) from error
-        source = observed.get("properties", {}).get("outputs", {}).get("entraPublicationSource", {}).get("value")
+        source = generated_source if generation_id is not None else outputs.get("entraPublicationSource", {}).get("value")
         stage_result.update(published=published, released_product=released_product, websocket_diagnostics=websocket_diagnostics,
                             catalog_descriptions=catalog_descriptions, sample_cleanup=sample_cleanup, source=source)
         if transition_needed:
@@ -1130,9 +1335,10 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         if stage_result.get("browserSnapshot"):
             entra_publication.verify_snapshot(stage_result["browserSnapshot"], transport)
         if checkpoint is not None and stage_result.get("source") is not None:
+            binding = {"generation_id": generation_id} if generation_id is not None else {}
             value = source_checkpoint(plan, stage_result["source"], authentication_policy["value"],
                                       entra_authentication=authentication_policy.get("entraAuthentication", plan["entraAuthentication"]),
-                                      browser_source=stage_result.get("browserSource"))
+                                      browser_source=stage_result.get("browserSource"), **binding)
             checkpoint(value)
 
     entra_result = None
@@ -1212,6 +1418,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         "firewallUpdated": changed, "commonAuthenticationPolicyUpdated": authentication_policy["changed"],
         "webSocketDiagnostics": websocket_diagnostics,
         "entraAuthentication": entra_result, "entraPublicationSource": stage_result["source"],
+        **({"sourceGenerationId": generation_id} if generation_id is not None else {}),
         "credentialBrowserPublicationSource": stage_result.get("browserSource", {}),
         "releasedProduct": released_product,
         "publishedApiIds": published, "status": "management-plane-published",

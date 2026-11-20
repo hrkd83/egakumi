@@ -35,7 +35,6 @@ export type TextGenerationModel = {
   apiId: string;
   operationId: "chat-completions" | "responses-create";
   path: string;
-  profileId: string;
   maxRequestBytes: number;
   maxOutputTokens: number | null;
   minOutputTokens?: number;
@@ -67,7 +66,6 @@ export type ImageGenerationModel = {
   apiId: "openai-images-v1" | "blackforest-images-v1";
   operationId: "image-generate" | "flux2-generate";
   path: string;
-  profileId?: string;
   maxRequestBytes: number;
   sizes: string[];
   qualities: string[];

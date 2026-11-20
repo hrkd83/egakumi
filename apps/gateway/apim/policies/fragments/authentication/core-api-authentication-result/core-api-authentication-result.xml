@@ -1,0 +1,10 @@
+<fragment>
+  <!-- ========== 認証済み利用者情報の引き渡し（core-api-authentication-result） ========== -->
+  <!-- 目的：共通認証が確認した利用者を、HTTP APIの後続処理と監査へ引き渡します。 -->
+  <!-- 処理：APIMの購読情報または共通認証済みの社員情報を読み、監査用の設定ラベルとともにgatewayDecisionへ格納します。 -->
+  <!-- 同名C#をここへ展開してAzureへ反映します。失敗時の監査記録と500応答は呼び出し元が行います。 -->
+  <set-variable id="core-api-authentication-result" name="gatewayDecision" value="@{
+      __CORE_API_AUTHENTICATION_RESULT_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

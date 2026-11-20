@@ -33,6 +33,7 @@
     "name": "pii-v1-mcp",
     "displayName": "PII redaction MCP",
     "path": "tools/pii-v1-mcp",
+    "queryObservation": "piiMcp",
     "operationNames": [
       "pii_redact_text"
     ]

@@ -138,14 +138,14 @@ class CatalogDescriptionTests(unittest.TestCase):
         self.assertIn("登録モデル: model-0, model-1 ほか4件", description)
         self.assertLessEqual(len(description), 1000)
 
-    def test_service_class_and_profile_models_limits_are_published_without_flattening_contracts(self):
+    def test_service_class_and_model_settings_publish_each_model_limit(self):
         config = public_contract()
         api = config["apiDefinitions"][0]
         api["serviceClass"] = "sample"
         api["authorization"]["operationConstraints"] = {"chat-completions": {
-            "defaultProfile": "chat", "profiles": [
-                {"profileId": "chat", "kind": "bodyModel", "allowedModels": ["plain-approved"], "maxRequestBytes": 2048},
-                {"profileId": "vision", "kind": "bodyModel", "allowedModels": ["vision-approved"], "maxRequestBytes": 4096}]}}
+            "kind": "bodyModel", "allowedModels": ["plain-approved", "vision-approved"], "maxRequestBytes": 4096,
+            "modelSettings": {"plain-approved": {"settingId": "chat", "maxRequestBytes": 2048},
+                              "vision-approved": {"settingId": "vision"}}}}
         description = describe_api(config, api)
         self.assertIn("提供区分: 別配備サンプルAPI", description)
         self.assertIn("plain-approved, vision-approved", description)
