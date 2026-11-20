@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from arm_helpers import ArmExpression
-from configuration_fixtures import fixture
+from configuration_fixtures import fixture, connection_fixture
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -31,8 +31,11 @@ NETWORK_INPUTS = {
 FIREWALL_INPUTS = {
     "snatPrivateRanges": ["IANAPrivateRanges"],
     "idpsPrivateRanges": [], "bypassTrafficSettings": [],
-    "apimAdditionalNetworkRules": [], "managementAdditionalNetworkRules": [],
-    "apimAdditionalApplicationRules": [], "managementAdditionalApplicationRules": [],
+}
+RETIRED_FIREWALL_INPUTS = {
+    "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
+    "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
+    "apimAllowedFqdns", "managementAllowedFqdns",
 }
 RETIRED_NETWORK_INPUTS = {
     "clientAddressPrefixes": ([], ["203.0.113.70/32"]),
@@ -75,22 +78,14 @@ def custom_documents():
                         "name": "reviewed-support", "protocol": "TCP",
                         "sourceAddresses": ["10.70.2.128/26"],
                         "destinationAddresses": ["192.0.2.70"], "destinationPorts": ["443"]}])
-    for owner, source in (("apim", "10.70.2.64/26"), ("management", "10.70.2.128/26")):
-        firewall[owner + "AdditionalNetworkRules"] = [{
-            "name": owner + "-custom-ip", "ruleType": "NetworkRule", "ipProtocols": ["TCP"],
-            "sourceAddresses": [source], "destinationAddresses": ["192.0.2.70"],
-            "destinationPorts": ["443"]}]
-        firewall[owner + "AdditionalApplicationRules"] = [{
-            "name": owner + "-custom-web", "ruleType": "ApplicationRule",
-            "sourceAddresses": [source], "protocols": [{"protocolType": "Https", "port": 443}],
-            "targetFqdns": ["support.example.com"]}]
-    firewall.update(apimAllowedFqdns=[], managementAllowedFqdns=[])
     network["firewall"] = firewall
     parameters["network"] = network
     parameters["monitoring"]["auditAllowedIpAddresses"] = ["203.0.113.71/32"]
     options["network"]["firewall"].update(sku="Premium", idpsMode="Alert")
-    parameters["network"]["firewall"]["apimAllowedFqdns"] = ["backend.example.com"]
-    parameters["network"]["firewall"]["managementAllowedFqdns"] = ["support.example.com"]
+    parameters["apiDefinitions"] = connection_fixture()["apiDefinitions"]
+    api = parameters["apiDefinitions"][0]
+    api.pop("credentialConnection")
+    api["backendUrl"] = "https://backend.example.com/v1.0"
     return options, parameters
 
 
@@ -118,8 +113,9 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                 self.assertNotIn("dnsServers", parameters["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
                 self.assertIn("rateLimits", options["gateway"])
-                self.assertNotIn("apimAllowedFqdns", options["network"]["firewall"])
-                self.assertIn("apimAllowedFqdns", parameters["network"]["firewall"])
+                for key in RETIRED_FIREWALL_INPUTS:
+                    self.assertNotIn(key, options["network"]["firewall"])
+                    self.assertNotIn(key, parameters["network"]["firewall"])
                 for key in RETIRED_NETWORK_INPUTS:
                     self.assertNotIn(key, options["network"])
                     self.assertNotIn(key, parameters["network"])
@@ -177,9 +173,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for key in ("sku", "idpsMode", "zones"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
         self.assertNotIn("dnsServers", firewall)
-        # 正規化で証明書取得等の基盤FQDNを追加するが、paramsの明示値は失わない。
-        for key in ("apimAllowedFqdns", "managementAllowedFqdns"):
-            self.assertTrue(set(parameters["network"]["firewall"][key]).issubset(firewall[key]))
+        self.assertFalse(RETIRED_FIREWALL_INPUTS.intersection(firewall))
+        self.assertIn("backend.example.com", result["generatedApimServiceFqdns"])
         self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], ["203.0.113.71/32"])
         for kind, common in options["gateway"]["rateLimits"].items():
             for key, value in common.items():
@@ -211,6 +206,24 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                     with self.subTest(owner=owner, key=key, value=value), self.assertRaisesRegex(
                             ConfigurationError, r"network.*unsupported field"):
                         load_documents(options, parameters)
+
+    def test_retired_firewall_inputs_are_rejected_in_split_and_legacy_inputs(self):
+        for key in sorted(RETIRED_FIREWALL_INPUTS):
+            populated = ["support.example.com"] if key.endswith("Fqdns") else [{"name": "not-created"}]
+            for value in (None, [], populated):
+                for owner in ("parameters", "config", "legacy"):
+                    options, parameters = custom_documents()
+                    if owner == "legacy":
+                        document = fixture()
+                        document["network"]["firewall"][key] = copy.deepcopy(value)
+                        action = lambda: normalize_configuration(document)
+                    else:
+                        target = parameters if owner == "parameters" else options
+                        target["network"]["firewall"][key] = copy.deepcopy(value)
+                        action = lambda: load_documents(options, parameters)
+                    with self.subTest(key=key, owner=owner, value=value), self.assertRaisesRegex(
+                            ConfigurationError, r"firewall.*unsupported field"):
+                        action()
 
     def test_firewall_dns_input_is_rejected_in_both_public_owners(self):
         for owner in ("parameters", "config"):
@@ -340,7 +353,7 @@ class NetworkArmExpression(ArmExpression):
             return self.resolve(function["output"]["value"], supplied)
         if name == "resourceId":
             return "/mock/" + "/".join(str(self.evaluate(parameters, index, item, bindings)) for item in arguments)
-        extra = {"length", "empty", "concat", "range", "map", "flatten", "union", "shallowMerge", "true", "false", "and", "string", "environment"}
+        extra = {"length", "empty", "concat", "range", "map", "flatten", "union", "shallowMerge", "true", "false", "and", "string", "environment", "contains"}
         if name not in extra:
             return super().evaluate(parameters, index, tree, bindings)
         values = [self.evaluate(parameters, index, item, bindings) for item in arguments]
@@ -353,6 +366,7 @@ class NetworkArmExpression(ArmExpression):
         if name == "true": return True
         if name == "false": return False
         if name == "and": return all(values)
+        if name == "contains": return values[1] in values[0]
         if name == "string": return str(values[0])
         # 公開Azureクラウドの既知suffixを合成する。実環境やAzure APIは読まない。
         if name == "environment": return {"suffixes": {"storage": "core.windows.net"}}
@@ -383,6 +397,10 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
     def resolver(self, module, config):
         template = self.templates[module]
         parameters = {"config": config["network"], "resourcePrefix": "test-fixture", "subnetPrefixes": config["network"]["subnetPrefixes"],
+            "generatedApimServiceFqdns": config["generatedApimServiceFqdns"],
+            "gatewayPublicHostName": config["gateway"]["publicHostName"],
+            "portalPublicHostName": config["portal"]["publicHostName"],
+            "certificateDirectory": config["certificate"]["directory"],
             "foundryPrivateIps": ["10.70.1.4"], "keyVaultPrivateIps": ["10.70.1.5"],
             "auditStorageJapanPrivateIps": ["10.70.1.12"], "auditStorageFoundryPrivateIps": ["10.70.1.14"],
             "managementPrivateIp": "10.70.2.132", "firewallPublicIpAddress": "192.0.2.10",
@@ -453,6 +471,136 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(dynamic[3, "allow-apim-https-egress"]["destinationAddressPrefix"], "10.70.2.64/26")
         self.assertEqual(dynamic[4, "allow-appgw-https-egress"]["destinationAddressPrefix"], "198.51.100.10/32")
 
+    def test_apim_certificate_split_preserves_the_previous_effective_allow_scope(self):
+        """証明書・更新・goの分割で旧HTTP/HTTPS許可を増減させない。"""
+        config = self.configuration()
+        expression, supplied = self.resolver("network", config)
+        resources = self.templates["network"]["resources"]
+        collections = expression.resolve(resources["egressRules"]["properties"], supplied)["ruleCollections"]
+        collection, = [item for item in collections if item["name"] == "allow-apim-egress"]
+        certificate, = [rule for rule in collection["rules"]
+                         if rule["name"] == "allow-apim-certificate-validation"]
+        # 分割前の許可集合を独立した回帰基準として保持する。
+        previous_certificate_hosts = {
+            "mscrl.microsoft.com", "crl.microsoft.com", "oneocsp.microsoft.com",
+            "cacerts.digicert.com", "crl3.digicert.com", "csp.digicert.com", "issuer.pki.azure.com",
+        }
+        previous_update_hosts = {
+            "*.update.microsoft.com", "*.ctldl.windowsupdate.com", "ctldl.windowsupdate.com",
+            "download.windowsupdate.com", "*.windowsupdate.com", "*.delivery.mp.microsoft.com", "go.microsoft.com",
+        }
+        update, = [rule for rule in collection["rules"]
+                   if rule["name"] == "allow-apim-windows-update"]
+        microsoft_go, = [rule for rule in collection["rules"]
+                         if set(rule.get("targetFqdns", [])) == {"go.microsoft.com"}]
+        self.assertEqual(set(certificate["targetFqdns"]), previous_certificate_hosts)
+        self.assertEqual(set(update["targetFqdns"]), previous_update_hosts - {"go.microsoft.com"})
+        self.assertEqual(len(certificate["targetFqdns"]), 7)
+        self.assertEqual(len(update["targetFqdns"]), 6)
+        self.assertEqual(len(microsoft_go["targetFqdns"]), 1)
+        source = config["network"]["subnetPrefixes"]["apim"]
+        observed = {
+            (rule_source, host, protocol["protocolType"], protocol["port"], rule["terminateTLS"])
+            for rule in (certificate, update, microsoft_go)
+            for rule_source in rule["sourceAddresses"]
+            for host in rule["targetFqdns"]
+            for protocol in rule["protocols"]
+        }
+        previous = {
+            (source, host, protocol, port, False)
+            for host in previous_certificate_hosts | previous_update_hosts
+            for protocol, port in (("Http", 80), ("Https", 443))
+        }
+        self.assertEqual(observed, previous)
+        self.assertEqual(collection["priority"], 200)
+        self.assertEqual(collection["action"], {"type": "Allow"})
+
+    def test_management_certificate_package_split_preserves_the_previous_effective_allow_scope(self):
+        """管理VMの用途分割で旧11宛先のHTTP/HTTPS許可とAPIM共有宛先を維持する。"""
+        config = self.configuration()
+        expression, supplied = self.resolver("network", config)
+        resources = self.templates["network"]["resources"]
+        collections = expression.resolve(resources["egressRules"]["properties"], supplied)["ruleCollections"]
+        collection, = [item for item in collections if item["name"] == "allow-vm-egress"]
+        certificate, = [rule for rule in collection["rules"]
+                         if rule["name"] == "allow-mgmt-vm-certificate-validation"]
+        packages, = [rule for rule in collection["rules"]
+                      if rule["name"] == "allow-mgmt-vm-linux-packages"]
+        previous_certificate_hosts = {
+            "mscrl.microsoft.com", "crl.microsoft.com", "oneocsp.microsoft.com",
+            "cacerts.digicert.com", "crl3.digicert.com", "csp.digicert.com", "issuer.pki.azure.com",
+        }
+        previous_package_hosts = {
+            "azure.archive.ubuntu.com", "archive.ubuntu.com", "security.ubuntu.com", "packages.microsoft.com",
+        }
+        self.assertEqual(set(certificate["targetFqdns"]), previous_certificate_hosts)
+        self.assertEqual(set(packages["targetFqdns"]), previous_package_hosts)
+        self.assertEqual(len(certificate["targetFqdns"]), 7)
+        self.assertEqual(len(packages["targetFqdns"]), 4)
+        source = config["network"]["subnetPrefixes"]["management"]
+        observed = {
+            (rule_source, host, protocol["protocolType"], protocol["port"], rule["terminateTLS"])
+            for rule in (certificate, packages)
+            for rule_source in rule["sourceAddresses"]
+            for host in rule["targetFqdns"]
+            for protocol in rule["protocols"]
+        }
+        previous = {
+            (source, host, protocol, port, False)
+            for host in previous_certificate_hosts | previous_package_hosts
+            for protocol, port in (("Http", 80), ("Https", 443))
+        }
+        self.assertEqual(observed, previous)
+        self.assertEqual(collection["priority"], 210)
+        self.assertEqual(collection["action"], {"type": "Allow"})
+        apim, = [item for item in collections if item["name"] == "allow-apim-egress"]
+        apim_certificate, = [rule for rule in apim["rules"]
+                              if rule["name"] == "allow-apim-certificate-validation"]
+        self.assertEqual(set(apim_certificate["targetFqdns"]), previous_certificate_hosts)
+
+    def test_apim_diagnostics_split_preserves_the_previous_infrastructure_allow_scope(self):
+        """内部診断・Defender・portalの分割で旧8宛先の443許可を増減させない。"""
+        config = self.configuration()
+        expression, supplied = self.resolver("network", config)
+        resources = self.templates["network"]["resources"]
+        collections = expression.resolve(resources["egressRules"]["properties"], supplied)["ruleCollections"]
+        collection, = [item for item in collections if item["name"] == "allow-apim-egress"]
+        diagnostics, = [rule for rule in collection["rules"]
+                         if rule["name"] == "allow-apim-platform-diagnostics"]
+        # Global Azureの合成評価で、旧固定配列とは独立した許可集合を確認する。
+        previous_diagnostics_hosts = {
+            "azurewatsonanalysis-prod.core.windows.net", "*.data.microsoft.com",
+            "azureprofiler.trafficmanager.net", "shavamanifestazurecdnprod1.azureedge.net",
+            "shavamanifestcdnprod1.azureedge.net",
+        }
+        previous_remaining_hosts = {
+            "wdcp.microsoft.com", "wdcpalt.microsoft.com", "dc.services.visualstudio.com",
+        }
+        defender, = [rule for rule in collection["rules"]
+                      if rule["name"] == "allow-apim-windows-defender"]
+        portal, = [rule for rule in collection["rules"]
+                   if set(rule.get("targetFqdns", [])) == {"dc.services.visualstudio.com"}]
+        self.assertEqual(set(diagnostics["targetFqdns"]), previous_diagnostics_hosts)
+        self.assertEqual(set(defender["targetFqdns"]), previous_remaining_hosts - {"dc.services.visualstudio.com"})
+        self.assertEqual(len(diagnostics["targetFqdns"]), 5)
+        self.assertEqual(len(defender["targetFqdns"]), 2)
+        self.assertEqual(len(portal["targetFqdns"]), 1)
+        source = config["network"]["subnetPrefixes"]["apim"]
+        observed = {
+            (rule_source, host, protocol["protocolType"], protocol["port"], rule["terminateTLS"])
+            for rule in (diagnostics, defender, portal)
+            for rule_source in rule["sourceAddresses"]
+            for host in rule["targetFqdns"]
+            for protocol in rule["protocols"]
+        }
+        previous = {
+            (source, host, "Https", 443, False)
+            for host in previous_diagnostics_hosts | previous_remaining_hosts
+        }
+        self.assertEqual(observed, previous)
+        self.assertEqual(collection["priority"], 200)
+        self.assertEqual(collection["action"], {"type": "Allow"})
+
     def test_fixed_dns_and_time_dependencies_are_implemented_without_config_inputs(self):
         options, parameters = custom_documents()
         config = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
@@ -468,15 +616,15 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(firewall["dnsSettings"], {"enableProxy": True, "servers": []})
         collections = expression.resolve(resources["platformRules"]["properties"], supplied)["ruleCollections"]
         rules = {rule["name"]: rule for collection in collections for rule in collection["rules"]}
-        for name, source in (("management-time", "10.70.2.128/26"),
-                             ("apim-platform-time", "10.70.2.64/26")):
+        for name, source in (("allow-mgmt-vm-ntp", "10.70.2.128/26"),
+                             ("allow-apim-ntp", "10.70.2.64/26")):
             with self.subTest(rule=name):
                 self.assertEqual(rules[name]["sourceAddresses"], [source])
                 self.assertEqual(rules[name]["destinationPorts"], ["123"])
                 self.assertEqual(rules[name]["ipProtocols"], ["UDP"])
-        self.assertEqual(rules["management-time"]["destinationFqdns"], ["ntp.ubuntu.com"])
-        self.assertEqual(rules["apim-platform-time"]["destinationAddresses"], ["*"])
-        self.assertNotIn("destinationFqdns", rules["apim-platform-time"])
+        for name in ("allow-mgmt-vm-ntp", "allow-apim-ntp"):
+            self.assertEqual(rules[name]["destinationAddresses"], ["*"])
+            self.assertNotIn("destinationFqdns", rules[name])
 
     def test_firewall_arm_keeps_platform_sku_and_parameter_ip_settings_together(self):
         config = self.configuration()
@@ -488,12 +636,62 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(firewall["snat"]["privateRanges"], ["10.70.0.0/16"])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["privateRanges"], ["10.70.0.0/16"])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["bypassTrafficSettings"], config["network"]["firewall"]["bypassTrafficSettings"])
-        for resource, suffix in (("platformRules", "NetworkRules"), ("egressRules", "ApplicationRules")):
+        for resource in ("platformRules", "egressRules"):
             collections = expression.resolve(resources[resource]["properties"], parameters)["ruleCollections"]
             actual = [rule for collection in collections for rule in collection["rules"]]
-            for owner in ("apim", "management"):
-                for rule in config["network"]["firewall"][owner + "Additional" + suffix]:
-                    self.assertIn(rule, actual)
+            self.assertFalse(any(rule["name"].endswith(("-custom-ip", "-custom-web")) for rule in actual))
+
+    def test_approved_service_rules_are_constant_and_keep_existing_certificate_allow_scope(self):
+        fixed_management = {
+            "management.azure.com", "cdn.oneget.org", "cdn.powershellgallery.com",
+            "*.powershellgallery.com", "go.microsoft.com", "aka.ms",
+        }
+        for prefix in ("10.70", "10.80"):
+            for directory in ("production", "staging"):
+                for generated in ([], ["backend.example.com"], ["oneocsp.microsoft.com", "backend.example.com"]):
+                    config = self.configuration()
+                    config["network"]["subnetPrefixes"] = {
+                        key: value.replace("10.70.", prefix + ".")
+                        for key, value in config["network"]["subnetPrefixes"].items()}
+                    config["certificate"]["directory"] = directory
+                    config["generatedApimServiceFqdns"] = generated
+                    expression, parameters = self.resolver("network", config)
+                    resource = self.templates["network"]["resources"]["egressRules"]
+                    self.assertNotIn("condition", resource)
+                    self.assertEqual(resource["properties"]["priority"], 400)
+                    collections = expression.resolve(resource["properties"], parameters)["ruleCollections"]
+                    by_collection = {collection["name"]: collection for collection in collections}
+                    with self.subTest(prefix=prefix, directory=directory, generated=generated):
+                        apim = by_collection["allow-apim-egress"]
+                        management = by_collection["allow-vm-egress"]
+                        self.assertEqual(apim["priority"], 200)
+                        self.assertEqual(management["priority"], 210)
+                        for collection in (apim, management):
+                            self.assertEqual(collection["action"], {"type": "Allow"})
+                            self.assertEqual(collection["ruleCollectionType"], "FirewallPolicyFilterRuleCollection")
+                        apim_rule, = [rule for rule in apim["rules"] if rule["name"] == "allow-apim-approved-services"]
+                        management_rule, = [rule for rule in management["rules"] if rule["name"] == "allow-mgmt-vm-approved-services"]
+                        for rule, source in ((apim_rule, config["network"]["subnetPrefixes"]["apim"]),
+                                             (management_rule, config["network"]["subnetPrefixes"]["management"])):
+                            self.assertEqual(rule["ruleType"], "ApplicationRule")
+                            self.assertEqual(rule["sourceAddresses"], [source])
+                            self.assertEqual(rule["protocols"], [{"protocolType": "Https", "port": 443}])
+                            self.assertIs(rule["terminateTLS"], False)
+                            self.assertNotIn("condition", rule)
+                            self.assertTrue(rule["targetFqdns"])
+                        expected_apim = {"oneocsp.microsoft.com", *generated}
+                        self.assertEqual(set(apim_rule["targetFqdns"]), expected_apim)
+                        self.assertEqual(len(apim_rule["targetFqdns"]), len(expected_apim))
+                        certificate, = [rule for rule in apim["rules"] if rule["name"] == "allow-apim-certificate-validation"]
+                        anchor = (config["network"]["subnetPrefixes"]["apim"], "oneocsp.microsoft.com", "Https", 443, False)
+                        certificate_tuples = {(source, host, protocol["protocolType"], protocol["port"], certificate["terminateTLS"])
+                                              for source in certificate["sourceAddresses"] for host in certificate["targetFqdns"]
+                                              for protocol in certificate["protocols"]}
+                        self.assertIn(anchor, certificate_tuples)
+                        ca = "acme-v02.api.letsencrypt.org" if directory == "production" else "acme-staging-v02.api.letsencrypt.org"
+                        expected_management = fixed_management | {ca, config["gateway"]["publicHostName"], config["portal"]["publicHostName"]}
+                        self.assertEqual(set(management_rule["targetFqdns"]), expected_management)
+                        self.assertEqual(len(management_rule["targetFqdns"]), len(expected_management))
 
     def test_static_and_dynamic_appgw_allow_children_are_unconditional(self):
         """IP確定前後の両段階で、固定規則が子リソースとして更新される。"""

@@ -78,6 +78,8 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
                     walk(item)
         walk(self.templates["main"])
         self.assertEqual(login_templates, [])
+        # Coreの保守用カスタムロールと、CM用provider権限を分けて確認する。
+        roles.clear()
         walk(self.templates["gateway"])
         self.assertEqual(roles, [])
         # APIMがトークンを取得し、brokerが接続を作成するため、それぞれ同じ限定ロールを使います。
@@ -202,7 +204,7 @@ class ServiceBindingDeploymentTests(unittest.TestCase):
         services, = [item for item in self.templates["main"]["resources"]
                      if "allowApimKeyVaultControlPlane" in item.get("properties", {}).get("parameters", {})]
         self.assertEqual(services["properties"]["parameters"]["allowApimKeyVaultControlPlane"]["value"],
-                         "[or(or(variables('servicesConfig').grantApimSecretAccess, variables('useIngressSecrets')), not(empty(parameters('configuration').credentialProfiles)))]")
+                         True)
 
     def test_apim_secret_reader_is_scoped_to_vault_and_appgw_keeps_its_own_identity(self):
         """コンパイル済みの RBAC と本体を照合し、APIM と AppGW の ID を混同しない。"""

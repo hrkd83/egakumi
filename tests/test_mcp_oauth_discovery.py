@@ -99,7 +99,7 @@ class McpOAuthDiscoveryTests(unittest.TestCase):
                 self.assertEqual(json.loads(lines[2]), {
                     "operationId": api["mcp"]["operationNames"][0],
                     "operationConstraints": api["authorization"]["operationConstraints"],
-                    "tokenLimitOperationIds": [], "queryObservations": {}, "inputContracts": {},
+                    "tokenLimitOperationIds": [], "speechSsmlOperationIds": [], "queryObservations": {}, "inputContracts": {},
                     "mcpQueryObservations": {method+" /mcp": api["mcp"]["queryObservation"] for method in ("POST","GET","DELETE")} if "queryObservation" in api["mcp"] else {}})
                 inbound = list(root.find("inbound"))
                 calls = root.findall('./inbound/include-fragment[@fragment-id="core-api-settings"]')

@@ -36,7 +36,7 @@ select_time_service() {
 }
 
 # Ubuntu 標準の sources.d が実際に読み込まれることを確認し、管理するファイル一つだけを書きます。
-# 既存の PHC/refclock・confdir・他の source 設定は変更しません。外部宛先は FW でも制限します。
+# 既存の PHC/refclock・confdir・他の source 設定は変更しません。FW/NSGは外部UDP123の境界を管理します。
 write_chrony_sources() {
     python3 - "$1" "$2" "$3" <<'PY_CHRONY'
 from pathlib import Path
@@ -66,7 +66,7 @@ write_timesyncd_config() {
 
 # 1. 入力を JSON として検証し、既存の時刻同期サービスへ NTP 一覧を設定します。
 stage=ntp
-# Azure's NTP destination allowlist and the guest clock must use the same names.
+# Guest NTP names are configured here; Firewall matches UDP123 independently of DNS answers.
 # Decode a JSON array rather than interpolate caller text into shell commands.
 ntp_list=$(python3 - <<'PY'
 import base64, json, os, re

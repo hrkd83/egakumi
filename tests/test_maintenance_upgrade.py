@@ -141,7 +141,10 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         svc = groups['svc'] + '/providers/Microsoft.App/'
         application = 'ca-' + stem + '-portal'
         environment = 'cae-' + stem
-        for kind, names in (('containerApps', [application]), ('jobs', list(maintenance.resource_names(config).values()))):
+        broker_application = 'ca-' + stem + '-credentials'
+        broker_jobs = ['caj-' + stem + '-schema', 'caj-' + stem + '-recon']
+        for kind, names in (('containerApps', [application, broker_application]),
+                            ('jobs', [*maintenance.resource_names(config).values(), *broker_jobs])):
             for name in names: self.transport.add(svc + kind + '/' + name, 'Microsoft.App/' + kind, {})
         workspace_id = groups['monitor'] + '/providers/Microsoft.OperationalInsights/workspaces/law-' + stem
         self.transport.add(workspace_id, 'Microsoft.OperationalInsights/workspaces',
@@ -356,19 +359,26 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(OperationError, 'ambiguous'): self.operation.apply()
         self.assertFalse(self.transport.mutations())
 
-    def test_broker_resources_are_selected_using_the_same_profile_requirement_as_bicep(self):
+    def test_broker_resources_are_always_selected_independently_of_business_profiles(self):
+        initial = self.operation.preflight()
+        self.assertIn('ca-' + self.transport.stem + '-credentials', initial['applicationNames'])
+        self.assertTrue({'caj-' + self.transport.stem + '-schema', 'caj-' + self.transport.stem + '-recon'} <= set(initial['jobNames']))
         self.context.config['credentialProviders'] = [{'name': 'synthetic-provider', 'displayName': 'Synthetic provider',
             'oauthTenantId': '11111111-1111-4111-8111-111111111131',
             'clientId': '11111111-1111-4111-8111-111111111132',
             'identityEndpoint': 'https://example.invalid/user', 'identityIdProperty': 'id'}]
         self.context.config['gateway']['authentication']['credentialLogin'] = {'providerNames': ['synthetic-provider']}
-        svc = self.transport.groups['svc'] + '/providers/Microsoft.App/'
-        for kind, names in (('containerApps', ['ca-' + self.transport.stem + '-credentials']),
-                            ('jobs', ['caj-' + self.transport.stem + '-schema', 'caj-' + self.transport.stem + '-recon'])):
-            for name in names: self.transport.add(svc + kind + '/' + name, 'Microsoft.App/' + kind, {})
         plan = self.operation.preflight()
-        self.assertIn('ca-' + self.transport.stem + '-credentials', plan['applicationNames'])
-        self.assertTrue({'caj-' + self.transport.stem + '-schema', 'caj-' + self.transport.stem + '-recon'} <= set(plan['jobNames']))
+        for family in ('applicationNames', 'jobNames', 'environmentNames'):
+            self.assertEqual(plan[family], initial[family])
+        self.assertFalse(self.transport.mutations())
+
+    def test_missing_always_on_broker_stops_maintenance_before_mutations(self):
+        app = self.transport.groups['svc'] + '/providers/Microsoft.App/containerApps/ca-' + self.transport.stem + '-credentials'
+        self.transport.resources.pop(app)
+        with self.assertRaises(OperationError):
+            self.operation.preflight()
+        self.assertFalse(self.transport.mutations())
 
     def test_workspace_name_and_recorded_id_mismatch_stops_before_writes(self):
         self.context.state['outputs']['monitoring']['workspaceName'] = 'law-synthetic-other'

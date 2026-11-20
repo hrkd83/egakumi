@@ -40,6 +40,7 @@ def fixture():
     state['outputs'] = {
         **client_core_outputs(config),
         'names': {'apim': 'apim-test-sample-abc123'},
+        'gateway': {'publicUrl': 'https://gateway.example.com'},
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
             'managementMaintenance': maintenance_metadata(config['subscriptionId']),
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
@@ -144,9 +145,91 @@ class PortalDeploymentTests(unittest.TestCase):
             with self.subTest(host=host):
                 config, state = fixture()
                 config['gateway']['publicHostName'] = host
+                state['outputs']['gateway']['publicUrl'] = 'https://' + host
                 values = portal.deployment_inputs(config, state)
                 self.assertEqual(values['gatewayOrigin'], 'https://' + host)
                 self.assertFalse(any('subscription_key' in key.lower() for key in values))
+
+    def test_missing_or_invalid_gateway_output_is_not_filled_from_configuration_or_aliases(self):
+        for change in ('missing-gateway', 'missing-url', 'null-gateway', 'list-gateway',
+                       'null-url', 'number-url', 'object-url', 'empty-url'):
+            with self.subTest(change=change):
+                config, state = fixture()
+                expected = state['outputs']['gateway']['publicUrl']
+                state['outputs']['endpoints'] = {'public': expected}
+                state['outputs']['portal']['gatewayOrigin'] = expected
+                if change == 'missing-gateway':
+                    del state['outputs']['gateway']
+                elif change == 'missing-url':
+                    del state['outputs']['gateway']['publicUrl']
+                elif change in ('null-gateway', 'list-gateway'):
+                    state['outputs']['gateway'] = None if change == 'null-gateway' else []
+                else:
+                    state['outputs']['gateway']['publicUrl'] = {
+                        'null-url': None, 'number-url': 443, 'object-url': {'url': expected},
+                        'empty-url': '',
+                    }[change]
+                original = copy.deepcopy((config, state))
+                with self.assertRaisesRegex(ValueError, '^Current Core Gateway public URL output is required$'):
+                    portal.deployment_inputs(config, state)
+                self.assertEqual((config, state), original)
+
+    def test_gateway_url_mismatch_or_non_origin_value_stops_without_exposing_or_changing_inputs(self):
+        invalid_urls = (
+            'https://another.example.com', 'http://gateway.example.com',
+            'https://gateway.example.com:443', 'https://gateway.example.com:8443',
+            'https://operator@gateway.example.com', 'https://gateway.example.com/',
+            'https://gateway.example.com/path', 'https://gateway.example.com?query=value',
+            'https://gateway.example.com#fragment', ' https://gateway.example.com',
+            'https://gateway.example.com\n', 'https://gateway.example.com\t',
+            'not-an-origin',
+        )
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                config, state = fixture()
+                state['outputs']['gateway']['publicUrl'] = url
+                original = copy.deepcopy((config, state))
+                with self.assertRaises(ValueError) as rejected:
+                    portal.deployment_inputs(config, state)
+                self.assertEqual(str(rejected.exception),
+                                 'Core Gateway public URL differs from the selected configuration')
+                self.assertNotIn(url, str(rejected.exception))
+                self.assertNotIn(config['gateway']['publicHostName'], str(rejected.exception))
+                self.assertEqual((config, state), original)
+
+    def test_configuration_only_gateway_change_requires_matching_core_output(self):
+        config, state = fixture()
+        config['gateway']['publicHostName'] = 'new-gateway.example.com'
+        original = copy.deepcopy((config, state))
+        with self.assertRaisesRegex(ValueError, '^Core Gateway public URL differs from the selected configuration$'):
+            portal.deployment_inputs(config, state)
+        self.assertEqual((config, state), original)
+
+    def test_cli_rejects_missing_or_mismatched_gateway_before_preparation_build_or_azure_writes(self):
+        for gateway in (None, {'publicUrl': 'https://another.example.com'}):
+            with self.subTest(gateway=gateway), tempfile.TemporaryDirectory() as directory:
+                config, state = fixture()
+                state['outputs']['gateway'] = gateway
+                root = Path(directory).resolve()
+                workspace = local_paths(config, root)
+                workspace.ensure()
+                workspace.params.write_text('unchanged-input')
+                state_file = workspace.state / 'latest.json'
+                state_file.write_text(json.dumps(state))
+                before = {path: path.read_bytes() for path in (workspace.params, state_file)}
+                with mock.patch.object(portal, 'REPOSITORY', root), \
+                     mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
+                     mock.patch.object(portal, 'load_configuration', return_value=config), \
+                     mock.patch.object(portal, 'prepare_api_key_groups') as prepare, \
+                     mock.patch.object(portal, 'source_bundle') as bundle, \
+                     mock.patch.object(portal, 'run_json') as cli, \
+                     mock.patch.object(portal, 'ArmTransport') as transport, \
+                     mock.patch.object(portal, 'protected_json') as write:
+                    with self.assertRaisesRegex(ValueError, 'Core Gateway public URL'):
+                        portal.main(['--config', str(workspace.params), '--state-file', str(state_file), '--execute'])
+                    for boundary in (prepare, bundle, cli, transport, write):
+                        boundary.assert_not_called()
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
 
     def test_new_foundation_output_does_not_need_broker_application(self):
         config, state = fixture()

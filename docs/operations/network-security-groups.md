@@ -97,11 +97,11 @@ NSGの初期集合を変える新しいスイッチを追加しない。
 
 ### NTPとFirewallのDNS依存
 
-APIMの[公式NTP要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-reference#internal-infrastructure-and-diagnostics)はOutbound UDP123です。NSGの`allow-time-sync-egress`はこの要件に対応します。構築資材のFirewallは別に`time.windows.com`へのUDP123を許可しますが、APIMの公式要件はこのFQDNへの限定を保証していません。
+APIMの[公式NTP要件](https://learn.microsoft.com/en-us/azure/api-management/virtual-network-reference#internal-infrastructure-and-diagnostics)はOutbound UDP123です。NSGの`allow-time-sync-egress`はInternet宛UDP123を許可します。構築資材のFirewallは、APIM用collectionの`allow-apim-ntp`でAPIMサブネットから宛先`*`へのUDP123を許可します。送信元は構築APIMのサブネットCIDRから取得し、宛先・ポート・ルール作成は固定です。APIMの公式要件は`time.windows.com`への限定を保証していません。
 
-VNetとFirewall上流はAzure標準DNSを使用します。FirewallのDNS Proxyを有効にするだけでは、APIMのDNS問い合わせ先はProxyへ切り替わりません。[Firewallの公式DNS仕様](https://learn.microsoft.com/en-us/azure/firewall/dns-settings#dns-proxy)では、Proxyを使わないクライアントとFirewallの名前解決結果に差が出る可能性を示しています。
+VNetとFirewall上流はAzure標準DNSを使用します。FirewallのDNS Proxyを有効にするだけでは、APIMのDNS問い合わせ先はProxyへ切り替わりません。[Firewallの公式DNS仕様](https://learn.microsoft.com/en-us/azure/firewall/dns-settings#dns-proxy)では、Proxyを使わないクライアントとFirewallの名前解決結果に差が出る可能性を示しています。この差によるNTP遮断を避けるため、FirewallではNTP宛先をFQDNで限定せず、NSGのInternet宛UDP123制限と組み合わせます。
 
-NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Actionで検索し、許可だけでなく拒否も確認します。`apim-platform-time`に一致するAllowは、その時点の宛先IPがFirewallのFQDN許可集合に含まれる証拠です。NTP応答・時計同期や将来の全DNS回答の成功は、このログだけでは確認できません。宛先限定の採否とDNS依存の解消はFirewall Policyの棚卸しで扱い、確認だけで標準DNSや経路を変更しません。
+NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Actionで検索し、許可だけでなく拒否も確認します。`allow-apim-ntp`に一致するAllowは、その通信がFirewallのAPIM用UDP123規則で許可されたことを示します。NTP応答・時計同期の成功は、このログだけでは確認できません。既存環境へまとめて反映する際は、資材・Azureの読戻し・実時計同期をそれぞれ区別して確認します。
 
 ## Private Endpoint（pep）
 
@@ -151,6 +151,8 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 324 | `allow-internet-egress` | 管理VMサブネットCIDR | `Internet`タグ | TCP／80, 443 | `B-MGMT-10` |
 | 325 | `allow-time-sync-egress` | 管理VMサブネットCIDR | `Internet`タグ | UDP／123 | `B-MGMT-11` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `B-MGMT-20` |
+
+管理VMのNTPはFirewallの`allow-mgmt-vm-ntp`で管理サブネットから宛先`*`へのUDP123を許可し、NSGの325でInternet宛に制限します。VNet標準DNSとFirewallの独立した回答差による遮断を避ける設計です。guestへ設定する標準外部NTPは`ntp.ubuntu.com`ですが、既存PHC・OS側pool等も保持します。変更後は他のInternet NTP sourceも到達できるため、実際の選択元・到達性・時刻精度を確認します。Firewall Allowやdaemon稼働だけで外部同期の成功とは扱いません。資材・Azure読戻し・同期結果は別に記録します。
 
 ## ACA（aca）
 

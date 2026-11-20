@@ -97,10 +97,11 @@ class AuditPublicationTests(unittest.TestCase):
       operation['name']:{'backendService':operation['backendOverride']['backendService'],
         'backendAuthentication':operation['backendOverride']['backendAuthentication']['mode']}
       for operation in api['operations'] if 'backendOverride' in operation})
-    self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds','queryObservations','mcpQueryObservations','inputContracts'})
+    self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds','speechSsmlOperationIds','queryObservations','mcpQueryObservations','inputContracts'})
     self.assertEqual(controls['operationId'],'')
     self.assertEqual(controls['operationConstraints'],api['authorization']['operationConstraints'])
     self.assertEqual(controls['inputContracts'],input_contracts(api))
+    self.assertEqual(controls['speechSsmlOperationIds'],['tts'] if api['name']=='azure-speech-v1' else [])
     for contract in controls['inputContracts'].values():
      self.assertEqual(contract,{})
     expected=self.evaluate("[__bicep.tokenLimitOperations(parameters('apiDefinitions')[copyIndex()])]",index)
@@ -108,7 +109,7 @@ class AuditPublicationTests(unittest.TestCase):
     self.assertEqual(settings['backendAuthentication'],'credentialConnection' if api.get('credentialConnection') else api['backendAuthentication']['mode'])
     self.assertEqual(settings['serviceClass'],api['serviceClass'])
     self.assertEqual(root.find('outbound')[0].attrib['fragment-id'],'core-backend-audit')
-    if api['apiType'] in ('websocket','grpc','mcp'):
+    if api['apiType'] in ('websocket','mcp'):
      # クエリ拒否のローカル応答だけに本文を作れます。転送要求やSSE応答の本文変換は認めません。
      local_error_bodies=root.findall('.//return-response/set-body')
      self.assertTrue(all(node in local_error_bodies for node in root.iter('set-body')))
@@ -118,7 +119,7 @@ class AuditPublicationTests(unittest.TestCase):
   self.assertEqual(settings['measurementRole'],'facade'); self.assertEqual(settings['llmOperationIds'],[])
   api=next(api for api in self.parameters['apiDefinitions'] if 'mcp' in api)
   self.assertEqual(controls,{'operationId':api['mcp']['operationNames'][0],
-    'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[],
+    'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[], 'speechSsmlOperationIds':[],
     'queryObservations':{},'mcpQueryObservations':{method+' /mcp':api['mcp']['queryObservation'] for method in ('POST','GET','DELETE')} if 'queryObservation' in api['mcp'] else {},
     'inputContracts':{}})
  def test_effective_cm_authentication_metadata_does_not_change_the_authentication_or_route(self):
@@ -187,7 +188,7 @@ class AuditPublicationTests(unittest.TestCase):
     .replace('__L7_INGRESS_REQUIRED__','false').replace('__L7_INGRESS_EXPECTED__','')))
   native_count=0
   for index,api in enumerate(self.parameters['apiDefinitions']):
-   if api['apiType'] not in ('websocket','grpc'):continue
+   if api['apiType']!='websocket':continue
    root=ET.fromstring(compiled_policy_value(self.template,self.parameters,index))
    graph=self.expanded_fragment_graph(root)
    self.assertTrue({'core-audit-context','core-backend-audit','core-gateway-telemetry','core-rate-limit'} <= set(graph))

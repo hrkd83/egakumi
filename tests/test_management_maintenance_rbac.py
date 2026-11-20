@@ -213,7 +213,7 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
                         'environmentId': base + 'Microsoft.App/managedEnvironments/cae-fixture',
                     })},
                 }
-                self.assertTrue(evaluate(self.gateway, gateway['condition'], parameters))
+                self.assertNotIn('condition', gateway)
                 values = evaluate(self.gateway, gateway['properties']['parameters'], parameters)
                 self.assertEqual(values['principalId']['value'], PRINCIPAL)
                 self.assertEqual(values['roleDefinitionIds']['value'], roles)
@@ -221,7 +221,7 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
                 self.assertEqual(values['jobNames']['value'], ['caj-fixture-csql'] + (['caj-fixture-creconcile'] if deploy else []))
                 self.assertEqual(values['environmentNames']['value'], ['cae-fixture'])
                 parameters['configuration']['credentialProfiles'] = {}
-                self.assertFalse(evaluate(self.gateway, gateway['condition'], parameters))
+                self.assertEqual(evaluate(self.gateway, gateway['properties']['parameters'], parameters), values)
             with self.subTest(template='portal', deployApplication=deploy):
                 portal = next(resource for resource in self.portal['resources']
                     if resource.get('properties', {}).get('template', {}).get('parameters', {}).get('applicationNames') is not None)

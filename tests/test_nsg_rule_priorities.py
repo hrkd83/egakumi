@@ -13,7 +13,7 @@ MODULES = ('network', 'network-bindings', 'portal-network', 'portal-network-bind
 
 
 class FixedExpression(NetworkArmExpression):
-    """Evaluate compiled UDFs, supplying only synthetic NIC discovery outputs."""
+    """Evaluate compiled UDFs with synthetic NIC and public-cloud inputs."""
     def resolve(self, value, parameters):
         if isinstance(value, dict): return {k: self.resolve(v, parameters) for k, v in value.items()}
         if isinstance(value, list): return [self.resolve(v, parameters) for v in value]
@@ -28,6 +28,12 @@ class FixedExpression(NetworkArmExpression):
         if tree[0] == 'call' and tree[1] == 'contains':
             values = [self.evaluate(parameters, index, item, bindings) for item in tree[2]]
             return values[1] in values[0]
+        if tree[0] == 'call' and tree[1] == 'environment':
+            return {'suffixes': {'storage': 'core.windows.net'},
+                    'authentication': {'loginEndpoint': 'https://' + parameters['entraLoginHost'] + '/'}}
+        if tree[0] == 'call' and tree[1] == 'split':
+            values = [self.evaluate(parameters, index, item, bindings) for item in tree[2]]
+            return values[0].split(values[1])
         return super().evaluate(parameters, index, tree, bindings)
 
 
@@ -63,7 +69,8 @@ class NsgRulePriorityTests(unittest.TestCase):
                 'appGatewayPublicIpAddress': ips['appGatewayPublic'], 'apimPrivateIp': ips['apim'],
                 'staticIp': ips['aca'], 'acaPrivateIp': ips['aca'], 'acaPrefix': subnets['aca'],
                 'apimPrefix': subnets['apim'], 'agwPrefix': subnets['agw'], 'managementPrefix': subnets['management'],
-                'existingNetworkSecurityGroupNames': [], 'enableCredentialBroker': False,
+                'entraLoginHost': 'login.microsoftonline.com',
+                'existingNetworkSecurityGroupNames': [],
                 '__ips': ips, '__sets': sets}
 
     def resolve(self, module, value, parameters):
@@ -71,6 +78,115 @@ class NsgRulePriorityTests(unittest.TestCase):
         if module in ('portal-network', 'credential-broker-network'):
             p['referencePrivateIps'] = p['__sets']['registry' if module == 'portal-network' else 'sql']
         return FixedExpression('[true()]', self.templates[module]).resolve(value, p)
+
+    def test_aca_firewall_monitor_split_preserves_the_previous_allow_scope(self):
+        """監視/Entraの用途分割で旧2タグ宛TCP443の許可和集合を変えない。"""
+        resource = self.templates['portal-network']['resources']['rules']
+        collection, = [c for c in resource['properties']['ruleCollections']
+                       if c['name'] == 'portal-azure-monitor']
+        for prefix in ('10.40', '10.70'):
+            with self.subTest(prefix=prefix):
+                parameters = self.parameters(prefix=prefix)
+                actual = self.resolve('portal-network', collection, parameters)
+                self.assertEqual(resource['properties']['priority'], 350)
+                self.assertEqual(actual['priority'], 150)
+                self.assertEqual(actual['action'], {'type': 'Allow'})
+                self.assertEqual(actual['ruleCollectionType'], 'FirewallPolicyFilterRuleCollection')
+                self.assertEqual(len(actual['rules']), 2)
+                self.assertEqual({r['name'] for r in actual['rules']},
+                                 {'allow-aca-monitor', 'allow-aca-entra'})
+                observed = set()
+                for rule in actual['rules']:
+                    self.assertEqual(rule['ruleType'], 'NetworkRule')
+                    self.assertNotIn('destinationFqdns', rule)
+                    observed.update((source, destination, protocol, port)
+                                    for source in rule['sourceAddresses']
+                                    for destination in rule['destinationAddresses']
+                                    for protocol in rule['ipProtocols']
+                                    for port in rule['destinationPorts'])
+                previous = {(parameters['acaPrefix'], tag, 'TCP', '443')
+                            for tag in ('AzureMonitor', 'AzureActiveDirectory')}
+                self.assertEqual(observed, previous)
+
+    def _application_rule_tuples(self, rules, purposes, source):
+        self.assertEqual(len(rules), len(purposes))
+        self.assertEqual({r['name'] for r in rules}, set(purposes))
+        observed = set()
+        for rule in rules:
+            self.assertNotIn('condition', rule)
+            self.assertEqual(rule['ruleType'], 'ApplicationRule')
+            self.assertEqual(rule['sourceAddresses'], [source])
+            self.assertEqual(rule['protocols'], [{'protocolType': 'Https', 'port': 443}])
+            self.assertIs(rule['terminateTLS'], False)
+            self.assertEqual(rule['targetFqdns'], purposes[rule['name']])
+            observed.update((address, destination, protocol['protocolType'], protocol['port'],
+                             rule['terminateTLS'])
+                            for address in rule['sourceAddresses']
+                            for destination in rule['targetFqdns']
+                            for protocol in rule['protocols'])
+        return observed
+
+    def test_aca_firewall_platform_rules_remove_only_the_ipify_allowance(self):
+        """旧10宛先からipify1だけ初期削除し、MCR2/基盤2/管理ID5を維持する。"""
+        resource = self.templates['portal-network']['resources']['rules']
+        self.assertNotIn('condition', resource)
+        self.assertEqual(resource['properties']['priority'], 350)
+        collection, = [c for c in resource['properties']['ruleCollections']
+                       if c['name'] == 'portal-platform-and-probe']
+        for prefix in ('10.40', '10.70'):
+            with self.subTest(prefix=prefix):
+                parameters = self.parameters(prefix=prefix)
+                actual = self.resolve('portal-network', collection, parameters)
+                self.assertEqual(actual['priority'], 200)
+                self.assertEqual(actual['action'], {'type': 'Allow'})
+                self.assertEqual(actual['ruleCollectionType'], 'FirewallPolicyFilterRuleCollection')
+                login_host = parameters['entraLoginHost']
+                purposes = {
+                    'allow-aca-mcr': ['mcr.microsoft.com', '*.data.mcr.microsoft.com'],
+                    'allow-aca-platform-packages': ['packages.aks.azure.com', 'acs-mirror.azureedge.net'],
+                    'allow-aca-managed-identity': [
+                        '*.identity.azure.net', login_host, '*.' + login_host,
+                        '*.login.microsoft.com', 'login.microsoft.com'],
+                }
+                observed = self._application_rule_tuples(actual['rules'], purposes, parameters['acaPrefix'])
+                previous_destinations = (
+                    'mcr.microsoft.com', '*.data.mcr.microsoft.com',
+                    'packages.aks.azure.com', 'acs-mirror.azureedge.net',
+                    '*.identity.azure.net', 'login.microsoftonline.com', '*.login.microsoftonline.com',
+                    '*.login.microsoft.com', 'login.microsoft.com', 'api.ipify.org',
+                )
+                previous = {(parameters['acaPrefix'], destination, 'Https', 443, False)
+                            for destination in previous_destinations}
+                removed = {(parameters['acaPrefix'], 'api.ipify.org', 'Https', 443, False)}
+                self.assertEqual(observed, previous - removed)
+                self.assertEqual(previous - observed, removed)
+
+    def test_aca_firewall_login_and_arm_split_preserves_the_previous_allow_scope(self):
+        """BrokerのEntra login/ARMを分けても旧2宛先の許可和集合を維持する。"""
+        resource = self.templates['credential-broker-network']['resources']['rules']
+        self.assertNotIn('condition', resource)
+        self.assertEqual(resource['properties']['priority'], 360)
+        collection, = [c for c in resource['properties']['ruleCollections']
+                       if c['name'] == 'credential-broker-azure']
+        for prefix in ('10.40', '10.70'):
+            with self.subTest(prefix=prefix):
+                parameters = self.parameters(prefix=prefix)
+                actual = self.resolve('credential-broker-network', collection, parameters)
+                self.assertEqual(actual['priority'], 200)
+                self.assertEqual(actual['action'], {'type': 'Allow'})
+                self.assertEqual(actual['ruleCollectionType'], 'FirewallPolicyFilterRuleCollection')
+                purposes = {
+                    'allow-aca-entra-login': ['login.microsoftonline.com'],
+                    'allow-aca-arm': ['management.azure.com'],
+                }
+                self.assertEqual(len(actual['rules']), 3)
+                self.assertEqual({r['name'] for r in actual['rules']},
+                                 set(purposes) | {'allow-mgmt-vm-python-build'})
+                owned_rules = [r for r in actual['rules'] if r['name'] in purposes]
+                observed = self._application_rule_tuples(owned_rules, purposes, parameters['acaPrefix'])
+                previous = {(parameters['acaPrefix'], destination, 'Https', 443, False)
+                            for destination in ('login.microsoftonline.com', 'management.azure.com')}
+                self.assertEqual(observed, previous)
 
     def compiled_rules(self, parameters):
         result = {g: {} for g in GROUPS}

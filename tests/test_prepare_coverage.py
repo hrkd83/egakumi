@@ -14,6 +14,7 @@ from configuration_fixtures import CORE
 sys.path.insert(0, str(CORE / "scripts"))
 import prepare_coverage
 from api_definition_helpers import catalog_overlay, configured_base
+from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
 
 
 class CoveragePreparationTests(unittest.TestCase):
@@ -79,7 +80,9 @@ class CoveragePreparationTests(unittest.TestCase):
         self.assertEqual({api.get("apiType", "http") for api in result["apiDefinitions"]}, {"http", "websocket"})
         self.assertTrue(all(api["serviceClass"] == "platform" for api in result["apiDefinitions"]))
         self.assertTrue(Path(result["management"]["sshPublicKeyFile"]).is_absolute())
-        self.assertIn("provider.example.com", result["network"]["firewall"]["apimAllowedFqdns"])
+        self.assertNotIn("apimAllowedFqdns", result["network"]["firewall"])
+        normalized = normalize_configuration(result, base_directory=CORE / "config")
+        self.assertIn("provider.example.com", build_bicep_configuration(normalized)["generatedApimServiceFqdns"])
 
     def test_formal_catalog_reuses_base_personal_cm_without_duplicating_credentials(self):
         """API定義は本人接続を参照し、CM設定は基盤入力だけで管理する。"""

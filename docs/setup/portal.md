@@ -185,7 +185,7 @@ python -B scripts/deploy_portal.py --config $env:DEPLOY_PARAMS_FILE --execute
 python -B scripts/operations/portal_backend_http.py status --config $env:DEPLOY_PARAMS_FILE
 ```
 
-`prepare`は`rcg-portal`の所有済み`portal-ingress`へ`agw-aca-http` TCP80を追加し、旧`agw-aca-https` TCP443と他規則を保持します。既定は読取りによる計画です。`--execute`は環境別ロック、事前の保護記録、ETagによる更新、読戻しを使います。Portal配備は修正済みimage/revisionのHTTP受付を確認してから、変更前Gateway設定を`.local/<environment>/state/portal-http80/`へ保護記録してAppGWを切り替えます。途中失敗時はその時点の実状態を読み、古い成功記録だけで再開しません。
+`prepare`は`rcg-portal`の所有済み`portal-ingress`へ`allow-appgw-aca-http` TCP80を追加し、旧`agw-aca-https` TCP443と他規則を保持します。旧HTTP名`agw-aca-http`が単独で存在する場合は、通信条件を変えずに新名へ揃えます。Core・Portalのreadiness確認は新旧HTTP名を認識し、同コレクションでの新旧HTTP規則の同時存在、同名重複、許可条件の不一致では書き込み前に停止します。既定は読取りによる計画です。`--execute`は環境別ロック、事前の保護記録、ETagによる更新、読戻しを使います。Portal配備は修正済みimage/revisionのHTTP受付を確認してから、変更前Gateway設定を`.local/<environment>/state/portal-http80/`へ保護記録してAppGWを切り替えます。途中失敗時はその時点の実状態を読み、古い成功記録だけで再開しません。
 
 公開HTTPS、公開80からHTTPSへの転送、言語redirect、Microsoft login/callback/session/logout、Secure Cookie・CSRF、代表APIの逐次転送と保守通信を確認します。`status`の`coreHttpContractReady`は設定の読取り照合であり、実際の疎通成功を表すものではありません。疎通確認後に最終Coreを再配備し、このAppGW→ACA区間の旧443許可を撤去します。以降のCore・Portal再配備もHTTP80へ収束し、APIM→ACA HTTPS443を維持します。
 

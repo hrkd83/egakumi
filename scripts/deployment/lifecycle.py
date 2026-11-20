@@ -122,6 +122,7 @@ from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as rea
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
 from .helpers.apim_naming import apim_instance_id
+from .helpers.apim_egress import APIM_EGRESS_RULE_NAMES, validate_apim_egress_rule
 from .helpers.apim_generations import assert_current_instance, verify_state as verify_apim_state
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
@@ -408,10 +409,10 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                diagnostic_setting_properties: dict | None = None) -> dict:
     """公開設定と必要時だけ秘密入力をまとめ、Bicep用パラメーター形式へ変換する。"""
     configuration = build_bicep_configuration(config)
-    # API公開処理が追加した宛先は今回の生成入力だけへ引き継ぐ。元のparamsや
-    # API定義は書き換えず、基盤の再up後も公開済みAPIの通信先を維持する。
+    # 検証済みの既存宛先は内部の生成集合だけへ引き継ぐ。元のparamsやAPI定義を
+    # 書き換えず、基盤再up時も公開済みAPI・構築後の手動追加先を維持する。
     if phase == "core":
-        allowed = configuration["network"]["firewall"].setdefault("apimAllowedFqdns", [])
+        allowed = configuration["generatedApimServiceFqdns"]
         known = {host.casefold() for host in allowed}
         for host in existing_apim_egress_fqdns or []:
             if host.casefold() not in known:
@@ -805,30 +806,18 @@ def discover_existing_apim_egress_fqdns(config: dict, transport: ArmTransport) -
             or not isinstance(collections[0].get("rules"), list)
             or any(not isinstance(item, dict) for item in collections[0]["rules"])):
         raise DeploymentError("Existing API egress collection has a different permission boundary")
-    rules = [item for item in collections[0]["rules"] if item.get("name") == "apim-approved-services"]
+    rules = [item for item in collections[0]["rules"] if item.get("name") in APIM_EGRESS_RULE_NAMES]
     if not rules:
         return []
+    if len(rules) != 1:
+        raise DeploymentError("Existing API egress rule is duplicated across current or legacy names")
     rule = rules[0]
-    # APIの応答項目ではなく、引継ぎで変えてはいけない通信条件を確認します。
-    # Azureの読取メタデータと、空のヘッダー設定・無効なIPv6フラグは停止理由にしません。
-    empty_fields = {"sourceIpGroups", "destinationAddresses", "fqdnTags", "targetUrls", "httpHeaders",
-                    "httpHeadersToInsert", "webCategories"}
-    if (len(rules) != 1
-            or any(rule.get(key) not in (None, []) for key in empty_fields)
-            or rule.get("ruleType") != "ApplicationRule"
-            or rule.get("sourceAddresses") != [config["network"]["subnetPrefixes"]["apim"]]
-            or rule.get("protocols") != [{"protocolType": "Https", "port": 443}]
-            or rule.get("terminateTLS") not in (None, False)
-            or rule.get("ipv6Rule") not in (None, False)
-            or not isinstance(rule.get("targetFqdns"), list)):
-        raise DeploymentError("Existing API egress rule has a different source or HTTPS boundary")
+    try:
+        validate_apim_egress_rule(rule, config["network"]["subnetPrefixes"]["apim"])
+    except ValueError as exc:
+        raise DeploymentError(str(exc)) from None
     hosts = []
     for host in rule["targetFqdns"]:
-        # 設定で許可するFQDNと先頭ワイルドカードだけを保持する。URL・IP・全許可を
-        # FQDNとして引き継がず、応答中の実値はエラーメッセージにも出さない。
-        if (not isinstance(host, str) or len(host) > 253
-                or not re.fullmatch(r"(?:\*\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", host)):
-            raise DeploymentError("Existing API egress destination is not a supported FQDN")
         if host.casefold() not in {value.casefold() for value in hosts}:
             hosts.append(host)
     return hosts

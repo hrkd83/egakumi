@@ -13,6 +13,9 @@ from .portal_gateway import (
 
 APP_API = '2025-01-01'
 FW_API = '2025-01-01'
+HTTP_RULE_NAME = 'allow-appgw-aca-http'
+LEGACY_HTTP_RULE_NAME = 'agw-aca-http'
+HTTPS_RULE_NAME = 'agw-aca-https'
 
 
 def portal_ids(config):
@@ -76,7 +79,7 @@ def _ingress(config, transport, *, bootstrap=False):
 
 def _rule(config, port):
     return {
-        'name': 'agw-aca-http' if port == '80' else 'agw-aca-https',
+        'name': HTTP_RULE_NAME if port == '80' else HTTPS_RULE_NAME,
         'ruleType': 'NetworkRule',
         'sourceAddresses': [config['network']['subnetPrefixes']['agw']],
         'destinationAddresses': [config['network']['subnetPrefixes']['aca']],
@@ -111,10 +114,12 @@ def _collection(config, body):
     found = {}
     for port in ('80', '443'):
         expected = _rule(config, port)
-        selected = [item for item in collection['rules'] if isinstance(item, dict) and item.get('name') == expected['name']]
+        names = (HTTP_RULE_NAME, LEGACY_HTTP_RULE_NAME) if port == '80' else (HTTPS_RULE_NAME,)
+        selected = [item for item in collection['rules'] if isinstance(item, dict) and item.get('name') in names]
         if len(selected) > 1:
             raise ValueError('Portal HTTP firewall rule is duplicated')
         if selected:
+            expected['name'] = selected[0]['name']
             actual = _normalized_owned_rule(selected[0])
             if actual != expected:
                 raise ValueError('Portal HTTP firewall rule has another source, destination or owner')
@@ -141,7 +146,7 @@ def _firewall_writable(body):
 
 
 def _firewall_contract(config, body):
-    """所有2規則の既定値だけを正規化し、他規則を含むその他の差分を保持する。"""
+    """所有HTTP／HTTPS規則の既定値だけを正規化し、その他の差分を保持する。"""
     writable = _firewall_writable(body)
     _, found = _collection(config, writable)
     for rule in found.values():
@@ -217,19 +222,24 @@ def require_portal_http_core_ready(config, transport):
 
 def ensure_portal_firewall_port(config, transport, *, port='80', execute=False,
                                 record=None, timeout=900, sleep=time.sleep, monotonic=time.monotonic):
-    """既存規則を保持して対象ポートだけを追加し、読戻しで同一状態を確認する。"""
+    """対象ポートを確保し、旧HTTP名だけを新名へ揃えて他規則と通信条件を保持する。"""
     if record is not None and not callable(record):
         raise ValueError('Portal HTTP migration requires a callable protected recorder')
     if port not in ('80', '443'):
         raise ValueError('Select a fixed Portal migration or rollback port')
     response, body, _, found = _firewall(config, transport)
     update = _firewall_writable(body)
-    collection, _ = _collection(config, update)
-    changed = port not in found
-    if changed:
+    collection, update_found = _collection(config, update)
+    added = port not in found
+    renamed = port == '80' and not added and found[port]['name'] == LEGACY_HTTP_RULE_NAME
+    changed = added or renamed
+    if added:
         collection['rules'].append(_rule(config, port))
+    elif renamed:
+        update_found[port]['name'] = HTTP_RULE_NAME
     receipt = {'status': 'planned' if not execute else 'unchanged', 'port': int(port),
-               'ruleAdded': False, 'existingOtherPortRetained': ('443' if port == '80' else '80') in found}
+               'ruleAdded': False, 'ruleRenamed': False,
+               'existingOtherPortRetained': ('443' if port == '80' else '80') in found}
     if not changed:
         return receipt
     etag = _etag(response)
@@ -251,7 +261,7 @@ def ensure_portal_firewall_port(config, transport, *, port='80', execute=False,
             _collection(config, observed)
             if _firewall_contract(config, observed) != _firewall_contract(config, update):
                 raise ValueError('Portal HTTP firewall readback differs; inspect concurrent changes')
-            result = {**receipt, 'status': 'updated', 'ruleAdded': True}
+            result = {**receipt, 'status': 'updated', 'ruleAdded': added, 'ruleRenamed': renamed}
             record('firewall-after', result)
             return result
         if status in ('Failed', 'Canceled', 'Deleting'):

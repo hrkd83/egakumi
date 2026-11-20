@@ -10,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
-from deployment.helpers.credential_pools import physical_providers, logical_profiles, resource_names
+from deployment.helpers.credential_pools import broker_session_settings, physical_providers, logical_profiles, resource_names
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError
 from prepare_credential_pool_config import transform
@@ -52,6 +52,47 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
         profile = logical_profiles(config)['graph-delegated']
         self.assertEqual(profile['clientSecretEnv'], 'OIDC_SECRET_0')
         self.assertEqual(profile['pools'][0], {'name':'graph-delegated-a', 'capacity':8000})
+
+    def test_empty_business_login_keeps_internal_broker_defaults_without_inventing_authentication(self):
+        raw = raw_fixture()
+        raw['gateway']['authentication'].pop('credentialLogin')
+        raw['credentialProviders'] = []
+        before = copy.deepcopy(raw)
+        config = normalize_configuration(raw)
+        public = build_bicep_configuration(config)
+        self.assertEqual(raw, before)
+        self.assertNotIn('credentialLogin', public['gateway']['authentication'])
+        self.assertEqual(public['credentialProfiles'], {})
+        self.assertEqual(public['credentialPhysicalProviders'], [])
+        self.assertEqual(public['credentialBrokerSession'], broker_session_settings(config))
+        self.assertGreater(public['credentialBroker']['minReplicas'], 0)
+
+    def test_compiled_broker_resource_graph_is_always_present_and_keeps_sql_phase_gate(self):
+        gateway = compile_bicep('apps/gateway/deploy/main.bicep')
+        for suffix in ('identity', 'database', 'access', 'broker', 'management-access'):
+            with self.subTest(module=suffix):
+                module, = [item for item in gateway['resources']
+                           if '-gateway-' + suffix + "'" in item['name']]
+                self.assertNotIn('condition', module)
+        settings, = [item for item in gateway['resources']
+                     if 'credentialBrokerUrl' in item.get('properties', {}).get('parameters', {})]
+        self.assertEqual(settings['condition'], '[parameters(\'deployApplication\')]')
+        self.assertEqual(settings['properties']['parameters']['credentialBrokerUrl']['value'], "[variables('brokerUrl')]")
+        broker = compile_bicep('apps/gateway/deploy/broker.bicep')
+        app, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/containerapps']
+        self.assertEqual(app['condition'], '[parameters(\'deployApplication\')]')
+        migration, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/jobs'
+                      and item['properties']['configuration']['triggerType'] == 'Manual']
+        self.assertNotIn('condition', migration)
+        reconciliation, = [item for item in broker['resources'] if item['type'].lower() == 'microsoft.app/jobs'
+                           and item['properties']['configuration']['triggerType'] == 'Schedule']
+        self.assertEqual(reconciliation['condition'], '[parameters(\'deployApplication\')]')
+        apim = compile_bicep('apps/gateway/deploy/apim-settings.bicep')
+        for resource in apim['resources']:
+            if 'credential-broker' in resource['name']:
+                self.assertNotIn('condition', resource)
+        for parameter in ('credentialBrokerUrl', 'credentialBrokerSecretIdentifier'):
+            self.assertNotIn('defaultValue', apim['parameters'][parameter])
 
     def test_migration_preserves_application_identity_and_key_header(self):
         raw = raw_fixture()
@@ -200,8 +241,8 @@ class CredentialPoolDeploymentTests(unittest.TestCase):
                 url = ArmExpression(gateway['variables']['brokerUrl']).evaluate(
                     {'foundation': {'environmentDomain': domain}, '__variables': {'stem': stem}}, 0)
                 self.assertEqual(url, 'https://' + expected + '.' + domain)
-                self.assertEqual(ArmExpression(settings['properties']['parameters']['credentialBrokerUrl']).evaluate(
-                    {'__variables': {'brokerEnabled': True, 'brokerUrl': url}}, 0)['value'], url)
+                self.assertEqual(ArmExpression(settings['properties']['parameters']['credentialBrokerUrl']['value']).evaluate(
+                    {'__variables': {'brokerUrl': url}}, 0), url)
                 if product == 'p' * 12:
                     self.assertEqual(len(stem), 17)
                     self.assertEqual(len(expected), 32)
