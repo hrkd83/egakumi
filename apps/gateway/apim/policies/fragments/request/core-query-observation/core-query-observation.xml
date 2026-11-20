@@ -1,0 +1,9 @@
+<fragment>
+  <!-- ========== クエリの有無と複数値の観測 ========== -->
+  <!-- 目的：APIが明示した受付について、クエリの有無と同じ引数の複数値を監査へ渡します。要求の許可・拒否は行いません。 -->
+  <!-- 処理：認証完了は先行するcore-api-request-preparationが確認します。同名C#はHTTP操作のqueryObservationsまたはMCPの公開相対pathごとのmcpQueryObservationsから観測ラベルを選び、gatewayQueryObservationを作ります。本文やクエリの名前・値を読み取って出力せず、要求・応答を書き換えません。 -->
+  <set-variable name="gatewayQueryObservation" value="@{
+      __CORE_QUERY_OBSERVATION_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

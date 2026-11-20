@@ -42,8 +42,7 @@ class ContractRatePublicationTests(unittest.TestCase):
             "publicHostName":cls.config["gateway"]["publicHostName"],
             "entraTenantId":cls.config["entraTenantId"],
             "entraTenantId":cls.config["entraTenantId"],
-            "rateLimits":cls.config["gateway"]["rateLimits"],
-            "queryGuards":cls.config["gateway"]["queryGuards"]}
+            "rateLimits":cls.config["gateway"]["rateLimits"]}
 
     def setUp(self):
         """設定変更の試験が、別ケースの中央設定へ残らないようにする。"""
@@ -71,7 +70,9 @@ class ContractRatePublicationTests(unittest.TestCase):
                 parsed=ET.fromstring(xml)
                 calls=parsed.findall("inbound/include-fragment[@fragment-id='core-rate-limit']")
                 self.assertEqual(len(calls),1)
-                self.assertLess(xml.index('name="gatewayDecision"'),xml.index('fragment-id="core-rate-limit"'))
+                inbound=parsed.find("inbound")
+                decision=inbound.find('include-fragment[@fragment-id="core-api-authentication-result"]') if api["apiType"]=="http" else inbound.find('set-variable[@name="gatewayDecision"]')
+                self.assertLess(list(inbound).index(decision),list(inbound).index(calls[0]))
                 self.assertLess(xml.index('fragment-id="core-rate-limit"'),xml.index('__BACKEND_AUTHENTICATION_XML__') if '__BACKEND_AUTHENTICATION_XML__' in xml else xml.index('name="gatewayAuditPhase" value="accepted"'))
                 handler=parsed.find("on-error/choose/when")
                 self.assertIn('core-rate-limit',handler.attrib["condition"])

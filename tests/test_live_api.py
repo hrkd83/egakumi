@@ -39,16 +39,17 @@ class LiveConfigurationTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
                 configuration.normalize_configuration(raw, base_directory=CORE / 'config')
 
-    def test_profile_routing_is_a_complete_fixed_table(self):
-        for mutation in ('foreignHost', 'policyExpression', 'credentialQuery', 'partialTable', 'operationAndProfileRoute'):
+    def test_model_routing_is_a_complete_fixed_table(self):
+        for mutation in ('foreignHost', 'policyExpression', 'credentialQuery', 'partialTable', 'operationAndModelRoute'):
             raw = bound_coverage()
             api = next(a for a in raw['apiDefinitions'] if a['name'] == 'blackforest-images-v1')
             c = api['authorization']['operationConstraints']['flux2-generate']
-            if mutation == 'foreignHost': c['profiles'][0]['backendUrlTemplate'] = 'https://other.example.com/provider'
-            if mutation == 'policyExpression': c['profiles'][0]['backendUrlTemplate'] = '/providers/@(context.Request.Url)'
-            if mutation == 'credentialQuery': c['profiles'][0]['backendUrlTemplate'] = '/providers/flux?api-key=synthetic'
-            if mutation == 'partialTable': c['profiles'][0].pop('backendUrlTemplate')
-            if mutation == 'operationAndProfileRoute': api['operations'][0]['backendUrlTemplate'] = '/providers/other'
+            setting = c['modelSettings'][c['allowedModels'][0]]
+            if mutation == 'foreignHost': setting['backendUrlTemplate'] = 'https://other.example.com/provider'
+            if mutation == 'policyExpression': setting['backendUrlTemplate'] = '/providers/@(context.Request.Url)'
+            if mutation == 'credentialQuery': setting['backendUrlTemplate'] = '/providers/flux?api-key=synthetic'
+            if mutation == 'partialTable': setting.pop('backendUrlTemplate')
+            if mutation == 'operationAndModelRoute': api['operations'][0]['backendUrlTemplate'] = '/providers/other'
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
                 configuration.normalize_configuration(raw, base_directory=CORE / 'config')
 

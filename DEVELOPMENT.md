@@ -166,7 +166,7 @@ SQL統合試験は通常の `npm test` ではスキップします。[ローカ�
 | 2 | [azure.yaml](azure.yaml) | Coreのup/downのhookと処理順序 |
 | 3 | [configuration.py](scripts/deployment/helpers/configuration.py)・[lifecycle.py](scripts/deployment/lifecycle.py) | 合成、入力・秘密参照検査、事前確認、構築後の設定 |
 | 4 | [main.bicep](infra/main.bicep)・[modules](infra/modules) | 5RG、ネットワーク、ID、サービスの依存関係 |
-| 5 | [certificate-bootstrap.sh](infra/guest/certificate-bootstrap.sh)・[certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh) | Ubuntu初期化、証明書取得・更新・復旧、OS監視 |
+| 5 | [certificate-bootstrap.sh](infra/guest/certificate-bootstrap.sh)・[certificate.ps1](infra/guest/certificate.ps1)・[configure-audit.sh](infra/guest/configure-audit.sh)・[prepare-management-client.sh](infra/guest/prepare-management-client.sh) | Ubuntu初期化、証明書取得・更新・復旧、OS監視、保守clientの準備 |
 | 6 | [deploy_applications.py](scripts/deploy_applications.py) | 基盤構築後のGateway→Portalの順次実行と、途中失敗時の停止 |
 | 7 | [Gateway配備資材](apps/gateway/)・[deploy_gateway.py](scripts/deploy_gateway.py)・[deploy_portal.py](scripts/deploy_portal.py) | 各アプリのDB・実行用ID・ジョブ・イメージと、API・製品・検証用購読の配備 |
 | 8 | [cleanup.py](scripts/deployment/helpers/cleanup.py) | モデル・APIM先削除、削除保護と所有照合 |
@@ -176,7 +176,7 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `scripts/`には構築以外の手動コマンドや疎通試験クライアントも含まれます。基盤のhookは`deployment/lifecycle.py`、up完了前のアプリ配備は`deploy_applications.py`が担当し、補助処理は`deployment/helpers/`にまとめています。[用途別の一覧](scripts/README.md)で、構築時に使う処理とAPI登録・試験・運用で使う処理を確認できます。
 
-`infra/`は共通基盤、`apps/gateway/`と`apps/portal/`はその上で動くアプリの配備単位です。管理VM内で動く共通の証明書・OS設定は[infra/guest/](infra/guest/)に置き、各アプリのイメージ構築はそれぞれの`deploy/build-image.sh`に置きます。初期の`azd up`はAPIM本体、共通SQLサーバー・SQL初期化用ID、ネットワーク・Private Endpoint、ACA環境・ACR、共有Entra secretを用意し、`postprovision`で実出力と入口設定を仕上げます。その後、対話可能な`postup`から`deploy_applications.py --execute`を実行します。GatewayのSQL初期化・起動確認・APIと製品の登録に成功してから、Portalの認証DB・検証用購読・イメージと本体を配備します。
+`infra/`は共通基盤、`apps/gateway/`と`apps/portal/`はその上で動くアプリの配備単位です。管理VM内で動く共通の証明書・OS設定・保守clientは[infra/guest/](infra/guest/)に置き、各アプリのイメージ構築はそれぞれの`deploy/build-image.sh`に置きます。初期の`azd up`はAPIM本体、共通SQLサーバー・SQL初期化用ID、ネットワーク・Private Endpoint、ACA環境・ACR、共有Entra secretを用意し、`postprovision`で実出力と入口設定を仕上げます。その後、対話可能な`postup`から`deploy_applications.py --execute`を実行します。GatewayのSQL初期化・起動確認・APIと製品の登録に成功してから、Portalの認証DB・検証用購読・イメージと本体を配備します。
 
 `azd provision`は基盤だけを対象にします。全体の`azd up`には`publishApis:true`が必要で、falseなら`preup`の冒頭で課金資源の作成前に停止します。既存のlocal paramsを自動変更しません。標準APIの空配列はメモリー内で解決し、基盤に必要なWAF・監査ログの情報も同じ定義から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 

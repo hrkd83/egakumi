@@ -146,7 +146,8 @@ console.log(JSON.stringify(cookies));
         base = self.resource("g-base")
         source = {"properties": self.value(base["properties"], self.parameters())}
         for scope in ("portal", "gateway"):
-            profile = {"scope": scope, "paths": ["/api/models/text"], "exclusions": [
+            profile = {"name": ("p" if scope == "portal" else "g") + "-synthetic-session-dedup",
+                       "scope": scope, "paths": ["/api/models/text"], "exclusions": [
                 exclusion("input", "REQUEST-942-APPLICATION-ATTACK-SQLI", ["942100"])]}
             desired = desired_policy(source, profile, {})
             repeated = desired_policy(source, profile, {}, sources=(desired,))

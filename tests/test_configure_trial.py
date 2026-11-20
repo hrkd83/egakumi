@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 from configuration_fixtures import fixture, CORE
-from deployment.helpers.configuration import normalize_configuration
+from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
 import configure_trial as trial
 from api_definition_helpers import configured_base
 
@@ -51,7 +51,9 @@ class TrialConfigurationTests(unittest.TestCase):
         self.assertEqual(base,before)
         self.assertTrue(Path(result['credentialProviders'][0]['clientSecretFile']).is_absolute())
         self.assertTrue(result['services']['modelDeployments'])
-        self.assertIn('graph.microsoft.com',result['network']['firewall']['apimAllowedFqdns'])
+        normalized = normalize_configuration(result, base_directory=CORE/'config')
+        self.assertNotIn('apimAllowedFqdns', result['network']['firewall'])
+        self.assertIn('graph.microsoft.com', build_bicep_configuration(normalized)['generatedApimServiceFqdns'])
 
     def test_separate_entra_tenant_sets_personal_oauth_without_changing_azure(self):
         base=configured_base();base['entraTenantId']=OWNER

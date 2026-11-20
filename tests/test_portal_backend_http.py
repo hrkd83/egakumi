@@ -116,12 +116,96 @@ class PortalHttpMigrationTests(unittest.TestCase):
         body = transport.writes()[0]['body']
         self.assertEqual(body['properties']['ruleCollections'][1], before['properties']['ruleCollections'][1])
         self.assertEqual(body['properties']['ruleCollections'][0]['rules'][0], before['properties']['ruleCollections'][0]['rules'][0])
+        self.assertEqual(body['properties']['ruleCollections'][0]['rules'][1]['name'], 'allow-appgw-aca-http')
         self.assertEqual(body['properties']['ruleCollections'][0]['rules'][1]['destinationPorts'], ['80'])
         self.assertEqual(transport.writes()[0]['headers'], {'If-Match': '"v1"'})
         self.assertEqual(records[0][0], 'firewall-before')
         self.assertEqual(records[1][0], 'firewall-after')
         ensure_portal_firewall_port(CONFIG, transport, execute=True, record=lambda *_: None)
         self.assertEqual(len(transport.writes()), 1)
+
+    def test_prepare_renames_legacy_http_without_duplicate_and_retains_other_rules(self):
+        transport = Transport()
+        collection = transport.bodies[portal_ids(CONFIG)['firewall']]['properties']['ruleCollections'][0]
+        legacy = copy.deepcopy(collection['rules'][0])
+        legacy.update(name='agw-aca-http', destinationPorts=['80'], destinationFqdns=[], ipv6Rule=False)
+        collection['rules'].append(legacy)
+        before = copy.deepcopy(transport.bodies)
+        ensure_portal_firewall_port(CONFIG, transport)
+        self.assertEqual(transport.bodies, before)
+        self.assertFalse(transport.writes())
+
+        result = ensure_portal_firewall_port(CONFIG, transport, execute=True, record=lambda *_: None)
+        self.assertFalse(result['ruleAdded'])
+        self.assertTrue(result['ruleRenamed'])
+        expected = copy.deepcopy(before[portal_ids(CONFIG)['firewall']]['properties']['ruleCollections'])
+        expected[0]['rules'][1]['name'] = 'allow-appgw-aca-http'
+        self.assertEqual(transport.writes()[0]['body']['properties']['ruleCollections'], expected)
+        self.assertEqual(transport.writes()[0]['headers'], {'If-Match': '"v1"'})
+        ensure_portal_firewall_port(CONFIG, transport, execute=True, record=lambda *_: None)
+        self.assertEqual(len(transport.writes()), 1)
+
+    def test_new_and_legacy_http_names_support_both_read_only_readiness_gates(self):
+        for name in ('allow-appgw-aca-http', 'agw-aca-http'):
+            for retain_https in (False, True):
+                with self.subTest(name=name, retain_https=retain_https):
+                    transport = Transport()
+                    ids = portal_ids(CONFIG)
+                    rules = transport.bodies[ids['firewall']]['properties']['ruleCollections'][0]['rules']
+                    http = copy.deepcopy(rules[0])
+                    http.update(name=name, destinationPorts=['80'])
+                    rules[:] = [http, rules[0]] if retain_https else [http]
+                    gateway = transport.bodies[ids['gateway']]
+                    gateway['properties']['backendHttpSettingsCollection'][0]['properties'].update(protocol='Http', port=80)
+                    gateway['properties']['probes'][1]['properties'].update(protocol='Http', port=80)
+                    before = copy.deepcopy(transport.bodies)
+                    self.assertTrue(require_portal_http_core_ready(CONFIG, transport)['httpBackendVerified'])
+                    self.assertTrue(verify_portal_http_ready(CONFIG, transport, expected_image_digest=DIGEST)['firewallHttpReady'])
+                    self.assertEqual(transport.bodies, before)
+                    self.assertFalse(transport.writes())
+
+    def test_http_name_collision_or_duplicate_stops_prepare_gates_and_rollback_before_write(self):
+        cases = (('allow-appgw-aca-http', 'agw-aca-http'),
+                 ('allow-appgw-aca-http', 'allow-appgw-aca-http'), ('agw-aca-http', 'agw-aca-http'))
+        operations = ((ensure_portal_firewall_port, {'execute': True, 'record': lambda *_: None}),
+                      (require_portal_http_core_ready, {}),
+                      (verify_portal_http_ready, {'expected_image_digest': DIGEST}),
+                      (rollback_portal_backend, {'execute': True, 'record': lambda *_: None}))
+        for names in cases:
+            for operation, kwargs in operations:
+                with self.subTest(names=names, operation=operation.__name__):
+                    transport = Transport()
+                    ids = portal_ids(CONFIG)
+                    rules = transport.bodies[ids['firewall']]['properties']['ruleCollections'][0]['rules']
+                    for name in names:
+                        http = copy.deepcopy(rules[0])
+                        http.update(name=name, destinationPorts=['80'])
+                        rules.append(http)
+                    gateway = transport.bodies[ids['gateway']]
+                    gateway['properties']['backendHttpSettingsCollection'][0]['properties'].update(protocol='Http', port=80)
+                    gateway['properties']['probes'][1]['properties'].update(protocol='Http', port=80)
+                    before = copy.deepcopy(transport.bodies)
+                    with self.assertRaisesRegex(ValueError, 'duplicated'):
+                        operation(CONFIG, transport, **kwargs)
+                    self.assertEqual(transport.bodies, before)
+                    self.assertFalse(transport.writes())
+
+    def test_both_http_names_require_the_exact_owned_network_rule_before_write(self):
+        changes = (('sourceAddresses', ['Internet']), ('destinationAddresses', ['10.40.3.0/24']),
+                   ('destinationPorts', ['443']), ('ipProtocols', ['UDP']),
+                   ('ruleType', 'ApplicationRule'), ('sourcePorts', ['*']))
+        for name in ('allow-appgw-aca-http', 'agw-aca-http'):
+            for field, value in changes:
+                with self.subTest(name=name, field=field):
+                    transport = Transport()
+                    rules = transport.bodies[portal_ids(CONFIG)['firewall']]['properties']['ruleCollections'][0]['rules']
+                    http = copy.deepcopy(rules[0])
+                    http.update(name=name, destinationPorts=['80'])
+                    http[field] = value
+                    rules.append(http)
+                    with self.assertRaisesRegex(ValueError, 'another source, destination or owner'):
+                        ensure_portal_firewall_port(CONFIG, transport, execute=True, record=lambda *_: None)
+                    self.assertFalse(transport.writes())
 
     def test_preparation_plan_and_missing_protected_record_do_not_write(self):
         transport = Transport()
@@ -281,12 +365,33 @@ class PortalHttpMigrationTests(unittest.TestCase):
         self.assertTrue(result['updated'])
         self.assertIn('firewallPolicies', transport.writes()[0]['path'])
         self.assertIn('applicationGateways', transport.writes()[1]['path'])
+        firewall_rules = transport.writes()[0]['body']['properties']['ruleCollections'][0]['rules']
+        self.assertEqual([rule['name'] for rule in firewall_rules], ['allow-appgw-aca-http', 'agw-aca-https'])
+        self.assertEqual([rule['destinationPorts'] for rule in firewall_rules], [['80'], ['443']])
         gateway_update = transport.writes()[1]['body']['properties']
         self.assertEqual(gateway_update['requestRoutingRules'], routes)
         self.assertEqual(gateway_update['probes'][0], other_probe)
         self.assertEqual(gateway_update['backendHttpSettingsCollection'][0]['properties']['protocol'], 'Https')
         self.assertEqual(gateway_update['probes'][1]['properties']['port'], 443)
         self.assertIn('gateway-before-rollback', [r[0] for r in records])
+
+    def test_rollback_retains_legacy_http_and_restores_owned_https_before_gateway(self):
+        transport = Transport()
+        ids = portal_ids(CONFIG)
+        rules = transport.bodies[ids['firewall']]['properties']['ruleCollections'][0]['rules']
+        rules[0].update(name='agw-aca-http', destinationPorts=['80'])
+        before = copy.deepcopy(rules[0])
+        gateway = transport.bodies[ids['gateway']]
+        gateway['properties']['backendHttpSettingsCollection'][0]['properties'].update(protocol='Http', port=80)
+        gateway['properties']['probes'][1]['properties'].update(protocol='Http', port=80)
+        result = rollback_portal_backend(CONFIG, transport, execute=True, record=lambda *_: None)
+        self.assertTrue(result['updated'])
+        self.assertIn('firewallPolicies', transport.writes()[0]['path'])
+        self.assertIn('applicationGateways', transport.writes()[1]['path'])
+        sent_rules = transport.writes()[0]['body']['properties']['ruleCollections'][0]['rules']
+        self.assertEqual(sent_rules[0], before)
+        self.assertEqual(sent_rules[1]['name'], 'agw-aca-https')
+        self.assertEqual(sent_rules[1]['destinationPorts'], ['443'])
 
 
 if __name__ == '__main__':

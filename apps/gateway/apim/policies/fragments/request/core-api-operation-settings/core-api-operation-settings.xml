@@ -1,0 +1,11 @@
+<fragment>
+  <!-- ========== 操作設定とモデル別設定の準備（core-api-operation-settings） ========== -->
+  <!-- 目的：この操作と要求したモデルに対応する設定を、後続処理へ渡します。 -->
+  <!-- 処理：操作の基本設定を読み、必要な場合だけ本文modelとaliasを解決してmodelSettingsを上書きします。結果をgatewayOperationSelectionへ格納し、不備時の監査と応答は呼出し元が行います。 -->
+  <!-- モデル別の設定がない場合は基本設定を使います。この部品では登録モデルの一覧による受付判定を行いません。 -->
+  <!-- 本文を読む操作では先に元のバイト数を確認します。モデル設定を使わない操作にはJSON読取りを追加しません。 -->
+  <set-variable name="gatewayOperationSelection" value="@{
+      __CORE_API_OPERATION_SETTINGS_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

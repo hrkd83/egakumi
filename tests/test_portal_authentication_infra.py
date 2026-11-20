@@ -219,12 +219,22 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
 
     def test_gateway_egress_only_allows_selected_gateway_from_aca(self):
         module = self.module("portal-gateway-egress", "portal")
+        self.assertNotIn("condition", module)
         self.assertEqual(module["resourceGroup"], "[parameters('networkResourceGroup')]")
         rules = module["properties"]["template"]["resources"][0]
+        self.assertNotIn("condition", rules)
         self.assertIn("rcg-portal-gateway", rules["name"])
+        self.assertEqual(rules["properties"]["priority"], 370)
         collections = rules["properties"]["ruleCollections"]
         self.assertEqual(len(collections), 1)
+        self.assertEqual(collections[0]["name"], "portal-gateway")
+        self.assertEqual(collections[0]["priority"], 100)
+        self.assertEqual(collections[0]["ruleCollectionType"], "FirewallPolicyFilterRuleCollection")
+        self.assertEqual(collections[0]["action"], {"type": "Allow"})
+        self.assertEqual(len(collections[0]["rules"]), 1)
         rule = collections[0]["rules"][0]
+        self.assertEqual(rule["name"], "allow-aca-appgw-https")
+        self.assertEqual(rule["ruleType"], "ApplicationRule")
         self.assertEqual(rule["sourceAddresses"], ["[parameters('acaPrefix')]"])
         self.assertEqual(rule["protocols"], [{"protocolType": "Https", "port": 443}])
         self.assertEqual(rule["targetFqdns"], ["[split(parameters('gatewayOrigin'), '/')[2]]"])

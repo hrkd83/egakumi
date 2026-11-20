@@ -21,7 +21,8 @@
           "required": true
         }
       ],
-      "backendUrlTemplate": "/openai/deployments/{deployment}/audio/transcriptions?api-version=2025-04-01-preview"
+      "backendUrlTemplate": "/openai/deployments/{deployment}/audio/transcriptions?api-version=2025-04-01-preview",
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],
@@ -31,6 +32,7 @@
       "audio-transcriptions": {
         "kind": "pathModel",
         "bodyFormat": "multipart",
+        "requestBodySizeCheck": "declared",
         "maxRequestBytes": 524288000,
         "parameter": "deployment",
         "allowedModels": [

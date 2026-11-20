@@ -20,7 +20,7 @@ PIIから生成するMCPも、RESTと同じProductの購読キーで利用しま
 
 PIIの`tools/call`は、型・必須項目・対応言語・追加項目・要求サイズを入口で検証します。不正な引数は実行せず、HTTP 400とJSON-RPCの`error.code=-32602`で返します。引数自体や本文の個人情報はエラーへ転記しません。
 
-PIIの`maxRequestBytes=1000000`は、`text`・`language`をコンパクトJSONへ再直列化したUTF-8 byte数の上限です。JSONエスケープ等を考慮した解析前の受信枠はその6倍で、上流Language用の包みを付けた最終本文にも提供元の1,000,000 bytes上限を検査します。容量超過はHTTP 413・`PiiInputTooLarge`・`requestId`と`Cache-Control: no-store`、入力不正はHTTP 400・`PiiInvalidInput`です。MCPも`params.arguments`に同じ予算を適用します。文字列を正規化・切り詰めせず、Languageの5,120 Unicodeテキスト要素などのモデル制約は提供元で検証します。他の通常AI APIは受信本文全体にAPIM Classicの500 MiB枠を適用します。
+PIIの`maxRequestBytes=1000000`は、`text`・`language`をコンパクトJSONへ再直列化したUTF-8 byte数の上限です。JSONエスケープ等を考慮した解析前の受信枠はその6倍で、上流Language用の包みを付けた最終本文にも提供元の1,000,000 bytes上限を検査します。容量超過はHTTP 413・`PiiInputTooLarge`・`requestId`と`Cache-Control: no-store`、入力不正はHTTP 400・`PiiInvalidInput`です。MCPも`params.arguments`に同じ予算を適用します。文字列を正規化・切り詰めせず、Languageの5,120 Unicodeテキスト要素などのモデル制約は提供元で検証します。他の通常AI APIの本文上限設定はAPIM Classicのバッファー上限500 MiBに揃えます。音声認識・音声ファイルの文字起こし・画像編集は申告サイズだけを確認し、サイズ検査だけの全量読取りを省きます。音声合成も共有部品では申告サイズだけを確認し、専用の`core-speech-ssml-guard`が本文を一度読み、実サイズとSSML宣言を検査します。Document・JSONなど本文を読むほかの操作では既存の実サイズ検査を維持します。このTTS集約はAzure反映・読戻しを完了しました。キー／BearerのTTS正常WAV応答、DTD宣言の400と対応する監査照合を確認しました。実サイズ超過413など残る異常系は未実施です。[本文サイズ確認の方式](apim-policy-catalog.md)を参照してください。
 
 上記のPII入力エラー形式はAPIMまで到達した要求に適用します。壊れたJSONはApplication GatewayのWAFで先にHTTP 403となる場合があり、この場合はAPIMの`requestId`がないため、WAFの診断記録で拒否を確認します。
 
@@ -41,7 +41,7 @@ API／Operationは通信契約、Productは利用範囲のまとまりです。�
 | APIM → 本人の下流API | CMが保管・更新するtokenと、購読へ結び付けた本人接続セッション |
 | 固定サービス用CM接続 | 管理者が設定した`service`接続。個人接続と区別 |
 
-APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`で許可モデル・profile・入力・出力・公開操作を検査します。本人接続が必要なAPIは、CMセッションの購読・所有者・接続・期限を照合します。
+APIの`authorization.mode`は`subscriptionKey`です。`operationConstraints`に操作の基本設定と必要なモデル別設定を持ち、許可モデル・入力・出力・公開操作を検査します。本人接続が必要なAPIは、CMセッションの購読・所有者・接続・期限を照合します。
 
 キーはバックエンドの秘密保管先へ置きます。Next.jsのサーバー処理、FastAPI、PHP、SaaS等は同じHTTP契約で呼びます。ブラウザー画面からはBFF等を経由し、キーをJavaScriptや公開設定へ含めません。APIキーだけを設定できる製品では、その製品の送信ヘッダー・パス・`api-version`・stream形式とGatewayの契約が一致することを実機で確認します。
 
@@ -55,7 +55,7 @@ Coreの汎用中継は`tests/fixtures/external-api-definitions.json`で回帰検
 
 現行資材のCore管理ログは、Application GatewayのアクセスURIからWorkspace取り込み変換でqueryを除去し、変換後のLAWと監査Storageへ保存する構成です。既存環境は配備記録・変換後ログ・exportと診断経路を照合して反映状況を確認します。WAFのlogScrubbingは別に維持します。企業Policy等が別Workspaceへ送るコピーは別の管理境界として記録し、Coreから設定変更・収集除外を行いません。[設定と既存環境の段階更新](../testing/log-privacy.md)を参照してください。
 
-APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/gateway/apim/policies/audit-context.xml)と [Gateway転送](../../apps/gateway/apim/policies/gateway.xml)です。
+APIMの`core-gateway`は検証済み購読ID、要求ID、API／操作、結果code／status、許可したmodelを記録します。下流の応答IDは固定3ヘッダーの検査済み値だけを退避し、SSE本文を読み取ったり全量bufferしたりしません。親要求IDは相関の候補であり、要求者の本人・利用許可・購読の課金帰属を上書きしません。相関処理の正本は [監査context](../../apps/gateway/apim/policies/audit-context.xml)と [Gateway転送](../../apps/gateway/apim/policies/api-templates/gateway.xml)です。
 
 数値usageの初期対象は、`foundryOpenAi`のHTTP Chat Completions操作だけです。既存Developer/classicを含む[AI gatewayの適用tier](https://learn.microsoft.com/en-us/azure/api-management/genai-gateway-capabilities)と、[managed Chat Completionsの標準ログ手順](https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-llm-logs)を採用します。APIM診断を`2025-09-01-preview`へ揃えて`largeLanguageModel.logs`を有効化しますが、任意の`requests/responses`メッセージ設定は指定せず、既存のfrontend/backend本文取得は0 byteを維持します。[診断の公開定義](https://learn.microsoft.com/en-us/azure/templates/microsoft.apimanagement/2025-09-01-preview/service/apis/diagnostics)
 
@@ -111,9 +111,9 @@ GPT-5.6 Sol／Terra／Lunaは版`2026-07-09`・`GlobalStandard`で配備し、�
 | OpenAI Embedding | `text-embedding-3-small`、`text-embedding-3-large` | `/models/openai-embeddings/v1/embeddings` | `model`、`input`、`encoding_format` の JSON |
 | Cohere Embedding | `embed-v-4-0` | `/models/cohere/v1/embed` | `model`、`texts`、`input_type`、`embedding_types` の JSON |
 | GPT 画像 | `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`、`gpt-image-2` | `/models/openai-images/v1/generations`、`/models/openai-images/v1/deployments/{deployment}/edits` | 生成は JSON、編集は multipart の画像 |
-| 互換Chat | `DeepSeek-V4-Flash`、`DeepSeek-V4-Pro`、`Mistral-Large-3`、`grok-4.7` | `/models/openai/v1/chat/completions` | `compatible` profile、JSONの`max_tokens` |
-| Router | `model-router` | `/models/openai/v1/chat/completions` | `router` profile、JSONの`max_completion_tokens` |
-| FLUX 画像生成・編集 | `FLUX.2-flex`、`FLUX.2-pro` | `/models/blackforestlabs/v1/flux-2/generations`、`/models/blackforestlabs/v1/flux-2/edits` | BFL providerのJSON。flex／pro profileで固定上流を選択 |
+| 互換Chat | `DeepSeek-V4-Flash`、`DeepSeek-V4-Pro`、`Mistral-Large-3`、`grok-4.7` | `/models/openai/v1/chat/completions` | モデル別設定の`settingId`は`compatible`、JSONの`max_tokens` |
+| Router | `model-router` | `/models/openai/v1/chat/completions` | モデル別設定の`settingId`は`router`、JSONの`max_completion_tokens` |
+| FLUX 画像生成・編集 | `FLUX.2-flex`、`FLUX.2-pro` | `/models/blackforestlabs/v1/flux-2/generations`、`/models/blackforestlabs/v1/flux-2/edits` | BFL providerのJSON。モデル名から内部flex／pro設定と固定上流を選択 |
 | Live会話 | `gpt-live-1` | `/models/openai-live/v1/sessions`、`/models/openai-live/v1/ws` | WebRTC作成のJSON、またはLive WSSイベント |
 | リアルタイム文字起こし | `gpt-live-transcribe` | `/models/openai-transcription/v1/ws` | WSS、transcriptionセッション |
 | 再ランキング | `Cohere-rerank-v4.0-fast`、`Cohere-rerank-v4.0-pro` | `/models/cohere/v1/rerank` | `query`、`documents`、`top_n` の JSON |
@@ -122,7 +122,12 @@ GPT-5.6 Sol／Terra／Lunaは版`2026-07-09`・`GlobalStandard`で配備し、�
 | Realtime 会話 | `gpt-realtime-2.1` | `/models/openai-realtime/v1/ws`、`/models/openai-realtime/v1/calls` | WebSocket または WebRTC の接続準備 |
 | Realtime Mini 会話 | `gpt-realtime-2.1-mini` | `/models/openai-realtime/v1/ws?model=gpt-realtime-2.1-mini` | 共通WebSocketのmodel選択。操作制約のallowedModelsで制限。Mini 用 WebRTC は公開しません |
 
-画像入力は共通の`/models/openai/v1/chat/completions`へ`X-Egakumi-Profile: vision`、PDF入力は`/models/openai/v1/responses`へ`X-Egakumi-Profile: pdf`を付けます。通常入力はprofileを省略できます。許可と上限は入力profileごとに保持します。[全APIと操作・profileの定義](api-design-proposal.md)を参照してください。
+クライアントはAPI・操作と本文の`model`を指定し、profileヘッダーは付けません。APIMは操作直下の`modelAliases`で別名を配備モデル名へ解決し、操作の基本設定へ`modelSettings.<モデル名>`の差分を重ねて設定を一意に取得します。差分がないモデルには基本設定を使います。残っている`X-Egakumi-Profile`は無視して下流転送前に削除します。
+
+`modelSettings`はモデル名別の設定差分です。操作直下の`allowedModels`とモデル能力表は設定・配備時の照合に使います。モデル選択部品では一覧にないことを理由に403にせず、差分がなければ基本設定を返します。後段の一覧・能力表の照合と固定転送先は、続く棚卸の対象です。任意の`settingId`は監査用の内部識別名で、クライアントが指定する値ではありません。モデル別の出力項目やFLUXの固定転送先を保持し、モデル名を使わない業務APIは基本設定だけで扱います。
+
+画像入力のChatとPDF入力のResponsesにも共通の公開URLを使います。同じモデルの`chat`／`vision`や`response`／`pdf`候補を重複登録する構造を廃止し、GPT群のChatは`settingId: chat`、Responsesは`settingId: response`へ揃えます。この構造整理では既存の受付条件を維持し、登録外モデルや本文・ツールに残る制御は続く棚卸で個別に判断します。新しい画像・PDFの実機受入結果を示すものではありません。[全APIと操作・内部設定の定義](api-design-proposal.md)・[設定パラメーター](../setup/04-params.md#操作制約c)を参照してください。
+
 Speech サービスの SSML 読み上げ `/models/azure-speech/v1/synthesize`、
 WAV 文字起こし `/models/azure-speech/v1/recognize`、Voice Live も独立した操作として使用します。
 これらは OpenAI Audio API と入力形式・認証・応答イベントが異なります。

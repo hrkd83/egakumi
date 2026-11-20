@@ -199,6 +199,20 @@ class BootstrapControllerTests(unittest.TestCase):
                     self.assertTrue(all(call[0] == "GET" for call in transport.calls))
                     self.assertEqual(checkpoints, [])
 
+    def test_fresh_stage_preserves_retired_query_mode_named_value_without_recreating_it(self):
+        base, plan, authentication, transport = controller_fixture()
+        resource_id = plan["apimId"] + "/namedValues/CORE-QUERY-GUARD-MODES"
+        properties = {"displayName": "core-query-guard-modes", "secret": False,
+                      "value": '{"liveCreate":"reject"}'}
+        transport.refresh(resource_id, properties)
+        transport.inventory[plan["apimId"] + "/namedValues"]["body"]["value"].append({"id": resource_id})
+        # 現stageは退役したmode NVを生成しません。旧metadataの存在を所有判定へ戻しません。
+        result = self.execute(base, plan, authentication, transport, [])
+        self.assertTrue(result["entraAuthentication"]["employeePathOpen"])
+        self.assertEqual(transport.inventory[resource_id]["body"]["properties"], properties)
+        self.assertFalse(any(method != "GET" and target == resource_id
+                             for method, target, *_ in transport.calls))
+
     def test_fresh_stage_rejects_duplicate_case_aliases_in_every_inventory(self):
         for kind in ("apis", "policyFragments", "backends", "products", "namedValues",
                      "subscriptions", "loggers", "diagnostics"):

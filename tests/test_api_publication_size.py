@@ -9,6 +9,7 @@ from bicep_helpers import compile_bicep
 import copy
 import json
 from pathlib import Path
+import sys
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -17,7 +18,21 @@ from arm_helpers import DiscoveryExpression
 from deployment.helpers import credential_login
 
 CORE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CORE / "apps/gateway/deploy"))
+from publication_templates import publication_parameters, split_publication_templates, source_generation_id
+from api_publication import SOURCE_PRINCIPAL_EXPRESSION, validate_publication_template
+
 SYNTHETIC_SUBSCRIPTION = "11111111-1111-4111-8111-111111111111"
+SYNTHETIC_PRINCIPAL = "77777777-7777-4777-8777-777777777777"
+SOURCE_OUTPUTS = {"entraPublicationSource", "credentialBrowserPublicationSource"}
+REQUEST_BUDGET = 2_800_000
+RESOURCE_BUDGET = 1_000_000
+POLICY_BUDGET = 512 * 1024
+REQUEST_TAGS = {"azd-env-name": "test-fixture", "azd-project-name": "egakumi"}
+
+
+def serialized_size(value):
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 def source_without_identity_binding(template):
@@ -95,12 +110,63 @@ def expand(template, parameters):
             "functions": template.get("functions", [])}
 
 
+def measure(template, parameters):
+    """全outputs・metadata・既存tagsも含め、提出時と展開後の量を別々に測ります。
+
+    Azure内部の圧縮済みjobや管理応答の完全再現ではありません。出力を省くことで
+    source生成要求を過小評価しないため、既存expandとは別の測定を使います。
+    """
+    submitted = publication_parameters(template, {name: {"value": value} for name, value in parameters.items()})
+    expanded = expand(template, {name: wrapper["value"] for name, wrapper in submitted.items()})
+    reader = SizeExpression("[true()]", template["variables"], expanded["variables"],
+                            template.get("functions", []))
+    outputs = reader.resolve(template.get("outputs", {}), expanded["parameters"])
+    expanded = {**{key: reader.resolve(value, expanded["parameters"])
+                   for key, value in template.items()
+                   if key not in ("variables", "resources", "parameters", "functions", "outputs")},
+                **expanded, "outputs": outputs, "tags": REQUEST_TAGS}
+    request = {"properties": {"mode": "Incremental", "template": template,
+                              "parameters": submitted},
+               "tags": REQUEST_TAGS}
+    policies = []
+    for resource in expanded["resources"]:
+        if resource["type"].endswith(("/policies", "/policyFragments")):
+            policies.append(resource["properties"]["value"])
+    for name in SOURCE_OUTPUTS & outputs.keys():
+        policies.extend(entry["value"] for entry in outputs[name]["value"].get("policies", []))
+    return {"expanded": expanded, "submittedParameters": submitted, "compiledBytes": serialized_size(request),
+            "expandedBytes": serialized_size(expanded), "outputBytes": serialized_size(outputs),
+            "resourceBytes": {resource["type"] + "/" + resource["name"]: serialized_size(resource)
+                              for resource in expanded["resources"]},
+            "policyBytes": [len(value.encode("utf-8")) for value in policies]}
+
+
+class SizeMeasurementTests(unittest.TestCase):
+    def test_measure_includes_all_outputs_generation_binding_metadata_and_tags(self):
+        template = {"variables": {}, "resources": {},
+                    "parameters": {"defaultOnly": {"type": "string", "defaultValue": "literal-default"}},
+                    "metadata": {"fixture": "retained"},
+                    "outputs": {"additionalOutput": {"type": "string", "value": "payload" * 2000},
+                                "publicationSourceGenerationId": {"type": "string", "value": "synthetic-source-id"},
+                                "publicationSourcePrincipalId": {"type": "string", "value": SOURCE_PRINCIPAL_EXPRESSION}}}
+        result = measure(template, {})
+        expected = copy.deepcopy(template["outputs"])
+        expected["publicationSourcePrincipalId"]["value"] = SYNTHETIC_PRINCIPAL
+        self.assertEqual(result["expanded"]["outputs"], expected)
+        self.assertEqual(result["expanded"]["metadata"], template["metadata"])
+        self.assertEqual(result["expanded"]["tags"], REQUEST_TAGS)
+        self.assertEqual(result["submittedParameters"], {"defaultOnly": {"value": "literal-default"}})
+        self.assertGreater(result["outputBytes"], 14_000)
+        without_outputs = {key: value for key, value in result["expanded"].items() if key != "outputs"}
+        self.assertGreater(result["expandedBytes"] - serialized_size(without_outputs), 14_000)
+
+
 class ApiPublicationSizeTests(unittest.TestCase):
     """公開例の全APIと追加利用者を展開し、サイズに余裕があることを調べる。"""
 
     @classmethod
     def setUpClass(cls):
-        # 正式18 APIの公開例から実際のXMLとARM展開後サイズを調べます。
+        # 正式の公開例の全APIから、実際のXMLとARM展開後サイズを調べます。
         raw = bound_coverage()
         config = configuration.normalize_configuration(raw, base_directory=CORE / "config")
         cls.credential_login = credential_login.settings(config)
@@ -121,15 +187,99 @@ class ApiPublicationSizeTests(unittest.TestCase):
             "realtimeTicketSecretIdentifier": "https://kv-test-fixture.vault.azure.net/secrets/core-realtime-ticket-key",
         }
         cls.template = compile_bicep('apps/gateway/apim/api-publication.bicep')
+        cls.measurements = {}
+
+    def split_measurements(self, parameters):
+        """同じ完成Bicepを分割し、実配備と両source出力の同一性も確認します。"""
+        key = json.dumps(parameters, sort_keys=True)
+        if key in self.measurements:
+            return self.measurements[key]
+        publication, source = split_publication_templates(self.template)
+        self.assertIsNotNone(source)
+        self.assertEqual(publication["resources"], self.template["resources"])
+        self.assertEqual(source["resources"], {"apim": self.template["resources"]["apim"]})
+        self.assertTrue(source["resources"]["apim"]["existing"])
+        self.assertEqual(set(source["outputs"]), SOURCE_OUTPUTS)
+        self.assertEqual(publication.get("outputs", {}),
+                         {name: definition for name, definition in self.template["outputs"].items()
+                          if name not in SOURCE_OUTPUTS})
+        for name in SOURCE_OUTPUTS:
+            self.assertEqual(source["outputs"][name], self.template["outputs"][name])
+        for template in (publication, source):
+            self.assertEqual(template.get("metadata"), self.template.get("metadata"))
+        resource_scope = (f"/subscriptions/{SYNTHETIC_SUBSCRIPTION}"
+                          "/resourceGroups/rg-test-fixture-svc/providers/")
+        plan = {"deploymentId": resource_scope + "Microsoft.Resources/deployments/core-api-publication",
+                "apimId": resource_scope + "Microsoft.ApiManagement/service/apim-test-fixture",
+                "parameters": publication_parameters(self.template, {name: {"value": value}
+                                                                     for name, value in parameters.items()})}
+        source_id = source_generation_id(plan, self.template, identity_principal_id=SYNTHETIC_PRINCIPAL)
+        binding = {"type": "string", "value": source_id}
+        for template in (publication, source):
+            template.setdefault("outputs", {})["publicationSourceGenerationId"] = copy.deepcopy(binding)
+        source["outputs"]["publicationSourcePrincipalId"] = {"type": "string", "value": SOURCE_PRINCIPAL_EXPRESSION}
+        self.assertNotIn("publicationSourcePrincipalId", publication["outputs"])
+        result = {"publication": measure(publication, parameters), "source": measure(source, parameters)}
+        self.assertEqual(result["source"]["expanded"]["resources"], [])
+        original_resources = expand(self.template, parameters)["resources"]
+        self.assertEqual(result["publication"]["expanded"]["resources"], original_resources)
+        reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+        original_outputs = reader.resolve(self.template["outputs"], result["publication"]["expanded"]["parameters"])
+        for name, expected in original_outputs.items():
+            actual = result["source" if name in SOURCE_OUTPUTS else "publication"]["expanded"]["outputs"][name]
+            self.assertEqual(actual, expected)
+        self.measurements[key] = result
+        return result
+
+    def assert_split_budgets(self, parameters):
+        result = self.split_measurements(parameters)
+        for name, measured in result.items():
+            with self.subTest(request=name):
+                self.assertLess(measured["compiledBytes"], REQUEST_BUDGET,
+                                name + " compiled request bytes: " + str(measured["compiledBytes"]))
+                self.assertLess(measured["expandedBytes"], REQUEST_BUDGET,
+                                name + " expanded request including all outputs bytes: " + str(measured["expandedBytes"]))
+                self.assertLess(measured["outputBytes"], 4_000_000)
+                self.assertTrue(all(size < RESOURCE_BUDGET for size in measured["resourceBytes"].values()),
+                                name + " resource definition bytes: " + str(measured["resourceBytes"]))
+                self.assertTrue(all(size < POLICY_BUDGET for size in measured["policyBytes"]),
+                                name + " policy/fragment UTF-8 bytes: " + str(measured["policyBytes"]))
+        return result
 
     def test_standard_apis_fit_expanded_budget_with_headroom(self):
+        # 正式な配備入口でも、propertiesがARM式になった実コンパイル資材を受け入れます。
+        self.assertIsNone(validate_publication_template(self.template))
         self.assertTrue(all(api["serviceClass"] == "platform" for api in self.parameters["apiDefinitions"]))
         self.assertFalse(any(api["name"].startswith("sample-") for api in self.parameters["apiDefinitions"]))
-        expanded = expand(self.template, copy.deepcopy(self.parameters))
-        size = len(json.dumps(expanded, ensure_ascii=False, separators=(",", ":")).encode())
-        # 公式4MB境界を狙わず、メタデータ等の余裕を残して350万bytes未満にする。
-        self.assertLess(size, 3_500_000, "Expanded publication bytes: " + str(size))
+        expanded = self.assert_split_budgets(copy.deepcopy(self.parameters))["publication"]["expanded"]
+        # 公式4MB境界に対して、全outputs・binding・metadata込みで280万B未満に保ちます。
         self.assertEqual(sum(resource["type"] == "Microsoft.ApiManagement/service/apis" for resource in expanded["resources"]), len(self.parameters["apiDefinitions"]) + sum("mcp" in api for api in self.parameters["apiDefinitions"]))
+
+    def test_compiled_browser_exception_keeps_lowercase_csharp_boolean_with_azure_string_behavior(self):
+        class AzureBooleanExpression(SizeExpression):
+            """Azureで確認したstring(bool)だけを再現し、実UDFの本文はそのまま評価する。"""
+            def evaluate(self, parameters, index=0, tree=None, bindings=None):
+                tree = self.tree if tree is None else tree
+                if tree[0] == "call" and tree[1] == "string":
+                    value = self.evaluate(parameters, index, tree[2][0], bindings)
+                    if type(value) is bool:
+                        return "True" if value else "False"
+                return super().evaluate(parameters, index, tree, bindings)
+
+        expression = ("[__bicep.browserExceptionFragmentValue(variables('browserExceptionTemplate'), "
+                      "variables('browserExceptionSource'), parameters('fixtureConfigured'))]")
+        for configured, expected in ((True, "true"), (False, "false")):
+            with self.subTest(credential_login_configured=configured):
+                reader = AzureBooleanExpression("[true()]", self.template["variables"],
+                                                functions=self.template.get("functions", []))
+                parameters = {"fixtureConfigured": configured}
+                self.assertEqual(reader.resolve("[string(parameters('fixtureConfigured'))]", parameters),
+                                 "True" if configured else "False")
+                rendered = reader.resolve(expression, parameters)
+                self.assertNotIn("__CREDENTIAL_BROWSER_CONFIGURED__", rendered)
+                value = ET.fromstring(rendered).find("set-variable[@name='gatewayCredentialBrowserException']").get("value")
+                self.assertRegex(value, r"\breturn " + expected + r"\s")
+                self.assertNotRegex(value, r"\breturn (?:True|False)\b")
 
     def test_entra_open_product_omits_subscription_only_approval_and_preserves_native_contracts(self):
         parameters = copy.deepcopy(self.parameters)
@@ -159,9 +309,9 @@ class ApiPublicationSizeTests(unittest.TestCase):
                              and "/core-entra-model-users/" in resource["name"] for resource in expanded["resources"]))
 
     def test_protected_source_output_matches_resource_assignments_and_fits_expanded_budget(self):
-        expanded = expand(self.template, copy.deepcopy(self.parameters))
-        reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
-        source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
+        result = self.assert_split_budgets(copy.deepcopy(self.parameters))
+        expanded = result["publication"]["expanded"]
+        source = result["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
         actual = {}
         actual_properties = {}
         for resource in expanded["resources"]:
@@ -199,18 +349,15 @@ class ApiPublicationSizeTests(unittest.TestCase):
                 parameters["entraAuthentication"] = {"enabled": entra_enabled}
                 if credential_enabled:
                     parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
-                expanded_case = expand(self.template, parameters)
-                # Each parameter set requires its own cache; otherwise the CM
-                # source policies may be omitted after the non-CM case.
-                case_reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
-                source_case = case_reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded_case["parameters"])
+                case = self.assert_split_budgets(parameters)
+                source_case = case["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
                 self.assertEqual(any(entry["suffix"] == "/apis/credential-manager-login/policies/policy"
                                      for entry in source_case["policies"]), credential_enabled)
                 for entry in source_case["policies"]:
                     self.assertNotIn("__AUDIT_", entry["value"])
                     self.assertNotIn("__CORE_", entry["value"])
-                size = len(json.dumps({**expanded_case, "protectedSourceOutput": source_case}, ensure_ascii=False, separators=(",", ":")).encode())
-                self.assertLess(size, 3_500_000, "Expanded publication including protected source bytes: " + str(size))
+                browser_case = case["source"]["expanded"]["outputs"]["credentialBrowserPublicationSource"]["value"]
+                self.assertEqual(bool(browser_case), credential_enabled)
 
     def test_full_source_contains_every_fragment_and_retains_non_cm_model_authentication(self):
         for credential_enabled in (False, True):
@@ -336,9 +483,27 @@ class ApiPublicationSizeTests(unittest.TestCase):
         parameters["rateLimits"]["subscriptionKey"]["overrides"] = [
             {"callerId": "subscription-fixture-" + str(index), "calls": 30, "renewalPeriodSeconds": 60}
             for index in range(16)]
-        expanded = expand(self.template, parameters)
-        size = len(json.dumps(expanded, ensure_ascii=False, separators=(",", ":")).encode())
-        self.assertLess(size, 3_500_000, "Expanded additional-contract publication bytes: " + str(size))
+        for credential_enabled, entra_enabled in ((False, False), (True, True)):
+            with self.subTest(credential_enabled=credential_enabled, entra_enabled=entra_enabled):
+                case = copy.deepcopy(parameters)
+                case["entraAuthentication"] = {"enabled": entra_enabled}
+                if credential_enabled:
+                    case["credentialLogin"] = copy.deepcopy(self.credential_login)
+                self.assert_split_budgets(case)
+
+    def test_additional_api_contract_preserves_source_and_resource_definitions_with_headroom(self):
+        parameters = copy.deepcopy(self.parameters)
+        extra = copy.deepcopy(next(api for api in parameters["apiDefinitions"]
+                                   if api["apiType"] == "http" and api["backendService"] == "foundryOpenAi"
+                                   and "credentialConnection" not in api and "mcp" not in api))
+        extra.update(name="synthetic-extra-model-api", path="contracts/extra-model",
+                     displayName="Synthetic additional model API")
+        parameters["apiDefinitions"].append(extra)
+        parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
+        parameters["entraAuthentication"] = {"enabled": True}
+        result = self.assert_split_budgets(parameters)
+        source = result["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
+        self.assertEqual(sum(api["name"] == extra["name"] for api in source["apis"]), 1)
 
     def test_generated_profile_routes_and_live_operation_match_public_contracts(self):
         expanded = expand(self.template, copy.deepcopy(self.parameters))
@@ -391,7 +556,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
             self.assertEqual(ET.tostring(root), ET.tostring(ET.fromstring(expected)), operation_name)
             for response in root.findall(".//return-response"):
                 self.assertIsNotNone(response.find("set-header[@name='apim-request-id']"))
-        self.assertLess(len(json.dumps(expanded, ensure_ascii=False).encode()), 3_500_000)
+        self.assert_split_budgets(parameters)
         diagnostics = [r for r in expanded["resources"] if r["type"].endswith("/diagnostics") and "/credential-manager-" in r["name"]]
         self.assertEqual(len(diagnostics), 2)
         for diagnostic in diagnostics:

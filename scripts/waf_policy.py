@@ -24,7 +24,8 @@ from waf_contracts import (APP_GROUPS, APP_RULES, approved_group_scopes, generat
 from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
                                                 NETWORK_API, portal_session_exclusions)
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_KEYS,
-                                           PORTAL_DATA_POLICY_KEYS, policy_id)
+                                           PORTAL_DATA_POLICY_KEYS, DATA_POLICY_PREDECESSORS,
+                                           policy_id, predecessor_policy_id)
 from deployment.helpers.waf_body import (ai_body_settings, portal_document_profile, raw_body_policy,
                                          ai_content_type_profile, ai_content_type_policy)
 
@@ -475,6 +476,17 @@ def desired_policy(base, profile, config, sources=()):
     known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile) + profile['exclusions'])
     if len(known) > 200:
         raise ValueError('Composed WAF policy exceeds the 200 exclusion limit')
+    # PIIを入口別に分けるときだけ、旧共有ポリシーの「他方の入口用」の除外を候補へ引き継ぎません。
+    # 正式な移行先の名前・パス・除外と一致する場合に限り、生成元が定義する相手側の範囲を使います。
+    # 旧資源は残します。実WAFで正規本文の通過を確認してから、別の退役作業で削除します。
+    predecessor = predecessor_policy_id(config, profile['name']) if sources else None
+    retiring = []
+    if predecessor and sources:
+        canonical = {item['name']: item for item in generated_manifest()['profiles']}
+        if profile == canonical.get(profile['name']):
+            retiring = [entry for name, previous in DATA_POLICY_PREDECESSORS.items()
+                        if name != profile['name'] and previous == DATA_POLICY_PREDECESSORS[profile['name']]
+                        for entry in canonical[name]['exclusions']]
     for source in sources:
         current = _writable_policy(source)['properties']
         if (current.get('policySettings') not in (settings, properties['policySettings'])
@@ -482,7 +494,11 @@ def desired_policy(base, profile, config, sources=()):
             raise ValueError('Existing path WAF protection differs; reconcile its settings explicitly before combining paths')
         for item in current.get('managedRules', {}).get('exclusions', []):
             if not any(exclusion_is_covered(item, candidate) for candidate in known):
-                raise ValueError('Represent the existing path-specific WAF exclusion in the manifest before consolidation')
+                # 所有する旧共有PIIのIDと、承認済みの個別除外の範囲を両方確認します。
+                # 外部ポリシー、未知の項目・規則・広いprefix等を黙って削ることはしません。
+                is_predecessor = predecessor and str(source.get('id', '')).casefold() == predecessor.casefold()
+                if not is_predecessor or not any(exclusion_is_covered(item, candidate) for candidate in retiring):
+                    raise ValueError('Represent the existing path-specific WAF exclusion in the manifest before consolidation')
         for rule_set in current.get('managedRules', {}).get('managedRuleSets', []):
             matches = [item for item in sets if (item.get('ruleSetType'), item.get('ruleSetVersion')) ==
                        (rule_set.get('ruleSetType'), rule_set.get('ruleSetVersion'))]
@@ -575,6 +591,10 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
         owned_keys = ['g-base', *PROTOCOL_POLICY_KEYS[profile['scope']],
                       *SCOPED_DATA_POLICY_KEYS[profile['scope']]]
         owned_ids = {policy_id(config, key).casefold() for key in owned_keys}
+        # 旧共有PIIは、承認済みのREST/MCP分割先だけが引き継げる移行元です。
+        predecessor = predecessor_policy_id(config, profile['name'])
+        if predecessor:
+            owned_ids.add(predecessor.casefold())
         mapping, pool, backend = _scope_mapping(update, expected, profile['scope'])
         listener_name = 'listener-https' if profile['scope'] == 'gateway' else 'portal-https'
         listener = next(item['properties'] for item in update['properties']['httpListeners'] if item['name'] == listener_name)

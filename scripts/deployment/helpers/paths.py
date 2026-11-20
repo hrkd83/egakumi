@@ -6,8 +6,9 @@ import json
 import os
 from pathlib import Path
 import re
-import stat
 import sys
+
+from .private_permissions import check_private_permissions, protect_new_path
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -24,6 +25,12 @@ def _no_links(path: Path, boundary: Path) -> None:
     """運用領域から外部へのリンクや、通常ファイルを親とする参照を拒否する。"""
     current = path
     while current != boundary:
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            info = None
+        if info is not None and getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("Local runtime paths must not use reparse points")
         if current.is_symlink():
             system_alias = sys.platform == "darwin" and (
                 current == Path("/var") and current.resolve() == Path("/private/var")
@@ -70,12 +77,14 @@ def private_parent(path: Path, repository: Path = REPOSITORY) -> Path:
         chain.append(current)
         current = current.parent
     for directory in reversed(chain):
-        directory.mkdir(mode=0o700, exist_ok=True)
-        info = directory.lstat()
-        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
-            raise ValueError("Local runtime folders must be regular directories")
-        if os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o700:
-            raise ValueError("Local runtime folders require owner-only permissions (chmod 700)")
+        try:
+            # Protect a new empty Windows directory's actual DACL before
+            # creating children; numeric POSIX modes alone are insufficient.
+            directory.mkdir(mode=0o777 if os.name == "nt" else 0o700)
+        except FileExistsError:
+            check_private_permissions(directory, directory=True)
+        else:
+            protect_new_path(directory, directory=True)
     return target
 
 

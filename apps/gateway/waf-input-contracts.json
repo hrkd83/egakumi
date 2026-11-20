@@ -1991,7 +1991,88 @@
       ]
     },
     {
-      "name": "g-pii-redact",
+      "name": "g-pii-rest",
+      "scope": "gateway",
+      "sources": [
+        "gateway"
+      ],
+      "acceptance": "current-published-contract",
+      "shape": {
+        "kind": "object",
+        "properties": {
+          "text": {
+            "ref": "text"
+          },
+          "model": {
+            "ref": "control"
+          },
+          "stream": {
+            "ref": "control"
+          },
+          "store": {
+            "ref": "control"
+          },
+          "apiKeyId": {
+            "ref": "control"
+          },
+          "language": {
+            "ref": "control"
+          },
+          "voice": {
+            "ref": "control"
+          },
+          "format": {
+            "ref": "control"
+          },
+          "input_type": {
+            "ref": "control"
+          },
+          "encoding_format": {
+            "ref": "control"
+          },
+          "dimensions": {
+            "ref": "control"
+          },
+          "top_n": {
+            "ref": "control"
+          },
+          "return_documents": {
+            "ref": "control"
+          },
+          "truncate": {
+            "ref": "control"
+          },
+          "modelVersion": {
+            "ref": "control"
+          },
+          "apiVersion": {
+            "ref": "control"
+          }
+        }
+      },
+      "legacy": [
+        {
+          "selector": "text",
+          "variable": "RequestArgValues",
+          "operator": "Equals",
+          "rules": "reviewed-08"
+        }
+      ],
+      "bindings": [
+        {
+          "api": "pii-v1",
+          "path": "tools/pii/v1",
+          "operation": "pii_redact_text",
+          "method": "POST",
+          "urlTemplate": "/redact",
+          "kind": "pii",
+          "bodyFormat": null,
+          "apiType": "http"
+        }
+      ]
+    },
+    {
+      "name": "g-pii-mcp",
       "scope": "gateway",
       "sources": [
         "gateway"
@@ -2012,9 +2093,6 @@
                 }
               }
             }
-          },
-          "text": {
-            "ref": "text"
           },
           "model": {
             "ref": "control"
@@ -2069,25 +2147,9 @@
           "variable": "RequestArgValues",
           "operator": "Equals",
           "rules": "reviewed-08"
-        },
-        {
-          "selector": "text",
-          "variable": "RequestArgValues",
-          "operator": "Equals",
-          "rules": "reviewed-08"
         }
       ],
       "bindings": [
-        {
-          "api": "pii-v1",
-          "path": "tools/pii/v1",
-          "operation": "pii_redact_text",
-          "method": "POST",
-          "urlTemplate": "/redact",
-          "kind": "pii",
-          "bodyFormat": null,
-          "apiType": "http"
-        },
         {
           "api": "pii-v1",
           "mcpPath": "tools/pii-v1-mcp",

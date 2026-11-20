@@ -12,14 +12,14 @@ resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-
   parent: policy
   name: 'rcg-portal-gateway'
   properties: {
-    priority: 360
+    priority: 370
     ruleCollections: [{
       name: 'portal-gateway'
       priority: 100
       ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
       action: { type: 'Allow' }
       rules: [{
-        name: 'aca-public-gateway-https'
+        name: 'allow-aca-appgw-https'
         ruleType: 'ApplicationRule'
         sourceAddresses: [acaPrefix]
         protocols: [{ protocolType: 'Https', port: 443 }]

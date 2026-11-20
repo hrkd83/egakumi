@@ -16,6 +16,7 @@ ARM_PARAMETERS_SCHEMA = "https://schema.management.azure.com/schemas/2019-04-01/
 ARM_PARAMETER_DEFAULTS = {
     "phase": "core",
     "sshPublicKey": "",
+    "managementAdminPassword": "",
     "dnsPluginArgumentsJson": "",
     "credentialProviderSecrets": {},
     "l7IngressSecret": "",

@@ -14,7 +14,8 @@
       "method": "POST",
       "urlTemplate": "/systemone",
       "templateParameters": [],
-      "backendUrlTemplate": "/providers/microsoft/v1/systemone"
+      "backendUrlTemplate": "/providers/microsoft/v1/systemone",
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],

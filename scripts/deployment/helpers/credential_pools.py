@@ -59,5 +59,14 @@ def resource_names(configuration: dict) -> dict:
     }
 
 
-def broker_enabled(configuration: dict) -> bool:
+def credential_login_enabled(configuration: dict) -> bool:
+    """本人接続APIの業務設定を判定する。Broker基盤の作成条件には使わない。"""
     return bool(configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin"))
+
+
+def broker_session_settings(configuration: dict) -> dict:
+    """常設Brokerの期限設定を返し、公開認証設定や架空providerは追加しない。"""
+    from .credential_login import SESSION_POLICY_DEFAULTS
+    defaults = {**SESSION_POLICY_DEFAULTS, "transactionLifetimeSeconds": 300, "loginCallsPerMinute": 10}
+    login = configuration.get("gateway", {}).get("authentication", {}).get("credentialLogin", {})
+    return {field: login.get(field, default) for field, default in defaults.items()}

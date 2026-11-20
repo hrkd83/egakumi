@@ -1,0 +1,21 @@
+<fragment>
+  <!-- ========== 1 クエリ概要の記録対象を選ぶ ========== -->
+  <!-- 目的：APIの設定から観測ラベルが選ばれた要求だけを、クエリ概要の記録へつなぎます。 -->
+  <!-- 処理：同名C#のpredicate区画が、観測JSONのrouteをラベルとして確認します。対象がないnoneや、不正なラベルは記録しません。 -->
+  <choose>
+    <when condition="@{
+        __CORE_QUERY_TELEMETRY_PREDICATE_CSHARP__
+      }">
+      <!-- ========== 2 要求・利用者・クエリ概要を記録する ========== -->
+      <!-- 目的：どの要求・利用者・観測ラベルで、何が観測され、どの段階まで進んだかを照合できるようにします。 -->
+      <!-- 処理：同名C#のmessage区画が、共通監査の要求情報と認証済み利用者情報に、観測ラベル・HTTPメソッド・クエリの有無・複数値の有無・処理段階・応答区分を合わせます。本文、URL、クエリの名前や値、キー・トークン・Cookieは読みません。 -->
+      <trace source="core-query-observation" severity="information">
+        <message>@{
+            __CORE_QUERY_TELEMETRY_CSHARP__
+          }</message>
+      </trace>
+      <!-- === -->
+    </when>
+  </choose>
+  <!-- === -->
+</fragment>

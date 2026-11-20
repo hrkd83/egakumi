@@ -149,7 +149,7 @@ class CredentialPolicyTests(unittest.TestCase):
   self.assertIn('selection["ownerId"]',body)
   self.assertIn('context.Api.Id',body);self.assertIn('context.Operation.Id',body)
   self.assertNotIn('context.Request.Headers',body)
-  gateway=ET.fromstring((CORE/'apps/gateway/apim/policies/gateway.xml').read_text(encoding='utf-8'))
+  gateway=ET.fromstring((CORE/'apps/gateway/apim/policies/api-templates/gateway.xml').read_text(encoding='utf-8'))
   parent=next(node for node in gateway.iter('when') if node.find("include-fragment[@fragment-id='core-credential-connection']") is not None)
   self.assertEqual([node.get('fragment-id') for node in parent.findall('include-fragment')],
                    ['core-credential-connection','core-credential-session-use'])

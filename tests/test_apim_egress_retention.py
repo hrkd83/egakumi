@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from lifecycle_fixtures import LifecycleFixture, ScriptedTransport, lifecycle
+from configuration_fixtures import api_fixture
 
 
 class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
@@ -26,7 +27,7 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
                 "provisioningState": "Succeeded", "ruleCollections": [{
                     "name": "allow-apim-egress", "priority": 200,
                     "ruleCollectionType": "FirewallPolicyFilterRuleCollection", "action": {"type": "Allow"},
-                    "rules": [{"name": "apim-approved-services", "ruleType": "ApplicationRule",
+                    "rules": [{"name": "allow-apim-approved-services", "ruleType": "ApplicationRule",
                         "sourceAddresses": [self.config["network"]["subnetPrefixes"]["apim"]],
                         "protocols": [{"protocolType": "Https", "port": 443}], "terminateTLS": False,
                         "targetFqdns": ["graph.microsoft.com", "management.azure.com"]}]}]}}}
@@ -51,6 +52,31 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
                 self.assertEqual(lifecycle.discover_existing_apim_egress_fqdns(self.config, transport), [])
                 self.assertFalse(transport.mutations())
 
+    def test_legacy_rule_destinations_are_read_without_renaming_the_snapshot(self):
+        policy, group = self.snapshots()
+        group["body"]["properties"]["ruleCollections"][0]["rules"][0]["name"] = "apim-approved-services"
+        before = copy.deepcopy(group)
+        transport = ScriptedTransport([policy, group])
+        self.assertEqual(lifecycle.discover_existing_apim_egress_fqdns(self.config, transport),
+                         ["graph.microsoft.com", "management.azure.com"])
+        self.assertEqual(group, before)
+        self.assertFalse(transport.mutations())
+
+    def test_current_and_legacy_name_duplicates_cannot_discard_existing_targets(self):
+        for names in (("allow-apim-approved-services", "apim-approved-services"),
+                      ("allow-apim-approved-services", "allow-apim-approved-services"),
+                      ("apim-approved-services", "apim-approved-services")):
+            policy, group = self.snapshots()
+            rules = group["body"]["properties"]["ruleCollections"][0]["rules"]
+            rules[0]["name"] = names[0]
+            duplicate = copy.deepcopy(rules[0])
+            duplicate.update(name=names[1], targetFqdns=["another.example.com"])
+            rules.append(duplicate)
+            transport = ScriptedTransport([policy, group])
+            with self.subTest(names=names), self.assertRaisesRegex(lifecycle.DeploymentError, "duplicated"):
+                lifecycle.discover_existing_apim_egress_fqdns(self.config, transport)
+            self.assertFalse(transport.mutations())
+
     def test_foreign_policy_or_failed_read_cannot_be_used_as_an_empty_snapshot(self):
         policy, _ = self.snapshots()
         foreign = copy.deepcopy(policy)
@@ -64,7 +90,8 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
         policy, group = self.snapshots()
         changes = ({"sourceAddresses": ["*"]}, {"protocols": [{"protocolType": "Http", "port": 80}]},
                    {"terminateTLS": True}, {"targetUrls": ["example.com/restricted-path"]},
-                   {"sourceIpGroups": ["fixture-group"]}, {"ipv6Rule": True},
+                   {"sourceIpGroups": ["fixture-group"]}, {"ipv6Rule": True}, {"ipv6Rule": 0},
+                   {"terminateTLS": 0},
                    {"httpHeadersToInsert": [{"headerName": "X-Test", "headerValue": "fixture"}]},
                    {"targetFqdns": ["*"]}, {"targetFqdns": ["https://example.com"]})
         for fields in changes:
@@ -86,16 +113,19 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
         self.assertFalse(transport.mutations())
 
     def test_core_parameter_generation_unions_destinations_without_changing_source_configuration(self):
-        self.config["network"]["firewall"]["apimAllowedFqdns"] = ["management.azure.com", "custom.example.com"]
+        api = api_fixture()["apiDefinitions"][0]
+        api.update(backendService="external", backendUrl="https://custom.example.com/api")
+        self.config["apiDefinitions"] = [api]
         original = copy.deepcopy(self.config)
         values = lifecycle.parameters(self.config, "core", existing_apim_egress_fqdns=[
-            "graph.microsoft.com", "MANAGEMENT.AZURE.COM"])["parameters"]
-        self.assertEqual(values["configuration"]["value"]["network"]["firewall"]["apimAllowedFqdns"],
-                         ["management.azure.com", "custom.example.com", "graph.microsoft.com"])
+            "graph.microsoft.com", "CUSTOM.EXAMPLE.COM"])["parameters"]
+        generated = values["configuration"]["value"]
+        self.assertEqual(generated["generatedApimServiceFqdns"], ["custom.example.com", "graph.microsoft.com"])
+        self.assertNotIn("apimAllowedFqdns", generated["network"]["firewall"])
         self.assertEqual(self.config, original)
         self.assertEqual(lifecycle.parameters(self.config, "monitoring", existing_apim_egress_fqdns=[
-            "graph.microsoft.com"])["parameters"]["configuration"]["value"]["network"]["firewall"]["apimAllowedFqdns"],
-                         original["network"]["firewall"]["apimAllowedFqdns"])
+            "graph.microsoft.com"])["parameters"]["configuration"]["value"]["generatedApimServiceFqdns"],
+                         ["custom.example.com"])
 
     def test_real_preprovision_keeps_published_destinations_and_empty_api_definitions_only_in_generated_file(self):
         policy, group = self.snapshots()
@@ -115,7 +145,8 @@ class ApimEgressRetentionTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         generated = json.loads(self.paths.parameters.read_text())["parameters"]["configuration"]["value"]
-        self.assertIn("graph.microsoft.com", generated["network"]["firewall"]["apimAllowedFqdns"])
+        self.assertIn("graph.microsoft.com", generated["generatedApimServiceFqdns"])
+        self.assertNotIn("apimAllowedFqdns", generated["network"]["firewall"])
         self.assertEqual(generated["apiDefinitions"], [])
         self.assertEqual(self.config, original)
         self.assertEqual(source.read_bytes(), before)

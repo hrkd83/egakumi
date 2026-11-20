@@ -3,7 +3,7 @@
 公開Swaggerの配列例は実サービスで拒否されたため、Microsoft公式APIM拡張の
 SSE辞書とFoundryサンプルのmcp辞書に合わせる。これはAzure受入試験の代替ではない。
 """
-from arm_helpers import ArmExpression
+from arm_helpers import PolicyExpression
 from bicep_helpers import compile_bicep
 
 import json
@@ -22,10 +22,11 @@ class McpPublicationTests(unittest.TestCase):
     def setUpClass(cls):
         template = compile_bicep('apps/gateway/apim/api-publication.bicep')
         cls.resource = template["resources"]["apis"]
-        cls.generated_description = ArmExpression(template["resources"]["mcpServers"]["properties"]["description"])
+        cls.generated_description = PolicyExpression(template["resources"]["mcpServers"]["properties"]["description"],
+                                                     template["variables"], functions=template["functions"])
         routing = next(item for item in template["variables"]["copy"] if item["name"] == "mcpProxyRoutingXml")
-        cls.routing = ArmExpression(routing["input"])
-        cls.expression = ArmExpression(cls.resource["properties"])
+        cls.routing = PolicyExpression(routing["input"], template["variables"], functions=template["functions"])
+        cls.expression = PolicyExpression(cls.resource["properties"], template["variables"], functions=template["functions"])
 
     def properties(self, api):
         definition = {"name": "fixture", "displayName": "Fixture", "path": "tools/fixture",
@@ -54,8 +55,8 @@ class McpPublicationTests(unittest.TestCase):
         self.assertEqual(actual["description"], "REST_PUBLIC_DESCRIPTION")
         self.assertEqual(actual["path"], "tools/fixture")
         self.assertTrue(actual["subscriptionRequired"])
-        self.assertEqual(self.generated_description.evaluate({"__variables": {"mcpApis": [{
-            "mcp": {"catalogDescription": "MCP_DELEGATED_PUBLIC_DESCRIPTION"}}]}}, 0), "MCP_DELEGATED_PUBLIC_DESCRIPTION")
+        self.assertEqual(self.generated_description.evaluate({"apiDefinitions": [{
+            "mcp": {"catalogDescription": "MCP_DELEGATED_PUBLIC_DESCRIPTION"}}]}, 0), "MCP_DELEGATED_PUBLIC_DESCRIPTION")
 
     def test_legacy_sse_uses_distinct_sse_and_messages_dictionary_keys(self):
         """従来SSEはGET接続とPOST送信を分け、元の相対パスを保つ。"""
@@ -97,10 +98,10 @@ class McpPublicationTests(unittest.TestCase):
         self.assertEqual(observed, {"sample-mcp-v1": "/mcp"})
         self.assertEqual(self.routing.evaluate({"apiDefinitions": [{"apiType": "http"}]}, 0), "")
         # native MCP型と入口ポリシーを保ち、rewriteのためのHTTP APIへ置き換えない。
-        policy = ET.parse(CORE / "apps/gateway/apim/policies/protocol.xml")
+        policy = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/protocol.xml")
         backend = policy.find("./inbound/set-backend-service")
         self.assertIsNotNone(backend)
-        source = (CORE / "apps/gateway/apim/policies/protocol.xml").read_text()
+        source = (CORE / "apps/gateway/apim/policies/api-templates/protocol.xml").read_text()
         self.assertLess(source.index("<set-backend-service"), source.index("__MCP_PROXY_ROUTE_XML__"))
 
     def test_other_protocols_keep_their_existing_wire_contracts(self):

@@ -20,7 +20,7 @@ CALLER = "user:" + TENANT + ":" + PERSON
 FIELDS = {"requestId", "apiId", "operationId", "requestReceivedAt", "httpMethod",
           "operationTemplate", "apimPeerIp", "reportedUserAgent", "appGatewayTraceId"}
 QUERY_INNER_ERROR = json.dumps({"route": "liveCreate", "httpMethod": "POST", "mode": "reject",
-                              "presence": {}, "countBucket": "1", "duplicates": "no"})
+                              "presence": {}, "duplicates": "no"})
 
 
 def actual_expression(filename, xpath, attribute=None):
@@ -84,8 +84,8 @@ public static class IdentificationFixture {
   c.Request.Headers["x-appgw-trace-id"]=new [] {"44444444444444448444444444444444"};
   c.Variables["gatewayAuditPhase"]="rejected"; c.Variables["gatewayAuditCode"]="SYNTHETIC_DENIAL";
   c.Variables["gatewayAuditStatus"]=400;
-  c.Variables["gatewayQueryPhase"]="query-rejected";
-  c.Variables["gatewayQueryGuardDecision"]="{\"route\":\"liveCreate\",\"httpMethod\":\"POST\",\"mode\":\"reject\",\"presence\":\"present\",\"countBucket\":\"1\",\"duplicates\":\"no\"}";
+  c.Variables["gatewayQueryPhase"]="backend-response";
+  c.Variables["gatewayQueryObservation"]="{\"route\":\"liveCreate\",\"httpMethod\":\"POST\",\"mode\":\"reject\",\"presence\":\"present\",\"duplicates\":\"no\"}";
   foreach(var entry in ((JObject)(item["headers"]??new JObject())).Properties())
    c.Request.Headers[entry.Name]=entry.Value is JArray?entry.Value.Select(v=>(string)v).ToArray():new [] {(string)entry.Value};
   if(item["peer"]!=null) c.Request.IpAddress=(string)item["peer"];
@@ -126,7 +126,7 @@ public static class IdentificationFixture {
   var output=new JObject();
   foreach(JObject item in JsonConvert.DeserializeObject<JArray>(json,new JsonSerializerSettings {DateParseHandling=DateParseHandling.None})) {
    var c=Create(item);
-   if(item["queryRaw"]!=null) c.Variables["gatewayQueryGuardDecision"]=(string)item["queryRaw"];
+   if(item["queryRaw"]!=null) c.Variables["gatewayQueryObservation"]=(string)item["queryRaw"];
    output[(string)item["id"]]=QueryGate(c);
   }
   return output.ToString(Formatting.None);
@@ -140,7 +140,7 @@ public static class IdentificationFixture {
    if((bool?)item["missingContext"]==true) c.Variables.Remove("gatewayRequestContext");
    if(item["subjectRaw"]!=null) c.Variables["gatewayAuthenticatedSubject"]=(string)item["subjectRaw"];
    if((bool?)item["missingSubject"]==true) c.Variables.Remove("gatewayAuthenticatedSubject");
-   if(item["queryRaw"]!=null) c.Variables["gatewayQueryGuardDecision"]=(string)item["queryRaw"];
+   if(item["queryRaw"]!=null) c.Variables["gatewayQueryObservation"]=(string)item["queryRaw"];
    output[(string)item["id"]]=new JObject(new JProperty("gateway",ReadRecord(Gateway(c))),
      new JProperty("credential",ReadRecord(Credential(c))),new JProperty("query",ReadRecord(Query(c))),
      new JProperty("claims",ReadRecord(Claims(c))));
@@ -186,8 +186,8 @@ def compiled_source(*, inline_audit_v2=False):
         ("__PREVIOUS_SUBJECT__", "service-inline-audit-v2.xml", "./inbound/set-variable[@name='gatewayAuthenticatedSubject']", "value"),
         ("__GATEWAY__", "core-gateway-telemetry.xml", "./trace/message", None),
         ("__CREDENTIAL__", "credential-telemetry.xml", "./trace/message", None),
-        ("__QUERY__", "query-telemetry.xml", "./choose/when/trace/message", None),
-        ("__QUERY_GATE__", "query-telemetry.xml", "./choose/when", "condition"),
+        ("__QUERY__", "core-query-telemetry.xml", "./choose/when/trace/message", None),
+        ("__QUERY_GATE__", "core-query-telemetry.xml", "./choose/when", "condition"),
         ("__CLAIMS__", "credential-connection-outbound.xml", "./choose/when/trace/message", None),
         ("__SNAPSHOT_V1__", "service-audit-v1.xml", "./inbound/set-variable", "value"),
         ("__GATEWAY_V1__", "gateway-telemetry-audit-v1.xml", "./trace/message", None),
@@ -234,6 +234,9 @@ class AuditIdentificationTests(unittest.TestCase):
             # messageの直接呼出だけの異常値。実ポリシーのouter gateはfalseになる。
             {"id": "query-error", "auth": "user", "queryRaw": "{"},
             {"id": "query-inner-error", "auth": "user", "queryRaw": QUERY_INNER_ERROR},
+            {"id": "query-old-decision-fields", "auth": "user", "queryRaw": json.dumps({
+                "route": "liveCreate", "httpMethod": "POST", "mode": "reject", "presence": "present",
+                "countBucket": "5+", "duplicates": "no"})},
             {"id": "missing", "missingContext": True, "missingSubject": True},
             {"id": "malformed", "contextRaw": "{", "subjectRaw": "{"},
             {"id": "extra", "contextRaw": json.dumps({"requestId": "PRIVATE_ID", "Authorization": "PRIVATE_TOKEN", "body": "PRIVATE_TEXT"})},
@@ -256,6 +259,21 @@ class AuditIdentificationTests(unittest.TestCase):
             self.assertEqual(context["apimPeerIp"], "192.0.2.10")
             self.assertEqual(context["appGatewayTraceId"], TRACE)
 
+    def test_only_query_event_schema_changes_and_count_bucket_is_not_emitted(self):
+        for name in ("key", "user", "query-old-decision-fields"):
+            query = self.results[name]["query"]
+            self.assertEqual(query["event"], "query-guard")
+            self.assertEqual(query["schemaVersion"], 2)
+            self.assertEqual(query["auditSchemaVersion"], 2)
+            self.assertNotIn("countBucket", query)
+            self.assertNotIn("mode", query)
+            self.assertEqual(query["presence"], "present")
+            self.assertEqual(query["duplicates"], "no")
+            gateway = self.results[name]["gateway"]
+            self.assertEqual(gateway["event"], "gateway-request")
+            self.assertEqual(gateway["schemaVersion"], 1)
+            self.assertEqual(gateway["auditSchemaVersion"], 2)
+
     def test_early_denial_does_not_erase_verified_subject(self):
         for record in self.results["user"].values():
             subject = record["authenticatedSubject"]
@@ -274,7 +292,7 @@ class AuditIdentificationTests(unittest.TestCase):
         record = self.results["query-inner-error"]["query"]
         self.assertEqual(record["requestId"], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
         self.assertEqual(record["authenticatedSubject"]["callerId"], CALLER)
-        for field in ("route", "httpMethod", "mode", "phase", "presence", "countBucket", "duplicates", "statusClass"):
+        for field in ("route", "httpMethod", "phase", "presence", "duplicates", "statusClass"):
             self.assertEqual(record[field], "unknown")
 
     def test_unverified_and_malformed_context_are_not_promoted(self):

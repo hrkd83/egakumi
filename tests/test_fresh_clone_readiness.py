@@ -221,7 +221,6 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 original_services = copy.deepcopy(params["services"])
                 params["apiDefinitions"] = copy.deepcopy(bound["apiDefinitions"])
                 params["publishApis"] = True
-                params["network"]["firewall"]["apimAllowedFqdns"] = ["graph.microsoft.com"]
                 self.assertEqual(params["services"], original_services)
                 report, public = self.check_in_isolated_process(profile, params)
                 self.assertTrue(public["publishApis"])

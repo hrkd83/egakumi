@@ -28,13 +28,7 @@
         "IANAPrivateRanges"
       ],
       "idpsPrivateRanges": [],
-      "bypassTrafficSettings": [],
-      "apimAdditionalNetworkRules": [],
-      "managementAdditionalNetworkRules": [],
-      "apimAdditionalApplicationRules": [],
-      "managementAdditionalApplicationRules": [],
-      "apimAllowedFqdns": [],
-      "managementAllowedFqdns": []
+      "bypassTrafficSettings": []
     }
   },
   "services": {

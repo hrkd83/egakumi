@@ -18,12 +18,12 @@ SERVICE_CLASSES = {"platform": "初期提供・正式API", "sample": "別配備�
 
 
 def _constraints(api):
-    """統合後も、各入力profileのモデル・上限を独立した公開制約として読む。"""
+    """基本設定へモデル別差分を重ね、各モデルの公開上限を読む。"""
     for constraint in api["authorization"]["operationConstraints"].values():
-        if constraint.get("profiles"):
-            inherited = {key: value for key, value in constraint.items() if key != "profiles"}
-            for profile in constraint["profiles"]:
-                yield {**inherited, **profile}
+        if constraint.get("modelSettings"):
+            inherited = {key: value for key, value in constraint.items() if key != "modelSettings"}
+            for model in constraint["allowedModels"]:
+                yield {**inherited, **constraint["modelSettings"].get(model, {}), "allowedModels": [model]}
         else:
             yield constraint
 

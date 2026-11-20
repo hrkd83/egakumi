@@ -83,7 +83,7 @@ export async function handleImageGeneration(request: Request, dependencies: Imag
   const started = performance.now();
   let requestId: string | undefined;
   try {
-    const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, origin), { method: "POST", redirect: "error", cache: "no-store", signal, body, headers: { ...getImageGenerationHeaders(model), "api-key": key } });
+    const upstream = await (dependencies.fetch ?? globalThis.fetch)(new URL(model.path, origin), { method: "POST", redirect: "error", cache: "no-store", signal, body, headers: { ...getImageGenerationHeaders(), "api-key": key } });
     const identifier = upstream.headers.get("apim-request-id");
     if (identifier && /^[a-zA-Z0-9_-]{1,128}$/.test(identifier)) requestId = identifier;
     const details = requestId ? { requestId } : {};

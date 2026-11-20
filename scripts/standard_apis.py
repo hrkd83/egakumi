@@ -156,8 +156,6 @@ def infrastructure_api_definitions(definitions: list[dict]) -> list[dict]:
         constraints = {}
         for name, source in api['authorization']['operationConstraints'].items():
             constraint = {key: copy.deepcopy(source[key]) for key in ('kind', 'bodyFormat', 'contentTypes', 'allowedModels', 'maxRequestBytes') if key in source}
-            if 'profiles' in source:
-                constraint['profiles'] = [{'modalities': list(profile.get('modalities', []))} for profile in source['profiles']]
             constraints[name] = constraint
         projected = {
             'name': api.get('name', ''), 'apiType': api.get('apiType', 'http'), 'path': api['path'],

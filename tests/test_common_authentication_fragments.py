@@ -65,6 +65,25 @@ PREVIOUS_TOP_LEVEL_BOUND = TOKENS.findall(
     '&&!String.IsNullOrWhiteSpace(subscription)&&subscription.Length<=240'
     '&&(string)decision["callerId"]=="subscription:"+subscription')
 
+# 承認済みの操作設定への移行は、このalias監査ブロック内の2参照名だけです。
+# 固定したブロック全体が一致した場合だけ投影し、条件・値・境界の変更を隠しません。
+APPROVED_OPERATION_SELECTION_SOURCE = r'''
+if (context.Variables.ContainsKey("gatewayOperationSelection")) {
+  var selected = JObject.Parse((string)context.Variables["gatewayOperationSelection"]);
+  var requested = (string)selected["requestedModel"];
+  var aliases = selected["constraint"]?["modelAliases"] as JObject;
+  if ((bool?)selected["allowed"] == true && (string)selected["effectiveModel"] == model
+      && requested != model && System.Text.RegularExpressions.Regex.IsMatch(requested ?? "", "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+      && (string)aliases?[requested] == model) {
+    record["requestedModel"] = requested;
+    record["modelAliasApplied"] = true;
+  }
+}
+'''
+APPROVED_OPERATION_SELECTION = TOKENS.findall(APPROVED_OPERATION_SELECTION_SOURCE)
+PREVIOUS_OPERATION_SELECTION = TOKENS.findall(
+    APPROVED_OPERATION_SELECTION_SOURCE.replace('gatewayOperationSelection', 'gatewayProfileSelection'))
+
 
 def code_value(value, *, project_observer=False):
     if value is None or not value.strip():
@@ -76,7 +95,8 @@ def code_value(value, *, project_observer=False):
         projected, index = [], 0
         while index < len(tokens):
             for approved, previous in ((APPROVED_OBSERVER_BOUND, PREVIOUS_OBSERVER_BOUND),
-                                       (APPROVED_TOP_LEVEL_BOUND, PREVIOUS_TOP_LEVEL_BOUND)):
+                                       (APPROVED_TOP_LEVEL_BOUND, PREVIOUS_TOP_LEVEL_BOUND),
+                                       (APPROVED_OPERATION_SELECTION, PREVIOUS_OPERATION_SELECTION)):
                 if tokens[index:index + len(approved)] == approved:
                     projected.extend(previous)
                     index += len(approved)
@@ -149,7 +169,7 @@ class CommonAuthenticationFragmentPreservationTests(unittest.TestCase):
     def test_unreviewed_authentication_writer_or_budget_changes_are_not_projected_away(self):
         value = expand_all(render_service_policy(entra=entra_settings()))
         self.assertEqual(fingerprint(value), BEFORE_CURRENT[(False, True)])
-        for mode in ("authentication", "writer", "observer-bound", "top-level-bound", "ingress"):
+        for mode in ("authentication", "writer", "observer-bound", "top-level-bound", "operation-selection", "ingress"):
             root = ET.fromstring(value)
             if mode == "writer":
                 node = root.find("./inbound/set-variable[@name='gatewayAuthenticatedSubject']")
@@ -165,6 +185,11 @@ class CommonAuthenticationFragmentPreservationTests(unittest.TestCase):
             elif mode == "ingress":
                 branch = root.find("./inbound/choose[@id='core-trusted-ingress']/when")
                 branch.set("condition", branch.get("condition").replace("X-Core-L7-Ingress", "X-Unreviewed-Ingress"))
+            elif mode == "operation-selection":
+                nodes = [node for node in root.iter() if node.text and 'gatewayOperationSelection' in node.text]
+                self.assertTrue(nodes)
+                nodes[0].text = nodes[0].text.replace('selected["effectiveModel"] == model',
+                                                     'selected["effectiveModel"] != model', 1)
             else:
                 nodes = [node for node in root.iter() if node.text and re.search(r"subscription\.Length\s*<=\s*256", node.text)]
                 self.assertTrue(nodes)

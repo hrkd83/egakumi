@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_portal as portal
 from deployment.helpers.paths import local_paths
+from management_fixtures import maintenance_metadata, client_core_outputs
 
 
 def fixture():
@@ -22,7 +23,8 @@ def fixture():
         'azureTenantId': '22222222-2222-4222-8222-222222222222',
         'resourceStem': 'test-sample', 'location': 'japaneast',
         'services': {'apimInstanceId': 'abc123'},
-        'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw'},
+        'resourceGroupNames': {'svc': 'rg-test-sample-svc', 'id': 'rg-test-sample-id', 'nw': 'rg-test-sample-nw',
+                               'maint': 'rg-test-sample-maint', 'monitor': 'rg-test-sample-monitor'},
         'network': {'subnetPrefixes': {'aca': '10.20.0.0/26'}},
         'tags': {}, 'productName': 'sample', 'environmentName': 'test',
         'portalAuthentication': {'credentialProviderName': 'graph-delegated'},
@@ -36,8 +38,11 @@ def fixture():
     state = {key: config[key] for key in ('subscriptionId', 'azureTenantId', 'resourceStem')}
     state['apimInstanceId'] = 'abc123'
     state['outputs'] = {
+        **client_core_outputs(config),
         'names': {'apim': 'apim-test-sample-abc123'},
+        'gateway': {'publicUrl': 'https://gateway.example.com'},
         'portal': {'applicationName': 'ca-test-sample-portal', 'environmentName': 'cae-test-sample',
+            'managementMaintenance': maintenance_metadata(config['subscriptionId']),
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
             'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
@@ -48,6 +53,14 @@ def fixture():
 
 
 class PortalDeploymentTests(unittest.TestCase):
+    def setUp(self):
+        # Native ACL behavior is checked by the dedicated Serial integration
+        # suite. This offline CLI fixture clears environment/subprocess state.
+        if os.name == 'nt':
+            acl = mock.patch('deployment.helpers.private_permissions._windows_owner_acl')
+            acl.start()
+            self.addCleanup(acl.stop)
+
     def test_cli_refuses_public_or_other_environment_inputs_before_building(self):
         """同名ファイルを探したり、別環境の入力からbuildを始めたりしない。"""
         config, state = fixture()
@@ -92,7 +105,26 @@ class PortalDeploymentTests(unittest.TestCase):
         self.assertFalse(values['deployApplication'])
         self.assertEqual(values['tenantId'], config['credentialProviders'][0]['oauthTenantId'])
         self.assertEqual(values['apimName'], 'apim-test-sample-abc123')
+        maintenance = state['outputs']['portal']['managementMaintenance']
+        self.assertEqual(values['managementPrincipalId'], maintenance['principalId'])
+        self.assertEqual(values['managementRoleDefinitionIds'], maintenance['roleDefinitionIds'])
         self.assertEqual(state, original)
+
+    def test_missing_maintenance_output_is_not_filled_from_other_state_or_public_params(self):
+        config, state = fixture()
+        existing = state['outputs']['portal'].pop('managementMaintenance')
+        state['outputs']['managementMaintenance'] = existing
+        config['managementMaintenance'] = existing
+        original = copy.deepcopy(state)
+        with self.assertRaisesRegex(ValueError, 'Current Core management maintenance output'):
+            portal.deployment_inputs(config, state)
+        self.assertEqual(state, original)
+
+    def test_old_core_without_client_inventory_cannot_start_app_preparation(self):
+        config, state = fixture()
+        del state['outputs']['managementClientInventory']
+        with self.assertRaisesRegex(ValueError, 'management client inventory is required'):
+            portal.deployment_inputs(config, state)
 
     def test_other_or_missing_apim_instance_and_old_name_cannot_target_portal(self):
         for change in ('missing-id', 'other-id', 'old-name', 'other-name'):
@@ -113,9 +145,91 @@ class PortalDeploymentTests(unittest.TestCase):
             with self.subTest(host=host):
                 config, state = fixture()
                 config['gateway']['publicHostName'] = host
+                state['outputs']['gateway']['publicUrl'] = 'https://' + host
                 values = portal.deployment_inputs(config, state)
                 self.assertEqual(values['gatewayOrigin'], 'https://' + host)
                 self.assertFalse(any('subscription_key' in key.lower() for key in values))
+
+    def test_missing_or_invalid_gateway_output_is_not_filled_from_configuration_or_aliases(self):
+        for change in ('missing-gateway', 'missing-url', 'null-gateway', 'list-gateway',
+                       'null-url', 'number-url', 'object-url', 'empty-url'):
+            with self.subTest(change=change):
+                config, state = fixture()
+                expected = state['outputs']['gateway']['publicUrl']
+                state['outputs']['endpoints'] = {'public': expected}
+                state['outputs']['portal']['gatewayOrigin'] = expected
+                if change == 'missing-gateway':
+                    del state['outputs']['gateway']
+                elif change == 'missing-url':
+                    del state['outputs']['gateway']['publicUrl']
+                elif change in ('null-gateway', 'list-gateway'):
+                    state['outputs']['gateway'] = None if change == 'null-gateway' else []
+                else:
+                    state['outputs']['gateway']['publicUrl'] = {
+                        'null-url': None, 'number-url': 443, 'object-url': {'url': expected},
+                        'empty-url': '',
+                    }[change]
+                original = copy.deepcopy((config, state))
+                with self.assertRaisesRegex(ValueError, '^Current Core Gateway public URL output is required$'):
+                    portal.deployment_inputs(config, state)
+                self.assertEqual((config, state), original)
+
+    def test_gateway_url_mismatch_or_non_origin_value_stops_without_exposing_or_changing_inputs(self):
+        invalid_urls = (
+            'https://another.example.com', 'http://gateway.example.com',
+            'https://gateway.example.com:443', 'https://gateway.example.com:8443',
+            'https://operator@gateway.example.com', 'https://gateway.example.com/',
+            'https://gateway.example.com/path', 'https://gateway.example.com?query=value',
+            'https://gateway.example.com#fragment', ' https://gateway.example.com',
+            'https://gateway.example.com\n', 'https://gateway.example.com\t',
+            'not-an-origin',
+        )
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                config, state = fixture()
+                state['outputs']['gateway']['publicUrl'] = url
+                original = copy.deepcopy((config, state))
+                with self.assertRaises(ValueError) as rejected:
+                    portal.deployment_inputs(config, state)
+                self.assertEqual(str(rejected.exception),
+                                 'Core Gateway public URL differs from the selected configuration')
+                self.assertNotIn(url, str(rejected.exception))
+                self.assertNotIn(config['gateway']['publicHostName'], str(rejected.exception))
+                self.assertEqual((config, state), original)
+
+    def test_configuration_only_gateway_change_requires_matching_core_output(self):
+        config, state = fixture()
+        config['gateway']['publicHostName'] = 'new-gateway.example.com'
+        original = copy.deepcopy((config, state))
+        with self.assertRaisesRegex(ValueError, '^Core Gateway public URL differs from the selected configuration$'):
+            portal.deployment_inputs(config, state)
+        self.assertEqual((config, state), original)
+
+    def test_cli_rejects_missing_or_mismatched_gateway_before_preparation_build_or_azure_writes(self):
+        for gateway in (None, {'publicUrl': 'https://another.example.com'}):
+            with self.subTest(gateway=gateway), tempfile.TemporaryDirectory() as directory:
+                config, state = fixture()
+                state['outputs']['gateway'] = gateway
+                root = Path(directory).resolve()
+                workspace = local_paths(config, root)
+                workspace.ensure()
+                workspace.params.write_text('unchanged-input')
+                state_file = workspace.state / 'latest.json'
+                state_file.write_text(json.dumps(state))
+                before = {path: path.read_bytes() for path in (workspace.params, state_file)}
+                with mock.patch.object(portal, 'REPOSITORY', root), \
+                     mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
+                     mock.patch.object(portal, 'load_configuration', return_value=config), \
+                     mock.patch.object(portal, 'prepare_api_key_groups') as prepare, \
+                     mock.patch.object(portal, 'source_bundle') as bundle, \
+                     mock.patch.object(portal, 'run_json') as cli, \
+                     mock.patch.object(portal, 'ArmTransport') as transport, \
+                     mock.patch.object(portal, 'protected_json') as write:
+                    with self.assertRaisesRegex(ValueError, 'Core Gateway public URL'):
+                        portal.main(['--config', str(workspace.params), '--state-file', str(state_file), '--execute'])
+                    for boundary in (prepare, bundle, cli, transport, write):
+                        boundary.assert_not_called()
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
 
     def test_new_foundation_output_does_not_need_broker_application(self):
         config, state = fixture()
@@ -214,9 +328,9 @@ class PortalDeploymentTests(unittest.TestCase):
             if schema_failure or public_failure or readiness_failure:
                 error = 'schema failed' if schema_failure else 'public failed' if public_failure else 'readiness failed'
                 with self.assertRaisesRegex(ValueError, error):
-                    portal.deploy_release(config, values, {}, transport)
+                    portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
             else:
-                portal.deploy_release(config, values, {}, transport)
+                portal.deploy_release(config, values, {}, transport, state=state, client_prepare=lambda *a, **k: None)
         transport.request.assert_called_once_with('POST', portal.group_scope(config)
             + '/providers/Microsoft.App/jobs/caj-' + config['resourceStem'] + '-psql/start?api-version=' + portal.APP_API, None)
         return phases

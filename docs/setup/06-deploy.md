@@ -90,6 +90,8 @@ echo "終了コード: $?"
 4. **端末の保護保存**：CM用Core client secretは既定で`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
+Core配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。公開params/configにパスワードや作成フラグを追加せず、内部secure入力で初期VMへ渡します。SSHのパスワード認証無効と鍵認証は維持します。既存VMが200で読めた場合は、この秘密ファイルを読まず、既存パスワードも変更しません。これはSerial Console用のローカルログイン準備であり、実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
+
 基盤とGatewayの構築が終わると、最後のPortal工程でAPIキー所有グループの設定を入力します。未設定の`groupNamePattern`・基盤管理グループのObject ID・承認製品と購読数上限を、同じparamsへ保存します。この入力の完了まで`azd up`の完了にはなりません。非対話で初期構築する場合は、`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定してください。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
@@ -103,6 +105,7 @@ echo "終了コード: $?"
 | DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新 |
 | CM用Core client secret | paramsが指すGit管理外の保護ファイル | APIMのOAuth providerへsecure入力 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
+| 初期管理VMのローカル認証パスワード | `.local/<environment>/secrets/management-serial-credential.json`へ自動生成・保護保存 | 初回のsecure入力だけで設定。配備成功後にVM個体へ結び付け、既存VMの更新では上書きしない |
 | PortalのAPIキー所有設定 | 同じparamsの`portalApiKeys` | PortalのSQL初期化へ渡す非秘密のグループID・製品承認 |
 | azdへの一時配備入力 | `.local/<environment>/generated/main.parameters.json`へ保護保存 | 基盤の後処理で回収。再試行には元のparams・secret・stateを使う |
 
@@ -125,6 +128,8 @@ echo "終了コード: $?"
 | 5 | API Center同期と常設L7入口保護を設定し、`postprovision`で対象配備のCore出力と公開DNSの結果を保存 |
 | 6 | 対話可能な`postup`から`deploy_applications.py --execute`を呼び、Gatewayのイメージ、credentials DB・CM・SQL初期化、認証窓口、API・ポリシー・Productを配備 |
 | 7 | Gatewayの成功後、Portalの初回グループ設定、イメージ、認証DB・検証用購読・SQL権限を準備し、本体・照合ジョブを配備。公開ヘルスを確認して全体を完了 |
+
+管理VMの保守clientと権限はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
 
 `apiDefinitions: []`は標準APIを使う指定です。接続先は作成済み基盤の出力からメモリー内で解決し、paramsの配列は書き換えません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 

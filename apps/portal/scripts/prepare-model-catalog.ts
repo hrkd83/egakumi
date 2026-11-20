@@ -36,7 +36,7 @@ const publicBindingsSchema = z.object({ schemaVersion: z.literal(1), bindings: z
 /** カタログ生成元と出力先です。検証時は一時フォルダーに差し替えられます。 */
 export type ModelCatalogPaths = { sourceDirectory?: string; snapshotFile?: string; publicBindingsFile?: string; capabilitiesFile?: string };
 
-/** PythonのGateway展開と同じ正本から、profile IDを変えずモデル別上限を付けます。 */
+/** PythonのGateway展開と同じ正本から、操作の基本設定へモデル別上限を一度だけ付けます。 */
 export function applyModelCapabilities(definitions: z.infer<typeof definitionSchema>[], capabilities: z.infer<typeof capabilitiesSchema>) {
   const indexed = new Map<string, z.infer<typeof capabilityEntrySchema>>(), covered = new Set<string>();
   for (const entry of capabilities.entries) for (const api of entry.apiIds) for (const operation of entry.operationIds) { indexed.set(`${api}/${operation}/${entry.modelId}`, entry); covered.add(`${api}/${operation}`); }
@@ -44,23 +44,15 @@ export function applyModelCapabilities(definitions: z.infer<typeof definitionSch
   for (const api of result) for (const [operation, raw] of Object.entries(api.authorization.operationConstraints)) {
     if (!covered.has(`${api.name}/${operation}`)) continue;
     const constraint = raw as Record<string, unknown>;
-    const selected = Array.isArray(constraint.profiles) ? constraint.profiles as Record<string, unknown>[] : [constraint];
-    for (const profile of selected) {
-      const websocket = api.websocket as { allowedModels?: string[]; session?: { models: string[] }; queryParameters?: { model?: string } } | undefined;
-      const models = profile.allowedModels as string[] | undefined ?? (typeof profile.model === "string" ? [profile.model] : websocket?.allowedModels ?? websocket?.session?.models ?? [websocket?.queryParameters?.model]);
-      if (!models.length || models.some((model) => !model || !indexed.has(`${api.name}/${operation}/${model}`))) throw new Error("A published model has no verified capability entry");
-      const values = models.map((model) => indexed.get(`${api.name}/${operation}/${model}`)!);
-      profile.maxOutputTokensByModel = Object.fromEntries(values.map((entry) => [entry.modelId, entry.maxOutputTokens]));
-      profile.outputTokenLimitKinds = Object.fromEntries(values.map((entry) => [entry.modelId, entry.limitKind]));
-      const maximum = values.map((entry) => entry.maxOutputTokens).filter((value): value is number => value !== null);
-      profile.maxOutputTokens = maximum.length ? Math.max(...maximum) : null;
-    }
-    if (Array.isArray(constraint.profiles)) {
-      constraint.maxOutputTokensByModel = Object.assign({}, ...selected.map((profile) => profile.maxOutputTokensByModel));
-      constraint.outputTokenLimitKinds = Object.assign({}, ...selected.map((profile) => profile.outputTokenLimitKinds));
-      const maximum = Object.values(constraint.maxOutputTokensByModel as Record<string, number | null>).filter((value): value is number => value !== null);
-      constraint.maxOutputTokens = maximum.length ? Math.max(...maximum) : null;
-    }
+    const websocket = api.websocket as { allowedModels?: string[]; session?: { models: string[] }; queryParameters?: { model?: string } } | undefined;
+    const models = constraint.allowedModels as string[] | undefined ?? (typeof constraint.model === "string" ? [constraint.model] : websocket?.allowedModels ?? websocket?.session?.models ?? [websocket?.queryParameters?.model]);
+    if (!models.length || models.some((model) => !model || !indexed.has(`${api.name}/${operation}/${model}`))) throw new Error("A published model has no verified capability entry");
+    const values = models.map((model) => indexed.get(`${api.name}/${operation}/${model}`)!);
+    // 能力表は操作にまとめ、モデル別の設定差分や別名へ複製しません。
+    constraint.maxOutputTokensByModel = Object.fromEntries(values.map((entry) => [entry.modelId, entry.maxOutputTokens]));
+    constraint.outputTokenLimitKinds = Object.fromEntries(values.map((entry) => [entry.modelId, entry.limitKind]));
+    const maximum = values.map((entry) => entry.maxOutputTokens).filter((value): value is number => value !== null);
+    constraint.maxOutputTokens = maximum.length ? Math.max(...maximum) : null;
   }
   return result;
 }

@@ -12,6 +12,7 @@ from arm_helpers import DiscoveryExpression
 from configuration_fixtures import connection_fixture, configuration
 from deployment.helpers.diagnostics import canonical_settings
 from deployment.helpers.apim_audit import render_audit_policy
+from deployment.helpers.apim_input_contract import input_contracts
 from policy_fixture_paths import policy_fixture_path
 from bicep_helpers import compile_bicep
 
@@ -45,8 +46,10 @@ class AuditPublicationTests(unittest.TestCase):
   marker='__AUDIT_SUBJECT_OBSERVATION_CSHARP__'
   for filename,resource_name,source_marker,comment_mode in (
     ('core-api-settings.xml','apiSettingsFragment','__CORE_API_SETTINGS_CSHARP__','full'),
+    ('core-api-authentication-result.xml','apiAuthenticationResultFragment','__CORE_API_AUTHENTICATION_RESULT_CSHARP__','full'),
+    ('core-model-limits.xml','modelLimitsFragment','__CORE_MODEL_LIMITS_CSHARP__','full'),
     ('core-gateway-telemetry.xml','gatewayTelemetryFragment','__CORE_GATEWAY_TELEMETRY_CSHARP__','full'),
-    ('query-telemetry.xml','queryTelemetryFragment',marker,'compact')):
+    ('core-query-telemetry.xml','queryTelemetryFragment','__CORE_QUERY_TELEMETRY_CSHARP__','full')):
    with self.subTest(template=filename):
     raw=policy_fixture_path(directory,filename).read_text(encoding='utf-8')
     self.assertIn(source_marker,raw)
@@ -94,22 +97,31 @@ class AuditPublicationTests(unittest.TestCase):
       operation['name']:{'backendService':operation['backendOverride']['backendService'],
         'backendAuthentication':operation['backendOverride']['backendAuthentication']['mode']}
       for operation in api['operations'] if 'backendOverride' in operation})
-    self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds'})
+    self.assertEqual(set(controls),{'operationId','operationConstraints','tokenLimitOperationIds','speechSsmlOperationIds','queryObservations','mcpQueryObservations','inputContracts'})
     self.assertEqual(controls['operationId'],'')
     self.assertEqual(controls['operationConstraints'],api['authorization']['operationConstraints'])
+    self.assertEqual(controls['inputContracts'],input_contracts(api))
+    self.assertEqual(controls['speechSsmlOperationIds'],['tts'] if api['name']=='azure-speech-v1' else [])
+    for contract in controls['inputContracts'].values():
+     self.assertEqual(contract,{})
     expected=self.evaluate("[__bicep.tokenLimitOperations(parameters('apiDefinitions')[copyIndex()])]",index)
     self.assertEqual(controls['tokenLimitOperationIds'],expected)
     self.assertEqual(settings['backendAuthentication'],'credentialConnection' if api.get('credentialConnection') else api['backendAuthentication']['mode'])
     self.assertEqual(settings['serviceClass'],api['serviceClass'])
     self.assertEqual(root.find('outbound')[0].attrib['fragment-id'],'core-backend-audit')
-    if api['apiType'] in ('websocket','grpc','mcp'): self.assertIsNone(root.find('.//set-body'))
+    if api['apiType'] in ('websocket','mcp'):
+     # クエリ拒否のローカル応答だけに本文を作れます。転送要求やSSE応答の本文変換は認めません。
+     local_error_bodies=root.findall('.//return-response/set-body')
+     self.assertTrue(all(node in local_error_bodies for node in root.iter('set-body')))
   xml=compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies')
   api_type,settings,controls=self.api_settings(ET.fromstring(xml))
   self.assertEqual(api_type,'mcp')
   self.assertEqual(settings['measurementRole'],'facade'); self.assertEqual(settings['llmOperationIds'],[])
   api=next(api for api in self.parameters['apiDefinitions'] if 'mcp' in api)
   self.assertEqual(controls,{'operationId':api['mcp']['operationNames'][0],
-    'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[]})
+    'operationConstraints':api['authorization']['operationConstraints'],'tokenLimitOperationIds':[], 'speechSsmlOperationIds':[],
+    'queryObservations':{},'mcpQueryObservations':{method+' /mcp':api['mcp']['queryObservation'] for method in ('POST','GET','DELETE')} if 'queryObservation' in api['mcp'] else {},
+    'inputContracts':{}})
  def test_effective_cm_authentication_metadata_does_not_change_the_authentication_or_route(self):
   # 実Bicepから生成したXMLを比較し、CMの監査表示だけが変わることを確認します。
   config=rate_fixture.configuration.normalize_configuration(connection_fixture(),base_directory=CORE/'config')
@@ -176,7 +188,7 @@ class AuditPublicationTests(unittest.TestCase):
     .replace('__L7_INGRESS_REQUIRED__','false').replace('__L7_INGRESS_EXPECTED__','')))
   native_count=0
   for index,api in enumerate(self.parameters['apiDefinitions']):
-   if api['apiType'] not in ('websocket','grpc'):continue
+   if api['apiType']!='websocket':continue
    root=ET.fromstring(compiled_policy_value(self.template,self.parameters,index))
    graph=self.expanded_fragment_graph(root)
    self.assertTrue({'core-audit-context','core-backend-audit','core-gateway-telemetry','core-rate-limit'} <= set(graph))
@@ -229,8 +241,8 @@ class AuditPublicationTests(unittest.TestCase):
   self.assertEqual(branch.find('return-response/set-status').attrib['code'],'400')
   body=branch.find('return-response/set-body')
   query_error=facade.find("inbound/choose[@id='core-query-rejection']/when/return-response/set-body")
-  self.assertIsNotNone(query_error)
-  self.assertEqual(facade.findall('.//set-body'),[query_error,body])
+  self.assertIsNone(query_error)
+  self.assertEqual(facade.findall('.//set-body'),[body])
   self.assertEqual(body.text,'@((string)context.Variables["gatewayMcpArgumentError"])')
 
  def test_native_diagnostics_only_select_chat_and_never_enable_message_capture(self):

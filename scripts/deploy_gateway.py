@@ -28,7 +28,9 @@ from deployment.helpers.credential_image import (
     build_image, checked, read_build_receipt, reusable_image, source_bundle,
 )
 from deployment.helpers.credential_broker_lifecycle import prepare_secret
-from deployment.helpers.credential_pools import broker_enabled, resource_names
+from deployment.helpers.credential_pools import credential_login_enabled, resource_names
+from deployment.helpers.management_maintenance import management_maintenance_inputs
+from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.grpc_lifecycle import configure_named_values, require_shared_ingress
 from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs
 from standard_apis import resolve_publication_configuration
@@ -79,6 +81,8 @@ def foundation_inputs(config, state):
     schema = foundation.get('schemaIdentity')
     if not isinstance(schema, dict) or str(schema.get('id', '')).lower() != identity.lower():
         raise ValueError('Core schema identity differs from this environment')
+    foundation['managementMaintenance'] = management_maintenance_inputs(config, foundation.get('managementMaintenance'))
+    management_client_inventory(config, state)
     vault = 'https://' + expected['vaultName'] + '.vault.azure.net/secrets/'
     features = output.get('ingressSecrets', {})
     foundation['l7IngressSecretIdentifier'] = vault + 'core-l7-ingress-secret' if features.get('l7IngressEnabled') is True else ''
@@ -167,22 +171,21 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
                    callback_waf=configure_gateway_identity_callback_waf,
                    speech_waf=configure_gateway_speech_waf,
                    document_waf=configure_gateway_document_waf, data_waf=configure_data_waf, progress=print,
-                   publication_checkpoint=None):
+                   publication_checkpoint=None, client_prepare=update_management_client_assets):
     """SQL成功後だけアプリとAPIを更新する。共有鍵・CM接続・既存SQLデータは維持する。"""
-    enabled = broker_enabled(config)
-    if enabled:
-        progress('Gateway: 資格情報DB・CM・SQL初期化ジョブを配備します。', flush=True)
-        deploy(config, values, templates['gateway'], transport)
-        values['brokerKey'] = ''  # 2段階目に同じ鍵の新バージョンを作らない。
-        job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
-        execution = checked(transport, 'POST', job + '/start?api-version=' + APP_API,
-                            label='Start Gateway SQL initialization')
-        schema_wait(config, execution.get('name'), transport)
+    progress('Gateway: 資格情報DB・CM・SQL初期化ジョブを配備します。', flush=True)
+    initialized = deploy(config, values, templates['gateway'], transport)
+    client_prepare(config, state, initialized, transport, component='gateway')
+    values['brokerKey'] = ''  # 2段階目に同じ鍵の新バージョンを作らない。
+    job = group_scope(config) + '/providers/Microsoft.App/jobs/' + resource_names(config)['schemaJob']
+    execution = checked(transport, 'POST', job + '/start?api-version=' + APP_API,
+                        label='Start Gateway SQL initialization')
+    schema_wait(config, execution.get('name'), transport)
     progress('Gateway: ブローカーとAPIM接続設定を反映します。', flush=True)
     values['deployApplication'] = True
     deployed = deploy(config, values, templates['gateway'], transport)
-    if enabled:
-        readiness_wait(config, transport)
+    client_prepare(config, state, deployed, transport, component='gateway')
+    readiness_wait(config, transport)
     current = copy.deepcopy(state)
     current['outputs']['credentialBroker'] = deployed.get('credentialBroker', {})
     refresh(config, current['outputs'], transport)
@@ -191,7 +194,7 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
     publication = (publish(config, current, plan, templates['apis'], transport, checkpoint=publication_checkpoint)
                    if publication_checkpoint is not None else publish(config, current, plan, templates['apis'], transport))
     callback = None
-    if enabled:
+    if credential_login_enabled(config):
         progress('Gateway: 本人認証callback用WAFを設定します。', flush=True)
         callback = callback_waf(config, transport)
     speech = None
@@ -207,7 +210,7 @@ def deploy_release(config, state, values, templates, transport, *, deploy=deploy
         progress('Gateway: 公開APIのデータ欄だけへ実測済みWAF除外を設定します。', flush=True)
         data = data_waf(config, transport, scopes=('gateway',))
     return {'status': 'deployed', 'azdUpExecuted': False,
-            'sqlInitialized': enabled, 'applicationReady': enabled,
+            'sqlInitialized': True, 'applicationReady': True,
             'imageDigest': values['imageDigest'] or None,
             'credentialBroker': deployed.get('credentialBroker', {}),
             'apiPublication': publication, 'callbackWaf': callback, 'speechWaf': speech, 'documentWaf': document,
@@ -253,23 +256,23 @@ def main(argv=None):
     if args.image_digest is not None and not re.fullmatch(r'sha256:[0-9a-f]{64}', args.image_digest):
         raise ValueError('Use an immutable sha256 image digest')
     publication_plan = api_publication.prepare_plan(config, state)
-    active = broker_enabled(config)
-    data, source_hash = source_bundle() if active and not args.image_digest else (None, None)
+    login_enabled = credential_login_enabled(config)
+    data, source_hash = source_bundle() if not args.image_digest else (None, None)
     image_state = build_state(state, foundation)
     transport = ArmTransport(config) if args.execute else None
-    digest = args.image_digest or (reusable_image(config, image_state, source_hash, build_record, transport=transport) if active else '')
+    digest = args.image_digest or reusable_image(config, image_state, source_hash, build_record, transport=transport)
     values = {'configuration': build_bicep_configuration(config), 'foundation': foundation,
               'imageDigest': digest or '', 'deployApplication': False}
     summary = {'status': 'planned', 'azureWrites': 0, 'azdUpRequired': False,
         'apiSelection': 'specified' if source.get('apiDefinitions') else 'standard',
-        'apiCount': len(config['apiDefinitions']), 'credentialBrokerEnabled': active,
-        'application': resource_names(config)['application'] if active else None,
-        'database': resource_names(config)['database'] if active else None,
-        'imageBuild': active and not digest,
-        'imageReuseVerificationPending': not args.execute and active and not args.image_digest,
+        'apiCount': len(config['apiDefinitions']), 'credentialBrokerEnabled': True,
+        'application': resource_names(config)['application'],
+        'database': resource_names(config)['database'],
+        'imageBuild': not digest,
+        'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'steps': ['build-or-reuse-image', 'prepare-database-and-credential-manager', 'initialize-sql',
                   'update-broker-and-apim-settings', 'publish-apis-products-subscriptions', 'reconcile-released-api-membership', 'remove-default-apim-samples']
-                 + (['configure-gateway-identity-callback-waf'] if active else [])
+                 + (['configure-gateway-identity-callback-waf'] if login_enabled else [])
                  + (['configure-gateway-speech-waf'] if speech_content_type_paths(config) else [])
                  + (['configure-gateway-document-waf'] if document_upload_limit(config) is not None else [])
                  + (['configure-gateway-data-waf'] if data_waf_profiles(config, ('gateway',)) else [])}
@@ -285,11 +288,10 @@ def main(argv=None):
     if config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {}).get('identity'):
         values['credentialIdentitySecret'] = load_credential_identity_secret(config)
     verify_foundation(config, foundation, transport)
-    if active:
-        values['brokerKey'] = broker_secret(config, foundation, transport)
-        if not digest:
-            values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
-                record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
+    values['brokerKey'] = broker_secret(config, foundation, transport)
+    if not digest:
+        values['imageDigest'] = build_image(config, image_state, transport, data=data, source_hash=source_hash,
+            record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))
     result = deploy_release(config, state, values, templates, transport,
                             publication_checkpoint=lambda value: protected_json(publication_record, value))
     protected_json(workspace.state / 'gateway-deployment.json', result)

@@ -1,0 +1,25 @@
+<fragment>
+  <!-- ========== 1 内部用IDヘッダーの除去 ========== -->
+  <!-- 目的：利用者が送ったIDを、APIMが確認した本人や購読の情報として下流へ渡さないようにします。 -->
+  <!-- 処理：X-Core-Caller-IdとX-Core-Subscription-Idを削除して続行します。認証済み情報はAPIMの購読情報と変数に残ります。 -->
+  <set-header name="X-Core-Caller-Id" exists-action="delete" />
+  <set-header name="X-Core-Subscription-Id" exists-action="delete" />
+  <!-- === -->
+  <!-- ========== 2 APIMの要求IDへの統一 ========== -->
+  <!-- 目的：この要求を下流の記録と照合できるよう、APIMが付けたIDを送ります。 -->
+  <!-- 処理：x-ms-client-request-idをcontext.RequestIdへ上書きします。監査のrequestIdと応答のapim-request-idも同じAPIMの値を使います。 -->
+  <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+  <!-- === -->
+  <!-- ========== 3 共通認証の完了確認 ========== -->
+  <!-- 目的：共通認証の継承や成功記録が欠けたまま、各APIの権限検査や接続処理へ進むことを防ぎます。 -->
+  <!-- 処理：この要求のgatewayCommonAuthenticationValidatedが未設定またはfalseなら503とapim-request-idを返して終了し、trueなら後続へ進みます。キーやトークンは再検証しません。 -->
+  <choose>
+    <when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])">
+      <return-response>
+        <set-status code="503" reason="Common authentication is not configured" />
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      </return-response>
+    </when>
+  </choose>
+  <!-- === -->
+</fragment>

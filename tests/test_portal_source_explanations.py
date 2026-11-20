@@ -1,4 +1,5 @@
 """C#説明を安全なblockコメントとしてAzureへ残し、実行行と旧生成元を保持する。"""
+from policy_fixture_paths import policy_fixture_path
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -27,7 +28,7 @@ class PortalSourceExplanationTests(unittest.TestCase):
         blocks = portal_source_explanation_blocks()
         self.assertEqual(set(blocks), set(SOURCE_EXPRESSION_FILES))
         for marker, filename in SOURCE_EXPRESSION_FILES.items():
-            source = (POLICIES / filename).read_text(encoding="utf-8")
+            source = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             original = source.split("\n")
             rendered = _with_source_line_comments(source).split("\n")
             self.assertEqual(len(original), len(rendered))

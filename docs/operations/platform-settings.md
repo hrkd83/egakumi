@@ -141,6 +141,8 @@ Azure CLI・Entra認証と以下の配備処理はWindows側で実行する。WS
 HTTPS／443・FQDN許可を既存Firewall規則へ追加する。
 任意サブネット、任意ポート、全インターネットを許可する入口ではない。
 
+初期FWの追加規則4配列と追加FQDN2配列は公開config／paramsから廃止しました。APIの`backendUrl`・操作別override・本人情報取得設定を正本にし、同じ設定から初期宛先を再生成します。`allow-apim-approved-services`は、既存証明書規則と同じAPIM送信元・HTTPS443・TLS終端なしの`oneocsp.microsoft.com`を基底に常設します。この基底は既存許可の重複で、生成先0を理由に規則を省略したり空宛先を送信したりしません。
+
 1. 許可されたバックエンドのFQDN、APIパス、操作、認証方式、正常応答を決める。
    `backendService: external`・`backendUrl`等を既存のAPI定義契約に合わせる。
    接続先URLへsecretやtokenを埋め込まず、IPやワイルドカードへの置換で広げない。
@@ -148,7 +150,11 @@ HTTPS／443・FQDN許可を既存Firewall規則へ追加する。
    意図せず外さず、認証・購読・許可モデル・既存バックエンドを保持する。
    新しい認証方式やAPIの実装を、この通信許可の作業だけで追加できると扱わない。
 3. 対象Firewallの`rcg-egress` → `allow-apim-egress` →
-   `apim-approved-services`と、元の許可先・送信元・HTTPS／443、他の規則を保存する。
+   `allow-apim-approved-services`と、元の許可先・送信元・HTTPS／443、他の規則を保存する。
+   公開処理は既知の旧名`apim-approved-services`も照合し、通信境界を確認して新名へ移行する。
+   旧名と新名の同時存在は停止し、基盤再配備の宛先保持処理は両名を読取り対象にする。
+   再配備ではGETのみで通信境界を厳密に検証し、企業が構築後に加えた宛先も生成ARM入力へ
+   casefold重複除去で保持する。業務API由来の初期集合を優先し、公開paramsへは転記しない。
    管理VM、Portal、DNS、他用途の許可を変更対象へ含めない。
 4. [Gの計画・実行](common.md#計画してから個別に反映する)を行う。
    計画内の追加FQDNとAPI一覧を確認する。GはBroker・CM・SQL等も扱うため、

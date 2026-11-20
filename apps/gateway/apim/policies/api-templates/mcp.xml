@@ -15,11 +15,11 @@
     <!-- 処理：上位のInboundを実行します。拒否されなければ、このAPIの後続処理へ戻ります。 -->
     <base />
     <!-- === -->
-    <set-header name="X-Core-Caller-Id" exists-action="delete" />
-    <set-header name="X-Core-Subscription-Id" exists-action="delete" />
-    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-    <!-- base で継承した共通認証の完了を確認してから、API の権限検査へ進みます。 -->
-    <choose><when condition="@(!context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;])"><return-response><set-status code="503" reason="Common authentication is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    <!-- ========== API要求の準備（core-api-request-preparation） ========== -->
+    <!-- 目的：共通Inboundから戻った要求を、このAPIの後続処理へ渡せる状態にします。 -->
+    <!-- 処理：内部IDの申告ヘッダーを削除し、要求IDをAPIMの値へ揃え、共通認証の完了を確認します。 -->
+    <include-fragment id="core-api-request-preparation" fragment-id="core-api-request-preparation" />
+    <!-- === -->
     <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
     <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
     <set-variable name="gatewayDecision" value="@{
@@ -50,9 +50,10 @@
             new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
         } catch { return deny.ToString(); }
       }
-      if (context.Variables.ContainsKey(&quot;gatewayProfileSelection&quot;)) {
-        var profileId = (string)JObject.Parse((string)context.Variables[&quot;gatewayProfileSelection&quot;])[&quot;profileId&quot;];
-        if (!String.IsNullOrEmpty(profileId)) { decision[&quot;profileId&quot;] = profileId; }
+      if (context.Variables.ContainsKey(&quot;gatewayOperationSelection&quot;)) {
+        /* settingIdを既存監査のprofileIdへ転記します。本文のモデル選択はここでは追加しません。 */
+        var settingId = (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;settingId&quot;];
+        if (!String.IsNullOrEmpty(settingId)) { decision[&quot;profileId&quot;] = settingId; }
       }
       return decision.ToString(Newtonsoft.Json.Formatting.None);
     }" />
@@ -68,22 +69,13 @@
         </return-response>
       </when>
     </choose>
-    <!-- native PII MCPは認可後、tools/callの本文解析前にqueryを検査します。GET・DELETEに本文は不要です。 -->
-    <set-variable name="gatewayQueryGuardModes" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__QUERY_GUARD_MODES_BASE64__&quot;)))" />
-    <include-fragment fragment-id="core-query-guard" />
+    <!-- ========== クエリ概要の観測と記録 ========== -->
+    <!-- 目的：生成MCP受付が明示した観測ラベルから、URLクエリの概要を監査へ渡します。 -->
+    <!-- 処理：要求準備・API認可の後、tools/callの本文解析前に観測部品を呼び、receivedを記録します。GET・DELETEに本文は不要で、この観測を理由に要求を拒否しません。 -->
+    <include-fragment fragment-id="core-query-observation" />
     <set-variable name="gatewayQueryPhase" value="received" />
     <include-fragment fragment-id="core-query-telemetry" />
-    <choose id="core-query-rejection"><when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;allowed&quot;])">
-      <set-variable name="gatewayQueryPhase" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;] == 400 ? &quot;query-rejected&quot; : &quot;guard-error&quot;)" />
-      <include-fragment fragment-id="core-query-telemetry" />
-      <return-response>
-        <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;gatewayQueryGuardDecision&quot;])[&quot;status&quot;])" reason="Query parameters are not allowed" />
-        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
-        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
-        <set-body>@{ return new JObject(new JProperty("error", new JObject(new JProperty("code", (int)JObject.Parse((string)context.Variables["gatewayQueryGuardDecision"])["status"] == 400 ? "QUERY_PARAMETERS_NOT_ALLOWED" : "QUERY_GUARD_NOT_CONFIGURED"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None); }</set-body>
-      </return-response>
-    </when></choose>
+    <!-- === -->
     <!-- native MCPはRESTの400応答もisError:falseで包むため、引数不正は実行前にJSON-RPCエラーへ確定します。 -->
     <set-variable name="gatewayMcpArgumentError" value="@{
       try {

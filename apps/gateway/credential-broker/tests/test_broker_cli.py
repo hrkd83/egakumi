@@ -151,6 +151,39 @@ def grant_replies(members=(0, 0)):
 
 
 class MigrationTests(unittest.TestCase):
+    def test_empty_profiles_prepare_schema_and_runtime_without_touching_pool_allocations(self):
+        for existing_schema in (False, True):
+            with self.subTest(existing_schema=existing_schema):
+                replies = [("SELECT CASE WHEN OBJECT_ID", {"exists": int(existing_schema)})]
+                if existing_schema:
+                    replies.append(("SELECT Version", [{"version": value} for value in (1, 2, 3, 4)]))
+                    replies.append(("SELECT sid,type", {"sid": uuid.UUID(TENANT).bytes_le, "type": "E"}))
+                else:
+                    replies.extend(("SELECT fixture" + str(value), None) for value in (1, 2, 3, 4))
+                    replies.extend([("SELECT sid,type", []), ("CREATE USER", None)])
+                replies.extend([*grant_replies(), ("SELECT MAX(Version)", {"version": 4}), ("SELECT TOP(0)", None)])
+                store, cursor = fixture(replies)
+                with tempfile.TemporaryDirectory() as folder:
+                    for version in (1, 2, 3, 4):
+                        (Path(folder) / (str(version).zfill(3) + "_fixture.sql")).write_text(
+                            "SELECT fixture" + str(version) + ";", encoding="utf-8")
+                    result = migrate(store, runtime_client_id=TENANT, runtime_user_name="id-runtime",
+                                     profiles={}, schema_path=Path(folder) / "001_fixture.sql")
+                self.assertEqual(result, {"status": "ready", "schemaVersion": 4, "poolCount": 0})
+                sql = "\n".join(query for query, _ in cursor.calls)
+                self.assertNotIn("UPDATE broker.Pools", sql)
+                self.assertNotIn("INSERT broker.Pools", sql)
+                for query, _ in cursor.calls:
+                    self.assertNotRegex(query, r"(?im)^\s*DELETE\s+")
+                self.assertIn("GRANT EXECUTE ON OBJECT::broker.AllocateConnection", sql)
+                self.assertEqual("CREATE USER" in sql, not existing_schema)
+
+    def test_empty_pool_inventory_is_valid_without_accepting_incomplete_profiles(self):
+        self.assertEqual(pool_inventory({}), [])
+        for profiles in (None, [], {"graph": {}}, {"graph": {"pools": []}}):
+            with self.subTest(profiles=profiles), self.assertRaises(ValueError):
+                pool_inventory(profiles)
+
     def test_migration_creates_client_id_bound_runtime_with_limited_objects_and_proc_execute(self):
         store, cursor = fixture([
             ("SELECT CASE WHEN OBJECT_ID", {"exists": 0}), ("SELECT schemafixture", None),

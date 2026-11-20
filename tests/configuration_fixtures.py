@@ -67,16 +67,19 @@ def api_fixture():
 
 
 def profiled_api_fixture():
-    """Responses操作のtext/PDF契約を作る。"""
+    """Responses操作に基本設定とモデル別差分を持つ合成契約を作る。"""
     raw = api_fixture()
     api = raw["apiDefinitions"][0]
     api.update(name="openai-inference-v1", path="models/openai/v1", serviceClass="platform")
     authorization = api["authorization"]
     constraint = authorization["operationConstraints"]["responses-create"]
-    text = {**copy.deepcopy(constraint), "profileId": "response", "modalities": ["text"]}
-    pdf = {**copy.deepcopy(constraint), "profileId": "pdf", "modalities": ["text", "file"],
-           "maxRequestBytes": 2048000, "maxOutputTokens": 512}
-    constraint.update(defaultProfile="response", profiles=[text, pdf])
+    model = copy.deepcopy(raw["services"]["modelDeployments"][0])
+    model.update(name="gpt-secondary", modelName="gpt-secondary")
+    raw["services"]["modelDeployments"].append(model)
+    constraint.update(allowedModels=["gpt-approved", "gpt-secondary"], modelSettings={
+        "gpt-approved": {"settingId": "response"},
+        "gpt-secondary": {"settingId": "secondary", "maxRequestBytes": 2048000, "maxOutputTokens": 512},
+    })
     return raw
 
 

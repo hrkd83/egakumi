@@ -368,14 +368,20 @@ class ContractRateStructureTests(unittest.TestCase):
 
     def test_authorization_and_target_checks_precede_rate_then_cm_or_mi(self):
         for filename in ('gateway.xml','protocol.xml'):
-            root=ET.parse(POLICIES/filename).getroot(); inbound=root.find('inbound'); children=list(inbound)
+            root=ET.parse(policy_fixture_path(POLICIES, filename)).getroot(); inbound=root.find('inbound'); children=list(inbound)
             rate=inbound.find('include-fragment[@fragment-id="core-rate-limit"]')
-            decision=inbound.find('set-variable[@name="gatewayDecision"]')
-            authorization=[node for node in inbound.findall('choose') if node.find('when/set-variable[@name="gatewayAuditCode"][@value="AUTHORIZATION_DENIED"]') is not None][0]
+            # HTTPの認証情報引渡しは、同名フラグメントの呼出しを実行段階として扱います。
+            decision=inbound.find('include-fragment[@id="core-api-authentication-result"][@fragment-id="core-api-authentication-result"]'
+                                  if filename == 'gateway.xml' else 'set-variable[@name="gatewayDecision"]')
+            # 監査の原因分類ではなく、認証情報の引渡し結果を確認する分岐で配置を照合します。
+            authorization=next(node for node in inbound.findall('choose')
+                               if any('context.Variables["gatewayDecision"]' in branch.get('condition', '')
+                                      for branch in node.findall('when')))
             with self.subTest(policy=filename):
+                self.assertIsNotNone(decision)
                 self.assertLess(children.index(decision),children.index(authorization))
                 self.assertLess(children.index(authorization),children.index(rate))
-                text=(POLICIES/filename).read_text(); pos=text.index('fragment-id="core-rate-limit"')
+                text=(policy_fixture_path(POLICIES, filename)).read_text(); pos=text.index('fragment-id="core-rate-limit"')
                 self.assertLess(pos,text.index('__CREDENTIAL_CONNECTION_INBOUND_XML__' if filename == 'protocol.xml' else '__BACKEND_AUTHENTICATION_XML__'))
                 backend_marker = '__DEFAULT_BACKEND_XML__' if filename == 'gateway.xml' else '<set-backend-service'
                 self.assertLess(pos,text.index(backend_marker))
@@ -387,7 +393,7 @@ class ContractRateStructureTests(unittest.TestCase):
                     self.assertLess(text.index('__PROTOCOL_SESSION_XML__'),pos)
                     self.assertLess(text.index('__RATE_LIMIT_CLEANUP_XML__'),pos)
         # 生成MCPは参照先PII RESTで数え、表口で同じ契約を二重に数えない。
-        native=ET.parse(POLICIES/'mcp.xml').getroot()
+        native=ET.parse(POLICIES / 'api-templates' / 'mcp.xml').getroot()
         self.assertIsNone(native.find('.//rate-limit-by-key'))
         self.assertIsNone(native.find('.//include-fragment[@fragment-id="core-rate-limit"]'))
 
@@ -395,7 +401,7 @@ class ContractRateStructureTests(unittest.TestCase):
         telemetry=fragment_body('core-gateway-telemetry.xml')
         error=fragment_body('rate-limit-error.xml').replace('__GATEWAY_TELEMETRY_XML__',telemetry)
         for filename in ('gateway.xml','protocol.xml','mcp.xml','pii.xml'):
-            text=(POLICIES/filename).read_text().replace('__RATE_LIMIT_ERROR_XML__',error)
+            text=(policy_fixture_path(POLICIES, filename)).read_text().replace('__RATE_LIMIT_ERROR_XML__',error)
             root=ET.fromstring(text); handler=root.find('on-error'); children=list(handler)
             first=0 if filename == 'pii.xml' else 1
             with self.subTest(policy=filename):

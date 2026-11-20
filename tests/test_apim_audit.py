@@ -1,4 +1,5 @@
 """共通主体の生成時展開と旧XMLの独立性を合成入力で確認する。"""
+from policy_fixture_paths import policy_fixture_path
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -13,7 +14,7 @@ class AuditRenderingTests(unittest.TestCase):
         for marker, filename in ((AUTHENTICATED_SUBJECT_MARKER, "expressions/legacy/audit-authenticated-subject.cs"),
                                  (SUBJECT_OBSERVATION_MARKER, "expressions/legacy/audit-subject-observation.cs")):
             with self.subTest(source=filename):
-                source = (CORE / "apps/gateway/apim/policies" / filename).read_text(encoding="utf-8")
+                source = (policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).read_text(encoding="utf-8")
                 source = _with_source_line_comments(source)
                 template = '<fragment><trace><message>@{' + marker + '}</message></trace>'
                 template += '<set-variable value="@{' + marker + '}"/></fragment>'

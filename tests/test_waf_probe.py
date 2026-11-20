@@ -432,6 +432,9 @@ class WafProbeTests(unittest.TestCase):
         self.assertIn("instructions", by_path["/models/openai/v1/responses"])
         self.assertIn("input[].output", by_path["/models/openai/v1/responses"])
         self.assertIn("params.arguments.text", by_path["/tools/pii-v1-mcp/mcp"])
+        self.assertNotIn("text", by_path["/tools/pii-v1-mcp/mcp"])
+        self.assertIn("text", by_path["/tools/pii/v1/redact"])
+        self.assertNotIn("params.arguments.text", by_path["/tools/pii/v1/redact"])
         for case in self.cases:
             if case.payload_field == "message":
                 value = json.loads(case.body)
@@ -1573,10 +1576,10 @@ class WafProbeTests(unittest.TestCase):
             if not api.get("released"):
                 continue
             for operation, constraint in api.get("authorization", {}).get("operationConstraints", {}).items():
-                for profile in constraint.get("profiles") or [constraint]:
-                    models = profile.get("allowedModels") or ([profile["model"]] if profile.get("model") else [])
-                    for model in models:
-                        self.assertIn((api["name"], operation, profile.get("profileId", "default"), model), actual)
+                models = constraint.get("allowedModels") or ([constraint["model"]] if constraint.get("model") else [])
+                for model in models:
+                    selected = constraint.get("modelSettings", {}).get(model, {})
+                    self.assertIn((api["name"], operation, selected.get("settingId", "default"), model), actual)
         self.assertTrue(all(row["acceptance"] == row["inference"] == "not-run" for row in matrix))
         self.assertTrue(all(row["model_reference_resolved"] for row in matrix))
         self.assertFalse(any(isinstance(row["model"], str) and row["model"].startswith("__") for row in matrix))
@@ -1586,7 +1589,8 @@ class WafProbeTests(unittest.TestCase):
             path.parent.mkdir(parents=True)
             api = {"released": True, "name": "synthetic", "path": "models/synthetic", "operations": [
                 {"name": "create", "method": "POST", "urlTemplate": "/create"}], "authorization": {
-                "operationConstraints": {"create": {"profiles": [{"profileId": "text", "allowedModels": ["synthetic-next-model"]}]}}}}
+                "operationConstraints": {"create": {"allowedModels": ["synthetic-next-model"],
+                    "modelSettings": {"synthetic-next-model": {"settingId": "text"}}}}}}
             path.write_text(json.dumps(api), encoding="utf-8")
             self.assertEqual(probe.published_model_matrix(root)[0]["model"], "synthetic-next-model")
 

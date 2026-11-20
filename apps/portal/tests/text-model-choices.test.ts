@@ -8,7 +8,7 @@ import type { TextGenerationModel } from "../lib/model-types.ts";
 function model(id: string, operationId: TextGenerationModel["operationId"], providerId: TextGenerationModel["providerId"] = "openai"): TextGenerationModel {
   return { id, label: "Same display label", provider: providerId, providerId, operationId,
     apiId: `${providerId}-inference-v1`, path: operationId === "responses-create" ? "/models/openai/v1/responses" : `/models/${providerId}/v1/chat/completions`,
-    profileId: `${id}-${operationId}`, maxRequestBytes: 65_536, maxOutputTokens: 16_384,
+    maxRequestBytes: 65_536, maxOutputTokens: 16_384,
     outputTokenParameter: operationId === "responses-create" ? "max_output_tokens" : "max_completion_tokens" };
 }
 const chat = model("gpt-current", "chat-completions"), responses = model("gpt-current", "responses-create");

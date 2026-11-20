@@ -1,4 +1,5 @@
 """共通キー検証を実XMLのC#式で確認する。APIM標準の状態・範囲検証は実Azureで別途受入する。"""
+from policy_fixture_paths import policy_fixture_path
 import json
 from pathlib import Path
 import subprocess
@@ -12,6 +13,7 @@ from deployment.helpers.apim_ingress import expand_trusted_ingress_fragment
 from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
 from deployment.helpers.apim_authentication import render_service_policy
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments, expand_common_authentication_fragments
+from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 from test_gateway_limits_telemetry import PWSH
 
 SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
@@ -202,7 +204,8 @@ class CommonAuthenticationPolicyTests(unittest.TestCase):
         methods,inbound=compile_inbound(ET.fromstring(render_service_policy()))
         guards=[]
         for filename in ("gateway.xml","protocol.xml","mcp.xml"):
-            policy=ET.parse(CORE/"apps/gateway/apim/policies"/filename).getroot()
+            policy=ET.fromstring(expand_api_request_preparation_fragment(
+                (policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).read_text(encoding="utf-8")))
             condition=next(node.get("condition") for node in policy.findall("./inbound/choose/when") if "gatewayCommonAuthenticationValidated" in node.get("condition",""))
             guards.append('if (name == '+json.dumps(filename.split(".")[0])+') { '+csharp_expression(condition)+' }')
         methods+='\nstatic bool Guard(Context context,string name) { '+''.join(guards)+' throw new Exception("Unknown policy"); }'
@@ -412,19 +415,29 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
         self.assertEqual(global_root.findall(".//validate-azure-ad-token"),[])
         self.assertEqual(global_root.findall(".//validate-jwt"),[])
         for filename in ("gateway.xml","protocol.xml","mcp.xml"):
-            policy=ET.parse(CORE/"apps/gateway/apim/policies"/filename).getroot()
-            decision=policy.find("./inbound/set-variable[@name='gatewayDecision']").get("value")
+            policy=ET.parse(policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).getroot()
             with self.subTest(policy=filename):
+                if filename == "gateway.xml":
+                    # HTTPの認証情報引渡しは同名フラグメントのC#正本にあります。
+                    fragment=policy.find("./inbound/include-fragment[@id='core-api-authentication-result']")
+                    self.assertIsNotNone(fragment)
+                    self.assertEqual(fragment.get("fragment-id"),"core-api-authentication-result")
+                    decision=(CORE / "apps/gateway/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs").read_text(encoding="utf-8")
+                else:
+                    decision=policy.find("./inbound/set-variable[@name='gatewayDecision']").get("value")
                 self.assertIn("context.Subscription",decision)
                 self.assertIn("subscription:",decision)
                 self.assertEqual(policy.findall(".//validate-jwt"),[])
 
     def test_api_decisions_follow_the_inherited_common_key_authorization(self):
         for filename in ("gateway.xml", "protocol.xml", "mcp.xml"):
-            inbound=ET.parse(CORE/"apps/gateway/apim/policies"/filename).getroot().find("inbound")
+            inbound=ET.parse(policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).getroot().find("inbound")
             with self.subTest(policy=filename):
+                decision=inbound.find("include-fragment[@id='core-api-authentication-result'][@fragment-id='core-api-authentication-result']"
+                                      if filename == "gateway.xml" else "set-variable[@name='gatewayDecision']")
+                self.assertIsNotNone(decision)
                 self.assertLess(list(inbound).index(inbound.find("base")),
-                                list(inbound).index(inbound.find("set-variable[@name='gatewayDecision']")))
+                                list(inbound).index(decision))
 
     def test_common_merge_retains_manual_cors_and_rejects_obsolete_browser_blocks(self):
         from deployment.helpers.apim_authentication import merge_common_authentication_policy,MIGRATION_REQUIRED

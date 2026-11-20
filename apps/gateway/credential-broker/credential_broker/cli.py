@@ -46,8 +46,8 @@ def _identifier(value):
 
 
 def pool_inventory(profiles):
-    if not isinstance(profiles, dict) or not profiles:
-        raise ValueError("Configured credential pools are required")
+    if not isinstance(profiles, dict):
+        raise ValueError("Credential profiles must be an object")
     rows, providers = [], set()
     for profile, settings in profiles.items():
         profile = _name(profile)
@@ -127,19 +127,20 @@ def migrate(store, *, runtime_client_id, runtime_user_name, profiles, schema_pat
         elif bytes(existing[0]) != raw_sid or existing[1] != "E":
             raise StoreConflict("Existing SQL runtime principal differs from the configured identity")
     grant_runtime_access(store, runtime_user_name=runtime_user_name, runtime_sid=raw_sid)
-    with store._db(transaction=True) as cursor:
-        # Disable only new allocation into retired pools; existing user mappings
-        # keep their provider and can still be used or reauthenticated.
-        cursor.execute("UPDATE broker.Pools SET Enabled=0")
-        for profile, provider, capacity in pools:
-            cursor.execute("SELECT Allocated FROM broker.Pools WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND ProviderName=?", profile, provider)
-            existing = cursor.fetchone()
-            if existing is None:
-                cursor.execute("INSERT broker.Pools(ProfileName,ProviderName,Capacity,Enabled) VALUES(?,?,?,1)", profile, provider, capacity)
-            else:
-                if existing[0] > capacity:
-                    raise StoreConflict("New pool capacity is below its existing allocation")
-                cursor.execute("UPDATE broker.Pools SET Capacity=?,Enabled=1 WHERE ProfileName=? AND ProviderName=?", capacity, profile, provider)
+    if pools:
+        with store._db(transaction=True) as cursor:
+            # Disable only new allocation into retired pools. An empty initial
+            # profile set creates schema and identity without retiring old pools.
+            cursor.execute("UPDATE broker.Pools SET Enabled=0")
+            for profile, provider, capacity in pools:
+                cursor.execute("SELECT Allocated FROM broker.Pools WITH(UPDLOCK,HOLDLOCK) WHERE ProfileName=? AND ProviderName=?", profile, provider)
+                existing = cursor.fetchone()
+                if existing is None:
+                    cursor.execute("INSERT broker.Pools(ProfileName,ProviderName,Capacity,Enabled) VALUES(?,?,?,1)", profile, provider, capacity)
+                else:
+                    if existing[0] > capacity:
+                        raise StoreConflict("New pool capacity is below its existing allocation")
+                    cursor.execute("UPDATE broker.Pools SET Capacity=?,Enabled=1 WHERE ProfileName=? AND ProviderName=?", capacity, profile, provider)
     store.ensure_ready()
     return {"status": "ready", "schemaVersion": 4, "poolCount": len(pools)}
 
@@ -300,7 +301,7 @@ def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_c
     counts = {"present": 0, "missing": 0, "disconnected": 0, "unknown": 0,
               "changed": 0, "conflicts": 0, "unmappedCmConnections": 0, "poolsQuarantined": 0}
     mapped = set()
-    for item in store.reconciliation_candidates():
+    for item in (store.reconciliation_candidates() if pools else ()):
         provider, connection = _name(item["providerName"]), _name(item["connectionId"])
         resource_id = (apim_resource_id + "/authorizationProviders/" + provider + "/authorizations/" + connection).lower()
         mapped.add(resource_id)
@@ -339,7 +340,7 @@ def reconcile(store, arm, apim_resource_id, *, profiles, execute=False, delete_c
     # Finish orphan checks against the pre-cleanup inventory before deleting
     # SQL mappings, so our own deletions cannot quarantine a healthy pool.
     cleanup = (_cleanup_connections(store, pools, apim_resource_id, delete_connection)
-               if execute and delete_connection is not None else
+               if pools and execute and delete_connection is not None else
                {"attempted": 0, "requested": 0, "deleted": 0, "pending": 0,
                 "conflicts": 0, "failed": 0, "budgetExhausted": False})
     counts["conflicts"] += cleanup["conflicts"]

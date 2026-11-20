@@ -77,7 +77,7 @@ test("Responses SSEはevent名と本文を残し、完了応答のモデル・�
 });
 
 test("同じモデルのResponses選択では完成メッセージを採用し、Chat専用のDONEを完了とみなさない", async () => {
-  const selected: TextGenerationModel = { ...model, operationId: "responses-create", path: "/models/openai/v1/responses", profileId: "response", outputTokenParameter: "max_output_tokens" };
+  const selected: TextGenerationModel = { ...model, operationId: "responses-create", path: "/models/openai/v1/responses", outputTokenParameter: "max_output_tokens" };
   const final = { model: model.id, status: "completed", output: [{ type: "reasoning", summary: [] }, { type: "message", content: [{ type: "output_text", text: "最終の回答" }, { type: "refusal", refusal: "補足" }] }] };
   const body = `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: "途中の文章" })}\n\nevent: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: final })}\n\n`;
   const result = await readModelResponse(streamResponse(body, 5), selected);

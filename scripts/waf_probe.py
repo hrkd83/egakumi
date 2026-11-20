@@ -1730,7 +1730,7 @@ def typed_data_probes(routes: list[Route]) -> list[Probe]:
 
 
 def published_model_matrix(root: Path = ROOT) -> list[dict]:
-    """Inventory published operation/profile/model tuples, never WAF inputs.
+    """Inventory published operation/setting/model tuples, never WAF inputs.
 
     This inventory is an acceptance-test plan only. It does not authorize this
     anonymous WAF probe runner to attach credentials or execute real inference.
@@ -1747,23 +1747,23 @@ def published_model_matrix(root: Path = ROOT) -> list[dict]:
         constraints = api.get("authorization", {}).get("operationConstraints", {})
         for operation in api.get("operations", []):
             constraint = constraints.get(operation["name"], {})
-            profiles = constraint.get("profiles") or [constraint]
-            for profile in profiles:
-                websocket = api.get("websocket", {})
-                models = (profile.get("allowedModels") or ([profile["model"]] if profile.get("model") else [])
-                          or websocket.get("allowedModels") or websocket.get("session", {}).get("models")
-                          or [websocket.get("queryParameters", {}).get("model")])
-                for model in models:
-                    if isinstance(model, str) and model.startswith("__") and model.endswith("__"):
-                        model = public_bindings.get(model[2:-2], model)
-                    result.append({"api": api["name"], "operation": operation["name"],
-                        "profile": profile.get("profileId", "default"), "model": model,
-                        "method": operation["method"],
-                        "path_template": "/" + api["path"].strip("/") + "/" + operation["urlTemplate"].lstrip("/"),
-                        "body_format": profile.get("bodyFormat", constraint.get("bodyFormat", "json")),
-                        "modalities": profile.get("modalities", []),
-                        "model_reference_resolved": not isinstance(model, str) or not model.startswith("__"),
-                        "acceptance": "not-run", "inference": "not-run"})
+            websocket = api.get("websocket", {})
+            models = (constraint.get("allowedModels") or ([constraint["model"]] if constraint.get("model") else [])
+                      or websocket.get("allowedModels") or websocket.get("session", {}).get("models")
+                      or [websocket.get("queryParameters", {}).get("model")])
+            for model in models:
+                selected = {**constraint, **constraint.get("modelSettings", {}).get(model, {})}
+                if isinstance(model, str) and model.startswith("__") and model.endswith("__"):
+                    model = public_bindings.get(model[2:-2], model)
+                result.append({"api": api["name"], "operation": operation["name"],
+                    # The existing receipt column holds an audit label, not a client selector.
+                    "profile": selected.get("settingId", "default"), "model": model,
+                    "method": operation["method"],
+                    "path_template": "/" + api["path"].strip("/") + "/" + operation["urlTemplate"].lstrip("/"),
+                    "body_format": selected.get("bodyFormat", "json"),
+                    "modalities": [],
+                    "model_reference_resolved": not isinstance(model, str) or not model.startswith("__"),
+                    "acceptance": "not-run", "inference": "not-run"})
     return result
 
 

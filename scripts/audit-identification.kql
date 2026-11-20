@@ -43,8 +43,10 @@ let observations = materialize(native
 | mv-expand trace = TraceRecords
 | extend rawTrace = coalesce(tostring(trace.message), tostring(trace.Message))
 | extend record = parse_json(rawTrace)
-| where gettype(record.schemaVersion) in ('long', 'int') and tolong(record.schemaVersion) == 1
-    and tostring(record.event) in ('gateway-request', 'query-guard')
+// Gatewayの形式1、queryの旧形式1と件数区分を削除した形式2を読みます。他のevent・版は採用しません。
+| where gettype(record.schemaVersion) in ('long', 'int')
+    and ((tostring(record.event) == 'gateway-request' and tolong(record.schemaVersion) == 1)
+        or (tostring(record.event) == 'query-guard' and tolong(record.schemaVersion) in (1, 2)))
 | extend auditV2 = gettype(record.auditSchemaVersion) in ('long', 'int') and tolong(record.auditSchemaVersion) == 2,
     recordRequestId = canonicalId(tostring(record.requestId)), eventName = tostring(record.event),
     phase = boundedText(record.phase, 64), code = boundedText(record.code, 64),

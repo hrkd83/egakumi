@@ -3,6 +3,7 @@
 return-responseはoutboundを実行しないため、共通outboundの指定だけでは足りない。
 XML全分岐と実コンパイルしたBicepのinline応答を調べ、記録対象に本文を加えない。
 """
+from policy_fixture_paths import policy_fixture_path
 import json
 import os
 from pathlib import Path
@@ -54,7 +55,7 @@ class ResponseCorrelationTests(unittest.TestCase):
 
     def test_all_xml_early_responses_include_gateway_owned_correlation_header(self):
         count = 0
-        for filename in sorted([*POLICIES.glob("*.xml"), SERVICE_POLICY]):
+        for filename in sorted([*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml"), SERVICE_POLICY]):
             for response in ET.parse(filename).getroot().iter("return-response"):
                 with self.subTest(filename=filename.name, index=count):
                     self.assert_early_response(response)
@@ -67,7 +68,7 @@ class ResponseCorrelationTests(unittest.TestCase):
         self.assert_header(service.find("on-error"))
         self.assertFalse(service.findall(".//base"))
         for filename in ("gateway.xml", "protocol.xml", "mcp.xml", "pii.xml"):
-            policy = ET.parse(POLICIES / filename)
+            policy = ET.parse(policy_fixture_path(POLICIES, filename))
             for section in ("outbound", "on-error"):
                 with self.subTest(filename=filename, section=section):
                     inherited = policy.find(f"./{section}/base")

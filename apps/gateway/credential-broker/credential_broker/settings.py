@@ -89,7 +89,7 @@ class Settings:
             return value
         try:
             source = json.loads(required("BROKER_PROFILES_JSON"))
-            if not isinstance(source, dict) or not source:
+            if not isinstance(source, dict):
                 raise ValueError()
             profiles, pool_names = {}, set()
             for name, item in source.items():

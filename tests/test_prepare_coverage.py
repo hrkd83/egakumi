@@ -14,6 +14,7 @@ from configuration_fixtures import CORE
 sys.path.insert(0, str(CORE / "scripts"))
 import prepare_coverage
 from api_definition_helpers import catalog_overlay, configured_base
+from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration
 
 
 class CoveragePreparationTests(unittest.TestCase):
@@ -79,7 +80,9 @@ class CoveragePreparationTests(unittest.TestCase):
         self.assertEqual({api.get("apiType", "http") for api in result["apiDefinitions"]}, {"http", "websocket"})
         self.assertTrue(all(api["serviceClass"] == "platform" for api in result["apiDefinitions"]))
         self.assertTrue(Path(result["management"]["sshPublicKeyFile"]).is_absolute())
-        self.assertIn("provider.example.com", result["network"]["firewall"]["apimAllowedFqdns"])
+        self.assertNotIn("apimAllowedFqdns", result["network"]["firewall"])
+        normalized = normalize_configuration(result, base_directory=CORE / "config")
+        self.assertIn("provider.example.com", build_bicep_configuration(normalized)["generatedApimServiceFqdns"])
 
     def test_formal_catalog_reuses_base_personal_cm_without_duplicating_credentials(self):
         """API定義は本人接続を参照し、CM設定は基盤入力だけで管理する。"""
@@ -126,11 +129,12 @@ class CoveragePreparationTests(unittest.TestCase):
         result = prepare_coverage.prepare(base, self.overlay, self.bindings, base_directory=CORE / "config")
         api = next(api for api in result["apiDefinitions"] if api["name"] == "openai-inference-v1")
         constraints = api["authorization"]["operationConstraints"]
-        profiles = {profile["profileId"]: profile for constraint in constraints.values() for profile in constraint["profiles"]}
-        for profile in ("vision", "pdf"):
-            self.assertEqual(profiles[profile]["maxOutputTokensByModel"]["gpt-6.1-sol"], 128000)
-        self.assertEqual(profiles["vision"]["outputTokenParameter"], "max_completion_tokens")
-        self.assertEqual(profiles["pdf"]["outputTokenParameter"], "max_output_tokens")
+        for operation in ("chat-completions", "responses-create"):
+            self.assertEqual(constraints[operation]["maxOutputTokensByModel"]["gpt-6.1-sol"], 128000)
+        chat = {**constraints["chat-completions"], **constraints["chat-completions"]["modelSettings"]["gpt-6.1-sol"]}
+        response = {**constraints["responses-create"], **constraints["responses-create"]["modelSettings"]["gpt-6.1-sol"]}
+        self.assertEqual(chat["outputTokenParameter"], "max_completion_tokens")
+        self.assertEqual(response["outputTokenParameter"], "max_output_tokens")
 
     def test_stt_public_wav_and_fixed_speech_backend_header_survive_normalization(self):
         """WAFへcodec構文を送らず、Speech向けには公式の固定値を残す。"""

@@ -13,6 +13,9 @@ param phase string = 'core'
 @description('管理 VM の SSH 公開鍵。秘密鍵は渡さず、手元で安全に保持します。')
 @secure()
 param sshPublicKey string = ''
+@secure()
+@description('初回だけCLIが準備する管理VMのローカル認証秘密。既存VMには空を渡し、資格情報を変更しません。')
+param managementAdminPassword string = ''
 @description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
 @secure()
 param dnsPluginArgumentsJson string = ''
@@ -165,6 +168,10 @@ module network 'modules/network.bicep' = if (deployCore) {
     location: location
     tags: tags
     config: configuration.network
+    generatedApimServiceFqdns: configuration.generatedApimServiceFqdns
+    gatewayPublicHostName: gatewayConfig.publicHostName
+    portalPublicHostName: portalConfig.publicHostName
+    certificateDirectory: configuration.certificate.directory
     existingNetworkSecurityGroupNames: existingNetworkSecurityGroupNames
     existingRouteTableRoutes: existingRouteTableRoutes
   }
@@ -209,7 +216,7 @@ module services 'modules/services.bicep' = if (deployCore) {
     vaultPurgeProtection: servicesConfig.vaultPurgeProtection
     // APIM の証明書等の管理処理だけに必要な trusted services 例外。
     // KV の一般公開は無効を維持し、通常のデータ通信は PE を使います。
-    allowApimKeyVaultControlPlane: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
+    allowApimKeyVaultControlPlane: true
     applicationInsightsResourceId: monitoring.outputs.monitoring.appInsightsId
     applicationInsightsConnectionString: monitoring.outputs.monitoring.appInsightsConnectionString
     modelDeployments: servicesConfig.modelDeployments
@@ -265,10 +272,24 @@ module management 'modules/management.bicep' = if (deployCore) {
     encryptionAtHost: managementConfig.encryptionAtHost
     adminUsername: managementConfig.adminUsername
     sshPublicKey: sshPublicKey
+    adminPassword: managementAdminPassword
     loginAssignments: managementConfig.loginAssignments
     dnsManagedIdentityResourceId: certConfig.mode == 'dnsPlugin' && certConfig.?plugin == 'Azure' ? certConfig.azureDnsManagedIdentityResourceId : ''
     patchAssessmentMode: managementConfig.patchAssessmentMode
     patchMode: managementConfig.patchMode
+  }
+}
+
+// 監査Storage本体を再定義せず、構築済み保存先にBlob PEを常設します。
+module auditPrivateEndpoints 'modules/audit-storage-private-endpoints.bicep' = if (deployCore) {
+  name: '${stem}-audit-private-endpoints'
+  scope: nwGroup
+  params: {
+    resourcePrefix: stem
+    location: location
+    tags: tags
+    pepSubnetId: network!.outputs.subnetIds.pep
+    auditStorage: monitoring.outputs.storage
   }
 }
 
@@ -293,6 +314,55 @@ module networkBindings 'modules/network-bindings.bicep' = if (deployCore) {
     foundryPrivateIps: endpoints!.outputs.foundryPrivateIps
     keyVaultPrivateIps: endpoints!.outputs.keyVaultPrivateIps
     managementPrivateIp: management!.outputs.managementVm.privateIp
+    auditStorageJapanPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps
+    auditStorageFoundryPrivateIps: auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps
+  }
+}
+
+// 対向NSGの完了後にzone groupを作り、実Aレコードを読むまでDNSリンクを作りません。
+module auditPrivateDns 'modules/audit-storage-private-dns.bicep' = if (deployCore) {
+  name: '${stem}-audit-private-dns'
+  scope: nwGroup
+  params: {
+    tags: tags
+    auditStorage: monitoring.outputs.storage
+    privateEndpoints: auditPrivateEndpoints!.outputs.privateEndpoints
+  }
+  dependsOn: [networkBindings]
+}
+var auditDnsChecks = deployCore ? [
+  length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps) > 0
+  length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps) > 0
+  length(auditPrivateDns!.outputs.recordPrivateIps.collectJapan) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)
+  length(auditPrivateDns!.outputs.recordPrivateIps.collectFoundry) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)
+  length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectJapan, auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectJapan.privateIps)
+  length(intersection(auditPrivateDns!.outputs.recordPrivateIps.collectFoundry, auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)) == length(auditPrivateEndpoints!.outputs.privateEndpoints.collectFoundry.privateIps)
+] : [false]
+var auditDnsReady = empty(filter(auditDnsChecks, ready => !ready))
+module auditPrivateDnsLink 'modules/audit-storage-private-dns-link.bicep' = if (deployCore) {
+  name: '${stem}-audit-private-dns-link'
+  scope: nwGroup
+  params: {
+    resourcePrefix: stem
+    tags: tags
+    vnetId: network!.outputs.vnetId
+    privateDnsZoneId: auditPrivateDns!.outputs.privateDnsZoneId
+    // ARM validates the allowed true value after the real DNS reads resolve.
+    dnsRecordsValidated: any(auditDnsReady)
+  }
+}
+
+// ロール定義は常設し、割当は構築リソース自身のスコープへ限定します。
+module managementMaintenanceRoles 'modules/management-maintenance-roles.bicep' = if (deployCore) {
+  name: '${stem}-management-maintenance-roles'
+  params: { resourceStem: stem }
+}
+module managementLogAnalytics 'modules/management-monitoring-bindings.bicep' = if (deployCore) {
+  name: '${stem}-management-log-analytics'
+  scope: monitorGroup
+  params: {
+    principalId: management!.outputs.managementVm.principalId
+    workspaceName: monitoring.outputs.monitoring.workspaceName
   }
 }
 
@@ -306,7 +376,7 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
     certificateIdentityPrincipalId: identity.outputs.principalId
     managementPrincipalId: management!.outputs.managementVm.principalId
     // 通常HTTP入口保護・所有者チケットの KV 参照にも APIM 自身の ID が必要です。KV 範囲の既存組込ロールだけを使います。
-    grantApimSecretAccess: servicesConfig.grantApimSecretAccess || useIngressSecrets || !empty(configuration.credentialProfiles)
+    grantApimSecretAccess: true
     speechEnabled: servicesConfig.?speechEnabled ?? false
     grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false
     projectAdministrators: authorization.projectAdministrators
@@ -332,7 +402,7 @@ module credentialSql 'modules/shared-sql.bicep' = if (deployCore) {
   scope: svcGroup
   params: { stem: stem, location: location, tags: tags, tenantId: configuration.azureTenantId, schemaIdentity: credentialIdentities!.outputs.schema }
 }
-module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore && !empty(configuration.credentialProfiles)) {
+module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore) {
   name: '${stem}-shared-entra-secrets'
   scope: svcGroup
   params: { vaultName: serviceNames.keyVault, profiles: configuration.credentialProfiles, providerSecrets: credentialProviderSecrets }
@@ -458,6 +528,17 @@ module portalNetworkBindings 'modules/portal-network-bindings.bicep' = if (deplo
   }
 }
 
+module managementPortalAccess 'modules/management-aca-bindings.bicep' = if (deployCore) {
+  name: '${stem}-management-portal-access'
+  scope: svcGroup
+  params: {
+    principalId: management!.outputs.managementVm.principalId
+    roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds
+    applicationNames: [portal!.outputs.platform.applicationName]
+    environmentNames: [portal!.outputs.platform.environmentName]
+  }
+}
+
 module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployCore) {
   name: '${stem}-credential-network'
   scope: nwGroup
@@ -479,9 +560,37 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
     acaNsgName: network!.outputs.nsgNames.aca
     managementNsgName: network!.outputs.nsgNames.management
     managementPrivateIp: management!.outputs.managementVm.privateIp
-    enableCredentialBroker: !empty(configuration.credentialProfiles)
   }
   dependsOn: [portalNetworkBindings]
+}
+
+// Coreで実際に構築した対象だけを渡します。App配備は後段で作成したJobを追加します。
+var managementClientInventory = deployCore ? {
+  schemaVersion: 1
+  subscriptionId: subscription().subscriptionId
+  azureTenantId: configuration.azureTenantId
+  managementVmId: management!.outputs.managementVm.id
+  managementPrincipalId: management!.outputs.managementVm.principalId
+  applications: [portal!.outputs.platform.applicationId]
+  jobs: []
+  environments: [portal!.outputs.platform.environmentId]
+  workspace: { id: monitoring.outputs.monitoring.workspaceId, customerId: monitoring.outputs.monitoring.workspaceCustomerId }
+  auditStorage: map(['collectJapan', 'collectFoundry'], collector => {
+    id: monitoring.outputs.storage[collector].id
+    containers: map(filter(monitoring.outputs.storage.containerIds, id => startsWith(toLower(id), '${toLower(monitoring.outputs.storage[collector].id)}/')), id => last(split(id, '/')))
+  })
+} : {}
+module managementClient 'modules/management-maintenance-client.bicep' = if (deployCore) {
+  name: '${stem}-management-client'
+  scope: maintGroup
+  params: {
+    vmName: management!.outputs.managementVm.name
+    location: location
+    tags: tags
+    inventory: managementClientInventory
+  }
+  // PyPI/OSパッケージの既存の構築用経路とVMの初期設定が完成してから準備します。
+  dependsOn: [credentialNetwork, certificate, managementPortalAccess, managementLogAnalytics, auditPrivateDnsLink]
 }
 // 証明書とネットワーク側の経路が揃ったら、公開入口を構築します。
 module gateway 'modules/application-gateway.bicep' = if (deployCore) {
@@ -546,7 +655,13 @@ module monitoringBindings 'modules/monitoring-bindings.bicep' = if (deployCore) 
     apimSkuName: servicesConfig.apimSkuName
     appInsightsIngestionWarningGb: monitoringConfig.appInsightsIngestionWarningGb
     telemetryPublisherPrincipalIds: [services!.outputs.principalIds.project]
-    auditReaders: monitoringConfig.auditReaders
+    // 構築コンテナー全件へのVM読取を合成。既存閲覧者を先に置きGUID表記も保持します。
+    auditReaders: concat(monitoringConfig.auditReaders, map(monitoring.outputs.storage.containerIds, containerId => {
+      collector: startsWith(toLower(containerId), '${toLower(monitoring.outputs.storage.collectJapan.id)}/') ? 'collectJapan' : 'collectFoundry'
+      containerName: last(split(containerId, '/'))
+      principalId: management!.outputs.managementVm.principalId
+      principalType: 'ServicePrincipal'
+    }))
   }
 }
 
@@ -569,6 +684,17 @@ output certificateIdentity object = { id: identity.outputs.id, principalId: iden
 output names object = serviceNames
 output monitoring object = monitoring.outputs.monitoring
 output auditStorage object = monitoring.outputs.storage
+output auditStoragePrivateAccess object = deployCore ? {
+  privateEndpoints: auditPrivateEndpoints!.outputs.privateEndpoints
+  privateDnsZoneId: auditPrivateDns!.outputs.privateDnsZoneId
+  privateDnsZoneGroupIds: auditPrivateDns!.outputs.privateDnsZoneGroupIds
+  privateDnsLinkId: auditPrivateDnsLink!.outputs.privateDnsLinkId
+} : {}
+output managementMaintenance object = deployCore ? {
+  principalId: management!.outputs.managementVm.principalId
+  roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds
+} : {}
+output managementClientInventory object = managementClientInventory
 output services object = deployCore ? services!.outputs.serviceResourceIds : {}
 output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpoint, project: services!.outputs.projectEndpoint, public: gateway!.outputs.applicationGateway.publicUrl } : {}
 output managementVm object = deployCore ? management!.outputs.managementVm : {}
@@ -606,6 +732,7 @@ output cleanup object = {
 }
 
 output portal object = deployCore ? union(portal!.outputs.platform, {
+  managementMaintenance: { principalId: management!.outputs.managementVm.principalId, roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds }
   registryName: portalRegistry!.outputs.name
   registryId: portalRegistry!.outputs.id
   registryServer: portalRegistry!.outputs.server
@@ -627,6 +754,7 @@ output portal object = deployCore ? union(portal!.outputs.platform, {
 
 // Gateway配備が参照する共通基盤の公開メタデータ。アプリ固有リソースや秘密値は含めません。
 output gatewayFoundation object = deployCore ? {
+  managementMaintenance: { principalId: management!.outputs.managementVm.principalId, roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds }
   resourceGroup: svcGroup.name
   identityResourceGroup: idGroup.name
   apimName: serviceNames.apim

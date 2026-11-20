@@ -103,6 +103,9 @@
                 },
                 "minItems": 1,
                 "maxItems": 1
+              },
+              "queryObservation": {
+                "$ref": "#/$defs/queryObservationReference"
               }
             },
             "required": [
@@ -110,7 +113,12 @@
               "path",
               "displayName",
               "operationNames"
-            ]
+            ],
+            "not": {
+              "required": [
+                "queryGuard"
+              ]
+            }
           },
           "serviceClass": {
             "enum": [
@@ -127,7 +135,18 @@
               "properties": {
                 "backendOverride": {
                   "$ref": "#/$defs/operationBackendOverride"
+                },
+                "queryObservation": {
+                  "$ref": "#/$defs/queryObservationReference"
+                },
+                "inputContract": {
+                  "$ref": "#/$defs/inputContract"
                 }
+              },
+              "not": {
+                "required": [
+                  "queryGuard"
+                ]
               }
             }
           },
@@ -204,7 +223,25 @@
             "type": "object"
           },
           "mcpProxy": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "endpoints": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "queryObservation": {
+                      "$ref": "#/$defs/queryObservationReference"
+                    }
+                  },
+                  "not": {
+                    "required": [
+                      "queryGuard"
+                    ]
+                  }
+                }
+              }
+            }
           },
           "released": {
             "type": "boolean",
@@ -296,42 +333,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "queryGuards": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Live・Realtimeの作成とnative PII MCPのquery処理を入口ごとに切り替えます。observeで通常利用を比較してからrejectへ移行します。",
-          "default": {
-            "liveCreate": "observe",
-            "realtimeCreate": "observe",
-            "piiMcp": "observe"
-          },
-          "properties": {
-            "liveCreate": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            },
-            "realtimeCreate": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            },
-            "piiMcp": {
-              "type": "string",
-              "enum": [
-                "observe",
-                "reject"
-              ],
-              "default": "observe"
-            }
-          }
-        },
         "authentication": {
           "type": "object",
           "additionalProperties": false,
@@ -758,56 +759,6 @@
               },
               "default": [],
               "description": "Premium IDPS検査を除外する通信。追加しない場合は空配列。"
-            },
-            "apimAdditionalNetworkRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "APIM送信元の追加ネットワーク規則。"
-            },
-            "managementAdditionalNetworkRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "管理VM送信元の追加ネットワーク規則。"
-            },
-            "apimAdditionalApplicationRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "APIM送信元の追加アプリケーション規則。"
-            },
-            "managementAdditionalApplicationRules": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "管理VM送信元の追加アプリケーション規則。"
-            },
-            "apimAllowedFqdns": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "APIMから追加で許可するHTTPS宛先。組み込みのプラットフォーム必須宛先に追加します。"
-            },
-            "managementAllowedFqdns": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "管理VMから追加で許可するHTTPS宛先。Ubuntu・Azure・証明書の必須宛先に追加します。"
             }
           }
         }
@@ -1046,16 +997,9 @@
         "mode"
       ]
     },
-    "operationProfile": {
+    "operationModelSettings": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "profileId",
-        "modalities",
-        "kind",
-        "allowedModels",
-        "maxRequestBytes"
-      ],
       "properties": {
         "kind": {
           "enum": [
@@ -1067,19 +1011,12 @@
             "a2aJsonRpc",
             "realtimeCreate",
             "realtimeHangup",
-            "pii"
+            "pii",
+            "liveCreate"
           ]
         },
         "parameter": {
           "type": "string"
-        },
-        "allowedModels": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "uniqueItems": true
         },
         "maxRequestBytes": {
           "type": "integer",
@@ -1093,7 +1030,7 @@
             "null"
           ],
           "minimum": 1,
-          "description": "モデル別上限の外側の最大値。不定・非対応のみならnull。"
+          "description": "このモデルに使う出力上限。未指定なら操作の基本設定を使います。モデル能力表がある場合は、そのモデルの公開上限との整合を検査します。"
         },
         "outputTokenParameter": {
           "enum": [
@@ -1165,68 +1102,23 @@
         "publicCallPath": {
           "type": "string"
         },
-        "profileId": {
+        "backendUrlTemplate": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-        },
-        "modalities": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "text",
-              "image",
-              "file",
-              "audio"
-            ]
-          }
-        },
-        "maxOutputTokensByModel": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 1
-          },
-          "description": "API・操作で許可したモデルごとの公開上限。nullは不定または非対応。"
-        },
-        "outputTokenLimitKinds": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "enum": [
-              "documented",
-              "dynamic",
-              "unsupported",
-              "unverified"
-            ]
-          }
+          "minLength": 1,
+          "description": "本文のモデル名で選ぶ、登録時に検査した固定の上流相対URI。"
         },
         "initialOutputTokens": {
           "type": "integer",
           "minimum": 1,
           "description": "Realtime接続作成時の初期値。モデルの最大値とは別に扱う。"
         },
-        "modelAliases": {
-          "type": "object",
-          "minProperties": 1,
-          "maxProperties": 32,
-          "description": "Profile-owned exact aliases targeting directly allowed existing model deployments. No chains or shadowing.",
-          "propertyNames": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 64
-          }
+        "settingId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "description": "監査で使う内部の設定識別名。クライアントが選ぶ値ではありません。"
         }
-      }
+      },
+      "description": "本文のモデル名をキーにした設定差分。未指定項目は操作の基本設定を使い、指定した項目は項目単位で置換します。"
     },
     "operationConstraint": {
       "type": "object",
@@ -1263,11 +1155,19 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "requestBodySizeCheck": {
+          "type": "string",
+          "enum": [
+            "actual",
+            "declared"
+          ],
+          "description": "共通の本文制限処理で使う、非JSON本文（binary／multipart／text）のサイズ確認方式。未指定またはactualは受信本文の実サイズを確認します。declaredはContent-Lengthがあれば申告値を確認し、サイズ確認のための本文読取りを省きます。declaredを使えるのはこの3形式の操作だけです。設定は操作直下へ置き、モデル別差分には指定しません。"
+        },
         "maxRequestBytes": {
           "type": "integer",
           "minimum": 1,
           "maximum": 524288000,
-          "description": "要求全体の受付上限。標準AI APIはClassic APIMの本文バッファー技術上限500 MiB。モデルのファイル単位・token上限は提供元が検査します。"
+          "description": "本文全体の上限バイト数。非JSON本文では、requestBodySizeCheckがdeclaredの場合はContent-Lengthがあるときに申告値と比較し、actualまたは未指定の場合は受信した実サイズも比較します。標準AI APIの500 MiBはClassic APIMの本文バッファー技術上限で、モデルのファイル単位・トークン上限は提供元が検査します。"
         },
         "maxOutputTokens": {
           "type": [
@@ -1345,16 +1245,6 @@
           "maximum": 3600
         },
         "publicCallPath": {
-          "type": "string"
-        },
-        "profiles": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/operationProfile"
-          }
-        },
-        "defaultProfile": {
           "type": "string"
         },
         "maxOutputTokensByModel": {
@@ -1437,8 +1327,58 @@
             "texts"
           ],
           "description": "登録した埋め込み提供元の入力フィールド。件数制限とは別に扱います。"
+        },
+        "modelAliases": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "description": "この操作が許可した配備モデルへ直接対応する別名。許可モデルや配備先を追加しません。",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "modelSettings": {
+          "type": "object",
+          "description": "操作の基本設定に重ねるモデル別の差分。許可モデルの一覧はallowedModelsが管理します。",
+          "additionalProperties": {
+            "$ref": "#/$defs/operationModelSettings"
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requestBodySizeCheck": {
+                "const": "declared"
+              }
+            },
+            "required": [
+              "requestBodySizeCheck"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bodyFormat": {
+                "enum": [
+                  "binary",
+                  "multipart",
+                  "text"
+                ]
+              }
+            },
+            "required": [
+              "bodyFormat"
+            ]
+          }
+        }
+      ]
     },
     "operationBackendOverride": {
       "type": "object",
@@ -1775,6 +1715,25 @@
           }
         }
       }
+    },
+    "queryObservationReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}(?![\\s\\S])",
+      "not": {
+        "enum": [
+          "none",
+          "unknown"
+        ]
+      },
+      "description": "クエリの観測対象を識別するラベルです。拒否条件やモデル機能の制限には使いません。"
+    },
+    "inputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "description": "空のオブジェクトを明示したHTTP操作を、本文読取り前のContent-Type宣言の確認対象にします。欠落・複数値・空欄を拒否し、MIMEの許可一覧は使いません。メソッドとURLはAPIMの操作登録が照合します。省略した操作へ検査を自動追加しません。"
     }
   }
 }

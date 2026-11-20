@@ -2,6 +2,7 @@
 
 公開する操作と上流の形式を組み合わせ、未許可モデル・不正なサイズ・別セッションを拒否する。実XMLから取り出した式も動かすが、Azureへの配備成功は別の実機試験で確認する。
 """
+from policy_fixture_paths import policy_fixture_path
 import base64
 import copy
 import json
@@ -16,6 +17,7 @@ from test_gateway_limits_telemetry import PWSH, expression
 import prepare_coverage
 import standard_apis
 from api_definition_helpers import catalog_overlay, configured_base
+from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 
 POLICIES = CORE / "apps/gateway/apim/policies"
 SERVICE_POLICY = CORE / "apps/gateway/apim/policies/service.xml"
@@ -58,16 +60,10 @@ def bound_coverage():
 
 def bound_external_coverage():
     """汎用protocol能力の試験だけに、外部5 APIのfixtureを明示追加する。"""
-    from urllib.parse import urlsplit
     raw = bound_coverage()
     fixture_data = json.loads((CORE / "tests/fixtures/external-api-definitions.json").read_text())
     external = prepare_coverage.substitute(fixture_data, _test_bindings(fixture_data, raw))
     raw["apiDefinitions"].extend(external["apiDefinitions"])
-    for api in external["apiDefinitions"]:
-        hostname = urlsplit(api.get("backendUrl", "")).hostname
-        destinations = raw["network"]["firewall"]["apimAllowedFqdns"]
-        if hostname and hostname not in destinations:
-            destinations.append(hostname)
     return raw
 
 
@@ -100,8 +96,6 @@ class ProtocolConfigurationTests(unittest.TestCase):
                 # OCR/layout are built-in service models, not Foundry model deployments.
                 if constraint["kind"] not in ("documentAnalysis", "documentAnalysisStatus"):
                     published.update(constraint.get("allowedModels", []))
-                for profile in constraint.get("profiles", []):
-                    published.update(profile["allowedModels"])
                 if "model" in constraint:
                     published.add(constraint["model"])
             model = api.get("websocket", {}).get("queryParameters", {}).get("model")
@@ -129,11 +123,11 @@ class ProtocolConfigurationTests(unittest.TestCase):
             constraint = api["authorization"]["operationConstraints"][op["name"]]
             self.assertEqual(constraint["kind"], "bodyModel")
             self.assertEqual(constraint["allowedModels"], ["FLUX.2-flex", "FLUX.2-pro"])
-            self.assertEqual(constraint["defaultProfile"], "flex")
-            for profile in constraint["profiles"]:
-                variant = profile["profileId"]
-                self.assertEqual(profile["allowedModels"], [f"FLUX.2-{variant}"])
-                self.assertEqual(profile["backendUrlTemplate"], f"/providers/blackforestlabs/v1/flux-2-{variant}?api-version=preview")
+            self.assertEqual(set(constraint["modelSettings"]), set(constraint["allowedModels"]))
+            for model, settings in constraint["modelSettings"].items():
+                variant = settings["settingId"]
+                self.assertEqual(model, f"FLUX.2-{variant}")
+                self.assertEqual(settings["backendUrlTemplate"], f"/providers/blackforestlabs/v1/flux-2-{variant}?api-version=preview")
             self.assertEqual(constraint["integerLimits"]["num_images"]["maximum"], 1)
         audio = apis["openai-audio-v1"]
         stt = audio["authorization"]["operationConstraints"]["audio-transcriptions"]
@@ -370,7 +364,14 @@ class ProtocolConfigurationTests(unittest.TestCase):
 
 def actual_expression(path, name):
     """APIM policyから指定の実C#式を取り出し、別実装へ置き換えずに検証する。"""
-    value = expression(POLICIES / path, "./inbound/set-variable[@name='" + name + "']", "value")
+    sources = {
+        ("gateway.xml", "gatewayOperationSelection"): "core-api-operation-settings.cs",
+        ("gateway.xml", "gatewayDecision"): "core-api-authentication-result.cs",
+    }
+    if (path, name) in sources:
+        # 棚卸済みHTTP部品は、Azure用XMLへ展開する同名C#の正本を直接実行します。
+        return policy_fixture_path(POLICIES, sources[(path, name)]).read_text(encoding="utf-8")
+    value = expression(policy_fixture_path(POLICIES, path), "./inbound/set-variable[@name='" + name + "']", "value")
     return value.replace('JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String("__AUTHORIZATION_BASE64__")))', 'JObject.Parse((string)context.Variables["config"])')
 
 
@@ -453,7 +454,8 @@ class ExpandedPolicyTests(unittest.TestCase):
         cases.append({"id": "auth-deny-missing", "mode": "auth", "config": auth})
         cases.append({"id": "auth-deny-empty", "mode": "auth", "config": auth, "key": ""})
         ingress = expression(SERVICE_POLICY, "./inbound/choose/when", "condition").replace("{{core-l7-ingress-enabled}}", "true").replace("{{core-l7-ingress-secret}}", "fixture-ingress-proof")
-        guard_condition = ET.fromstring((POLICIES / "protocol.xml").read_text(encoding="utf-8")).find("./inbound/choose/when").get("condition")
+        protocol = expand_api_request_preparation_fragment((POLICIES / "api-templates" / "protocol.xml").read_text(encoding="utf-8"))
+        guard_condition = ET.fromstring(protocol).find("./inbound/choose/when").get("condition")
         auth_guard = "return " + guard_condition[2:-1] + ";"
         query = actual_expression("protocol.xml", "gatewayProtocolQueryAllowed").replace("__WEBSOCKET_QUERY_BASE64__", base64.b64encode(b'{"model":"approved","api-version":"2026-01-01"}').decode())
         source = CSHARP.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed")).replace("__INGRESS__", ingress).replace("__QUERY__", query).replace("__AUTH_GUARD__", auth_guard).replace("__AUTH__", actual_expression("protocol.xml", "gatewayDecision"))

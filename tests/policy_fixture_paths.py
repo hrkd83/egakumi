@@ -10,12 +10,22 @@ _PRIMARY_FILES = {
         ("core-trusted-ingress", "fragments/ingress"),
         ("core-credential-browser-exception", "fragments/authentication"),
         ("core-common-authentication", "fragments/authentication"),
+        ("core-api-authentication-result", "fragments/authentication"),
         ("core-gateway-telemetry", "fragments/audit"),
         ("core-api-settings", "fragments/settings"),
+        ("core-query-observation", "fragments/request"),
+        ("core-api-input-validation", "fragments/request"),
+        ("core-api-operation-settings", "fragments/request"),
+        ("core-model-limits", "fragments/request"),
+        ("core-speech-ssml-guard", "fragments/request"),
+        ("core-query-telemetry", "fragments/audit"),
     )
     for suffix in (".xml", ".cs")
 }
 _PRIMARY_FILES["core-entra-authentication-error.xml"] = Path("fragments/authentication/core-entra-authentication-error/core-entra-authentication-error.xml")
+_PRIMARY_FILES["core-api-request-preparation.xml"] = Path("fragments/request/core-api-request-preparation/core-api-request-preparation.xml")
+for _template in ("gateway.xml", "protocol.xml", "mcp.xml"):
+    _PRIMARY_FILES[_template] = Path("api-templates") / _template
 
 
 def policy_fixture_path(policies: Path, filename: str) -> Path:

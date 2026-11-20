@@ -122,6 +122,7 @@ from .helpers.log_privacy import LogPrivacyError, existing_workspace_link as rea
 from .helpers.ssh_keys import ensure_management_ssh_key
 from .helpers.apim_preflight import verify_apim_name, ApimPreflightError
 from .helpers.apim_naming import apim_instance_id
+from .helpers.apim_egress import APIM_EGRESS_RULE_NAMES, validate_apim_egress_rule
 from .helpers.apim_generations import assert_current_instance, verify_state as verify_apim_state
 from .helpers.capacity import verify_capacity
 from .helpers.powershell_runtime import locate_powershell, powershell_environment
@@ -131,6 +132,14 @@ from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
 from .helpers.portal_backend_http import require_portal_http_core_ready
+from .helpers.serial_credentials import (
+    SerialCredentialError, prepare_initial_serial_password, bind_initial_serial_password,
+    _read_payload as read_private_initial_payload,
+)
+from .helpers.private_permissions import (
+    check_private_permissions as require_serial_storage_permissions,
+    protect_new_path as protect_serial_storage,
+)
 
 ROOT = REPOSITORY
 PROJECT_NAME = "ai-workforce-core"
@@ -322,11 +331,17 @@ def run(arguments: list[str], *, payload: dict | None = None, environment: dict 
 def protected_json(path: Path, value: dict) -> None:
     """所有者だけが読める一時ファイルへ書き、置換によって途中までのJSONを残さない。"""
     path = private_parent(path)
+    if os.name == "nt":
+        require_serial_storage_permissions(path.parent, directory=True)
     handle, temporary = tempfile.mkstemp(prefix=".core-", dir=path.parent)
     try:
-        if os.name != "nt":
-            os.fchmod(handle, 0o600)
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            # Establish the owning context before ACL/chmod checks, so an ACL
+            # failure closes the descriptor before the empty node is removed.
+            if os.name != "nt":
+                os.fchmod(stream.fileno(), 0o600)
+            else:
+                protect_serial_storage(Path(temporary))
             json.dump(value, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
             stream.flush()
@@ -394,10 +409,10 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
                diagnostic_setting_properties: dict | None = None) -> dict:
     """公開設定と必要時だけ秘密入力をまとめ、Bicep用パラメーター形式へ変換する。"""
     configuration = build_bicep_configuration(config)
-    # API公開処理が追加した宛先は今回の生成入力だけへ引き継ぐ。元のparamsや
-    # API定義は書き換えず、基盤の再up後も公開済みAPIの通信先を維持する。
+    # 検証済みの既存宛先は内部の生成集合だけへ引き継ぐ。元のparamsやAPI定義を
+    # 書き換えず、基盤再up時も公開済みAPI・構築後の手動追加先を維持する。
     if phase == "core":
-        allowed = configuration["network"]["firewall"].setdefault("apimAllowedFqdns", [])
+        allowed = configuration["generatedApimServiceFqdns"]
         known = {host.casefold() for host in allowed}
         for host in existing_apim_egress_fqdns or []:
             if host.casefold() not in known:
@@ -420,6 +435,104 @@ def parameters(config: dict, phase: str, *, secrets: dict | None = None,
               "existingWorkspaceDataCollectionRuleResourceId": existing_workspace_privacy_dcr_id}
     return {"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
             "contentVersion": "1.0.0.0", "parameters": {key: {"value": value} for key, value in values.items()}}
+
+
+def _management_serial_vm_response(config: dict, transport: ArmTransport) -> dict:
+    """管理RGと正確なVMだけを読み、404と所有確認済み200を区別する。"""
+    group_id = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['maint']}"
+    response = transport.request("GET", group_id + "?api-version=2024-03-01")
+    group = require_success(response, "Read management VM parent ownership", allowed=(200, 404))
+    if response["statusCode"] == 200:
+        tags = group.get("tags") if isinstance(group, dict) else None
+        if (not isinstance(group, dict) or str(group.get("id", "")).casefold() != group_id.casefold()
+                or not same_azure_location(group.get("location"), config["location"])
+                or not isinstance(tags, dict)
+                or any(tags.get(key) != value for key, value in {
+                    "product": config["productName"], "environment": config["environmentName"],
+                    "azd-env-name": config["environmentName"], "layer": "maint"}.items())):
+            raise DeploymentError("The management VM parent does not belong to the selected environment")
+    vm_id = group_id + f"/providers/Microsoft.Compute/virtualMachines/vm-{config['resourceStem']}-mgmt"
+    vm_response = transport.request("GET", vm_id + "?api-version=2024-11-01")
+    body = require_success(vm_response, "Read initial management VM identity", allowed=(200, 404))
+    if vm_response["statusCode"] == 200:
+        if (response["statusCode"] != 200 or not isinstance(body, dict)
+                or not same_azure_location(body.get("location"), config["location"])):
+            raise DeploymentError("The management VM ownership or location could not be verified")
+    return vm_response
+
+
+def _prepare_management_serial_password(config: dict, transport: ArmTransport) -> str:
+    """既存VMの秘密は読まず、確認済みの初回不存在だけ保護秘密を準備する。"""
+    try:
+        return prepare_initial_serial_password(config, local_paths(config, ROOT),
+                                               _management_serial_vm_response(config, transport))
+    except SerialCredentialError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def _confirm_management_serial_target(config: dict, transport: ArmTransport, password: str) -> None:
+    """PUTまたはnative azdへの引渡し直前に、初期/既存VMが変わっていないか再確認する。
+
+    ARM deploymentとVM作成は別要求なので、このGETを外部同時構築に対する
+    原子的ロックとは扱わない。同一環境の初期構築を同時実行しないことが前提。
+    """
+    response = _management_serial_vm_response(config, transport)
+    if response["statusCode"] == 200:
+        # This branch verifies ownership without opening the saved credential.
+        try:
+            prepare_initial_serial_password(config, local_paths(config, ROOT), response)
+        except SerialCredentialError as error:
+            raise DeploymentError(str(error)) from None
+    if bool(password) != (response["statusCode"] == 404):
+        raise DeploymentError("The management VM changed during initial preparation; no Core deployment was started")
+
+
+def _bind_management_serial_password(config: dict, outputs: dict, transport: ArmTransport, password: str) -> None:
+    """今回の成功配備へ秘密を渡した場合だけ、正確な実VM世代へ結び付ける。"""
+    if not password:
+        return
+    response = _management_serial_vm_response(config, transport)
+    body = response.get("body")
+    output = outputs.get("managementVm")
+    profile = (body["properties"].get("osProfile")
+               if isinstance(body, dict) and isinstance(body.get("properties"), dict) else None)
+    if (response["statusCode"] != 200 or not isinstance(output, dict) or not isinstance(body, dict)
+            or str(output.get("id", "")).casefold() != str(body.get("id", "")).casefold()
+            or not isinstance(body.get("properties"), dict)
+            or body["properties"].get("provisioningState") != "Succeeded"
+            or not isinstance(profile, dict) or profile.get("adminUsername") != config["management"]["adminUsername"]
+            or not isinstance(profile.get("linuxConfiguration"), dict)
+            or profile["linuxConfiguration"].get("disablePasswordAuthentication") is not True):
+        raise DeploymentError("The initial management VM completion could not be verified; retain its pending credential")
+    try:
+        bind_initial_serial_password(config, local_paths(config, ROOT), body, initial_password=password)
+    except SerialCredentialError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def _read_initial_serial_deployment_input(config: dict) -> str:
+    """native azdへ渡した内部secure入力だけから、今回bindingの要否を取得する。"""
+    try:
+        workspace = local_paths(config, ROOT)
+        path = workspace.checked(workspace.parameters)
+        if not path.exists():
+            return ""
+        data, _ = read_private_initial_payload(path, max_bytes=2 * 1024 * 1024)
+        document = json.loads(data)
+        password = document.get("parameters", {}).get("managementAdminPassword", {}).get("value", "")
+        if not isinstance(password, str):
+            raise ValueError("Invalid internal input")
+        if password:
+            values = document["parameters"]
+            configuration = values["configuration"]["value"]
+            if (values["phase"]["value"] != "core" or not isinstance(configuration, dict)
+                    or any(configuration.get(key) != config[key] for key in
+                           ("subscriptionId", "azureTenantId", "productName", "environmentName", "resourceStem"))
+                    or configuration.get("management", {}).get("adminUsername") != config["management"]["adminUsername"]):
+                raise ValueError("Invalid internal ownership")
+        return password
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, SerialCredentialError):
+        raise DeploymentError("The internal Serial deployment input could not be verified") from None
 
 
 def _arm_success_body(method, parsed, request_body, response_headers, content):
@@ -693,30 +806,18 @@ def discover_existing_apim_egress_fqdns(config: dict, transport: ArmTransport) -
             or not isinstance(collections[0].get("rules"), list)
             or any(not isinstance(item, dict) for item in collections[0]["rules"])):
         raise DeploymentError("Existing API egress collection has a different permission boundary")
-    rules = [item for item in collections[0]["rules"] if item.get("name") == "apim-approved-services"]
+    rules = [item for item in collections[0]["rules"] if item.get("name") in APIM_EGRESS_RULE_NAMES]
     if not rules:
         return []
+    if len(rules) != 1:
+        raise DeploymentError("Existing API egress rule is duplicated across current or legacy names")
     rule = rules[0]
-    # APIの応答項目ではなく、引継ぎで変えてはいけない通信条件を確認します。
-    # Azureの読取メタデータと、空のヘッダー設定・無効なIPv6フラグは停止理由にしません。
-    empty_fields = {"sourceIpGroups", "destinationAddresses", "fqdnTags", "targetUrls", "httpHeaders",
-                    "httpHeadersToInsert", "webCategories"}
-    if (len(rules) != 1
-            or any(rule.get(key) not in (None, []) for key in empty_fields)
-            or rule.get("ruleType") != "ApplicationRule"
-            or rule.get("sourceAddresses") != [config["network"]["subnetPrefixes"]["apim"]]
-            or rule.get("protocols") != [{"protocolType": "Https", "port": 443}]
-            or rule.get("terminateTLS") not in (None, False)
-            or rule.get("ipv6Rule") not in (None, False)
-            or not isinstance(rule.get("targetFqdns"), list)):
-        raise DeploymentError("Existing API egress rule has a different source or HTTPS boundary")
+    try:
+        validate_apim_egress_rule(rule, config["network"]["subnetPrefixes"]["apim"])
+    except ValueError as exc:
+        raise DeploymentError(str(exc)) from None
     hosts = []
     for host in rule["targetFqdns"]:
-        # 設定で許可するFQDNと先頭ワイルドカードだけを保持する。URL・IP・全許可を
-        # FQDNとして引き継がず、応答中の実値はエラーメッセージにも出さない。
-        if (not isinstance(host, str) or len(host) > 253
-                or not re.fullmatch(r"(?:\*\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", host)):
-            raise DeploymentError("Existing API egress destination is not a supported FQDN")
         if host.casefold() not in {value.casefold() for value in hosts}:
             hosts.append(host)
     return hosts
@@ -1214,6 +1315,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     # azdと同じ所有タグを付け、前処理で中断しても通常のdownが対象を認識できるようにする。
     path = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-{phase}?api-version=2022-09-01"
     transport = ArmTransport(config)
+    serial_password = _prepare_management_serial_password(config, transport) if phase == "core" else ""
     if phase == "core":
         prepare_core_network_upgrade(config, transport)
     # monitoring はネットワークを配備しない。core の直接呼出しでも native azd と
@@ -1229,6 +1331,9 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         diagnostic_setting_properties = prepare_diagnostic_settings(config, transport, phase, preserve_collection)
     if phase == "core" and secrets is None:
         secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
+    if phase == "core":
+        # An explicit secrets dict must not override the owned initial generation.
+        secrets = {**(secrets or {}), "managementAdminPassword": serial_password}
 
     request_body = {
         "location": config["location"],
@@ -1246,6 +1351,8 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
                                                 existing_workspace_privacy_dcr_id=existing_workspace_privacy_dcr_id,
                                                 diagnostic_setting_properties=diagnostic_setting_properties)["parameters"]},
     }
+    if phase == "core":
+        _confirm_management_serial_target(config, transport, serial_password)
     response = transport.request("PUT", path, body=request_body)
     require_success(response, f"Start {phase} deployment", allowed=(200, 201, 202))
     deadline = time.monotonic() + 7200
@@ -1259,6 +1366,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
             outputs = {key: item["value"] for key, item in deployment["properties"]["outputs"].items()}
             if phase == "core":
                 _save_deployment_state(config, outputs)
+                _bind_management_serial_password(config, outputs, transport, serial_password)
                 complete_core_network_upgrade(config, transport)
                 protected_json(local_paths(config, ROOT).state / "ingress-bootstrap.json",
                                configure_grpc_endpoint(config, outputs, transport,
@@ -1534,7 +1642,9 @@ def _preprovision(config: dict) -> None:
     register_providers(config)
     transport = ArmTransport(config)
     require_portal_http_core_ready(config, transport)
-    secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
+    serial_password = _prepare_management_serial_password(config, transport)
+    secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json),
+               "managementAdminPassword": serial_password}
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
     # 回避名のAPIMを増やさず、同名で再実行できる状態かだけを読み取る。
     apim_name_receipt = local_paths(config, ROOT).state / "apim-name-preparation.json"
@@ -1608,6 +1718,7 @@ def _preprovision(config: dict) -> None:
     existing_apim_egress_fqdns = discover_existing_apim_egress_fqdns(config, transport)
     core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
+    _confirm_management_serial_target(config, transport, serial_password)
     write_arm_parameters(config, parameters(config, "core", secrets=secrets,
         manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
         existing_nsg_names=existing_nsg_names,
@@ -1650,6 +1761,10 @@ def postprovision(config: dict) -> None:
         # 以前の成功記録を、今回の仕上げに成功した記録として残さない。
         dns_receipt_path.unlink(missing_ok=True)
         transport = ArmTransport(config)
+        serial_password = _read_initial_serial_deployment_input(config)
+        if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
+            raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")
+        _bind_management_serial_password(config, outputs, transport, serial_password)
         complete_core_network_upgrade(config, transport)
         grpc_receipt = configure_grpc_endpoint(config, outputs, transport,
                                                mutation_recorder=upgrade_journal(config, "ingress-endpoint"))
@@ -1729,8 +1844,12 @@ def main(argv=None) -> int:
             existing_apim_hostnames = discover_existing_apim_hostnames(config, transport, custom_properties_out=existing_apim_custom_properties)
             existing_portal_app = discover_existing_portal_app(config, transport)
             core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
+            serial_password = _prepare_management_serial_password(config, transport)
+            _confirm_management_serial_target(config, transport, serial_password)
 
-            write_arm_parameters(config, parameters(config, "core", secrets={**secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json)},
+            write_arm_parameters(config, parameters(config, "core", secrets={
+                **secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json),
+                "managementAdminPassword": serial_password},
                 existing_nsg_names=existing_nsg_names,
                 existing_route_table_routes=existing_routes,
                 existing_apim_hostname_configurations=existing_apim_hostnames,
@@ -1779,6 +1898,11 @@ def main(argv=None) -> int:
                           "Microsoftサポートへ確認してください。", file=sys.stderr)
         return 0
     except (ValueError, OSError, KeyError, DeploymentError, LogPrivacyError) as error:
+        if args.command == "preup" and "workspace" in locals():
+            try:
+                workspace.parameters.unlink(missing_ok=True)
+            except OSError:
+                pass
         # 任意の辞書や外部コマンドのstderrを、そのまま利用者向け出力へ混ぜない。
         message = str(error) if isinstance(error, (DeploymentError, ValueError)) else type(error).__name__
         print("Core operation failed: " + message, file=sys.stderr)

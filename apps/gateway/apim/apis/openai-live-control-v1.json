@@ -13,6 +13,7 @@
       "displayName": "Create Live WebRTC session",
       "method": "POST",
       "urlTemplate": "/sessions",
+      "queryObservation": "liveCreate",
       "templateParameters": []
     }
   ],

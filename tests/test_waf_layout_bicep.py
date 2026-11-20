@@ -17,7 +17,7 @@ SPEECH_PATHS = ["/models/azure-speech/v1/recognize", "/models/azure-speech/v1/sy
 DOCUMENT_PATH = "/tools/documents/v1/analyze"
 DATA_PURPOSES = {
     "g-chat-completions", "g-responses", "g-embeddings", "g-rerank", "g-decision",
-    "g-images", "g-transcribe", "g-realtime", "g-live", "g-pii-redact",
+    "g-images", "g-transcribe", "g-realtime", "g-live", "g-pii-rest", "g-pii-mcp",
     "g-document-status", "g-realtime-ticket",
     "p-generate", "p-embeddings", "p-rerank", "p-decision", "p-images", "p-speech",
     "p-realtime", "p-document-upload", "p-pii-redact",
@@ -113,7 +113,7 @@ class WafLayoutBicepTests(unittest.TestCase):
     def name(self, purpose):
         return f"wafpol-{purpose}-{IDENTIFIER}"
 
-    def test_identifier_contract_is_shared_with_apim_and_standard_layout_has_28_policies(self):
+    def test_identifier_contract_is_shared_with_apim_and_standard_layout_has_29_policies(self):
         identifier = self.template["parameters"]["wafPolicyIdentifier"]
         self.assertEqual((identifier["minLength"], identifier["maxLength"]), (6, 6))
         self.assertNotIn("defaultValue", identifier)
@@ -127,7 +127,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         policies = self.policies(self.parameters())
         expected = DATA_PURPOSES | {"g-base", "p-base", "p-auth", "g-auth", "g-speech", "g-document-upload"}
         self.assertEqual(set(policies), {self.name(purpose) for purpose in expected})
-        self.assertEqual(sum(name.startswith("wafpol-g-") for name in policies), 16)
+        self.assertEqual(sum(name.startswith("wafpol-g-") for name in policies), 17)
         self.assertEqual(sum(name.startswith("wafpol-p-") for name in policies), 12)
 
     def test_merged_profiles_bind_each_exact_path_once_to_the_complete_policy(self):
@@ -149,11 +149,21 @@ class WafLayoutBicepTests(unittest.TestCase):
                 self.assertTrue(rule["backendHttpSettings"]["id"].endswith("/behttp-" + backend))
                 self.assertEqual("rewriteRuleSet" in rule, scope == "gateway")
         counts = {profile["name"]: len(profile["paths"]) for profile in self.profiles}
-        for name, count in (("g-images", 6), ("g-embeddings", 2), ("g-pii-redact", 2), ("p-pii-redact", 2)):
+        for name, count in (("g-images", 6), ("g-embeddings", 2), ("g-pii-rest", 1), ("g-pii-mcp", 1), ("p-pii-redact", 2)):
             self.assertEqual(counts[name], count)
         listener = next(item["properties"] for item in gateway["httpListeners"] if item["name"] == "portal-https")
         self.assertTrue(listener["firewallPolicy"]["id"].endswith("/" + self.name("p-base")))
         self.assertTrue(gateway["firewallPolicy"]["id"].endswith("/" + self.name("g-base")))
+
+    def test_compiled_pii_policies_exclude_only_their_own_text_field(self):
+        policies = self.policies(self.parameters())
+        self.assertNotIn(self.name("g-pii-redact"), policies)
+        for purpose, expected, other in (("g-pii-rest", "text", "params.arguments.text"),
+                                         ("g-pii-mcp", "params.arguments.text", "text")):
+            exclusions = policies[self.name(purpose)]["managedRules"]["exclusions"]
+            selectors = {entry["selector"] for entry in exclusions if entry["matchVariable"] == "RequestArgValues"}
+            self.assertIn(expected, selectors)
+            self.assertNotIn(other, selectors)
 
     def test_every_portal_policy_keeps_cookie_and_every_data_policy_keeps_common_protection(self):
         parameters = self.parameters(wafMode="Detection")
@@ -179,7 +189,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         for purpose in ("p-base", "p-auth", "g-auth"):
             self.assertEqual(policies[self.name(purpose)]["policySettings"]["mode"], "Detection")
 
-    def test_ai_content_controls_match_python_and_change_only_the_18_policies(self):
+    def test_ai_content_controls_match_python_and_change_only_the_defined_content_profiles(self):
         custom = [{"name": "fixture-one", "priority": 1, "action": "Block"},
                   {"name": "fixture-three", "priority": 3, "action": "Block"}]
         policies = self.policies(self.parameters(wafCustomRules=custom))
@@ -272,7 +282,7 @@ class WafLayoutBicepTests(unittest.TestCase):
         parameters = self.parameters()
         parameters["publishedApiPaths"] += ["/enterprise/custom-binary", "/enterprise/mcp/messages", "/enterprise/chat"]
         policies = self.policies(parameters)
-        self.assertEqual(len(policies), 28)
+        self.assertEqual(len(policies), 29)
         for profile in self.profiles:
             expected = [*parameters["wafExclusions"]]
             if profile["scope"] == "portal":

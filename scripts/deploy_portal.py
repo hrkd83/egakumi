@@ -28,6 +28,8 @@ from deployment.helpers.portal_image import source_bundle, build_image, reusable
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
 from deployment.helpers.portal_backend_http import verify_portal_http_ready
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
+from deployment.helpers.management_maintenance import management_maintenance_inputs
+from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
@@ -60,8 +62,19 @@ def deployment_inputs(config, state, image_digest=None):
         raise ValueError('Core deployment state differs from the selected configuration')
     stem = config['resourceStem']
     outputs = state.get('outputs', {})
+    if not isinstance(outputs, dict):
+        raise ValueError('Current Core deployment outputs are required')
     if outputs.get('names', {}).get('apim') != apim_name(config):
         raise ValueError('Core APIM name differs from the selected construction instance')
+    gateway = outputs.get('gateway')
+    if (not isinstance(gateway, dict)
+            or not isinstance(gateway.get('publicUrl'), str) or not gateway['publicUrl']):
+        raise ValueError('Current Core Gateway public URL output is required')
+    # load_configurationで検証済みの公開ホストと正式出力を厳密に照合します。
+    # 別ホストやポート・パス等を持つURLを補完・正規化して配備を続けません。
+    gateway_origin = 'https://' + config['gateway']['publicHostName']
+    if gateway['publicUrl'] != gateway_origin:
+        raise ValueError('Core Gateway public URL differs from the selected configuration')
     portal = outputs.get('portal', {})
     svc = group_scope(config) + '/providers/'
     identities = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['id']}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/"
@@ -84,6 +97,8 @@ def deployment_inputs(config, state, image_digest=None):
     sql_server = portal.get('sharedSqlServer')
     if sql_server != f'sql-{stem}.database.windows.net':
         raise ValueError('Shared SQL server is missing from the completed foundation')
+    maintenance = management_maintenance_inputs(config, portal.get('managementMaintenance'))
+    management_client_inventory(config, state)
     profile_name = config['portalAuthentication']['credentialProviderName']
     profiles = [value for value in config['credentialProviders'] if value['name'] == profile_name]
     if len(profiles) != 1:
@@ -100,11 +115,13 @@ def deployment_inputs(config, state, image_digest=None):
         'apiKeyVerificationSubscriptions': verification_subscriptions(config.get('portalApiKeys', {})),
         'apiKeyCatalogProducts': approved_product_catalog(config),
         'runtimeIdentity': runtime, 'schemaIdentity': schema, 'sqlServer': sql_server,
+        'managementPrincipalId': maintenance['principalId'],
+        'managementRoleDefinitionIds': maintenance['roleDefinitionIds'],
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
         'credentialProviderName': profile_name, 'clientId': profile['clientId'], 'tenantId': profile['oauthTenantId'],
         'publicOrigin': 'https://' + config['portal']['publicHostName'],
-        # load_configurationで検証した公開ドメインだけを使用し、共通購読キーは配備しません。
-        'gatewayOrigin': 'https://' + config['gateway']['publicHostName'],
+        # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
+        'gatewayOrigin': gateway_origin,
         'networkResourceGroup': config['resourceGroupNames']['nw'],
         'acaPrefix': config['network']['subnetPrefixes']['aca'],
         'expectedEgressIp': portal.get('expectedEgressIp', ''),
@@ -278,10 +295,12 @@ def verify_public(origin, *, timeout=180, sleep=time.sleep, monotonic=time.monot
     raise ValueError('Portal revision is running but the public health check did not succeed')
 
 
-def deploy_release(config, values, template, transport, *, record=None):
+def deploy_release(config, values, template, transport, *, record=None, state=None,
+                   client_prepare=update_management_client_assets):
     """SQLの準備が成功した場合だけ、新しいアプリを公開して疎通確認する。"""
     print('ポータル: DB・実行権限・SQL初期化ジョブを配備します。', flush=True)
-    deploy_template(config, values, template, transport)
+    initialized = deploy_template(config, values, template, transport)
+    client_prepare(config, state, initialized, transport, component='portal')
     # 初回の署名鍵は作成済み。2段階目は同じ値の新規バージョンも作成しません。
     values['signingSecret'] = ''
     values['profileSecret'] = ''
@@ -294,7 +313,8 @@ def deploy_release(config, values, template, transport, *, record=None):
     data_waf = configure_data_waf(config, transport, scopes=('portal',))
     print('ポータル: SQL初期化が完了しました。アプリを更新します。', flush=True)
     values['deployApplication'] = True
-    deploy_template(config, values, template, transport)
+    deployed = deploy_template(config, values, template, transport)
+    client_prepare(config, state, deployed, transport, component='portal')
     wait_application(config, transport, expected_image_digest=values['imageDigest'])
     http_readiness = verify_portal_http_ready(config, transport, expected_image_digest=values['imageDigest'])
     print('ポータル: 準備済みHTTP80後段とヘルス監視へApp Gatewayを揃えます。', flush=True)
@@ -357,7 +377,7 @@ def main(argv=None):
     values['signingSecret'] = signing_secret(config, values, transport)
     values['profileSecret'] = profile_secret(config, values, transport)
     gateway_readiness = deploy_release(config, values, template, transport,
-                                      record=upgrade_journal(config, 'portal-http80'))
+                                      record=upgrade_journal(config, 'portal-http80'), state=state)
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,

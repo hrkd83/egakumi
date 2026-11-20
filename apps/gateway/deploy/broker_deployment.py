@@ -8,7 +8,7 @@ import subprocess
 import time
 
 from deployment.helpers.credential_image import checked, source_bundle
-from deployment.helpers.credential_pools import logical_profiles, resource_names
+from deployment.helpers.credential_pools import broker_session_settings, logical_profiles, resource_names
 from deployment.helpers.paths import REPOSITORY
 
 APP_API = "2025-01-01"
@@ -69,7 +69,8 @@ def prepare_broker_only_update(config, state, transport):
     if len(env) != len(env_rows):
         raise ValueError('Existing Broker environment has duplicate settings')
     profiles = logical_profiles(config)
-    login = config['gateway']['authentication']['credentialLogin']
+    login = config.get('gateway', {}).get('authentication', {}).get('credentialLogin', {})
+    session = broker_session_settings(config)
     if json.loads(env.get('BROKER_PROFILES_JSON', {}).get('value', '{}')) != profiles:
         raise ValueError('Current credential tenant/client/pool profiles differ from the existing Broker')
     expected = {'AZURE_SQL_SERVER': foundation['sqlServer'], 'AZURE_SQL_DATABASE': names['database'],
@@ -81,7 +82,7 @@ def prepare_broker_only_update(config, state, transport):
         'rotationIntervalSeconds': 'BROKER_ROTATION_INTERVAL_SECONDS', 'rotationGraceSeconds': 'BROKER_ROTATION_GRACE_SECONDS',
         'rotationHandoffSeconds': 'BROKER_ROTATION_HANDOFF_SECONDS', 'rotationCandidateTtlSeconds': 'BROKER_ROTATION_CANDIDATE_TTL_SECONDS',
         'transactionLifetimeSeconds': 'BROKER_TRANSACTION_TTL_SECONDS', 'loginCallsPerMinute': 'BROKER_LOGIN_CALLS_PER_MINUTE'}
-    expected.update({target: str(login[key]) for key, target in timing.items()})
+    expected.update({target: str(session[key]) for key, target in timing.items()})
     if any(env.get(key, {}).get('value') != value for key, value in expected.items()):
         raise ValueError('Broker-only update cannot change existing connection or session settings')
     secrets_rows = environment.get('secrets', [])
@@ -148,7 +149,7 @@ def prepare_broker_only_update(config, state, transport):
         'publicOrigin': expected['BROKER_PUBLIC_ORIGIN'], 'apimPrincipalId': foundation['apimPrincipalId'],
         'apimName': foundation['apimName'], 'brokerKeySecretUri': broker_uri, 'oidcSecrets': list(oidc.values()),
         'minReplicas': scale['minReplicas'], 'maxReplicas': scale['maxReplicas'], 'imageDigest': '',
-        'deployApplication': False, 'schemaAction': 'observe-schema', **{key: login[key] for key in timing}}
+        'deployApplication': False, 'schemaAction': 'observe-schema', **{key: session[key] for key in timing}}
     _, source_hash = source_bundle()
     return {'schemaVersion': 1, 'parameters': values, 'snapshot': snapshot, 'previousImage': old_image,
         'sourceSha256': source_hash, 'databaseId': database,

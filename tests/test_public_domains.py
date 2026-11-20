@@ -17,9 +17,9 @@ class PublicDomainTests(unittest.TestCase):
         raw['certificate']['domainNames'] = ['*.EXAMPLE.com']
         config = configuration.normalize_configuration(raw)
         self.assertEqual(config['certificate']['domainNames'], ['*.example.com'])
-        allowed = config['network']['firewall']['managementAllowedFqdns']
-        self.assertIn('gateway.example.com', allowed)
-        self.assertIn('portal.example.com', allowed)
+        self.assertEqual(config['gateway']['publicHostName'], 'gateway.example.com')
+        self.assertEqual(config['portal']['publicHostName'], 'portal.example.com')
+        self.assertNotIn('managementAllowedFqdns', config['network']['firewall'])
 
     def test_certificate_must_cover_gateway_without_apex_or_deeper_wildcard_expansion(self):
         for api_host, names in (

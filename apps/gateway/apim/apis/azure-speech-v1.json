@@ -26,7 +26,8 @@
         "backendHeaders": {
           "X-Microsoft-OutputFormat": "riff-16khz-16bit-mono-pcm"
         }
-      }
+      },
+      "inputContract": {}
     },
     {
       "name": "stt",
@@ -46,7 +47,8 @@
         "backendHeaders": {
           "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000"
         }
-      }
+      },
+      "inputContract": {}
     }
   ],
   "keySubscriptions": [],
@@ -57,6 +59,7 @@
         "kind": "registeredOperation",
         "maxRequestBytes": 524288000,
         "bodyFormat": "text",
+        "requestBodySizeCheck": "declared",
         "contentTypes": [
           "application/ssml+xml"
         ]
@@ -65,6 +68,7 @@
         "kind": "registeredOperation",
         "maxRequestBytes": 524288000,
         "bodyFormat": "binary",
+        "requestBodySizeCheck": "declared",
         "contentTypes": [
           "audio/wav"
         ]

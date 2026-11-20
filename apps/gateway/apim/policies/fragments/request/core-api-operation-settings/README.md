@@ -1,0 +1,29 @@
+# 操作の基本設定とモデル別設定を選ぶ
+
+`core-api-operation-settings`は、HTTP APIの入力検査の後に呼ぶ共通フラグメントです。
+`gatewayControlSettings.operationConstraints`から、この操作の基本設定を取得します。
+モデル別設定が必要な場合だけ、本文の`model`を読み、操作直下の`modelAliases`を解決してから`modelSettings`を参照します。
+
+基本設定に選択モデルの項目を上書きし、未指定項目は基本の値を引き継ぎます。上書きは項目単位で、入れ子のオブジェクトを部分的に混ぜません。
+モデルに固有設定がなければ、登録一覧に含まれるかにかかわらず基本設定を使います。モデル設定もaliasもない操作は、JSON本文を読まずに基本設定を返します。
+
+| 処理順 | 処理 |
+| --- | --- |
+| 1 | APIMの操作IDに対応する基本設定と、任意のモデル・alias表を取得する |
+| 2 | モデルを読む場合は、配備時に集約した`maxRequestBytes`と元の本文バイト数を確認する |
+| 3 | 本文JSONと文字列の`model`を確認し、aliasを正式モデル名へ解決する |
+| 4 | そのモデルの設定項目があれば基本設定へ上書きし、なければ基本設定を使う |
+| 5 | 設定とモデル情報を`gatewayOperationSelection`へ返す |
+
+設定不備は500、本文JSONの読取り不備と`model`の欠落・非文字列は400、元の本文超過は413です。
+失敗結果だけに`status`と`code`を設定し、成功結果にはエラー用のHTTPコードを入れません。
+呼出し元は本文超過を`REQUEST_TOO_LARGE`として監査へ記録し、応答理由`Request too large`と要求IDを返します。本文超過をprofileの権限不足とは表現しません。
+この部品は`allowedModels`による受付判定を行わず、未知モデルでも設定を返します。後段に残るモデルの利用可否や利用枠の判定は変更しません。
+この部品は本文を書き換えず、本文・キー・トークンを監査へ保存しません。失敗時の監査記録とHTTP応答は呼出し元が担当します。
+
+`gatewayOperationSelection.constraint`が選択後の操作設定、`requestedModel`と`effectiveModel`が解決前後のモデル名です。
+任意の`settingId`は既存監査用のラベルであり、呼出し元が`gatewayDecision.profileId`へ明示的に転記します。転送先は解決済みの`effectiveModel`から選びます。
+クライアントのprofile指定・能力別profile・default選択は使いません。モデルの本文機能や後段の利用枠検査を、この部品で追加変更しません。
+
+同名のXMLがフラグメントの枠と実行時変数を定義し、同名のC#が処理本体です。
+配備時に`__CORE_API_OPERATION_SETTINGS_CSHARP__`へC#をコメント付きで展開し、Azureポータルの同名フラグメントへ登録します。

@@ -9,7 +9,7 @@
 | Entraの追加登録 | [egakumi-api](../setup/02a-entra-api.md)と[egakumi-codex](../setup/02b-entra-codex.md)の画面付き準備手順を用意。残るPortal・Tools・Credentialの登録と切替は後続 |
 | APIMの業務API認可 | 設定schema、JWT検証ポリシーの生成、検証済み本人による利用上限・監査、専用open Productの生成と公開controllerを実装。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成。HTTP・WebSocket・MCPのAPI型を区別するV2 source（旧gRPC sourceは所有照合用の読戻し互換のみ保持）、管理プレーン読戻し、所属解除／追加、競合検出と失敗復旧を含む |
 | 共通Inbound | STEP1要求情報、STEP2入口確認、STEP3接続ログインの受付判定、STEP4キー／Bearer認証、STEP5認証済み利用者情報を正規フラグメントへ整理済み |
-| 各API・操作のInbound | 棚卸は未完。本文・ツール形式・モデル機能・上限・CM本人接続など、残る制御を実行順に確認する |
+| 各API・操作のInbound | 要求準備、query観測、入力検査、HTTP認証結果、操作・モデル設定、共有サイズ検査とTTSの承認済み整理をAzureへ反映し、読戻しを完了。キー／BearerのResponses JSON・SSE、無効Bearerの401、空本文・Content-Type未指定の400、TTSの正常WAV・DTD宣言の400と対応する監査照合を確認。大容量413、他モデル・transport、Content-Typeの追加異常系は未実施。棚卸は未完で、本文・ツール形式・モデル機能・上限・CM本人接続など残る制御を実行順に確認する |
 | backend・outbound・on-error | 標準Entra検証のエラー部品は実装済み。ただし、これらのブロック全体の棚卸は未完 |
 | Portalの認証 | サインイン・管理Graphは共用アプリとclient secretを使用。Portal専用設定・証明書認証・API用OAuthは未実装 |
 | CM本人確認設定の独立 | `credentialLogin.identity`を追加。省略時は従来構成を維持。アプリの実切替は別工程 |
@@ -19,6 +19,24 @@
 入口認証の実装、ポリシー棚卸の完了、個々のクライアント・APIの実接続受入は別に管理する。Codexの先行試験だけで、Graph・非同期操作等も含む全APIの受入が完了したとは扱わない。特定環境の配備・接続結果は保護した記録で確認する。
 
 同じ業務APIのURLで、購読キーの提示を優先し、キーがなければBearerを検証する。両方式への対応を標準とし、公開設定に有効化スイッチ、Bearer対象APIの選択、クライアントアプリ許可リストは設けない。
+
+各APIの先頭で承認した3処理は、`X-Core-Caller-Id`／`X-Core-Subscription-Id`を削除して続行、`x-ms-client-request-id`をAPIMの要求IDで上書き、共通認証の完了が未設定またはfalseなら503で停止する。`gateway.xml`・`protocol.xml`・`mcp.xml`の`<base />`直後から、XMLだけの[要求準備の部品](../../apps/gateway/apim/policies/fragments/request/core-api-request-preparation/README.md)を呼ぶ。認証の再実行ではなく、後続処理への引渡しを整える。後段の要求ID再設定やBearerの再確認は、別の棚卸対象として維持する。
+
+棚卸⑦では、URLクエリ部品を`core-query-observation`へ観測専用化する方針を承認した。API操作の`queryObservation`、生成MCPの`mcp.queryObservation`、外部MCPの`mcpProxy.endpoints[].queryObservation`から、操作ID辞書`queryObservations`と`HTTPメソッド + 空白 + 公開相対path`辞書`mcpQueryObservations`を生成する。サービス・モデル形式・入力制約kindで対象を推測しない。公開pathと下流の`uriTemplate`を区別し、標準3ラベルと対象入口を保持する。観測ラベルはASCII英字で始まる1～64文字の英数字・`_`・`-`とし、小文字の`none`／`unknown`を完全一致で予約する。
+
+要求ごとの`gatewayQueryObservation`は`route`・`httpMethod`・`presence`・`duplicates`だけを保存する。mode・許可判定・応答statusと、この部品による400／500の拒否分岐を撤去する。観測できない情報は`unknown`として扱う。認証完了は先行する`core-api-request-preparation`が確認し、この部品では重複確認しない。要求準備のマーカー未設定／falseに対する503は維持する。HTTP／生成MCP／外部MCPで、認証後・本文前の既存の実行位置を保ち、WebSocketへは追加しない。
+
+⑥で承認した有無・複数値の取得を維持し、件数区分`countBucket`の計算・出力を削除する。query監査のイベント名`query-guard`、`schemaVersion: 2`、共通識別情報の`auditSchemaVersion: 2`は維持する。新規出力は`received`・`backend-response`・`policy-error`の3段階とし、mode・`query-rejected`・`guard-error`は出力しない。過去の旧phase・modeは移行前の記録として区別する。他イベントのschema 1と旧query/schema 1のKQL読取り互換は別に保持する方針である。
+
+旧`gateway.queryGuards`、APIの`queryGuard`参照、`core-query-guard`fragment、`core-query-guard-modes` Named Valueは廃止対象であり、新規設定に使わない。④・⑤までのmode補完・設定不備で停止する方式は移行前の設計となる。ローカル入力とAPI定義を新契約へ移行し、新fragmentと参照APIのAzure反映・全graph照合・読戻し、正本checkpoint更新を完了した。APIMではキー／BearerのResponses JSON・SSEと対応する監査照合を確認した。旧fragment・旧Named Valueは参照不在を確認して退役し、読戻しで不在を確認した。現行生成元・構築入力・正本checkpoint・通常配備の期待値に旧資材が含まれないことも確認した。所有・currentの一般照合と過去の保護証跡は維持する。query観測・転送や他の経路の受入は未完である。反映・実接続の受入・旧資材退役は別に管理する。
+
+今後の追加対象にはBox・WorkIQ・社内HTTP API・外部MCPと、Claude等のResponses／Chat Completions以外のモデル契約も含める。共通認証・利用者監査・汎用転送をサービス名やモデル形式から分離する方針で棚卸を進める。棚卸⑦ではquery観測を専用部品へ整理し、その後の[入力検査](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)では標準13操作を`inputContract={}`で選び、query制限・HTTPメソッド再確認・入口MIME一覧比較の撤去を承認した。対象表の操作値も`{}`とし、共通のContent-Type宣言条件だけを確認する。操作登録とAPIMの照合、入口不備時の`INVALID_CONTENT_TYPE_HEADER`監査と本文なし400・要求ID・no-storeは維持する方針を承認済みである。段階2では旧ヘッダーを選択条件に使わず、API・モデルから内部設定を自動選択する。Portal・試験CLIの旧付与も撤去し、APIMの転送前削除だけを残す。操作の基本設定＋モデル名をキーとした`modelSettings`差分へ整理し、`profiles`・`defaultProfile`・`modalities`を新正本から撤去する。モデル別の出力項目・上限・固定URIと既存受付条件は維持する。 後段のMIME制御・Speech転送・URI変換・モデル本文検査・生成MCPのPII向け制約は別工程で棚卸する。ソース整備・Azure読戻し・実受入は分けて確認する。限定確認以外の実APIM受入、queryの転送や任意形式の下流受付、基盤全体のサービス互換性まで完了したとは扱わない。残る処理は必要性・効果・負荷・複雑さを比較して採否を判断する。
+
+承認したPII入口の分割は、APIMではなくApp GatewayのWAF設定である。現行構成では、`g-pii-rest`を`/tools/pii/v1/redact`の`RequestArgValues / Equals / text`だけへ、`g-pii-mcp`を`/tools/pii-v1-mcp/mcp`の`RequestArgValues / Equals / params.arguments.text`だけへ対応付ける。Portalの`p-pii-redact`は維持する。このWAF変更はAPIMの入力検査とは独立し、APIのURL・キー／Bearer認証・モデル機能・OBOを変更しない。URI制約と他のWAF規則は未棚卸のまま保持する。
+
+PII分割のAzure反映・読戻しと、正常なREST要求およびMCP初期化・ツール照会・PII実行の通過・マスキング確認を完了した。旧`g-pii-redact`は参照がないことを確認して退役した。WAFとAPIMの適用・受入は分け、一連の変更を一括コミットする。通常reconcileによる旧資源の自動削除へは変更せず、移行時の保持・復旧と成功後の限定退役を区別する。移行元は通常の新規構成と区別し、同名queryへの除外やAzureのJSON解析の挙動をローカル生成だけで確認済みとは扱わない。[設定と移行順](../testing/waf-compatibility.md#pii入口の除外をrestとmcpへ分ける)を参照する。
+
+`core-query-observation`と`core-query-telemetry`は専用フォルダの同名XML／C#へ整理し、Azureの日本語説明・新人向けの処理説明を揃える。各APIが共有する`gateway.xml`・`mcp.xml`・`protocol.xml`は`api-templates/`で管理し、All APIsの全体ポリシー`service.xml`とは適用先を区別する。外部MCP用の観測フローは生成時に差し込み、WebSocketには追加しない。
 
 ## 完遂までの順序
 
@@ -55,7 +73,7 @@ Gateway.Invokeのトークンはegakumi-api向けなので、OBOの交換もegak
 
 | 工程 | 次へ進むための完了条件 |
 |---|---|
-| 1 各API・操作のInbound | 制御を一つずつ説明・判断し、採用した処理を整理・反映・疎通確認。棚卸済み資材を最終フォルダ構成へ移し、APIM独自のモデル機能制限を未確認のまま残さない |
+| 1 各API・操作のInbound | 制御を一つずつ説明・判断し、採用した処理を整理・反映・疎通確認。部品を初めて扱う段階で最終フォルダ・同名XML／C#・Azureの日本語説明・処理説明を揃え、未判断項目を明記する。APIM独自のモデル機能制限を未確認のまま残さない |
 | 2 backend・outbound・on-error | 転送先・下流認証、ストリーミング、応答・エラー・監査を確認。policies配下の全資材が最終フォルダ構成に収まり、不要なlegacy系ファイルと参照が残らない状態でポリシー棚卸を完了 |
 | 3 Portal認証分離 | 新アプリでサインイン・管理Graphが動作し、既存のユーザー・キー所有権・本人接続状態を維持 |
 | 4 PortalのAPI試用 | 同じAPIへキー／Bearerを選択して送信でき、更新・再認証と全対象機能の所有者確認が成立 |
@@ -116,6 +134,8 @@ secret不要化を目標とする範囲と方式は工程1で確認し、CMのFI
 | テナントと管理担当を分離 | Azure側の作業と認証Entra側のアプリ・同意作業を別工程にする |
 | CM設定の結合を解消 | credentialLoginの本人確認設定をcredentialProvidersから独立させる。当初は旧アプリを参照し、外部API用Client ID変更で本人確認まで変わらないようにする |
 | 復旧単位を用意 | ポリシー・API公開定義・イメージdigest・構成・証明書versionを戻せる記録と、機能の無効化手順 |
+
+並行する実装は別worktree・作業ブランチで進める。共通CLI・configuration・試験・構築出力に影響する変更では、相手の差分を確認してから統合する。mainへのマージと同じAzure環境への適用は順番に行い、後の作業側は最新mainを取り込んで変更を統合し、必要な検証と構築出力を更新する。並行作業前の生成物や準備記録を、そのまま後の適用へ流用しない。
 
 実値・secret・token・環境証跡はチェックアウト直下の.local/<environment>/と.azure/に限定する。公開文書にはプレースホルダーだけを使う。計画・読戻し・変更内容を分け、環境と所有resourceを照合する既存CLI方式を利用する。
 
@@ -299,17 +319,29 @@ Portal・tools・credentialのアプリ分離を開始する前に、Gateway OAu
 
 実際の接続先・版・設定・結果は保護したローカル証跡へ記録する。先行試験と工程1～2のポリシー整備を済ませてから工程3のPortal分離へ進み、全体配布・管理設定・併用端末の検証は工程7で行う。
 
+### 入力profileの段階移行
+
+段階2の構成では、Portal・試験CLI・Codexはprofileヘッダーを付けず、API・操作とモデル名からAPIMが内部設定を自動選択する。残る`X-Egakumi-Profile`は選択や値数・IDの検査に使わず、下流への転送前に削除する清掃だけを残す。このヘッダー移行後、内部設定を操作の基本設定＋モデル別差分へ整理する。profiles・defaultProfile・modalitiesを新正本から撤去し、購読利用枠やCMの接続profileは変更しない。以下はその構成へ移行するときの順序であり、個別環境の実施結果ではない。
+
+1. 内部profileを保持して、旧ヘッダー方式とヘッダーなしの新方式を並行受入する段階1を反映する。`X-Egakumi-Profile`がある要求は従来の選択・検査・403を維持し、ない要求だけAPI・操作とモデル名から設定を選ぶ。`profiles`のない操作への旧ヘッダー指定に対する従来403も残す。ここまでの承認済みAPIM変更も同じ生成元へ揃え、新fragment・必要なNamed Valueを先に登録し、参照API・操作の更新と全資材の読戻しを行う。現在のBearerによるResponses通信を維持する手順を選び、社員Productの所属を解除する通常のclosed transitionをこの通信維持の移行へそのまま使わない。
+2. 現在のCodex接続が維持されることを確認してから、利用者がCodex設定の旧profileヘッダーを外す。アプリを再起動し、Responses推論・SSE完了・会話とローカルツールの継続、モデルalias・利用者監査を実確認する。既定`response`、`codex-auto-review`の解決、FLUX等の別モデルの固定URI選択も確認する。設定編集や再起動だけを実疎通成功と扱わない。
+3. 新設定での実疎通確認後の段階2で、Portal等の旧ヘッダー付与、選択・検査、関連する旧設定・説明をまとめて撤去する。残る旧ヘッダーは選択条件に使わず、下流へ渡さない扱いに揃える。段階1では従来の付与・選択・検査・下流転送前の削除を残し、内部profile自体の撤去は別段階とする。旧query資材は新参照の反映・読戻し後に退役するが、このヘッダー撤去の完了条件と混同しない。
+
+CLIの生成専用出力は期待値であり、APIの適用完了ではない。対象環境のまとめ反映・読戻し・端末再起動後の実接続を、それぞれ確認する。PIIのWAF分割はAPIMと適用・受入を分け、一連の承認済み変更を一括コミットする。[受入項目](../testing/integration-tests.md#apiとモデルによる内部profile選択の受入)で確認する。
+
 ## 工程1：各API・操作のInboundを棚卸する
 
-### 次の棚卸前に、IaC生成・配備サイズの余裕を確保する
+### IaC生成・配備サイズの余裕を確保する
 
 350万bytesはリポジトリの配備前検査予算であり、APIMが個々のXMLへ適用する上限ではない。ただし、[ARMの公式上限](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/best-practices#template-limits)には、変数・パラメーター・反復資源を展開したテンプレート全体の4MBと、資源定義ごとの1MBがある。要求全体の大きさによって4MB未満でも拒否されるため、検査予算を引き上げるだけの対処はしない。現在の展開見積りはAzure内部のjobサイズ計算そのものではない。
 
 APIMの[ポリシー文書](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/azure-subscription-service-limits#api-management-gateway-runtime-limits)と[フラグメント](https://learn.microsoft.com/en-us/azure/api-management/policy-fragments)の単体上限は別に確認する。C#は生成時にXMLへ組み込むため、単体サイズは完成XMLを測る。全体の見積りには配備資源だけでなく、照合用の生成元出力と中間変数も含まれ、同じXMLが複数回数えられる。
 
-次の制御棚卸より先に、照合用の生成元をARM配備要求から分離する案と、API等を別の配備単位へ分割する案を比較する。採用案は、各配備単位を公式4MBの70%以下（280万bytes以下）に収め、追加APIを含む合成設定でも余裕を確認することを目標とする。コメント削除や制御・監査の省略で収めない。
+照合用の生成元を資源配備要求から分離する方式を実装する。同じBicepを一度コンパイルし、既存APIMを参照して完成XMLを出力する生成専用の要求と、API等の資源を配備する要求へ分ける。生成式と資源定義は変更しない。各要求の全outputs・metadata・送信パラメーターを含む見積りを公式4MBの70%以下（280万bytes以下）に収め、追加API・利用枠・CMを含む合成設定でも余裕を確認する。コメント削除や制御・監査の省略で収めない。
 
-照合用データを分離する場合も、現在値の読戻しを正本に置き換えず、同じソースから生成した期待値で照合する。分割する場合は、共通部品・API・操作の登録順、失敗時の再開、正式CLIと既存環境の更新を確認する。このチャットのAPIM接続を維持し、Foundryの容量やAppGWを再配備する変更は含めない。
+生成専用要求には、コード・入力・生成時に確認したAPIMのManaged Identityへ結び付けた別の配備IDを使う。再利用時は保存コードのexportと入力・結果を照合し、生成中のIdentity変更や記録の上書きを検出する。生成結果を得ただけで適用済みとは扱わず、実配備の成功・全graph読戻し・checkpoint保存を終えてから社員Productを開く。旧生成元は保護checkpointを優先し、checkpointがない場合も成功した実配備のIDが指す記録だけを読む。未適用の最新生成を自動採用しない。
+
+現在値の読戻しを正本に置き換えず、同じソースから生成した期待値で照合する。次の制御棚卸より前に、生成・実配備・失敗時の再開、正式CLIとの統合を確認する。このチャットのAPIM接続を維持し、Foundryの容量やAppGWを再配備する変更は含めない。API数の増加で再び予算へ近づく場合は、資源の配備単位をさらに分割する。現在の余裕を、任意のAPI数で上限がなくなる保証にはしない。
 
 共通Inbound STEP5を終えた要求は、呼出元API／操作の`<base/>`の次の処理へ戻る。APIや操作に`<base/>`より前の短絡処理があれば、それも実行順に確認する。最初は`gateway.xml`を使用する推論APIから再開し、他のAPI・操作へ進む。
 
@@ -326,12 +358,14 @@ APIMの[ポリシー文書](https://learn.microsoft.com/en-us/azure/azure-resour
 | 5 | 操作ポリシーの種類別 | PII、文書解析、Live／Realtime、画像・音声等の処理を種類ごとに確認する。各APIでは所属する種類、モデル、接続先、固有制約の差分を照合する |
 | 6 | 工程1の横断確認 | 有効API・全操作の対応表を埋め、未確認の処理・差分・参照先が残っていないことを確認して工程2へ進む |
 
-一つの処理の判断を他の種類へ無条件に流用しない。同じ処理は説明・判断を一度にまとめ、差分があれば別項目として確認する。複数の項目があるブロックは、一項目ずつ判断を揃えた後にまとめて改修・部品化・移設し、反映回数を抑える。
+一つの処理の判断を他の種類へ無条件に流用しない。同じ処理は説明・判断を一度にまとめ、差分があれば別項目として確認する。推奨は現状維持を前提にせず、各処理の必要性・効果・処理負荷・複雑さを示して判断を求める。部品を初めて棚卸または改修する段階で、配置・名前・Azureの日本語説明・XML／C#の処理説明を揃える。複数項目の判断が残る場合は未判断を明記し、配置だけの整理を全制御の承認済みとは扱わない。
+
+以後は、項目ごとに棚卸・判断・ローカル改修を進め、対象ファイル内の変更がまとまってから、承認した差分をAzureへ反映して疎通確認をまとめて行う。項目ごとにはAzureを書き換えず、未判断の条件は変更しない。後続のローカル改修前に作った準備記録を、そのまま適用しない。反映時には最新のソースと承認内容から期待値・差分の証明を作り直し、適用先と先行部品の現在値・呼出し順を再照合してから実行する。ローカル実装済みとAzure反映済み・接続受入済みは別に記録する。
 改修したブロックの必要なローカル検証をまとめ、Azureでは変更対象だけを反映・読戻しする。接続試験は影響するAPI種類の代表操作と認証方式を確認し、成功した無関係の試験を毎回繰り返さない。工程1・2の完了時には、全対象の対応と最終フォルダ構成・legacy撤去を確認する。
 
 | 確認する処理 | 主な対象 |
 |---|---|
-| 共通処理から戻った後の要求情報・認証結果・query検査 | `gateway.xml`、`protocol.xml`、`mcp.xml`、`query-guard.xml` |
+| 共通処理から戻った後の要求情報・認証結果・query観測 | `api-templates/gateway.xml`、`api-templates/protocol.xml`、`api-templates/mcp.xml`、`fragments/request/core-query-observation/core-query-observation.xml`／同名C# |
 | モデルの入力・機能・ツール形式を制限する処理 | `gateway.xml`等の本文検査。function以外のtool拒否、保存済み状態・ファイル参照・include制限などを別々に判断 |
 | 利用枠・トークン数・購読または社員の扱い | `subscription-profile.xml`、`entra-user-profile.xml`、`rate-limit.xml`、`token-limit.xml` |
 | CMの本人接続・外部API向けトークン取得 | `credential-connection.xml`、`credential-session-use.xml`、`credential-login/`、該当API／操作ポリシー |
@@ -355,7 +389,7 @@ OBOはCM本人接続の棚卸時に判断する。APIM向けのアクセスト�
 
 `service.xml`、APIテンプレート、個別操作、監査フラグメントと生成・配備処理を同じ棚卸対象にする。特に、個別`on-error`が共通のEntraエラー処理を継承せず、Bearerの認証失敗を下流障害として扱わないか確認する。
 
-棚卸で残すと決めた処理を正規のフォルダ・フラグメント・説明コメントへ揃え、不要な重複を除去する。現行の`expressions/legacy/`、旧inlineポリシー等は用途と参照先を解消して削除し、ポリシー棚卸完了時にはlegacy資材を残さない。移行時の所有照合・読戻し互換がまだ必要なら、後回しのまま完了とせず、その移行確認まで工程2に含める。
+部品を初めて棚卸または改修する段階で正規のフォルダ・フラグメント名・日本語説明・処理コメントへ揃え、判断済みと未判断を区別する。不要な重複を除去し、現行の`expressions/legacy/`、旧inlineポリシー等は用途と参照先を解消して削除する。ポリシー棚卸完了時にはlegacy資材を残さない。移行時の所有照合・読戻し互換がまだ必要なら、後回しのまま完了とせず、その移行確認まで工程2に含める。
 
 ## 工程3：egakumi-portalの分離
 

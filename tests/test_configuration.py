@@ -19,6 +19,7 @@ from configuration_fixtures import (
     CORE, configuration, fixture, ssh_fixture_key, api_fixture,
     profiled_api_fixture, connection_fixture, pii_fixture, pii_key_fixture,
 )
+from deployment.helpers.firewall_destinations import generated_apim_service_fqdns
 
 
 class PublicSampleTests(unittest.TestCase):
@@ -155,11 +156,16 @@ class PublicSampleTests(unittest.TestCase):
             self.assertEqual(actual["network"]["dnsTtl"], 300)
             self.assertEqual(addresses["firewall"]["snatPrivateRanges"], ["IANAPrivateRanges"])
             self.assertEqual(network["firewall"]["signatureOverrides"], [])
-            for key in ("idpsPrivateRanges", "bypassTrafficSettings",
-                        "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
-                        "apimAdditionalApplicationRules", "managementAdditionalApplicationRules"):
+            for key in ("idpsPrivateRanges", "bypassTrafficSettings"):
                 self.assertEqual(addresses["firewall"][key], [])
                 self.assertNotIn(key, network["firewall"])
+            retired_firewall_inputs = {
+                "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
+                "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
+                "apimAllowedFqdns", "managementAllowedFqdns",
+            }
+            for output in (parameters, options, actual, configuration.build_bicep_configuration(actual)):
+                self.assertFalse(retired_firewall_inputs.intersection(output["network"]["firewall"]))
             self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
             self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
         for key, value in retired_inputs.items():
@@ -188,6 +194,38 @@ class PublicSampleTests(unittest.TestCase):
         for name in ("test", "production"):
             with self.subTest(name=name), self.assertRaisesRegex(configuration.ConfigurationError, "subscriptionId"):
                 configuration.load_configuration(CORE / "params" / (name + ".example.json"))
+
+
+class QueryObservationConfigurationTests(unittest.TestCase):
+    """操作/受付に観測ラベルを任意指定し、廃止設定の入力を拒否する。"""
+
+    def test_retired_gateway_modes_and_operation_names_are_rejected(self):
+        for value in ({}, {"liveCreate":"reject"}, None):
+            raw=pii_fixture()
+            raw["gateway"]["queryGuards"]=value
+            with self.subTest(value=value), self.assertRaises(configuration.ConfigurationError):
+                configuration.normalize_configuration(raw,base_directory=CORE/"config")
+        raw=pii_fixture()
+        raw["apiDefinitions"][0]["operations"][0]["queryGuard"]="piiRestRule"
+        with self.assertRaises(configuration.ConfigurationError):
+            configuration.normalize_configuration(raw,base_directory=CORE/"config")
+
+    def test_http_and_generated_mcp_references_are_independent_and_optional(self):
+        raw = pii_fixture()
+        api = raw["apiDefinitions"][0]
+        api["operations"][0]["queryObservation"] = "piiRestRule"
+        api["mcp"]["queryObservation"] = "piiFacadeRule"
+        result = configuration.normalize_configuration(raw, base_directory=CORE / "config")["apiDefinitions"][0]
+        self.assertEqual(result["operations"][0]["queryObservation"], "piiRestRule")
+        self.assertEqual(result["mcp"]["queryObservation"], "piiFacadeRule")
+        self.assertNotIn("queryObservation", configuration.normalize_configuration(pii_fixture(), base_directory=CORE / "config")["apiDefinitions"][0]["mcp"])
+        for scope in ("operation", "mcp"):
+            for value in (None, False, {}, "none", "unknown", "invalid.rule"):
+                changed = pii_fixture()
+                target = changed["apiDefinitions"][0]
+                (target["operations"][0] if scope == "operation" else target["mcp"])["queryObservation"] = value
+                with self.subTest(scope=scope, value=value), self.assertRaises(configuration.ConfigurationError):
+                    configuration.normalize_configuration(changed, base_directory=CORE / "config")
 
 
 class CanonicalApiConfigurationTests(unittest.TestCase):
@@ -221,7 +259,7 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "maxRequestBytes"):
             self.normalize(raw)
 
-    def test_same_identity_can_keep_disjoint_text_and_pdf_contracts(self):
+    def test_operation_defaults_and_model_settings_preserve_limits(self):
         actual = self.normalize(profiled_api_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["name"], "openai-inference-v1")
         self.assertEqual(actual["serviceClass"], "platform")
@@ -229,25 +267,26 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         self.assertEqual(authorization["mode"], "subscriptionKey")
         self.assertEqual(set(authorization), {"mode", "operationConstraints"})
         constraint = authorization["operationConstraints"]["responses-create"]
-        self.assertEqual(constraint["defaultProfile"], "response")
-        profiles = {entry["profileId"]: entry for entry in constraint["profiles"]}
-        self.assertEqual(profiles["response"]["maxRequestBytes"], 32768)
-        self.assertEqual(profiles["pdf"]["maxRequestBytes"], 2048000)
-        self.assertEqual(profiles["response"]["maxOutputTokens"], 128)
-        self.assertEqual(profiles["pdf"]["maxOutputTokens"], 512)
-        self.assertEqual(profiles["response"]["modalities"], ["text"])
-        self.assertEqual(profiles["pdf"]["modalities"], ["text", "file"])
+        settings = constraint["modelSettings"]
+        self.assertEqual(constraint["allowedModels"], ["gpt-approved", "gpt-secondary"])
+        self.assertEqual(constraint["maxRequestBytes"], 2048000)
+        self.assertEqual(settings["gpt-approved"]["maxRequestBytes"], 32768)
+        self.assertEqual(settings["gpt-secondary"]["maxRequestBytes"], 2048000)
+        self.assertEqual(constraint["maxOutputTokens"], 128)
+        self.assertNotIn("maxOutputTokens", settings["gpt-approved"])
+        self.assertEqual(settings["gpt-secondary"]["maxOutputTokens"], 512)
+        self.assertEqual(settings["gpt-approved"]["settingId"], "response")
 
 
-    def test_profiles_cannot_be_recursive_unknown_or_missing_from_grants(self):
-        for mutation in ("recursive", "unknownDefault", "unknownModality", "wrongKind"):
+    def test_model_settings_cannot_be_recursive_unknown_or_change_the_contract(self):
+        for mutation in ("recursive", "unknownModel", "invalidSettingId", "wrongKind"):
             raw = profiled_api_fixture()
             authorization = raw["apiDefinitions"][0]["authorization"]
             constraint = authorization["operationConstraints"]["responses-create"]
-            if mutation == "recursive": constraint["profiles"][0]["profiles"] = []
-            if mutation == "unknownDefault": constraint["defaultProfile"] = "unregistered"
-            if mutation == "unknownModality": constraint["profiles"][0]["modalities"] = ["arbitrary"]
-            if mutation == "wrongKind": constraint["profiles"][0]["kind"] = "bodyModel"
+            if mutation == "recursive": constraint["modelSettings"]["gpt-approved"]["modelSettings"] = {}
+            if mutation == "unknownModel": constraint["modelSettings"]["unregistered"] = {}
+            if mutation == "invalidSettingId": constraint["modelSettings"]["gpt-approved"]["settingId"] = "invalid*"
+            if mutation == "wrongKind": constraint["modelSettings"]["gpt-approved"]["kind"] = "bodyModel"
             with self.subTest(mutation=mutation), self.assertRaises(configuration.ConfigurationError):
                 self.normalize(raw)
 
@@ -261,10 +300,10 @@ class CanonicalApiConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "classified as sample"):
             self.normalize(raw)
 
-    def test_flat_custom_api_without_optional_profiles_is_supported(self):
+    def test_flat_custom_api_without_optional_model_settings_is_supported(self):
         actual = self.normalize(api_fixture())["apiDefinitions"][0]
         self.assertEqual(actual["name"], "models")
-        self.assertNotIn("profiles", actual["authorization"]["operationConstraints"]["responses-create"])
+        self.assertNotIn("modelSettings", actual["authorization"]["operationConstraints"]["responses-create"])
 
 
 class PortableFileReferenceTests(unittest.TestCase):
@@ -761,35 +800,108 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(configuration.ConfigurationError, "duplicate"):
             self.normalize(raw)
 
-    def test_azure_dns_and_ca_egress_derived(self):
-        allowed = self.normalize()["network"]["firewall"]["managementAllowedFqdns"]
-        self.assertIn("management.azure.com", allowed)
-        self.assertIn("acme-v02.api.letsencrypt.org", allowed)
-        self.assertNotIn("api.cloudflare.com", allowed)
-        self.assertNotIn("route53.amazonaws.com", allowed)
+    def test_certificate_directory_remains_a_business_setting_without_public_firewall_lists(self):
+        for directory in ("production", "staging"):
+            raw = fixture()
+            raw["certificate"]["directory"] = directory
+            with self.subTest(directory=directory):
+                result = self.normalize(raw)
+                self.assertEqual(result["certificate"]["directory"], directory)
+                self.assertNotIn("managementAllowedFqdns", result["network"]["firewall"])
 
-    def test_azure_dns_api_egress_is_added_without_duplicates(self):
-        for initial in ([], ["approved.example.com", "management.azure.com"]):
-            with self.subTest(configured_hosts=bool(initial)):
-                raw = fixture()
-                raw["network"]["firewall"]["managementAllowedFqdns"] = initial
-                allowed = self.normalize(raw)["network"]["firewall"]["managementAllowedFqdns"]
-                for hostname in [*initial, "management.azure.com"]:
-                    self.assertEqual(allowed.count(hostname), 1)
-                self.assertIn("acme-v02.api.letsencrypt.org", allowed)
+    def test_internal_api_destinations_are_reproducible_and_follow_backend_overrides_and_identity(self):
+        empty = configuration.build_bicep_configuration(self.normalize())
+        self.assertEqual(empty["generatedApimServiceFqdns"], [])
+        raw = connection_fixture()
+        raw["apiDefinitions"][0].pop("credentialConnection")
+        raw["apiDefinitions"][0]["operations"][0]["backendOverride"] = {
+            "backendService": "external", "backendUrl": "https://override.example.com/v1",
+            "backendAudience": "https://override.example.com", "backendAuthentication": {"mode": "none"},
+        }
+        before = copy.deepcopy(raw)
+        first = configuration.build_bicep_configuration(self.normalize(raw))
+        second = configuration.build_bicep_configuration(self.normalize(raw))
+        self.assertEqual(first["generatedApimServiceFqdns"],
+                         ["graph.microsoft.com", "management.azure.com", "override.example.com"])
+        self.assertEqual(second["generatedApimServiceFqdns"], first["generatedApimServiceFqdns"])
+        self.assertEqual(raw, before)
+        self.assertNotIn("apimAllowedFqdns", first["network"]["firewall"])
+        raw["generatedApimServiceFqdns"] = []
+        with self.assertRaisesRegex(configuration.ConfigurationError, "unsupported field.*generatedApimServiceFqdns"):
+            self.normalize(raw)
 
-    def test_other_dns_plugins_are_unsupported_even_with_explicit_egress(self):
+    def test_internal_firewall_destinations_stop_on_unrepresentable_tls_backends_without_echoing_input(self):
+        urls = (
+            "http://private-input-marker.example.com/v1", "ws://private-input-marker.example.com/v1",
+            "https://192.0.2.70/v1", "https://[2001:db8::70]/v1",
+            "https://private-input-marker.example.com:8443/v1",
+            "https://private-input-marker.example.com:invalid/v1",
+            "https://user:private-input-marker@backend.example.com/v1",
+            "https://private-input-marker.example.com/v1#fragment",
+            "https://backend.example.com/v1?api_key=private-input-marker",
+            "https://*.example.com/v1", "https://backend_name.example.com/v1",
+            "https://-backend.example.com/v1", "https://backend-.example.com/v1",
+            "https://backend..example.com/v1", "https://backend/v1",
+            "https://" + "a" * 64 + ".example.com/v1",
+            "https://" + ".".join(["a" * 63] * 4) + "/v1",
+            *("https://back" + chr(code) + "end.example.com/v1" for code in (0, 9, 10, 13, 32, 127)),
+        )
+        for url in urls:
+            for source in ("api", "override", "identity"):
+                backend = {"backendService": "external", "backendUrl": url}
+                document = {"apiDefinitions": [backend]} if source == "api" else (
+                    {"apiDefinitions": [{"operations": [{"backendOverride": backend}]}]}
+                    if source == "override" else {
+                        "gateway": {"authentication": {"credentialLogin": {"providerNames": ["selected"]}}},
+                        "credentialProviders": [{"name": "selected", "identityEndpoint": url}],
+                    })
+                with self.subTest(source=source, url=url), self.assertRaises(ValueError) as caught:
+                    generated_apim_service_fqdns(document)
+                self.assertNotIn(url, str(caught.exception))
+                self.assertNotIn("private-input-marker", str(caught.exception))
+        for url in ("https://192.0.2.70/v1", "https://backend.example.com:8443/v1",
+                    "https://*.example.com/v1", "https://backend_name.example.com/v1",
+                    "https://back" + chr(0) + "end.example.com/v1"):
+            raw = connection_fixture()
+            raw["apiDefinitions"][0]["backendUrl"] = url
+            with self.subTest(core_backend=url), self.assertRaises(configuration.ConfigurationError):
+                self.normalize(raw)
+
+    def test_internal_firewall_destinations_accept_fixed_dns_tls_endpoints(self):
+        for scheme in ("https", "wss"):
+            for port in ("", ":443"):
+                document = {"apiDefinitions": [{"backendService": "external",
+                    "backendUrl": scheme + "://Backend-1.Example.com" + port + "/v1"}]}
+                with self.subTest(scheme=scheme, port=port):
+                    self.assertEqual(generated_apim_service_fqdns(document), ["backend-1.example.com"])
+
+    def test_broker_defaults_are_validated_without_personal_login_or_fabricated_profiles(self):
+        normalized = self.normalize()
+        result = configuration.build_bicep_configuration(normalized)
+        self.assertNotIn("credentialLogin", result["gateway"]["authentication"])
+        self.assertEqual(result["credentialProfiles"], {})
+        self.assertEqual(result["credentialPhysicalProviders"], [])
+        self.assertEqual(result["credentialBroker"]["sqlCapacity"], 2)
+        self.assertEqual(result["credentialBroker"]["minReplicas"], 2)
+        self.assertEqual(result["credentialBrokerSession"]["transactionLifetimeSeconds"], 300)
+        self.assertEqual(result["credentialBrokerSession"]["loginCallsPerMinute"], 10)
+        for broken in ({"sqlCapacity": 0}, {"minReplicas": 0}, {"minReplicas": 3, "maxReplicas": 2}):
+            raw = fixture()
+            raw["credentialBroker"] = broken
+            with self.subTest(configuration=broken), self.assertRaisesRegex(
+                    configuration.ConfigurationError, "credentialBroker"):
+                self.normalize(raw)
+
+    def test_other_dns_plugins_are_unsupported_without_reading_secrets(self):
         for plugin in ("Cloudflare", "Route53", "UnlistedProvider", "azure"):
-            for allow in ([], ["dns-api.example.com"]):
-                with self.subTest(plugin=plugin, explicit_egress=bool(allow)):
-                    raw = fixture()
-                    raw["certificate"]["plugin"] = plugin
-                    raw["network"]["firewall"]["managementAllowedFqdns"] = allow
+            with self.subTest(plugin=plugin):
+                raw = fixture()
+                raw["certificate"]["plugin"] = plugin
+                with self.assertRaisesRegex(configuration.ConfigurationError, "Azure Public DNS"):
+                    self.normalize(raw)
+                with mock.patch.object(configuration, "load_ssh_public_key", side_effect=AssertionError("no secret reads")):
                     with self.assertRaisesRegex(configuration.ConfigurationError, "Azure Public DNS"):
-                        self.normalize(raw)
-                    with mock.patch.object(configuration, "load_ssh_public_key", side_effect=AssertionError("no secret reads")):
-                        with self.assertRaises(configuration.ConfigurationError):
-                            configuration.load_secret_inputs(raw)
+                        configuration.load_secret_inputs(raw)
 
     def test_empty_api_set_is_reserved_for_standard_publication_without_expanding_during_validation(self):
         for publish in (False, True):
@@ -1144,7 +1256,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
 class PolicySourceTests(unittest.TestCase):
     """公開サンプルと配備設定の型・値・組合せ・秘密ファイル境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
-        self.root = ET.parse(CORE / "apps/gateway/apim/policies/gateway.xml").getroot()
+        self.root = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot()
         self.guard = next(element.attrib["value"] for element in self.root.iter("set-variable") if element.attrib.get("name") == "gatewayTargetAllowed")
 
     def test_stateless_post_has_exact_route_and_allowed_models(self):

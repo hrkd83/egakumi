@@ -3,6 +3,7 @@
 Bicepのコンパイル結果から、パスワード無効化・Entra SSH拡張・Linux AMA/DCR・NTP入力を確認する。実VMへのログイン成功は別の確認である。
 """
 from bicep_helpers import compile_bicep
+from arm_helpers import ArmExpression
 
 import json
 import os
@@ -13,6 +14,19 @@ import tempfile
 import unittest
 
 CORE = Path(__file__).resolve().parents[1]
+
+
+class ManagementProfileExpression(ArmExpression):
+    """管理VMのコンパイル式に使われる空値検査と浅いobject結合だけを補う。"""
+
+    def evaluate(self, parameters, index=0, tree=None, bindings=None):
+        tree = self.tree if tree is None else tree
+        if tree[0] == "call" and tree[1] in ("empty", "shallowMerge"):
+            values = [self.evaluate(parameters, index, item, bindings) for item in tree[2]]
+            if tree[1] == "empty":
+                return not values[0]
+            return {key: value for mapping in values[0] for key, value in mapping.items()}
+        return super().evaluate(parameters, index, tree, bindings)
 
 
 class LinuxTimeConfigurationTests(unittest.TestCase):
@@ -100,18 +114,35 @@ class LinuxManagementTemplateTests(unittest.TestCase):
     def resources(template, resource_type):
         return [resource for resource in template["resources"] if resource["type"] == resource_type]
 
-    def test_vm_requires_public_key_and_disables_password_login(self):
+    def test_vm_requires_public_key_and_keeps_ssh_password_login_disabled(self):
         template = self.templates["management"]
         self.assertIn("sshPublicKey", template["parameters"])
-        self.assertNotIn("adminPassword", template["parameters"])
+        self.assertEqual(template["parameters"]["adminPassword"]["type"].lower(), "securestring")
+        self.assertEqual(template["parameters"]["adminPassword"]["defaultValue"], "")
         vm, = self.resources(template, "Microsoft.Compute/virtualMachines")
-        profile = vm["properties"]["osProfile"]
-        self.assertNotIn("adminPassword", profile)
-        self.assertNotIn("windowsConfiguration", profile)
-        linux = profile["linuxConfiguration"]
-        self.assertTrue(linux["disablePasswordAuthentication"])
-        self.assertEqual(len(linux["ssh"]["publicKeys"]), 1)
-        self.assertIn("sshPublicKey", linux["ssh"]["publicKeys"][0]["keyData"])
+        # The conditional secure input is supplied for an initial VM only;
+        # empty input omits the immutable OSProfile property for an existing VM.
+        supplied = {name: definition["defaultValue"]
+                    for name, definition in template["parameters"].items() if "defaultValue" in definition}
+        supplied.update({"adminUsername": "fixtureoperator", "sshPublicKey": "synthetic-public-key",
+                         "__variables": {"computerName": "mgmt-synthetic-fixture"}})
+        for password in ("", "Synthetic-Only-Password!1"):
+            with self.subTest(initial_password=bool(password)):
+                profile = ManagementProfileExpression(vm["properties"]["osProfile"]).evaluate(
+                    {**supplied, "adminPassword": password})
+                if password:
+                    self.assertEqual(profile["adminPassword"], password)
+                else:
+                    self.assertNotIn("adminPassword", profile)
+                self.assertEqual(profile["adminUsername"], supplied["adminUsername"])
+                self.assertNotIn("windowsConfiguration", profile)
+                linux = profile["linuxConfiguration"]
+                self.assertTrue(linux["disablePasswordAuthentication"])
+                self.assertTrue(linux["provisionVMAgent"])
+                self.assertEqual(linux["ssh"]["publicKeys"], [{
+                    "path": "/home/" + supplied["adminUsername"] + "/.ssh/authorized_keys",
+                    "keyData": supplied["sshPublicKey"],
+                }])
         self.assertEqual(vm["properties"]["storageProfile"]["osDisk"]["osType"], "Linux")
 
     def test_vm_uses_linux_entra_and_monitor_extensions_and_dcr(self):

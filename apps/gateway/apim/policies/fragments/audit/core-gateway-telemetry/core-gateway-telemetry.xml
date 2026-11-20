@@ -87,7 +87,7 @@
             record[&quot;subscriptionId&quot;] = subscription;
             record[&quot;callerId&quot;] = &quot;subscription:&quot; + subscription;
             record[&quot;method&quot;] = &quot;subscriptionKey&quot;;
-            /* 説明：購読の利用設定を指すprofileIdは、256文字以内の文字列だけ記録します。 */
+            /* 説明：選択した操作・モデル設定の監査用ラベルprofileIdは、256文字以内の文字列だけ記録します。 */
             if (decision[&quot;profileId&quot;]?.Type == JTokenType.String &amp;&amp; ((string)decision[&quot;profileId&quot;]).Length &lt;= 256) {
               record[&quot;profileId&quot;] = (string)decision[&quot;profileId&quot;];
             }
@@ -146,10 +146,10 @@
           if (!String.IsNullOrEmpty(model)) {
             record["targetModel"] = model;
             /* 説明：モデルの別名は設定との一致を確認します。拒否した任意の入力は記録しません。 */
-            /* Only a configured alias in the selected profile is recorded.
+            /* Only a configured alias in the selected operation settings is recorded.
                Never log an arbitrary rejected request model or request body. */
-            if (context.Variables.ContainsKey("gatewayProfileSelection")) {
-              var selected = JObject.Parse((string)context.Variables["gatewayProfileSelection"]);
+            if (context.Variables.ContainsKey("gatewayOperationSelection")) {
+              var selected = JObject.Parse((string)context.Variables["gatewayOperationSelection"]);
               var requested = (string)selected["requestedModel"];
               var aliases = selected["constraint"]?["modelAliases"] as JObject;
               if ((bool?)selected["allowed"] == true &amp;&amp; (string)selected["effectiveModel"] == model
