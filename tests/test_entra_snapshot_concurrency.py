@@ -1,10 +1,13 @@
 """合成ARMで独立readbackの並行化と、全照合後に戻る境界を検証する。"""
 import copy
+import json
 import threading
 import unittest
+from unittest import mock
 
 from test_entra_publication import APIM, response
 import entra_publication as publication
+from deployment import lifecycle
 
 
 class SnapshotTransport:
@@ -56,6 +59,65 @@ def snapshot_fixture():
 
 
 class SnapshotConcurrencyTests(unittest.TestCase):
+    def test_standard_arm_transport_activates_snapshot_pool_with_one_token_and_exact_responses(self):
+        snapshot = snapshot_fixture()
+        delegate = SnapshotTransport(snapshot, concurrent=True)
+        expected_headers = {entry[0]: entry[1] for entry in snapshot.values()}
+        client = lifecycle.ArmTransport({"subscriptionId": APIM.split("/")[2],
+                                         "azureTenantId": "22222222-2222-4222-8222-222222222222"})
+        client.opener = mock.Mock()
+
+        def open_request(request, *, timeout):
+            self.assertEqual(request.method, "GET")
+            self.assertIsNone(request.data)
+            self.assertEqual(timeout, 120)
+            self.assertTrue(request.full_url.startswith("https://management.azure.com/"))
+            path = request.full_url.removeprefix("https://management.azure.com")
+            supplied = {key.lower(): value for key, value in request.header_items()}
+            self.assertEqual(supplied["authorization"], "Bearer CONCURRENT_TOKEN_FIXTURE")
+            selected = {key: supplied[key.lower()] for key in expected_headers[path]}
+            self.assertEqual(selected, expected_headers[path])
+            observed = delegate.request("GET", path, headers=selected)
+            response = mock.MagicMock()
+            response.__enter__.return_value = response
+            response.status, response.headers = observed["statusCode"], observed["headers"]
+            response.read.return_value = json.dumps(observed["body"]).encode()
+            return response
+
+        client.opener.open.side_effect = open_request
+        result, finished = {}, threading.Event()
+
+        def caller():
+            try:
+                publication.verify_snapshot(snapshot, client)
+                result["success"] = True
+            except Exception as error:
+                result["error"] = error
+            finally:
+                result["activeAtReturn"] = delegate.active
+                finished.set()
+
+        with mock.patch.object(lifecycle, "arm_access_token",
+                               return_value={"accessToken": "CONCURRENT_TOKEN_FIXTURE",
+                                             "expires_on": float("inf")}) as token:
+            thread = threading.Thread(target=caller, daemon=True)
+            thread.start()
+            try:
+                self.assertTrue(delegate.started.wait(5), "Standard ARM snapshot reads stayed sequential")
+                self.assertEqual(delegate.active, 8)
+                self.assertFalse(finished.is_set())
+            finally:
+                delegate.release.set()
+                thread.join(5)
+            self.assertFalse(thread.is_alive())
+            token.assert_called_once_with(client.subscription, client.tenant)
+        self.assertNotIn("error", result)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["activeAtReturn"], 0)
+        self.assertEqual(delegate.maximum, 8)
+        self.assertEqual(sorted(delegate.completed), sorted(expected_headers))
+        self.assertEqual(client.opener.open.call_count, len(snapshot))
+
     def run_held_readback(self, *, concurrent=True, drift=None, failure=False):
         snapshot = snapshot_fixture()
         transport = SnapshotTransport(snapshot, concurrent=concurrent, drift=drift, failure=failure)

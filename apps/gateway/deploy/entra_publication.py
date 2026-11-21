@@ -1157,7 +1157,12 @@ def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, 
     global/API/product ETagを直前に確認し、所属集合を直後に完全照合する。
     広いassociationの置換や、未確認の並行変更を上書きする処理は行わない。
     """
+    if time.monotonic() >= deadline:
+        raise DeploymentError("Dedicated Product membership deadline expired before write")
     verify_snapshot(snapshot, transport)
+    # 全依存の再照合中にも期限が進むため、変更要求の直前で再確認します。
+    if time.monotonic() >= deadline:
+        raise DeploymentError("Dedicated Product membership deadline expired before write")
     product_id = apim_id + "/products/" + ENTRA_OPEN_PRODUCT_ID
     path = product_id + "/apis/" + api_id.rsplit("/", 1)[-1] + "?api-version=" + APIM_API
     response = transport.request("PUT" if add else "DELETE", path)
@@ -1554,7 +1559,7 @@ def reconcile_closed_publication(inventory, desired_global_policy, transport, st
 
 def transition(current: PolicyManifest, desired_global_policy, transport, stage_closed_apis,
                *, previous_open_api_ids=(), desired_open_api_ids=(), new_api_ids=(), stage_prerequisites=None,
-               on_staged=None, sleep=time.sleep, timeout_seconds=300):
+               on_staged=None, on_prepared=None, sleep=time.sleep, timeout_seconds=300):
     """所属解除 → staging/source readback → global/ETag/readback → 最後の所属追加。
 
     stage callbackは全APIのsubscriptionRequired=trueを保ち、更新後source manifestを返す。
@@ -1575,6 +1580,8 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
     snapshot.update(product_snapshot)
     verify_snapshot(snapshot, transport)
     deadline = time.monotonic() + timeout_seconds
+    if on_prepared is not None:
+        on_prepared(deadline)
     global_id = current.apim_id + "/policies/policy"
     prior_global = snapshot[global_id][2]
     opened, written_global, global_write_accepted = set(), None, False
@@ -1607,6 +1614,8 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
         if on_staged is not None:
             on_staged()
         if _structure(_xml(desired_global_policy)) != _structure(_xml(current.policies[global_id])):
+            if time.monotonic() >= deadline:
+                raise DeploymentError("Entra publication deadline expired before global policy write")
             response = transport.request("PUT", global_id + "?api-version=" + APIM_API,
                                          {"properties": {"format": "rawxml", "value": desired_global_policy}},
                                          headers={"If-Match": _etag(ready[global_id][2])})

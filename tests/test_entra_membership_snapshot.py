@@ -24,6 +24,78 @@ class MembershipSnapshotTests(unittest.TestCase):
         return publication.transition(self.current, self.desired.policies[GLOBAL], self.transport, self.stage,
             previous_open_api_ids=old, desired_open_api_ids=new, sleep=lambda _: None)
 
+    def test_expired_membership_budget_sends_no_read_or_write(self):
+        for add in (False, True):
+            with self.subTest(add=add):
+                self.transport.calls.clear()
+                with mock.patch.object(publication.time, "monotonic", return_value=10):
+                    with self.assertRaisesRegex(publication.DeploymentError, "deadline expired before write"):
+                        publication._membership(APIM, self.api_a, add, self.transport, {}, set(),
+                                                sleep=lambda _: None, deadline=10)
+                self.assertEqual(self.transport.calls, [])
+
+    def test_prepared_deadline_starts_after_readback_and_is_shared_before_closed_stage(self):
+        clock, deadlines = [0], []
+        def advance_preflight(method, *_):
+            if method == "GET":
+                clock[0] = 100
+        def prepared(deadline):
+            self.assertTrue(self.transport.calls)
+            self.assertTrue(all(method == "GET" for method, *_ in self.transport.calls))
+            deadlines.append(deadline)
+        def stage():
+            self.assertEqual(deadlines, [110])
+            return self.stage()
+        self.transport.hook = advance_preflight
+        try:
+            with mock.patch.object(publication.time, "monotonic", side_effect=lambda: clock[0]):
+                result = publication.transition(self.current, self.desired.policies[GLOBAL], self.transport,
+                    stage, on_prepared=prepared, timeout_seconds=10, sleep=lambda _: None)
+        finally:
+            self.transport.hook = None
+        self.assertTrue(result["managementPlaneVerified"])
+        self.assertEqual(deadlines, [110])
+
+    def test_staged_graph_exhausting_budget_does_not_write_global_policy(self):
+        clock, staged = [0], [False]
+        def exhaust_after_staging(method, *_):
+            if staged[0] and method == "GET":
+                clock[0] = 10
+        def stage():
+            staged[0] = True
+            return self.stage()
+        self.transport.hook = exhaust_after_staging
+        try:
+            with mock.patch.object(publication.time, "monotonic", side_effect=lambda: clock[0]):
+                with self.assertRaises(publication.TransitionError) as error:
+                    publication.transition(self.current, self.desired.policies[GLOBAL], self.transport,
+                        stage, timeout_seconds=10, sleep=lambda _: None)
+        finally:
+            self.transport.hook = None
+        self.assertTrue(staged[0])
+        self.assertTrue(error.exception.employee_path_closed)
+        self.assertTrue(error.exception.recovery_complete)
+        self.assertFalse(any(method == "PUT" for method, *_ in self.transport.calls))
+
+    def test_membership_budget_expiring_during_exact_snapshot_check_sends_no_write(self):
+        snapshot = publication.read_policy_graph(self.current, self.transport)
+        for add in (False, True):
+            with self.subTest(add=add):
+                clock = [0]
+                self.transport.calls.clear()
+                def expire_budget(*_):
+                    clock[0] = 10
+                self.transport.hook = expire_budget
+                try:
+                    with mock.patch.object(publication.time, "monotonic", side_effect=lambda: clock[0]):
+                        with self.assertRaisesRegex(publication.DeploymentError, "deadline expired before write"):
+                            publication._membership(APIM, self.api_a, add, self.transport, snapshot, set(),
+                                                    sleep=lambda _: None, deadline=10)
+                finally:
+                    self.transport.hook = None
+                self.assertTrue(self.transport.calls)
+                self.assertTrue(all(method == "GET" for method, *_ in self.transport.calls))
+
     def test_close_and_open_reuse_verified_graph_and_read_only_the_changed_api_collection(self):
         self.transport.members = {self.api_a, self.api_b}
         self.transport.sync_members()

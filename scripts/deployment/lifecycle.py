@@ -563,6 +563,10 @@ def _arm_success_body(method, parsed, request_body, response_headers, content):
 
 class ArmTransport:
     """指定サブスクリプションのARMだけへ接続する。トークンはメモリー内に保持する。"""
+    # 標準handlerは要求・接続・応答を呼出しごとに作り、token更新だけをlockします。
+    # 独立GETの照合を並行化しても、変更要求は呼出し側で順に実行します。
+    supports_concurrent_reads = True
+
     def __init__(self, config: dict):
         """接続先のサブスク・テナントを固定し、リダイレクトしないクライアントを用意する。"""
         self.subscription = config["subscriptionId"]

@@ -1248,16 +1248,22 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
 
     def publish_closed_stage():
         if changed:
+            if time.monotonic() >= deadline:
+                raise DeploymentError("API publication deadline expired before Firewall write")
             response = transport.request("PUT", fw["groupId"] + "?api-version=" + NETWORK_API, body, headers={"If-Match": etag})
             require_success(response, "Update APIM-only Firewall FQDNs", allowed=(200, 201, 202))
             observed = _wait_resource(transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
             if not _contains(observed.get("properties"), body["properties"]):
                 raise ValueError("Firewall readback did not preserve the approved rules; API publication was not attempted")
         # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
-        initialize_profile_settings(plan["apimId"], transport)
+        if time.monotonic() >= deadline:
+            raise DeploymentError("API publication deadline expired before profile initialization")
+        initialize_profile_settings(plan["apimId"], transport, deadline=deadline)
         deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
             "properties": {"mode": "Incremental", "template": publication_template,
                            "parameters": publication_parameters(template, plan["parameters"]) if generation_id is not None else plan["parameters"]}}
+        if time.monotonic() >= deadline:
+            raise DeploymentError("API publication deadline expired before API write")
         response = transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
         require_success(response, "Start API-only publication", allowed=(200, 201, 202))
         observed = _wait_resource(transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
@@ -1282,7 +1288,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         # 途中失敗時は共通入口を切り替えず、失敗配備記録から同じ計画を再実行できます。
         if not transition_needed:
             install_common_authentication(authentication_policy, transport, sleep=sleep, deadline=deadline)
-        # 通常 up と同じ仕上げを行い、proto 再取り込み後も公開接続説明を保つ。
+        # 通常 up と同じ互換仕上げを通し、通常APIの公開説明は資材内の定義を使う。
         catalog_descriptions = finalize_descriptions(config, state["outputs"], transport)
         # 正式APIの公開が完了してから、APIMが初期作成するサンプルだけを整理する。
         # 未登録・削除済みは正常。業務用に転用した同名定義や、その購読は保持する。
@@ -1374,12 +1380,18 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         elif reconciliation is None:
             stage_callback = publish_closed_stage
         if reconciliation is None:
+            def share_prepared_deadline(value):
+                # 閉鎖から再公開まで、read-only preflight後に始まる同じ予算を使います。
+                nonlocal deadline
+                deadline = value
+
             entra_result = entra_publication.transition(current_manifest, authentication_policy["value"], transport, stage_callback,
                 previous_open_api_ids={plan["apimId"] + "/apis/" + name for name in old_names},
                 desired_open_api_ids={plan["apimId"] + "/apis/" + name for name in new_names},
                 new_api_ids=new_api_ids,
                 stage_prerequisites=stage_prerequisites,
-                on_staged=record_source, sleep=sleep, timeout_seconds=timeout_seconds)
+                on_staged=record_source, on_prepared=share_prepared_deadline,
+                sleep=sleep, timeout_seconds=timeout_seconds)
     else:
         publish_closed_stage()
         # Preserve the legacy key-only publication contract (custom Products,

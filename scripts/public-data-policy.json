@@ -3787,9 +3787,10 @@
       "rule": "credential-assignment",
       "value": "CONCURRENT_TOKEN_FIXTURE",
       "paths": [
-        "tests/test_lifecycle_transport.py"
+        "tests/test_lifecycle_transport.py",
+        "tests/test_entra_snapshot_concurrency.py"
       ],
-      "reason": "Fixed dummy access-token string returned by the local fetch_token mock in offline ARM transport tests; not a live credential."
+      "reason": "Fixed dummy access-token string returned by local token mocks in offline ARM transport and snapshot integration tests; not a live credential."
     },
     {
       "rule": "environment-identifier",
@@ -4385,8 +4386,9 @@
     {
       "rule": "unknown-uuid",
       "value": "22222222-2222-4222-8222-222222222222",
-      "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
+      "reason": "Independent repeated-digit identity fixture for offline maintenance and ARM snapshot validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
+        "tests/test_entra_snapshot_concurrency.py",
         "tests/test_lifecycle_serial.py",
         "tests/test_maintenance_upgrade.py",
         "tests/test_management_client.py",
