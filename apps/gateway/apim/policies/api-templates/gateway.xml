@@ -238,7 +238,7 @@
           return context.Request.Method == &quot;POST&quot;;
         }
         if (kind == &quot;documentAnalysis&quot; || kind == &quot;documentAnalysisStatus&quot;) {
-          /* Operation policies validate native input and owner-bound job tickets. */
+          /* 解析開始のmodelクエリは後続の共通部品で、結果取得の所有者チケットは操作ポリシーで確認します。 */
           return (kind == &quot;documentAnalysis&quot; &amp;&amp; context.Request.Method == &quot;POST&quot; &amp;&amp; context.Operation.Id == &quot;analyze_document&quot;)
             || (kind == &quot;documentAnalysisStatus&quot; &amp;&amp; context.Request.Method == &quot;GET&quot; &amp;&amp; context.Operation.Id == &quot;get_document_operation&quot;);
         }
@@ -260,6 +260,33 @@
         <return-response><set-status code="403" reason="API target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
       </when>
     </choose>
+    <!-- ========== Document解析の入力設定の確認（core-document-input-validation） ========== -->
+    <!-- 目的：解析開始のmodelクエリを、利用回数制限・下流認証・正常受付の記録より前に確認します。 -->
+    <!-- 処理：対象操作だけ同名部品を呼び、model入力の不備400と内部変数の引渡し失敗500を監査と応答へ渡します。 -->
+    <!-- 原本とNative JSONの本文は読み取り・変換せず、解析可否は提供元へ任せます。 -->
+    <choose id="core-document-input-validation">
+      <when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;kind&quot;] == &quot;documentAnalysis&quot;)">
+        <include-fragment id="core-document-input-validation" fragment-id="core-document-input-validation" />
+        <choose>
+          <when condition="@((int)context.Variables[&quot;documentInputStatus&quot;] != 200)">
+            <!-- 入力不備と設定不備を区別して記録します。本文・クエリ値・内部設定は監査へ出しません。 -->
+            <set-variable name="gatewayAuditPhase" value="@((int)context.Variables[&quot;documentInputStatus&quot;] == 500 ? &quot;policy-error&quot; : &quot;rejected&quot;)" />
+            <set-variable name="gatewayAuditCode" value="@((int)context.Variables[&quot;documentInputStatus&quot;] == 500 ? &quot;OPERATION_SETTINGS_INVALID&quot; : &quot;INVALID_REQUEST&quot;)" />
+            <set-variable name="gatewayAuditStatus" value="@((int)context.Variables[&quot;documentInputStatus&quot;])" />
+            <include-fragment fragment-id="core-gateway-telemetry" />
+            <!-- 入力不備は既存のDocumentInvalidInput、設定不備はDocumentAnalysisUnavailableで要求を終了します。 -->
+            <return-response>
+              <set-status code="@((int)context.Variables[&quot;documentInputStatus&quot;])" reason="@((int)context.Variables[&quot;documentInputStatus&quot;] == 500 ? &quot;Document operation settings are invalid&quot; : &quot;Invalid document input&quot;)" />
+              <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+              <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+              <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+              <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentInputStatus"] == 500 ? "DocumentAnalysisUnavailable" : "DocumentInvalidInput"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+            </return-response>
+          </when>
+        </choose>
+      </when>
+    </choose>
+    <!-- === -->
     <!-- 選択済みの操作制約は制御用設定へ戻し、監査メタデータへ混ぜません。
          本文からのモデル名取得は通常HTTPに限定します。 -->
     <set-variable name="gatewayControlSettings" value="@{

@@ -39,6 +39,10 @@ policies/
 │   │   │   ├── core-speech-ssml-guard.xml
 │   │   │   ├── core-speech-ssml-guard.cs
 │   │   │   └── README.md
+│   │   ├── core-document-input-validation/
+│   │   │   ├── core-document-input-validation.xml
+│   │   │   ├── core-document-input-validation.cs
+│   │   │   └── README.md
 │   │   └── core-query-observation/
 │   │       ├── core-query-observation.xml
 │   │       ├── core-query-observation.cs
@@ -81,6 +85,10 @@ policies/
 │   ├── protocol.xml
 │   └── README.md
 ├── operation-policies/
+│   ├── document-analysis/
+│   │   ├── document-analysis.xml
+│   │   └── document-analysis-status.xml
+│   └── README.md
 └── snippets/
 ```
 
@@ -138,14 +146,20 @@ HTTPの`gateway.xml`は操作・モデル設定の準備後に`core-api-authenti
 
 `core-model-limits`は`fragments/request/core-model-limits/`の同名XML・C#で管理する。旧`model-limits.xml`は直下に残さない。
 HTTPテンプレートが選択済みの設定を渡し、部品が`gatewayLimitDecision`へ結果を保存する。短い監査・応答フローはテンプレートに残す。
-内部設定JSON・本文形式・本文を扱う形式の上限設定の不備は500・`LIMITS_NOT_CONFIGURED`へ分類する。`none`は上限を読まず成功する。共有部品のMIME許可一覧比較は撤去する。音声認識・音声ファイルの文字起こし・画像編集・音声合成の4操作は、汎用の操作設定`requestBodySizeCheck=declared`で、この共有部品の申告サイズ確認と早期413だけを使う。音声合成は次の専用部品で実サイズも確認し、前の3操作はサイズ検査だけの本文全量読取りを省く。ほかの操作の実サイズ検査は維持する。以降のモデル・本文項目の制限は、続く棚卸で個別に判断する。
+内部設定JSON・本文形式・本文を扱う形式の上限設定の不備は500・`LIMITS_NOT_CONFIGURED`へ分類する。`none`は上限を読まず成功する。共有部品のMIME許可一覧比較は撤去する。音声認識・音声ファイルの文字起こし・画像編集・音声合成・Document解析の5操作は、汎用の操作設定`requestBodySizeCheck=declared`で、この共有部品の申告サイズ確認と早期413だけを使う。音声合成は次の専用部品で実サイズも確認し、ほかの4操作はサイズ検査だけの本文全量読取りを省く。ほかの操作の実サイズ検査は維持する。以降のモデル・本文項目の制限は、続く棚卸で個別に判断する。
 移設とコメント整備を全制御の棚卸完了とは扱わない。[本体と棚卸状態](fragments/request/core-model-limits/README.md)を参照する。
 
 ## 音声合成の本文サイズと宣言を確認する
 
 `core-speech-ssml-guard`を`fragments/request/core-speech-ssml-guard/`の同名XML・C#で管理し、直下の旧`speech-ssml-guard.xml`は残さない。既存のSSML検査対象から生成した`gatewayControlSettings.speechSsmlOperationIds`をHTTP APIが読み、共有サイズ検査直後、利用枠・下流認証準備・`accepted`監査より前で呼ぶ。Operationの`<base />`後には重ねて呼ばない。
 
-この部品は本文を一度だけ読み、選択済みの`maxRequestBytes`との実サイズ比較を文字列化前に行い、通過後に既存のDTD／ENTITY宣言を検査する。元の本文を保持し、`gatewaySpeechSsmlDecision`へ結果だけを保存する。監査と400／413応答はHTTP APIの呼び出し元が担当し、部品内から別フラグメントを呼ばない。Document・JSONの未棚卸処理やWAFは変更せず、承認済みソースのAzure反映・読戻しは完了した。TTSはキー／Bearerの正常WAV応答とDTD宣言拒否の400、対応する認証済み利用者情報・応答・拒否理由とAppGW監査の相関を実接続で確認した。大本文413など未検証項目が残り、受入全体は未完了である。[本体と呼出順](fragments/request/core-speech-ssml-guard/README.md)を参照する。
+この部品は本文を一度だけ読み、選択済みの`maxRequestBytes`との実サイズ比較を文字列化前に行い、通過後に既存のDTD／ENTITY宣言を検査する。元の本文を保持し、`gatewaySpeechSsmlDecision`へ結果だけを保存する。監査と400／413応答はHTTP APIの呼び出し元が担当し、部品内から別フラグメントを呼ばない。TTS集約時点ではDocument・JSONの未棚卸処理やWAFを変更していない。TTSのAzure反映・読戻しは完了した。TTSはキー／Bearerの正常WAV応答とDTD宣言拒否の400、対応する認証済み利用者情報・応答・拒否理由とAppGW監査の相関を実接続で確認した。大本文413など未検証項目が残り、受入全体は未完了である。[本体と呼出順](fragments/request/core-speech-ssml-guard/README.md)を参照する。
+
+## Document解析の入力を確認する
+
+`core-document-input-validation`は`fragments/request/core-document-input-validation/`の同名XML・C#で管理する。HTTPテンプレートが操作設定の`kind=documentAnalysis`で対象を選び、共有サイズ確認と既存の転送先判定を通過した後、利用回数制限・下流接続準備・`accepted`監査より前で呼ぶ。部品は本文を読み出さず、`model`の必須・単一値・非空を確認し、URL階層を変える`.`／`..`は400にする。2モデル一覧による拒否と、そのためだけの内部設定JSON再読取りは撤去する。監査・400／500応答は呼び出し元に残す。開始と状態取得の操作ポリシーは`operation-policies/document-analysis/`で管理する。
+
+棚卸①〜㉝で、MIME一覧比較・先頭バイト判定・独自の空本文400・Content-Encoding拒否と、共有／個別のサイズ確認だけの全量読取りを撤去する。共有の申告サイズ500,000,000 bytes超の413を維持し、Documentを共通Content-Type宣言検査に追加しない。原本と提供元JSON入力を本文変換なしで送り、文書とモデルの利用可否は提供元が判定する。他クエリの有無による一律400も撤去し、開始POSTではmodelをクエリから削除した後、pathだけのURI書換えと`copy-unmatched-params=true`でpages・featuresなどの追加クエリを転送した後、標準`set-query-parameter`でapi-versionは対応版へ上書きし、stringIndexTypeは`exists-action=skip`で指定値を保持して未指定時だけ`unicodeCodePoint`を補完する。API版は公開Schemaの単一値（現在`2024-11-30`）を配備前の正規化で両操作へ補完し、BicepのAPI版markerと共通API設定へ渡す。baseURL markerの生成も維持する。⑱ではStatusの結果照合が準備済み`gatewayOperationConstraint`から`apiVersion`・`maxResponseBytes`を直接読み、専用の設定変数と埋込みBase64の復元を撤去する。上限・版・チケット・結果の条件は維持する。⑲ではStatusの操作設定`gatewayOperationConstraint`の取得・JSON解析失敗だけを500・`OPERATION_SETTINGS_INVALID`の明示監査へ分け、提供元本文・版・容量などの既存502は維持する。㉙では開始・状態取得の認証結果`gatewayDecision`の取得・JSON解析と認証方式・owner引渡し不備だけを500・`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`へ分け、⑲の操作設定不備と区別する。明示不一致は配備前に拒否し、実行時の追加検査は行わない。⑭で文字位置の単位の指定を受け付け、不正値・複数値の適否は提供元へ任せる形へ整理する。㉑では状態取得GETの追加クエリを無視して同じジョブを取得し、クエリの有無だけで403にしない。チケット・UUID・本人・期限の照合、固定URI・対応版とURLへのAPIキー指定の共通拒否は維持する。㉒では`copy-unmatched-params=false`による未使用クエリの非転送を維持し、目的コメントを整える。[公式Get Analyze Result（2024-11-30）](https://learn.microsoft.com/rest/api/aiservices/document-models/get-analyze-result?view=rest-aiservices-v4.0%20(2024-11-30))が使うクエリはapi-versionのみである。将来正式なGET追加クエリが必要になれば、公開結果契約と合わせて見直す。WAF設定とクエリ名・値の監査出力は追加しない。model入力不備の400・`DocumentInvalidInput`と、内部変数のモデル情報を引き継げない失敗の500・`OPERATION_SETTINGS_INVALID`／`DocumentAnalysisUnavailable`を分ける。先行する操作設定・共有サイズ設定の検査、チケット・返却URIとのモデル照合、固定接続先、応答の構造条件は維持する。①〜㉝の変更はAzure反映・読戻し照合を完了した。独立して作成した小文書の原本・Base64入力は、キー／Bearerで202受付から本文なしGETの200まで一部確認した。申告サイズ境界・内部障害500・期限切れ410など残る受入は未実施である。Portalの原本アップロード・2モデル選択・BFF制約は今回変更しない。[部品の処理](fragments/request/core-document-input-validation/README.md)と[公開契約](../../../../docs/reference/document-analysis.md)を参照する。
 
 ## queryの観測対象と要求ごとの変数
 
@@ -163,7 +177,7 @@ HTTP操作の`operations[].inputContract = {}`を配備前に検査し、`gatewa
 
 `gateway.xml`はquery観測の後、操作・モデル設定の選択や本文読取りより前に部品を呼ぶ。判定がfalseの場合は`INVALID_CONTENT_TYPE_HEADER`で拒否監査を記録し、理由`Invalid Content-Type header`の本文なし400を返す。APIM要求IDの`apim-request-id`と`Cache-Control: no-store`を維持し、短い拒否フローは共有HTTP APIテンプレートへ残す。同名XML／C#は`fragments/request/core-api-input-validation/`で管理し、日本語の説明を生成XMLへ組み込む。
 
-対象選択と部品構成の整理、query制限・メソッド再確認の撤去、Content-Type取得の簡潔化、入口のMIME許可一覧比較の撤去を承認した。標準13操作の選択と宣言の存在・単一値・非空MIME部分の確認、不備時の400と監査を維持し、結果変数と拒否理由の改名、共有HTTP APIテンプレートに短い拒否フローを残す方針も承認済みである。入口検査と不備時の400監査はローカル整備済みで、承認済みソースのAzure反映・読戻しは完了した。空本文でContent-Type宣言がない要求の400と対応する拒否監査を実接続で確認した。その他のContent-Type不備は未検証であり、未知メソッドの実APIM照合も受入で確認する。後続の`core-model-limits`のMIME許可一覧比較と415も撤去した。`operationConstraints.contentTypes`は個別処理などで使うため残し、未棚卸の本文／モデル制約・URI書換え、Speech・Document・WAFの形式／転送設定は保持する。query観測・URL資格情報拒否は今回変更しない。[使い方と実行順](fragments/request/core-api-input-validation/README.md)を参照する。
+対象選択と部品構成の整理、query制限・メソッド再確認の撤去、Content-Type取得の簡潔化、入口のMIME許可一覧比較の撤去を承認した。標準13操作の選択と宣言の存在・単一値・非空MIME部分の確認、不備時の400と監査を維持し、結果変数と拒否理由の改名、共有HTTP APIテンプレートに短い拒否フローを残す方針も承認済みである。入口検査と不備時の400監査はローカル整備済みで、承認済みソースのAzure反映・読戻しは完了した。空本文でContent-Type宣言がない要求の400と対応する拒否監査を実接続で確認した。その他のContent-Type不備は未検証であり、未知メソッドの実APIM照合も受入で確認する。後続の`core-model-limits`のMIME許可一覧比較と415も撤去した。`operationConstraints.contentTypes`は個別処理などで使うため残し、未棚卸の本文／モデル制約・URI書換え、Speech・WAFの形式／転送設定は保持する。Document入力の現在の整理は上記の専用部品を参照する。query観測・URL資格情報拒否は今回変更しない。[使い方と実行順](fragments/request/core-api-input-validation/README.md)を参照する。
 
 ## STEP4の認証部品
 

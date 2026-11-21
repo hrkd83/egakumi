@@ -8,12 +8,13 @@ import sys
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from waf_policy import (exclusion, load_manifest, selected_profiles, published_paths,
                         desired_policy, reconcile, canonical_gateway, canonical_policy,
-                        RESERVED_POLICY_KEYS, exclusion_is_covered)
+                        RESERVED_POLICY_KEYS, exclusion_is_covered, plan)
 from waf_contracts import contract_fields, APP_GROUPS
 from deployment.helpers.portal_gateway import portal_session_exclusions, _writable_policy
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
@@ -268,6 +269,53 @@ class DataWafTests(unittest.TestCase):
         after = desired_policy(policy(), profile, configuration())
         after['properties']['managedRules']['exclusions'].remove(expected)
         self.assertEqual(after, before)
+
+    def test_responses_source_urls_add_only_two_individual_rules_and_preserve_existing_protection(self):
+        profile = next(item for item in load_manifest()['profiles'] if item['name'] == 'g-responses')
+        base = policy()
+        existing = exclusion('Synthetic-Header', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'],
+                             variable='RequestHeaderValues')
+        base['properties']['managedRules']['exclusions'].append(existing)
+        original_base, original_profile = copy.deepcopy(base), copy.deepcopy(profile)
+        with mock.patch('waf_policy.source_url_exclusions', return_value=[]):
+            previous = desired_policy(base, profile, configuration())
+        updated = desired_policy(base, profile, configuration())
+        expected = [exclusion(selector, 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130'])
+                    for selector in ('input.content.file_url', 'input.output.file_url')]
+        before = previous['properties']['managedRules']['exclusions']
+        after = updated['properties']['managedRules']['exclusions']
+        self.assertEqual([item for item in after if item not in before], expected)
+        self.assertTrue(all(item in after for item in before))
+        self.assertEqual(desired_policy(base, profile, configuration(), sources=(updated,)), updated)
+        for item in expected:
+            after.remove(item)
+        self.assertEqual(updated, previous)
+        self.assertEqual(base, original_base)
+        self.assertEqual(profile, original_profile)
+
+    def test_source_urls_do_not_expand_other_data_profiles_or_change_the_classification_manifest(self):
+        profiles = load_manifest()['profiles']
+        source_selectors = {'urlSource', 'input.content.file_url', 'input.output.file_url'}
+        for profile in profiles:
+            with self.subTest(profile=profile['name']):
+                self.assertFalse(source_selectors & {item['selector'] for item in profile['exclusions']})
+                actual = desired_policy(policy(), profile, configuration())
+                selected = {item['selector'] for item in actual['properties']['managedRules']['exclusions']}
+                self.assertEqual(selected & source_selectors,
+                    {'input.content.file_url', 'input.output.file_url'} if profile['name'] == 'g-responses' else set())
+
+    def test_plan_displays_the_exact_source_url_rules_for_responses(self):
+        config = configuration()
+        config['apiDefinitions'] = [json.loads((ROOT / 'apps/gateway/apim/apis/openai-inference-v1.json').read_text())]
+        planned = plan(config, scopes=('gateway',))['profiles']
+        declared = {item['name']: item for item in load_manifest()['profiles']}
+        self.assertTrue(any(item['name'] == 'g-responses' for item in planned))
+        for profile in planned:
+            expected = copy.deepcopy(declared[profile['name']]['exclusions'])
+            if profile['name'] == 'g-responses':
+                expected += [exclusion(selector, 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130'])
+                             for selector in ('input.content.file_url', 'input.output.file_url')]
+            self.assertEqual(profile['exclusions'], expected)
 
     def test_ai_group_upgrade_covers_legacy_rules_with_one_owned_policy_write(self):
         old = manifest()
@@ -783,7 +831,9 @@ class DataWafTests(unittest.TestCase):
         self.assertEqual(transport.resources[GATEWAY_ID], before_gateway)
         # GET-only normalization must not rewrite omitted-rules PUT payloads.
         self.assertEqual(writes[0][2]['properties']['managedRules']['exclusions'],
-                         policy()['properties']['managedRules']['exclusions'] + profiles[1]['exclusions'])
+                         policy()['properties']['managedRules']['exclusions'] + profiles[1]['exclusions']
+                         + [exclusion(selector, 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130'])
+                            for selector in ('input.content.file_url', 'input.output.file_url')])
         transport.calls.clear()
         self.assertEqual(reconcile(config, transport, scopes=('gateway',), manifest=current, timeout=1)['azureWrites'], 0)
         with self.assertRaisesRegex(ValueError, 'Represent the existing path-specific WAF exclusion'):
@@ -1723,11 +1773,13 @@ class DataWafTests(unittest.TestCase):
             source = source.replace("loadJsonContent('../../apps/gateway/waf-data-exclusions.json')", "loadJsonContent('./manifest.json')")
             source = source.replace("loadJsonContent('../../apps/gateway/waf-raw-body-controls.json')", "loadJsonContent('./raw-controls.json')")
             source = source.replace("loadJsonContent('../../apps/gateway/waf-json-content-controls.json')", "loadJsonContent('./json-controls.json')")
+            source = source.replace("loadJsonContent('../../apps/gateway/waf-source-url-exclusions.json')", "loadJsonContent('./source-urls.json')")
             source = source.replace("loadJsonContent('../../apps/portal/waf-session-exclusions.json')", "loadJsonContent('./portal-session.json')")
             (folder / 'gateway.bicep').write_text(source, encoding='utf-8')
             (folder / 'manifest.json').write_text(json.dumps(sample), encoding='utf-8')
             (folder / 'raw-controls.json').write_text((ROOT / 'apps/gateway/waf-raw-body-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
             (folder / 'json-controls.json').write_text((ROOT / 'apps/gateway/waf-json-content-controls.json').read_text(encoding='utf-8'), encoding='utf-8')
+            (folder / 'source-urls.json').write_text((ROOT / 'apps/gateway/waf-source-url-exclusions.json').read_text(encoding='utf-8'), encoding='utf-8')
             (folder / 'portal-session.json').write_text(json.dumps(portal_session_exclusions()), encoding='utf-8')
             built = subprocess.run([bicep_executable(), 'build', str(folder / 'gateway.bicep'), '--stdout', '--no-restore'],
                                    env={**os.environ, 'DOTNET_BUNDLE_EXTRACT_BASE_DIR': str(folder)},

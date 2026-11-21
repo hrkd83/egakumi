@@ -7,6 +7,7 @@ import unittest
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, gateway, policy, api_mapping, ready_gateway, _writable_policy
 from deployment.helpers.waf_names import policy_id, policy_name
 from deployment.helpers.waf_body import ai_body_settings
+from waf_policy import exclusion, desired_policy, load_manifest
 from test_portal_gateway import Transport
 from gateway_ingress import DOCUMENT_PATH, DOCUMENT_RULE_NAME, document_upload_limit, _document_policy, _raw_body_policy, _path_gateway, configure_gateway_document_waf
 from bicep_helpers import compile_bicep
@@ -15,6 +16,7 @@ import test_ssml_waf as waf_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_ID = policy_id(CONFIG, 'g-document-upload')
+SOURCE_URL_EXCLUSION = exclusion('urlSource', 'REQUEST-931-APPLICATION-ATTACK-RFI', ['931130'])
 
 
 def configuration():
@@ -45,9 +47,25 @@ class GatewayDocumentWafTests(unittest.TestCase):
         desired=_document_policy(base,1048576)
         expected=_raw_body_policy(base)
         expected['properties']['policySettings'] = ai_body_settings(base['properties']['policySettings'])
+        expected['properties']['managedRules']['exclusions'].append(copy.deepcopy(SOURCE_URL_EXCLUSION))
         self.assertEqual(desired,expected)
         self.assertEqual(_document_policy(base, 500000000), expected)
         self.assertEqual(base,policy())
+
+    def test_source_url_adjustment_preserves_existing_exclusions_and_shared_raw_policy(self):
+        base = policy()
+        existing = exclusion('Synthetic-Header', 'REQUEST-942-APPLICATION-ATTACK-SQLI', ['942100'],
+                             variable='RequestHeaderValues')
+        base['properties']['managedRules']['exclusions'] = [existing]
+        before = copy.deepcopy(base)
+        shared = _raw_body_policy(base)
+        desired = _document_policy(base, 500000000)
+        self.assertEqual(desired['properties']['managedRules']['exclusions'],
+                         [existing, SOURCE_URL_EXCLUSION])
+        desired['properties']['managedRules']['exclusions'].remove(SOURCE_URL_EXCLUSION)
+        self.assertEqual(desired, shared)
+        self.assertEqual(base, before)
+        self.assertNotIn(SOURCE_URL_EXCLUSION, _raw_body_policy(base)['properties']['managedRules']['exclusions'])
 
     def test_syntax_and_sqli_rules_are_retained_and_syntax_disable_is_rejected(self):
         base=policy()
@@ -82,7 +100,7 @@ class GatewayDocumentWafTests(unittest.TestCase):
         transport=Transport([{'statusCode':200,'body':ready},{'statusCode':200,'body':base},{'statusCode':200,'body':assigned}])
         receipt=configure_gateway_document_waf(configuration(),transport)
         self.assertEqual(receipt['maxRequestBytes'],maximum)
-        self.assertEqual(receipt['excludedRuleIds'],[])
+        self.assertEqual(receipt['excludedRuleIds'],['931130'])
         self.assertEqual(receipt['disabledRuleIds'],['920420','930110'])
         self.assertEqual(receipt['retainedRuleIds'],['920470','930100'])
         self.assertFalse(receipt['gatewayUpdated'])
@@ -161,10 +179,30 @@ class GatewayDocumentWafBicepTests(unittest.TestCase):
         self.assertEqual(configured['policySettings']['logScrubbing'], baseline['policySettings']['logScrubbing'])
         self.assertEqual(configured['customRules'][:len(baseline['customRules'])], baseline['customRules'])
         self.assertEqual(len(configured['customRules']), len(baseline['customRules']) + 4)
-        self.assertEqual(configured['managedRules']['exclusions'], baseline['managedRules']['exclusions'])
+        self.assertEqual(configured['managedRules']['exclusions'],
+                         baseline['managedRules']['exclusions'] + [SOURCE_URL_EXCLUSION])
         self.assertEqual(configured['managedRules']['managedRuleSets'][0]['ruleGroupOverrides'], [{
             'ruleGroupName': 'REQUEST-920-PROTOCOL-ENFORCEMENT', 'rules': [{'ruleId': '920420', 'state': 'Disabled'}]}, {
             'ruleGroupName': 'REQUEST-930-APPLICATION-ATTACK-LFI', 'rules': [{'ruleId': '930110', 'state': 'Disabled'}]}])
+
+    def test_compiled_source_url_exclusions_match_python_only_on_the_approved_profiles(self):
+        declared = load_manifest()['profiles']
+        values = self.parameters(publishedApiPaths=[path for profile in declared
+            if profile['scope'] == 'gateway' for path in profile['paths']])
+        baseline = self.value(self.resource('g-base')['properties'], values)
+        profiles = self.value("[variables('dataProfiles')]", values)
+        policies = self.value("[variables('dataPolicyProperties')]", values)
+        source_selectors = {'urlSource', 'input.content.file_url', 'input.output.file_url'}
+        self.assertTrue(any(profile['name'] == 'g-responses' for profile in profiles))
+        for profile, configured in zip(profiles, policies):
+            with self.subTest(profile=profile['name']):
+                self.assertEqual(configured,
+                    desired_policy({'properties': baseline}, profile, configuration())['properties'])
+                selected = {item['selector'] for item in configured['managedRules']['exclusions']}
+                self.assertEqual(selected & source_selectors,
+                    {'input.content.file_url', 'input.output.file_url'} if profile['name'] == 'g-responses' else set())
+        speech = self.value(self.resource('g-speech')['properties'], values)
+        self.assertEqual(speech['managedRules']['exclusions'], baseline['managedRules']['exclusions'])
 
     def test_document_path_keeps_the_apim_backend_and_permanent_trusted_rewrite(self):
         gateway_resource = next(item for item in self.resources if item['type'] == 'Microsoft.Network/applicationGateways')

@@ -1,0 +1,184 @@
+<policies>
+  <!-- 署名・検証済み所有者・API・接続先・モデル・ジョブ・期限を照合してから、固定の提供元GETへ転送します。 -->
+  <inbound>
+    <!-- ========== 共通ポリシーの適用 ========== -->
+    <!-- 目的：共通認証とAPI側の利用枠・下流接続準備を継承します。 -->
+    <!-- 処理：上位のInboundを実行してから、この操作の所有者チケット照合へ進みます。 -->
+    <base />
+    <!-- === -->
+    <!-- ========== Document解析結果の所有者確認 ========== -->
+    <!-- 目的：署名チケットの本人・モデル・ジョブ・期限を確認し、固定提供元の結果を照会します。 -->
+    <!-- 処理：モデル一覧は再確認せず、署名済みのmodelをURLの一要素へ符号化します。 -->
+    <!-- 開始操作と同じ登録済み接続先から生成し、チケットの接続先・API・本人の組合せを照合します。 -->
+    <set-variable name="documentBaseUrl" value="__DOCUMENT_BASE_URL__" />
+    <set-variable name="documentOwner" value="@{
+      try {
+        /* 結果取得用チケットを一度取得し、一つ指定されたことを確認します。 */
+        string[] ticketValues;
+        if (!context.Request.Headers.TryGetValue(&quot;X-Core-Document-Ticket&quot;, out ticketValues) || ticketValues.Length != 1) { return &quot;&quot;; }
+        var ticket = ticketValues[0];
+        /* 公開URLの操作IDが、ハイフン付きUUIDのD形式であることを確認します。 */
+        var id = context.Request.MatchedParameters.GetValueOrDefault(&quot;operationId&quot;, &quot;&quot;);
+        Guid operation;
+        if (!Guid.TryParseExact(id, &quot;D&quot;, out operation)) { return &quot;&quot;; }
+        /* 未検証チケットの処理量を抑えるため、全体を4096文字以内に限定します。 */
+        /* 書式はBase64urlの情報部分.署名です。署名43文字は、32バイトのHMAC-SHA256を末尾の=なしで符号化した固定長です。 */
+        if (ticket.Length &gt; 4096 || !System.Text.RegularExpressions.Regex.IsMatch(ticket, @&quot;^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$&quot;)) { return &quot;&quot;; }
+        var parts = ticket.Split('.');
+        string expected;
+        /* 開始操作と同じ鍵・Document専用の接頭辞で署名を再計算し、別用途のチケットと区別します。 */
+        using (var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(&quot;{{core-realtime-ticket-key}}&quot;))) {
+          expected = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(&quot;document-analysis-v1:&quot; + parts[0]))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
+        /* 署名全体の長さが一致することを確認してから、同じ範囲の文字を照合します。 */
+        if (expected.Length != parts[1].Length) { return &quot;&quot;; }
+        /* 不一致位置で途中終了せず、全文字の差を集めて署名の一致を判定します。 */
+        var difference = 0;
+        for (var i = 0; i &lt; expected.Length; i++) { difference |= expected[i] ^ parts[1][i]; }
+        if (difference != 0) { return &quot;&quot;; }
+        /* 署名を確認した情報部分のBase64urlを復元し、UTF-8のJSONとして読み取ります。 */
+        var encoded = parts[0].Replace('-', '+').Replace('_', '/');
+        encoded += new string('=', (4 - encoded.Length % 4) % 4);
+        var claims = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
+        string owner;
+        try {
+          /* 上位APIが引き渡し成功を確認済みの認証情報を、チケットの所有者照合に使います。 */
+          var decision = JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;]);
+          var caller = (string)decision[&quot;callerId&quot;];
+          if ((string)decision[&quot;method&quot;] == &quot;subscriptionKey&quot;) {
+            /* 共通処理の認証済みIDから接頭辞だけを除き、既存チケットの購読ID表記を維持します。 */
+            owner = caller.Substring(&quot;subscription:&quot;.Length);
+          } else if ((string)decision[&quot;method&quot;] == &quot;user&quot;) {
+            /* Bearerの社員IDは共通処理で検証・整形済みなので、そのまま所有者として使います。 */
+            owner = caller;
+          } else { return &quot;AUTHENTICATION_PROCESSING_ERROR&quot;; }
+          /* 所有者IDを引き継げない場合は、空の所有者で照合せず内部不備として止めます。 */
+          if (String.IsNullOrEmpty(owner)) { return &quot;AUTHENTICATION_PROCESSING_ERROR&quot;; }
+        } catch {
+          /* 内部認証情報の引き渡し不備だけを、後続の500判定と監査へ渡します。 */
+          return &quot;AUTHENTICATION_PROCESSING_ERROR&quot;;
+        }
+        /* 開始時と同じ接続先・API・所有者から、チケットの利用範囲を確認する照合値を作ります。 */
+        string scope;
+        using (var hash = System.Security.Cryptography.SHA256.Create()) {
+          scope = Convert.ToBase64String(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes((string)context.Variables[&quot;documentBaseUrl&quot;] + &quot;\n&quot; + context.Api.Id + &quot;\n&quot; + owner)));
+        }
+        /* 対応するチケットの形式・用途と、現在の解析ジョブ・利用範囲が一致することを確認します。 */
+        if ((int?)claims[&quot;v&quot;] != 1 || (string)claims[&quot;aud&quot;] != &quot;document-analysis-v1&quot;
+            || (string)claims[&quot;operationId&quot;] != operation.ToString(&quot;D&quot;) || (string)claims[&quot;scope&quot;] != scope) { return &quot;&quot;; }
+        /* モデル名をURLの一つの要素として使える最低条件を確認します。対応モデルの利用可否は提供元が判定します。 */
+        var model = claims[&quot;model&quot;];
+        if (model?.Type != JTokenType.String || String.IsNullOrWhiteSpace((string)model)
+            || (string)model == &quot;.&quot; || (string)model == &quot;..&quot;) { return &quot;&quot;; }
+        /* UTCのUnix秒で発行時刻を確認し、発行側との時計差として30秒までの未来時刻を許容します。 */
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var issued = (long?)claims[&quot;iat&quot;];
+        var expires = (long?)claims[&quot;exp&quot;];
+        /* 時刻の欠落・時計差の超過・発行から24時間の有効期間との不整合は、チケット不正として扱います。 */
+        if (issued == null || expires == null || issued &gt; now + 30 || expires != issued + 86400) { return &quot;&quot;; }
+        return claims.ToString(Newtonsoft.Json.Formatting.None);
+      } catch { return &quot;&quot;; }
+    }" />
+    <set-variable name="documentOwnerStatus" value="@{
+      var value = (string)context.Variables[&quot;documentOwner&quot;];
+      if (value == &quot;AUTHENTICATION_PROCESSING_ERROR&quot;) { return 500; }
+      if (String.IsNullOrEmpty(value)) { return 403; }
+      /* 取得許可を決める時点のUTC秒で期限を確認し、期限に到達したら410で止めます。時計差30秒の許容で期限は延長しません。 */
+      /* この期限はGatewayチケットの期限です。提供元で結果が取得できない場合の404は、後段の応答処理で扱います。 */
+      return (long)JObject.Parse(value)[&quot;exp&quot;] &lt;= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ? 410 : 200;
+    }" />
+    <!-- チケット確認後の拒否・期限切れ・内部処理の不備を、最終応答の状態と理由で記録します。 -->
+    <!-- 共通APIの受付記録とは要求IDで照合し、このブロックでは応答直前に監査を1回出力します。 -->
+    <choose id="document-operation-rejection">
+      <when condition="@((int)context.Variables[&quot;documentOwnerStatus&quot;] != 200)">
+        <set-variable name="gatewayAuditPhase" value="@((int)context.Variables[&quot;documentOwnerStatus&quot;] == 500 ? &quot;policy-error&quot; : &quot;rejected&quot;)" />
+        <set-variable name="gatewayAuditCode" value="@((int)context.Variables[&quot;documentOwnerStatus&quot;] == 500 ? &quot;AUTHENTICATION_PROCESSING_ERROR&quot; : (int)context.Variables[&quot;documentOwnerStatus&quot;] == 410 ? &quot;DOCUMENT_OPERATION_EXPIRED&quot; : &quot;DOCUMENT_OPERATION_DENIED&quot;)" />
+        <set-variable name="gatewayAuditStatus" value="@((int)context.Variables[&quot;documentOwnerStatus&quot;])" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="@((int)context.Variables[&quot;documentOwnerStatus&quot;])" reason="@((int)context.Variables[&quot;documentOwnerStatus&quot;] == 500 ? &quot;Document analysis unavailable&quot; : &quot;Document operation access denied&quot;)" /><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentOwnerStatus"] == 500 ? "DocumentAnalysisUnavailable" : (int)context.Variables["documentOwnerStatus"] == 410 ? "DocumentOperationExpired" : "DocumentOperationDenied"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body></return-response>
+      </when>
+    </choose>
+    <!-- 確認済みのチケットからジョブIDとモデル名を引き継ぎ、固定URIの作成と提供元の結果照合に使います。 -->
+    <set-variable name="documentOperationId" value="@((string)JObject.Parse((string)context.Variables[&quot;documentOwner&quot;])[&quot;operationId&quot;])" />
+    <set-variable name="documentModel" value="@((string)JObject.Parse((string)context.Variables[&quot;documentOwner&quot;])[&quot;model&quot;])" />
+    <!-- 公開スキーマの対応版を操作設定から生成し、結果JSONの版確認と揃えます。 -->
+    <!-- 対応版の結果取得GETはapi-versionだけを使います。チケットと操作IDで確定したジョブを照会し、未使用の追加クエリはコピーしません。 -->
+    <rewrite-uri template="@(&quot;/documentintelligence/documentModels/&quot; + Uri.EscapeDataString((string)context.Variables[&quot;documentModel&quot;]) + &quot;/analyzeResults/&quot; + (string)context.Variables[&quot;documentOperationId&quot;] + &quot;?api-version=__DOCUMENT_API_VERSION__&quot;)" copy-unmatched-params="false" />
+    <!-- Gateway用チケットは確認に使い終えたため、提供元へ送信する前に削除します。 -->
+    <set-header name="X-Core-Document-Ticket" exists-action="delete" />
+    <!-- 提供元の結果取得GETは本文を使いません。本文がある場合だけ空にし、本文なしGETへの置換は行いません。 -->
+    <choose id="document-status-body-clear">
+      <when condition="@(context.Request.Body != null)">
+        <set-body>@("")</set-body>
+      </when>
+    </choose>
+    <!-- === -->
+  </inbound>
+  <backend><base /></backend>
+  <outbound>
+    <base />
+    <set-variable name="documentPollEvaluation" value="@{
+      var status = 502; var result = &quot;&quot;; var retryAfter = 2;
+      var settingsReadInProgress = false;
+      try {
+        var response = context.Response;
+        if (response == null) { status = 504; }
+        else if (response.StatusCode == 429) { status = 429; }
+        else if (response.StatusCode == 404) { status = 404; }
+        else if (response.StatusCode == 410) { status = 410; }
+        else if (response.StatusCode == 200) {
+          /* API側で準備済みの操作設定から、結果サイズの上限と対応API版を読みます。 */
+          /* この取得・解析の失敗だけを、基盤内部の設定不備として区別します。 */
+          settingsReadInProgress = true;
+          var settings = JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;]);
+          settingsReadInProgress = false;
+          var bytes = response.Body.As&lt;byte[]&gt;(preserveContent: true);
+          if (bytes.Length &lt;= (int)settings[&quot;maxResponseBytes&quot;]) {
+            var body = response.Body.As&lt;JObject&gt;();
+            var current = (string)body?[&quot;status&quot;];
+            if (current == &quot;running&quot; || current == &quot;notStarted&quot;) {
+              status = 202;
+              result = new JObject(new JProperty(&quot;operationId&quot;, (string)context.Variables[&quot;documentOperationId&quot;]), new JProperty(&quot;model&quot;, (string)context.Variables[&quot;documentModel&quot;]), new JProperty(&quot;status&quot;, &quot;running&quot;), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+            } else if (current == &quot;failed&quot; || current == &quot;canceled&quot;) { status = 422; }
+            else if (current == &quot;succeeded&quot;) {
+              var analysis = body[&quot;analyzeResult&quot;] as JObject;
+              if (analysis != null &amp;&amp; (string)analysis[&quot;apiVersion&quot;] == (string)settings[&quot;apiVersion&quot;] &amp;&amp; (string)analysis[&quot;modelId&quot;] == (string)context.Variables[&quot;documentModel&quot;] &amp;&amp; analysis[&quot;content&quot;]?.Type == JTokenType.String &amp;&amp; analysis[&quot;pages&quot;] is JArray) {
+                var projected = new JObject(new JProperty(&quot;analyzeResult&quot;, analysis), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+                if (System.Text.Encoding.UTF8.GetByteCount(projected) &lt;= (int)settings[&quot;maxResponseBytes&quot;]) { status = 200; result = projected; }
+              }
+            }
+          }
+        }
+        int delay;
+        if (response != null &amp;&amp; Int32.TryParse(response.Headers.GetValueOrDefault(&quot;Retry-After&quot;, &quot;&quot;), out delay) &amp;&amp; delay &gt; 0 &amp;&amp; delay &lt;= 86400) { retryAfter = delay; }
+      } catch { status = settingsReadInProgress ? 500 : 502; result = &quot;&quot;; }
+      if (String.IsNullOrEmpty(result)) {
+        var code = status == 404 ? &quot;DocumentOperationNotFound&quot; : status == 410 ? &quot;DocumentOperationExpired&quot; : status == 422 ? &quot;DocumentRejected&quot; : status == 429 ? &quot;DocumentAnalysisThrottled&quot; : &quot;DocumentAnalysisUnavailable&quot;;
+        result = new JObject(new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, code))), new JProperty(&quot;requestId&quot;, context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None);
+      }
+      return new JObject(new JProperty(&quot;status&quot;, status), new JProperty(&quot;result&quot;, result), new JProperty(&quot;retryAfter&quot;, retryAfter)).ToString(Newtonsoft.Json.Formatting.None);
+    }" />
+    <!-- 共通処理は提供元の応答を記録済みです。捕捉した内部設定の不備は、応答前に原因と500を別途記録します。 -->
+    <choose id="document-settings-read-error">
+      <when condition="@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;] == 500)">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="OPERATION_SETTINGS_INVALID" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+      </when>
+    </choose>
+    <return-response>
+      <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;documentPollEvaluation&quot;])[&quot;status&quot;])" reason="Document analysis status" />
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+      <set-header name="Retry-After" exists-action="override"><value>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["retryAfter"])</value></set-header>
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-body>@((string)JObject.Parse((string)context.Variables["documentPollEvaluation"])["result"])</set-body>
+    </return-response>
+  </outbound>
+  <on-error>
+    __RATE_LIMIT_ERROR_XML__
+    <set-variable name="documentPolicyErrorStatus" value="@(context.LastError.Source == &quot;authorization&quot; &amp;&amp; (context.LastError.Reason == &quot;SubscriptionKeyNotFound&quot; || context.LastError.Reason == &quot;SubscriptionKeyInvalid&quot;) ? 401 : context.LastError.Reason == &quot;Timeout&quot; ? 504 : 502)" />
+    <return-response><set-status code="@((int)context.Variables[&quot;documentPolicyErrorStatus&quot;])" reason="Document analysis unavailable" /><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["documentPolicyErrorStatus"] == 401 ? "AuthenticationRequired" : "DocumentAnalysisUnavailable"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body></return-response>
+  </on-error>
+</policies>

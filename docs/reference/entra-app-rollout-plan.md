@@ -369,7 +369,7 @@ APIMの[ポリシー文書](https://learn.microsoft.com/en-us/azure/azure-resour
 | モデルの入力・機能・ツール形式を制限する処理 | `gateway.xml`等の本文検査。function以外のtool拒否、保存済み状態・ファイル参照・include制限などを別々に判断 |
 | 利用枠・トークン数・購読または社員の扱い | `subscription-profile.xml`、`entra-user-profile.xml`、`rate-limit.xml`、`token-limit.xml` |
 | CMの本人接続・外部API向けトークン取得 | `credential-connection.xml`、`credential-session-use.xml`、`credential-login/`、該当API／操作ポリシー |
-| 個別操作・生成ポリシー | `api-publication.bicep`、`document-analysis*.xml`、`realtime-*.xml`等 |
+| 個別操作・生成ポリシー | `api-publication.bicep`、`policies/operation-policies/document-analysis/document-analysis.xml`、`policies/operation-policies/document-analysis/document-analysis-status.xml`、`realtime-*.xml`等 |
 
 一つの制御ごとに、目的・実際の処理・影響・選択肢・推奨理由を説明し、採否を確認してから改修する。Foundryが提供する機能をAPIM独自の許可条件で制限する処理は、その必要性を個別に確認する。共通の認証条件、利用者の識別と監査、接続所有者の確認と、モデル機能の制限を混同しない。
 

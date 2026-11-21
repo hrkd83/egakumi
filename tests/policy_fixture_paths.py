@@ -18,6 +18,7 @@ _PRIMARY_FILES = {
         ("core-api-operation-settings", "fragments/request"),
         ("core-model-limits", "fragments/request"),
         ("core-speech-ssml-guard", "fragments/request"),
+        ("core-document-input-validation", "fragments/request"),
         ("core-query-telemetry", "fragments/audit"),
     )
     for suffix in (".xml", ".cs")

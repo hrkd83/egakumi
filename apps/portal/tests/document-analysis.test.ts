@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentAnalysisResponse, DocumentAnalysisResponseError } from "../lib/document-analysis-contracts.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION, DOCUMENT_MODELS, MAX_DOCUMENT_BYTES, documentAnalysisInputSchema, getDocumentAnalysisEndpoint, inspectDocument, parseDocumentAnalysisResult, readDocumentAnalysisResponse, DocumentAnalysisResponseError } from "../lib/document-analysis-contracts.ts";
 import { getDocumentAnalysisExample, getDocumentAnalysisRequestSchema, getDocumentAnalysisResponseSchema } from "../lib/document-analysis-integration.ts";
 
 /** Azureの文書解析結果に含まれる主要属性を備えた、個人情報を含まない試験データです。 */
-export const analysis = { analyzeResult: { apiVersion: "2024-11-30", modelId: "prebuilt-layout", content: "Title\nFirst\tSecond", pages: [{ pageNumber: 1, width: 210, height: 297, unit: "millimeter", words: [{ content: "Title", confidence: 0.99 }] }, { pageNumber: 2 }], paragraphs: [{ content: "Title", role: "title" }], tables: [{ rowCount: 1, columnCount: 2, cells: [{ rowIndex: 0, columnIndex: 0, content: "First", kind: "columnHeader" }, { rowIndex: 0, columnIndex: 1, content: "Second" }] }] }, requestId: "document-example-1" };
+export const analysis = { analyzeResult: { apiVersion: DOCUMENT_ANALYSIS_API_VERSION, modelId: "prebuilt-layout", content: "Title\nFirst\tSecond", pages: [{ pageNumber: 1, width: 210, height: 297, unit: "millimeter", words: [{ content: "Title", confidence: 0.99 }] }, { pageNumber: 2 }], paragraphs: [{ content: "Title", role: "title" }], tables: [{ rowCount: 1, columnCount: 2, cells: [{ rowIndex: 0, columnIndex: 0, content: "First", kind: "columnHeader" }, { rowIndex: 0, columnIndex: 1, content: "Second" }] }] }, requestId: "document-example-1" };
 
 test("Office・HEIFとHTML断片を受理し、UTF8の1024バイト境界で拒否しない", () => {
   for (const mime of ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]) assert.equal(inspectDocument(new Uint8Array([0x50, 0x4b, 3, 4]), mime), mime);
@@ -26,7 +26,7 @@ test("ファイルのMIMEとシグネチャが一致する5形式だけを受け
   assert.equal(inspectDocument(larger, "application/pdf"), "application/pdf");
 });
 
-test("モデルと接続先は固定し、URL入力・任意モデル・秘密の追加入力を拒否する", () => {
+test("Portal入力はモデルと接続先を固定し、URL入力・任意モデル・秘密の追加入力を拒否する", () => {
   const input = { model: "prebuilt-read", apiKeyId: "portal-11111111-1111-4111-8111-111111111111" };
   assert.equal(documentAnalysisInputSchema.safeParse(input).success, true);
   for (const extra of [{ model: "custom-model" }, { url: "https://untrusted.invalid/file" }, { apiKey: "secret" }, { pages: "1" }, { headers: {} }]) assert.equal(documentAnalysisInputSchema.safeParse({ ...input, ...extra }).success, false);
@@ -43,13 +43,14 @@ test("全ページ・全文・表を保持し、構造化データを勝手に�
 });
 
 test("空文書・表なしを成功とし、HTML文字列も変換せずプレーンテキストとして扱う", () => {
-  const native = { analyzeResult: { apiVersion: "2024-11-30", modelId: "prebuilt-read", content: "<script>alert(1)</script>", pages: [{ pageNumber: 1 }] } };
+  const native = { analyzeResult: { apiVersion: DOCUMENT_ANALYSIS_API_VERSION, modelId: "prebuilt-read", content: "<script>alert(1)</script>", pages: [{ pageNumber: 1 }] } };
   const result = parseDocumentAnalysisResult(native, "prebuilt-read", 0);
   assert.deepEqual(result.tables, []); assert.equal(result.content, native.analyzeResult.content);
   assert.equal(parseDocumentAnalysisResult({ analyzeResult: { ...native.analyzeResult, content: "" } }, "prebuilt-read", 0).content, "");
 });
 
 test("不正モデル・重複ページ・範囲外の表・過剰な入れ子を拒否する", () => {
+  assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, apiVersion: "unsupported-version" } }, "prebuilt-layout", 0));
   assert.throws(() => parseDocumentAnalysisResult(analysis, "prebuilt-read", 0));
   assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, pages: [{ pageNumber: 1 }, { pageNumber: 1 }] } }, "prebuilt-layout", 0));
   assert.throws(() => parseDocumentAnalysisResult({ analyzeResult: { ...analysis.analyzeResult, tables: [{ rowCount: 1, columnCount: 1, cells: [{ rowIndex: 2, columnIndex: 0, content: "bad" }] }] } }, "prebuilt-layout", 0));
@@ -70,7 +71,17 @@ test("5言語の例は選択モデル・raw file送信とバックエンド秘�
     assert.equal(code.includes("urlSource"), false);
   }
   assert.equal(getDocumentAnalysisRequestSchema("ja").properties.file.format, "binary");
-  assert.equal(getDocumentAnalysisResponseSchema("en").properties.analyzeResult.properties.apiVersion.const, "2024-11-30");
+  for (const locale of ["ja", "en"] as const) {
+    const schema = getDocumentAnalysisRequestSchema(locale);
+    assert.deepEqual(schema.oneOf, [{ required: ["file"] }, { required: ["urlSource"] }, { required: ["base64Source"] }]);
+    assert.equal(schema.properties.urlSource.format, "uri");
+    assert.equal(schema.properties.base64Source.contentEncoding, "base64");
+    assert.equal("enum" in schema.properties.contentType, false);
+    assert.equal("enum" in schema.properties.model, false);
+    assert.equal("enum" in getDocumentAnalysisResponseSchema(locale).properties.analyzeResult.properties.modelId, false);
+    assert.ok(schema.description.includes("500,000,000"));
+  }
+  assert.equal(getDocumentAnalysisResponseSchema("en").properties.analyzeResult.properties.apiVersion.const, DOCUMENT_ANALYSIS_API_VERSION);
   assert.ok(getDocumentAnalysisExample("typescript", "https://gateway.example.invalid", "prebuilt-read").includes('redirect: "error"'));
   assert.ok(getDocumentAnalysisExample("python", "https://gateway.example.invalid", "prebuilt-read").includes("allow_redirects=False"));
   assert.ok(getDocumentAnalysisExample("csharp", "https://gateway.example.invalid", "prebuilt-read").includes("AllowAutoRedirect = false"));

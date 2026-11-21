@@ -28,6 +28,7 @@ from deployment.helpers.waf_names import (DATA_POLICY_KEYS, GATEWAY_DATA_POLICY_
                                            policy_id, predecessor_policy_id)
 from deployment.helpers.waf_body import (ai_body_settings, portal_document_profile, raw_body_policy,
                                          ai_content_type_profile, ai_content_type_policy)
+from deployment.helpers.waf_source_urls import source_url_exclusions
 
 
 MANIFEST = REPOSITORY / 'apps/gateway/waf-data-exclusions.json'
@@ -253,7 +254,8 @@ def plan(config, scopes=('gateway', 'portal'), manifest=None):
     external = bool(config.get('gateway', {}).get('existingWafPolicyId'))
     return {'status': 'external-policy-skipped' if external else 'planned', 'azureWrites': 0,
             'profiles': [{'name': item['name'], 'scope': item['scope'], 'paths': item['paths'],
-                          'exclusions': item['exclusions']} for item in profiles]}
+                          'exclusions': _unique(item['exclusions'] + source_url_exclusions(item))}
+                         for item in profiles]}
 
 
 def _unique(items):
@@ -473,7 +475,9 @@ def desired_policy(base, profile, config, sources=()):
     sets = managed.get('managedRuleSets', [])
     if len([item for item in sets if item.get('ruleSetType') == 'OWASP' and item.get('ruleSetVersion') == '3.2']) != 1:
         raise ValueError('Data WAF requires the existing OWASP 3.2 rule set')
-    known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile) + profile['exclusions'])
+    # 制御項目の型分類は維持し、入力文書URLの承認済み個別規則だけを別正本から合成します。
+    known = _unique(managed.get('exclusions', []) + data_scope_exclusions(profile)
+                    + profile['exclusions'] + source_url_exclusions(profile))
     if len(known) > 200:
         raise ValueError('Composed WAF policy exceeds the 200 exclusion limit')
     # PIIを入口別に分けるときだけ、旧共有ポリシーの「他方の入口用」の除外を候補へ引き継ぎません。

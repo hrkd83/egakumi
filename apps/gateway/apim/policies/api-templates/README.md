@@ -14,6 +14,8 @@ HTTPの`gateway.xml`はAPI・操作と本文のモデル名から内部設定を
 
 続く`core-api-authentication-result`が共通認証済みの本人・購読情報と設定ラベルを`gatewayDecision`へまとめます。内部情報を引き継げない場合の監査と500応答は、テンプレートの直後の分岐で処理します。[認証結果の部品](../fragments/authentication/core-api-authentication-result/README.md)に本体と入出力をまとめています。
 
+Document解析の入力条件は、`gateway.xml`が[core-document-input-validation](../fragments/request/core-document-input-validation/README.md)を利用回数制限・下流接続準備・`accepted`監査より前で呼んで確認します。特定の開始操作へ適用するDocumentポリシーは、[操作別ポリシー](../operation-policies/README.md)の`document-analysis/document-analysis.xml`に置き、`<base />`でこのAPIテンプレートを継承します。同じ入力検査は開始操作で繰り返しません。
+
 3正本の配置変更では内容とAzureの適用先を保持した。その後の汎用query構成では、HTTP・生成MCPの呼出位置を維持し、外部MCPには要求準備後の判定と応答・エラー監査を差し込む。WebSocketではquery差し込みを空にする。ローカル実装とAzure反映・受入を区別し、各テンプレート内の全制御を棚卸済みとは扱わない。
 未着手の他の資材は現在の位置を保ち、初めて棚卸または改修する作業時に配置・名前・説明を揃える。
 構成全体と移設の確認手順は [管理構成](../README.md) を参照する。

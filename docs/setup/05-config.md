@@ -103,7 +103,7 @@ APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配�
 
 初回は32件の上限のうち28件を使用します。モデル追加時は、配備数の上限・対象モデルの提供条件・利用枠を確認します。
 TTSはAzure Speech、文書OCRはAzure Document Intelligenceを使います。
-文書解析の`prebuilt-read`・`prebuilt-layout`は標準APIに含み、Foundryモデルの追加配備ではありません。Speech・Language・モデル配備の区分は
+文書解析Gatewayは提供元のモデルIDを受け取り、モデルの利用可否を提供元へ任せます。Portal画面の標準選択肢は`prebuilt-read`・`prebuilt-layout`の2種類を維持し、Gatewayの受付とは分けて扱います。これらはDocument Intelligenceのサービスモデルであり、Foundryモデルの追加配備ではありません。Speech・Language・モデル配備の区分は
 [モデルと専用サービスの整理](../reference/foundry-model-catalog.md#モデル配備とazureの専用サービス)を参照してください。
 
 #### 構築後にClaudeを手動追加する場合

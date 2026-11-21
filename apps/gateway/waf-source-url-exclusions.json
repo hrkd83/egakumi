@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "description": "提供元が入力文書を取得する正規のURL項目だけを、専用の完全パスでRFI規則931130から除外します。自由文の7グループ除外や接続先設定とは分けます。",
+  "profiles": [
+    {
+      "name": "g-document-upload",
+      "scope": "gateway",
+      "paths": ["/tools/documents/v1/analyze"],
+      "exclusions": [
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "urlSource",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [{"ruleId": "931130"}]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "g-responses",
+      "scope": "gateway",
+      "paths": ["/models/openai/v1/responses"],
+      "exclusions": [
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.content.file_url",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [{"ruleId": "931130"}]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matchVariable": "RequestArgValues",
+          "selectorMatchOperator": "Equals",
+          "selector": "input.output.file_url",
+          "exclusionManagedRuleSets": [
+            {
+              "ruleSetType": "OWASP",
+              "ruleSetVersion": "3.2",
+              "ruleGroups": [
+                {
+                  "ruleGroupName": "REQUEST-931-APPLICATION-ATTACK-RFI",
+                  "rules": [{"ruleId": "931130"}]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

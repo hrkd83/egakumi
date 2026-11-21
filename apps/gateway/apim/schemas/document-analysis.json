@@ -25,11 +25,7 @@
               ]
             },
             "modelId": {
-              "type": "string",
-              "enum": [
-                "prebuilt-read",
-                "prebuilt-layout"
-              ]
+              "type": "string"
             },
             "stringIndexType": {
               "type": "string"
@@ -123,11 +119,7 @@
           "format": "uuid"
         },
         "model": {
-          "type": "string",
-          "enum": [
-            "prebuilt-read",
-            "prebuilt-layout"
-          ]
+          "type": "string"
         },
         "status": {
           "type": "string",
@@ -159,11 +151,7 @@
           "format": "uuid"
         },
         "model": {
-          "type": "string",
-          "enum": [
-            "prebuilt-read",
-            "prebuilt-layout"
-          ]
+          "type": "string"
         },
         "status": {
           "type": "string",

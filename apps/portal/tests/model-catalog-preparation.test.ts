@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { applyModelCapabilities, prepareModelCatalog } from "../scripts/prepare-model-catalog.ts";
+import { applyModelCapabilities, prepareDocumentContract, prepareModelCatalog } from "../scripts/prepare-model-catalog.ts";
 
 /** 生成処理の契約を検証するための最小API定義です。 */
 function definition(name: string, path = `models/${name}`) {
@@ -91,5 +91,46 @@ test("公開モデルの既定値を配備と同じファイルから解決し�
     assert.equal(snapshot.definitions[0].backendUrl, "__VOICE_LIVE_WS_BASE_URL__");
     await writeFile(join(folder, "public-bindings.json"), JSON.stringify({ schemaVersion: 1, bindings: { ...bindings, SECRET: "forbidden" } }));
     await assert.rejects(prepareModelCatalog({ sourceDirectory, snapshotFile }));
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
+
+/** 対応版だけを切り替えられる、公開Documentスキーマの合成例です。 */
+function documentSchema(versions: unknown) {
+  return { schemas: { DocumentAnalysisResult: { properties: { analyzeResult: { properties: { apiVersion: { enum: versions } } } } } } };
+}
+
+test("Documentの単一対応版を公開スキーマから同梱し、正本の変更を反映する", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "egakumi-document-contract-"));
+  try {
+    const schemaFile = join(folder, "schema.json"), snapshotFile = join(folder, "generated", "contract.json");
+    await writeFile(schemaFile, JSON.stringify(documentSchema(["2026-01-01"])));
+    assert.deepEqual(await prepareDocumentContract({ schemaFile, snapshotFile }), { apiVersion: "2026-01-01" });
+    assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), { apiVersion: "2026-01-01" });
+    await writeFile(schemaFile, JSON.stringify(documentSchema(["2026-02-01"])));
+    await prepareDocumentContract({ schemaFile, snapshotFile });
+    assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), { apiVersion: "2026-02-01" });
+    for (const versions of [[], ["2026-01-01", "2026-02-01"], [null], [" "], "2026-01-01"]) {
+      await writeFile(schemaFile, JSON.stringify(documentSchema(versions)));
+      await assert.rejects(prepareDocumentContract({ schemaFile, snapshotFile }));
+      assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), { apiVersion: "2026-02-01" });
+    }
+    await writeFile(schemaFile, "{");
+    await assert.rejects(prepareDocumentContract({ schemaFile, snapshotFile }));
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});
+
+test("Documentの正本を含まないDockerでは同梱物を使い、不正な同梱物は拒否する", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "egakumi-document-contract-"));
+  try {
+    const schemaFile = join(folder, "missing-source", "schema.json"), snapshotFile = join(folder, "contract.json");
+    await writeFile(snapshotFile, JSON.stringify({ apiVersion: "2026-01-01" }));
+    assert.deepEqual(await prepareDocumentContract({ schemaFile, snapshotFile }), { apiVersion: "2026-01-01" });
+    const existingSource = join(folder, "existing-source");
+    await mkdir(existingSource);
+    await assert.rejects(prepareDocumentContract({ schemaFile: join(existingSource, "missing-schema.json"), snapshotFile }));
+    for (const snapshot of [{}, { apiVersion: "" }, { apiVersion: 123 }, { apiVersion: "2026-01-01", unexpected: true }]) {
+      await writeFile(snapshotFile, JSON.stringify(snapshot));
+      await assert.rejects(prepareDocumentContract({ schemaFile, snapshotFile }));
+    }
   } finally { await rm(folder, { recursive: true, force: true }); }
 });

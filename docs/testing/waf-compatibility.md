@@ -10,7 +10,24 @@ GatewayとPortalは、OWASP 3.2のPreventionと本文検査を有効にしたま
 
 Responsesの`input.call_id`は、ツール呼び出しと結果を結ぶ相関IDとして`control`分類を維持します。`g-responses`の完全パスだけで、`RequestArgValues / Equals / input.call_id`からSQL Hex検知の`942450`だけを除外します。7グループのデータ欄除外、他のSQL規則、Keys・Header・兄弟欄へは広げません。WAFはitemのtypeやIDの形式を検証する条件ではないため、この除外で特定のID形式だけが受理されるとは扱いません。同名queryにも引数除外が作用し得るため、WAFの適用範囲とAPIM後続処理の受付・拒否・転送を別に確認します。
 
-APIM棚卸⑦では、query部品を`core-query-observation`へ観測専用化する方針を承認しました。この部品は有無・複数値の記録だけを行い、queryを理由とする400／500の分岐やmode設定を持ちません。その後の[入力検査](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)では、標準13操作のquery制限・HTTPメソッド再確認・入口MIME一覧比較の撤去を承認しました。操作登録とAPIMの照合、Content-Type宣言の存在・1値・非空MIME部分、URL資格情報拒否は維持します。後段の`core-model-limits`のMIME許可一覧比較と415も撤去しました。`operationConstraints.contentTypes`を使う個別処理、Speech転送、Documentの個別形式検査、URI変換、WAFのルール・除外は未変更で別棚卸です。Live／Realtime等の未一致queryの非転送も変更しません。観測専用化と共有MIME比較撤去のローカル改修・検証、Azureへのまとめ反映・読戻しは完了しました。[限定受入](../../apps/gateway/apim/policies/README.md)ではキー／BearerのResponses JSON・SSE、認証・入力拒否、TTS WAV・DTD拒否と対応する監査照合を確認しました。大容量413、他モデル・transport、Content-Typeの追加異常系は未実施です。以下の既存試験結果を、現在の入口MIME拒否の保証や、query転送・任意形式の下流受付・機能互換性の確認完了へ読み替えません。
+APIM棚卸⑦では、query部品を`core-query-observation`へ観測専用化する方針を承認しました。この部品は有無・複数値の記録だけを行い、queryを理由とする400／500の分岐やmode設定を持ちません。その後の[入力検査](../../apps/gateway/apim/policies/fragments/request/core-api-input-validation/README.md)では、標準13操作のquery制限・HTTPメソッド再確認・入口MIME一覧比較の撤去を承認しました。操作登録とAPIMの照合、Content-Type宣言の存在・1値・非空MIME部分、URL資格情報拒否は維持します。後段の`core-model-limits`のMIME許可一覧比較と415も撤去しました。`operationConstraints.contentTypes`を使う個別処理、Speech転送、URI変換、WAFのルール・除外は別棚卸です。Documentの個別形式検査は[入力棚卸①〜㉝](../reference/document-analysis.md)で撤去し、原本と提供元JSONを本文変換なしで送る構成へ整理します。Document開始POSTはmodelをクエリから除いた後、pages・featuresなどをpathだけの標準URI書換えで転送した後、標準クエリ設定でapi-versionは公開Schemaの単一対応版へ上書きします。⑭ではstringIndexTypeの指定値を保持し、未指定時だけ`unicodeCodePoint`を補完する形へ整理します。不正値・複数値の適否は提供元へ任せ、APIMに新しい検査を追加しません。㉑では状態取得GETの追加クエリを無視して同じジョブを取得し、クエリの有無だけでは403にしません。チケット・UUID・本人・期限の照合と固定URI・対応版、URLへのAPIキー指定の共通拒否は維持します。㉒では未使用クエリの非転送を維持し、目的コメントを整えます。対応版の結果取得GETはapi-versionのみを使います。将来正式なGET追加クエリが必要になれば、公開結果契約と合わせて見直します。このDocumentブロックは対象APIM資材の一括反映・読戻し照合を完了し、実経路受入は一部確認です。APIM入力棚卸のまとめ反映ではWAF設定とクエリ名・値の監査出力を追加していません。Live／Realtime等の未一致queryの非転送も変更しません。観測専用化と共有MIME比較撤去のローカル改修・検証、Azureへのまとめ反映・読戻しは完了しました。[限定受入](../../apps/gateway/apim/policies/README.md)ではキー／BearerのResponses JSON・SSE、認証・入力拒否、TTS WAV・DTD拒否と対応する監査照合を確認しました。大容量413、他モデル・transport、Content-Typeの追加異常系は未実施です。以下の既存試験結果を、現在の入口MIME拒否の保証や、query転送・任意形式の下流受付・機能互換性の確認完了へ読み替えません。
+
+Documentでは、独立して作成した小さい試験文書の原本と`base64Source`を、キー／Bearerの両方で202受付から本文なしGETの200まで確認しました。`pages=2`、指定した`utf16CodeUnit`・未指定時の`unicodeCodePoint`、API版固定、従来一覧外の`prebuilt-invoice`も確認済みです。本文なしGETの未使用クエリは200で、本文付きGETはWAFの920170により403でした。APIM入力棚卸の受入時点では、キー／Bearerの`urlSource`は931130（別ドメインへの参照）と920300などの検出、949110の異常スコア判定による403でした。この受入時点では920170・931130・949110を無効化せず、urlSourceの除外も適用していませんでした。APIMの本文消去処理はWAFより後に実行されるため、本文付きGETの403をAPIMの処理結果とは扱いません。空本文・短い本文・別MIME・gzip宣言は422、Content-Type欠落の403は原因を未切り分けです。[追加受入表](integration-tests.md#document入力棚卸の追加受入)に未実施条件を残し、小文書の通過を大容量・全入力方式の合格へ広げません。
+
+### 入力文書URLの個別RFI除外
+
+横断棚卸後に承認した追加対象は、次の2ポリシー・3項目だけです。正本は[入力文書URLの除外定義](../../apps/gateway/waf-source-url-exclusions.json)で、BicepとPythonが同じ定義を各専用ポリシーへ合成します。ローカル合成検証と追加分のAzure反映・全ポリシーの読戻し照合を完了しました。追加対象以外のポリシーと経路の関連付けは変更していません。追加除外後、独立した小文書URLを使うDocumentのキー／Bearerは202受付から本文なしGETの200まで確認しました。model・API版・未指定時の`unicodeCodePoint`と、チケットの`exp - iat = 86400`も照合しました。Responsesの2項目は、提供元・APIM・App Gatewayの429を監査とアクセスログで照合しました。WAFやAPIM入力検査による拒否ではありませんが、提供元によるfile_urlの文書受付・取得・結果は未確認です。上記のURL入力403を、除外後の試験結果へ読み替えません。
+
+| ポリシー | 完全パス | 正確な項目名 | 除外する規則 |
+| --- | --- | --- | --- |
+| `g-document-upload` | `/tools/documents/v1/analyze` | `urlSource` | OWASP 3.2の931130のみ |
+| `g-responses` | `/models/openai/v1/responses` | `input.content.file_url`、`input.output.file_url` | OWASP 3.2の931130のみ |
+
+`RequestArgValues / Equals`で項目の値を選び、規則グループは`REQUEST-931-APPLICATION-ATTACK-RFI`、個別IDは`931130`です。本文全体・Keys・Header・Cookie・他の項目へ広げず、931グループ全体や949110、GET本文の920170も無効化しません。App Gatewayの引数除外は同名query／formにも作用し、JSON本文だけには限定できません。除外はパス単位で、HTTPメソッドの操作照合はAPIMが行います。
+
+Responsesの`file_url`は、入力文書とfunction結果の文書をモデルへ渡す用途です。[通常入力の公式型](https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_input_file_param.py)と[function出力の公式型](https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_input_file_content_param.py)に基づく選択で、Azure提供元の受付・文書取得・モデル対応の実証とは分けます。`waf-input-contracts.json`のcontrol分類と、そこから生成する自由文・媒体データの7グループ除外は変更しません。個別RFI除外は別正本から合成し、既存の除外・Prevention・本文検査・ログのマスク・URI等の保護を保持します。
+
+Documentでは原本受付の専用ポリシーだけへ合成し、SpeechとPortalにも使う共通raw本文設定には追加しません。既存の画像・音声URLは既に媒体項目の除外があるため、今回の追加対象へ含めません。Portalの原本File受付とPII MCPのtext受付にも追加しません。remote MCPの`tools.server_url`はモデルが接続するツールの宛先であり、入力文書URLとは分けて後続の機能棚卸で扱います。
 
 ## 受付容量と検査範囲
 
@@ -21,7 +38,7 @@ APIM棚卸⑦では、query部品を`core-query-observation`へ観測専用化�
 | base・認証callback・管理系など上記以外 | 既定Prevention。configの本文検査枠・本文／ファイルサイズ強制を維持 |
 | 外部管理WAF | 自動変更しない |
 
-2000 KiBはAI入力の受付上限ではありません。通常AIのAPIM受付はClassicのバッファー上限500 MiB、文書は500,000,000 bytesで、提供元の制約が小さい場合はそちらが適用されます。WAFの検査枠を超えた本文まで検査したとは扱いません。容量緩和のAzure反映・実経路での通過確認は未実施です。
+2000 KiBはAI入力の受付上限ではありません。通常AIのAPIM受付はClassicのバッファー上限500 MiB、文書は500,000,000 bytesで、提供元の制約が小さい場合はそちらが適用されます。WAFの検査枠を超えた本文まで検査したとは扱いません。本文検査・容量設定はAzure反映後の全ポリシー読戻しで保持を確認しました。検査枠を超える本文や500 MB境界など、大容量の実経路受入は未実施です。
 
 ## 用途別のポリシー構成
 
@@ -135,7 +152,7 @@ Schema・構造化引数のKeysは、下表の既存11個の承認prefixに7グ�
 | profile | 現行経路 | 限定selectorと入口条件 |
 | --- | --- | --- |
 | `p-document-status` | POST `/api/tools/documents/status` | JSON `handle`、queryなし、同一Origin・本人・購読・封印内容を照合。JSON MIMEの大小文字対応だけを合成 |
-| `g-document-status` | GET `/tools/documents/v1/operations/{operationId}` | header `X-Core-Document-Ticket`、queryなし、UUID形式と署名・購読・対象・期限をAPIMで照合 |
+| `g-document-status` | GET `/tools/documents/v1/operations/{operationId}` | header `X-Core-Document-Ticket`、追加queryはAPIMで無視し、UUID形式と署名・本人・対象・期限を照合 |
 | `g-realtime-ticket` | POST `/models/openai-realtime/v1/calls/{callId}/hangup`、GET `/models/openai-realtime/v1/observer/` | header `X-Core-Call-Ticket`、hangupはqueryなし、observerは単一`call_id`だけ。署名・購読・call ID・期限をAPIMで照合 |
 
 この3profileは7群と`921110`・`921130`を既存のexact値・headerから除外し、baseの本文容量設定を維持します。Portal停止入口も、既存どおり未知のqueryを認証後・本文読取り前に拒否します。AppGWのpatternは上記2operationのAPI名・操作名・method・template・kind・bodyFormatが正本と一致した場合だけ生成し、他templateを展開しません。observerの完全パスも正本のAPI名・GET操作・WebSocket・署名observer設定に一致する場合だけを選び、同じURLのcustom APIへ除外を追加しません。[AppGWのPathPattern](https://learn.microsoft.com/en-us/azure/application-gateway/url-route-overview#pathpattern)は途中のwildcardを扱えないため、関連付けは`/tools/documents/v1/operations/*`と`/models/openai-realtime/v1/calls/*`です。`/calls`作成の完全パスは既存`g-realtime`のままです。AppGW自体はmethodやIDの構文を判定しないため、未知の子経路・他verb・余分なpath成分は既存APIのoperation照合・APIMの検証で拒否します。一般header、他Cookie、query全体への除外は追加しません。
