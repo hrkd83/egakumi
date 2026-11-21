@@ -81,8 +81,8 @@ class ArmParameterContractTests(unittest.TestCase):
                 complete_arm_parameters(raw)
 
     def test_all_main_parameters_are_explicitly_forwarded(self):
-        main = (ROOT / "infra/main.bicep").read_text()
-        bridge = (ROOT / "infra/main.bicepparam").read_text()
+        main = (ROOT / "infra/main.bicep").read_text(encoding="utf-8")
+        bridge = (ROOT / "infra/main.bicepparam").read_text(encoding="utf-8")
         names = set(re.findall(r"^param (\w+) ", main, re.MULTILINE))
         forwarded = re.findall(r"^param (\w+) =", bridge, re.MULTILINE)
         self.assertEqual(names, {"configuration", *ARM_PARAMETER_DEFAULTS})
@@ -102,10 +102,10 @@ class NativeBicepParameterBridgeTests(unittest.TestCase):
         (cls.project / "infra").mkdir()
         # 本体・module・guestの読取元は公開正本のまま。出力と合成値は一時領域だけ。
         relative_main = Path(os.path.relpath(ROOT / "infra/main.bicep", cls.project / "infra")).as_posix()
-        bridge = (ROOT / "infra/main.bicepparam").read_text().replace(
+        bridge = (ROOT / "infra/main.bicepparam").read_text(encoding="utf-8").replace(
             "using './main.bicep'", f"using '{relative_main}'", 1)
         cls.bridge = cls.project / "infra/main.bicepparam"
-        cls.bridge.write_text(bridge)
+        cls.bridge.write_text(bridge, encoding="utf-8")
 
     @classmethod
     def tearDownClass(cls):
@@ -115,7 +115,7 @@ class NativeBicepParameterBridgeTests(unittest.TestCase):
         reference = arm_parameters_reference(environment)
         path = self.project / reference
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(document))
+        path.write_text(json.dumps(document), encoding="utf-8")
         return reference
 
     def compile(self, reference=None):
@@ -127,7 +127,7 @@ class NativeBicepParameterBridgeTests(unittest.TestCase):
             environment[ARM_PARAMETERS_ENV] = reference
         return subprocess.run(
             [self.compiler, "build-params", str(self.bridge), "--stdout", "--no-restore"],
-            env=environment, capture_output=True, text=True, timeout=90,
+            env=environment, capture_output=True, text=True, encoding="utf-8", timeout=90,
         )
 
     def compiled_documents(self, reference):

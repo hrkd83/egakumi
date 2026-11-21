@@ -37,7 +37,7 @@ def _compiled_template(source, executable):
         result = subprocess.run(
             [executable, "build", str(source), "--stdout", "--no-restore"],
             env={**os.environ, "DOTNET_BUNDLE_EXTRACT_BASE_DIR": directory},
-            capture_output=True, text=True, timeout=60, check=False,
+            capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
         )
     if result.returncode:
         raise AssertionError(f"Bicep compilation failed for {source}:\n{result.stderr}")

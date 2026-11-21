@@ -13,9 +13,8 @@ param phase string = 'core'
 @description('管理 VM の SSH 公開鍵。秘密鍵は渡さず、手元で安全に保持します。')
 @secure()
 param sshPublicKey string = ''
-@secure()
-@description('初回だけCLIが準備する管理VMのローカル認証秘密。既存VMには空を渡し、資格情報を変更しません。')
-param managementAdminPassword string = ''
+@description('正式CLIが保護保存した初期作成証跡の内部世代。公開params/configで変更する値ではありません。')
+param managementInitialSerialGeneration string = ''
 @description('DNS-01 認証用のプラグイン引数。API トークンを含むためログや通常出力に出しません。')
 @secure()
 param dnsPluginArgumentsJson string = ''
@@ -272,7 +271,7 @@ module management 'modules/management.bicep' = if (deployCore) {
     encryptionAtHost: managementConfig.encryptionAtHost
     adminUsername: managementConfig.adminUsername
     sshPublicKey: sshPublicKey
-    adminPassword: managementAdminPassword
+    initialSerialGeneration: managementInitialSerialGeneration
     loginAssignments: managementConfig.loginAssignments
     dnsManagedIdentityResourceId: certConfig.mode == 'dnsPlugin' && certConfig.?plugin == 'Azure' ? certConfig.azureDnsManagedIdentityResourceId : ''
     patchAssessmentMode: managementConfig.patchAssessmentMode
@@ -699,6 +698,12 @@ output managementClientInventory object = managementClientInventory
 output services object = deployCore ? services!.outputs.serviceResourceIds : {}
 output endpoints object = deployCore ? { foundry: services!.outputs.foundryEndpoint, project: services!.outputs.projectEndpoint, public: gateway!.outputs.applicationGateway.publicUrl } : {}
 output managementVm object = deployCore ? management!.outputs.managementVm : {}
+// 初回404と元のCore入力・出力を再開時に照合する非秘密の世代証跡。秘密はOSProfileへ渡しません。
+output managementInitialSerialCreation object = deployCore && !empty(managementInitialSerialGeneration) ? {
+  generation: managementInitialSerialGeneration
+  coreDeploymentId: subscriptionResourceId('Microsoft.Resources/deployments', deployment().name)
+  managementVm: management!.outputs.managementVm
+} : {}
 output AZURE_LOCATION string = location
 output gateway object = deployCore ? gateway!.outputs.applicationGateway : {}
 // 通常HTTP(S)の入口保護を常設します。APIM保守は標準FQDNのHTTPSを使用します。
