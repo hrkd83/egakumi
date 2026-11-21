@@ -1151,7 +1151,105 @@ def read_open_product(apim_id, transport, *, allowed_api_ids, missing=True):
     return snapshot, set(api_ids)
 
 
-def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, sleep, deadline):
+def _membership_readset(snapshot, apim_id, api_id, manifest):
+    """Keep shared resources, every API root/collection and related API details.
+
+    Only the source-verified controller opts into this intermediate readset.
+    Full graph checks still bracket closed staging/global installation and the
+    final membership batch. Unrelated individual API descendants may therefore
+    drift until their own precheck or the final full check, which must fail and
+    close this transition's opened routes. Unknown shapes retain the full set.
+    """
+    if (not isinstance(manifest, PolicyManifest) or manifest.source_version != 2
+            or manifest.apim_id != apim_id or not isinstance(snapshot, dict)):
+        return snapshot
+    try:
+        api_ids = set(manifest.operations)
+        if (api_id not in api_ids or api_ids != set(manifest.products)
+                or api_ids != set(manifest.api_properties)):
+            return snapshot
+        prefix = apim_id + "/apis/"
+        collections, owners, operation_owners = set(), {}, {}
+        related = {target: set() for target in api_ids}
+        for target, names in manifest.operations.items():
+            if not target.startswith(prefix) or _identifier(target[len(prefix):]) != target[len(prefix):]:
+                return snapshot
+            kind = manifest.api_properties[target].get("type")
+            if kind not in ("http", "websocket", "grpc", "mcp"):
+                return snapshot
+            collections.update(target + "/" + child for child in
+                               ("operations", "products", "revisions", "schemas", "tools"))
+            # A WebSocket API policy's verified absence is also an individual
+            # witness; its handshake policy remains fully checked when related.
+            owners[target + "/policies/policy"] = target
+            for name in names:
+                operation_id = target + "/operations/" + _identifier(name)
+                operation_owners[operation_id] = target
+                owners[operation_id + "/policies/policy"] = target
+                if kind != "websocket":
+                    owners[operation_id] = target
+        for resource_id, properties in manifest.api_children.items():
+            if resource_id in operation_owners:
+                continue
+            parts = resource_id[len(prefix):].split("/") if resource_id.startswith(prefix) else ()
+            if (len(parts) != 3 or parts[1] not in ("tools", "schemas")
+                    or _identifier(parts[2]) != parts[2]):
+                return snapshot
+            owner = prefix + parts[0]
+            if owner not in api_ids or not isinstance(properties, dict):
+                return snapshot
+            owners[resource_id] = owner
+            if parts[1] == "tools":
+                dependency = operation_owners.get(properties.get("operationId"))
+                if dependency is None:
+                    return snapshot
+                # A REST operation can also be exposed by a native MCP API.
+                # Treat both directions and transitive references as related.
+                related[owner].add(dependency)
+                related[dependency].add(owner)
+        # Do not narrow a partial or nonstandard captured graph.
+        if not (api_ids | collections | set(owners)) <= set(snapshot):
+            return snapshot
+        connected, pending = set(), [api_id]
+        while pending:
+            target = pending.pop()
+            if target not in connected:
+                connected.add(target)
+                pending.extend(related[target] - connected)
+        result = {}
+        for resource_id, entry in snapshot.items():
+            if (not isinstance(resource_id, str) or not isinstance(entry, (tuple, list))
+                    or len(entry) != 3 or not isinstance(entry[0], str)
+                    or entry[0].split("?", 1)[0] != resource_id):
+                return snapshot
+            if resource_id.startswith(prefix):
+                if entry[0] not in (resource_id + "?api-version=" + APIM_API,
+                                    resource_id + "?api-version=" + APIM_API + "&format=rawxml"):
+                    return snapshot
+            elif resource_id.startswith(apim_id + "/"):
+                shared_kind = resource_id[len(apim_id) + 1:].split("/", 1)[0]
+                if (shared_kind not in ("policies", "apis", "policyFragments", "namedValues", "backends",
+                                        "products", "subscriptions", "loggers", "diagnostics")
+                        or shared_kind == "apis" and resource_id != apim_id + "/apis"):
+                    return snapshot
+            elif ("/providers/microsoft.apimanagement/" in resource_id.casefold()
+                  or "/apis/" in resource_id.casefold()):
+                return snapshot
+            if resource_id.startswith(prefix) and resource_id not in api_ids | collections:
+                owner = owners.get(resource_id)
+                if owner is None:
+                    return snapshot
+                if owner not in connected:
+                    continue
+            # Includes shared dependencies/collections, external prerequisites,
+            # all API roots and all API collections, with original GET/headers.
+            result[resource_id] = entry
+        return result
+    except (ValueError, TypeError, AttributeError):
+        return snapshot
+
+
+def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, sleep, deadline, manifest=None):
     """APIMのassociation操作には条件付きETagの保証がないため、専用所有範囲だけを扱う。
 
     global/API/product ETagを直前に確認し、所属集合を直後に完全照合する。
@@ -1159,7 +1257,8 @@ def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, 
     """
     if time.monotonic() >= deadline:
         raise DeploymentError("Dedicated Product membership deadline expired before write")
-    verify_snapshot(snapshot, transport)
+    checked = _membership_readset(snapshot, apim_id, api_id, manifest)
+    verify_snapshot(checked, transport)
     # 全依存の再照合中にも期限が進むため、変更要求の直前で再確認します。
     if time.monotonic() >= deadline:
         raise DeploymentError("Dedicated Product membership deadline expired before write")
@@ -1180,7 +1279,7 @@ def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, 
                 old = snapshot.get(resource_id)
                 if old and _properties(observed) != _properties(old[2]):
                     raise ValueError("The dedicated Product changed concurrently with membership")
-            unchanged = {resource_id: entry for resource_id, entry in snapshot.items()
+            unchanged = {resource_id: entry for resource_id, entry in checked.items()
                          if resource_id not in (product_id, product_id + "/apis", api_id + "/products")}
             verify_snapshot(unchanged, transport)
             return fresh, members
@@ -1191,7 +1290,7 @@ def _membership(apim_id, api_id, add, transport, snapshot, expected_members, *, 
 
 
 def _read_changed_api_products(manifest, api_id, add, transport):
-    """所属変更の影響集合だけを読む。他の資源は_membershipがETag込みで再照合済み。"""
+    """Read only the changed memberships; retain the controller\'s full snapshot."""
     if api_id not in manifest.products:
         raise ValueError("Changed API membership must have generated native Product source")
     native = {manifest.apim_id + "/products/" + _identifier(name) for name in manifest.products[api_id]}
@@ -1588,9 +1687,11 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
     interrupted = bool(members)
     try:
         for api_id in sorted(members):
-            fresh, members = _membership(current.apim_id, api_id, False, transport, snapshot, members, sleep=sleep, deadline=deadline)
-            # Only this association collection changes. _membership has already
-            # revalidated every other captured dependency without adopting drift.
+            fresh, members = _membership(current.apim_id, api_id, False, transport, snapshot, members,
+                                         sleep=sleep, deadline=deadline, manifest=current)
+            # Refresh only this association. Intermediate checks retain every
+            # root/collection/shared resource and related API detail; the full
+            # snapshot is checked again before staging and after activation.
             products = _read_changed_api_products(current, api_id, False, transport)
             snapshot.update(fresh)
             snapshot.update(products)
@@ -1630,7 +1731,8 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
         for api_id in sorted(desired_open):
             # Track intent before an accepted association write/postflight can fail.
             opened.add(api_id)
-            fresh, members = _membership(current.apim_id, api_id, True, transport, ready, members, sleep=sleep, deadline=deadline)
+            fresh, members = _membership(current.apim_id, api_id, True, transport, ready, members,
+                                         sleep=sleep, deadline=deadline, manifest=desired)
             products = _read_changed_api_products(desired, api_id, True, transport)
             ready.update(fresh)
             ready.update(products)
