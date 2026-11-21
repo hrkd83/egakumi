@@ -419,13 +419,11 @@ class PortalDeploymentTests(unittest.TestCase):
 
     def test_public_health_uses_explicit_protocol_headers_and_requires_no_store(self):
         for cacheable in (False, True):
-            response = io.StringIO(json.dumps({'status': 'ok', 'service': 'egakumi-portal'}))
-            response.status = 200
-            response.headers = {'Cache-Control': 'public, max-age=3600' if cacheable else 'no-store'}
-            opener = mock.Mock()
-            opener.open.return_value = response
+            reply = (200, {'status': 'ok', 'service': 'egakumi-portal'},
+                     'public, max-age=3600' if cacheable else 'no-store')
             times = iter([0, 0, 2])
-            with self.subTest(cacheable=cacheable), mock.patch.object(portal, 'build_opener', return_value=opener):
+            with self.subTest(cacheable=cacheable), mock.patch.object(
+                    portal, 'read_public_json', return_value=reply) as read:
                 if cacheable:
                     with self.assertRaisesRegex(ValueError, 'public health check'):
                         portal.verify_public('https://portal.example.com', timeout=1,
@@ -433,9 +431,20 @@ class PortalDeploymentTests(unittest.TestCase):
                 else:
                     portal.verify_public('https://portal.example.com', timeout=1,
                         sleep=lambda _: None, monotonic=lambda: next(times))
-            request = opener.open.call_args.args[0]
-            self.assertEqual(request.get_header('Accept'), 'application/json')
-            self.assertEqual(request.get_header('User-agent'), 'egakumi-portal-deployment/1.0')
+            read.assert_called_once_with('https://portal.example.com/api/health',
+                accept='application/json', user_agent='egakumi-portal-deployment/1.0', timeout=20)
+
+    def test_public_health_rejects_coerced_status_and_nonexact_json(self):
+        expected = {'status': 'ok', 'service': 'egakumi-portal'}
+        for reply in (('200', expected, 'no-store'), (True, expected, 'no-store'),
+                      (200, [], 'no-store'), (200, {'status': True, 'service': 'egakumi-portal'}, 'no-store'),
+                      (200, {**expected, 'extra': 'synthetic'}, 'no-store'), (200, expected, True)):
+            ticks = iter([0, 0, 2])
+            with self.subTest(reply=reply), mock.patch.object(portal, 'read_public_json', return_value=reply):
+                with self.assertRaisesRegex(ValueError, 'public health check'):
+                    portal.verify_public('https://portal.example.com', timeout=1,
+                        sleep=lambda _: None, monotonic=lambda: next(ticks))
+
 
     def test_plan_does_not_authenticate_or_write_to_azure(self):
         config, state = fixture()
