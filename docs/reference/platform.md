@@ -2,6 +2,8 @@
 
 [README](../../README.md)から導入の第1〜6章と、任意の第7章（ハブ＆スポーク対応）へ進みます。本書はAPI契約・運用機能の参照先です。環境固有の値は`<...>`で示し、導入先の値へ置き換えます。
 
+ネットワークの設計は[通信要件](network-communication-requirements.md)を入口に、[NSG全規則・判断](network-security-design.md)、[Firewall全規則・判断](firewall-policy-design.md)、[検証と実証結果の管理](network-security-validation.md)を参照します。通常のNSG規則にしないAzure基盤・同一ホスト内通信は[基盤通信の例外](platform-communications.md)で区別します。
+
 ### コアのEntraアプリ登録
 
 Gatewayの共通入口はAPIM購読キーで認可します。Microsoft認証が必要な下流APIにはCredential Manager（CM）を使用します。
