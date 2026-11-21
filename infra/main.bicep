@@ -572,6 +572,8 @@ var managementClientInventory = deployCore ? {
   managementPrincipalId: management!.outputs.managementVm.principalId
   applications: [portal!.outputs.platform.applicationId]
   jobs: []
+  // App-owned user databases are added from successful Gateway/Portal outputs.
+  sqlDatabases: []
   environments: [portal!.outputs.platform.environmentId]
   workspace: { id: monitoring.outputs.monitoring.workspaceId, customerId: monitoring.outputs.monitoring.workspaceCustomerId }
   auditStorage: map(['collectJapan', 'collectFoundry'], collector => {

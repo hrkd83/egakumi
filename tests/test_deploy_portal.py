@@ -54,6 +54,12 @@ def fixture():
 
 class PortalDeploymentTests(unittest.TestCase):
     def setUp(self):
+        # Dedicated tests verify the readonly guest probe. The App CLI tests
+        # only exercise the fixed internal-input wiring and deployment order.
+        discovery = mock.patch.object(portal, 'discover_management_sql_identity',
+                                      return_value='77777777-7777-4777-8777-777777777777')
+        self.sql_discovery = discovery.start()
+        self.addCleanup(discovery.stop)
         # Native ACL behavior is checked by the dedicated Serial integration
         # suite. This offline CLI fixture clears environment/subprocess state.
         if os.name == 'nt':
@@ -92,6 +98,34 @@ class PortalDeploymentTests(unittest.TestCase):
                     for boundary in (bundle, cli, transport, write):
                         boundary.assert_not_called()
                 self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_sql_identity_discovery_failure_stops_before_secret_image_or_app_changes(self):
+        config, state = fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            workspace = local_paths(config, root)
+            workspace.ensure()
+            state_file = workspace.state / 'latest.json'
+            state_file.write_text(json.dumps(state), encoding='utf-8')
+            self.sql_discovery.side_effect = ValueError('synthetic-SAMI-discovery-failed')
+            with mock.patch.object(portal, 'REPOSITORY', root), \
+                 mock.patch.dict(os.environ, {'AZURE_ENV_NAME': config['environmentName'], 'PYTHONDONTWRITEBYTECODE': '1'}, clear=True), \
+                 mock.patch.object(portal, 'load_configuration', return_value=config), \
+                 mock.patch.object(portal, 'prepare_api_key_groups', return_value=config), \
+                 mock.patch.object(portal, 'run_json', return_value={}), \
+                 mock.patch.object(portal, 'verify_foundation'), \
+                 mock.patch.object(portal, 'ArmTransport'), \
+                 mock.patch.object(portal, 'source_bundle') as bundle, \
+                 mock.patch.object(portal, 'build_image') as build, \
+                 mock.patch.object(portal, 'signing_secret') as signing, \
+                 mock.patch.object(portal, 'profile_secret') as profile, \
+                 mock.patch.object(portal, 'deploy_release') as release, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, 'synthetic-SAMI-discovery-failed'):
+                    portal.main(['--config', str(workspace.params), '--state-file', str(state_file),
+                                 '--image-digest', 'sha256:' + 'a' * 64, '--execute'])
+            for operation in (bundle, build, signing, profile, release):
+                operation.assert_not_called()
 
     def test_existing_core_output_is_usable_without_redeploying_core(self):
         config, state = fixture()
@@ -431,6 +465,7 @@ class PortalDeploymentTests(unittest.TestCase):
             cli.assert_not_called()
             prepare.assert_not_called()
             profile_secret.assert_not_called()
+            self.sql_discovery.assert_not_called()
             saved = json.loads((workspace.state / 'portal-plan.json').read_text(encoding='utf-8'))
             self.assertNotIn('signingSecret', saved['parameters'])
             self.assertNotIn('profileSecret', saved['parameters'])

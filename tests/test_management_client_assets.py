@@ -52,6 +52,11 @@ class AssetTransport:
         if target == self.inventory['managementVmId']:
             return {'statusCode': 200, 'body': {'id': target, 'type': 'Microsoft.Compute/virtualMachines', 'tags': tags,
                 'identity': {'principalId': self.inventory['managementPrincipalId']}, 'properties': {'provisioningState': 'Succeeded'}}}
+        if '/connectionPolicies/' in target:
+            return {'statusCode': 200, 'body': {'id': target, 'properties': {'connectionType': 'Proxy'}}}
+        if '/Microsoft.Sql/servers/' in target:
+            return {'statusCode': 200, 'body': {'id': target, 'type': 'Microsoft.Sql/servers/databases', 'tags': tags,
+                'properties': {'status': 'Online'}}}
         return {'statusCode': 200, 'body': {'id': target, 'type': resource_type, 'tags': tags, 'properties': {'provisioningState': 'Succeeded'}}}
 
 
@@ -82,6 +87,47 @@ class ManagementClientAssetTests(unittest.TestCase):
             assets.update_management_client_assets(config, state, outputs, transport,
                 component='portal', template=template, repository=Path(root))
         transport.request.assert_not_called()
+
+    def test_sql_target_requires_the_constructed_user_database_and_alias(self):
+        config, state, outputs, _ = fixture()
+        for invalid in ('master', 'another-database', 'credentials'):
+            changed = copy.deepcopy(outputs)
+            changed['managementMaintenance']['sqlDatabaseIds'] = [outputs['managementMaintenance']['sqlDatabaseIds'][0].rsplit('/', 1)[0] + '/' + invalid]
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'exact constructed user database'):
+                assets._merge_outputs(config, state['outputs']['managementClientInventory'], changed, 'portal')
+        combined, _ = assets._merge_outputs(config, state['outputs']['managementClientInventory'], outputs, 'portal')
+        self.assertEqual(combined['sqlDatabases'], [{'alias': 'portal', 'id': outputs['managementMaintenance']['sqlDatabaseIds'][0]}])
+        swapped = copy.deepcopy(state)
+        swapped['outputs']['managementClientInventory'] = combined
+        swapped['outputs']['managementClientInventory']['sqlDatabases'][0]['alias'] = 'credentials'
+        with self.assertRaisesRegex(ValueError, 'alias'):
+            assets.management_client_inventory(config, swapped)
+
+    def test_core_gateway_portal_inventory_merge_is_additive_and_idempotent(self):
+        config, state, outputs, _ = fixture()
+        original = copy.deepcopy(state['outputs']['managementClientInventory'])
+        combined = copy.deepcopy(original)
+        for component in ('gateway', 'portal', 'gateway', 'portal'):
+            combined, _ = assets._merge_outputs(config, combined,
+                {'managementMaintenance': assets._expected_targets(config)[component]}, component)
+        self.assertEqual(len(combined['sqlDatabases']), 2)
+        self.assertEqual({item['alias'] for item in combined['sqlDatabases']}, {'credentials', 'portal'})
+        self.assertEqual(state['outputs']['managementClientInventory'], original)
+
+    def test_sql_redirect_policy_is_rejected_before_client_asset_changes(self):
+        config, state, outputs, template = fixture()
+        transport = AssetTransport(config, state)
+        original = transport.request
+        def request(method, path, body=None):
+            result = original(method, path, body)
+            if '/connectionPolicies/' in path:
+                result['body']['properties']['connectionType'] = 'Redirect'
+            return result
+        transport.request = request
+        with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(ValueError, 'TCP1433 Proxy'):
+            assets.update_management_client_assets(config, state, outputs, transport,
+                component='portal', template=template, repository=Path(root))
+        self.assertFalse(any(method == 'PUT' for method, path, body in transport.calls))
 
     def test_unrelated_storage_in_the_same_monitor_group_and_unknown_container_are_rejected(self):
         for change in ('other-storage', 'other-container', 'other-workspace-id', 'other-vm-principal'):

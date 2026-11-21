@@ -84,7 +84,7 @@ class ManagementClientBicepTests(unittest.TestCase):
         parameters = {'configuration': config, 'phase': 'core', '__references': references}
         expected = {'schemaVersion': 1, 'subscriptionId': SUBSCRIPTION, 'azureTenantId': config['azureTenantId'],
             'managementVmId': vm_id, 'managementPrincipalId': management['principalId'],
-            'applications': [platform['applicationId']], 'jobs': [], 'environments': [platform['environmentId']],
+            'applications': [platform['applicationId']], 'jobs': [], 'sqlDatabases': [], 'environments': [platform['environmentId']],
             'workspace': {'id': monitoring['workspaceId'], 'customerId': monitoring['workspaceCustomerId']},
             'auditStorage': [{'id': storage[key]['id'], 'containers': ['insights-logs-audit']}
                              for key in ('collectJapan', 'collectFoundry')]}
@@ -139,6 +139,7 @@ class ManagementClientBicepTests(unittest.TestCase):
             outputs = {'managementMaintenance': assets._expected_targets(config)[component]}
             combined, _ = assets._merge_outputs(config, combined, outputs, component)
         plan = {'principalId': core['managementPrincipalId'], 'auditStorage': state['outputs']['auditStorage'],
+                'sqlDatabases': combined['sqlDatabases'],
                 'applicationNames': [value.rsplit('/', 1)[-1] for value in combined['applications']],
                 'jobNames': [value.rsplit('/', 1)[-1] for value in combined['jobs']],
                 'environmentNames': [value.rsplit('/', 1)[-1] for value in combined['environments']],

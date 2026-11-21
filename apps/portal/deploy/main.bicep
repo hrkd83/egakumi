@@ -17,6 +17,10 @@ param schemaIdentity object
 @minLength(1)
 @description('Coreが構築した管理VM自身のprincipalId。公開設定ではなく構築stateから取得します。')
 param managementPrincipalId string
+@minLength(36)
+@maxLength(36)
+@description('構築した管理VM自身のclientId。SQLのSID用であり、principalIdではありません。')
+param managementSqlClientId string
 @description('Coreが構築した保守ロールのID。作成フラグや利用者の任意入力は設けません。')
 param managementRoleDefinitionIds object
 param sqlServer string
@@ -82,6 +86,7 @@ module schema 'schema-job.bicep' = {
     imageDigest: imageDigest
     runtimeIdentity: runtimeIdentity
     schemaIdentity: schemaIdentity
+    managementSqlClientId: managementSqlClientId
     sqlServer: sqlServer
     database: database.outputs.database
     apiKeyGroups: apiKeyGroups
@@ -168,6 +173,7 @@ output applicationName string = 'ca-${stem}-portal'
 output databaseId string = database.outputs.databaseId
 output apimResourceId string = apiKeys.outputs.apimResourceId
 output managementMaintenance object = {
+  sqlDatabaseIds: [database.outputs.databaseId]
   applicationIds: deployApplication ? [application!.outputs.id] : []
   jobIds: deployApplication ? [schema.outputs.id, groupReconciliation!.outputs.id] : [schema.outputs.id]
   environmentIds: [schema.outputs.environmentId]

@@ -94,6 +94,7 @@ module broker 'broker.bicep' = {
     imageDigest: imageDigest
     runtimeIdentity: runtime.outputs.identity
     schemaIdentity: foundation.schemaIdentity
+    managementSqlClientId: foundation.managementMaintenance.sqlClientId
     sqlServer: foundation.sqlServer
     database: database.outputs.database
     profiles: profiles
@@ -145,6 +146,7 @@ output migrationJob string = broker.outputs.migrationJob
 output applicationName string = broker.outputs.applicationName
 output databaseId string = database.outputs.databaseId
 output managementMaintenance object = {
+  sqlDatabaseIds: [database.outputs.databaseId]
   applicationIds: broker.outputs.applicationIds
   jobIds: broker.outputs.jobIds
   environmentIds: [broker.outputs.environmentId]

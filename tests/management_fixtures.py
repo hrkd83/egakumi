@@ -20,7 +20,7 @@ def client_inventory(config):
         'managementPrincipalId': maintenance_metadata(config['subscriptionId'])['principalId'],
         'managementVmId': base + config['resourceGroupNames']['maint'] + '/providers/Microsoft.Compute/virtualMachines/vm-' + config['resourceStem'] + '-mgmt',
         'applications': [service + 'Microsoft.App/containerApps/ca-' + config['resourceStem'] + '-portal'],
-        'jobs': [], 'environments': [service + 'Microsoft.App/managedEnvironments/cae-' + config['resourceStem']],
+        'jobs': [], 'sqlDatabases': [], 'environments': [service + 'Microsoft.App/managedEnvironments/cae-' + config['resourceStem']],
         'workspace': {'id': monitor + 'Microsoft.OperationalInsights/workspaces/law-' + config['resourceStem'],
                       'customerId': '66666666-6666-4666-8666-666666666666'},
         'auditStorage': [{'id': monitor + 'Microsoft.Storage/storageAccounts/st' + config['resourceStem'].replace('-', '') + suffix,

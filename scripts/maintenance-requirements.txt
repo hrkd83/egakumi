@@ -1,3 +1,4 @@
-# Matches the repository's pinned WebSocket runtime. All other client operations
-# use the Python standard library and the VM's SystemAssigned identity via IMDS.
+# Pinned guest maintenance clients. SQL uses Microsoft ODBC Driver 18 and the
+# VM's SystemAssigned identity via IMDS; no SQL password is installed.
 websockets==17.2
+pyodbc==5.3.0

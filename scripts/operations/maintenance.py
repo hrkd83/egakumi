@@ -363,6 +363,17 @@ class MaintenanceUpgrade:
         for kind, names in (('containerApps', app_names), ('jobs', job_names), ('managedEnvironments', [outputs['portal']['environmentName']])):
             for name in names:
                 self.context.verify_resource(svc + kind + '/' + name, '2025-01-01', 'Microsoft.App/' + kind)
+        sql_server = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem
+        if str(outputs['portal'].get('sharedSqlServerId', '')).casefold() != sql_server.casefold():
+            raise OperationError('The constructed SQL server output is missing or differs')
+        self.context.verify_resource(sql_server, '2023-08-01', 'Microsoft.Sql/servers')
+        sql_databases = []
+        for alias in ('credentials', 'portal'):
+            identity = sql_server + '/databases/sqldb-' + stem + '-' + alias
+            value = self.context.verify_resource(identity, '2023-08-01', 'Microsoft.Sql/servers/databases')
+            if value.get('properties', {}).get('status') != 'Online':
+                raise OperationError('A constructed maintenance database is not online')
+            sql_databases.append({'alias': alias, 'id': value['id']})
         monitoring = outputs['monitoring']
         workspace = self.context.verify_resource(monitoring['workspaceId'], '2023-09-01', 'Microsoft.OperationalInsights/workspaces')
         expected_workspace = groups['monitor'] + '/providers/Microsoft.OperationalInsights/workspaces/law-' + stem
@@ -372,6 +383,7 @@ class MaintenanceUpgrade:
         self.verify_dns(bindings)
         existing_workspace_reader = self.existing_reader(workspace['id'], principal, '3b03c2da-16b3-4a49-8834-0f8130efdd3b')
         plan = {'status': 'verified-plan', 'principalId': principal, 'bindings': bindings, 'auditStorage': storage,
+                'sqlDatabases': sql_databases,
                 'readers': readers, 'applicationNames': app_names, 'jobNames': job_names,
                 'environmentNames': [outputs['portal']['environmentName']], 'workspaceName': monitoring['workspaceName'],
                 'retainedAuditReaders': retained_readers, 'existingWorkspaceReader': existing_workspace_reader}
@@ -385,6 +397,7 @@ class MaintenanceUpgrade:
         return {'schemaVersion': 1, 'subscriptionId': self.config['subscriptionId'],
                 'azureTenantId': self.config['azureTenantId'], 'managementVmId': outputs['managementVm']['id'],
                 'managementPrincipalId': plan['principalId'],
+                'sqlDatabases': copy.deepcopy(plan['sqlDatabases']),
                 'applications': [group+'containerApps/'+name for name in plan['applicationNames']],
                 'jobs': [group+'jobs/'+name for name in plan['jobNames']],
                 'environments': [group+'managedEnvironments/'+name for name in plan['environmentNames']],

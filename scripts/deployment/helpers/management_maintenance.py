@@ -29,4 +29,11 @@ def management_maintenance_inputs(config, metadata):
         selected[key] = role
     if len({role.lower() for role in selected.values()}) != len(ROLE_KEYS):
         raise ValueError('Core management maintenance roles must identify their distinct approved definitions')
-    return {'principalId': principal, 'roleDefinitionIds': selected}
+    result = {'principalId': principal, 'roleDefinitionIds': selected}
+    if 'sqlClientId' in metadata:
+        client_id = metadata['sqlClientId']
+        if (not isinstance(client_id, str) or not re.fullmatch(GUID, client_id)
+                or client_id.lower() == '00000000-0000-0000-0000-000000000000'):
+            raise ValueError('The verified management VM SQL client identity is invalid')
+        result['sqlClientId'] = client_id
+    return result

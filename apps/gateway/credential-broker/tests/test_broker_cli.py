@@ -78,12 +78,14 @@ class SchemaSnapshotTests(unittest.TestCase):
         with mock.patch.object(cli.SqlStore, 'from_environment', return_value=store), \
              mock.patch.object(cli, 'migrate') as migration, \
              mock.patch.object(cli, 'grant_runtime_access') as grants, \
+             mock.patch.object(cli, 'grant_management_access') as management_grants, \
              contextlib.redirect_stdout(io.StringIO()) as stdout:
             self.assertEqual(cli.main(['observe-schema']), 0)
         self.assertEqual(json.loads(stdout.getvalue())['schemaVersion'], 3)
         self.assertTrue(all(query.startswith('SELECT ') for query, _ in cursor.calls))
         migration.assert_not_called()
         grants.assert_not_called()
+        management_grants.assert_not_called()
 
     def test_observe_schema_failure_prints_no_success_and_runs_no_migration(self):
         store, _ = fixture([('SELECT CASE WHEN HAS_PERMS_BY_NAME', {'tables': None, 'present': 0})])
@@ -117,7 +119,8 @@ class SchemaObservationTests(unittest.TestCase):
 
     def test_formal_migrate_entry_records_before_ddl_and_stops_on_observation_error(self):
         observation = {"stage": "before-migration", "userTableCount": 0, "migrationTablePresent": False}
-        environment = {"SQL_RUNTIME_CLIENT_ID": TENANT, "SQL_RUNTIME_USER_NAME": "id-runtime", "BROKER_PROFILES_JSON": "{}"}
+        environment = {"SQL_RUNTIME_CLIENT_ID": TENANT, "SQL_RUNTIME_USER_NAME": "id-runtime", "BROKER_PROFILES_JSON": "{}",
+            "SQL_MANAGEMENT_CLIENT_ID": OWNER, "AZURE_CLIENT_ID": "33333333-3333-4333-8333-333333333333"}
         output = io.StringIO()
         def migrate_after_observation(*args, **kwargs):
             self.assertEqual(json.loads(output.getvalue()), observation)
@@ -125,10 +128,12 @@ class SchemaObservationTests(unittest.TestCase):
         with mock.patch.dict(os.environ, environment), mock.patch.object(cli.SqlStore, "from_environment"), \
              mock.patch.object(cli, "observe_schema_before_migration", return_value=observation), \
              mock.patch.object(cli, "migrate", side_effect=migrate_after_observation) as migrate_call, \
+             mock.patch.object(cli, "grant_management_access") as management_grant, \
              contextlib.redirect_stdout(output):
             self.assertEqual(cli.main(["migrate"]), 0)
         migrate_call.assert_called_once()
-        with mock.patch.object(cli.SqlStore, "from_environment"), \
+        management_grant.assert_called_once()
+        with mock.patch.dict(os.environ, environment), mock.patch.object(cli.SqlStore, "from_environment"), \
              mock.patch.object(cli, "observe_schema_before_migration", side_effect=StoreUnavailable("metadata unavailable")), \
              mock.patch.object(cli, "migrate") as migrate_call, contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaises(StoreUnavailable):

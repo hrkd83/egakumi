@@ -28,20 +28,29 @@ try {
     $user = [Security.Principal.WindowsIdentity]::GetCurrent().User
     if ($env:EGAKUMI_SERIAL_ACL_OPERATION -eq 'protect-new') {
         if ($item.PSIsContainer) {
-            $acl = [Security.AccessControl.DirectorySecurity]::new()
+            $acl = Get-Acl -LiteralPath $target
             $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
         } else {
-            $acl = [Security.AccessControl.FileSecurity]::new()
+            $acl = Get-Acl -LiteralPath $target
             $inherit = [Security.AccessControl.InheritanceFlags]::None
         }
-        $acl.SetOwner($user)
+        # Preserve Owner. Generated SSH files may lack WRITE_OWNER even when
+        # the current user already owns them. Change only the Access section.
+        if (-not $acl.GetOwner([Security.Principal.SecurityIdentifier]).Equals($user)) { exit 3 }
+        foreach ($old in $acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier])) {
+            [void]$acl.RemoveAccessRuleSpecific($old)
+        }
         $acl.SetAccessRuleProtection($true, $false)
         $rule = [Security.AccessControl.FileSystemAccessRule]::new(
             $user, [Security.AccessControl.FileSystemRights]::FullControl,
             $inherit, [Security.AccessControl.PropagationFlags]::None,
             [Security.AccessControl.AccessControlType]::Allow)
         $acl.AddAccessRule($rule)
-        Set-Acl -LiteralPath $target -AclObject $acl
+        if ($null -ne ('System.IO.FileSystemAclExtensions' -as [type])) {
+            [IO.FileSystemAclExtensions]::SetAccessControl($item, $acl)
+        } else {
+            $item.SetAccessControl($acl)
+        }
     } elseif ($env:EGAKUMI_SERIAL_ACL_OPERATION -ne 'inspect') { exit 2 }
     $actual = Get-Acl -LiteralPath $target
     $rules = $actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
