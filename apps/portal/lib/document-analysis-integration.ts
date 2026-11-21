@@ -1,8 +1,8 @@
-import { DOCUMENT_MEDIA_TYPES, MAX_DOCUMENT_BYTES, getDocumentAnalysisEndpoint, type DocumentAnalysisModel } from "./document-analysis-contracts.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION, getDocumentAnalysisEndpoint, type DocumentAnalysisModel } from "./document-analysis-contracts.ts";
 import type { IntegrationLanguage } from "./model-integration.ts";
 import type { Locale } from "./i18n/config.ts";
 
-/** 公開APIはファイル本文を受け取り、Portal内のmultipartとは分けて案内します。 */
+/** 公開APIで利用できる原本ファイル送信の例を、Portal内のmultipart入口とは分けて案内します。 */
 export function getDocumentAnalysisExample(language: IntegrationLanguage, origin: string, model: DocumentAnalysisModel): string {
   const url = getDocumentAnalysisEndpoint(origin, model);
   if (language === "curl") return `# Run on your backend; never expose the subscription key or ticket to a browser.
@@ -92,21 +92,25 @@ Console.WriteLine(await response.Content.ReadAsStringAsync());
 response.Dispose();`;
 }
 
-/** ファイル形式と固定モデルを含む、Gateway向けのHTTP要求仕様です。 */
+/** 原本ファイルと提供元のJSON入力を案内する、Gateway向けのHTTP要求仕様です。
+ * @remarks Portalのアップロード画面やBFFの入力検証を変更するものではありません。
+ */
 export function getDocumentAnalysisRequestSchema(locale: Locale) {
-  return { type: "object", required: ["method", "model", "contentType", "file"], properties: {
+  return { type: "object", required: ["method", "model"], description: locale === "ja" ? "本文は原本ファイル、またはurlSource／base64SourceのJSONです。提供元の仕様に沿ったContent-Typeを送ります。APIMは本文を解析・変換せず、Content-Lengthから500,000,000バイト超と分かる場合に413を返します。復号後やURL先の文書サイズは提供元が判定します。" : "Send raw document bytes or provider JSON containing urlSource or base64Source, with a Content-Type matching the provider contract. APIM forwards the body without parsing or conversion and returns 413 when Content-Length declares more than 500,000,000 bytes. The provider checks decoded or URL-fetched document sizes.", oneOf: [{ required: ["file"] }, { required: ["urlSource"] }, { required: ["base64Source"] }], properties: {
     method: { type: "string", const: "POST" },
-    model: { type: "string", enum: ["prebuilt-read", "prebuilt-layout"], description: locale === "ja" ? "URLクエリーで指定する固定モデル" : "Model supplied in the URL query" },
-    contentType: { type: "string", enum: DOCUMENT_MEDIA_TYPES },
-    file: { type: "string", format: "binary", maxLength: MAX_DOCUMENT_BYTES, description: locale === "ja" ? "HTTP本文へファイルを送信します。容量とページ数は提供元の料金プランおよび通信経路の技術上限に従います。" : "Raw file bytes. Capacity and page count follow the provider tier and transport technical limits." },
+    model: { type: "string", description: locale === "ja" ? "提供元のモデルIDをURLクエリーで1値指定します。modelは必須・非空で、.と..はURL構造の不備として400になります。利用可否は提供元が判定します。Portal画面の選択肢はprebuilt-read／prebuilt-layoutです。" : "Supply one nonempty provider model ID in the required model URL query. The values . and .. return 400 because they alter the URL hierarchy. The provider determines model availability. The Portal UI offers prebuilt-read and prebuilt-layout." },
+    contentType: { type: "string", description: locale === "ja" ? "原本形式のMIME、またはJSON入力のapplication/json。APIM独自のMIME許可一覧との比較は行いません。" : "The raw document MIME type, or application/json for provider JSON input. APIM does not compare it against a Gateway MIME allowlist." },
+    file: { type: "string", format: "binary", description: locale === "ja" ? "HTTP本文へ原本ファイルを送信します。Portal画面はこの方式です。容量とページ数は提供元の料金プランおよび通信経路の技術上限に従います。" : "Raw document bytes in the HTTP body. The Portal upload UI uses this method. Capacity and page count follow the provider tier and transport technical limits." },
+    urlSource: { type: "string", format: "uri", description: locale === "ja" ? "JSON本文に文書URLを指定します。Document Intelligenceが文書を取得します。" : "Document URL supplied in the JSON body. Document Intelligence fetches the document." },
+    base64Source: { type: "string", contentEncoding: "base64", description: locale === "ja" ? "JSON本文にBase64化した文書を指定します。送信する本文全体は元ファイルより大きくなります。" : "Base64-encoded document supplied in the JSON body. The transmitted body is larger than the original file." },
   } };
 }
 
 /** 完全なAzureの解析結果を返すことと、代表的な属性を案内します。 */
 export function getDocumentAnalysisResponseSchema(locale: Locale) {
   return { type: "object", required: ["analyzeResult"], properties: {
-    analyzeResult: { type: "object", description: locale === "ja" ? "Azure Document Intelligence 2024-11-30 の解析結果。ページ・段落・表・座標などの属性はモデルと文書に依存します。" : "Native Azure Document Intelligence 2024-11-30 result. Pages, paragraphs, tables, and coordinates depend on the model and document.", required: ["apiVersion", "modelId", "content", "pages"], additionalProperties: true, properties: {
-      apiVersion: { type: "string", const: "2024-11-30" }, modelId: { type: "string", enum: ["prebuilt-read", "prebuilt-layout"] },
+    analyzeResult: { type: "object", description: locale === "ja" ? `Azure Document Intelligence ${DOCUMENT_ANALYSIS_API_VERSION} の解析結果。ページ・段落・表・座標などの属性はモデルと文書に依存します。` : `Native Azure Document Intelligence ${DOCUMENT_ANALYSIS_API_VERSION} result. Pages, paragraphs, tables, and coordinates depend on the model and document.`, required: ["apiVersion", "modelId", "content", "pages"], additionalProperties: true, properties: {
+      apiVersion: { type: "string", const: DOCUMENT_ANALYSIS_API_VERSION }, modelId: { type: "string", description: locale === "ja" ? "受付時のmodelと一致する提供元のモデルID" : "Provider model ID matching the model accepted for this operation" },
       content: { type: "string", description: locale === "ja" ? "検出された全文。空の文書では空文字もありえます。" : "Full detected text, which can be empty for a blank document." },
       pages: { type: "array", items: { type: "object" }, description: locale === "ja" ? "解析された全ページの結果" : "All analyzed pages" },
       tables: { type: "array", items: { type: "object" }, description: locale === "ja" ? "Layoutで検出された表。検出なしでは省略されます。" : "Tables detected by Layout; omitted when none are detected." },

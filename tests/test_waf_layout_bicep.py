@@ -7,7 +7,7 @@ import unittest
 from bicep_helpers import compile_bicep
 from test_ssml_waf import GatewayExpression
 from deployment.helpers.waf_body import ai_body_settings
-from waf_policy import desired_policy
+from waf_policy import desired_policy, exclusion
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +15,11 @@ WAF_TYPE = "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies"
 IDENTIFIER = "abc123"  # 実環境から独立した合成識別子。
 SPEECH_PATHS = ["/models/azure-speech/v1/recognize", "/models/azure-speech/v1/synthesize"]
 DOCUMENT_PATH = "/tools/documents/v1/analyze"
+SOURCE_URL_TARGETS = {
+    "g-document-upload": [exclusion("urlSource", "REQUEST-931-APPLICATION-ATTACK-RFI", ["931130"])],
+    "g-responses": [exclusion(selector, "REQUEST-931-APPLICATION-ATTACK-RFI", ["931130"])
+                    for selector in ("input.content.file_url", "input.output.file_url")],
+}
 DATA_PURPOSES = {
     "g-chat-completions", "g-responses", "g-embeddings", "g-rerank", "g-decision",
     "g-images", "g-transcribe", "g-realtime", "g-live", "g-pii-rest", "g-pii-mcp",
@@ -250,7 +255,8 @@ class WafLayoutBicepTests(unittest.TestCase):
             raw = policies[self.name(purpose)]
             self.assertEqual(raw["managedRules"]["managedRuleSets"][0]["ruleGroupOverrides"], expected_overrides)
             if purpose != "p-document-upload":
-                self.assertEqual(raw["managedRules"]["exclusions"], base["managedRules"]["exclusions"])
+                self.assertEqual(raw["managedRules"]["exclusions"],
+                                 base["managedRules"]["exclusions"] + SOURCE_URL_TARGETS.get(purpose, []))
             self.assertEqual(raw["customRules"][:1], parameters["wafCustomRules"])
             blocks = raw["customRules"][1:]
             self.assertEqual(len(blocks), 4)
@@ -267,6 +273,16 @@ class WafLayoutBicepTests(unittest.TestCase):
         self.assertTrue(speech["properties"]["firewallPolicy"]["id"].endswith("/" + self.name("g-speech")))
         absent = self.policies(self.parameters(speechRawBodyPaths=[]))
         self.assertNotIn(self.name("g-speech"), absent)
+
+    def test_source_url_adjustments_are_confined_to_two_policies_and_three_values(self):
+        policies = self.policies(self.parameters())
+        selectors = {"urlSource", "input.content.file_url", "input.output.file_url"}
+        expected = {self.name(purpose): entries for purpose, entries in SOURCE_URL_TARGETS.items()}
+        for name, policy in policies.items():
+            with self.subTest(policy=name):
+                selected = [entry for entry in policy["managedRules"]["exclusions"]
+                            if entry["selector"] in selectors]
+                self.assertEqual(selected, expected.get(name, []))
 
     def test_no_extra_generators_or_dynamic_data_exclusions_remain(self):
         removed = {"customMimePaths", "legacyMcpMessagePaths", "inlineImagePaths", "inlinePdfPaths", "inlineAudioPaths"}
@@ -290,6 +306,7 @@ class WafLayoutBicepTests(unittest.TestCase):
             for item in profile["exclusions"]:
                 if item not in expected:
                     expected.append(item)
+            expected.extend(SOURCE_URL_TARGETS.get(profile["name"], []))
             actual = policies[self.name(profile["name"])]
             self.assertEqual(actual["managedRules"]["exclusions"], expected)
             if profile["name"] == "p-document-upload":

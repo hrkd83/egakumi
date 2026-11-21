@@ -32,7 +32,7 @@
 | Graph /me | `graph-profile-v1`: GET `/tools/graph/v1/me` | GPH、CM |
 | PII REST | `pii-v1`: POST `/tools/pii/v1/redact` | PII |
 | PII MCP | `pii-v1`から生成する`pii-v1-mcp`: POST `/tools/pii-v1-mcp/mcp` | MCP |
-| 文書解析 | `document-analysis-v1`: POST `/tools/documents/v1/analyze?model=prebuilt-read` または `prebuilt-layout`、GET `/tools/documents/v1/operations/{operationId}` | DOC・LIM |
+| 文書解析 | `document-analysis-v1`: POST `/tools/documents/v1/analyze?model=<PROVIDER_MODEL_ID>`、GET `/tools/documents/v1/operations/{operationId}`。Portal画面はRead／Layoutの2選択肢 | DOC・LIM |
 
 `model-users`、`pii-users`、`connection-users`は用途別の検証用製品です。通常のPortal発行キーは`released-apis`へ結び付きます。キーごとの対象可否は実際の製品とAPIの関連付けから判定します。
 
@@ -447,7 +447,7 @@ Bicepが保護設定を適用する対象と、`Disabled`では設定しない�
 | INCON-04 | 既存処理とデータ非記録 | 同じモデル・入力を改修前後で比較し、モデルルーティング・URI変換・SSE・ツールの応答と監査出力を照合する。対象表の欠落、操作値のnull・型不正を拒否する資材側の負例はローカル検証と区別する。 | 認証・本文／モデル条件・URI変換を維持し、入力検査がquery名・値・本文・資格情報を新規記録しない。正常な対象値`{}`と表／操作値の不備を区別し、設定不備を対象外のtrueへ変換しない。この受入だけでモデル機能・query転送の全互換性を保証しない。 | キー／BearerのResponses JSON・SSEと対応する監査照合を確認。他モデル・URI・ツールやデータ非記録の追加確認は未実施。 | 一部確認 |
 | INCON-05 | クエリ制限撤去と残る境界 | 登録した操作のメソッド・URLと正常MIMEで、クエリなし・未知名・同名複数値・任意の`api-version`を比較する。別の対照では`api-key`／`subscription-key`をクエリへ指定し、観測・認証・入力検査・URI変換・WAF・下流応答の帰属を確認する。 | 通常のクエリは入力検査で拒否せず、OpenAI embeddingsの版の例外条件もない。URL資格情報は共通認証で従来どおり拒否する。明示した対象の有無・複数値の観測は維持し、値をログへ追加しない。後段や下流の400等を入力検査の拒否と混同せず、すべてのqueryの転送・WAF通過・下流の受付を保証しない。 | クエリ・拒否主体・転送の実確認未実施。 | 未実施 |
 | INCON-06 | 実APIMのメソッド・URL照合 | 登録済みのメソッド・URLによる正常要求と、対象URLに未登録のHTTPメソッド・独立した合成メソッド名・未登録URLの対照を送る。有効ポリシーとAPIM／AppGWのログで照合先・拒否主体・下流への到達を確認する。 | 未登録の要求が対象の操作や下流のモデル呼出しへ到達しない。操作登録を維持した実APIMの照合結果を確認し、WAF・認証・下流の拒否と区別する。C#がメソッドを参照しないことのローカル検証だけでは、この項目に合格を付けない。 | 実APIMの操作照合・下流非到達の確認未実施。 | 未実施 |
-| INCON-07 | 共有MIME一覧撤去と残存制御 | 単一・非空のContent-Type宣言で、JSON以外を含む合成対照を送る。入口とcore-model-limitsのfragmentを読戻し、個別処理・WAF・下流の拒否主体、Speechの上流ヘッダーを照合する。 | 入口とcore-model-limitsのMIME許可一覧比較はなく、宣言・サイズ条件を満たせば後続へ進む。残る`operationConstraints.contentTypes`を使う個別処理、Documentの形式検査、WAFの形式規則、Speechの固定ヘッダーは未変更として区別する。共有部品の通過を任意形式の下流受付や成功へ読み替えず、関連受入をまとめ反映前に整理する。 | 共有部品通過・残存制御・ヘッダー転送の実確認未実施。 | 未実施 |
+| INCON-07 | 共有MIME一覧撤去と残存制御 | 単一・非空のContent-Type宣言で、JSON以外を含む合成対照を送る。入口とcore-model-limitsのfragmentを読戻し、個別処理・WAF・下流の拒否主体、Speechの上流ヘッダーを照合する。 | 入口とcore-model-limitsのMIME許可一覧比較はなく、宣言・サイズ条件を満たせば後続へ進む。残る`operationConstraints.contentTypes`を使う個別処理、WAFの形式規則、Speechの固定ヘッダーを区別する。Documentの形式検査撤去は別の入力棚卸ブロックとして受入する。共有部品の通過を任意形式の下流受付や成功へ読み替えず、関連受入をまとめ反映前に整理する。 | 共有部品通過・残存制御・ヘッダー転送の実確認未実施。 | 未実施 |
 
 #### APIとモデルによる内部profile選択の受入
 
@@ -644,7 +644,7 @@ PIIの入力はテスト用に合成した氏名・メール・電話番号等�
 
 ### 3.10 Tool Gateway — Document Analysis
 
-[文書解析の契約](../reference/document-analysis.md)を基準とします。現行画面のブラウザー→Portal BFF→Gatewayのraw binaryストリーミングと、互換用multipart入口を分けて確認します。社内プロキシのupload制約は経路条件として記録し、対処のために無断で保護を無効にしません。
+[文書解析の契約](../reference/document-analysis.md)を基準とします。現行画面のブラウザー→Portal BFF→Gatewayのraw binaryストリーミングと、互換用multipart入口、公開Gatewayへ直接送る提供元JSON入力を分けて確認します。PortalのJSON入力画面・BFF拡張は今回の対象外です。社内プロキシのupload制約は経路条件として記録し、対処のために無断で保護を無効にしません。
 
 下表のDOC-01〜10は、旧1 MiB・同期応答の契約で記録した結果です。現行の500 MB・202受付／状態GET契約の合格には転記せず、追加のLIM試験で受入します。
 
@@ -660,6 +660,20 @@ PIIの入力はテスト用に合成した氏名・メール・電話番号等�
 | DOC-08 | 上流結果と応答上限 | 不正analyzeResult・版/model不一致・想定を超える応答を制御する。 | 不正構造や上限超過を正常解析として表示しない。規定の応答容量を検証し、秘密や内部診断を含まない公開エラーにする。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | DOC-09 | Portal upload・取消・表示 | Portalでキーと解析モデルを選びmultipart uploadする。モデル切替、中止、HTMLに似た抽出文字列も確認する。 | Gatewayにはraw binaryで送る。本文・ページ・表・JSONを確認でき、抽出文字は実行されない。古い実行結果が次の文書へ混ざらず、取消の保証範囲が分かる。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
 | DOC-10 | 公開経路・プロキシ・WAF | 同じ有効ファイルについてブラウザー→Portal、Portal→Gatewayの各経路を切り分ける。APIM request ID有無と失敗箇所を記録する。 | uploadが通れば実解析まで確認する。遮断時はプロキシ/WAF/入力検証/上流のどこまで到達したか記録し、未確認部分を成功扱いにしない。別APIの検査を広く無効化しない。 | 記録済みの採用条件で確認。実施範囲には本節の結果要約を適用。 | PASS |
+
+#### Document入力棚卸の追加受入
+
+入力棚卸①〜㉝の変更は、対象APIM資材の一括反映・読戻し照合を完了しました。独立して作成した小さい試験文書による実経路受入は一部確認です。APIM入力棚卸の反映時点ではWAF設定を変更していません。その後、入力文書URL用の2専用ポリシー・3項目だけへ931130の除外を追加し、Azure反映・全ポリシーの読戻し照合を完了しました。追加除外後、独立した小文書URLを使うDocumentのキー／Bearerは202受付から本文なしGETの200まで確認しました。Responsesの`input.content.file_url`と`input.output.file_url`は、提供元・APIM・App Gatewayの429を監査とアクセスログで照合しました。WAFやAPIM入力検査による拒否ではありませんが、提供元によるfile_urlの文書受付・取得・結果は未確認です。旧DOC-05のJSON／URL・モデル拒否、MIME／signature検査の結果を、この新契約の合格には転記しません。ローカルの式・生成検証と、HTTP受信処理・WAF・提供元で実際にどう処理されるかを分けます。Portalの原本アップロード・2モデル選択・BFF制約は今回変更しません。試験には独立した合成文書と試験用URLを使います。
+
+| ID | 入力・操作 | 期待結果 | 判定 |
+| --- | --- | --- | --- |
+| DOCIN-01 | fragment・HTTP API・解析開始操作を読戻し、処理順と本文読取り箇所を照合 | `core-document-input-validation`が利用回数制限・下流接続準備・`accepted`監査より前。開始操作で重複検査せず、共有／個別のサイズ確認だけの全量読取りがない。同名XML／C#と正規の操作ポリシーを使う | PASS：対象fragment・API・操作policyの反映と読戻し照合を確認 |
+| DOCIN-02 | キー／Bearerそれぞれで原本、`application/json`の`urlSource`と`base64Source`を送る | APIMは本文を解析・変換せず、提供元がURL取得またはBase64文書解析を行う。202受付から既存のチケットで結果取得できる。ticketのiatがGateway発行時刻を示し、expとの差が86400秒であることを確認する。提供元の受付時刻・結果保持期限や方式別の提供元・WAF制約と区別する | 一部確認：キー／Bearerの原本・base64Sourceは202→本文なしGET200。urlSourceはAPIM入力棚卸の受入時点では両方式でWAF931130等の403。個別除外後は両方式で202→本文なしGET200、model・API版・未指定unicodeCodePointとexp－iatの86400秒を照合。iatとGateway発行時刻の直接比較は未実施 |
+| DOCIN-03 | MIME／先頭形式の不一致、8バイト未満・空本文、Content-Typeの欠落・空値、圧縮宣言を独立した要求で送る | APIMのDocument独自400／415検査で止めず、受信層・WAF・提供元の処理を観測する。提供元400／415／422は現行変換の422・`DocumentRejected`。提供元の圧縮対応や空本文応答を事前に成功・拒否と決めつけない | 一部確認：空本文・短い本文・別MIME・gzip宣言は422。Content-Type欠落の403は原因未切り分け、空値は未実施 |
+| DOCIN-04 | 制御した検証経路で申告サイズ500,000,000 bytesの境界、未指定・数値化できない値の扱いを確認 | 超過が読み取れた場合は共有413・`REQUEST_TOO_LARGE`で止まる。未指定などでサイズ確認だけの全量読取りを復活させない。Base64の送信本文と復号後、URL指定本文と取得文書のサイズを区別する。HTTP層の不正フレーミングをAPIMの正常応答へ読み替えない | 未実施 |
+| DOCIN-05 | 提供元のモデルIDを1値で指定した要求と、欠落・複数値・空値・`.`／`..`・追加クエリを比較 | 入力不備は400・`DocumentInvalidInput`で利用回数制限と`accepted`監査より前に止める。2モデル一覧外の値だけを理由にAPIMで拒否せず、利用可否は提供元が判定する。元のモデルIDとチケット・返却URI・結果modelIdの照合と固定接続先を維持する。他クエリによる一律400はなく、開始POSTの標準クエリ転送はDOCIN-07で別に照合する。公開schemaはモデルenumだけを撤去し、その他の構造条件は維持する | PASS：model欠落・複数値・空値・`.`／`..`の5条件は400。従来一覧外prebuilt-invoiceは202→GET200。入力不備の最終監査各1回を確認。追加クエリはDOCIN-07で別確認 |
+| DOCIN-06 | 隔離した検証経路で、内部変数のモデル引渡し失敗、Status操作設定`gatewayOperationConstraint`と両操作の認証結果`gatewayDecision`の取得・引渡し失敗、model入力不備、GETチケット拒否・期限切れを比較 | 内部引渡し失敗は利用回数制限・下流接続・`accepted`監査より前に停止し、監査は500・`OPERATION_SETTINGS_INVALID`、公開エラーは`DocumentAnalysisUnavailable`。Status操作設定`gatewayOperationConstraint`の取得・JSON解析失敗は500・`DocumentAnalysisUnavailable`、`policy-error`・`OPERATION_SETTINGS_INVALID`・500の明示監査1回となる。開始・状態取得の認証結果`gatewayDecision`の取得・JSON解析と認証方式・owner引渡し不備は500・`policy-error`／`AUTHENTICATION_PROCESSING_ERROR`で、⑲の操作設定不備と分ける。署名・claims・owner不一致403、期限410、受付URL・Operation ID空値502を維持する。GETのチケット・認証結果確認の403・410・500は単一document-operation-rejectionから応答前に1回監査し、403はrejected/DOCUMENT_OPERATION_DENIED（文書チケット段階の拒否）、410はrejected/DOCUMENT_OPERATION_EXPIRED（期限切れ）、500はpolicy-error/AUTHENTICATION_PROCESSING_ERRORを記録する。POST500専用処理と既存公開応答を維持し、生チケット・JSON・例外を公開しない。先行する`BACKEND_RESPONSE`は維持し、提供元200とGateway500を別段階として確認する。提供元本文・版・容量などの既存502と要求ID・no-storeは維持する。入力不備は400・`DocumentInvalidInput`。一覧照合だけの設定JSON再読取りがなく、先行する設定検査を維持する。内部値や例外の詳細を公開しない | 一部確認：model不備5条件の400とチケット拒否5条件の403、それぞれ最終拒否監査1回を確認。内部faultの500・期限切れ410・提供元不備502は未実施 |
+| DOCIN-07 | 開始POSTへ有効なmodelとpages・featuresなどの対応クエリ、同名api-versionの別値、stringIndexType=utf16CodeUnit・未指定・不正値・複数値を送り、状態取得GETの追加クエリと比較 | 開始POSTはmodelを下流クエリから除き、pathだけのURI書換えと`copy-unmatched-params=true`で追加クエリを転送する。その後の標準`set-query-parameter`でapi-versionは対応版（現在`2024-11-30`）の1値へ上書きする。stringIndexTypeは`utf16CodeUnit`などの指定値を保持し、未指定時だけ`unicodeCodePoint`を補完する。選択した単位が提供元結果のspanへ実際に適用されることを確認する。不正値・複数値の適否は提供元が判定し、APIMに追加検査を入れない。同じ公開Schemaの単一版が正規化後の両操作、開始URI・受付URL照合・状態GET、共通API準備済み設定による結果照合、Portalの既存生成物で一致し、定義へ明示された別版は配備前に拒否される。チケット形式の変更はない。状態取得GETはクエリの有無で同じジョブ・本人照合・固定URIと対応版を使い、チケットの形式・署名などの不正は403を維持する。追加クエリは`copy-unmatched-params=false`で転送せず、対応版の結果取得GETへapi-versionだけを使う既存動作を維持する。URLへのAPIキー指定の共通拒否を維持する。APIM入力棚卸の反映ではWAF設定を変更せず、クエリ名・値を監査へ追加記録しない。後から反映した入力文書URL用931130除外とは分けて確認する。Portal画面はspanの位置情報を利用しておらず、画面の機能追加とは分けて確認する | 一部確認：pages=2、指定utf16CodeUnit／未指定unicodeCodePoint、API版固定、本文なしGETの未使用クエリ付き200を確認。本文付きGETはWAF920170で403。span直接比較、features、不正値・複数値は未実施 |
 
 #### 容量緩和・非同期化の追加受入
 

@@ -48,6 +48,7 @@ class AuditPublicationTests(unittest.TestCase):
     ('core-api-settings.xml','apiSettingsFragment','__CORE_API_SETTINGS_CSHARP__','full'),
     ('core-api-authentication-result.xml','apiAuthenticationResultFragment','__CORE_API_AUTHENTICATION_RESULT_CSHARP__','full'),
     ('core-model-limits.xml','modelLimitsFragment','__CORE_MODEL_LIMITS_CSHARP__','full'),
+    ('core-document-input-validation.xml','documentInputValidationFragment','__CORE_DOCUMENT_INPUT_VALIDATION_CSHARP__','full'),
     ('core-gateway-telemetry.xml','gatewayTelemetryFragment','__CORE_GATEWAY_TELEMETRY_CSHARP__','full'),
     ('core-query-telemetry.xml','queryTelemetryFragment','__CORE_QUERY_TELEMETRY_CSHARP__','full')):
    with self.subTest(template=filename):

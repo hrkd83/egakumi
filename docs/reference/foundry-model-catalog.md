@@ -133,7 +133,7 @@ Layoutは文字に加えて表・文書構造の抽出を扱う。サービス�
 このカタログのMistral OCRモデルをFoundryへ配備する操作とは分けて管理する。
 
 Coreの標準API定義には、既存Foundryを使う`document-analysis-v1`を含む。
-`POST /tools/documents/v1/analyze?model=prebuilt-read|prebuilt-layout`へPDF・画像のバイナリを送り、文字・ページ・表などの解析結果を受け取る。Gatewayが非同期処理の完了確認を担当し、Portalからは文書ファイルを選んで試せる。[入力上限・権限・配備と応答仕様](document-analysis.md)
+`POST /tools/documents/v1/analyze?model=<PROVIDER_MODEL_ID>`へ原本または提供元のJSON入力を送り、202受付後に状態GETで文字・ページ・表などの解析結果を取得する。Gateway独自の2モデル一覧による拒否は撤去し、モデルの利用可否は提供元が判定する。Portal画面は文書ファイルとRead／Layoutの2モデル選択を維持する。この入力棚卸の変更はAzure反映・読戻し照合を完了した。独立して作成した小文書の原本・Base64入力は、キー／Bearerで202受付から本文なしGETの200まで一部確認した。申告サイズ境界・内部障害500・期限切れ410など残る受入は未実施である。[入力上限・権限・配備と応答仕様](document-analysis.md)
 Languageは、OCRで文字を抽出した後のテキスト分析にも利用できる。
 
 ### 配備数の上限

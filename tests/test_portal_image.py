@@ -17,6 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from deployment.helpers import portal_image as image
+from deployment.helpers.apim_document_contract import DOCUMENT_API_VERSION
 
 DIGEST = 'sha256:' + 'a' * 64
 SOURCE = b'public source fixture'
@@ -138,6 +139,10 @@ class PortalImageTests(unittest.TestCase):
         definitions.mkdir(parents=True)
         (definitions / 'model.json').write_text(json.dumps({'name': 'model', 'path': 'models/openai/v1', 'operations': []}))
         (definitions.parent / 'model-capabilities.json').write_text(json.dumps({'schemaVersion': 1, 'entries': []}))
+        schemas = definitions.parent / 'schemas'
+        schemas.mkdir()
+        (schemas / 'document-analysis.json').write_text(json.dumps({'schemas': {'DocumentAnalysisResult': {
+            'properties': {'analyzeResult': {'properties': {'apiVersion': {'enum': [DOCUMENT_API_VERSION]}}}}}}}))
         return source
 
     def test_model_snapshot_uses_canonical_definitions_instead_of_stale_generated_copy(self):
@@ -157,6 +162,29 @@ class PortalImageTests(unittest.TestCase):
             self.assertEqual(image.source_bundle(root)[1], checksum)
             canonical.write_text(json.dumps({'name': 'model', 'path': 'models/changed/v1', 'operations': []}))
             self.assertNotEqual(image.source_bundle(root)[1], checksum)
+
+    def test_document_contract_uses_public_schema_instead_of_stale_generated_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = self.make_source(root)
+            stale = source / image.DOCUMENT_CONTRACT_PATH
+            stale.parent.mkdir(parents=True)
+            stale.write_text('{"apiVersion":"stale-version"}')
+            canonical = root / 'apps/gateway/apim/schemas/document-analysis.json'
+            data, checksum = image.source_bundle(root)
+            with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
+                self.assertEqual(archive.getnames().count(image.DOCUMENT_CONTRACT_PATH), 1)
+                self.assertEqual(json.load(archive.extractfile(image.DOCUMENT_CONTRACT_PATH)),
+                                 {'apiVersion': DOCUMENT_API_VERSION})
+            stale.write_text('{"apiVersion":"another-stale-version"}')
+            self.assertEqual(image.source_bundle(root)[1], checksum)
+            schema = json.loads(canonical.read_text())
+            schema['schemas']['DocumentAnalysisResult']['properties']['analyzeResult']['properties']['apiVersion']['enum'] = ['2026-01-01']
+            canonical.write_text(json.dumps(schema))
+            self.assertNotEqual(image.source_bundle(root)[1], checksum)
+            canonical.write_text('{')
+            with self.assertRaises(ValueError):
+                image.source_bundle(root)
 
     def test_microphone_worklet_is_built_from_typescript_not_a_stale_local_artifact(self):
         with tempfile.TemporaryDirectory() as directory:

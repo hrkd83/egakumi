@@ -422,7 +422,7 @@ NATIVE_UPLOAD_OPERATIONS = (
     ("openai-audio-v1", "audio-transcriptions", "declared"),
     ("openai-images-v1", "image-edit", "declared"),
     ("azure-speech-v1", "tts", "declared"),
-    ("document-analysis-v1", "analyze_document", "actual"),
+    ("document-analysis-v1", "analyze_document", "declared"),
 )
 for _api, _operation, _mode in NATIVE_UPLOAD_OPERATIONS:
     _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]

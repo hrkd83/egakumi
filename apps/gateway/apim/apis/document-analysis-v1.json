@@ -23,7 +23,7 @@
       "templateParameters": [
         {
           "name": "operationId",
-          "description": "Gateway-owned analysis operation identifier",
+          "description": "Gatewayが返す解析操作ID（ハイフン付きUUID）",
           "type": "string",
           "required": true
         }
@@ -37,6 +37,7 @@
       "analyze_document": {
         "kind": "documentAnalysis",
         "bodyFormat": "binary",
+        "requestBodySizeCheck": "declared",
         "contentTypes": [
           "application/pdf",
           "image/jpeg",
@@ -48,26 +49,17 @@
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          "text/html"
-        ],
-        "allowedModels": [
-          "prebuilt-read",
-          "prebuilt-layout"
+          "text/html",
+          "application/json"
         ],
         "maxRequestBytes": 500000000,
-        "maxResponseBytes": 524288000,
-        "apiVersion": "2024-11-30"
+        "maxResponseBytes": 524288000
       },
       "get_document_operation": {
         "kind": "documentAnalysisStatus",
         "bodyFormat": "none",
-        "allowedModels": [
-          "prebuilt-read",
-          "prebuilt-layout"
-        ],
         "maxRequestBytes": 1,
-        "maxResponseBytes": 524288000,
-        "apiVersion": "2024-11-30"
+        "maxResponseBytes": 524288000
       }
     }
   },

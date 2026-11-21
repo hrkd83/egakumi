@@ -254,8 +254,8 @@ var subscriptionProfileXml = replace(replace(loadTextContent('policies/subscript
 var gatewayPolicyTemplate = loadTextContent('policies/api-templates/gateway.xml')
 var protocolPolicyTemplate = loadTextContent('policies/api-templates/protocol.xml')
 var piiPolicyTemplate = loadTextContent('policies/pii.xml')
-var documentAnalysisPolicyTemplate = loadTextContent('policies/document-analysis.xml')
-var documentAnalysisStatusPolicyTemplate = loadTextContent('policies/document-analysis-status.xml')
+var documentAnalysisPolicyTemplate = loadTextContent('policies/operation-policies/document-analysis/document-analysis.xml')
+var documentAnalysisStatusPolicyTemplate = loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.xml')
 var realtimeCreatePolicyTemplate = loadTextContent('policies/realtime-create.xml')
 var realtimeHangupPolicyTemplate = loadTextContent('policies/realtime-hangup.xml')
 var liveCreatePolicyTemplate = loadTextContent('policies/live-create.xml')
@@ -283,6 +283,7 @@ var apiOperationSettingsSource = loadTextContent('policies/fragments/request/cor
 var apiAuthenticationResultSource = loadTextContent('policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs')
 var modelLimitsSource = loadTextContent('policies/fragments/request/core-model-limits/core-model-limits.cs')
 var speechSsmlGuardSource = loadTextContent('policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.cs')
+var documentInputValidationSource = loadTextContent('policies/fragments/request/core-document-input-validation/core-document-input-validation.cs')
 var queryTelemetrySource = loadTextContent('policies/fragments/audit/core-query-telemetry/core-query-telemetry.cs')
 var apiSettingsTemplate = loadTextContent('policies/fragments/settings/core-api-settings/core-api-settings.xml')
 var apiRequestPreparationTemplate = loadTextContent('policies/fragments/request/core-api-request-preparation/core-api-request-preparation.xml')
@@ -291,6 +292,7 @@ var apiOperationSettingsTemplate = loadTextContent('policies/fragments/request/c
 var apiAuthenticationResultTemplate = loadTextContent('policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml')
 var modelLimitsTemplate = loadTextContent('policies/fragments/request/core-model-limits/core-model-limits.xml')
 var speechSsmlGuardTemplate = loadTextContent('policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.xml')
+var documentInputValidationTemplate = loadTextContent('policies/fragments/request/core-document-input-validation/core-document-input-validation.xml')
 var requestContextTemplate = loadTextContent('policies/fragments/audit/core-request-context/core-request-context.xml')
 var authenticatedSubjectTemplate = loadTextContent('policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.xml')
 var trustedIngressTemplate = loadTextContent('policies/fragments/ingress/core-trusted-ingress/core-trusted-ingress.xml')
@@ -323,6 +325,8 @@ func apiAuthenticationResultFragmentValue(template string, source string) string
 func modelLimitsFragmentValue(template string, source string) string => replace(template, '__CORE_MODEL_LIMITS_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
 // TTSの本文を一度だけ読み、サイズとSSML宣言を続けて検査する部品を、同名XMLとC#から説明付きで展開します。
 func speechSsmlGuardFragmentValue(template string, source string) string => replace(template, '__CORE_SPEECH_SSML_GUARD_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+// Documentのmodelクエリ確認を、同名XMLとC#から説明付きで展開します。本文は読みません。
+func documentInputValidationFragmentValue(template string, source string) string => replace(template, '__CORE_DOCUMENT_INPUT_VALIDATION_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
 // query監査は同名C#の2区画をXMLへ展開します。利用者情報の共通式にも説明を残します。
 func queryTelemetrySection(source string, section string) string => split(split(replace(source, '\r\n', '\n'), '// BEGIN ${section}\n')[1], '\n// END ${section}')[0]
 func queryTelemetryFragmentValue(template string, source string, observation string) string => replace(replace(template,
@@ -606,6 +610,12 @@ resource speechSsmlGuardFragment 'Microsoft.ApiManagement/service/policyFragment
   name: 'core-speech-ssml-guard'
   properties: { format: 'rawxml', description: '対象の音声合成操作で、本文を一度だけ読み、サイズとDTD・エンティティ宣言を確認する。XMLの解析や外部参照は行わず、結果を呼出し元の監査と応答へ渡す。', value: speechSsmlGuardFragmentValue(speechSsmlGuardTemplate, speechSsmlGuardSource) }
 }
+// 残すDocument固有の入力確認を、利用回数・下流接続・正常受付の記録より前に実行します。
+resource documentInputValidationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-document-input-validation'
+  properties: { format: 'rawxml', description: 'Document解析のmodelの存在・単一値・空欄とURL階層指定を確認し、入力不備400と内部変数の引渡し失敗500を呼出し元へ渡す。モデル一覧や本文は読み取らず、原本と提供元JSONの受付可否は提供元へ任せる。', value: documentInputValidationFragmentValue(documentInputValidationTemplate, documentInputValidationSource) }
+}
 // 本人の登録済み OAuth 接続を解決する共通部品です。
 resource credentialConnectionFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
@@ -804,7 +814,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
   parent: apis[index]
   name: 'policy'
   properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
+  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -846,11 +856,11 @@ func operationProperties(entry object) object => {
       description: 'Single text and explicit language. No arbitrary Language parameters.'
       representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactRequest' }]
     } : entry.constraint.kind == 'documentAnalysis' ? {
-      description: 'Binary document submission up to the provider limit. Returns 202 and an owner-bound operation ticket; never resubmits the billable POST.'
-      queryParameters: [{ name: 'model', required: true, type: 'string', values: ['prebuilt-read', 'prebuilt-layout'] }]
+      description: '原本ファイルまたは提供元JSONを変換せず送信する。受付後は202と所有者に束縛した操作チケットを返し、課金対象のPOSTを再送しない。'
+      queryParameters: [{ name: 'model', required: true, type: 'string' }]
       representations: map(entry.constraint.contentTypes, mime => { contentType: mime })
     } : entry.constraint.kind == 'documentAnalysisStatus' ? {
-      description: 'Authenticated operation status/result. The ticket must belong to the same subscription, operation, API and backend.'
+      description: '認証済み利用者が解析の状態・結果を取得する。チケットの利用者・操作・API・接続先を照合する。'
       headers: [{ name: 'X-Core-Document-Ticket', required: true, type: 'string' }]
     } : entry.operation.?request ?? {}
     responses: entry.constraint.kind == 'pii' ? concat([
@@ -861,13 +871,13 @@ func operationProperties(entry object) object => {
       representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactError' }]
     })) : contains(['documentAnalysis', 'documentAnalysisStatus'], entry.constraint.kind) ? concat(
       entry.constraint.kind == 'documentAnalysis' ? [
-        { statusCode: 202, description: 'Accepted. Keep the operation ticket and poll the fixed Gateway status path.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisAccepted' }] }
+        { statusCode: 202, description: '解析要求を受け付けた。操作チケットを保存し、固定のGateway状態確認パスを照会する。', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisAccepted' }] }
       ] : [
-        { statusCode: 202, description: 'Analysis is running. Honor Retry-After; do not repeat the submission.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisRunning' }] }
-        { statusCode: 200, description: 'Native analyzeResult with Gateway correlation ID.', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisResult' }] }
-      ], map([400, 403, 404, 410, 413, 415, 422, 429, 502, 504], statusCode => {
+        { statusCode: 202, description: '解析は処理中。Retry-Afterに従って状態を確認し、解析要求を再送しない。', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisRunning' }] }
+        { statusCode: 200, description: '提供元のanalyzeResultとGatewayの要求IDを返す。', representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisResult' }] }
+      ], map([400, 403, 404, 410, 413, 415, 422, 429, 500, 502, 504], statusCode => {
         statusCode: statusCode
-        description: 'Safe failure code and correlation ID. No provider operation URL or diagnostic content.'
+        description: '原因を示す固定エラーコードと要求IDを返す。提供元の操作URL・診断本文・内部設定は返さない。'
         representations: [{ contentType: 'application/json', schemaId: 'document-analysis-public-contract', typeName: 'DocumentAnalysisError' }]
       })) : []
 }
@@ -878,10 +888,11 @@ resource operations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01'
 }]
 // 操作固有の制約を追加。モデル・PII・Realtime 等の用途別検証を切り替えます。
 // APIと握手の設定後に１件ずつ書き、別ループの重いポリシー適用とも重ねません。
+// DocumentのAPI版は公開スキーマから補完済みの操作設定を使い、開始・取得・照合へ同じ値を渡します。
 func operationPolicyValue(entry object, policyTemplate string) string => entry.constraint.kind == 'pii'
       ? replace(policyTemplate, '__PII_SETTINGS_BASE64__', base64(string(entry.constraint)))
-      : entry.constraint.kind == 'documentAnalysis' ? replace(replace(policyTemplate, '__DOCUMENT_SETTINGS_BASE64__', base64(string(entry.constraint))), '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl))
-      : entry.constraint.kind == 'documentAnalysisStatus' ? replace(replace(policyTemplate, '__DOCUMENT_SETTINGS_BASE64__', base64(string(entry.constraint))), '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl))
+      : entry.constraint.kind == 'documentAnalysis' ? replace(replace(policyTemplate, '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl)), '__DOCUMENT_API_VERSION__', xmlText(entry.constraint.apiVersion))
+      : entry.constraint.kind == 'documentAnalysisStatus' ? replace(replace(policyTemplate, '__DOCUMENT_BASE_URL__', xmlText(entry.backendUrl)), '__DOCUMENT_API_VERSION__', xmlText(entry.constraint.apiVersion))
       // 短期 token の取得先は、登録済み Foundry backend から固定生成します。
       // 利用者の入力 URL や公開 params に取得先を追加しません。
       : entry.constraint.kind == 'realtimeCreate' ? replace(policyTemplate, '__REALTIME_CLIENT_SECRETS_URL__', xmlText('${entry.backendUrl}/realtime/client_secrets'))
@@ -1082,6 +1093,7 @@ output entraPublicationSource object = {
       { suffix: '/policyFragments/core-query-telemetry', value: queryTelemetryFragmentValue(queryTelemetryTemplate, queryTelemetrySource, auditObservationSource) }
       { suffix: '/policyFragments/core-model-limits', value: modelLimitsFragmentValue(modelLimitsTemplate, modelLimitsSource) }
       { suffix: '/policyFragments/core-speech-ssml-guard', value: speechSsmlGuardFragmentValue(speechSsmlGuardTemplate, speechSsmlGuardSource) }
+      { suffix: '/policyFragments/core-document-input-validation', value: documentInputValidationFragmentValue(documentInputValidationTemplate, documentInputValidationSource) }
       { suffix: '/policyFragments/core-credential-connection', value: replace(renderCredentialLogin(replace(credentialConnectionTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
       { suffix: '/policyFragments/core-credential-session-use', value: replace(renderCredentialLogin(replace(credentialSessionUseTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
       { suffix: '/policyFragments/core-credential-connection-outbound', value: replace(renderCredentialLogin(replace(observationFragmentValue(credentialConnectionOutboundTemplate, auditObservationSource, true), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
