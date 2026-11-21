@@ -943,7 +943,7 @@ class PublicationTests(unittest.TestCase):
         def finish(config, outputs, actual_transport):
             self.assertEqual(config, self.config)
             self.assertEqual(outputs, self.state["outputs"])
-            self.assertIs(actual_transport, transport)
+            self.assertIs(actual_transport.inner, transport)
             self.assertEqual(transport.calls[-1][0], "GET")
             self.assertTrue(any(path.startswith(self.plan["deploymentId"] + "?") for method, path, _, _ in transport.calls if method == "GET"))
             return metadata
@@ -1171,6 +1171,33 @@ class PublicationTests(unittest.TestCase):
                                         for method, path, _, _ in transport.calls))
 
 
+    def test_sample_cleanup_read_expiring_shared_budget_sends_no_delete(self):
+        starter = self.plan["apimId"] + "/products/starter"
+        self.inventory[starter] = ok({"id": starter, "properties": {"displayName": "Starter"}})
+        self.inventory[starter + "/apis"] = ok({"value": []})
+        self.inventory[self.plan["apimId"] + "/subscriptions"] = ok({"value": []})
+        transport = Transport(self.inventory)
+        clock, starter_reads = [0], [0]
+        original = transport.request
+        def finishing(*_):
+            clock[0] = 7199  # Cleanup's own 300-second budget is still fresh.
+            return {}
+        def expiring_read(method, path, *args, **kwargs):
+            result = original(method, path, *args, **kwargs)
+            if method == "GET" and path.split("?", 1)[0] == starter:
+                starter_reads[0] += 1
+                if starter_reads[0] == 2:
+                    clock[0] = 7200
+            return result
+        with mock.patch.object(publish, "finalize_descriptions", side_effect=finishing), \
+                mock.patch.object(transport, "request", side_effect=expiring_read), \
+                mock.patch.object(publish.time, "monotonic", side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(publish.DeploymentError, "deadline expired before normal stage write"):
+                publish.execute_plan(self.config, self.state, self.plan, self.template, transport, sleep=lambda _: None)
+        self.assertEqual(starter_reads[0], 2)
+        self.assertIn(starter, transport.inventory)
+        self.assertFalse(any(method == "DELETE" for method, *_ in transport.calls))
+
     def test_default_sample_cleanup_follows_successful_publication_and_is_recorded(self):
         transport = Transport(self.inventory)
         phases = []
@@ -1187,7 +1214,7 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(phases, ["catalog"])
             self.assertEqual(apim_id, self.plan["apimId"])
             self.assertEqual(apis, self.plan["parameters"]["apiDefinitions"]["value"])
-            self.assertIs(actual_transport, transport)
+            self.assertIs(actual_transport.inner, transport)
             phases.append("cleanup")
             return summary
 

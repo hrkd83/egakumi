@@ -1037,13 +1037,14 @@ def enable_websocket_diagnostics(plan, state, transport, *, sleep, deadline):
     raise DeploymentError("WebSocket diagnostic update could not be confirmed; check Core audit settings before retrying")
 
 
-def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=1800, checkpoint=None,
+def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=7200, checkpoint=None,
                  reconcile_existing_source=False, backup=None):
     """全所有資源と事前条件を読み合わせてから、FW宛先追加とAPI公開を実行する。
 
     既存モデルの作成・変更はここでは行わず、必要なRBACや秘密参照も準備済みか検査する。
     以前の配備は所有者とAPIの所属先を照合し、指定したAPIだけを増分更新する。
     FWはETag付き更新後に読み直し、確認できてからAPIMの子定義だけを配備する。
+    閉鎖・配備・再公開は最大2時間の有限予算を共有し、確認が完了した時点で終了する。
     公開と共通設定の成功後に、業務利用されていないAPIM初期サンプルを整理する。
     """
     if config.get("publishApis") is not True:
@@ -1246,27 +1247,39 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         entra_publication.source_manifest(generated_source, plan["apimId"], names, authentication_policy["value"])
     stage_result = {}
 
+    class StageTransport:
+        # Helpers keep their existing readback/polling behavior. Only normal
+        # stage writes share this transition's deadline; recovery stays outside.
+        inner = transport
+        supports_concurrent_reads = getattr(transport, "supports_concurrent_reads", False)
+        def request(self, method, path, body=None, headers=None):
+            if method != "GET" and time.monotonic() >= deadline:
+                raise DeploymentError("API publication deadline expired before normal stage write")
+            return self.inner.request(method, path, body=body, headers=headers)
+
+    stage_transport = StageTransport()
+
     def publish_closed_stage():
         if changed:
             if time.monotonic() >= deadline:
                 raise DeploymentError("API publication deadline expired before Firewall write")
-            response = transport.request("PUT", fw["groupId"] + "?api-version=" + NETWORK_API, body, headers={"If-Match": etag})
+            response = stage_transport.request("PUT", fw["groupId"] + "?api-version=" + NETWORK_API, body, headers={"If-Match": etag})
             require_success(response, "Update APIM-only Firewall FQDNs", allowed=(200, 201, 202))
-            observed = _wait_resource(transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
+            observed = _wait_resource(stage_transport, fw["groupId"], NETWORK_API, sleep=sleep, deadline=deadline)
             if not _contains(observed.get("properties"), body["properties"]):
                 raise ValueError("Firewall readback did not preserve the approved rules; API publication was not attempted")
         # 初回の接続だけ無効で準備します。Portalが設定したURL・KV参照は保持します。
         if time.monotonic() >= deadline:
             raise DeploymentError("API publication deadline expired before profile initialization")
-        initialize_profile_settings(plan["apimId"], transport, deadline=deadline)
+        initialize_profile_settings(plan["apimId"], stage_transport, deadline=deadline)
         deployment = {"tags": {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME},
             "properties": {"mode": "Incremental", "template": publication_template,
                            "parameters": publication_parameters(template, plan["parameters"]) if generation_id is not None else plan["parameters"]}}
         if time.monotonic() >= deadline:
             raise DeploymentError("API publication deadline expired before API write")
-        response = transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
+        response = stage_transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
         require_success(response, "Start API-only publication", allowed=(200, 201, 202))
-        observed = _wait_resource(transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
+        observed = _wait_resource(stage_transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
         published = observed.get("properties", {}).get("outputs", {}).get("publishedApiResourceIds", {}).get("value", [])
         # 指定した業務APIとCM接続用APIのすべてが配備されたことを確認する。
         expected = plan["publishedApiIds"]
@@ -1278,22 +1291,22 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             if not isinstance(binding, dict) or binding.get("value") != generation_id:
                 raise ValueError("API publication did not confirm the reviewed source generation binding")
         browser_source = generated_browser if generation_id is not None else outputs.get("credentialBrowserPublicationSource", {}).get("value")
-        browser_snapshot = entra_publication.verify_browser_publication_source(plan, browser_source, transport)
+        browser_snapshot = entra_publication.verify_browser_publication_source(plan, browser_source, stage_transport)
         stage_result.update(browserSource=browser_source or {}, browserSnapshot=browser_snapshot)
         # Incremental配備では消えない関連を、今回明示した未リリースAPIに限って解除する。
         # API本体・検証用Product・購読は保持し、指定外のAPIへは触れない。
-        released_product = reconcile_unreleased_apis(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
-        websocket_diagnostics = enable_websocket_diagnostics(plan, state, transport, sleep=sleep, deadline=deadline)
+        released_product = reconcile_unreleased_apis(plan["apimId"], parameters["apiDefinitions"], stage_transport, sleep=sleep)
+        websocket_diagnostics = enable_websocket_diagnostics(plan, state, stage_transport, sleep=sleep, deadline=deadline)
         # API側のキー必須設定と出力を確認してから全体policyを切り替えます。
         # 途中失敗時は共通入口を切り替えず、失敗配備記録から同じ計画を再実行できます。
         if not transition_needed:
-            install_common_authentication(authentication_policy, transport, sleep=sleep, deadline=deadline)
+            install_common_authentication(authentication_policy, stage_transport, sleep=sleep, deadline=deadline)
         # 通常 up と同じ互換仕上げを通し、通常APIの公開説明は資材内の定義を使う。
-        catalog_descriptions = finalize_descriptions(config, state["outputs"], transport)
+        catalog_descriptions = finalize_descriptions(config, state["outputs"], stage_transport)
         # 正式APIの公開が完了してから、APIMが初期作成するサンプルだけを整理する。
         # 未登録・削除済みは正常。業務用に転用した同名定義や、その購読は保持する。
         try:
-            sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], transport, sleep=sleep)
+            sample_cleanup = cleanup_default_samples(plan["apimId"], parameters["apiDefinitions"], stage_transport, sleep=sleep)
         except (ValueError, DeploymentError) as error:
             raise DeploymentError("APIs were published, but default APIM sample cleanup did not finish: " + str(error)) from error
         source = generated_source if generation_id is not None else outputs.get("entraPublicationSource", {}).get("value")
@@ -1315,7 +1328,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             merged_source = source if prior_source is None or reconciliation is not None else entra_publication.merge_sources(prior_source, source)
             stage_result["source"] = merged_source
             desired = entra_publication.source_manifest(merged_source, plan["apimId"], old_names | new_names, authentication_policy["value"])
-            return entra_publication.complete_named_value_expectations(desired, plan, transport)
+            return entra_publication.complete_named_value_expectations(desired, plan, stage_transport)
         return None
 
     def record_source():

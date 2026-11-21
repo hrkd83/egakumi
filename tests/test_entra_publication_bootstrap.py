@@ -124,7 +124,7 @@ def controller_fixture():
 
 
 class BootstrapControllerTests(unittest.TestCase):
-    def execute(self, base, plan, authentication, transport, checkpoints):
+    def execute(self, base, plan, authentication, transport, checkpoints, *, timeout_seconds=None):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(publish, "prepare_plan", return_value=plan))
             stack.enter_context(mock.patch.object(publish, "verify_common_authentication", return_value=authentication))
@@ -138,7 +138,70 @@ class BootstrapControllerTests(unittest.TestCase):
             def checkpoint(value):
                 transport.calls.append(("CHECKPOINT", "source", None, None))
                 checkpoints.append(copy.deepcopy(value))
-            return publish.execute_plan(base.config, base.state, plan, base.template, transport, sleep=lambda _: None, checkpoint=checkpoint)
+            budget = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
+            return publish.execute_plan(base.config, base.state, plan, base.template, transport, sleep=lambda _: None, checkpoint=checkpoint, **budget)
+
+    def test_default_budget_finishes_delayed_stage_and_reopens_without_waiting_out_the_budget(self):
+        base, plan, authentication, transport = controller_fixture()
+        clock, checkpoints = [0], []
+        original = transport.request
+        def delayed_stage(method, path, *args, **kwargs):
+            response = original(method, path, *args, **kwargs)
+            if method == "PUT" and path.split("?", 1)[0] == plan["deploymentId"]:
+                clock[0] = 1801  # Independent synthetic delay beyond a half hour.
+            return response
+        with mock.patch.object(transport, "request", side_effect=delayed_stage), \
+                mock.patch.object(publish.time, "monotonic", side_effect=lambda: clock[0]):
+            result = self.execute(base, plan, authentication, transport, checkpoints)
+        self.assertTrue(result["entraAuthentication"]["employeePathOpen"])
+        self.assertTrue(result["entraAuthentication"]["managementPlaneVerified"])
+        self.assertEqual(len(checkpoints), 1)
+        self.assertEqual(clock[0], 1801)
+        self.assertEqual(sum(method == "PUT" and rid == plan["deploymentId"]
+                             for method, rid, *_ in transport.calls), 1)
+
+    def test_default_and_explicit_budget_expiry_stop_all_later_writes_and_reopening(self):
+        for explicit, expiry in ((None, 7200), (10, 10)):
+            with self.subTest(explicit_budget=explicit):
+                base, plan, authentication, transport = controller_fixture()
+                clock, late_writes, checkpoints = [0], [], []
+                original = transport.request
+                def expire_stage(method, path, *args, **kwargs):
+                    if method != "GET" and clock[0] >= expiry:
+                        late_writes.append((method, path))
+                    response = original(method, path, *args, **kwargs)
+                    if method == "PUT" and path.split("?", 1)[0] == plan["deploymentId"]:
+                        clock[0] = expiry
+                    return response
+                with mock.patch.object(transport, "request", side_effect=expire_stage), \
+                        mock.patch.object(publish.time, "monotonic", side_effect=lambda: clock[0]):
+                    with self.assertRaises(publish.DeploymentError):
+                        self.execute(base, plan, authentication, transport, checkpoints,
+                                     timeout_seconds=explicit)
+                self.assertEqual(late_writes, [])
+                self.assertEqual(checkpoints, [])
+                self.assertFalse(any(method == "PUT" and
+                                     (rid == transport.global_id or rid.startswith(transport.open_id + "/apis/"))
+                                     for method, rid, *_ in transport.calls))
+
+    def test_failed_reopening_still_uses_outer_transport_to_close_and_restore_global(self):
+        base, plan, authentication, transport = controller_fixture()
+        association = transport.open_id + "/apis/model"
+        original = transport.request
+        def uncertain_reopening(method, path, *args, **kwargs):
+            result = original(method, path, *args, **kwargs)
+            if method == "PUT" and path.split("?", 1)[0] == association:
+                return response(association, {}, status=500)
+            return result
+        with mock.patch.object(transport, "request", side_effect=uncertain_reopening):
+            with self.assertRaises(publication.TransitionError) as failure:
+                self.execute(base, plan, authentication, transport, [])
+        self.assertTrue(failure.exception.employee_path_closed)
+        self.assertTrue(failure.exception.recovery_complete)
+        self.assertEqual(transport.members, set())
+        self.assertTrue(any(method == "DELETE" and rid == association for method, rid, *_ in transport.calls))
+        self.assertEqual(transport.inventory[transport.global_id]["body"]["properties"]["value"],
+                         authentication["previousValue"])
 
     def test_fresh_active_config_stages_closed_then_checkpoints_and_opens_membership_last(self):
         base, plan, authentication, transport = controller_fixture()
