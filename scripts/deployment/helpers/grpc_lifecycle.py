@@ -209,10 +209,16 @@ def _poll_operation(response: dict, apim_id: str, transport, *, sleep, deadline,
         _ok(response, "Complete API Management operation", (200, 201, 204))
         return
     headers = {str(key).lower(): value for key, value in response.get("headers", {}).items()}
-    target = headers.get("azure-asyncoperation") or headers.get("location")
-    if not isinstance(target, str):
+    candidates = [headers.get("azure-asyncoperation"), headers.get("location")]
+    if not any(isinstance(target, str) for target in candidates):
         raise ValueError("API Management operation has no scoped completion link")
-    if not _completion_target(target, apim_id, location, refresh_path):
+    # Named Value refresh uses Location as its final-state URL. Some APIM
+    # responses also contain a signed Azure-AsyncOperation URL outside the
+    # accepted path/query forms. Prefer that monitor only when it passes the
+    # same scope checks; otherwise follow the validated Location unchanged.
+    target = next((target for target in candidates if isinstance(target, str)
+                   and _completion_target(target, apim_id, location, refresh_path)), None)
+    if target is None:
         raise ValueError("API Management operation completion link is outside this service")
     while time.monotonic() < deadline:
         observed = transport.request("GET", target)

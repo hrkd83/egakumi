@@ -504,6 +504,69 @@ class GrpcBootstrapTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_FIXTURE", str(error.exception))
             self.assertEqual([call["method"] for call in transport.calls], ["POST"])
 
+    def test_refresh_uses_validated_location_when_preferred_monitor_is_unsupported(self):
+        named_path = self.apim_id + "/namedValues/" + grpc.SECRET_NAME + "/refreshSecret"
+        unsupported = ("https://management.azure.com" + self.apim_id
+                       + "/unsupportedMonitor/fixture?api-version=" + grpc.API
+                       + "&c=synthetic&h=synthetic&s=synthetic&t=synthetic")
+        for code in ("200", "201"):
+            location = ("https://management.azure.com" + named_path
+                        + "?api-version=" + grpc.API + "&asyncId=fixture&asyncCode=" + code)
+            transport = Transport([ok(code=202, headers={"Azure-AsyncOperation": unsupported,
+                "Location": location}), ok(code=202), ok(self.named()), ok(self.named())])
+            with self.subTest(code=code):
+                grpc._refresh_secret(self.apim_id, grpc.SECRET_NAME, self.vault, transport,
+                    sleep=lambda _: None, deadline=time.monotonic() + 10)
+            self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET", "GET", "GET"])
+            self.assertEqual([call["path"] for call in transport.calls[1:3]], [location, location])
+            self.assertNotIn(unsupported, [call["path"] for call in transport.calls])
+            self.assertTrue(transport.calls[-1]["path"].endswith("/namedValues/" + grpc.SECRET_NAME + "?api-version=" + grpc.API))
+            self.assertEqual(transport.responses, [])
+
+    def test_completion_prefers_valid_monitor_without_reading_the_other_candidate(self):
+        monitor = "https://management.azure.com" + self.apim_id + "/tenant/operationResults/fixture?api-version=" + grpc.API
+        for location in (monitor.replace("fixture?", "second?"), "https://other.example.invalid/PRIVATE_FIXTURE"):
+            transport = Transport([ok({"status": "Succeeded"})])
+            with self.subTest(location=location):
+                grpc._poll_operation(ok(code=202, headers={"Azure-AsyncOperation": monitor, "Location": location}),
+                    self.apim_id, transport, sleep=lambda _: None, deadline=time.monotonic() + 10)
+            self.assertEqual([call["path"] for call in transport.calls], [monitor])
+
+    def test_refresh_fallback_does_not_accept_foreign_named_value_or_extra_query(self):
+        own = ("https://management.azure.com" + self.apim_id + "/namedValues/" + grpc.SECRET_NAME
+               + "/refreshSecret?api-version=" + grpc.API + "&asyncId=fixture&asyncCode=200")
+        unsupported = "https://other.example.invalid/PRIVATE_FIXTURE"
+        for location in (own.replace(grpc.SECRET_NAME, grpc.TICKET_NAME), own + "&sig=PRIVATE_FIXTURE",
+                         own.replace(grpc.API, "2022-08-01"), unsupported):
+            transport = Transport([ok(code=202, headers={"Azure-AsyncOperation": unsupported, "Location": location})])
+            with self.subTest(location=location), self.assertRaisesRegex(ValueError, "outside this service") as error:
+                grpc._refresh_secret(self.apim_id, grpc.SECRET_NAME, self.vault, transport,
+                    sleep=lambda _: None, deadline=time.monotonic() + 10)
+            self.assertEqual([call["method"] for call in transport.calls], ["POST"])
+            self.assertNotIn("PRIVATE_FIXTURE", str(error.exception))
+
+    def test_selected_completion_failure_does_not_switch_candidate_or_repeat_post(self):
+        own = ("https://management.azure.com" + self.apim_id + "/namedValues/" + grpc.SECRET_NAME
+               + "/refreshSecret?api-version=" + grpc.API + "&asyncId=fixture&asyncCode=200")
+        monitor = "https://management.azure.com" + self.apim_id + "/tenant/operationResults/fixture?api-version=" + grpc.API
+        transport = Transport([ok(code=202, headers={"Azure-AsyncOperation": monitor, "Location": own}),
+                               ok(code=403, body={"error": {"message": "PRIVATE_FIXTURE"}})])
+        with self.assertRaises(ValueError) as error:
+            grpc._refresh_secret(self.apim_id, grpc.SECRET_NAME, self.vault, transport,
+                sleep=lambda _: None, deadline=time.monotonic() + 10)
+        self.assertEqual([call["method"] for call in transport.calls], ["POST", "GET"])
+        self.assertEqual(transport.calls[-1]["path"], monitor)
+        self.assertNotIn("PRIVATE_FIXTURE", str(error.exception))
+
+    def test_refresh_fallback_respects_expired_deadline_without_get(self):
+        own = ("https://management.azure.com" + self.apim_id + "/namedValues/" + grpc.SECRET_NAME
+               + "/refreshSecret?api-version=" + grpc.API + "&asyncId=fixture&asyncCode=200")
+        transport = Transport([ok(code=202, headers={"Azure-AsyncOperation": "https://other.example.invalid/fixture", "Location": own})])
+        with self.assertRaisesRegex(ValueError, "still pending"):
+            grpc._refresh_secret(self.apim_id, grpc.SECRET_NAME, self.vault, transport,
+                sleep=lambda _: None, deadline=time.monotonic() - 1)
+        self.assertEqual([call["method"] for call in transport.calls], ["POST"])
+
     def test_completion_rejects_foreign_scope_arbitrary_arm_paths_and_credentials_before_get(self):
         """完了 URL でも所有範囲・正式パス・固定クエリーを満たさなければ一度も送信しない。"""
         regional = ("https://management.azure.com/subscriptions/" + self.config["subscriptionId"]
