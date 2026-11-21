@@ -150,7 +150,7 @@ def source_bundle(root=REPOSITORY):
             if path.stat().st_size > MAX_FILE_BYTES:
                 raise ValueError('Portal build source file exceeds the size limit')
             data = path.read_bytes()
-            if path.suffix in {'.ts', '.tsx', '.css', '.json', '.md', '.sh', '.sql'} or path.name in {'Dockerfile', '.dockerignore'}:
+            if path.suffix in {'.ts', '.tsx', '.css', '.json', '.md', '.sh', '.sql', '.svg'} or path.name in {'Dockerfile', '.dockerignore'}:
                 data = data.decode('utf-8').replace('\r\n', '\n').encode('utf-8')
             total += len(data)
             if total > MAX_SOURCE_BYTES:
