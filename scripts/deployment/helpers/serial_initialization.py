@@ -126,18 +126,46 @@ def recover_password(config, workspace, vm, read_core, writer):
     return saved_password(config, workspace, value) if complete_core else ""
 
 
-def completion(response, expected):
-    if response.get("statusCode") != 200: return None
-    properties = response.get("body", {}).get("properties", {})
-    instance = properties.get("instanceView", {})
-    if instance.get("executionState") != "Succeeded" or instance.get("exitCode") != 0: return None
-    try: proof = json.loads(instance.get("output", ""))
+def completion_output(output, expected):
+    """Validate atomic guest content independently of ARM result propagation."""
+    try: proof = json.loads(output)
     except (ValueError, TypeError): return None
     if (not isinstance(proof, dict) or set(proof) != PROOF_FIELDS or proof.get("schemaVersion") != 1
             or any(proof.get(k) != expected[k] for k in IDENTITY_FIELDS)
             or proof.get("status") != "complete"
             or not all(proof.get(k) is True for k in ("passwordWriteRequested", "verificationAttempted", "pamAuthenticated", "sshVerified"))): return None
     return proof
+
+
+def completion(response, expected):
+    if response.get("statusCode") != 200: return None
+    properties = response.get("body", {}).get("properties", {})
+    instance = properties.get("instanceView", {})
+    if instance.get("executionState") != "Succeeded" or type(instance.get("exitCode")) is not int or instance.get("exitCode") != 0: return None
+    return completion_output(instance.get("output", ""), expected)
+
+
+def command_result_pending(response, expected):
+    """Only absent or partly propagated instanceView results can be polled.
+
+    Explicit failures and nonempty invalid proofs are terminal. This never
+    weakens the identity/schema checks or permits another mutation request.
+    """
+    if response.get("statusCode") == 404: return True
+    if response.get("statusCode") != 200: return False
+    body = response.get("body")
+    if not isinstance(body, dict) or not isinstance(body.get("properties"), dict): return False
+    instance = body["properties"].get("instanceView")
+    if instance is None: return True
+    if not isinstance(instance, dict): return False
+    if instance.get("executionState") not in (None, "Pending", "Running", "Succeeded"): return False
+    exit_code = instance.get("exitCode")
+    if exit_code is not None and (type(exit_code) is not int or exit_code != 0): return False
+    output = instance.get("output")
+    if output in (None, ""): return True
+    # Output is atomic evidence: malformed or foreign content is not a pending
+    # result. Validate its complete content even while execution fields lag.
+    return completion_output(output, expected) is not None
 
 
 def initialize_guest(config, workspace, value, password, transport, template, writer):
@@ -174,13 +202,20 @@ def initialize_guest(config, workspace, value, password, transport, template, wr
         if response.get("statusCode") not in (200, 201, 202):
             raise credential.SerialCredentialError("Initial credential dispatch was not confirmed; retain the original pending generation")
         deadline = time.monotonic() + 300
+        deployment_succeeded = False
         while time.monotonic() < deadline:
-            response = transport.request("GET", deployment)
-            status = response.get("body", {}).get("properties", {}).get("provisioningState") if response.get("statusCode") == 200 else None
-            if status in ("Succeeded", "Failed", "Canceled"):
-                proof = completion(transport.request("GET", command), target)
+            if not deployment_succeeded:
+                response = transport.request("GET", deployment)
+                status = response.get("body", {}).get("properties", {}).get("provisioningState") if response.get("statusCode") == 200 else None
+                if status in ("Failed", "Canceled"):
+                    raise credential.SerialCredentialError("Initial credential deployment failed; no password retry is permitted")
+                deployment_succeeded = status == "Succeeded"
+            if deployment_succeeded:
+                response = transport.request("GET", command)
+                proof = completion(response, target)
                 if proof is not None: return proof
-                raise credential.SerialCredentialError("Initial credential completion was not verified; no password retry is permitted")
+                if not command_result_pending(response, target):
+                    raise credential.SerialCredentialError("Initial credential completion was not verified; no password retry is permitted")
             time.sleep(5)
         raise credential.SerialCredentialError("The original initialization is still pending; retain its pending generation")
 

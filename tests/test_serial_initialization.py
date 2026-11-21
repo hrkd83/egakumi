@@ -160,6 +160,92 @@ class InitialCreationTests(unittest.TestCase):
         self.assertEqual(request["body"]["properties"]["parameters"]["initialPassword"]["value"], self.password)
         self.assertTrue(initial.journal(self.config, self.paths)["dispatchAttempted"])
 
+    def test_deployment_success_waits_for_atomic_named_command_proof_without_another_put(self):
+        value = self.confirmed()
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            {"statusCode": 200, "body": {"properties": {"instanceView": {"executionState": "Pending"}}}},
+            {"statusCode": 200, "body": {"properties": {"instanceView": {"executionState": "Succeeded", "exitCode": 0, "output": ""}}}},
+            self.command_result(self.proof(value))])
+        with mock.patch.object(initial.time, "sleep"):
+            result = initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        self.assertEqual(result, self.proof(value))
+        self.assertEqual(len(transport.mutations()), 1)
+        self.assertEqual(transport.mutations()[0]["body"]["properties"]["parameters"]["operation"]["value"], "initial")
+        gets = [request for request in transport.calls if request["method"] == "GET"]
+        self.assertEqual(sum("/runCommands/" in request["path"] for request in gets), 4)
+        self.assertEqual(sum("/providers/Microsoft.Resources/deployments/" in request["path"] for request in gets), 1)
+
+    def test_explicit_command_failure_stops_before_any_later_success_or_password_retry(self):
+        value = self.confirmed()
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            {"statusCode": 200, "body": {"properties": {"instanceView": {"executionState": "Failed", "exitCode": 1,
+                "output": '{"schemaVersion":1,"status":"blocked"}'}}}},
+            self.command_result(self.proof(value))])
+        with mock.patch.object(initial.time, "sleep") as sleep:
+            with self.assertRaises(serial.SerialCredentialError):
+                initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        sleep.assert_not_called()
+        self.assertEqual(len(transport.calls), 4)
+        self.assertEqual(len(transport.mutations()), 1)
+
+    def test_nonempty_foreign_complete_proof_is_terminal_even_when_execution_fields_lag(self):
+        value = self.confirmed()
+        foreign = {**self.proof(value), "credentialGeneration": "33333333-3333-4333-8333-333333333333"}
+        response = self.command_result(foreign)
+        response["body"]["properties"]["instanceView"]["executionState"] = "Running"
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            response, self.command_result(self.proof(value))])
+        with mock.patch.object(initial.time, "sleep") as sleep:
+            with self.assertRaises(serial.SerialCredentialError):
+                initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        sleep.assert_not_called()
+        self.assertEqual(len(transport.calls), 4)
+        self.assertEqual(len(transport.mutations()), 1)
+
+    def test_nonempty_malformed_complete_proof_is_not_treated_as_propagation_delay(self):
+        value = self.confirmed()
+        incomplete = self.proof(value)
+        incomplete.pop("pamAuthenticated")
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            self.command_result(incomplete), self.command_result(self.proof(value))])
+        with mock.patch.object(initial.time, "sleep") as sleep:
+            with self.assertRaises(serial.SerialCredentialError):
+                initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        sleep.assert_not_called()
+        self.assertEqual(len(transport.calls), 4)
+        self.assertEqual(len(transport.mutations()), 1)
+
+    def test_boolean_exit_code_cannot_bypass_terminal_result_type_check(self):
+        value = self.confirmed()
+        malformed = self.command_result(self.proof(value))
+        malformed["body"]["properties"]["instanceView"]["exitCode"] = False
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            malformed, self.command_result(self.proof(value))])
+        with mock.patch.object(initial.time, "sleep") as sleep:
+            with self.assertRaises(serial.SerialCredentialError):
+                initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        sleep.assert_not_called()
+        self.assertEqual(len(transport.calls), 4)
+        self.assertEqual(len(transport.mutations()), 1)
+
+    def test_missing_command_result_uses_shared_budget_and_retains_original_pending_generation(self):
+        value = self.confirmed()
+        transport = ScriptedTransport([{"statusCode": 404}, {"statusCode": 202},
+            {"statusCode": 200, "body": {"properties": {"provisioningState": "Succeeded"}}},
+            {"statusCode": 404}])
+        with mock.patch.object(initial.time, "monotonic", side_effect=[0, 1, 300]), mock.patch.object(initial.time, "sleep"):
+            with self.assertRaises(serial.SerialCredentialError):
+                initial.initialize_guest(self.config, self.paths, value, self.password, transport, {}, self.writer)
+        current = initial.journal(self.config, self.paths)
+        self.assertEqual(current["credentialGeneration"], value["credentialGeneration"])
+        self.assertTrue(current["dispatchAttempted"])
+        self.assertEqual(len(transport.mutations()), 1)
+
     def test_uncertain_initial_dispatch_is_never_reissued_as_a_password_write(self):
         value = self.confirmed()
         first = ScriptedTransport([{ "statusCode": 404 }, { "statusCode": 503 }])
