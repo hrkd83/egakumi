@@ -73,7 +73,7 @@ URI書換えや`copy-unmatched-params`、App GatewayのWAF除外は別の設定�
 
 ## 後続に残るMIMEの制御
 
-後続の`core-model-limits`でも、binary／multipart／textのMIME許可一覧比較と、それによる415を撤去します。`operationConstraints.contentTypes`は個別処理やAPI定義生成などで使うため残します。Speechの上流ヘッダー設定、Documentの個別形式検査、WAFの形式制御は別に残り、共有部品の一覧比較の撤去だけで、すべてのモデル形式が経路全体を通るとは扱いません。これらは後の適用順で棚卸し、Azure反映後の関連受入では拒否主体・ヘッダー転送・下流の受付を確認します。
+後続の`core-model-limits`でも、binary／multipart／textのMIME許可一覧比較と、それによる415を撤去します。`operationConstraints.contentTypes`はAPI定義生成などで使うため残します。Documentの個別形式検査は[専用入力部品](../core-document-input-validation/README.md)の棚卸で撤去し、この共通Content-Type宣言検査の対象にも追加しません。Document入力はAzure反映・読戻し照合を完了し、小文書の原本・Base64入力をキー／Bearerで一部確認しました。申告サイズ境界・内部障害500・期限切れ410など残る受入は未実施です。Speechの上流ヘッダー設定とWAFの形式制御は別に残り、共有部品の一覧比較の撤去だけで、すべてのモデル形式が経路全体を通るとは扱いません。これらは後の適用順で棚卸し、Azure反映後の関連受入では拒否主体・ヘッダー転送・下流の受付を確認します。
 
 ## 今回の整理と未判断の範囲
 

@@ -32,9 +32,12 @@ const snapshotSchema = z.object({
 const portalRoot = fileURLToPath(new URL("../", import.meta.url));
 const publicBindingKeys = ["VOICE_LIVE_MODEL", "VOICE_LIVE_CALLS_MODEL", "VOICE_LIVE_API_VERSION", "VOICE_LIVE_CALLS_API_VERSION"] as const;
 const publicBindingsSchema = z.object({ schemaVersion: z.literal(1), bindings: z.record(z.enum(publicBindingKeys), z.string().regex(/^[a-zA-Z0-9._-]{1,80}$/)) }).strict();
+const documentContractSchema = z.object({ apiVersion: z.string().refine((value) => value.trim().length > 0) }).strict();
 
 /** カタログ生成元と出力先です。検証時は一時フォルダーに差し替えられます。 */
 export type ModelCatalogPaths = { sourceDirectory?: string; snapshotFile?: string; publicBindingsFile?: string; capabilitiesFile?: string };
+/** 公開Document契約の読取先と、Portalへ同梱する小さな生成物の出力先です。 */
+export type DocumentContractPaths = { schemaFile?: string; snapshotFile?: string };
 
 /** PythonのGateway展開と同じ正本から、操作の基本設定へモデル別上限を一度だけ付けます。 */
 export function applyModelCapabilities(definitions: z.infer<typeof definitionSchema>[], capabilities: z.infer<typeof capabilitiesSchema>) {
@@ -60,6 +63,47 @@ export function applyModelCapabilities(definitions: z.infer<typeof definitionSch
 /** ファイルの不存在だけを識別し、権限不足等で古い情報へ退避しないようにします。 */
 function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/** 内容が変わった生成物だけを書き換え、開発・ビルドのたびの不要な更新を省きます。 */
+async function writeSnapshot(snapshotFile: string, value: unknown): Promise<void> {
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  let previous: string | undefined;
+  try { previous = await readFile(snapshotFile, "utf8"); }
+  catch (error) { if (!isMissing(error)) throw error; }
+  if (previous !== serialized) {
+    await mkdir(dirname(snapshotFile), { recursive: true });
+    const temporary = `${snapshotFile}.${process.pid}.tmp`;
+    await writeFile(temporary, serialized, "utf8");
+    await rename(temporary, snapshotFile);
+  }
+}
+
+/**
+ * 公開Documentスキーマの単一版を、Portalの結果検査と仕様表示へ渡します。
+ * @remarks 正本のないDocker内だけは同梱物を使い、不正な正本から旧値へ退避しません。
+ */
+export async function prepareDocumentContract(paths: DocumentContractPaths = {}) {
+  const schemaFile = paths.schemaFile ?? resolve(portalRoot, "../gateway/apim/schemas/document-analysis.json");
+  const snapshotFile = paths.snapshotFile ?? resolve(portalRoot, "lib/generated/document-analysis-contract.json");
+  let schema;
+  try { schema = JSON.parse(await readFile(schemaFile, "utf8")); }
+  catch (error) {
+    if (!isMissing(error)) throw error;
+    try { await readdir(dirname(schemaFile)); }
+    catch (directoryError) {
+      if (!isMissing(directoryError)) throw directoryError;
+      return documentContractSchema.parse(JSON.parse(await readFile(snapshotFile, "utf8")));
+    }
+    // 通常チェックアウトで正本ファイルだけが欠落した場合、旧値ではビルドしません。
+    throw error;
+  }
+  const versions = z.array(documentContractSchema.shape.apiVersion).length(1).parse(
+    schema.schemas.DocumentAnalysisResult.properties.analyzeResult.properties.apiVersion.enum,
+  );
+  const snapshot = { apiVersion: versions[0] };
+  await writeSnapshot(snapshotFile, snapshot);
+  return snapshot;
 }
 
 /**
@@ -101,23 +145,18 @@ export async function prepareModelCatalog(paths: ModelCatalogPaths = {}) {
   if (new Set(snapshot.definitions.map((definition) => definition.name)).size !== snapshot.definitions.length) {
     throw new Error("Model API names must be unique");
   }
-  const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
-  let previous: string | undefined;
-  try { previous = await readFile(snapshotFile, "utf8"); }
-  catch (error) { if (!isMissing(error)) throw error; }
-  if (previous !== serialized) {
-    await mkdir(dirname(snapshotFile), { recursive: true });
-    const temporary = `${snapshotFile}.${process.pid}.tmp`;
-    await writeFile(temporary, serialized, "utf8");
-    await rename(temporary, snapshotFile);
-  }
+  await writeSnapshot(snapshotFile, snapshot);
   return { mode: "generated" as const, apiCount: snapshot.definitions.length };
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  try { console.log(JSON.stringify(await prepareModelCatalog())); }
+  try {
+    const catalog = await prepareModelCatalog();
+    const document = await prepareDocumentContract();
+    console.log(JSON.stringify({ ...catalog, documentApiVersion: document.apiVersion }));
+  }
   catch {
-    console.error("Model catalog preparation failed: verify Gateway definitions or the bundled snapshot.");
+    console.error("Portal contract preparation failed: verify Gateway definitions and contracts or the bundled snapshots.");
     process.exitCode = 1;
   }
 }

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { handleDocumentAnalysis, handleDocumentAnalysisStatus, type DocumentAnalysisDependencies } from "../lib/document-analysis-gateway.ts";
 import { sealDocumentOperation, openDocumentOperation } from "../lib/document-operation-handle.ts";
 import { waitForDocumentAnalysis } from "../lib/document-analysis-client.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION } from "../lib/document-analysis-contracts.ts";
 
 const actor = { tenantId: "11111111-1111-4111-8111-111111111111", objectId: "22222222-2222-4222-8222-222222222222" };
 const apiKeyId = "portal-33333333-3333-4333-8333-333333333333";
@@ -11,7 +12,7 @@ const subscription = "synthetic-subscription-execution-key";
 const portal = "https://portal.example.invalid";
 const gateway = "https://gateway.example.invalid";
 const state = { operationId: "44444444-4444-4444-8444-444444444444", model: "prebuilt-read" as const, statusPath: "/tools/documents/v1/operations/44444444-4444-4444-8444-444444444444", ticket: "synthetic-ticket.synthetic-signature", expiresAt: new Date(Date.now() + 86_400_000).toISOString().replace("Z", "0000Z"), startedAt: Date.now() };
-const native = { analyzeResult: { apiVersion: "2024-11-30", modelId: state.model, content: "Complete document", pages: [{ pageNumber: 1 }] } };
+const native = { analyzeResult: { apiVersion: DOCUMENT_ANALYSIS_API_VERSION, modelId: state.model, content: "Complete document", pages: [{ pageNumber: 1 }] } };
 
 /** 同じ利用者と選択購読だけを許す、実通信を置き換える境界です。 */
 function dependencies(overrides: Partial<DocumentAnalysisDependencies> = {}): DocumentAnalysisDependencies {

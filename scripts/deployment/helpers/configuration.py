@@ -39,6 +39,7 @@ if __package__ in (None, ""):
 from .catalog_descriptions import with_catalog_descriptions
 from .apim_naming import apim_instance_id
 from .apim_input_contract import validate_input_contract
+from .apim_document_contract import DOCUMENT_API_VERSION
 from .credential_login import SESSION_POLICY_DEFAULTS, SESSION_POLICY_BOUNDS, MAX_TRANSACTION_LIFETIME_SECONDS
 
 
@@ -667,21 +668,16 @@ def _normalize_operation_constraint(constraint: dict, api: dict, operation: dict
                 or api["name"] != "document-analysis-v1" or api["path"] != "tools/documents/v1"
                 or "backendUrlTemplate" in operation or "backendOverride" in operation):
             _fail(q, "Document Intelligence requires the fixed managed-identity document API")
-        if constraint.get("allowedModels") != ["prebuilt-read", "prebuilt-layout"]:
-            _fail(q + ".allowedModels", "must reference the published OCR and layout models")
-        if constraint.get("apiVersion") != "2024-11-30":
+        # Documentのモデル利用可否は提供元へ任せ、Gatewayの受付一覧を要求しません。
+        # 公開スキーマの対応版を両操作へ補完し、明示された別版は設定不一致にします。
+        if constraint.setdefault("apiVersion", DOCUMENT_API_VERSION) != DOCUMENT_API_VERSION:
             _fail(q + ".apiVersion", "must use the published Document Intelligence GA API")
         if kind == "documentAnalysis":
             if (operation["name"] != "analyze_document" or operation["method"] != "POST"
                     or operation["urlTemplate"] != "/analyze" or operation["templateParameters"] or body_format != "binary"):
-                _fail(q, "Document submission requires POST /analyze with a binary body")
-            types = set(constraint.get("contentTypes", []))
-            supported = {"application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "text/html",
-                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                         "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
-            if not types or not types <= supported:
-                _fail(q + ".contentTypes", "must use supported Document Intelligence file formats")
+                _fail(q, "Document submission requires POST /analyze with binary size-check handling")
+            # binaryはサイズ確認の処理区分です。原本と提供元のJSON入力を
+            # 解釈せず転送し、contentTypesはAPI仕様用の形式情報として扱います。
             _integer(constraint.get("maxRequestBytes"), q + ".maxRequestBytes", 1, 500000000)
         elif (operation["name"] != "get_document_operation" or operation["method"] != "GET"
                 or operation["urlTemplate"] != "/operations/{operationId}"

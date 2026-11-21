@@ -113,6 +113,8 @@ var documentPaths = filter(documentUploadPaths, path => path == '/tools/document
 var useDocumentWafPolicy = createWafPolicy && !empty(documentPaths)
 // PythonのWAF reconcileと同じ正本を使用し、基盤再配備でも実測した除外を維持します。
 var dataManifest = loadJsonContent('../../apps/gateway/waf-data-exclusions.json')
+// 入力文書のURLは自由文の7グループ除外へ分類せず、専用パスの個別931130だけを合成します。
+var sourceUrlProfiles = loadJsonContent('../../apps/gateway/waf-source-url-exclusions.json').profiles
 var dataProfiles = map(filter(dataManifest.profiles, profile => createWafPolicy && (profile.scope == 'portal' || length(filter(profile.paths, path => contains(publishedApiPaths, path) && !contains(documentPaths, path))) > 0)), profile => {
   name: profile.name
   scope: profile.scope
@@ -297,7 +299,11 @@ resource documentUploadWafPolicy 'Microsoft.Network/ApplicationGatewayWebApplica
   name: 'wafpol-g-document-upload-${wafPolicyIdentifier}'
   location: location
   tags: tags
-  properties: rawBodyProperties
+  properties: union(rawBodyProperties, {
+    managedRules: union(rawBodyProperties.managedRules, {
+      exclusions: union(wafExclusions, flatten(map(filter(sourceUrlProfiles, profile => profile.name == 'g-document-upload' && profile.scope == 'gateway' && length(profile.paths) == length(documentPaths) && length(filter(documentPaths, path => !contains(profile.paths, path))) == 0), profile => profile.exclusions)))
+    })
+  })
 }
 
 // JSONを受けるAI用途のMIMEだけを大小文字非依存のBlock判定に置き換えます。
@@ -350,7 +356,8 @@ var dataPolicyProperties = [for (profile, index) in dataProfiles: union(dataBase
   policySettings: contains(['g-document-status', 'g-realtime-ticket', 'p-document-status'], profile.name) ? union(sharedWafProperties.policySettings, { mode: 'Prevention' }) : aiWafPolicySettings
   managedRules: union(dataBaseProperties[index].managedRules, {
     exclusions: union(wafExclusions,
-      profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions)
+      profile.scope == 'portal' ? portalSessionExclusions : [], profile.exclusions,
+      flatten(map(filter(sourceUrlProfiles, source => source.name == profile.name && source.scope == profile.scope && length(source.paths) == length(profile.paths) && length(filter(profile.paths, path => !contains(source.paths, path))) == 0), source => source.exclusions)))
   })
 })]
 resource dataWafPolicies 'Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies@2024-05-01' = [for (profile, index) in dataProfiles: {

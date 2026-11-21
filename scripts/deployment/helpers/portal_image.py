@@ -48,6 +48,7 @@ EXTRA_FILES = frozenset({'scripts/migrate-auth.ts', 'scripts/auth-migrations.ts'
                          'scripts/prepare-realtime-worklet.ts', 'scripts/serve-portal.ts',
                          'deploy/build-image.sh', 'styles/shadcn.LICENSE.md'})
 MODEL_CATALOG_PATH = 'lib/generated/model-api-definitions.json'
+DOCUMENT_CONTRACT_PATH = 'lib/generated/document-analysis-contract.json'
 REALTIME_WORKLET_PATH = 'public/realtime-audio-worklet.js'
 
 
@@ -93,6 +94,15 @@ def model_catalog_snapshot(root):
     return (json.dumps({'schemaVersion': 1, 'definitions': definitions, 'modelCapabilities': capabilities}, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
 
 
+def document_contract_snapshot(root):
+    """公開Document契約から対応版だけを同梱し、古いローカル生成物を使わない。"""
+    from .apim_document_contract import load_document_api_version
+    schema = Path(root) / 'apps/gateway/apim/schemas/document-analysis.json'
+    if schema.is_symlink() or not schema.is_file():
+        raise ValueError('The public Document contract must be a regular file')
+    return (json.dumps({'apiVersion': load_document_api_version(root)}, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+
+
 def allowed_source_path(name):
     """Dockerへ渡してよいアプリ資材だけを選び、ローカル秘密情報を除外する。"""
     path = Path(name)
@@ -121,7 +131,7 @@ def source_bundle(root=REPOSITORY):
             for path in folder.rglob('*'):
                 if path.is_symlink():
                     raise ValueError('Portal source files must not be symbolic links')
-                if (path.is_file() and path.relative_to(source).as_posix() not in {MODEL_CATALOG_PATH, REALTIME_WORKLET_PATH}
+                if (path.is_file() and path.relative_to(source).as_posix() not in {MODEL_CATALOG_PATH, DOCUMENT_CONTRACT_PATH, REALTIME_WORKLET_PATH}
                         and allowed_source_path(path.relative_to(source).as_posix())):
                     files.append(path)
     files.extend(source / name for name in EXTRA_FILES if (source / name).exists())
@@ -148,12 +158,14 @@ def source_bundle(root=REPOSITORY):
             item = tarfile.TarInfo(path.relative_to(source).as_posix())
             item.size, item.mode, item.mtime = len(data), 0o600, 0
             archive.addfile(item, io.BytesIO(data))
-        catalog = model_catalog_snapshot(root)
-        if total + len(catalog) > MAX_SOURCE_BYTES:
-            raise ValueError('Portal source exceeds the size limit')
-        item = tarfile.TarInfo(MODEL_CATALOG_PATH)
-        item.size, item.mode, item.mtime = len(catalog), 0o600, 0
-        archive.addfile(item, io.BytesIO(catalog))
+        for name, snapshot in ((MODEL_CATALOG_PATH, model_catalog_snapshot(root)),
+                               (DOCUMENT_CONTRACT_PATH, document_contract_snapshot(root))):
+            total += len(snapshot)
+            if total > MAX_SOURCE_BYTES:
+                raise ValueError('Portal source exceeds the size limit')
+            item = tarfile.TarInfo(name)
+            item.size, item.mode, item.mtime = len(snapshot), 0o600, 0
+            archive.addfile(item, io.BytesIO(snapshot))
     # XZは時刻やOS名をヘッダーへ含めず、標準ライブラリだけで展開できる。
     # 方式・圧縮率・検査方式を固定し、WindowsとWSLで同じ資材を照合する。
     data = lzma.compress(raw.getvalue(), format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=9)

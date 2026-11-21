@@ -11,6 +11,7 @@ from deployment.helpers.apim_naming import apim_name
 from deployment.helpers.waf_names import policy_id as waf_policy_id
 from deployment.helpers.waf_body import (raw_body_policy as _raw_body_policy,
                                          speech_content_policy as _speech_policy)
+from deployment.helpers.waf_source_urls import source_url_exclusions
 
 
 NETWORK_API = '2024-05-01'
@@ -334,7 +335,15 @@ def _document_policy(source, maximum):
     """検査可能な先頭範囲と受付容量を分離し、非本文のtraversalを維持する。"""
     if type(maximum) is not int or maximum < 1:
         raise ValueError('Document upload requires a positive numeric API acceptance limit')
-    return _raw_body_policy(source)
+    desired = _raw_body_policy(source)
+    # 原本文書と同じ完全パスで受けるURL項目だけを、個別RFI規則から除外します。
+    # Speech・Portalにも使う共通raw本文処理へ、この除外を追加しません。
+    exclusions = desired['properties']['managedRules'].setdefault('exclusions', [])
+    for item in source_url_exclusions({'name': 'g-document-upload', 'scope': 'gateway',
+                                       'paths': [DOCUMENT_PATH]}):
+        if item not in exclusions:
+            exclusions.append(item)
+    return desired
 
 
 def configure_gateway_document_waf(config, transport, **options):
@@ -347,7 +356,7 @@ def configure_gateway_document_waf(config, transport, **options):
         rule_name=DOCUMENT_RULE_NAME, policy_key='g-document-upload',
         policy_builder=lambda source: _document_policy(source, maximum), **options)
     if receipt['required']:
-        receipt.update({'maxRequestBytes': maximum, 'excludedRuleIds': [],
+        receipt.update({'maxRequestBytes': maximum, 'excludedRuleIds': ['931130'],
                         'disabledRuleIds': [SPEECH_RULE_ID, '930110'],
                         'retainedRuleIds': ['920470', '930100']})
     return receipt

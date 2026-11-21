@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { MAX_BUFFERED_BODY_BYTES, MAX_RUNTIME_STRING_CHARACTERS } from "./model-runtime-limits.ts";
 import { apiKeyIdSchema } from "./api-keys/contracts.ts";
+import documentContract from "./generated/document-analysis-contract.json" with { type: "json" };
 
 /** 文書ファイルを解析する公開済みのGateway APIです。 */
 export const DOCUMENT_ANALYSIS_API_ID = "document-analysis-v1";
+/** Gatewayの公開契約からビルド時に同梱する、解析結果の対応API版です。 */
+export const DOCUMENT_ANALYSIS_API_VERSION = documentContract.apiVersion;
 export const DOCUMENT_ANALYSIS_PATH = "/tools/documents/v1/analyze";
 /** Gatewayが受け付けるファイル上限です。Azureのサービス上限ではありません。 */
 export const MAX_DOCUMENT_BYTES = 500_000_000;
@@ -95,7 +98,7 @@ function validateJson(value: unknown): void {
 
 const pageSchema = z.object({ pageNumber: z.number().int().positive() }).passthrough();
 const tableSchema = z.object({ rowCount: z.number().int().nonnegative(), columnCount: z.number().int().nonnegative(), cells: z.array(z.object({ rowIndex: z.number().int().nonnegative(), columnIndex: z.number().int().nonnegative(), content: z.string() }).passthrough()) }).passthrough();
-const nativeResultSchema = z.object({ apiVersion: z.literal("2024-11-30"), modelId: z.enum(DOCUMENT_MODELS), content: z.string(), pages: z.array(pageSchema).min(1), tables: z.array(tableSchema).optional() }).passthrough();
+const nativeResultSchema = z.object({ apiVersion: z.literal(DOCUMENT_ANALYSIS_API_VERSION), modelId: z.enum(DOCUMENT_MODELS), content: z.string(), pages: z.array(pageSchema).min(1), tables: z.array(tableSchema).optional() }).passthrough();
 const gatewayResultSchema = z.object({ analyzeResult: nativeResultSchema, requestId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional() }).strict();
 
 /** Native解析結果をそのまま残し、表示に必要な属性だけを型検査して取り出します。 */

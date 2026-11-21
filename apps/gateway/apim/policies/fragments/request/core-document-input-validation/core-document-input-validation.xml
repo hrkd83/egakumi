@@ -1,0 +1,13 @@
+<fragment>
+  <!-- ========== Document解析の入力設定の確認（core-document-input-validation） ========== -->
+  <!-- 目的：利用回数制限・下流認証・正常受付の記録より前に、解析開始のmodelクエリを確認します。 -->
+  <!-- 処理：modelの存在・単一値・空欄とURLの階層指定を同名C#で確認し、documentModelとdocumentInputStatusを後続へ渡します。 -->
+  <!-- 同名C#と説明コメントをここへ展開して、Azureの同名フラグメントを生成します。 -->
+  <!-- 本文は読み取り・変換しません。原本とNative JSONの解析可否は提供元が判断します。 -->
+  <!-- model入力の不備は400、内部変数の引渡し失敗は500です。監査と公開応答は呼出し元のAPIが行います。 -->
+  <set-variable name="documentModel" value="@(context.Request.Url.Query.GetValueOrDefault(&quot;model&quot;, &quot;&quot;))" />
+  <set-variable id="core-document-input-validation" name="documentInputStatus" value="@{
+      __CORE_DOCUMENT_INPUT_VALIDATION_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

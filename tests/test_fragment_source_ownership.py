@@ -8,6 +8,7 @@ from deployment.helpers.apim_audit import (
     CORE_AUTHENTICATED_SUBJECT_MARKER, CORE_GATEWAY_TELEMETRY_MARKER,
     CORE_REQUEST_CONTEXT_MARKER, CORE_TRUSTED_INGRESS_MARKER, CORE_CREDENTIAL_BROWSER_EXCEPTION_MARKER, CORE_API_SETTINGS_MARKER, CORE_API_INPUT_VALIDATION_MARKER, CORE_API_OPERATION_SETTINGS_MARKER, CORE_API_AUTHENTICATION_RESULT_MARKER, CORE_MODEL_LIMITS_MARKER, CORE_SPEECH_SSML_GUARD_MARKER, CORE_QUERY_OBSERVATION_MARKER, CORE_QUERY_TELEMETRY_MARKER, SOURCE_EXPRESSION_FILES,
     SUBJECT_OBSERVATION_MARKER,
+    CORE_DOCUMENT_INPUT_VALIDATION_MARKER,
 )
 
 POLICIES = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies"
@@ -22,11 +23,12 @@ PRIMARY = {
     "core-api-operation-settings": CORE_API_OPERATION_SETTINGS_MARKER,
     "core-model-limits": CORE_MODEL_LIMITS_MARKER,
     "core-speech-ssml-guard": CORE_SPEECH_SSML_GUARD_MARKER,
+    "core-document-input-validation": CORE_DOCUMENT_INPUT_VALIDATION_MARKER,
     "core-api-authentication-result": CORE_API_AUTHENTICATION_RESULT_MARKER,
     "core-query-observation": CORE_QUERY_OBSERVATION_MARKER,
     "core-query-telemetry": CORE_QUERY_TELEMETRY_MARKER,
 }
-PURPOSES = {identifier: "request" if identifier in ("core-query-observation", "core-api-input-validation", "core-api-operation-settings", "core-model-limits", "core-speech-ssml-guard") else "settings" if identifier == "core-api-settings" else "ingress" if identifier == "core-trusted-ingress" else "authentication" if identifier in ("core-credential-browser-exception", "core-api-authentication-result") else "audit"
+PURPOSES = {identifier: "request" if identifier in ("core-query-observation", "core-api-input-validation", "core-api-operation-settings", "core-model-limits", "core-speech-ssml-guard", "core-document-input-validation") else "settings" if identifier == "core-api-settings" else "ingress" if identifier == "core-trusted-ingress" else "authentication" if identifier in ("core-credential-browser-exception", "core-api-authentication-result") else "audit"
             for identifier in PRIMARY}
 
 

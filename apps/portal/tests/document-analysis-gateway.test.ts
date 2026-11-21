@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiKeyError } from "../lib/api-keys/contracts.ts";
 import { handleDocumentAnalysis, type DocumentAnalysisDependencies } from "../lib/document-analysis-gateway.ts";
-import { MAX_DOCUMENT_BYTES, MAX_DOCUMENT_RESULT_BYTES } from "../lib/document-analysis-contracts.ts";
+import { DOCUMENT_ANALYSIS_API_VERSION, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_RESULT_BYTES } from "../lib/document-analysis-contracts.ts";
 
 const actor = { tenantId: "11111111-1111-4111-8111-111111111111", objectId: "22222222-2222-4222-8222-222222222222" };
 const apiKeyId = "portal-33333333-3333-4333-8333-333333333333";
@@ -10,7 +10,7 @@ const secret = "document-private-key-must-not-leak";
 const origin = "https://portal.example.invalid";
 const gateway = "https://gateway.example.invalid";
 const pdf = new TextEncoder().encode("%PDF-1.7\nTest transport fixture");
-const native = { analyzeResult: { apiVersion: "2024-11-30", modelId: "prebuilt-read", content: "Document text", pages: [{ pageNumber: 1 }] }, requestId: "native-id" };
+const native = { analyzeResult: { apiVersion: DOCUMENT_ANALYSIS_API_VERSION, modelId: "prebuilt-read", content: "Document text", pages: [{ pageNumber: 1 }] }, requestId: "native-id" };
 
 /** multipartはPortal専用の形で送り、公開APIへの転送は試験側で確認します。 */
 function request(options: { model?: string; type?: string; bytes?: Uint8Array; fields?: Record<string, unknown>; headers?: Record<string, string>; duplicate?: boolean; signal?: AbortSignal; search?: string } = {}): Request {
