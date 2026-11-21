@@ -7,6 +7,10 @@ param registryName string
 param imageDigest string
 param runtimeIdentity object
 param schemaIdentity object
+@minLength(36)
+@maxLength(36)
+@description('構築した管理VM自身のclientId。SQLのSID用であり、principalIdではありません。')
+param managementSqlClientId string
 param sqlServer string
 param database string
 param profiles object
@@ -55,6 +59,7 @@ var schemaEnvironment = union(commonEnvironment, {
   AZURE_CLIENT_ID: schemaIdentity.clientId
   SQL_RUNTIME_CLIENT_ID: runtimeIdentity.clientId
   SQL_RUNTIME_USER_NAME: runtimeIdentity.name
+  SQL_MANAGEMENT_CLIENT_ID: managementSqlClientId
 })
 var oidcEnvironment = [for item in oidcSecrets: { name: item.env, secretRef: item.name }]
 var commonSecrets = concat([{ name: 'broker-key', keyVaultUrl: brokerKeySecretUri, identity: runtimeIdentity.id }],

@@ -28,8 +28,50 @@ set -euo pipefail
 umask 077
 export PYTHONDONTWRITEBYTECODE=1
 /opt/core/maintenance/venv/bin/python -I -B -c 'import sys; assert sys.prefix == "/opt/core/maintenance/venv" and sys.prefix != sys.base_prefix' >/dev/null
-PIP_CONFIG_FILE=/dev/null /opt/core/maintenance/venv/bin/python -I -B -m pip --isolated install --index-url https://pypi.org/simple --no-deps --disable-pip-version-check --no-cache-dir -r /opt/core/maintenance/requirements.txt >/dev/null 2>&1
+PIP_CONFIG_FILE=/dev/null /opt/core/maintenance/venv/bin/python -I -B -m pip --isolated install --index-url https://pypi.org/simple --only-binary=:all: --no-deps --disable-pip-version-check --no-cache-dir -r /opt/core/maintenance/requirements.txt >/dev/null 2>&1
+/opt/core/maintenance/venv/bin/python -I -B -c 'import pyodbc; assert "ODBC Driver 18 for SQL Server" in pyodbc.drivers()' >/dev/null 2>&1
 /opt/core/maintenance/venv/bin/python -I -B /opt/core/maintenance/management_client.py --help >/dev/null
+'''
+
+runtime_odbc = r'''
+set -euo pipefail
+umask 077
+export PYTHONDONTWRITEBYTECODE=1
+# The supported management image is Ubuntu 24.04 amd64. This package and hash
+# are from Microsoft's official Ubuntu 24.04 package index, not a floating repo.
+source /etc/os-release
+[[ ${ID} == ubuntu && ${VERSION_ID} == 24.04 && $(dpkg --print-architecture) == amd64 ]]
+if [[ $(dpkg-query -W -f='${Version}' msodbcsql18 2>/dev/null || true) != 18.7.1.1-1 ]]; then
+    task_odbc_deb=$(mktemp /opt/core/maintenance/.odbc-driver-XXXXXXXX.deb)
+    trap 'rm -f -- "$task_odbc_deb"' EXIT
+    python3 -I -B - "$task_odbc_deb" <<'PY_ODBC'
+import hashlib,os,stat,sys
+from urllib.request import HTTPRedirectHandler,ProxyHandler,Request,build_opener
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self,*args,**kwargs):
+        raise RuntimeError('The fixed SQL driver package must not redirect')
+path=sys.argv[1]
+info=os.lstat(path)
+if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+    raise SystemExit('The fixed SQL driver package requires a private regular file')
+request=Request('https://packages.microsoft.com/ubuntu/24.04/prod/pool/main/m/msodbcsql18/msodbcsql18_18.7.1.1-1_amd64.deb')
+with build_opener(ProxyHandler({}),NoRedirect()).open(request,timeout=60) as response:
+    data=response.read(8*1024*1024+1)
+if len(data)>8*1024*1024 or hashlib.sha256(data).hexdigest() != 'f506cb3de8b34cd94e9014d247b39e9dfd7effad79edad3ab67096dc3c1b6b0e':
+    raise SystemExit('The fixed SQL driver package hash did not match')
+fd=os.open(path,os.O_WRONLY|os.O_TRUNC|os.O_NOFOLLOW)
+with os.fdopen(fd,'wb') as stream:
+    actual=os.fstat(stream.fileno())
+    if (actual.st_dev,actual.st_ino) != (info.st_dev,info.st_ino):
+        raise SystemExit('The fixed SQL driver package changed while opening')
+    stream.write(data)
+    stream.flush()
+    os.fsync(stream.fileno())
+PY_ODBC
+    apt-get -o DPkg::Lock::Timeout=300 update >/dev/null 2>&1
+    ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y --allow-downgrades --no-install-recommends "$task_odbc_deb" >/dev/null 2>&1
+    [[ $(dpkg-query -W -f='${Version}' msodbcsql18) == 18.7.1.1-1 ]]
+fi
 '''
 
 
@@ -171,6 +213,12 @@ try:
         # cannot overwrite IDs added by another completed preparation.
         for key in ('applications','jobs','environments'):
             inventory[key] = sorted(set(previous[key] + inventory[key]))
+        sql = {item['alias']: item for item in previous['sqlDatabases']}
+        for item in inventory['sqlDatabases']:
+            if item['alias'] in sql and sql[item['alias']]['id'].casefold() != item['id'].casefold():
+                raise SystemExit('Existing SQL inventory alias differs; reconcile before preparing the client')
+            sql[item['alias']] = item
+        inventory['sqlDatabases'] = [sql[alias] for alias in sorted(sql)]
     inventory = namespace['validate_inventory'](inventory)
     contents = {
         'management_client.py': source,
@@ -224,6 +272,8 @@ try:
     subprocess.run(['/bin/bash', '-c', runtime_prepare], check=True, pass_fds=(lock_fd,),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     verify_runtime(venv, prepared=True)
+    subprocess.run(['/bin/bash', '-c', runtime_odbc], check=True, pass_fds=(lock_fd,),
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(['/bin/bash', '-c', runtime_install], check=True, pass_fds=(lock_fd,),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print('{"status":"client-prepared","runtimeVerified":false}')

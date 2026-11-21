@@ -45,6 +45,15 @@ class ManagementMaintenanceInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'distinct approved definitions'):
             management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)
 
+    def test_verified_sql_client_id_is_internal_and_requires_a_nonzero_guid(self):
+        metadata = maintenance_metadata(self.subscription)
+        metadata['sqlClientId'] = '66666666-6666-4666-8666-666666666666'
+        self.assertEqual(management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)['sqlClientId'], metadata['sqlClientId'])
+        for invalid in ('', None, '<INVALID_SQL_CLIENT_ID>', '00000000-0000-0000-0000-000000000000'):
+            metadata['sqlClientId'] = invalid
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'SQL client identity'):
+                management_maintenance_inputs({'subscriptionId': self.subscription}, metadata)
+
 
 if __name__ == '__main__':
     unittest.main()

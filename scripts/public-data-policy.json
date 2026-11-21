@@ -3787,9 +3787,10 @@
       "rule": "credential-assignment",
       "value": "CONCURRENT_TOKEN_FIXTURE",
       "paths": [
-        "tests/test_lifecycle_transport.py"
+        "tests/test_lifecycle_transport.py",
+        "tests/test_entra_snapshot_concurrency.py"
       ],
-      "reason": "Fixed dummy access-token string returned by the local fetch_token mock in offline ARM transport tests; not a live credential."
+      "reason": "Fixed dummy access-token string returned by local token mocks in offline ARM transport and snapshot integration tests; not a live credential."
     },
     {
       "rule": "environment-identifier",
@@ -4385,8 +4386,9 @@
     {
       "rule": "unknown-uuid",
       "value": "22222222-2222-4222-8222-222222222222",
-      "reason": "Independent repeated-digit identity fixture for offline maintenance validation; not copied or derived from an environment. Exact value and enumerated source files only.",
+      "reason": "Independent repeated-digit identity fixture for offline maintenance and ARM snapshot validation; not copied or derived from an environment. Exact value and enumerated source files only.",
       "paths": [
+        "tests/test_entra_snapshot_concurrency.py",
         "tests/test_lifecycle_serial.py",
         "tests/test_maintenance_upgrade.py",
         "tests/test_management_client.py",
@@ -4558,6 +4560,186 @@
       "reason": "Independent malformed DNS/URL fixture or fixed fragment for the control-character rejection test; not an environment host or URL. Exact source path and value only.",
       "paths": [
         "tests/test_configuration.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "database.windows.net",
+      "reason": "Official shared Azure SQL token audience and generated server suffix, without tenant or resource identification; https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory",
+      "paths": [
+        "scripts/management_client.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "sql-fixture.database.windows.net",
+      "reason": "Independent fictional SQL server endpoint used only to inspect encrypted connection options in an offline driver mock; not a deployed host.",
+      "paths": [
+        "tests/test_management_sql_client.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "18.7.1.1",
+      "reason": "Microsoft ODBC Driver 18 public package version 18.7.1.1-1, not an IP address; pinned official Ubuntu package filename and offline installation contract.",
+      "paths": [
+        "infra/guest/prepare-management-client.sh",
+        "tests/test_management_sql_driver_install.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00112233-4455-4677-8899-aabbccddeeff",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_sql_management_grants.py",
+        "apps/portal/tests/auth-management-grants.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_sql_management_grants.py",
+        "apps/portal/tests/auth-management-grants.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_sql_management_grants.py",
+        "apps/portal/tests/auth-management-grants.test.ts"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_broker_cli.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "55555555-5555-4555-8555-555555555555",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "tests/test_management_sql_client.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "66666666-6666-4666-8666-666666666666",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "tests/test_management_maintenance_inputs.py",
+        "tests/test_management_sql_client.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "77777777-7777-4777-8777-777777777777",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "tests/test_deploy_gateway.py",
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "99999999-9999-4999-8999-999999999999",
+      "reason": "Independent ordered-byte or repeated-digit UUID fixtures for offline SQL SID, identity ownership and deployment wiring tests; never copied from a real environment.",
+      "paths": [
+        "tests/test_management_sql_client.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "00000000-0000-4000-8000-000000000000",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py",
+        "tests/test_lifecycle_serial.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "44444444-4444-4444-8444-444444444444",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py",
+        "tests/test_lifecycle_serial.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "55555555-5555-4555-8555-555555555555",
+      "reason": "Independently invented offline Serial VM-generation, managed-identity, tenant and credential-generation fixture; never copied from a deployment. Exact reviewed file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py",
+        "tests/test_serial_initialization.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "169.254.169.254",
+      "reason": "Public Azure IMDS link-local endpoint for the original VM and selected SystemAssigned identity; not a deployment-specific address. Exact worker path/value only.",
+      "paths": [
+        "infra/guest/initialize-management-serial.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "169.254.169.254",
+      "reason": "Public Azure IMDS link-local endpoint for the original VM and selected SystemAssigned identity; not a deployment-specific address. Exact worker path/value only.",
+      "paths": [
+        "infra/guest/initialize-management-serial.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "synthetic-only-Original1!",
+      "reason": "Independent synthetic password literal for offline Serial state-machine, stdin and subprocess-environment tests; never a live credential. Exact file/value only.",
+      "paths": [
+        "tests/test_management_serial_guest.py"
+      ]
+    },
+    {
+      "rule": "credential-assignment",
+      "value": "INITIAL_SERIAL_GENERATION_FIXTURE",
+      "reason": "Non-secret synthetic generation label returned by the isolated lifecycle mock; Core receives no password. Exact file/value only.",
+      "paths": [
+        "tests/test_lifecycle.py"
       ]
     }
   ],

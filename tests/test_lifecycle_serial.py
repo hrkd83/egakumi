@@ -9,11 +9,12 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from deployment import lifecycle
-from deployment.helpers import private_permissions, serial_credentials as serial
+from deployment.helpers import private_permissions, serial_credentials as serial, serial_initialization as initial
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.paths import LocalPaths
 from configuration_fixtures import fixture
@@ -39,6 +40,10 @@ class SerialLifecycleTests(unittest.TestCase):
         self.addCleanup(process.stop)
         self.output = io.StringIO()
         self.errors = io.StringIO()
+        self.generation = "44444444-4444-4444-8444-444444444444"
+        generation = mock.patch.object(serial.uuid, "uuid4", return_value=uuid.UUID(self.generation))
+        generation.start()
+        self.addCleanup(generation.stop)
 
     def missing(self):
         return {"statusCode": 404, "body": None, "headers": {}}
@@ -56,18 +61,24 @@ class SerialLifecycleTests(unittest.TestCase):
             "id": serial._owner(self.config)[0], "type": "Microsoft.Compute/virtualMachines",
             "location": self.config["location"], "tags": {
                 "product": self.config["productName"], "environment": self.config["environmentName"]},
+            "identity": {"type": "SystemAssigned", "principalId": "33333333-3333-4333-8333-333333333333", "tenantId": self.config["azureTenantId"]},
             "properties": {"provisioningState": "Succeeded", "vmId": "22222222-2222-4222-8222-222222222222",
                 "osProfile": {"adminUsername": self.config["management"]["adminUsername"],
                               "linuxConfiguration": {"disablePasswordAuthentication": True}}},
         }}
 
     def outputs(self):
-        return {"managementVm": {"id": serial._owner(self.config)[0]},
+        vm = self.vm()["body"]
+        management = {"id":vm["id"], "vmId":vm["properties"]["vmId"], "principalId":vm["identity"]["principalId"], "tenantId":vm["identity"]["tenantId"]}
+        return {"managementVm": management, "managementInitialSerialCreation": {"generation":self.generation,
+                "coreDeploymentId":f"/subscriptions/{self.config['subscriptionId']}/providers/Microsoft.Resources/deployments/{self.config['resourceStem']}-core", "managementVm":management},
                 "resourceGroups": self.config["resourceGroupNames"],
                 "endpoints": {"public": "https://fixture.example.invalid"}}
 
     def deployment(self, status="Succeeded"):
-        return {"statusCode": 200, "body": {"properties": {"provisioningState": status,
+        return {"statusCode": 200, "body": {"id":self.outputs()["managementInitialSerialCreation"]["coreDeploymentId"],
+            "tags":{"azd-env-name":self.config["environmentName"],"azd-project-name":"ai-workforce-core","azd-layer-name":""},
+            "properties": {"parameters":{"managementInitialSerialGeneration":{"value":self.generation}},"provisioningState": status,
             "outputs": {key: {"value": value} for key, value in self.outputs().items()}}}}
 
     def core(self, transport, *, secrets=None):
@@ -81,6 +92,10 @@ class SerialLifecycleTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(lifecycle, name, return_value=value))
             stack.enter_context(mock.patch.object(lifecycle, "prepare_diagnostic_settings", side_effect=lambda config, transport, phase, *a:
                 {key: item["properties"] for key, item in lifecycle.canonical_settings(lifecycle.build_bicep_configuration(config), phase).items()}))
+            def verified_initialization(config, workspace, value, password, transport, template, writer):
+                initial.save(workspace,{**value,"dispatchAttempted":True},writer)
+                return {**value["target"],"schemaVersion":1,"status":"complete","passwordWriteRequested":True,"verificationAttempted":True,"pamAuthenticated":True,"sshVerified":True}
+            stack.enter_context(mock.patch.object(initial,"initialize_guest",side_effect=verified_initialization))
             stack.enter_context(contextlib.redirect_stdout(self.output))
             stack.enter_context(contextlib.redirect_stderr(self.errors))
             return lifecycle.deploy_phase(self.config, "core", secrets=secrets or {})
@@ -96,7 +111,9 @@ class SerialLifecycleTests(unittest.TestCase):
         receipt = self.receipt()
         request, = transport.mutations()
         values = request["body"]["properties"]["parameters"]
-        self.assertEqual(values["managementAdminPassword"]["value"], receipt["password"])
+        self.assertNotIn("managementAdminPassword",values)
+        self.assertEqual(values["managementInitialSerialGeneration"]["value"], receipt["generation"])
+        self.assertNotIn(receipt["password"],json.dumps(request["body"]))
         self.assertNotIn(receipt["password"], json.dumps(values["configuration"]))
         self.assertEqual(receipt["boundVmId"], self.vm()["body"]["properties"]["vmId"])
         self.assertEqual(supplied["managementAdminPassword"], "caller-cannot-override-initial-generation")
@@ -109,7 +126,8 @@ class SerialLifecycleTests(unittest.TestCase):
              mock.patch.object(serial, "_read", side_effect=AssertionError("Existing VM cannot read credentials")):
             self.core(transport, secrets={"managementAdminPassword": "caller-cannot-change-existing-vm"})
         request, = transport.mutations()
-        self.assertEqual(request["body"]["properties"]["parameters"]["managementAdminPassword"]["value"], "")
+        self.assertNotIn("managementAdminPassword",request["body"]["properties"]["parameters"])
+        self.assertEqual(request["body"]["properties"]["parameters"]["managementInitialSerialGeneration"]["value"], "")
         self.assertFalse((self.paths.secrets / "management-serial-credential.json").exists())
 
     def test_foreign_parent_stops_before_secret_generation_or_core_put(self):
@@ -159,23 +177,20 @@ class SerialLifecycleTests(unittest.TestCase):
         self.assertFalse(target.exists())
         self.assertEqual(list(target.parent.glob(".core-*")), [])
 
-    def test_native_postprovision_binds_only_the_secret_passed_to_its_core_input(self):
+    def test_native_postprovision_recovers_after_generated_input_cleanup(self):
         first = serial.prepare_initial_serial_password(self.config, self.paths, self.missing())
-        lifecycle.protected_json(self.paths.parameters, lifecycle.parameters(self.config, "core",
-            secrets={"managementAdminPassword": first}))
-        transport = ScriptedTransport([self.group(), self.vm()])
-        response = self.deployment()["body"]
-        with mock.patch.object(lifecycle, "run", side_effect=[{"CORE_DEPLOYMENT_NAME": "synthetic-core"}, response]), \
-             mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
-             mock.patch.object(lifecycle, "_save_deployment_state"), \
-             mock.patch.object(lifecycle, "complete_core_network_upgrade"), \
-             mock.patch.object(lifecycle, "configure_grpc_endpoint", return_value={"enabled": False}), \
-             mock.patch.object(lifecycle, "configure_public_dns", return_value={"status": "configured"}), \
-             contextlib.redirect_stdout(self.output):
-            lifecycle.postprovision(self.config)
-        self.assertEqual(self.receipt()["boundVmId"], self.vm()["body"]["properties"]["vmId"])
+        initial.record_core_request(self.config,self.paths,first,"native",lifecycle.protected_json)
         self.assertFalse(self.paths.parameters.exists())
-        self.assertNotIn(first, self.output.getvalue())
+        transport = ScriptedTransport([self.group(),self.vm(),self.deployment(),self.group(),self.vm()])
+        response = self.deployment()["body"]
+        def verified_initialization(config,workspace,value,password,transport,template,writer):
+            initial.save(workspace,{**value,"dispatchAttempted":True},writer)
+            return {**value["target"],"schemaVersion":1,"status":"complete","passwordWriteRequested":True,"verificationAttempted":True,"pamAuthenticated":True,"sshVerified":True}
+        with mock.patch.object(lifecycle,"run",side_effect=[{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},response,{"CORE_DEPLOYMENT_NAME":self.config["resourceStem"]+"-core"},{"resources":[]}]),              mock.patch.object(initial,"initialize_guest",side_effect=verified_initialization),              mock.patch.object(lifecycle,"ArmTransport",return_value=transport),              mock.patch.object(lifecycle,"_save_deployment_state"),              mock.patch.object(lifecycle,"complete_core_network_upgrade"),              mock.patch.object(lifecycle,"configure_grpc_endpoint",return_value={"enabled":False}),              mock.patch.object(lifecycle,"configure_public_dns",return_value={"status":"configured"}),              contextlib.redirect_stdout(self.output):
+            lifecycle.postprovision(self.config)
+        self.assertEqual(self.receipt()["boundVmId"],self.vm()["body"]["properties"]["vmId"])
+        self.assertFalse(self.paths.parameters.exists())
+        self.assertNotIn(first,self.output.getvalue())
 
 
 if __name__ == "__main__":

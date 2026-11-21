@@ -2,7 +2,7 @@ import { Kysely } from "kysely";
 import { getAuthDatabase } from "../lib/auth-database.ts";
 import { getSqlEnvironment } from "../lib/auth-environment.ts";
 import { migrateAuth, observeAuthSchemaBeforeMigration, sqlFailure } from "./auth-migrations.ts";
-import { grantRuntimeAccess, parseRuntimeIdentity } from "./auth-runtime-grants.ts";
+import { grantManagementAccess, grantRuntimeAccess, parseManagementIdentity, parseRuntimeIdentity } from "./auth-runtime-grants.ts";
 import { configureApiKeyGroups, readApiKeyGroupConfiguration } from "./api-key-group-config.ts";
 import { configureApiKeyAdministration, readApiKeyAdministrationConfiguration } from "./api-key-administration-config.ts";
 import { importApiKeySubscriptions, readApiKeySubscriptionImport } from "./api-key-subscription-import.ts";
@@ -12,11 +12,13 @@ import { AzureApiKeyApim } from "../lib/api-keys/apim.ts";
 /** 配備用の管理IDで事前実行するDDLです。アプリ起動時には呼び出しません。 */
 async function main() {
   const runtimeIdentity = parseRuntimeIdentity(process.env);
+  const azureDeployment = getSqlEnvironment().mode !== "local-sql";
+  const managementIdentity = azureDeployment ? parseManagementIdentity(process.env) : null;
   const keyGroups = readApiKeyGroupConfiguration(process.env);
   const administration = readApiKeyAdministrationConfiguration(process.env);
   const subscriptionImport = readApiKeySubscriptionImport(process.env);
   const verificationSubscriptions = readApiKeyVerificationSubscriptions(process.env);
-  if (getSqlEnvironment().mode !== "local-sql" && !runtimeIdentity) {
+  if (azureDeployment && !runtimeIdentity) {
     throw new Error("Portal SQL runtime identity is required for Azure schema deployment");
   }
   const database = new Kysely<Record<string, unknown>>(getAuthDatabase());
@@ -30,7 +32,9 @@ async function main() {
     const verification = verificationSubscriptions?.subscriptions.length ? await bootstrapApiKeySubscriptions(database,
       verificationSubscriptions, new AzureApiKeyApim(readApiKeyBootstrapApimEnvironment(process.env))) : null;
     if (runtimeIdentity) await grantRuntimeAccess(database, runtimeIdentity);
+    if (managementIdentity) await grantManagementAccess(database, managementIdentity);
     console.log(JSON.stringify({ status: "complete", migrationFiles: files, runtimeAccessGranted: Boolean(runtimeIdentity),
+      managementAccessGranted: Boolean(managementIdentity),
       keyGroupsConfigured: keyGroups?.groups.length ?? 0, importedSubscriptions, verificationSubscriptions: verification }));
   } finally {
     await database.destroy();

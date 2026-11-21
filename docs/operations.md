@@ -132,10 +132,11 @@ inventoryは構築出力から生成し、VM・MI・テナント・Subscription�
 | ACA App exec | 構築App単位の別カスタムロール | コンテナー内コマンドの実行。コンテナーが読めるマウント済み秘密やアプリのIDで利用できる接続先にも影響する |
 | ACA環境ログ | 構築managedEnvironment単位のreadとgetAuthToken | 環境情報とDev API用token。tokenがログ専用であるという保証は置かない |
 | ACA Jobログ | 構築Job単位のカスタムロール | Jobと子資源の情報、Job自身のtoken取得、実行ログ。Job起動・listSecrets・exec権限は追加しない |
+| SQL直接保守 | 構築したGateway／Portalの各DB内の`core_management_vm`へ`db_owner` | データ・DDL・DB内権限の保守。SQLサーバーのEntra管理者や、他のDBへの権限は追加しない |
 
 カスタムロールの定義はSubscription scopeに作りますが、割当scopeは上表の構築資源です。VM内のプログラム・ログイン者はMIを利用でき、保存先から見えるアクセス主体もVMのMIです。人間ごとのID認可・監査に置き換わる機能ではありません。clientが提供する操作を限定していても、環境tokenのAzure側利用範囲までログ専用に制限したとは扱いません。
 
-### 保護入出力と7種類の操作
+### 保護入出力とSQLを含む8種類の操作
 
 次はLinux管理VM内の例です。配置契約以外のID・名前はプレースホルダーであり、対象は保護inventoryと現在のApp／Job metadataから選びます。root所有のinventoryを読むため、以下では`sudo`でclientを実行します。出力先と入力先はroot所有・700、入力ファイルは600で事前準備し、リンクや他人の共有フォルダーを使いません。
 
@@ -159,7 +160,7 @@ sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
   --container '<CONSTRUCTED_CONTAINER_NAME>' --blob '<BLOB_NAME>'
 ```
 
-同じ呼出しの末尾を次の表で選び、`--output`も操作ごとに新しいファイル名へ変えます。6個のサブコマンドで、Appログのconsole／systemを分けた7種類の操作です。
+同じ呼出しの末尾を次の表で選び、`--output`も操作ごとに新しいファイル名へ変えます。7個のサブコマンドで、Appログのconsole／systemを分けた8種類の操作です。
 
 | 操作 | サブコマンドと追加引数 | 選択・確認事項 |
 | --- | --- | --- |
@@ -170,6 +171,9 @@ sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
 | ACA環境systemログ | `environment-logs --resource-id '<ENVIRONMENT_RESOURCE_ID>' --tail 50` | App単位のsystemログと区別する。環境tokenで取得 |
 | Job実行ログ | `job-logs --resource-id '<JOB_RESOURCE_ID>' --execution '<EXECUTION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --tail 50` | 過去の実行を明示し、Jobを起動せずに読む |
 | Appへの限定exec | `app-exec --resource-id '<APP_RESOURCE_ID>' --revision '<REVISION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --command-file "$MAINTENANCE_INPUT_DIRECTORY/command.txt" --seconds 60` | 明示したコンテナーへ、保護コマンドファイルの内容だけを送る |
+| SQL直接保守 | `sql-query --database credentials --query-file "$MAINTENANCE_INPUT_DIRECTORY/maintenance.sql"` | `credentials`または`portal`の構築DBだけを選択。SQL本文は保護ファイルへ保存 |
+
+SQLは管理VM自身のMIで認証し、構築サーバーのFQDNへTCP1433で接続します。固定ODBC Driver 18で暗号化とサーバー証明書検証を維持します。SQL本文・結果・失敗時の詳細は保護ファイルへ保存し、tokenは保存しません。更新SQLの実行と結果保存は別の段階です。commit後に結果保存が失敗した場合も、更新を未実行と決めつけて再送しません。
 
 ログ取得は`follow=false`の有限tailで、`--tail`は0〜300です。JobログはPreview APIを使い、client内でmetadata用とreplica／token用のAPI版を固定しています。実環境での提供状況・認可・実行ログ保持を確認するまでは取得成功を保証しません。
 
@@ -177,7 +181,7 @@ execの`command.txt`には、目的が明確で短時間で終了するコマン
 
 ### 実環境の確認結果を記録する
 
-今回の資材はBicepコンパイルと独立した合成入力によるローカル試験で確認しています。初期Azure配備、MIの実token取得、Blob／Workspaceの実データ、App／環境／JobのDev API、WebSocket exec、Serialの実ログインは別の実環境試験です。未実施の操作を検証済みにしません。7操作それぞれについて、対象、権限scope、ネットワーク到達、取得内容、必要なら拒否条件を保護証跡へ記録します。
+今回の資材はBicepコンパイルと独立した合成入力によるローカル試験で確認しています。初期Azure配備、MIの実token取得、SQL直接保守、Blob／Workspaceの実データ、App／環境／JobのDev API、WebSocket exec、Serialの実ログインは別の実環境試験です。未実施の操作を検証済みにしません。8操作それぞれについて、対象、権限scope、ネットワーク到達、取得内容、必要なら拒否条件を保護証跡へ記録します。
 
 ## Serial Consoleのローカル認証を準備する
 
@@ -187,9 +191,9 @@ execの`command.txt`には、目的が明確で短時間で終了するコマン
 
 接続時はWindows端末でAzure Portalへ認証し、Core stateと同じ管理VMの「Serial console（シリアルコンソール）」を開きます。ログインプロンプトを確認して、同じ秘密ファイルの`adminUsername`と`password`を入力します。まず`id`・`pwd`など状態を変えない操作でTTYを確認し、作業後はローカルセッションからログアウトします。既存VMで手動設定したパスワードを使っている場合は、その運用秘密を使い、未結び付けの初期生成ファイルから現在のパスワードを推測しません。
 
-同じ未作成VMの初期再試行ではpendingの同じ秘密を使います。配備成功後に同名VMを撤去し、新規構築するときは旧世代を保護archiveへ残して新しい秘密を作ります。既存VMがGET200で読めた場合は秘密を読まず、手動設定済みのパスワードも上書きしません。部分失敗でVMだけが作成済みになった場合や、一時secure入力・秘密の対応が失われた場合は、成功したものと推測して結び付け直しません。元の保護入力・配備記録を保持して現在のVM個体と照合します。
+同じ未作成VMの初期再試行ではpendingの同じ秘密を使います。初期化完了後に同名VMを撤去し、新規構築するときは旧世代を保護archiveへ残して新しい秘密を作ります。元の初期作成証跡がない既存VMは秘密を読まず、手動設定済みのパスワードも上書きしません。部分失敗でVMだけ作成済みになった場合は、保護stateに保存した元404・Core入力世代と、所有Core／management子配備の同世代・VM UUID出力を先に照合します。生成ARM入力を回収済みでも元証跡が残っていれば照合できますが、証跡なしで現在のVMへ結び付け直しません。guestの初期化要求が記録された後の回復ではパスワードを再送せず、元の資格情報によるlogin PAM認証を最大1回に制限します。完了済みの世代は再設定せず、その後の手動変更を保持します。
 
-Serialの接続・ローカルログイン・TTY操作と、SSH鍵認証が維持されていることを別々に実確認します。初期VMのsecure password受付、固定Ubuntuイメージでの動作、実Serialログインは、ローカル試験通過だけで合格とは扱いません。既存利用者の有無も確認してから接続します。
+Serialの接続・ローカルログイン・TTY操作と、SSH鍵認証が維持されていることを別々に実確認します。新しいManaged Run Commandのprotected入力、固定Ubuntuイメージ上のローカル認証・PAM、実Serialログインは、合成試験やBicepコンパイルだけで実環境検証済みとは扱いません。PAM確認は認証ログ・ロックアウト状態へ影響し、SerialのWebSocket／TTY接続とは別の確認です。既存利用者の有無も確認してから接続します。
 
 ## 本人接続のSQL台帳
 

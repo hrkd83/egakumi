@@ -132,9 +132,9 @@ from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
 from .helpers.portal_backend_http import require_portal_http_core_ready
+from .helpers import serial_initialization
 from .helpers.serial_credentials import (
-    SerialCredentialError, prepare_initial_serial_password, bind_initial_serial_password,
-    _read_payload as read_private_initial_payload,
+    SerialCredentialError, prepare_initial_serial_password, bind_initial_serial_password, prepared_initial_serial_generation,
 )
 from .helpers.private_permissions import (
     check_private_permissions as require_serial_storage_permissions,
@@ -461,78 +461,124 @@ def _management_serial_vm_response(config: dict, transport: ArmTransport) -> dic
     return vm_response
 
 
+def _serial_core_response(config: dict, transport: ArmTransport, provenance: dict) -> dict:
+    """元の内部世代を持つ、選択したCore配備だけを再開時に読む。"""
+    deployment = provenance.get("coreDeploymentId")
+    if deployment is None and provenance.get("coreMode") == "native":
+        environment = run(["azd", "env", "get-values", "--environment", config["environmentName"], "-o", "json"])
+        name = environment.get("CORE_DEPLOYMENT_NAME")
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.()-]{1,64}", name):
+            raise DeploymentError("The original native Core deployment reference is missing")
+        deployment = f"/subscriptions/{config['subscriptionId']}/providers/Microsoft.Resources/deployments/{name}"
+    if not isinstance(deployment, str):
+        raise DeploymentError("The original Core deployment reference is missing")
+    response = transport.request("GET", deployment + "?api-version=2022-09-01")
+    body = response.get("body")
+    properties = body.get("properties", {}) if isinstance(body, dict) else {}
+    tags = body.get("tags", {}) if isinstance(body, dict) else {}
+    if (response.get("statusCode") == 200 and properties.get("provisioningState") in {"Failed", "Canceled"}
+            and properties.get("parameters", {}).get("managementInitialSerialGeneration", {}).get("value") == provenance["credentialGeneration"]
+            and isinstance(tags, dict) and all(tags.get(k) == v for k, v in {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME, "azd-layer-name": ""}.items())):
+        child_id = f"/subscriptions/{config['subscriptionId']}/resourceGroups/{config['resourceGroupNames']['maint']}/providers/Microsoft.Resources/deployments/{config['resourceStem']}-management"
+        child = transport.request("GET", child_id + "?api-version=2022-09-01")
+        child_body = child.get("body")
+        child_props = child_body.get("properties", {}) if isinstance(child_body, dict) else {}
+        original = child_props.get("outputs", {}).get("initialSerialCreation", {}).get("value")
+        if (child.get("statusCode") == 200 and str(child_body.get("id", "")).casefold() == child_id.casefold()
+                and child_props.get("provisioningState") == "Succeeded"
+                and child_props.get("parameters", {}).get("initialSerialGeneration", {}).get("value") == provenance["credentialGeneration"]
+                and isinstance(original, dict) and set(original) == {"generation", "managementVm"}
+                and original.get("generation") == provenance["credentialGeneration"]):
+            response = {**response, "managementCreation": {**original, "coreDeploymentId": deployment}}
+    return response
+
+
 def _prepare_management_serial_password(config: dict, transport: ArmTransport) -> str:
-    """既存VMの秘密は読まず、確認済みの初回不存在だけ保護秘密を準備する。"""
+    """初回404だけ生成し、既存200の回復は元Core作成証跡の確認後だけ秘密を読む。"""
     try:
-        return prepare_initial_serial_password(config, local_paths(config, ROOT),
-                                               _management_serial_vm_response(config, transport))
+        workspace = local_paths(config, ROOT)
+        response = _management_serial_vm_response(config, transport)
+        password = prepare_initial_serial_password(config, workspace, response)
+        if response["statusCode"] == 200:
+            return serial_initialization.recover_password(config, workspace, response["body"],
+                lambda provenance: _serial_core_response(config, transport, provenance), protected_json)
+        return password
+    except SerialCredentialError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def _management_serial_generation(config: dict, password: str) -> str:
+    try:
+        if password:
+            return prepared_initial_serial_generation(config, local_paths(config, ROOT), password)
+        pending = serial_initialization.journal(config, local_paths(config, ROOT))
+        return pending["credentialGeneration"] if pending is not None and pending["status"] != "complete" else ""
+    except SerialCredentialError as error:
+        raise DeploymentError(str(error)) from None
+
+
+def _record_management_serial_creation(config: dict, password: str, *, native: bool = False) -> None:
+    try:
+        serial_initialization.record_core_request(config, local_paths(config, ROOT), password,
+                                                   "native" if native else "direct", protected_json)
     except SerialCredentialError as error:
         raise DeploymentError(str(error)) from None
 
 
 def _confirm_management_serial_target(config: dict, transport: ArmTransport, password: str) -> None:
-    """PUTまたはnative azdへの引渡し直前に、初期/既存VMが変わっていないか再確認する。
-
-    ARM deploymentとVM作成は別要求なので、このGETを外部同時構築に対する
-    原子的ロックとは扱わない。同一環境の初期構築を同時実行しないことが前提。
-    """
+    """Core引渡し直前に不存在または元作成証跡で固定したUUIDを再確認する。"""
     response = _management_serial_vm_response(config, transport)
     if response["statusCode"] == 200:
-        # This branch verifies ownership without opening the saved credential.
         try:
             prepare_initial_serial_password(config, local_paths(config, ROOT), response)
+            value = serial_initialization.journal(config, local_paths(config, ROOT))
+            if password or value is not None and value["target"] is not None and value["status"] != "complete":
+                vm_generation = str(response["body"].get("properties", {}).get("vmId", "")).lower()
+                if value is None or value["target"] is None or value["target"]["vmId"] != vm_generation:
+                    raise SerialCredentialError("The management VM changed during initial preparation; no Core deployment was started")
         except SerialCredentialError as error:
             raise DeploymentError(str(error)) from None
-    if bool(password) != (response["statusCode"] == 404):
+    elif not password:
         raise DeploymentError("The management VM changed during initial preparation; no Core deployment was started")
 
 
 def _bind_management_serial_password(config: dict, outputs: dict, transport: ArmTransport, password: str) -> None:
-    """今回の成功配備へ秘密を渡した場合だけ、正確な実VM世代へ結び付ける。"""
-    if not password:
-        return
-    response = _management_serial_vm_response(config, transport)
-    body = response.get("body")
-    output = outputs.get("managementVm")
-    profile = (body["properties"].get("osProfile")
-               if isinstance(body, dict) and isinstance(body.get("properties"), dict) else None)
-    if (response["statusCode"] != 200 or not isinstance(output, dict) or not isinstance(body, dict)
-            or str(output.get("id", "")).casefold() != str(body.get("id", "")).casefold()
-            or not isinstance(body.get("properties"), dict)
-            or body["properties"].get("provisioningState") != "Succeeded"
-            or not isinstance(profile, dict) or profile.get("adminUsername") != config["management"]["adminUsername"]
-            or not isinstance(profile.get("linuxConfiguration"), dict)
-            or profile["linuxConfiguration"].get("disablePasswordAuthentication") is not True):
-        raise DeploymentError("The initial management VM completion could not be verified; retain its pending credential")
+    """元VM UUIDの永続化→公開初期化資材→exact完了証跡→資格情報bindingの順で処理する。"""
     try:
-        bind_initial_serial_password(config, local_paths(config, ROOT), body, initial_password=password)
+        workspace = local_paths(config, ROOT)
+        pending = serial_initialization.journal(config, workspace)
+        if not password and (pending is None or pending["status"] == "complete"):
+            return
+        response = _management_serial_vm_response(config, transport)
+        if response["statusCode"] != 200:
+            raise SerialCredentialError("The original management VM could not be read; retain its pending credential")
+        value = serial_initialization.confirm_creation(config, workspace, response["body"],
+            outputs.get("managementInitialSerialCreation"), protected_json)
+        if not password:
+            password = serial_initialization.saved_password(config, workspace, value)
+        template = run(["az", "bicep", "build", "--file", str(ROOT / "infra/modules/management-serial-initialization.bicep"), "--stdout"])
+        serial_initialization.initialize_guest(config, workspace, value, password, transport, template, protected_json)
+        bind_initial_serial_password(config, workspace, response["body"], initial_password=password)
+        serial_initialization.mark_complete(config, workspace, protected_json)
     except SerialCredentialError as error:
         raise DeploymentError(str(error)) from None
 
 
 def _read_initial_serial_deployment_input(config: dict) -> str:
-    """native azdへ渡した内部secure入力だけから、今回bindingの要否を取得する。"""
+    """生成ARM入力の回収後も、保護した元Core作成証跡の照合後だけ回復する。"""
     try:
         workspace = local_paths(config, ROOT)
-        path = workspace.checked(workspace.parameters)
-        if not path.exists():
+        value = serial_initialization.journal(config, workspace)
+        if value is None or value["status"] == "complete":
             return ""
-        data, _ = read_private_initial_payload(path, max_bytes=2 * 1024 * 1024)
-        document = json.loads(data)
-        password = document.get("parameters", {}).get("managementAdminPassword", {}).get("value", "")
-        if not isinstance(password, str):
-            raise ValueError("Invalid internal input")
-        if password:
-            values = document["parameters"]
-            configuration = values["configuration"]["value"]
-            if (values["phase"]["value"] != "core" or not isinstance(configuration, dict)
-                    or any(configuration.get(key) != config[key] for key in
-                           ("subscriptionId", "azureTenantId", "productName", "environmentName", "resourceStem"))
-                    or configuration.get("management", {}).get("adminUsername") != config["management"]["adminUsername"]):
-                raise ValueError("Invalid internal ownership")
-        return password
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, SerialCredentialError):
-        raise DeploymentError("The internal Serial deployment input could not be verified") from None
+        transport = ArmTransport(config)
+        response = _management_serial_vm_response(config, transport)
+        if response["statusCode"] != 200:
+            raise SerialCredentialError("The original management VM is not available for completion")
+        return serial_initialization.recover_password(config, workspace, response["body"],
+            lambda provenance: _serial_core_response(config, transport, provenance), protected_json)
+    except SerialCredentialError as error:
+        raise DeploymentError(str(error)) from None
 
 
 def _arm_success_body(method, parsed, request_body, response_headers, content):
@@ -563,6 +609,10 @@ def _arm_success_body(method, parsed, request_body, response_headers, content):
 
 class ArmTransport:
     """指定サブスクリプションのARMだけへ接続する。トークンはメモリー内に保持する。"""
+    # 標準handlerは要求・接続・応答を呼出しごとに作り、token更新だけをlockします。
+    # 独立GETの照合を並行化しても、変更要求は呼出し側で順に実行します。
+    supports_concurrent_reads = True
+
     def __init__(self, config: dict):
         """接続先のサブスク・テナントを固定し、リダイレクトしないクライアントを用意する。"""
         self.subscription = config["subscriptionId"]
@@ -1333,7 +1383,8 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
         secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json)}
     if phase == "core":
         # An explicit secrets dict must not override the owned initial generation.
-        secrets = {**(secrets or {}), "managementAdminPassword": serial_password}
+        secrets = {**{key: value for key, value in (secrets or {}).items() if key != "managementAdminPassword"},
+                   "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
 
     request_body = {
         "location": config["location"],
@@ -1353,6 +1404,7 @@ def deploy_phase(config: dict, phase: str, *, manage_policies=True, preserve_col
     }
     if phase == "core":
         _confirm_management_serial_target(config, transport, serial_password)
+        _record_management_serial_creation(config, serial_password)
     response = transport.request("PUT", path, body=request_body)
     require_success(response, f"Start {phase} deployment", allowed=(200, 201, 202))
     deadline = time.monotonic() + 7200
@@ -1644,7 +1696,7 @@ def _preprovision(config: dict) -> None:
     require_portal_http_core_ready(config, transport)
     serial_password = _prepare_management_serial_password(config, transport)
     secrets = {**load_secret_inputs(config), **prepare_grpc_secret(config, ROOT, protected_json),
-               "managementAdminPassword": serial_password}
+               "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)}
     # 固定名の競合は有料の監視・ネットワーク作成より前に検出する。
     # 回避名のAPIMを増やさず、同名で再実行できる状態かだけを読み取る。
     apim_name_receipt = local_paths(config, ROOT).state / "apim-name-preparation.json"
@@ -1719,6 +1771,7 @@ def _preprovision(config: dict) -> None:
     core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
 
     _confirm_management_serial_target(config, transport, serial_password)
+    _record_management_serial_creation(config, serial_password, native=True)
     write_arm_parameters(config, parameters(config, "core", secrets=secrets,
         manage_policies=config["monitoring"]["auditImmutabilityMode"] != "Locked",
         existing_nsg_names=existing_nsg_names,
@@ -1846,10 +1899,11 @@ def main(argv=None) -> int:
             core_diagnostics = prepare_diagnostic_settings(config, transport, "core")
             serial_password = _prepare_management_serial_password(config, transport)
             _confirm_management_serial_target(config, transport, serial_password)
+            _record_management_serial_creation(config, serial_password, native=True)
 
             write_arm_parameters(config, parameters(config, "core", secrets={
                 **secret_inputs, **prepare_grpc_secret(config, ROOT, protected_json),
-                "managementAdminPassword": serial_password},
+                "managementInitialSerialGeneration": _management_serial_generation(config, serial_password)},
                 existing_nsg_names=existing_nsg_names,
                 existing_route_table_routes=existing_routes,
                 existing_apim_hostname_configurations=existing_apim_hostnames,

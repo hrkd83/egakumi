@@ -141,6 +141,11 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         svc = groups['svc'] + '/providers/Microsoft.App/'
         application = 'ca-' + stem + '-portal'
         environment = 'cae-' + stem
+        sql_server = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem
+        self.transport.add(sql_server, 'Microsoft.Sql/servers', {})
+        for alias in ('credentials', 'portal'):
+            self.transport.add(sql_server + '/databases/sqldb-' + stem + '-' + alias,
+                               'Microsoft.Sql/servers/databases', {'status': 'Online'})
         broker_application = 'ca-' + stem + '-credentials'
         broker_jobs = ['caj-' + stem + '-schema', 'caj-' + stem + '-recon']
         for kind, names in (('containerApps', [application, broker_application]),
@@ -150,7 +155,8 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         self.transport.add(workspace_id, 'Microsoft.OperationalInsights/workspaces',
                            {'customerId': '11111111-1111-4111-8111-111111111142'})
         state = {'outputs': {'managementVm': {'id': self.transport.vm_id, 'name': self.transport.vm_id.rsplit('/', 1)[1], 'principalId': PRINCIPAL},
-                 'auditStorage': storage, 'portal': {'applicationName': application, 'environmentName': environment},
+                 'auditStorage': storage, 'portal': {'applicationName': application, 'environmentName': environment,
+                                                   'sharedSqlServerId': sql_server},
                  'gatewayFoundation': {}, 'monitoring': {'workspaceId': workspace_id, 'workspaceName': 'law-' + stem,
                     'workspaceCustomerId': '11111111-1111-4111-8111-111111111142'}}}
         workspace = LocalPaths(Path(self.directory.name), config['environmentName'])
@@ -176,6 +182,15 @@ class MaintenanceUpgradeTests(unittest.TestCase):
         for candidate in (Path(self.directory.name) / 'published.json',
                           self.context.workspace.root.parent / 'other' / 'state.json'):
             with self.assertRaises(OperationError): self.context.save_private(candidate, {'synthetic': True})
+
+    def test_unavailable_constructed_database_stops_upgrade_without_writes(self):
+        target = self.context.state['outputs']['portal']['sharedSqlServerId'] + '/databases/sqldb-' + self.context.config['resourceStem'] + '-credentials'
+        for state in ('Paused', None):
+            with self.subTest(state=state):
+                self.transport.resources[target]['properties']['status'] = state
+                with self.assertRaisesRegex(OperationError, 'not online'):
+                    self.operation.preflight()
+                self.assertFalse(self.transport.mutations())
 
     def test_apply_creates_allow_pairs_before_dns_link_and_never_puts_service_parents(self):
         original = copy.deepcopy(self.transport.resources)

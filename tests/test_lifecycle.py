@@ -53,7 +53,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             transport.request.assert_not_called()
             self.assertTrue((self.paths.state / "latest.json").exists())
             self.assertFalse(self.paths.parameters.exists())
-            self.assertEqual(json.loads(receipt.read_text()), {"status": "explicit-api-publication"})
+            self.assertEqual(json.loads(receipt.read_text(encoding="utf-8")), {"status": "explicit-api-publication"})
 
     def test_postprovision_scopes_public_dns_to_its_subscription_and_keeps_azure_tenant(self):
         """DNSを別Subscriptionへ設定し、CMの認証テナントへ接続しない。"""
@@ -72,7 +72,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(dns_config["subscriptionId"], "22222222-2222-2222-2222-222222222222")
         self.assertEqual(dns_config["azureTenantId"], self.config["azureTenantId"])
         self.public_dns.assert_called_once_with(self.config, outputs, core, dns)
-        self.assertEqual(json.loads((lifecycle.ROOT / ".local/test/state/public-dns.json").read_text()), {"status": "configured"})
+        self.assertEqual(json.loads((lifecycle.ROOT / ".local/test/state/public-dns.json").read_text(encoding="utf-8")), {"status": "configured"})
 
     def test_public_dns_failure_preserves_deployment_state_and_removes_secret_inputs(self):
         """DNSの保存失敗を成功扱いにせず、構築記録と秘密入力回収を維持する。"""
@@ -109,13 +109,13 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             lifecycle.preprovision(self.config)
         for purpose in ("l7-ingress", "realtime-ticket"):
             path = self.paths.secrets / (purpose + "-" + self.config["resourceStem"] + ".json")
-            self.assertEqual(json.loads(path.read_text())["subscriptionId"], self.config["subscriptionId"])
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["subscriptionId"], self.config["subscriptionId"])
         self.assertTrue(self.paths.parameters.exists())
         self.assertTrue((self.paths.state / "latest.json").exists())
         self.assertTrue(all(call.args[0].resolve().is_relative_to(self.root.resolve())
                             for call in lifecycle.protected_json.call_args_list))
 
-    def test_preprovision_hands_its_confirmed_initial_serial_password_to_native_azd(self):
+    def test_preprovision_hands_only_initial_generation_to_native_azd_after_recording_provenance(self):
         transport = ScriptedTransport([{"statusCode": 404, "headers": {}, "body": None}] * 14)
         with mock.patch.object(lifecycle, "local_preflight"), mock.patch.object(lifecycle, "azure_preflight"), \
              mock.patch.object(lifecycle, "register_providers"), mock.patch.object(lifecycle, "ArmTransport", return_value=transport), \
@@ -125,13 +125,17 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "configure_app_insights_cap"), \
              mock.patch.object(lifecycle, "_prepare_management_serial_password", return_value="PRIVATE_SERIAL_FIXTURE") as prepare, \
              mock.patch.object(lifecycle, "_confirm_management_serial_target") as confirm, \
+             mock.patch.object(lifecycle, "_management_serial_generation", return_value="INITIAL_SERIAL_GENERATION_FIXTURE"), \
+             mock.patch.object(lifecycle, "_record_management_serial_creation") as record, \
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         prepare.assert_called_once_with(self.config, transport)
         confirm.assert_called_once_with(self.config, transport, "PRIVATE_SERIAL_FIXTURE")
-        values = json.loads(self.paths.parameters.read_text())["parameters"]
-        self.assertEqual(values["managementAdminPassword"]["value"], "PRIVATE_SERIAL_FIXTURE")
-        self.assertNotIn("PRIVATE_SERIAL_FIXTURE", json.dumps(values["configuration"]))
+        values = json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]
+        record.assert_called_once_with(self.config, "PRIVATE_SERIAL_FIXTURE", native=True)
+        self.assertNotIn("managementAdminPassword", values)
+        self.assertEqual(values["managementInitialSerialGeneration"]["value"], "INITIAL_SERIAL_GENERATION_FIXTURE")
+        self.assertNotIn("PRIVATE_SERIAL_FIXTURE", json.dumps(values))
 
     def test_api_center_recovery_runs_after_monitoring_and_before_core_inputs(self):
         """5RGを作る監視段階の出力を使い、復元成功後だけ本体入力を用意する。"""
@@ -142,7 +146,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         def recovery(config, actual_outputs, actual_transport):
             self.assertEqual(actual_outputs, outputs)
             self.assertIs(actual_transport, transport)
-            self.assertEqual(json.loads((self.paths.state / "latest.json").read_text())["outputs"]["names"], outputs["names"])
+            self.assertEqual(json.loads((self.paths.state / "latest.json").read_text(encoding="utf-8"))["outputs"]["names"], outputs["names"])
             self.assertFalse(self.paths.parameters.exists())
             events.append("recovery")
             return {"status": "restored"}
@@ -159,8 +163,8 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             lifecycle.preprovision(self.config)
         self.assertEqual(events, ["apim-name", "monitoring", "cap", "recovery"])
-        self.assertEqual(json.loads(self.paths.parameters.read_text())["parameters"]["phase"]["value"], "core")
-        receipt = json.loads((self.root / ".local/test/state/api-center-preparation.json").read_text())
+        self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]["phase"]["value"], "core")
+        receipt = json.loads((self.root / ".local/test/state/api-center-preparation.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["status"], "restored")
         self.assertEqual(receipt["resourceStem"], self.config["resourceStem"])
         self.assertIn("observedAtUtc", receipt)
@@ -224,7 +228,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         path.chmod(0o644)
         lifecycle.protected_json(path, {"value": "replacement-fixture"})
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-        self.assertEqual(json.loads(path.read_text()), {"value": "replacement-fixture"})
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"value": "replacement-fixture"})
         self.assertEqual(list(path.parent.glob(".core-*")), [])
 
     def test_public_configuration_and_secret_parameters_are_separate(self):
@@ -280,9 +284,9 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.preprovision(self.config)
         self.assertFalse(parameter_path.exists())
         self.assertTrue(state_path.exists())
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(state["serviceResourceIds"], self.outputs()["cleanup"]["serviceResourceIds"])
-        self.assertNotIn("NEW_SECRET_FIXTURE", state_path.read_text())
+        self.assertNotIn("NEW_SECRET_FIXTURE", state_path.read_text(encoding="utf-8"))
 
     def test_first_up_prepares_monitoring_without_a_prior_state_or_seed_deployment(self):
         parameter_path, state_path = self.paths.parameters, self.paths.state / "latest.json"
@@ -298,10 +302,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         deploy.assert_called_once_with(self.config, "monitoring", manage_policies=True,
                                        retained_policy_ids=[], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(state["resourceGroupNames"], self.config["resourceGroupNames"])
-        self.assertNotIn("LOCAL_ONLY_FIXTURE", state_path.read_text())
-        parameters = json.loads(parameter_path.read_text())["parameters"]
+        self.assertNotIn("LOCAL_ONLY_FIXTURE", state_path.read_text(encoding="utf-8"))
+        parameters = json.loads(parameter_path.read_text(encoding="utf-8"))["parameters"]
         self.assertEqual(parameters["phase"]["value"], "core")
         self.assertEqual(parameters["sshPublicKey"]["value"], "LOCAL_ONLY_FIXTURE")
         self.assertEqual(parameters["existingNetworkSecurityGroupNames"]["value"], [])
@@ -329,7 +333,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         deploy.assert_called_once_with(self.config, 'monitoring', manage_policies=True,
                                        retained_policy_ids=[], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
-        params = json.loads(self.paths.parameters.read_text())['parameters']
+        params = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
         self.assertEqual(params['phase']['value'], 'core')
         self.assertFalse(transport.mutations())
 
@@ -357,7 +361,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                                        retained_policy_ids=[policy], preserve_collection=False,
                                        diagnostic_setting_properties=mock.ANY)
         # 監視で保護を揃えた後のnative coreは、LockedへのPUTをしない。
-        params = json.loads(self.paths.parameters.read_text())['parameters']
+        params = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
         self.assertFalse(params['manageAuditImmutabilityPolicies']['value'])
         self.assertEqual(params['retainedAuditImmutabilityPolicyIds']['value'], [])
 
@@ -525,7 +529,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.preprovision(self.config)
             self.assertEqual(events, ['authentication', 'providers', 'portal-gate', 'secret-inputs',
                                       'monitoring', 'portal-gate', 'nsg-stage', 'core-inputs'])
-            self.assertEqual(json.loads(self.paths.parameters.read_text())['parameters']['phase']['value'], 'core')
+            self.assertEqual(json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']['phase']['value'], 'core')
             self.assertFalse(transport.mutations())
 
     def test_old_https_preprovision_stops_before_secret_preparation_monitoring_and_nsg_changes(self):
@@ -542,7 +546,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         for boundary in (secrets, ingress, deploy, self.prepare_nsg):
             boundary.assert_not_called()
         self.assertFalse(self.paths.parameters.exists())
-        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text()), prior)
+        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8")), prior)
 
     def test_old_https_preup_stops_before_azd_environment_or_ingress_mutation(self):
         lifecycle.protected_json(self.paths.params, {})
@@ -582,6 +586,10 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                      events.append('serial-preparation') or ('' if existing else 'PRIVATE_SERIAL_FIXTURE')), \
                  mock.patch.object(lifecycle, '_confirm_management_serial_target', side_effect=lambda *a:
                      events.append('serial-confirmation')), \
+                 mock.patch.object(lifecycle, '_management_serial_generation', side_effect=lambda config,password:
+                     'INITIAL_SERIAL_GENERATION_FIXTURE' if password else ''), \
+                 mock.patch.object(lifecycle, '_record_management_serial_creation', side_effect=lambda *a,**kw:
+                     events.append('serial-provenance')), \
                  mock.patch.object(lifecycle, 'load_secret_inputs', return_value={}), \
                  mock.patch.object(lifecycle, 'run', side_effect=environment), \
                  mock.patch.object(lifecycle, 'discover_existing_network_security_groups', return_value=names), \
@@ -590,15 +598,17 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                  mock.patch.object(lifecycle, 'discover_existing_portal_app', return_value=existing):
                 self.assertEqual(lifecycle.main(['preup', '--config', str(self.paths.params)]), 0)
             self.assertEqual(events, ['portal-gate', 'environment', 'environment', 'environment',
-                                     'serial-preparation', 'serial-confirmation', 'input-registration'])
-            parameters = json.loads(self.paths.parameters.read_text())['parameters']
+                                     'serial-preparation', 'serial-confirmation', 'serial-provenance', 'input-registration'])
+            parameters = json.loads(self.paths.parameters.read_text(encoding="utf-8"))['parameters']
             self.assertEqual(parameters['existingNetworkSecurityGroupNames']['value'], names)
             self.assertEqual(parameters['existingPortalApp']['value'], existing)
             self.assertEqual(parameters['existingApimCustomProperties']['value'], {
                 'apim-' + self.config['resourceStem'] + '-abc123': {
                     'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'False'}} if existing else {})
             self.assertTrue(parameters['l7IngressSecret']['value'])
-            self.assertEqual(parameters['managementAdminPassword']['value'], '' if existing else 'PRIVATE_SERIAL_FIXTURE')
+            self.assertNotIn('managementAdminPassword', parameters)
+            self.assertEqual(parameters['managementInitialSerialGeneration']['value'], '' if existing else 'INITIAL_SERIAL_GENERATION_FIXTURE')
+            self.assertNotIn('PRIVATE_SERIAL_FIXTURE', json.dumps(parameters))
             self.assertNotIn('grpc', parameters['configuration']['value']['gateway'])
 
     def test_native_core_failed_completion_keeps_outputs_and_cleans_secret_input(self):
@@ -613,7 +623,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
                 lifecycle.postprovision(self.config)
         ingress.assert_not_called()
         self.public_dns.assert_not_called()
-        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text())['outputs'], outputs)
+        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], outputs)
         self.assertFalse(self.paths.parameters.exists())
 
     def direct_core(self, *, completion_failure=False, provided_secrets=None):
@@ -634,7 +644,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
             events.append('saved-state')
             return result
         def complete(*args, **kwargs):
-            self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text())['outputs'], outputs)
+            self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], outputs)
             events.append('nsg-complete')
             if completion_failure:
                 raise lifecycle.FixedNsgError('NSG tuple readback failed')
@@ -690,7 +700,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(len(parameters['existingNetworkSecurityGroupNames']['value']), 5)
         self.assertTrue(parameters['existingPortalApp']['value'])
         self.assertNotIn('PRIVATE_', json.dumps(parameters['configuration']['value']))
-        self.assertEqual(json.loads((self.paths.state / 'ingress-bootstrap.json').read_text()),
+        self.assertEqual(json.loads((self.paths.state / 'ingress-bootstrap.json').read_text(encoding="utf-8")),
                          {'enabled': True, 'l7IngressEnabled': True, 'runtimeVerified': False})
 
     def test_direct_core_can_use_explicit_secrets_without_reading_or_recreating_credentials(self):
@@ -700,7 +710,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
     def test_direct_core_failed_completion_preserves_actual_deployment_state(self):
         events, _ = self.direct_core(completion_failure=True)
         self.assertEqual(events, ['portal-gate', 'nsg-stage', 'saved-state', 'nsg-complete'])
-        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text())['outputs'], self.outputs())
+        self.assertEqual(json.loads((self.paths.state / 'latest.json').read_text(encoding="utf-8"))['outputs'], self.outputs())
         self.assertFalse((self.paths.state / 'ingress-bootstrap.json').exists())
 
     def test_upgrade_journal_preserves_repeated_events_and_separate_attempts(self):
@@ -713,7 +723,7 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
         self.assertEqual(len(directories), 2)
         snapshots = list((self.paths.state / 'portal-http80').glob('*/*.json'))
         self.assertEqual(len(snapshots), 3)
-        self.assertEqual({json.loads(path.read_text())['value'] for path in snapshots},
+        self.assertEqual({json.loads(path.read_text(encoding="utf-8"))['value'] for path in snapshots},
                          {'first-snapshot', 'second-snapshot', 'next-attempt'})
         self.assertTrue(all(path.resolve().is_relative_to(self.root) for path in snapshots))
 
@@ -769,11 +779,11 @@ class LifecycleTests(LifecycleFixture, unittest.TestCase):
              mock.patch.object(lifecycle, "ArmTransport"), mock.patch.object(cleanup, "pre_down", return_value=result), \
              mock.patch("builtins.print"):
             self.assertEqual(lifecycle.main(["predown", "--config", str(self.paths.params)]), 0)
-        receipt = json.loads((self.root / ".local/test/state/cleanup-predown.json").read_text())
+        receipt = json.loads((self.root / ".local/test/state/cleanup-predown.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["resourceStem"], self.config["resourceStem"])
         self.assertEqual(receipt["result"], result)
         self.assertIn("observedAtUtc", receipt)
-        generated = json.loads(self.paths.parameters.read_text())["parameters"]
+        generated = json.loads(self.paths.parameters.read_text(encoding="utf-8"))["parameters"]
         self.assertEqual(generated["dnsPluginArgumentsJson"]["value"], "")
         self.assertEqual(generated["credentialProviderSecrets"]["value"], {})
         self.assertEqual(generated["l7IngressSecret"]["value"], "")

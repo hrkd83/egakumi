@@ -15,25 +15,31 @@ from .private_permissions import check_private_permissions
 ARM_API = '2022-09-01'
 COMPUTE_API = '2024-07-01'
 APP_API = '2025-01-01'
+SQL_API = '2023-08-01'
 FIXED_KEYS = ('schemaVersion', 'subscriptionId', 'azureTenantId', 'managementVmId',
               'managementPrincipalId', 'workspace', 'auditStorage')
-FAMILIES = {'applicationIds': 'applications', 'jobIds': 'jobs', 'environmentIds': 'environments'}
+FAMILIES = {'applicationIds': 'applications', 'jobIds': 'jobs', 'environmentIds': 'environments',
+            'sqlDatabaseIds': 'sqlDatabases'}
+SQL_ALIASES = {'gateway': 'credentials', 'portal': 'portal'}
 
 
 def _expected_targets(config):
     """期待名は取り違え検出だけに使い、出力がないIDを補って配備しない。"""
     stem = config['resourceStem']
     base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.App/'
+    sql = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem + '/databases/sqldb-' + stem + '-'
     return {
         'gateway': {
             'applicationIds': [base + 'containerApps/ca-' + stem + '-credentials'],
             'jobIds': [base + 'jobs/caj-' + stem + '-schema', base + 'jobs/caj-' + stem + '-recon'],
             'environmentIds': [base + 'managedEnvironments/cae-' + stem],
+            'sqlDatabaseIds': [sql + 'credentials'],
         },
         'portal': {
             'applicationIds': [base + 'containerApps/ca-' + stem + '-portal'],
             'jobIds': [base + 'jobs/caj-' + stem + '-psql', base + 'jobs/caj-' + stem + '-psync'],
             'environmentIds': [base + 'managedEnvironments/cae-' + stem],
+            'sqlDatabaseIds': [sql + 'portal'],
         },
     }
 
@@ -58,8 +64,13 @@ def management_client_inventory(config, state):
     allowed = _expected_targets(config)
     for output, family in FAMILIES.items():
         expected = {target.casefold() for component in allowed.values() for target in component[output]}
-        if any(target.casefold() not in expected for target in value[family]):
-            raise ValueError('The management client inventory includes an unrelated ACA target')
+        ids = [item['id'] for item in value[family]] if family == 'sqlDatabases' else value[family]
+        if any(target.casefold() not in expected for target in ids):
+            raise ValueError('The management client inventory includes an unrelated constructed target')
+        if family == 'sqlDatabases' and any(item['id'].casefold() != allowed[
+                next(component for component, alias in SQL_ALIASES.items() if alias == item['alias'])][output][0].casefold()
+                for item in value[family]):
+            raise ValueError('The SQL database alias does not match its exact constructed database')
     monitor = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['monitor'] + '/providers/'
     if (value['workspace']['id'].casefold() != (monitor + 'Microsoft.OperationalInsights/workspaces/law-' + config['resourceStem']).casefold()
             or any(not account['id'].casefold().startswith((monitor + 'Microsoft.Storage/storageAccounts/').casefold())
@@ -103,18 +114,29 @@ def _merge_outputs(config, inventory, outputs, component):
     if not isinstance(metadata, dict) or set(metadata) != set(FAMILIES):
         raise ValueError('Successful app deployment management maintenance outputs are required')
     expected = _expected_targets(config)[component]
+    inventory = deepcopy(validate_inventory(inventory))
     additions = []
     for output, family in FAMILIES.items():
         ids = metadata[output]
         if not isinstance(ids, list):
             raise ValueError('App maintenance target output must be a constructed-resource array')
+        if output == 'sqlDatabaseIds' and (len(ids) != 1 or not isinstance(ids[0], str)
+                or ids[0].casefold() != expected[output][0].casefold()):
+            raise ValueError('The app SQL output must identify its exact constructed user database')
         for target in ids:
             if (not isinstance(target, str) or target.casefold() not in {item.casefold() for item in expected[output]}):
                 raise ValueError('An app maintenance output refers to another constructed scope')
-            if target.casefold() not in {item.casefold() for item in inventory[family]}:
+            if family == 'sqlDatabases':
+                alias = SQL_ALIASES[component]
+                existing = [item for item in inventory[family] if item['alias'] == alias]
+                if existing and any(item['id'].casefold() != target.casefold() for item in existing):
+                    raise ValueError('A prior SQL alias points to a different construction target')
+                if not existing:
+                    inventory[family].append({'alias': alias, 'id': target})
+            elif target.casefold() not in {item.casefold() for item in inventory[family]}:
                 inventory[family].append(target)
             additions.append(target)
-    return inventory, list(dict.fromkeys(additions))
+    return validate_inventory(inventory), list(dict.fromkeys(additions))
 
 
 @cache
@@ -158,9 +180,20 @@ def update_management_client_assets(config, state, outputs, transport, *, compon
             raise ValueError('The management client target ownership could not be verified')
 
     for target in additions:
-        body = checked(transport, 'GET', target + '?api-version=' + APP_API, label='Verify constructed ACA maintenance target')
-        owned(body, target, 'Microsoft.App/' + target.rsplit('/', 2)[-2])
-        if body.get('properties', {}).get('provisioningState') != 'Succeeded':
+        is_sql = '/providers/microsoft.sql/' in target.casefold()
+        body = checked(transport, 'GET', target + '?api-version=' + (SQL_API if is_sql else APP_API),
+                       label='Verify constructed maintenance target')
+        owned(body, target, 'Microsoft.Sql/servers/databases' if is_sql else 'Microsoft.App/' + target.rsplit('/', 2)[-2])
+        if is_sql:
+            if body.get('properties', {}).get('status') != 'Online':
+                raise ValueError('A constructed SQL maintenance database is not online')
+            server = target.rsplit('/databases/', 1)[0]
+            policy = checked(transport, 'GET', server + '/connectionPolicies/default?api-version=' + SQL_API,
+                             label='Verify fixed SQL maintenance connection policy')
+            if (str(policy.get('id', '')).casefold() != (server + '/connectionPolicies/default').casefold()
+                    or policy.get('properties', {}).get('connectionType') != 'Proxy'):
+                raise ValueError('SQL maintenance requires the constructed TCP1433 Proxy policy')
+        elif body.get('properties', {}).get('provisioningState') != 'Succeeded':
             raise ValueError('A constructed ACA maintenance target is not ready')
     vm = inventory['managementVmId']
     body = checked(transport, 'GET', vm + '?api-version=' + COMPUTE_API, label='Verify management client VM identity')

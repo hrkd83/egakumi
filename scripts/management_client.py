@@ -15,11 +15,14 @@ if __name__ == '__main__':
 
 import argparse
 import base64
+from datetime import date, datetime, time as datetime_time
+from decimal import Decimal
 from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
 import stat
+import struct
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
@@ -36,6 +39,10 @@ LOGS_ORIGIN = 'https://api.loganalytics.azure.com'
 # https://learn.microsoft.com/en-us/azure/azure-monitor/logs/api/authentication-authorization
 # https://learn.microsoft.com/en-us/python/api/azure-monitor-query/azure.monitor.query.logsqueryclient
 LOGS_AUDIENCE = 'https://api.loganalytics.io'
+SQL_AUDIENCE = 'https://database.windows.net/'
+SQL_DRIVER = 'ODBC Driver 18 for SQL Server'
+SQL_ACCESS_TOKEN_ATTRIBUTE = 1256
+SQL_ALIASES = ('credentials', 'portal')
 IMDS_ORIGIN = 'http://169.254.169.254'
 IMDS_TOKEN_API = '2018-02-01'
 IMDS_COMPUTE_API = '2021-02-01'
@@ -146,6 +153,26 @@ def validate_inventory(inventory):
             raise MaintenanceError('Maintenance inventory contains an invalid or foreign resource scope')
 
     resource(inventory.get('managementVmId'), 'Microsoft.Compute/virtualMachines')
+    # Older Core inventories predate SQL maintenance. Their absence means no
+    # SQL target; actual targets are added only from successful App outputs.
+    if 'sqlDatabases' not in inventory:
+        inventory = {**inventory, 'sqlDatabases': []}
+    if not isinstance(inventory['sqlDatabases'], list) or len(inventory['sqlDatabases']) > len(SQL_ALIASES):
+        raise MaintenanceError('Constructed SQL maintenance targets are invalid')
+    sql_aliases, sql_ids = set(), set()
+    for database in inventory['sqlDatabases']:
+        if (not isinstance(database, dict) or set(database) != {'alias', 'id'}
+                or database.get('alias') not in SQL_ALIASES):
+            raise MaintenanceError('Use only the two constructed SQL database aliases')
+        pattern = (re.escape(scope) + r'[A-Za-z0-9._()-]+/providers/Microsoft\.Sql/servers/'
+                   + r'[a-z0-9][a-z0-9-]{0,61}[a-z0-9]/databases/' + SELECTOR)
+        target = database.get('id')
+        if (not isinstance(target, str) or not re.fullmatch(pattern, target, re.IGNORECASE)
+                or target.rsplit('/', 1)[-1].casefold() in ('master', 'tempdb', 'model', 'msdb')
+                or database['alias'] in sql_aliases or target.casefold() in sql_ids):
+            raise MaintenanceError('The SQL inventory contains a duplicate, foreign or system database')
+        sql_aliases.add(database['alias'])
+        sql_ids.add(target.casefold())
     for family, provider in (('applications', 'Microsoft.App/containerApps'),
                              ('jobs', 'Microsoft.App/jobs'), ('environments', 'Microsoft.App/managedEnvironments')):
         if not isinstance(inventory.get(family), list):
@@ -214,6 +241,8 @@ class VmIdentity:
     def __init__(self, inventory, transport):
         self.inventory, self.transport, self.tokens = inventory, transport, {}
         self.verified = False
+        self.compute_vm_id = None
+        self.sql_client_id = None
 
     def verify_vm(self):
         compute = self.transport.json('GET', IMDS_ORIGIN + '/metadata/instance/compute?'
@@ -221,10 +250,11 @@ class VmIdentity:
         if (not isinstance(compute, dict)
                 or str(compute.get('resourceId', '')).casefold() != self.inventory['managementVmId'].casefold()):
             raise MaintenanceError('This client must run on its constructed management VM')
+        self.compute_vm_id = compute.get('vmId')
         self.verified = True
 
     def token(self, audience):
-        if audience not in (ARM_AUDIENCE, STORAGE_AUDIENCE, LOGS_AUDIENCE):
+        if audience not in (ARM_AUDIENCE, STORAGE_AUDIENCE, LOGS_AUDIENCE, SQL_AUDIENCE):
             raise MaintenanceError('The maintenance token audience is not approved')
         if not self.verified:
             self.verify_vm()
@@ -246,8 +276,31 @@ class VmIdentity:
             valid = False
         if not valid:
             raise MaintenanceError('IMDS did not return the constructed VM identity for the approved audience')
+        if audience == SQL_AUDIENCE:
+            client_id = claims.get('appid', claims.get('azp'))
+            sql_valid = (
+                _guid(self.compute_vm_id) and _guid(client_id)
+                and isinstance(claims.get('aud'), str)
+                and claims['aud'].rstrip('/') == SQL_AUDIENCE.rstrip('/')
+                and str(claims.get('xms_mirid', '')).casefold() == self.inventory['managementVmId'].casefold()
+                and type(claims.get('exp')) is int and claims['exp'] == expiry
+                and isinstance(token, str) and len(token.split('.')) == 3 and token.isascii()
+                and not any(character.isspace() for character in token)
+                and ('appid' not in claims or 'azp' not in claims
+                     or str(claims['appid']).casefold() == str(claims['azp']).casefold())
+                and (self.sql_client_id is None or client_id.casefold() == self.sql_client_id.casefold()))
+            if not sql_valid:
+                raise MaintenanceError('IMDS SQL identity claims do not match the constructed VM generation and audience')
+            self.sql_client_id = client_id
         self.tokens[audience] = (token, expiry)
         return token
+
+    def sql_identity(self):
+        """Return non-secret internal grant inputs, never the IMDS token."""
+        self.token(SQL_AUDIENCE)
+        return {'sqlClientId': self.sql_client_id, 'principalId': self.inventory['managementPrincipalId'],
+                'tenantId': self.inventory['azureTenantId'], 'managementVmId': self.inventory['managementVmId'],
+                'vmId': self.compute_vm_id}
 
 
 def _headers(identity, audience, *, content_type=None):
@@ -294,6 +347,120 @@ def workspace_query(inventory, resource_id, query, identity, transport, output):
     if not isinstance(result, dict) or result.get('error') or not isinstance(result.get('tables'), list):
         raise MaintenanceError('The saved-log query did not complete successfully')
     output.write((json.dumps(result, ensure_ascii=False) + '\n').encode('utf-8'))
+
+
+def _sql_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime, datetime_time)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, bytes):
+        return {'base64': base64.b64encode(value).decode('ascii')}
+    raise MaintenanceError('The SQL maintenance result contains an unsupported value type')
+
+
+def sql_query(inventory, database_alias, query, identity, output, *, seconds=60, max_rows=1000, driver=None):
+    """Execute a protected batch against exactly one constructed user database.
+
+    Database-owner maintenance is intentional; no arbitrary server/database,
+    saved password, CLI identity, unverified TLS or connection pool is used.
+    https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory
+    """
+    inventory = validate_inventory(inventory)
+    targets = [item for item in inventory['sqlDatabases'] if item['alias'] == database_alias]
+    if database_alias not in SQL_ALIASES or len(targets) != 1:
+        raise MaintenanceError('Select an available constructed SQL database alias')
+    if (not isinstance(query, str) or not query.strip() or '\x00' in query
+            or len(query.encode('utf-8')) > 1024 * 1024
+            or type(seconds) is not int or not 1 <= seconds <= 300
+            or type(max_rows) is not int or not 1 <= max_rows <= 10000):
+        raise MaintenanceError('Select a bounded protected SQL batch, timeout and result size')
+    target = targets[0]['id']
+    # validate_inventory protects the selector grammar; the aliases are mapped
+    # to construction outputs by the App inventory builder, never user input.
+    server, database = re.split('/databases/', re.split('/servers/', target, flags=re.IGNORECASE)[-1], flags=re.IGNORECASE)
+    connection_string = (f'Driver={{{SQL_DRIVER}}};Server=tcp:{server}.database.windows.net,1433;'
+                         f'Database={database};Encrypt=yes;TrustServerCertificate=no;')
+    if driver is None:
+        try:
+            import pyodbc as driver
+        except ImportError:
+            raise MaintenanceError('The fixed SQL maintenance driver has not been prepared') from None
+    # Keep the expanded buffer alive through connection.close(). ODBC token
+    # authentication cannot be combined with UID/PWD/Authentication/Trusted_Connection.
+    token = identity.token(SQL_AUDIENCE).encode('ascii')
+    expanded = token.decode('ascii').encode('utf-16-le')
+    token_buffer = struct.pack('<I', len(expanded)) + expanded
+    connection = None
+    commit_started = committed = False
+    try:
+        driver.pooling = False
+        if SQL_DRIVER not in driver.drivers():
+            raise MaintenanceError('The fixed Microsoft ODBC Driver 18 has not been prepared')
+        connection = driver.connect(connection_string, attrs_before={SQL_ACCESS_TOKEN_ATTRIBUTE: token_buffer},
+                                    autocommit=False, timeout=min(seconds, 30))
+        connection.timeout = seconds
+        cursor = connection.cursor()
+        cursor.execute(query)
+        result, rows = [], 0
+        size = 0
+        while True:
+            if len(result) >= 8:
+                raise MaintenanceError('The SQL maintenance batch exceeded eight result sets')
+            record = {'rowCount': cursor.rowcount}
+            if cursor.description is not None:
+                record['columns'] = [column[0] for column in cursor.description]
+                record['rows'] = []
+                while True:
+                    row = cursor.fetchone()
+                    if row is None:
+                        break
+                    rows += 1
+                    if rows > max_rows:
+                        raise MaintenanceError('The SQL maintenance result exceeded its bounded row count')
+                    encoded = [_sql_value(value) for value in row]
+                    size += len(json.dumps(encoded, ensure_ascii=False).encode('utf-8'))
+                    if size > MAX_JSON_BYTES:
+                        raise MaintenanceError('The SQL maintenance result exceeded its bounded capture size')
+                    record['rows'].append(encoded)
+            result.append(record)
+            if not cursor.nextset():
+                break
+        payload = (json.dumps({'resultSets': result}, ensure_ascii=False) + '\n').encode('utf-8')
+        if len(payload) > MAX_JSON_BYTES:
+            raise MaintenanceError('The SQL maintenance result exceeded its bounded capture size')
+        commit_started = True
+        connection.commit()
+        committed = True
+        output.write(payload)
+    except MaintenanceError:
+        if committed:
+            raise MaintenanceError('The SQL batch committed but its protected output could not be saved; do not repeat the batch') from None
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception:
+        if committed:
+            raise MaintenanceError('The SQL batch committed but its protected output could not be saved; do not repeat the batch') from None
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        if commit_started:
+            raise MaintenanceError('The SQL commit outcome could not be confirmed; inspect the database before repeating the batch') from None
+        raise MaintenanceError('The SQL maintenance batch failed; verify its scoped grant, encrypted connection and route') from None
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
 
 def _arm_metadata(target, api, identity, transport, *, suffix=''):
@@ -489,6 +656,12 @@ def parser():
     query = commands.add_parser('workspace-query')
     query.add_argument('--resource-id', required=True)
     query.add_argument('--query-file', required=True)
+    sql = commands.add_parser('sql-query', help='Protected SQL batch on a constructed user database using the VM identity')
+    sql.add_argument('--database', choices=SQL_ALIASES, required=True)
+    sql.add_argument('--query-file', required=True)
+    sql.add_argument('--seconds', type=int, default=60)
+    sql.add_argument('--max-rows', type=int, default=1000)
+    commands.add_parser('sql-identity', help='Save the non-secret VM identity inputs for constructed database grants')
     app = commands.add_parser('app-logs')
     app.add_argument('--resource-id', required=True)
     app.add_argument('--type', choices=('console', 'system'), required=True)
@@ -517,13 +690,30 @@ def main(argv=None):
     inventory = load_inventory(arguments.inventory)
     transport = HttpTransport()
     identity = VmIdentity(inventory, transport)
-    query = read_protected(arguments.query_file).decode('utf-8') if arguments.operation == 'workspace-query' else None
+    query = read_protected(arguments.query_file).decode('utf-8') if arguments.operation in ('workspace-query', 'sql-query') else None
     command = read_protected(arguments.command_file).decode('utf-8').strip() if arguments.operation == 'app-exec' else None
+    if arguments.operation == 'sql-query':
+        sql_completed = False
+        try:
+            with protected_output(arguments.output) as output:
+                sql_query(inventory, arguments.database, query, identity, output,
+                          seconds=arguments.seconds, max_rows=arguments.max_rows)
+                sql_completed = True
+        except MaintenanceError:
+            raise
+        except Exception:
+            if sql_completed:
+                raise MaintenanceError('The SQL batch committed but its protected output could not be finalized; do not repeat the batch') from None
+            raise MaintenanceError('The protected SQL maintenance input or output could not be prepared') from None
+        print('The SQL batch committed and its result was saved to the protected output file.')
+        return 0
     with protected_output(arguments.output) as output:
         if arguments.operation == 'blob-read':
             blob_read(inventory, arguments.resource_id, arguments.container, arguments.blob, identity, transport, output)
         elif arguments.operation == 'workspace-query':
             workspace_query(inventory, arguments.resource_id, query, identity, transport, output)
+        elif arguments.operation == 'sql-identity':
+            output.write((json.dumps(identity.sql_identity()) + '\n').encode('utf-8'))
         elif arguments.operation == 'app-logs':
             app_logs(inventory, arguments.resource_id, arguments.type, arguments.revision, arguments.replica,
                      arguments.container, arguments.tail, identity, transport, output)

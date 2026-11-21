@@ -14,6 +14,10 @@ import subprocess
 import tempfile
 
 from .configuration import load_ssh_public_key
+from .private_permissions import (
+    PrivatePermissionsError, _windows_owner_acl, check_private_permissions,
+    protect_new_path, regular_path,
+)
 
 
 class SshKeyError(ValueError):
@@ -49,18 +53,44 @@ def _managed_target(public: Path, root: Path) -> Path:
 
 
 def _private_directory(path: Path, root: Path) -> None:
-    """生成先の各ディレクトリーを700で用意し、既存の共有権限を勝手に変更しない。"""
-    chain = [path, *path.parents]
-    for directory in reversed(chain[:chain.index(root)]):
-        try:
-            directory.mkdir(mode=0o700)
-        except FileExistsError:
-            pass
-        info = directory.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
-                or (os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o700)):
-            _fail("generation directories must be private regular directories (use chmod 700)")
+    """生成先をOSの所有者権限で用意し、既存共有ディレクトリーは変更せず拒否する。"""
+    try:
+        check_private_permissions(root, directory=True)
+        chain = [path, *path.parents]
+        for directory in reversed(chain[:chain.index(root)]):
+            try:
+                directory.mkdir(mode=0o700)
+                created = True
+            except FileExistsError:
+                created = False
+            if created:
+                protect_new_path(directory, directory=True)
+            else:
+                check_private_permissions(directory, directory=True)
+    except (OSError, PrivatePermissionsError):
+        _fail("generation root and directories must be private; existing permissions were preserved")
 
+
+def _seal_new_key(path: Path, identity: tuple[int, int, int, int]) -> None:
+    """所有者専用の空stagingで今回生成したinodeだけを、内容を読まず保護する。"""
+    try:
+        check_private_permissions(path.parent, directory=True)
+        before = regular_path(path)
+        observed = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        if observed != identity or before.st_nlink != 1:
+            _fail("generated key changed before protection; publication was stopped")
+        if os.name == "nt":
+            # This private wrapper only accepts our just-generated inode under
+            # the already protected staging directory; existing keys never enter.
+            _windows_owner_acl(path, protect_new=True)
+        else:
+            os.chmod(path, 0o600, follow_symlinks=False)
+        after = regular_path(path)
+        if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != identity:
+            _fail("generated key changed during protection; publication was stopped")
+        check_private_permissions(path)
+    except (OSError, PrivatePermissionsError):
+        _fail("generated key could not be protected; publication was stopped")
 
 def _remove_owned(path: Path, identity: tuple[int, int]) -> None:
     """途中失敗では今回作ったinodeだけを消し、競合して置かれた別ファイルを保持する。"""
@@ -97,6 +127,10 @@ def ensure_management_ssh_key(config: dict, root: Path) -> dict:
             _fail("install ssh-keygen before automatic generation, or supply an existing public key")
         _private_directory(public.parent, Path(root).resolve())
         with tempfile.TemporaryDirectory(prefix=".management-ssh-", dir=public.parent) as staging:
+            try:
+                protect_new_path(Path(staging), directory=True)
+            except PrivatePermissionsError:
+                _fail("empty key staging could not be protected; generation was stopped")
             staged_private = Path(staging) / "key"
             staged_public = staged_private.with_suffix(".pub")
             try:
@@ -109,10 +143,11 @@ def ensure_management_ssh_key(config: dict, root: Path) -> dict:
             if result.returncode != 0:
                 _fail("ssh-keygen failed; private output was suppressed")
             for generated in (staged_private, staged_public):
-                info = generated.lstat()
-                if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                try:
+                    info = regular_path(generated)
+                except PrivatePermissionsError:
                     _fail("ssh-keygen did not produce a regular key pair")
-                generated.chmod(0o600)
+                _seal_new_key(generated, (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns))
             load_ssh_public_key(str(staged_public))
             # 生成中に親や対象が差し替わっていれば、公開前にも停止する。
             _managed_target(public, Path(root))
@@ -121,10 +156,11 @@ def ensure_management_ssh_key(config: dict, root: Path) -> dict:
             try:
                 # linkは既存ファイルを置換しない。rename/replaceで上書きしない。
                 for source, destination in ((staged_private, private), (staged_public, public)):
-                    identity = source.stat()
+                    identity = regular_path(source)
                     os.link(source, destination, follow_symlinks=False)
                     published.append((destination, (identity.st_dev, identity.st_ino)))
-            except OSError:
+                    check_private_permissions(destination)
+            except (OSError, PrivatePermissionsError):
                 for destination, identity in reversed(published):
                     _remove_owned(destination, identity)
                 _fail("key publication failed or another process created the target; existing files were preserved")

@@ -4,6 +4,7 @@ import sys
 import time
 from pathlib import Path
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/gateway/deploy"))
@@ -282,6 +283,27 @@ class PublicationDiagnosticIntegrationTests(unittest.TestCase):
         self.assertLess(writes.index(self.fixture.plan["deploymentId"]), writes.index(self.diagnostic_id))
         self.assertNotIn(policy_id, writes)
         self.assertFalse(result["commonAuthenticationPolicyUpdated"])
+
+    def test_diagnostic_read_expiring_shared_budget_sends_no_diagnostic_put(self):
+        transport = publication_cases.Transport(self.fixture.inventory)
+        clock, delayed = [0], [False]
+        original = transport.request
+        def expiring_read(method, path, *args, **kwargs):
+            result = original(method, path, *args, **kwargs)
+            if (method == "GET" and path.split("?", 1)[0] == self.diagnostic_id
+                    and any(m == "PUT" and p.split("?", 1)[0] == self.fixture.plan["deploymentId"]
+                            for m, p, *_ in transport.calls)):
+                clock[0] = 7200
+                delayed[0] = True
+            return result
+        with mock.patch.object(transport, "request", side_effect=expiring_read), \
+                mock.patch.object(publish.time, "monotonic", side_effect=lambda: clock[0]):
+            with self.assertRaisesRegex(publish.DeploymentError, "deadline expired before normal stage write"):
+                publish.execute_plan(self.fixture.config, self.fixture.state, self.fixture.plan,
+                                     self.fixture.template, transport, sleep=lambda _: None)
+        self.assertTrue(delayed[0])
+        self.assertFalse(any(method == "PUT" and path.split("?", 1)[0] == self.diagnostic_id
+                             for method, path, *_ in transport.calls))
 
     def test_invalid_diagnostic_preflight_stops_all_cloud_writes(self):
         for failure in (403, 404, "destination"):

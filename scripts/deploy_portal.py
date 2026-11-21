@@ -16,8 +16,6 @@ from pathlib import Path
 import re
 import subprocess
 import time
-from urllib.error import HTTPError
-from urllib.request import Request, build_opener
 
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import REPOSITORY, local_paths
@@ -27,13 +25,15 @@ from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
 from deployment.helpers.portal_backend_http import verify_portal_http_ready
+from deployment.helpers.public_health_http import read_public_json
 from deployment.helpers.portal_api_keys import prepare_api_key_groups, available_products, approved_product_catalog, verification_subscriptions
 from deployment.helpers.management_maintenance import management_maintenance_inputs
 from deployment.helpers.management_client_assets import management_client_inventory, update_management_client_assets
+from deployment.helpers.management_sql_discovery import discover_management_sql_identity
 from deployment.helpers.grpc_lifecycle import _prepare_credential
 from deployment.helpers.subscription_profiles import SECRET_NAME, activate_profile_settings
 from deployment.helpers.credential_image import checked
-from deployment.lifecycle import ArmTransport, DeploymentError, NoRedirect, protected_json, state_from_outputs, upgrade_journal
+from deployment.lifecycle import ArmTransport, DeploymentError, protected_json, state_from_outputs, upgrade_journal
 from waf_policy import reconcile as configure_data_waf
 from standard_apis import infrastructure_api_definitions
 
@@ -116,6 +116,7 @@ def deployment_inputs(config, state, image_digest=None):
         'apiKeyCatalogProducts': approved_product_catalog(config),
         'runtimeIdentity': runtime, 'schemaIdentity': schema, 'sqlServer': sql_server,
         'managementPrincipalId': maintenance['principalId'],
+        'managementSqlClientId': maintenance.get('sqlClientId', ''),
         'managementRoleDefinitionIds': maintenance['roleDefinitionIds'],
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
         'credentialProviderName': profile_name, 'clientId': profile['clientId'], 'tenantId': profile['oauthTenantId'],
@@ -277,19 +278,17 @@ def wait_application(config, transport, *, expected_image_digest=None, timeout=9
 
 
 def verify_public(origin, *, timeout=180, sleep=time.sleep, monotonic=time.monotonic):
-    """公開経路のヘルスを確認し、リダイレクト先へ不用意に追従しない。"""
-    opener = build_opener(NoRedirect())
+    """Keep the public JSON/cache contract with the host's verified TLS."""
     deadline = monotonic() + timeout
     while monotonic() < deadline:
         try:
-            request = Request(origin + '/api/health', headers={
-                'Accept': 'application/json', 'User-Agent': 'egakumi-portal-deployment/1.0'})
-            with opener.open(request, timeout=20) as response:
-                body = json.load(response)
-                if (response.status == 200 and body == {'status': 'ok', 'service': 'egakumi-portal'}
-                        and 'no-store' in response.headers.get('Cache-Control', '').lower()):
-                    return
-        except (OSError, ValueError, HTTPError):
+            status, body, cache_control = read_public_json(origin + '/api/health',
+                accept='application/json', user_agent='egakumi-portal-deployment/1.0', timeout=20)
+            if (type(status) is int and status == 200 and type(body) is dict
+                    and body == {'status': 'ok', 'service': 'egakumi-portal'}
+                    and isinstance(cache_control, str) and 'no-store' in cache_control.lower()):
+                return
+        except (OSError, ValueError):
             pass
         sleep(5)
     raise ValueError('Portal revision is running but the public health check did not succeed')
@@ -364,13 +363,21 @@ def main(argv=None):
         'imageReuseVerificationPending': not args.execute and not args.image_digest,
         'apiKeyGroupCount': len(values['apiKeyGroups']),
         'verificationSubscriptionCount': len(values['apiKeyVerificationSubscriptions']),
-        'steps': ['build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-http-ingress', 'verify-firewall-http80', 'configure-portal-health-probe', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
+        'steps': ['discover-management-sql-identity', 'build-and-push-image', 'prepare-database-and-permissions', 'prepare-apim-key-management-permission', 'initialize-sql', 'bootstrap-verification-subscriptions', 'configure-portal-auth-callback-waf', 'update-application', 'verify-expected-image-and-http-ingress', 'verify-firewall-http80', 'configure-portal-health-probe', 'schedule-group-observation', 'verify-public-health', 'enable-subscription-profiles']}
     protected_json(workspace.state / 'portal-plan.json', {**plan, 'parameters': values, 'sourceSha256': source_hash})
     if not args.execute:
         print(json.dumps(plan, ensure_ascii=False))
         return 0
     template = run_json(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'apps/portal/deploy/main.bicep'), '--stdout'])
     verify_foundation(config, values, transport)
+    identity_record = workspace.state / 'portal-management-sql-identity.json'
+    if identity_record.exists():
+        from deployment.helpers.private_permissions import check_private_permissions
+        check_private_permissions(identity_record)
+    values['managementSqlClientId'] = discover_management_sql_identity(
+        config, management_client_inventory(config, state), transport,
+        record=lambda value: protected_json(identity_record, value),
+        prior_receipt=json.loads(identity_record.read_text(encoding='utf-8')) if identity_record.exists() else None)
     if values['imageDigest'] is None:
         values['imageDigest'] = build_image(config, state, transport, data=data, source_hash=source_hash,
             record=lambda value: protected_json(build_record, value), prior_receipt=read_build_receipt(build_record))

@@ -1,6 +1,6 @@
 """初期管理VMのローカル資格情報を、所有確認済みの保護領域に準備する。
 
-既存VMを読み取れた場合は秘密を読まず、OSProfileへ渡す空文字だけを返す。
+既存VMを読み取れた場合は秘密を読まず、空文字だけを返す。
 初期配備の再試行ではpending資格情報を再利用し、配備成功後にvmIdを記録する。
 同じ名前でVMを再構築するときは、bound済みの旧秘密を保護保存して新世代を作る。
 """
@@ -325,3 +325,18 @@ def bind_initial_serial_password(configuration: dict, workspace: LocalPaths, con
         raise
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
         raise SerialCredentialError("Initial Serial credential instance binding could not be verified") from None
+
+
+def prepared_initial_serial_generation(configuration: dict, workspace: LocalPaths, password: str) -> str:
+    """初回404または元作成証跡の照合済み回復だけ、保存世代を内部Core入力へ取得する。"""
+    if not password:
+        return ""
+    if workspace.environment != configuration["environmentName"] or not _valid_password(password):
+        raise SerialCredentialError("The initial Serial generation input could not be verified")
+    path = workspace.checked(workspace.secrets / _FILE_NAME)
+    _owner_only(path.parent, directory=True)
+    with _locked(path.parent):
+        value, _ = _read(path, configuration)
+        if not secrets.compare_digest(value["password"], password):
+            raise SerialCredentialError("The initial Serial input differs from the original saved generation")
+        return value["generation"]

@@ -46,9 +46,8 @@ param adminUsername string
 @minLength(1)
 @description('管理 VM の SSH 公開鍵。秘密鍵は渡さず、手元で安全に保持します。')
 param sshPublicKey string
-@secure()
-@description('初期VMのローカル管理認証用に正式CLIが生成する秘密値。既存VMには空文字を渡し、SSHパスワード認証は有効にしません。')
-param adminPassword string = ''
+@description('正式CLI内部の元作成証跡世代。認証秘密や公開作成フラグではありません。')
+param initialSerialGeneration string = ''
 @description('VM ログインの組み込み Azure ロールを付与する対象。一般ログインか管理者ログインかを指定します。')
 param loginAssignments array = []
 @description('Azure DNS更新用の事前作成済みユーザー割り当てMIの完全なリソースID。権限はDNS側で事前付与します。')
@@ -104,7 +103,6 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     osProfile: {
       computerName: computerName
       adminUsername: adminUsername
-      ...(!empty(adminPassword) ? { adminPassword: adminPassword } : {})
       allowExtensionOperations: true
       linuxConfiguration: {
         disablePasswordAuthentication: true
@@ -183,12 +181,17 @@ resource logonGrants 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for
   }
 }]
 
-output managementVm object = {
+var managementVmResult = {
   id: vm.id
   name: vm.name
   principalId: vm.identity.principalId
+  tenantId: vm.identity.tenantId
+  vmId: vm.properties.vmId
   nicId: nic.id
   privateIp: nic.properties.ipConfigurations[0].properties.privateIPAddress
   computerName: computerName
   osDiskId: vm.properties.storageProfile.osDisk.managedDisk.id
 }
+
+output managementVm object = managementVmResult
+output initialSerialCreation object = !empty(initialSerialGeneration) ? { generation: initialSerialGeneration, managementVm: managementVmResult } : {}

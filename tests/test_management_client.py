@@ -30,6 +30,7 @@ def fixture():
         'managementVmId': base + 'Microsoft.Compute/virtualMachines/vm-fixture-mgmt',
         'applications': [base + 'Microsoft.App/containerApps/ca-fixture-portal'],
         'jobs': [base + 'Microsoft.App/jobs/caj-fixture-psql'],
+        'sqlDatabases': [],
         'environments': [base + 'Microsoft.App/managedEnvironments/cae-fixture'],
         'workspace': {'id': base + 'Microsoft.OperationalInsights/workspaces/law-fixture',
                       'customerId': '44444444-4444-4444-8444-444444444444'},

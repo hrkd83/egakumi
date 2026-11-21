@@ -56,6 +56,12 @@ def speech_fixture():
 
 class GatewayDeploymentTests(unittest.TestCase):
     def setUp(self):
+        # IMDS/RunCommand discovery has its own offline suite. CLI order tests
+        # inject a constructed synthetic client ID without contacting Azure.
+        discovery = mock.patch.object(gateway, 'discover_management_sql_identity',
+                                      return_value='77777777-7777-4777-8777-777777777777')
+        self.sql_discovery = discovery.start()
+        self.addCleanup(discovery.stop)
         # These tests mock CLI subprocesses and clear the process environment.
         # Real Windows DACLs are exercised by the dedicated Serial suite;
         # POSIX runs retain actual private-file mode checks here.
@@ -333,6 +339,20 @@ class GatewayDeploymentTests(unittest.TestCase):
             observed['build_image'].assert_not_called()
             observed['deploy_release'].assert_called_once()
             self.assertEqual(observed['deploy_release'].call_args.args[2]['imageDigest'], DIGEST)
+            self.sql_discovery.assert_called_once()
+            self.assertEqual(observed['deploy_release'].call_args.args[2]['foundation']['managementMaintenance']['sqlClientId'],
+                             self.sql_discovery.return_value)
+
+    def test_verified_sql_client_identity_is_required_before_image_or_app_changes(self):
+        config, state = fixture()
+        config['publishApis'] = True
+        with self.isolated_cli(config, state) as (arguments, observed):
+            self.sql_discovery.side_effect = ValueError('synthetic-SAMI-discovery-failed')
+            with self.assertRaisesRegex(ValueError, 'synthetic-SAMI-discovery-failed'):
+                gateway.main(arguments)
+            observed['build_image'].assert_not_called()
+            observed['broker_secret'].assert_not_called()
+            observed['deploy_release'].assert_not_called()
 
     def test_generated_source_is_saved_protected_and_excluded_from_cli_summary(self):
         config, state = fixture()
@@ -407,6 +427,7 @@ class GatewayDeploymentTests(unittest.TestCase):
             secrets.assert_not_called()
             runner.assert_not_called()
             transport.assert_not_called()
+            self.sql_discovery.assert_not_called()
             self.assertEqual(params.read_text(), 'original-user-input')
             plan = json.loads(output.read_text(encoding='utf-8'))
             self.assertEqual(plan['azureWrites'], 0)

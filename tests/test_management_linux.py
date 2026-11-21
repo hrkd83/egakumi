@@ -19,6 +19,16 @@ CORE = Path(__file__).resolve().parents[1]
 class ManagementProfileExpression(ArmExpression):
     """管理VMのコンパイル式に使われる空値検査と浅いobject結合だけを補う。"""
 
+    @staticmethod
+    def render(value, parameters):
+        if isinstance(value, dict):
+            return {key: ManagementProfileExpression.render(item, parameters) for key, item in value.items()}
+        if isinstance(value, list):
+            return [ManagementProfileExpression.render(item, parameters) for item in value]
+        if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+            return ManagementProfileExpression(value).evaluate(parameters)
+        return value
+
     def evaluate(self, parameters, index=0, tree=None, bindings=None):
         tree = self.tree if tree is None else tree
         if tree[0] == "call" and tree[1] in ("empty", "shallowMerge"):
@@ -33,7 +43,7 @@ class LinuxTimeConfigurationTests(unittest.TestCase):
     """時刻設定の関数だけを一時フォルダーで実行し、ホストのサービスには触れない。"""
     @classmethod
     def setUpClass(cls):
-        source = (CORE / "infra/guest/configure-audit.sh").read_text()
+        source = (CORE / "infra/guest/configure-audit.sh").read_text(encoding="utf-8")
         cls.helpers = source.split("# BEGIN TIME CONFIG HELPERS\n", 1)[1].split("# END TIME CONFIG HELPERS", 1)[0]
 
     def run_helper(self, expression, *arguments):
@@ -74,10 +84,10 @@ class LinuxTimeConfigurationTests(unittest.TestCase):
             for servers in ("ntp.ubuntu.com ntp.organization.example", "ntp.organization.example"):
                 result = self.run_helper('write_chrony_sources "$1" "$2" "$3"', servers, config, directory)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(config.read_text(), original)
-                self.assertEqual(other.read_text(), "pool existing.organization.example iburst\n")
+                self.assertEqual(config.read_text(encoding="utf-8"), original)
+                self.assertEqual(other.read_text(encoding="utf-8"), "pool existing.organization.example iburst\n")
                 expected = [f"server {name} iburst" for name in servers.split()]
-                self.assertEqual([line for line in managed.read_text().splitlines() if not line.startswith("#")], expected)
+                self.assertEqual([line for line in managed.read_text(encoding="utf-8").splitlines() if not line.startswith("#")], expected)
                 if os.name != "nt":
                     self.assertEqual(stat.S_IMODE(managed.stat().st_mode), 0o644)
 
@@ -97,7 +107,7 @@ class LinuxTimeConfigurationTests(unittest.TestCase):
             target = Path(folder) / "timesyncd.conf.d/90-core-platform.conf"
             result = self.run_helper('write_timesyncd_config "$1" "$2"', "ntp.organization.example", target)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(target.read_text(), "[Time]\nNTP=ntp.organization.example\nFallbackNTP=\n")
+            self.assertEqual(target.read_text(encoding="utf-8"), "[Time]\nNTP=ntp.organization.example\nFallbackNTP=\n")
 
 
 class LinuxManagementTemplateTests(unittest.TestCase):
@@ -117,23 +127,18 @@ class LinuxManagementTemplateTests(unittest.TestCase):
     def test_vm_requires_public_key_and_keeps_ssh_password_login_disabled(self):
         template = self.templates["management"]
         self.assertIn("sshPublicKey", template["parameters"])
-        self.assertEqual(template["parameters"]["adminPassword"]["type"].lower(), "securestring")
-        self.assertEqual(template["parameters"]["adminPassword"]["defaultValue"], "")
+        self.assertNotIn("adminPassword", template["parameters"])
+        self.assertIn("initialSerialGeneration", template["parameters"])
         vm, = self.resources(template, "Microsoft.Compute/virtualMachines")
-        # The conditional secure input is supplied for an initial VM only;
-        # empty input omits the immutable OSProfile property for an existing VM.
         supplied = {name: definition["defaultValue"]
                     for name, definition in template["parameters"].items() if "defaultValue" in definition}
         supplied.update({"adminUsername": "fixtureoperator", "sshPublicKey": "synthetic-public-key",
                          "__variables": {"computerName": "mgmt-synthetic-fixture"}})
-        for password in ("", "Synthetic-Only-Password!1"):
-            with self.subTest(initial_password=bool(password)):
-                profile = ManagementProfileExpression(vm["properties"]["osProfile"]).evaluate(
-                    {**supplied, "adminPassword": password})
-                if password:
-                    self.assertEqual(profile["adminPassword"], password)
-                else:
-                    self.assertNotIn("adminPassword", profile)
+        for generation in ("", "INITIAL_SERIAL_GENERATION_FIXTURE"):
+            with self.subTest(initial_generation=bool(generation)):
+                profile = ManagementProfileExpression.render(vm["properties"]["osProfile"],
+                    {**supplied, "initialSerialGeneration": generation})
+                self.assertNotIn("adminPassword", profile)
                 self.assertEqual(profile["adminUsername"], supplied["adminUsername"])
                 self.assertNotIn("windowsConfiguration", profile)
                 linux = profile["linuxConfiguration"]

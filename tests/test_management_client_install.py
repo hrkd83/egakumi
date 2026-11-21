@@ -189,6 +189,29 @@ class ManagementClientInstallTests(unittest.TestCase):
         for key in ('applications', 'jobs', 'environments'):
             self.assertEqual(saved[key], sorted(set(added[key])))
 
+    def test_legacy_guest_upgrade_and_core_reprepare_preserve_both_constructed_sql_aliases(self):
+        legacy = copy.deepcopy(self.inventory)
+        legacy.pop('sqlDatabases')
+        self.prepare(legacy)
+        # Simulate the earlier installed schema without a SQL family.
+        target = self.root / 'inventory.json'
+        target.write_text(json.dumps(legacy), encoding='utf-8')
+        target.chmod(0o600)
+        base = self.inventory['managementVmId'].split('/providers/', 1)[0]
+        for alias in ('credentials', 'portal'):
+            added = copy.deepcopy(self.inventory)
+            added['sqlDatabases'] = [{'alias': alias, 'id': base + '/providers/Microsoft.Sql/servers/sql-fixture/databases/sqldb-fixture-' + alias}]
+            self.prepare(added)
+        self.prepare(self.inventory)
+        saved = json.loads(target.read_text(encoding='utf-8'))
+        self.assertEqual({item['alias'] for item in saved['sqlDatabases']}, {'credentials', 'portal'})
+        conflicting = copy.deepcopy(self.inventory)
+        conflicting['sqlDatabases'] = [{'alias': 'portal', 'id': base + '/providers/Microsoft.Sql/servers/sql-fixture/databases/sqldb-another-portal'}]
+        before = target.read_bytes()
+        with self.assertRaisesRegex(SystemExit, 'alias differs'):
+            self.prepare(conflicting)
+        self.assertEqual(target.read_bytes(), before)
+
     def test_interrupted_first_commit_retries_with_the_same_vm_identity_and_targets(self):
         with self.assertRaises(OSError):
             self.prepare(self.inventory, fail_at=('replace', 'management_client.py'))

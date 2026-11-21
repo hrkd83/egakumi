@@ -189,7 +189,10 @@ class ManagementMaintenanceRbacTests(unittest.TestCase):
         self.assertIn('jobIds', gateway)
         self.assertIn('environmentIds', gateway)
         portal = self.portal['outputs']['managementMaintenance']['value']
-        self.assertEqual(set(portal), {'applicationIds', 'jobIds', 'environmentIds'})
+        self.assertEqual(set(portal), {'applicationIds', 'jobIds', 'environmentIds', 'sqlDatabaseIds'})
+        self.assertIn('sqlDatabaseIds', gateway)
+        self.assertIn('outputs.databaseId.value', gateway['sqlDatabaseIds'][0])
+        self.assertIn('outputs.databaseId.value', portal['sqlDatabaseIds'][0])
         self.assertIn("if(parameters('deployApplication')", portal['applicationIds'])
         self.assertIn("if(parameters('deployApplication')", portal['jobIds'])
         self.assertIn("outputs.id.value", portal['jobIds'])

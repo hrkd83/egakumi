@@ -92,6 +92,24 @@ def ready_inventory(enabled='false', definitions=None):
 
 
 class SubscriptionProfileSettingsTests(unittest.TestCase):
+    def test_expired_budget_before_or_during_missing_value_read_never_initializes_it(self):
+        for initial in (0, 10):
+            with self.subTest(initial=initial):
+                transport, clock = ProfileTransport(), [initial]
+                original_request = transport.request
+                def read_then_expire(method, path, body=None, headers=None):
+                    result = original_request(method, path, body, headers)
+                    if method == 'GET':
+                        clock[0] = 10
+                    return result
+                transport.request = read_then_expire
+                with mock.patch.object(profiles.time, 'monotonic', side_effect=lambda: clock[0]):
+                    with self.assertRaisesRegex(ValueError, 'deadline expired before write'):
+                        profiles.initialize_profile_settings(APIM, transport, deadline=10)
+                self.assertEqual(len(transport.calls), 1)
+                self.assertEqual(transport.calls[0][0], 'GET')
+                self.assertEqual(transport.inventory, {})
+
     def test_first_initialization_is_disabled_and_create_only(self):
         transport = ProfileTransport()
         profiles.initialize_profile_settings(APIM, transport)

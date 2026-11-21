@@ -13,7 +13,7 @@ SECRET_NAME = PREFIX + 'key'
 DEFAULTS = {'enabled': 'false', 'url': 'https://profile.invalid', 'secret': 'profile-not-configured'}
 
 
-def initialize_profile_settings(apim_id, transport):
+def initialize_profile_settings(apim_id, transport, *, deadline=None):
     """未作成の接続設定だけを初期化する。Portalが設定済みの値は上書きしない。"""
     for suffix, value in DEFAULTS.items():
         name = PREFIX + suffix
@@ -23,6 +23,8 @@ def initialize_profile_settings(apim_id, transport):
             continue
         if current.get('statusCode') != 404:
             raise ValueError('Subscription profile settings could not be read')
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError('Subscription profile deadline expired before write')
         response = transport.request('PUT', path, {'properties': {
             'displayName': name, 'secret': suffix == 'secret', 'value': value,
         }}, headers={'If-None-Match': '*'})

@@ -90,7 +90,11 @@ echo "終了コード: $?"
 4. **端末の保護保存**：CM用Core client secretは既定で`.local/<environment>/secrets/entra-client-secret.txt`へ保存し、POSIX権限600とする。同じsecret保存先を使うCM providerが複数ある場合は1回だけ入力する。
 5. **SSH鍵**：公開鍵・秘密鍵が両方ない場合だけ、指定した`.local/<environment>/secrets/`へ鍵対を生成。有効な既存鍵は再利用し、秘密鍵はAzureへ送らない。
 
-Core配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。公開params/configにパスワードや作成フラグを追加せず、内部secure入力で初期VMへ渡します。SSHのパスワード認証無効と鍵認証は維持します。既存VMが200で読めた場合は、この秘密ファイルを読まず、既存パスワードも変更しません。これはSerial Console用のローカルログイン準備であり、実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
+Core配備の直前には、所有RGと管理VMの正確なGET結果を確認します。VMが未作成の404の場合だけ、`management.adminUsername`のローカル認証用パスワードを生成し、`.local/<environment>/secrets/management-serial-credential.json`へ保護保存します。元の404・生成世代・Core引渡しの証跡は`.local/<environment>/state/management-serial-initialization.json`へ先に保存し、Coreには非秘密の内部世代だけを渡します。公開params/configにパスワードや作成フラグを追加せず、OSProfileへパスワードを渡しません。
+
+Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenantを照合して保護記録へ確定し、公開Managed Run Command資材の名前付き`protectedParameters`だけへ元のパスワードを渡します。guestはSSHの有効設定を確認し、初期ローカル認証とlogin PAMの確認後だけ完了を記録します。SSHのパスワード認証無効と鍵認証は維持します。部分失敗でVMだけ作成済みの場合も、元Core入力とmanagement子配備の同世代・VM出力を照合するまで秘密を読みません。初期化要求が不明になった後の回復は、パスワードを再設定せず、元の資格情報によるPAM認証を最大1回だけ行います。元の初期作成証跡がない既存VMは、この秘密ファイルを読まず、既存パスワードも変更しません。
+
+これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
 基盤とGatewayの構築が終わると、最後のPortal工程でAPIキー所有グループの設定を入力します。未設定の`groupNamePattern`・基盤管理グループのObject ID・承認製品と購読数上限を、同じparamsへ保存します。この入力の完了まで`azd up`の完了にはなりません。非対話で初期構築する場合は、`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定してください。
 
