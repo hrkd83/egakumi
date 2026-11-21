@@ -15,7 +15,8 @@
 | secretの期限更新・TLS証明書更新 | [認証情報・証明書の更新](secrets-and-certificates.md) | `operations/entra_secret.py`・`certificate.py`、新規認証・公開TLS確認 |
 | 所属・利用条件・キー・購読・CM容量を保守する | [利用資格・キー・プール](access-and-keys.md) | `operations/api_key.py`、P／G、Entra・Portalの正規管理操作、既存job |
 | WAF・外向き許可・監視・サービス容量を変える | [基盤設定の通常変更](platform-settings.md) | `operations/waf.py`・`monitoring.py`、G等の対象限定反映 |
-| NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと4モジュールのBicep |
+| NSGの通信範囲・優先度を確認する | [NSGの構成と優先度](network-security-groups.md) | 共通採番JSONと初期構築5モジュールのBicep |
+| 通信要件・Firewallの許可範囲・判断を確認する | [通信要件](../reference/network-communication-requirements.md)・[Firewall設計](../reference/firewall-policy-design.md) | 実経路、RCG/collection/規則、対応NSG、[検証と実証結果の管理](../reference/network-security-validation.md) |
 | 管理VMから監査Blob・保存ログ・ACAログを読む、Appへ限定execする | [管理VMの保守操作](../operations.md#管理vmから保守データを取得する) | VM自身のMI、保護inventory、7種類の取得・操作 |
 | 不要なDNS用NSG子規則を回収する | [DNS規則の限定回収](platform-settings.md#不要なdns用nsg子規則を回収する) | `operations/nsg_dns.py`で計画・限定DELETE |
 

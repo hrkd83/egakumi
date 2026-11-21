@@ -55,6 +55,8 @@
 
 [NSGの初期仕様](../operations/network-security-groups.md)と、現在の構築資材から作成した限定移行計画を照合し、実施前後の結果を環境別の保護実施票へ記録します。以前の「AppGW受信6本・送信0本と既知3本の送信規則だけの回収」は旧仕様であり、今回の固定集合へ適用しません。下記は現在の受入条件で、各環境の実測前にPASSとはしません。
 
+各規則の通信対応と採用判断は[通信要件](../reference/network-communication-requirements.md)・[NSG設計](../reference/network-security-design.md)・[Firewall設計](../reference/firewall-policy-design.md)、合成結果と実証原本の管理は[共通検証](../reference/network-security-validation.md)を参照します。
+
 - 各サブネットのカスタム規則を通信要件・名称・方向・優先度・送信元・宛先・ポート単位で比較する。AppGW／ACAの必要な既定許可と、明示Denyを作成するサブネットを区別する。
 - 新規構築と既存環境への限定適用が同じ初期集合を再現することを確認する。未知の手動規則・競合・所有不一致は削除前に停止し、企業向けの変更を無条件に初期値へ戻さない。
 - 廃止したNSG／標準DNS／NTP入力と`gateway.grpc`全体・gRPC API定義を、params・config・合成入力で拒否する。VNet／FirewallはAzure提供DNSを使い、標準NTPを固定する。

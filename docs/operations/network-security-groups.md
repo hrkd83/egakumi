@@ -1,8 +1,8 @@
 # NSGの構成と優先度
 
-[共通確認](common.md) · [基盤設定](platform-settings.md) · [非NSG通信](../reference/platform-communications.md)
+[共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
 
-初期構築は5 NSG・カスタム72ルールの固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
+初期構築は5 NSG・カスタム76ルールの固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
 
 - 120から: クライアント要求から発生する通信。
@@ -19,7 +19,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 2で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表はその72件に対応する。送信元ポートは全件Any。
+以下の表はその76件に対応する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -119,6 +119,8 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 226 | `allow-aca-sql-1433-ingress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
 | 227 | `allow-aca-acr-https-ingress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
 | 228 | `allow-mgmt-vm-acr-https-ingress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-PE-09` |
+| 229 | `allow-mgmt-vm-audit-storage-japan-https-ingress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 230 | `allow-mgmt-vm-audit-storage-foundry-https-ingress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 4096 | `deny-any-ingress` | Any | Any | Any／Any | `B-PE-14` |
 
 ### Outbound
@@ -144,6 +146,8 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 224 | `allow-sql-1433-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-MGMT-OUT-SQL` |
 | 225 | `allow-aca-http-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／80 | `N-MGMT-OUT-ACA-HTTP` |
 | 226 | `allow-aca-https-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／443 | `N-MGMT-OUT-ACA-HTTPS` |
+| 227 | `allow-audit-storage-japan-https-egress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
+| 228 | `allow-audit-storage-foundry-https-egress` | 管理VM private IP /32 | collectFoundry監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-FOUNDRY-HTTPS` |
 | 320 | `allow-azure-resource-manager-egress` | 管理VMサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-MGMT-06` |
 | 321 | `allow-entra-egress` | 管理VMサブネットCIDR | `AzureActiveDirectory`タグ | TCP／443 | `B-MGMT-07` |
 | 322 | `allow-monitor-egress` | 管理VMサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-MGMT-08` |

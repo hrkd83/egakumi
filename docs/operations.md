@@ -52,6 +52,8 @@ Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化
 
 [5 NSGの構成と優先度](operations/network-security-groups.md)は共通採番JSONとBicepで管理します。新規構築で同じ定義を使用し、構築後は上表に従って対象に限定して更新します。
 
+正式な設計参照は[通信要件](reference/network-communication-requirements.md)、[NSG全規則・判断記録](reference/network-security-design.md)、[Firewall全規則・判断記録](reference/firewall-policy-design.md)です。実経路とルールの対応、標準DNS/NTP、HTTP80、初期不作成の境界を確認し、結果は[検証と実証結果の管理](reference/network-security-validation.md)に従って記録します。
+
 ### API・ポリシー・購読を変更する
 
 資材で管理するAPIは [登録定義](../apps/gateway/apim/apis/)を変更し、Gatewayを再配備します。`apiDefinitions: []`は同ディレクトリの標準定義を解決し、明示した配列はその定義を対象にします。解決したAPIや環境固有URLを元のparamsへ書き戻しません。

@@ -1,6 +1,6 @@
 # NSG規則にしない基盤通信
 
-[NSGの構成](../operations/network-security-groups.md) · [基盤仕様](platform.md) · [保守の共通確認](../operations/common.md)
+[通信要件](network-communication-requirements.md) · [NSG設計](network-security-design.md) · [Firewall設計](firewall-policy-design.md) · [検証・実証結果の管理](network-security-validation.md) · [保守の共通確認](../operations/common.md)
 
 初期構築は独立VNet、Azure提供DNS、標準NTPを使用する。NSGでは、構築したサブネットCIDRと割当IPを使って業務・保守・Azure基盤への通信を明示する。一方、同じホスト内の処理、Azureの基盤例外、サービス内部の処理は、通常のNSG Allowの名前・優先度・IP／ポートへ置き換えない。本書はその通信要件と成立条件を記録する。
 
@@ -38,7 +38,7 @@ Private DNS zone、VNet link、PEのDNS zone groupが正しい回答を作る条
 
 公開済みのMCR、Azure Front Door FirstParty、ARM、Entra、Monitor等の必要通信は、採用済みNSG規則へ対応付ける。未公開または個別条件が未確定の保守処理を、新しい宛先・ポートの推測で補わない。ACAのネットワーク形態・サービス更新・レジストリ依存によって要求が変わり得る。[ACAの送信要件](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration#outbound)と[Azure Firewallとの統合](https://learn.microsoft.com/en-us/azure/container-apps/use-azure-firewall)を参照する。
 
-初期ACAには受信・送信のカスタムAny末尾Denyを作らず、任意Internet／Storage向けAllowも作らない。既定の存在だけで、Firewall経由の全基盤通信が成功したとは判定しない。レジストリ／Storage依存の検証は未解決事項として保持する。将来末尾Denyを追加する場合は、image取得、起動・scale、アプリ／Job実行、監視、基盤更新と障害復旧を先に検証する。[公式Issueの補足](https://github.com/microsoft/azure-container-apps/issues/893#issuecomment-1711892233)は再現条件の参考であり、必要宛先の公式契約を置き換えない。
+初期ACAには受信・送信のカスタムAny末尾Denyを作らず、任意Internet／Storage向けAllowも作らない。構築ACR、MCR、現在のApp／Jobと管理ID／監視依存を通信要件へ分け、現在アプリのStorage非依存を将来アプリへ一般化しない。実操作と設定の確認方法・結果管理は[検証文書](network-security-validation.md)にまとめる。既定の存在だけで全基盤通信の成功とは判定しない。将来末尾Denyを追加する場合は、image取得、起動・scale、アプリ／Job実行、監視、基盤更新と障害復旧を先に検証する。[公式Issueの補足](https://github.com/microsoft/azure-container-apps/issues/893#issuecomment-1711892233)は再現条件の参考であり、必要宛先の公式契約を置き換えない。
 
 ## 管理VMサブネット
 
@@ -127,4 +127,4 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 構築資材は、固定NSG集合、標準DNS／外部NTP、構築管理ID、Agent／AMA／DCR、managed OS Disk、managed Boot Diagnostics、Firewallサブネットの非関連付けを再適用する。企業の手動変更をBicepで再現する新しい入力や、これらの通信のNSG作成フラグは設けない。
 
-合成試験では資材の生成条件と変更範囲を検証する。実環境では、名前解決、管理IDの用途・認可、Agentの版とhostchannel、DHCP、AMAの実local転送と収集、時刻同期と保守復帰、Disk I/O、診断保存・閲覧を確認する。未確定ACA保守・レジストリ／Storage依存は追跡対象を維持し、文書化だけで実通信検証完了としない。
+合成試験では資材の生成条件と変更範囲を検証する。実環境では、名前解決、管理IDの用途・認可、Agentの版とhostchannel、DHCP、AMAの実local転送と収集、時刻同期と保守復帰、Disk I/O、診断保存・閲覧を確認する。現在構成の受入確認と、未公開のACA内部保守wire・将来のレジストリ／Storage依存の留保を区別する。結果と制約は[検証文書](network-security-validation.md)の保護実施票で管理し、文書化だけで実通信検証完了としない。
