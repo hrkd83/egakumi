@@ -13,7 +13,8 @@ import tempfile
 import unittest
 
 from arm_helpers import ArmExpression
-from configuration_fixtures import fixture, connection_fixture
+from configuration_fixtures import fixture
+from schema_helpers import local_schema_validator
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -53,11 +54,13 @@ RETIRED_NETWORK_INPUTS = {
 
 def public_documents(name="test"):
     """公開例だけを読み、実在する組織や秘密ファイルを使わない。"""
-    options = json.loads((CORE / f"config/{name}.json").read_text())
-    parameters = json.loads((CORE / f"params/{name}.example.json").read_text())
+    options = json.loads((CORE / f"config/{name}.json").read_text(encoding="utf-8"))
+    parameters = json.loads((CORE / f"params/{name}.example.json").read_text(encoding="utf-8"))
     parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
     parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
     parameters["entraTenantId"] = parameters["azureTenantId"]
+    parameters["services"]["apimInstanceId"] = "abc123"
+    parameters["credentialProviders"]["graphDelegated"]["clientId"] = "66666666-6666-4666-8666-666666666666"
     dns = fixture()["certificate"]
     for key in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
         parameters["certificate"][key] = dns[key]
@@ -72,20 +75,8 @@ def custom_documents():
     network["addressSpaces"] = [item.replace("10.40.", "10.70.") for item in network["addressSpaces"]]
     network["subnetPrefixes"] = {key: value.replace("10.40.", "10.70.")
                                   for key, value in network["subnetPrefixes"].items()}
-    firewall = copy.deepcopy(FIREWALL_INPUTS)
-    firewall.update(snatPrivateRanges=["10.70.0.0/16"],
-                    idpsPrivateRanges=["10.70.0.0/16"], bypassTrafficSettings=[{
-                        "name": "reviewed-support", "protocol": "TCP",
-                        "sourceAddresses": ["10.70.2.128/26"],
-                        "destinationAddresses": ["192.0.2.70"], "destinationPorts": ["443"]}])
-    network["firewall"] = firewall
     parameters["network"] = network
-    parameters["monitoring"]["auditAllowedIpAddresses"] = ["203.0.113.71/32"]
     options["network"]["firewall"].update(sku="Premium", idpsMode="Alert")
-    parameters["apiDefinitions"] = connection_fixture()["apiDefinitions"]
-    api = parameters["apiDefinitions"][0]
-    api.pop("credentialConnection")
-    api["backendUrl"] = "https://backend.example.com/v1.0"
     return options, parameters
 
 
@@ -105,17 +96,16 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             options, parameters = public_documents(name)
             with self.subTest(name=name):
                 self.assertEqual({key: parameters["network"][key] for key in NETWORK_INPUTS}, NETWORK_INPUTS)
-                self.assertEqual({key: parameters["network"]["firewall"][key] for key in FIREWALL_INPUTS}, FIREWALL_INPUTS)
-                self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
+                self.assertNotIn("firewall", parameters["network"])
+                self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
                 self.assertFalse(set(options["network"]) & set(NETWORK_INPUTS))
                 self.assertFalse(set(options["network"]["firewall"]) & set(FIREWALL_INPUTS))
                 self.assertNotIn("dnsServers", options["network"]["firewall"])
-                self.assertNotIn("dnsServers", parameters["network"]["firewall"])
                 self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
                 self.assertIn("rateLimits", options["gateway"])
                 for key in RETIRED_FIREWALL_INPUTS:
                     self.assertNotIn(key, options["network"]["firewall"])
-                    self.assertNotIn(key, parameters["network"]["firewall"])
+                    self.assertNotIn(key, parameters["network"].get("firewall", {}))
                 for key in RETIRED_NETWORK_INPUTS:
                     self.assertNotIn(key, options["network"])
                     self.assertNotIn(key, parameters["network"])
@@ -123,8 +113,6 @@ class ParameterIpOwnershipTests(unittest.TestCase):
     def test_config_cannot_supply_moved_fields_even_when_empty_or_overridden(self):
         """paramsが正しくても、configへの二重記載は黙って上書きしない。"""
         paths = [("network", key) for key in NETWORK_INPUTS]
-        paths += [("network", "firewall", key) for key in FIREWALL_INPUTS]
-        paths += [("monitoring", "auditAllowedIpAddresses")]
         for path in paths:
             for value in (None, [], ["192.0.2.99/32"]):
                 options, parameters = custom_documents()
@@ -143,7 +131,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             options, parameters = custom_documents()
             target = parameters
             for key in path[:-1]:
-                target = target[key]
+                target = target.setdefault(key, {})
             target[path[-1]] = []
             with self.subTest(path=path), self.assertRaises(ConfigurationError):
                 load_documents(options, parameters)
@@ -159,7 +147,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             with self.subTest(missing=missing), self.assertRaises(ConfigurationError):
                 normalize_configuration(load_documents(options, parameters))
 
-    def test_custom_cidrs_and_mixed_firewall_settings_reach_bicep_input(self):
+    def test_custom_cidrs_and_fixed_firewall_ranges_reach_bicep_input(self):
         options, parameters = custom_documents()
         normalized = normalize_configuration(load_documents(options, parameters))
         result = build_bicep_configuration(normalized)
@@ -168,32 +156,37 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         for key in RETIRED_NETWORK_INPUTS:
             self.assertNotIn(key, result["network"])
         firewall = result["network"]["firewall"]
-        for key in FIREWALL_INPUTS:
-            self.assertEqual(firewall[key], parameters["network"]["firewall"][key])
+        self.assertEqual(firewall["snatPrivateRanges"], ["IANAPrivateRanges", *parameters["network"]["addressSpaces"]])
+        self.assertEqual(firewall["idpsPrivateRanges"], ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+                                                      *parameters["network"]["addressSpaces"]])
+        self.assertEqual(firewall["bypassTrafficSettings"], [])
         for key in ("sku", "idpsMode", "zones"):
             self.assertEqual(firewall[key], options["network"]["firewall"][key])
         self.assertNotIn("dnsServers", firewall)
         self.assertFalse(RETIRED_FIREWALL_INPUTS.intersection(firewall))
-        self.assertIn("backend.example.com", result["generatedApimServiceFqdns"])
-        self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], ["203.0.113.71/32"])
+        self.assertIn("graph.microsoft.com", result["generatedApimServiceFqdns"])
+        self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
         for kind, common in options["gateway"]["rateLimits"].items():
             for key, value in common.items():
                 self.assertEqual(result["gateway"]["rateLimits"][kind][key], value)
         for kind in ("subscriptionKey", "application"):
-            self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], parameters["gateway"]["rateLimits"][kind]["overrides"])
+            self.assertEqual(result["gateway"]["rateLimits"][kind]["overrides"], [])
 
-    def test_explicit_empty_audit_and_firewall_inputs_survive_normalization(self):
-        options, parameters = custom_documents()
-        parameters["monitoring"]["auditAllowedIpAddresses"] = []
-        for key in FIREWALL_INPUTS:
-            parameters["network"]["firewall"][key] = []
-        result = build_bicep_configuration(normalize_configuration(load_documents(options, parameters)))
-        for key in RETIRED_NETWORK_INPUTS:
-            self.assertNotIn(key, result["network"])
-        self.assertNotIn("dnsServers", result["network"]["firewall"])
-        for key in FIREWALL_INPUTS:
-            self.assertEqual(result["network"]["firewall"][key], [])
-        self.assertEqual(result["monitoring"]["auditAllowedIpAddresses"], [])
+    def test_fixed_audit_and_firewall_public_inputs_are_rejected_even_when_empty(self):
+        paths = [("network", "firewall", key) for key in FIREWALL_INPUTS]
+        paths += [("monitoring", "auditAllowedIpAddresses"), ("monitoring", "auditReaders"), ("authorization",)]
+        for path in paths:
+            for owner in ("parameters", "config"):
+                for value in (None, [], ["PRIVATE-INPUT-SENTINEL"]):
+                    options, parameters = custom_documents()
+                    target = parameters if owner == "parameters" else options
+                    for key in path[:-1]:
+                        target = target.setdefault(key, {})
+                    target[path[-1]] = value
+                    with self.subTest(path=path, owner=owner, value=value), self.assertRaisesRegex(
+                            ConfigurationError, "retired initial input") as caught:
+                        load_documents(options, parameters)
+                    self.assertNotIn("PRIVATE-INPUT-SENTINEL", str(caught.exception))
 
     def test_retired_network_inputs_are_rejected_in_both_public_owners(self):
         """空配列やfalseでも、廃止入力を有効な上書きとして黙って受け取らない。"""
@@ -219,10 +212,10 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                         action = lambda: normalize_configuration(document)
                     else:
                         target = parameters if owner == "parameters" else options
-                        target["network"]["firewall"][key] = copy.deepcopy(value)
+                        target["network"].setdefault("firewall", {})[key] = copy.deepcopy(value)
                         action = lambda: load_documents(options, parameters)
                     with self.subTest(key=key, owner=owner, value=value), self.assertRaisesRegex(
-                            ConfigurationError, r"firewall.*unsupported field"):
+                            ConfigurationError, r"network.*unsupported field"):
                         action()
 
     def test_firewall_dns_input_is_rejected_in_both_public_owners(self):
@@ -230,9 +223,9 @@ class ParameterIpOwnershipTests(unittest.TestCase):
             for value in (None, [], ["168.63.129.16"], ["192.0.2.53"]):
                 options, parameters = custom_documents()
                 target = parameters if owner == "parameters" else options
-                target["network"]["firewall"]["dnsServers"] = copy.deepcopy(value)
+                target["network"].setdefault("firewall", {})["dnsServers"] = copy.deepcopy(value)
                 with self.subTest(owner=owner, value=value), self.assertRaisesRegex(
-                        ConfigurationError, r"network\.firewall.*unsupported field.*dnsServers"):
+                        ConfigurationError, r"network.*unsupported field.*(?:firewall|dnsServers)"):
                     load_documents(options, parameters)
 
     def test_combined_internal_json_still_accepts_the_full_network(self):
@@ -288,8 +281,8 @@ class ParameterIpOwnershipTests(unittest.TestCase):
         options, parameters = custom_documents()
         for schema in schemas.values():
             jsonschema.Draft202012Validator.check_schema(schema)
-        params_validator = jsonschema.Draft202012Validator(schemas["params"])
-        options_validator = jsonschema.Draft202012Validator(schemas["config"])
+        params_validator = local_schema_validator(schemas["params"])
+        options_validator = local_schema_validator(schemas["config"])
         self.assertTrue(params_validator.is_valid(parameters), list(params_validator.iter_errors(parameters)))
         self.assertTrue(options_validator.is_valid(options), list(options_validator.iter_errors(options)))
         for missing in ("network", "addressSpaces", "subnetPrefixes"):
@@ -307,6 +300,14 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                     self.assertFalse(options_validator.is_valid(value))
         for owner, document, validator in (("params", parameters, params_validator),
                                             ("config", options, options_validator)):
+            for path in [("network", "firewall", key) for key in FIREWALL_INPUTS] + [("monitoring", "auditAllowedIpAddresses")]:
+                value = copy.deepcopy(document)
+                target = value
+                for key in path[:-1]:
+                    target = target.setdefault(key, {})
+                target[path[-1]] = []
+                with self.subTest(owner=owner, fixed=".".join(path)):
+                    self.assertFalse(validator.is_valid(value))
             for key, values in RETIRED_NETWORK_INPUTS.items():
                 for retired in values:
                     value = copy.deepcopy(document)
@@ -314,7 +315,7 @@ class ParameterIpOwnershipTests(unittest.TestCase):
                     with self.subTest(owner=owner, key=key, retired=retired):
                         self.assertFalse(validator.is_valid(value))
             value = copy.deepcopy(document)
-            value["network"]["firewall"]["dnsServers"] = []
+            value["network"].setdefault("firewall", {})["dnsServers"] = []
             with self.subTest(owner=owner, key="firewall.dnsServers"):
                 self.assertFalse(validator.is_valid(value))
 
@@ -628,15 +629,16 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
             self.assertEqual(rules[name]["destinationAddresses"], ["*"])
             self.assertNotIn("destinationFqdns", rules[name])
 
-    def test_firewall_arm_keeps_platform_sku_and_parameter_ip_settings_together(self):
+    def test_firewall_arm_keeps_config_sku_and_constructed_vnet_ranges_together(self):
         config = self.configuration()
         expression, parameters = self.resolver("network", config)
         resources = self.templates["network"]["resources"]
         firewall = expression.resolve(resources["firewallPolicy"]["properties"], parameters)
         self.assertEqual(firewall["sku"]["tier"], "Premium")
         self.assertEqual(firewall["dnsSettings"]["servers"], [])
-        self.assertEqual(firewall["snat"]["privateRanges"], ["10.70.0.0/16"])
-        self.assertEqual(firewall["intrusionDetection"]["configuration"]["privateRanges"], ["10.70.0.0/16"])
+        self.assertEqual(firewall["snat"]["privateRanges"], ["IANAPrivateRanges", *config["network"]["addressSpaces"]])
+        self.assertEqual(firewall["intrusionDetection"]["configuration"]["privateRanges"],
+                         ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", *config["network"]["addressSpaces"]])
         self.assertEqual(firewall["intrusionDetection"]["configuration"]["bypassTrafficSettings"], config["network"]["firewall"]["bypassTrafficSettings"])
         for resource in ("platformRules", "egressRules"):
             collections = expression.resolve(resources[resource]["properties"], parameters)["ruleCollections"]

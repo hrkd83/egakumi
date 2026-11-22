@@ -69,8 +69,6 @@ param autoscaleMinCapacity int = 2
 param autoscaleMaxCapacity int = 5
 @description('配置する可用性ゾーンの番号。空配列はゾーンを固定せず、3 ゾーン指定は冗長配置に使います。')
 param zones array = []
-@description('企業管理の既存 WAF ポリシー ID。空欄なら今回の設定から新しく作成します。')
-param existingWafPolicyId string = ''
 @allowed(['Prevention', 'Detection'])
 @description('WAF の動作。Detection は検知記録、Prevention は該当要求の拒否を行います。')
 param wafMode string = 'Prevention'
@@ -107,8 +105,8 @@ param l7IngressSecret string = ''
 
 var gatewayName = 'agw-${resourceStem}'
 var gatewayId = resourceId('Microsoft.Network/applicationGateways', gatewayName)
-// 既存 WAF ポリシーが指定された場合は企業管理の定義を再利用し、標準ポリシーを二重作成しません。
-var createWafPolicy = skuName == 'WAF_v2' && empty(existingWafPolicyId)
+// WAF_v2では、この構築資材が管理するWAFポリシーを作成して関連付けます。
+var createWafPolicy = skuName == 'WAF_v2'
 var documentPaths = filter(documentUploadPaths, path => path == '/tools/documents/v1/analyze')
 var useDocumentWafPolicy = createWafPolicy && !empty(documentPaths)
 // PythonのWAF reconcileと同じ正本を使用し、基盤再配備でも実測した除外を維持します。
@@ -125,7 +123,7 @@ var dataGatewayPaths = flatten(map(filter(dataProfiles, profile => profile.scope
 var dataPortalPaths = flatten(map(filter(dataProfiles, profile => profile.scope == 'portal'), profile => profile.paths))
 var speechPaths = speechRawBodyPaths
 var useSpeechWafPolicy = createWafPolicy && !empty(speechPaths)
-// 本人確認callbackはAPIの公開一覧が空でも必要です。企業管理の既存WAFは変更しません。
+// 本人確認callbackはAPIの公開一覧が空でも必要なため、構築するWAFで保護します。
 var useGatewayAuthWafPolicy = createWafPolicy && !contains(dataGatewayPaths, '/auth/connections/browser/identity-callback')
 // APIと本人確認callbackの完全パスにだけ、用途別のWAF調整を適用します。
 // Consoleは独立したホスティングのため、そのcallbackをCoreのWAF例外へ追加しません。
@@ -400,7 +398,7 @@ resource gateway 'Microsoft.Network/applicationGateways@2024-05-01' = {
   properties: {
     sku: { name: skuName, tier: skuName }
     autoscaleConfiguration: { minCapacity: autoscaleMinCapacity, maxCapacity: autoscaleMaxCapacity }
-    ...(skuName == 'WAF_v2' ? { firewallPolicy: { id: createWafPolicy ? wafPolicy!.id : existingWafPolicyId } } : {})
+    ...(skuName == 'WAF_v2' ? { firewallPolicy: { id: wafPolicy!.id } } : {})
     enableHttp2: true
     globalConfiguration: { enableResponseBuffering: false }
     sslPolicy: { policyType: 'Predefined', policyName: 'AppGwSslPolicy20220101S' }
@@ -674,5 +672,5 @@ output applicationGateway object = {
   publicIpId: publicIpId
   publicIp: publicIpAddress
   publicUrl: 'https://${publicHostName}'
-  wafPolicyId: skuName == 'WAF_v2' ? (createWafPolicy ? wafPolicy!.id : existingWafPolicyId) : ''
+  wafPolicyId: skuName == 'WAF_v2' ? wafPolicy!.id : ''
 }

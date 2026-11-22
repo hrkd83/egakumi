@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AI Workforce コア基盤の統合構成（内部形式）",
-  "description": "paramsとconfigを構築前に統合した形式です。通常はparams配下のファイルを入口にします。Azure固有の整合・秘密ファイル・利用枠・契約は構築処理でも確認します。 リソース名は種類-環境名-製品名。環境名-製品名の合計は17文字以内を構築前に検査します。ca-<stem>-credentialsが32文字以内となる共通上限です。名前の切捨て・自動接尾辞・APIM個別名指定は行いません。",
+  "title": "AI Workforce 合成済み内部設定",
+  "description": "params/configとAPI正本から解決した内部設定です。公開の構築入力はparams.schema.jsonとoptions.schema.jsonで検証します。",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -467,7 +467,7 @@
               "description": "APIMの購読キーを受信する専用ヘッダー名です。標準はAzure OpenAI互換のapi-keyです。"
             },
             "entra": {
-              "$ref": "params.schema.json#/$defs/entraAuthentication"
+              "$ref": "#/$defs/entraAuthentication"
             },
             "credentialLogin": {
               "type": "object",
@@ -478,7 +478,7 @@
               ],
               "properties": {
                 "identity": {
-                  "$ref": "params.schema.json#/$defs/credentialLoginIdentity"
+                  "$ref": "#/$defs/credentialLoginIdentity"
                 },
                 "providerNames": {
                   "type": "array",
@@ -878,7 +878,7 @@
         "sshPublicKeyFile": {
           "type": "string",
           "minLength": 1,
-          "description": "SSH公開鍵の必須入力兼生成先。相対パスは設定ファイル基準。有効なOpenSSH RSA 2048bit以上/Ed25519公開鍵1件は、repo外・秘密鍵なしでも再利用。azd upのpreup末尾で公開鍵と対応秘密鍵がともに存在しないときだけ、repo ROOT/secrets配下の.pubへssh-keygenでパスフレーズなしRSA4096鍵対を生成（POSIX:dir700/private600）。秘密鍵のみ既存・無効な既存公開鍵・repo外の未作成先は上書きせず停止。完成鍵対は失敗/down後も保持し、秘密鍵をGit・Azure・ログへ送信しません。",
+          "description": "SSH公開鍵の必須入力兼生成先。相対参照はparamsファイル基準です。明示された保護入力にある有効なOpenSSH RSA 2048bit以上またはEd25519公開鍵1件は、対応秘密鍵なしでも再利用できます。鍵対がともに存在しない場合の生成先はチェックアウト直下.local/<environment>/secrets/配下に限定し、リンクと所有者専用権限を確認します。秘密鍵だけが既存、公開鍵が無効、外部参照の生成先が未作成の場合は上書きせず停止します。生成した鍵対は失敗/down後も保持します。",
           "examples": [
             "../secrets/management-ssh.pub"
           ]
@@ -1539,7 +1539,7 @@
       ]
     },
     "portalApiKeys": {
-      "$ref": "params.schema.json#/$defs/portalApiKeys"
+      "$ref": "#/$defs/portalApiKeys"
     }
   },
   "$defs": {
@@ -2325,6 +2325,228 @@
       "additionalProperties": false,
       "properties": {},
       "description": "空のオブジェクトを明示したHTTP操作を、本文読取り前のContent-Type宣言の確認対象にします。欠落・複数値・空欄を拒否し、MIMEの許可一覧は使いません。メソッドとURLはAPIMの操作登録が照合します。省略した操作へ検査を自動追加しません。"
+    },
+    "entraAuthentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "業務APIへ追加する社員のEntra委任認証です。tenantはentraTenantIdを使い、対象は業務APIの正本と生成MCPから自動的に求めます。購読キーがある要求はキー認証、キーなしBearer要求は委任トークン認証を使います。有効・無効やクライアント・APIの選択は設けず、指定時は全項目を必須とします。Entra設定を省略した既存構成はキー認証との互換性を維持します。",
+      "required": [
+        "audience",
+        "requiredScope",
+        "userLimits"
+      ],
+      "properties": {
+        "audience": {
+          "$ref": "#/$defs/guid",
+          "description": "v2アクセストークンの宛先となるAPI用アプリのApplication client IDです。api://のscope URIは指定しません。"
+        },
+        "requiredScope": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$",
+          "default": "Gateway.Invoke",
+          "description": "scpに含める単一の委任scope名です。resource prefixや複数scopeを指定しません。"
+        },
+        "userLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestRate",
+            "tokensPerMinute",
+            "tokenQuota"
+          ],
+          "description": "全社員共通の利用制限を3項目すべて明示します。各nullはその制限の無効化で、非nullには有限の値が必要です。有効なcounterは検証済みtid/oidごとに分け、既存キーの購読counterは維持します。",
+          "properties": {
+            "requestRate": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "本人別HTTP要求回数の制限です。nullで無効化します。人の入力回数とは異なり、ツール継続・retry・並列要求も計数します。",
+              "additionalProperties": false,
+              "required": [
+                "calls",
+                "renewalPeriodSeconds"
+              ],
+              "properties": {
+                "calls": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                },
+                "renewalPeriodSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 300
+                }
+              }
+            },
+            "tokensPerMinute": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 2147483647,
+              "description": "本人別の毎分トークン上限です。nullで無効化します。"
+            },
+            "tokenQuota": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "本人別の期間トークン枠です。nullで無効化します。",
+              "additionalProperties": false,
+              "required": [
+                "tokens",
+                "period"
+              ],
+              "properties": {
+                "tokens": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                },
+                "period": {
+                  "type": "string",
+                  "enum": [
+                    "Hourly",
+                    "Daily",
+                    "Weekly",
+                    "Monthly",
+                    "Yearly"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "credentialLoginIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenantId",
+        "clientId",
+        "clientSecretFile"
+      ],
+      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認です。省略時は選択CM provider由来の現行設定を維持します。",
+      "properties": {
+        "tenantId": {
+          "$ref": "#/$defs/guid"
+        },
+        "clientId": {
+          "$ref": "#/$defs/guid"
+        },
+        "clientSecretFile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "portalApiKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Portal配備向けに解決した内部設定です。管理グループはparams.platformGroupId、承認製品はAPI正本、共通購読数上限はconfigから求めます。groups・verificationSubscriptionsは公開入力やparams書き戻しの対象ではありません。",
+      "properties": {
+        "platformGroupId": {
+          "$ref": "#/$defs/guid",
+          "description": "管理ダッシュボードと検証用購読を所有する管理グループのObject IDです。"
+        },
+        "groupNamePattern": {
+          "type": "string",
+          "maxLength": 512,
+          "default": "",
+          "examples": [
+            "^ORG_",
+            "^(ORG_|DEPT_)",
+            "^組織_.+$"
+          ],
+          "description": "対象セキュリティグループの表示名を選ぶRE2互換の正規表現。通常は大文字小文字を区別します。空欄は初回未設定で、azd up後段または個別のPortal配備で対話入力します。非対話では事前設定が必要です。空欄を全許可にはしません。"
+        },
+        "verificationSubscriptions": {
+          "type": "array",
+          "maxItems": 100,
+          "default": [],
+          "description": "標準API正本の承認製品ごとに内部生成する検証用購読です。安定した購読IDを使い、同一IDの既存キーを維持します。キー値は含めません。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "subscriptionId",
+              "productId",
+              "displayName"
+            ],
+            "properties": {
+              "subscriptionId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
+                "not": {
+                  "pattern": "^[Mm][Aa][Ss][Tt][Ee][Rr]$"
+                }
+              },
+              "productId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "maxItems": 1000,
+          "default": [],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "groupId",
+              "products"
+            ],
+            "properties": {
+              "groupId": {
+                "$ref": "#/$defs/guid"
+              },
+              "products": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "productId"
+                  ],
+                  "properties": {
+                    "productId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+                    },
+                    "maxSubscriptions": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000,
+                      "default": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "verificationMaxSubscriptions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 5,
+          "description": "検証用の管理グループに適用する共通購読数上限です。"
+        }
+      }
     }
   },
   "required": [

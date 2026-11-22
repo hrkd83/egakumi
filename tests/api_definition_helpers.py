@@ -14,9 +14,11 @@ def catalog_overlay():
 def configured_base():
     """APIファイルへ複製せず、公開params/configからCM・モデル設定を用意する。"""
     value = fixture()
-    public = json.loads((CORE / "params/test.example.json").read_text(encoding="utf-8"))
+    from deployment.helpers.configuration import load_configuration_source
+    public = load_configuration_source(CORE / "params/test.example.json")
     value["credentialProviders"] = deepcopy(public["credentialProviders"])
     value["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
+    value["credentialProviders"][0]["oauthTenantId"] = value["entraTenantId"]
     value["gateway"]["authentication"]["credentialLogin"] = deepcopy(
         public["gateway"]["authentication"]["credentialLogin"]
     )

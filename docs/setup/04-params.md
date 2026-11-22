@@ -4,24 +4,25 @@
 
 ## このページのゴール
 
-導入先のID・名前・IP計画・公開名・利用するAPIを、一つのローカルparamsへ設定します。ここではAzure資源を作りません。第1章の変数と、Entra／DNS担当者から受領した情報を手元に用意します。
+導入先のID・名前・IP計画・公開名・連絡先とアプリ登録を、一つの保護されたローカルparamsへ設定します。このページではAzure資源を作りません。公開入力71主項目の配置判断と、新しいparams/configの使い分けも記録します。
 
 ## 4-1. paramsとconfigの役割
 
-| ファイル | 管理するもの |
+| 場所 | 管理するもの |
 | --- | --- |
-| `.local/<environment>/params.local.json` | 導入先の企業・環境ごとに確認する値。Subscription／Tenant、製品・環境名、公開名、IP・DNS、担当者、利用者・API登録 |
-| `config/test.json`／`config/production.json` | 標準構成の正本。SKU、ゾーン、モデル、ポート、保護機能、回数制限等。調整は次のページで行う |
-| `.local/<environment>/secrets/` | `azd up`が対話入力から自動保存する保護ファイル。利用者がJSONを作成する場所ではない |
-| `schemas/` | 設定の型・指定可能値を検査するSchema。実値を設定する場所ではない |
+| `.local/<environment>/params.local.json` | 導入先ごとのID・公開名・IP計画・連絡先、アプリClient IDと秘密ファイル参照 |
+| `config/test.json`／`config/production.json` | 共通のSKU・モデル・保護機能・利用制限、OAuth表示名／scope／poolとセッション設定 |
+| `.local/<environment>/secrets/` | 対話入力や保護された鍵生成で保存する秘密ファイル |
+| 資材のコード・API正本 | 固定の通信・認証契約、標準API、params/configから導出する内部設定 |
+| `schemas/` | 公開params、共通config、解決済み内部設定それぞれの型・制約 |
 
-ファイル参照は**そのJSONのあるフォルダを基準に解決**します。準備コマンドで作成したparamsは、configを`../../config/test.json`または`../../config/production.json`、秘密ファイルを`./secrets/...`で参照します。`params/`内の公開exampleは配布用の架空値の正本として保持し、実値を直接書き込みません。秘密値はJSONへ記載しません。
+ファイル参照は**そのJSONのあるフォルダーを基準に解決**します。準備済みparamsはconfigを`../../config/test.json`または`../../config/production.json`、秘密を`./secrets/...`で参照します。`.local/`と`.azure/`はチェックアウト直下だけに置き、リンクと所有者専用権限を確認します。実値を公開example・コード・作業記録へ書き込まず、秘密値をJSONへ直接記載しません。
 
-`services.apimInstanceId`は第1章の準備コマンドがparamsへ保存した6文字の識別子です。APIM名と用途別WAFポリシー名に共通利用し、EntraのCM戻り先・構築・更新・撤去で同じ値を使います。`azd up`はこの値を生成し直しません。撤去後に新しく構築するときは、[新しい識別子の準備](../operations.md#撤去後に新しく構築する)と第2章のCM戻り先更新を先に行います。
+公開入力は[params schema](../../schemas/params.schema.json)と[config schema](../../schemas/options.schema.json)で検証します。[configuration schema](../../schemas/configuration.schema.json)は、API配列・完全なprovider・導出値を含む内部合成形式の参照です。内部形式の項目を、そのまま公開params/configへ追加することはできません。
 
-## 4-2. 環境別paramsを確認する
+## 4-2. 環境別paramsと自動生成IDを確認する
 
-第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleから作成したparamsを使います。環境名自体は任意で、SKUの選択とは独立です。別ターミナルでは同じ環境名から参照を設定し直します。
+第1章の[準備コマンド](01-prerequisites.md#1-5-環境別のローカル領域を準備する)で、選んだ公開exampleからparamsを作成します。本番向けの標準構成は`--profile production`を選びます。環境名は任意で、SKUの選択とは独立です。
 
 ```sh
 export DEPLOY_LOCAL_DIRECTORY="$(pwd)/.local/${DEPLOY_ENVIRONMENT}"
@@ -30,286 +31,383 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 test -f "$DEPLOY_PARAMS_FILE"
 ```
 
-ファイルが存在しなければ第1章の準備を完了してから進みます。本番向け標準構成は準備時に`--profile production`を選びます。作成済みの実paramsへ公開例を重ねてコピーしません。configファイルはコピーせず、paramsの`configFile`から選んだ正本を参照します。
+公開例の`services.apimInstanceId`は`<AUTO_GENERATED_APIM_INSTANCE_ID>`です。これはテンプレートの初回自動生成マーカーであり、固定の配備IDではありません。`prepare_local_environment.py`が初回に英小文字・数字6文字のIDへ置換し、paramsへ保存します。通常の再実行は既存params全体と保存済みIDを保持します。`azd up`、登録、更新、撤去の読込時にIDを再生成しません。未解決マーカーや不正な既存IDは検証で停止し、暗黙に修復しません。
 
-公開例のゼロGUID・名前・ドメイン・会社名・メール・IPは見本です。以後の手順で自社の値へ書き換えてください。
+APIM名・用途別WAF名・EntraのCM戻り先・ライフサイクル所有確認は同じ保存済みIDを使います。撤去後の新規構築だけは[新しい識別子の準備](../operations.md#撤去後に新しく構築する)とCM戻り先更新を先に行います。
+
+公開例のGUID・ホスト・CIDR・会社名・メールは実値から独立した架空例です。導入先の値は生成した保護paramsに記入します。既存paramsへ公開例を重ねてコピーせず、別環境の入力・state・秘密も自動流用しません。
 
 ## 4-3. 環境の値を記入する
 
-コピーしたファイルをエディターで開き、次の順に編集します。
-
-1. `subscriptionId`・`azureTenantId`・`entraTenantId`・`productName`・`environmentName`・3つのリージョンを、第1章の確定値へ揃える。
-2. `network.addressSpaces`と全`network.subnetPrefixes`を自社のIP計画へ設定する。管理接続元CIDR、Azure提供DNSの採用条件・追加宛先も確認する。
-3. `gateway.publicHostName`をGatewayの公開FQDNへ、`portal.publicHostName`をPortalの公開FQDNへ設定する。`gateway.authentication.subscriptionKeyHeader`は既定の`api-key`を使用する。証明書SANは両方の公開名を覆う値にし、通知先と連絡先を記入する。
-4. `certificate.plugin`は`Azure`とし、第3章で確認したDNS側Subscription IDとUAMIのリソースIDを`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId`へ必ず記入する。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止する。
-5. Azure RBACの対象Object IDを設定する。CM providerの`clientId`を第2章で作成したEntraアプリのIDへ置き換え、本人接続の有効期間等を確認する。
-6. `gateway.authentication.entra.audience`をegakumi-apiのClient IDへ置き換える。委任scopeは`Gateway.Invoke`。クライアントID一覧や対象API一覧は入力しない。
-
-公開例にはGraph本人接続用の`credentialProviders`と`gateway.authentication.credentialLogin`を含めています。`azd up`は共通基盤を作成した後、Gateway、Portalの順に配備します。Gateway工程でCM provider・credentials DB・認証窓口とAPIを設定し、Portal工程で認証DB・管理画面と検証用購読を準備します。`apiDefinitions: []`なら標準19 API、配列に定義があれば指定したAPIを登録します。公開例の`publishApis`は`true`です。既存のlocal paramsは自動変更しません。
-
+1. `subscriptionId`・`azureTenantId`・`entraTenantId`・製品／環境名・3リージョンを確定する。
+2. `network.addressSpaces`と6つの`network.subnetPrefixes`をIP計画へ合わせる。公開例のCIDRが未使用だと推測しない。
+3. Gateway／Portalの公開FQDN、APIM発行者、監視通知先、ACME連絡先を記入する。証明書DNS名は公開FQDN2件から自動生成する。
+4. 第3章で準備したDNS側Subscription IDとUAMIの完全なResource IDを設定する。DNS-01プラグインは資材でAzureへ固定する。
+5. `management.adminUsername`・SSH公開鍵参照・VMログイン主体を設定する。
+6. `credentialProviders.graphDelegated.clientId`を既存Graph接続アプリのClient IDへ置換し、`clientSecretFile`の保護参照を確認する。
+7. `gateway.authentication.entra.audience`をegakumi-apiのClient IDへ置換する。任意の独立接続窓口アプリを使う場合だけ、`credentialLogin.identity.clientId`と`clientSecretFile`を設定する。
+8. Portal初回の管理グループObject IDと表示名正規表現を用意する。対話なしで実行する場合は`portalApiKeys.platformGroupId`と`groupNamePattern`を事前に設定する。
 
 ### 同一テナントと別テナントの指定
 
-検証用・本番用の公開例には、トップレベルに`azureTenantId`と`entraTenantId`の入力欄があります。同一テナントなら両方に同じIDを、別テナントならそれぞれのIDを設定します。`entraTenantId`の項目自体を省略した場合は`azureTenantId`と同じ値を使います。ゼロGUIDは見本のため、項目を残す場合は実値へ置き換えてください。下記のGUIDは架空の例です。
+`azureTenantId`はAzure構築・RBAC先、`entraTenantId`は社員API認証、標準Graph OAuth、任意の接続窓口アプリの認証先です。同一なら同じID、別ならそれぞれのIDを設定します。`entraTenantId`を省略した場合だけ`azureTenantId`を使います。標準Graphの`oauthTenantId`と接続窓口identityの`tenantId`は公開入力から導出し、独立した上書き欄を設けません。
 
-```json
-{
-  "azureTenantId": "11111111-1111-4111-8111-111111111111",
-  "entraTenantId": "22222222-2222-4222-8222-222222222222"
-}
-```
-
-これは該当2項目だけの抜粋です。公開例のCM providerは、トップレベルの`entraTenantId`を認証先に使います。providerごとに別の認証先を使う場合は、そのproviderへ`oauthTenantId`を追加します。`authorization`、`management.loginAssignments`、`monitoring.auditReaders`等のAzure RBACにはAzure側のObject IDを指定します。`AZURE_TENANT_ID`というazd環境変数もAzure側です。`entraTenantId`を変えても、Azureの配置先は変わりません。
+追加providerが別の認証テナントを使う場合は、`params.credentialProviders.additional[].oauthTenantId`を設定できます。Azure側のVMログイン権限は`management.loginAssignments`へAzure側Object IDを設定します。認証先の変更と、Azure配置先の変更は別の操作です。
 
 ### Gateway全体の認証とAPIごとの認可
 
-`gateway.authentication.subscriptionKeyHeader`に購読キーの受信ヘッダー名を指定します。既定は`api-key`です。APIMの標準機能で有効な購読とProduct/APIの利用範囲を確認し、全体ポリシーを`<base />`で各APIへ継承します。
+購読キーヘッダーは`api-key`、社員委任scopeは`Gateway.Invoke`で資材固定です。キーあり要求はAPIMの購読検証、キーなしBearer要求はEntra JWT検証へ進みます。対象はAPI正本から求め、認証方式の切替、許可Client ID一覧、対象API一覧をparamsへ入力しません。APIの`subscriptionRequired:true`と専用open Productによる社員経路の既存契約を維持します。
 
-`X-Core-Caller-Id`と`X-Core-Subscription-Id`は、検証済み呼出主体を扱う内部用の予約ヘッダーです。大文字・小文字を問わず購読キーヘッダーには指定できません。旧入力で指定している場合は配備前の入力検査で停止するため、`api-key`等の専用ヘッダーへ変更し、API設定とクライアントの送信設定を一緒に更新してください。
-
-APIの`authorization.mode`は既存の`subscriptionKey`を維持します。この値はAPI認可契約の識別子で、Bearerを無効にする設定ではありません。`operationConstraints`で操作・モデル・入力・出力等を制限します。本人接続が必要なAPIにはCM接続セッションの条件を設定します。
-
-公開例の`gateway.authentication.credentialLogin`と対応providerを使って、本人の下流認証を準備します。後続のAPI登録処理でCM共通窓口の保護APIとブラウザーAPIを追加し、本人接続APIでは入口で検証した購読またはユーザー本人へ結び付けた接続セッションも検査します。[CM共通接続手順](credential-manager-login.md)
-
-キーはクライアントのバックエンドへ保管します。画面からはBFF等を利用し、ブラウザーJavaScriptへキーを配布しません。
-
-### 社員のEntra認証（段階実装）
-
-購読キー認証とEntraアクセストークン認証を同じURLで常時併用します。キーを提示した要求はAPIMの購読検証へ、キーなしで`Authorization: Bearer ...`を提示した要求はJWT検証へ進みます。全業務APIを対象とし、認証方式の切替・許可クライアント一覧・対象API一覧は入力しません。**APIの`subscriptionRequired:true`を維持し、キーなし要求だけを専用open Product `core-entra-model-users`からJWT検証へ進めます。** CMのブラウザー戻り先は一時取引で保護する専用経路です。
-
-| 段階 | 状態と確認範囲 |
-| --- | --- |
-| 実装 | 設定schema、JWT検証、本人別上限・監査、専用Productの生成と公開controllerを追加。生成元XMLと管理プレーン読戻しの照合、所属解除／追加、競合検出と失敗復旧を実装 |
-| ローカル | 合成の設定・policy・拒否・遷移・生成XML照合・展開サイズを検証。これらの成功だけで実接続可能と判定しない |
-| 実環境 | 配備・反映と実接続の受入は対象環境ごとに確認する。管理プレーンの配備・読戻し成功だけで実接続の受入完了とは判定しない。対象APIMの全policy・revision・キー範囲の読戻しと、限定した実接続の確認後に利用を開始する |
-
-本節は公開資材の実装状況と確認範囲を示し、特定環境の配備・反映・受入完了を記録するものではありません。
-
-検証用・本番用の公開例には、`gateway.authentication.entra`の全設定欄を用意しています。`audience`のGUIDは独立した合成例です。必ず導入先のegakumi-apiのClient IDへ置き換えてください。新しい標準構成は両方式を利用できる状態で配備します。
-
-認証テナントはトップレベルの`entraTenantId`です。次は設定の抜粋です。既存の`subscriptionKeyHeader`・`credentialLogin`・API定義・Product・購読を保持します。`<...>`は置換必須のプレースホルダーで、そのまま配備入力へ転記しません。古い入力の`entra.enabled`・`allowedClientIds`・`apiNames`は削除してください。クライアント側にはEntraでegakumi-apiの委任アクセス許可と必要な同意を設定します。APIMはクライアントの許可リストを持ちません。
-
-社員利用は基本無制限とし、毎分トークン上限と月間等の期間quotaは`null`で明示的に無効化します。**1000 requests／60秒は機械的な大量要求を抑える暫定防御値の例で、推奨値の確定ではありません。対象Codexの通常利用を確認して調整します。**
+公開paramsに置くのはAPIアプリの`audience`です。`userLimits`はconfigに置き、初期値を移設前と同じ1000 requests／60秒、`tokensPerMinute:null`、`tokenQuota:null`に保ちます。1000／60秒は暫定防御値であり、推奨値の確定や通常利用の受入結果ではありません。
 
 ```json
-"authentication": {
-  "subscriptionKeyHeader": "api-key",
-  "entra": {
-    "audience": "<API_APP_CLIENT_ID>",
-    "requiredScope": "Gateway.Invoke",
-    "userLimits": {
-      "requestRate": {
-        "calls": 1000,
-        "renewalPeriodSeconds": 60
-      },
-      "tokensPerMinute": null,
-      "tokenQuota": null
+{
+  "gateway": {
+    "authentication": {
+      "entra": { "audience": "<API_APP_CLIENT_ID>" }
     }
   }
 }
 ```
 
-| `gateway.authentication.entra`の項目 | 制約・現在の扱い |
-| --- | --- |
-| `audience` | egakumi-apiの非ゼロGUID形式のApplication（client）ID。要求scopeの`api://...`文字列やObject IDを指定しない |
-| `requiredScope` | 単一の委任scope名。既定は`Gateway.Invoke`。resource prefixや複数scopeを含めない |
-| `userLimits.requestRate` | `null`で要求回数制限を無効化。非nullは`calls`が1〜1000000、`renewalPeriodSeconds`が1〜300秒の整数 |
-| `userLimits.tokensPerMinute` | `null`で毎分トークン制限を無効化。非nullは1〜2147483647の整数 |
-| `userLimits.tokenQuota` | `null`で期間トークン枠を無効化。非nullは`tokens`が1〜2147483647の整数、`period`がHourly／Daily／Weekly／Monthly／Yearly |
+上は保護paramsの抜粋です。共通configの対応部分は次の形です。
 
-認証tenantはトップレベルの`entraTenantId`を使います。`entra.tenantId`は追加しません。認証テナント全ユーザーを対象とし、初期の個人／グループ許可台帳は作りません。有効にした共通制限だけを検証済み`tid+oid`ごとに計数し、既存キーの購読counterは維持します。`userLimits`を指定する場合は3項目をすべて揃え、無効化する項目には`null`を指定します。省略・空object・未知項目や不正値を無制限へ読み替えません。
+```json
+{
+  "gateway": {
+    "authentication": {
+      "entra": {
+        "userLimits": {
+          "requestRate": { "calls": 1000, "renewalPeriodSeconds": 60 },
+          "tokensPerMinute": null,
+          "tokenQuota": null
+        }
+      }
+    }
+  }
+}
+```
 
-基盤／Gateway配備は、認証tenant・`audience`・`requiredScope`・`userLimits`を、それぞれ非秘密のAPIM Named Values `core-entra-tenant-id`・`core-entra-api-audience`・`core-entra-required-scope`・`core-entra-user-limits`へ生成します。値は既存paramsから取得し、追加の入力欄やNamed Valuesの手入力は不要です。共通policyはこの4値を参照し、API公開処理は基盤所有の値を上書きせず照合します。
+`userLimits`の3項目はまとめて指定し、無効化には`null`を使います。空object・欠落・未知項目・不正値を無制限へ読み替えません。要求回数はプロンプトの入力回数ではなく、retry・並列・ツール継続等も含むHTTP要求数です。提供元の技術上限やWAFを解除する設定でもありません。
 
-要求回数は人が入力するプロンプトの回数ではありません。ローカルツール結果による回答継続、retry、並列処理は複数のHTTP要求になります。1回のモデル推論の内部reasoningだけで、別HTTP要求が発生するわけではありません。rateだけでは攻撃と通常利用を判定できないため、既存WAF・Entra認証・client権限・API／モデル制約も維持します。`null`は提供元やAPIMの技術上限を解除する設定ではありません。
-
-専用ProductのIDはコード固定で、`openProductId`をparamsへ追加しません。所有markerは`core-owned-entra-model-users-v1`、Productは各sectionの`base`のみを継承します。既存の購読必須Product・関連付け・キーを維持し、対象APIにはopen Productを最大1つだけ関連付けます。有効キーはAPIM標準のactive・API／Product／all-APIs／service範囲検証を使います。不正キーがopen Productへfallbackしても、提示キーと`context.Subscription`の欠落を共通認証で検出して401にし、有効JWTで救済しません。
-
-有効化では、閉じた社員経路でglobal／Product／API／全operationと参照fragment・backend・NamedValue・全revisionを読戻し、専用Product所属を最後に追加します。更新・無効化では所属を先に解除して社員経路を閉じ、Bearer設定を変更します。途中失敗ではBearer受付を停止し、正常キーの利用と読戻しを確認します。APIの購読要件は常にtrueのままです。Productを非公開にするだけ、Bicepの定義を省くだけでは所属解除や無効化の完了にしません。
-
-初期の公開controllerは、対象APIにcurrent・onlineのrevision 1が1つだけある構成を扱います。revision一覧は取得しますが、複数revisionや生成元にないrevisionを自動で取り込みません。新規環境では、controller内部で社員経路を閉じたままAPIを作成し、生成元XMLとの読戻し照合後に専用Product所属を追加します。利用者がparamsを無効／有効へ書き換える工程はありません。既存環境で生成元が不足する場合は、変更前に停止します。
-
-旧生成元形式の`schemaVersion:1`から移行するときは、旧生成元に載る全APIを新形式で再公開します。未更新の旧APIを残す部分更新は、既存のBearer経路を閉じる前に拒否します。新形式への移行後は、部分更新でも未更新APIの生成元と認証対応を保持します。新規APIの追加はAPI本体・revisionと配備対象の共有子資源について、既存生成元との一致または未作成を確認してから開始します。
-
-API公開のBicep出力`entraPublicationSource`は、コードから生成したAPI／operation／fragmentのXMLと接続定義を含みます。公開stdoutへ出さず、既存の保護stateと`.local/<environment>/state/gateway-api-source.json`へ保存します。Entra未有効化の通常公開では既存の公開確認が成功した時点、Entra切替では閉じたstagingの全読戻しが成功した時点で更新します。通常のキー公開に社員有効化専用のrevision／Product制約を追加しません。保存した生成元を検証済みフラグとして信用せず、社員経路の有効化・更新ごとに実XML・依存先・ETag・所属集合を照合します。部分的なBicep失敗などで生成元と一致しない場合は停止し、閉じた状態で管理者が差分と復旧方法を確認します。
-
-新しいsource checkpointは、API生成元とは別に`globalPolicy`・`entraAuthentication`・`entraNamedValues`へ共通policy本文・論理認証設定・4つのNamed Valuesの独立期待値も保存します。これらも生成処理で再検査し、実読戻しと照合します。
-
-更新時には社員Bearer経路の短時間停止が発生します。Product／APIの関連付け操作には条件付きETagの保証がないため、専用Productの所有marker、global／API／ProductのETag、関連付け集合を前後で確認します。未知のProduct、追加revision、独自fragment、NamedValue変更などを自動で採用しません。失敗時は今回追加した関連付けを先に解除し、この処理が書いたXMLとETagがまだ一致するときだけglobalを戻します。閉鎖・復旧を確認できない場合はその状態を報告し、管理者の確認を必要とします。
-
-入口認証の対象はAPI正本から自動生成します。API／操作の下流認証は入口と別で、Graph等はCM本人接続、モデルはManaged Identityや登録済みの下流資格情報を使います。CM接続、非同期Document、Realtimeの結果・接続は検証済み本人へ結び付け、別人が引き継げないことを確認します。HTTP／SSE／MCP／WebSocketごとに、既存キーの状態・範囲・利用枠、無効キー＋有効JWTの拒否、継承順序、所有者・更新・復旧を実APIMで別途確認します。合成試験を全経路の実接続完了と扱いません。[作業計画](../reference/entra-app-rollout-plan.md)と[追加受入項目](../testing/integration-tests.md#entra-gateway-oauthと専用open-productの追加受入)を参照してください。
+共通Named Valuesのtenant／audienceはparams、scopeは固定資材、userLimitsはconfigから内部生成します。手入力欄やNamed Valuesの手動変更を増やしません。API正本・policyの読戻し、revision、Product所属、キー範囲と復旧の確認は[Entra作業計画](../reference/entra-app-rollout-plan.md)と[追加受入項目](../testing/integration-tests.md#entra-gateway-oauthと専用open-productの追加受入)に従います。
 
 ### 基盤作成とAPI利用を分けて選ぶ
 
-公開paramsの初期値は`apiDefinitions:[]`・`publishApis:true`で、Graph本人接続用のCM設定を含みます。導入先のID等を記入して`azd up`を実行すると、5RG、ネットワーク、APIM、共通SQLサーバー、Foundry・Project・選択モデル、証明書、管理VM、監視・API Center、ACA・ACRを作成し、GatewayとPortalまで順に配備します。
+標準APIは[API正本](../../apps/gateway/apim/apis/)から常用で解決します。公開`apiDefinitions`と`publishApis`による置換・切替は廃止しました。解決したAPI配列や環境固有URLをparamsへ書き戻しません。
 
-| paramsの状態 | 構築・利用の結果 |
+| 入口 | 実行範囲 |
 | --- | --- |
-| `azd up`、`publishApis:true` | 共通基盤・選択モデル・共有Entra secretを構築し、Gateway→Portalの順でアプリ・API・検証用購読を配備する |
-| `azd up`、`publishApis:false` | `preup`の冒頭で課金資源の作成前に停止する。入力値を自動でtrueへ変えない |
-| `azd provision` | 共通基盤だけを構築する。Gateway・Portalの追加配備は実行しない |
-| 基盤作成後にGUIでAPI登録 | CoreのAPI一覧への登録は不要。API側で共通認証を継承し、公開パス・操作・追加認可と接続先を設定する |
-| Gateway配備コマンドの`--execute`、`publishApis:true` | credentials DB・CM・認証窓口を設定に応じて配備し、共通認証ポリシーと標準19 APIまたは明記したAPIを登録・更新する |
-| 登録コマンド、`publishApis:false` | 登録計画を生成する。`--execute`によるAzureへの反映は停止する |
+| `azd up` | 初期基盤の後にGateway→Portalを順に配備する |
+| `azd provision` | 基盤だけを構築する。アプリ配備は別工程 |
+| 個別配備コマンド、`--execute`なし | 計画を確認する |
+| 個別配備コマンド、`--execute`あり | 指定したアプリの反映を実行する |
 
-標準一式は`apiDefinitions: []`のまま初回の`azd up`で登録でき、定義のコピーやAPIごとの選択は不要です。接続先は作成済み基盤の出力からメモリー内で解決し、paramsの空配列は書き換えません。基盤に必要なWAFの経路・本文形式と監査ログ等の情報も、同じ標準定義から事前に反映します。基盤だけを作りGUIで登録する場合は`azd provision`を使い、APIの正本を別途管理します。OAuth用secretは共通基盤で準備し、CM providerはGateway配備で設定します。
-
-以下は、標準一式ではなく、対象APIや独自APIを明示する場合の手順です。
-
-1. [標準API定義](../../apps/gateway/apim/apis/)から必要なAPIファイルを選び、そのJSONオブジェクトをparamsの`apiDefinitions`配列へ記載します。モデルだけなら[openai-inference-v1.json](../../apps/gateway/apim/apis/openai-inference-v1.json)、PIIなら[pii-v1.json](../../apps/gateway/apim/apis/pii-v1.json)を選べます。各ファイルは1つのAPI定義です。
-2. 利用するProductと購読を設定し、CM接続の条件が必要なAPIにはその設定を加えます。下の省略条件と[認証設定と購読](04-params.md#認証設定と購読)を確認し、`__NAME__`の置換欄を実値へ置換します。
-3. Graph等の正式な外部接続APIでは、backend URL・認証をAPI定義へ設定します。APIMの外向き宛先は、外部backend・操作別override・本人情報取得の業務設定から配備時に生成します。FWの追加配列へ同じFQDNを転記しません。`services.modelDeployments`、SKU、WAF上限等はconfig正本側の項目で、APIファイルには含めません。paramsへ転記すると構造検査で拒否します。gRPCの提供要件は廃止し、`gateway.grpc`全体とgRPC API／proto入力を拒否します。モデル名と許可モデルの整合も確認します。
-4. ファイル参照をparams基準へ直し、`python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"`で確認します。`publishApis:true`で初期の`azd up`を実行すると、指定したAPIもGateway工程で登録します。構築済み環境では、同じparamsとCore stateを使って[個別の配備コマンド](../operations.md#同じ環境を更新する)から更新できます。
-
-| 利用する方式 | 必要な定義と省略できるもの |
-| --- | --- |
-| 購読キーだけ | `authorization.mode:"subscriptionKey"`と`operationConstraints`。`keySubscriptions`で作成するProduct購読を指定する。既存購読を再利用する場合はその利用範囲を確認する |
-| モデル・PII・生成MCP | 同じ購読キーを使い、APIM MIでFoundryへ接続する。これらのAPIの下流認証にはCMを使わない。PortalのEntra設定は別に準備する |
-| 本人のCM接続 | `graph-profile-v1`等に`credentialConnection.mode:"personal"`を設定。providerと共通`credentialLogin`を合わせて登録する |
-| 固定サービスCM接続 | `credentialConnection.mode:"service"`と、providerの`connectionNames`に存在する固定接続名を設定する |
-
-Gatewayだけを個別配備し、本人接続を使わない場合は、`credentialProviders`を`[]`にし、`gateway.authentication.credentialLogin`を省略できます。Portalも配備する通常の`azd up`では、`portalAuthentication.credentialProviderName`が参照するEntra用profileとsecretを用意します。標準19 API一式では、Graph本人接続用の`graph-delegated`と共通`credentialLogin`も必要です。
-
-配列は追加マージではなく**全置換**です。設定ファイルの参照を重ねると配列は置き換わります。同じAPIの操作や認証設定はそのAPIの全体を保存しますが、APIM上の全APIを列挙する必要はありません。[標準API定義](../../apps/gateway/apim/apis/)は推論・PII・Graph・音声・画像等の19 APIを1つずつ管理します。正式endpointと認証設定を確認してから公開します。
-
-### 外部ツールの旧SSEをAPIMへ接続する
-
-CoreはMCP Streamable HTTP/旧SSEの汎用中継に対応します。接続するMCPサーバーの公開契約に合わせて入口を定義します。
-
-旧SSE連携では、接続を開くGETと`endpoint`イベントで案内されるPOST先を分けて扱います。登録した`mcpProxy.endpoints`のSSE/messageパスと実サーバーの待受を照合し、公開POSTのsuffixは登録済みmessageパスを末尾`/`も含めて保持します。公開prefix・認証・入口の管理責任は外部側の定義と合わせます。サーバーから通知されたsession IDや任意URLを、未登録の接続先として受け入れません。
-
-`tests/fixtures/external-api-definitions.json`はこの経路をローカルで回帰検証する合成fixtureであり、導入先へ配備する設定例ではありません。
-
+初期構築と構築済み環境の運用更新は[運用手順](../operations.md)で区別します。公開入力の整理だけで認証方式・アプリClient ID・secret・既存APIを切り替えません。
 
 ## 4-4. ローカルで設定を検査する
 
 ```sh
-python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
-設定の欠落・未知の項目・IP重複・認証の組合せ等があれば、示された項目を直します。この検査はsecretの値・Azure権限・実モデルの配備可否・疎通を確認しません。secretファイルがまだ無いこと自体は、事前に手作りする理由にはなりません。
+未知項目・旧入力・ID形式・IP重複・認証の組合せ等を検査します。secret値、Azure権限、実モデルの配備可否、通信の受入はこの検査で確認しません。秘密ファイルがない場合は、正式手順の保護された対話入力を使います。
+
+`configFile`のない生成済み内部JSONは、API・provider配列や検証用の公開フラグを引き続き読み込めます。ただし、廃止した外部WAF選択・監査IP許可・追加閲覧者／管理者・IDPS検査除外・独自SNAT／IDPS範囲を指定した旧JSONは、Bicep向けの資材出力時に停止します。入力の読込成功だけで移行済みとは判断せず、既存の意図を確認してから固定構成へ移行します。
+
+| 確認段階 | 今回の扱い |
+| --- | --- |
+| 配置判断 | 71主項目と分割項目の判断を確定し、下表へ記録 |
+| 実装 | 公開入力境界、固定値／導出値の合成、config初期値の移設、例・説明を実装 |
+| ローカル検証 | 合成データで設定読込・内部生成・新規cloneのCLI・Bicepコンパイル・公開情報ガードを確認 |
+| Azure反映 | 今回の一括改修は未実施 |
+| 全環境再構築E2E・実受入 | 未実施。ローカル確認と区別する |
+
+確認した試験群は、設定読込91件、固定入力・内部互換31件、Portal初期設定24件、新規clone／分割CLI9件、Bicep関連38件、公開情報ガード65件です。群ごとの件数であり、重複を除いた総件数ではありません。追加のAPI・認証・配備回帰も確認し、共有HTTP/2クライアントの実行環境が必要な6件は未実行として区別します。
 
 ## paramsリファレンス
 
-下表の`<...>`は導入先の入力値です。CIDR・ポート等の具体例は公開ファイルに含まれる初期例で、自社へ適用できると確認した値だけを使用します。利用者IDやAPI定義内の実endpointも、各担当者から取得して明示指定します。Schema：[params](../../schemas/params.schema.json)／[合成設定](../../schemas/configuration.schema.json)。
-
+以下は保護paramsに残す35主項目と、分割項目から残る登録情報の参照です。`<...>`は用途付きプレースホルダーで、そのまま実入力へ使いません。ファイル参照は準備済みparams基準です。
 
 ### 企業・環境ごとに確認する値（params）
 
-この表が最初に確認する範囲です。ファイル参照の例は準備後の`.local/<environment>/params.local.json`を基準にしています。ID・連絡先・公開名・IP計画・権限と秘密ファイル参照を確定します。CM providerと、個別指定する`apiDefinitions`は初期構築前に設定します。標準一式は空配列のまま使います。
-
-| パラメタ名 | 指定値・公開例 | 意味 |
+| 項目 | 公開例・制約 | 用途 |
 | --- | --- | --- |
-| `schemaVersion` | `1` | 設定形式の版。整数1。 |
-| `configFile` | テスト：`"../../config/test.json"`／本番：`"../../config/production.json"` | 標準configの正本への相対パス。このparamsファイルのフォルダーを基準に解決。 |
-| `productName` | `"<PRODUCT_NAME>"` | リソース名に使う製品名。先頭英小文字、英小文字・数字・内部ハイフン、最大24字。 |
-| `environmentName` | `"<ENVIRONMENT_NAME>"` | 命名とタグに使う任意の環境名。test/dev/prodは参考例。先頭英小文字、英小文字・数字・内部ハイフン、最大12字。SKU・保持・保護の切替には使わない。 |
-| `subscriptionId` | `"<SUBSCRIPTION_ID>"` | 構築先Subscription ID。公開例のゼロGUIDを企業の実値へ置換。 |
-| `azureTenantId` | `"<AZURE_TENANT_ID>"` | Azureリソースの構築先Tenant ID。Subscription・Key Vault・Azure RBAC・管理APIに使用。 |
-| `entraTenantId` | `"<ENTRA_TENANT_ID>"`（省略可） | OAuth接続の既定認証先と社員Entra認証tenant。省略時はazureTenantId。Azure配置先とは別。 |
-| `services.apimInstanceId` | 準備コマンドが生成 | APIM名と用途別WAFポリシー名の末尾に使う英小文字・数字6文字。構築・更新・途中再開・撤去で保持。configには記載しない。 |
-| `services.publisherName` | `"<APIM_PUBLISHER_NAME>"` | APIMの発行者表示名。 |
-| `services.publisherEmail` | `"<APIM_PUBLISHER_EMAIL>"` | APIMの発行者メール。導入先の実値へ変更。 |
-| `gateway.publicHostName` | `"<GATEWAY_FQDN>"` | API専用の公開FQDN。公開DNSと証明書に一致させる。 |
-| `gateway.authentication.subscriptionKeyHeader` | `"api-key"` | 全API共通の購読キー受信ヘッダー名。APIの設定と一致させる。 |
-| `gateway.authentication.credentialLogin` | `graph-delegated`を対象に設定済み | CM本人接続の対象provider・セッション有効期間・ログイン取引の期限・回数制限。詳細は後述。 |
-| `gateway.authentication.credentialLogin.identity` | 省略可 | CM窓口のOIDC本人確認を下流providerから独立させる3値。省略時は既存方式。詳細は後述。 |
-| `gateway.authentication.entra` | 公開例に設定済み、APIアプリIDの置換必須 | 全業務APIの社員委任認証の設定。キー認証と併用する。認証tenant・API audience・委任scopeを検証し、クライアント一覧やAPI一覧の入力は不要。実配備・受入は別工程。詳細は前述。 |
-| `management.adminUsername` | `"<MANAGEMENT_USERNAME>"` | Linuxの初期管理者名。root/admin等の予約名を除く、最大32字。 |
-| `management.sshPublicKeyFile` | `"./secrets/management-ssh.pub"` | 必須の公開鍵入力兼生成先。有効な既存RSA 2048bit以上/Ed25519公開鍵は外部保存でも再利用。公開鍵・秘密鍵が両方ない場合だけ、同じ環境の`.local/<environment>/secrets/`へパスフレーズなしRSA4096鍵対をpreupで生成。秘密鍵はAzureへ送らない。 |
-| `management.loginAssignments` | `[]` | Azure RBACのVMログイン許可。各要素principalId/principalType/role。roleはUser/Administrator。 |
-| `monitoring.operatorEmailAddresses` | `["<OPERATOR_EMAIL>"]` | 監視通知先メール配列、1件以上。 |
-| `certificate.contactEmail` | `"<ACME_CONTACT_EMAIL>"` | ACME連絡先。 |
-| `certificate.domainNames` | `["<CERTIFICATE_SAN>"]` | 証明書のSAN。ワイルドカードは直下の一階層のみ。省略時はGatewayの公開名。 |
-| `certificate.azureDnsSubscriptionId` | `"<DNS_SUBSCRIPTION_ID>"` | 構築前に必須設定。公開DNSゾーンがあるSubscription ID。 |
-| `certificate.azureDnsManagedIdentityResourceId` | `"<DNS_MANAGED_IDENTITY_RESOURCE_ID>"` | 構築前に必須設定。DNS操作権限を事前付与したUAMIの完全なリソースID。管理VMへ紐づける。Client IDではない。 |
-| `authorization.projectAdministrators` | `[]` | 初期Foundry Project管理者。 |
-| `authorization.projectDevelopers` | `[]` | 初期Project開発者。 |
-| `authorization.foundryReaders` | `[]` | FoundryのReader。 |
-| `authorization.catalogReaders` | `[]` | API CenterのData Reader。 |
-| `credentialProviders` | Graph本人接続用の`graph-delegated` | 本人OAuth接続のprovider設定。構築前に`clientId`等を記入する。詳細は後述。 |
-| `apiDefinitions` | `[]` | `azd up`のGateway工程と個別のGateway配備で、空配列なら標準19 API、定義があれば指定したAPIを登録。標準APIはメモリー内で解決し、paramsは書き換えない。 |
-| `publishApis` | `true` | 全体の`azd up`とGatewayの`--execute`を許可する。falseではupを課金前に停止し、個別の登録計画だけを生成できる。基盤だけなら`azd provision`を使う。falseへの変更で稼働中APIを停止しない。 |
-| `gateway.existingWafPolicyId` | `""` | 既存WAF policyのResource ID。空なら資材が作成。外部policyの実効設定は別途確認。 |
-| `gateway.rateLimits.subscriptionKey.overrides` | `[]` | 有効時の呼出主体別calls/renewalPeriodSeconds。区分内のcallerId重複不可。 |
-| `gateway.rateLimits.application.overrides` | `[]` | 追加アプリ区分は無効のまま保持する。共通上限はsubscriptionKeyへ設定する。 |
-| `monitoring.auditReaders` | `[]` | 監査コンテナーの読取主体。各要素principalId/principalType/collector/containerName。 |
-| `certificate.plugin` | `"Azure"` | Azure Public DNSのDNS-01認証に使用するPosh-ACMEプラグイン。 |
-
-証明書はAzure Public DNSによるDNS-01で自動発行・更新します。構築前に、公開DNSゾーンのSubscription IDとDNS用UAMIのリソースIDを設定してください。
-
-#### リージョンとタグ
-
-| パラメタ名 | 指定値・公開例 | 意味 |
-| --- | --- | --- |
-| `location` | `"<LOCATION>"` | 必須。ネットワーク・APIM・管理VM等の配置リージョン。 |
-| `foundryLocation` | `"<FOUNDRY_LOCATION>"` | 必須。Foundryの配置リージョン。モデルの地域別提供・利用枠を確認。 |
-| `apiCenterLocation` | `"<API_CENTER_LOCATION>"` | 必須。API Centerの配置リージョン。 |
-| `tags` | `{"purpose":"<PURPOSE_TAG>"}` | 文字列のタグ。product/environmentタグは製品名・環境名から追加。 |
+| `schemaVersion` | `1` | 入力形式の版 |
+| `configFile` | `../../config/test.json`または`../../config/production.json` | 共通config選択 |
+| `productName` | 公開例`egakumi` | 資源名の製品接頭辞 |
+| `environmentName` | 公開例`test`／`production` | 環境名。SKU選択と独立 |
+| `subscriptionId` | 非ゼロGUID | Azure構築先 |
+| `azureTenantId` | 非ゼロGUID | Azure構築・RBAC先 |
+| `entraTenantId` | 非ゼロGUID、省略可 | OAuth・社員認証先。省略時Azure側tenant |
+| `location` | 公開例のAzureリージョン | ネットワーク・APIM・管理VM等 |
+| `foundryLocation` | 公開例のAzureリージョン | Foundryモデル提供・利用枠を別途確認 |
+| `apiCenterLocation` | 公開例のAzureリージョン | API Center |
+| `network.addressSpaces` | 公開例10.40系の独立した合成CIDR | VNet。利用者のIP計画を確認 |
+| `network.subnetPrefixes.agw` | VNet内IPv4 CIDR | AppGW |
+| `network.subnetPrefixes.pep` | VNet内IPv4 CIDR | Private Endpoint |
+| `network.subnetPrefixes.firewall` | VNet内IPv4 CIDR | AzureFirewallSubnet |
+| `network.subnetPrefixes.apim` | VNet内IPv4 CIDR | Internal APIM |
+| `network.subnetPrefixes.management` | VNet内IPv4 CIDR | 管理VM |
+| `network.subnetPrefixes.aca` | VNet内IPv4 CIDR | ACA |
+| `services.publisherName` | 独立した架空例`Example Corporation` | API提供組織・部門・運用チームの表示名 |
+| `services.publisherEmail` | `example.com`の架空メール | APIM発行者連絡先 |
+| `services.apimInstanceId` | 初回prepare生成、6文字 | APIM・用途別WAF・戻り先・所有確認で保持 |
+| `gateway.authentication.entra.audience` | egakumi-apiの非ゼロClient ID | v2アクセストークンの宛先。Object IDやscope URIではない |
+| `gateway.authentication.credentialLogin.identity.clientId` | 任意。指定時非ゼロGUID | 独立した接続窓口アプリ |
+| `gateway.authentication.credentialLogin.identity.clientSecretFile` | identity指定時必須 | 上記アプリ専用の保護秘密参照 |
+| `gateway.publicHostName` | `gateway.example.com`の架空例 | Gateway公開DNS名 |
+| `management.adminUsername` | 独立したLinuxアカウント名例 | 初期管理者 |
+| `management.sshPublicKeyFile` | `./secrets/management-ssh.pub` | 既存保護公開鍵参照または同環境内の鍵対生成先 |
+| `management.loginAssignments` | `[]` | Azure側VMログイン権限。principalId／principalType／role |
+| `monitoring.operatorEmailAddresses` | 架空メール配列、1件以上 | Azure Monitor通知先 |
+| `certificate.contactEmail` | 架空メール | ACME連絡先 |
+| `certificate.azureDnsSubscriptionId` | 非ゼロGUID | 事前作成した公開DNSゾーンのSubscription |
+| `certificate.azureDnsManagedIdentityResourceId` | 完全なResource ID | 事前付与済みDNS更新UAMI |
+| `tags` | 文字列map | 利用者タグ。システムタグは別途生成 |
+| `portal.publicHostName` | `portal.example.com`の架空例 | Portal公開DNS名 |
+| `portalApiKeys.platformGroupId` | 初回対話のため省略可 | 管理画面と検証用購読の管理グループObject ID |
+| `portalApiKeys.groupNamePattern` | 初回未設定は`""` | 所有候補の表示名RE2正規表現。空欄は全許可ではない |
 
 #### ネットワーク・監査の接続設定
 
-paramsの`network`・`network.addressSpaces`・`network.subnetPrefixes`は必須です。全サブネットをVNet範囲内へ重複なく割り当て、企業の既存IP計画・接続予定先と照合して指定します。公開例の10.40系CIDRを、導入先でも未使用と推測しません。
+全サブネットをVNet範囲内へ重複なく割り当てます。SNAT・IDPS private範囲・bypass、監査公開IP、証明書DNS名を独立したparamsに追加しません。通信の詳細・既存環境の適用は[通信要件](../reference/network-communication-requirements.md)、[NSG判断記録](../reference/network-security-design.md)、[Firewall判断記録](../reference/firewall-policy-design.md)、[検証記録](../reference/network-security-validation.md)を参照してください。
 
-NSGとFirewallの初期規則はBicepで固定します。FW専用の追加規則4配列と追加FQDN2配列は廃止し、空配列でも入力検査で拒否します。`snatPrivateRanges`の公開例は`["IANAPrivateRanges"]`で、空配列とは異なる指定です。SKU・ゾーン・IDPS・SNATの機能設定は引き続き使用できます。管理VMへのSSH許可は初期不作成とし、Azure提供DNS・標準NTPも固定します。作成有無フラグや任意規則はparamsへ指定しません。
+SSH公開鍵は、利用者が明示した保護入力にある有効なRSA 2048bit以上／Ed25519の1件を再利用できます。公開鍵と秘密鍵がともにない場合だけ、同環境の`.local/<environment>/secrets/`へ鍵対を生成します。リンク・権限・既存秘密鍵・無効な公開鍵・外部の未作成先を確認し、上書きや別環境からのコピーはしません。失敗やdownでも鍵対を保持します。
 
-以前のJSONにある`network.firewall.apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は取り除いてください。APIMの`allow-apim-approved-services`は常設で、既存証明書規則と同じHTTPS許可の`oneocsp.microsoft.com`を基底に、正規の外部APIと本人情報取得先だけを生成します。外部接続はHTTPS／WSS・443・DNS名に限定し、IP・別ポート・資格情報入りURLはCoreの変更前に検査で停止します。
+### configへ移した共通値
 
-管理VMの`allow-mgmt-vm-approved-services`も常設です。固定のARM・PowerShell取得先6件、`certificate.directory`に対応する公式ACME宛先1件、Gateway／Portal構築と共用する公開ホスト2件を組み合わせます。証明書・業務API・認証の設定は維持し、FW専用の選択入力には置き換えません。Core再配備では、厳密に所有確認した旧／新APIM規則の既存宛先を生成ARM入力だけへ保持します。公開paramsは変更せず、規則名の重複や別通信境界は停止します。
+移設で初期値を変更していません。セッション／利用制限の変更は、既存接続・利用中セッションへの影響を別途確認します。
 
-各サブネットのNSG初期集合はBicepで固定します。規則の送信元・宛先には、このVNet内のサブネットCIDRと構築した資源の割当IPを組み込みます。AppGWの公開Web TCP80／443は別規則で許可し、同VNetのFirewall公開IPからのHTTPSも明示します。gRPCのTCP8443は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`は廃止した入力です。以前のJSONから削除してください。企業のIP制限・管理接続元・ハブ接続等の変更は構築後にAzureポータルで行い、再構築・再適用時に初期集合との差を確認します。APIの認証・認可は維持します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
+| 共通設定 | test／production初期値 |
+| --- | --- |
+| `gateway.authentication.entra.userLimits.requestRate.calls` | 1000 |
+| `gateway.authentication.entra.userLimits.requestRate.renewalPeriodSeconds` | 60秒 |
+| `gateway.authentication.entra.userLimits.tokensPerMinute` | `null` |
+| `gateway.authentication.entra.userLimits.tokenQuota.tokens` | 親`tokenQuota:null`で無効 |
+| `gateway.authentication.entra.userLimits.tokenQuota.period` | 親`tokenQuota:null`で無効 |
+| `gateway.authentication.credentialLogin.providerNames` | `["graph-delegated"]` |
+| `gateway.authentication.credentialLogin.idleTimeoutSeconds` | 604800秒 |
+| `gateway.authentication.credentialLogin.absoluteLifetimeSeconds` | 2592000秒 |
+| `gateway.authentication.credentialLogin.rotationIntervalSeconds` | 86400秒 |
+| `gateway.authentication.credentialLogin.rotationGraceSeconds` | 300秒 |
+| `gateway.authentication.credentialLogin.rotationHandoffSeconds` | 600秒 |
+| `gateway.authentication.credentialLogin.rotationCandidateTtlSeconds` | 600秒 |
+| `gateway.authentication.credentialLogin.transactionLifetimeSeconds` | 600秒。省略時の内部既定値300秒と区別 |
+| `gateway.authentication.credentialLogin.loginCallsPerMinute` | 10 |
 
-VNetとFirewallはBicep内でAzure提供DNSへ固定します。`network.dnsServers`と`network.firewall.dnsServers`はconfig／params／合成設定ファイルの入力項目から削除し、空配列でも指定を拒否します。以前のJSONから両方とも取り除いてください。管理VMのguestには標準NTPとして`ntp.ubuntu.com`を設定します。管理VMとAPIMのNTP通信は、NSGでInternet宛UDP123、Firewallで各サブネットから宛先`*`へのUDP123を固定許可し、Firewall判定をFQDNの名前解決結果に依存させません。既存のPHCやOS側source設定は保持し、実際の同期元・精度は別途確認します。[NTP設計と確認](../operations/network-security-groups.md)を参照してください。企業の独自DNSへ切り替える際は、構築後にポータルでDNS・必要な53番規則・名前解決を確認します。
+Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、下の分割項目で記録します。これらを主項目14件へ加算しません。
 
-| パラメタ名 | 指定値・公開例 | 意味 |
+## 公開入力71主項目の判断記録
+
+主項目は、固定objectのleaf、配列全体、任意keyのmapを数えます。test／productionの重複は数えず、`$schema`・`$comment`は補足metadataとして除外しました。任意入力も対象に含みます。APIや運用payloadの内部契約全体を71件で網羅したという意味ではありません。
+
+| 分類 | 主項目数 |
+| --- | ---: |
+| params保持 | 35 |
+| 資材固定・内部導出 | 20 |
+| config移設 | 14 |
+| 分割 | 2 |
+| 合計 | 71 |
+
+63の内部16項目と71の内部3項目は、分割判断の内訳です。主項目総数へ二重加算せず、末端の配置数は別に数えます。下表の項目名は棚卸時の入力名であり、資材固定とした旧入力を現行params/configへ再追加する一覧ではありません。
+
+| 番号 | 棚卸対象 | 配置 | 判断・初期動作 |
+| ---: | --- | --- | --- |
+| 1 | `schemaVersion` | params | 形式の版1を保持 |
+| 2 | `configFile` | params | 参照元paramsから共通configを選択 |
+| 3 | `productName` | params | 環境所有者が資源名接頭辞を指定 |
+| 4 | `environmentName` | params | 命名・state所有の環境識別 |
+| 5 | `subscriptionId` | params | 構築先Subscriptionを明示 |
+| 6 | `azureTenantId` | params | 構築先Azure tenantを明示 |
+| 7 | `entraTenantId` | params | OAuth・社員認証tenantを保持 |
+| 8 | `location` | params | 共通資源のリージョン |
+| 9 | `foundryLocation` | params | Foundry提供リージョン |
+| 10 | `apiCenterLocation` | params | API Centerリージョン |
+| 11 | `network.addressSpaces` | params | VNetのIP計画 |
+| 12 | `network.subnetPrefixes.agw` | params | AppGWサブネット |
+| 13 | `network.subnetPrefixes.pep` | params | PEサブネット |
+| 14 | `network.subnetPrefixes.firewall` | params | Firewallサブネット |
+| 15 | `network.subnetPrefixes.apim` | params | APIMサブネット |
+| 16 | `network.subnetPrefixes.management` | params | 管理VMサブネット |
+| 17 | `network.subnetPrefixes.aca` | params | ACAサブネット |
+| 18 | `network.firewall.snatPrivateRanges` | 資材固定 | IANAPrivateRanges＋構築VNet範囲からSNAT除外を生成 |
+| 19 | `network.firewall.idpsPrivateRanges` | 資材固定 | PremiumのみRFC1918＋構築VNet範囲を重複排除して生成 |
+| 20 | `network.firewall.bypassTrafficSettings` | 資材固定 | 初期IDPS bypassを空に固定 |
+| 21 | `services.publisherName` | params | API提供組織の表示名 |
+| 22 | `services.publisherEmail` | params | API運用の連絡先 |
+| 23 | `services.apimInstanceId` | params | 初回生成・params保存・通常更新保持 |
+| 24 | `gateway.authentication.subscriptionKeyHeader` | 資材固定 | api-keyへ固定 |
+| 25 | `gateway.authentication.entra.audience` | params | egakumi-apiのClient ID |
+| 26 | `gateway.authentication.entra.requiredScope` | 資材固定 | Gateway.Invokeへ固定 |
+| 27 | `gateway.authentication.entra.userLimits.requestRate.calls` | config | 共通要求回数1000を保持 |
+| 28 | `gateway.authentication.entra.userLimits.requestRate.renewalPeriodSeconds` | config | 共通期間60秒を保持 |
+| 29 | `gateway.authentication.entra.userLimits.tokensPerMinute` | config | 初期nullを保持 |
+| 30 | `gateway.authentication.entra.userLimits.tokenQuota.tokens` | config | 親tokenQuotaの初期nullを保持 |
+| 31 | `gateway.authentication.entra.userLimits.tokenQuota.period` | config | 親tokenQuotaの初期nullを保持 |
+| 32 | `gateway.authentication.credentialLogin.identity.tenantId` | 資材固定 | entraTenantIdから内部導出 |
+| 33 | `gateway.authentication.credentialLogin.identity.clientId` | params | 任意の独立接続窓口アプリClient ID |
+| 34 | `gateway.authentication.credentialLogin.identity.clientSecretFile` | params | 上記アプリの保護秘密ファイル参照 |
+| 35 | `gateway.authentication.credentialLogin.providerNames` | config | graph-delegatedの明示選択を保持 |
+| 36 | `gateway.authentication.credentialLogin.idleTimeoutSeconds` | config | 604800秒を保持 |
+| 37 | `gateway.authentication.credentialLogin.absoluteLifetimeSeconds` | config | 2592000秒を保持 |
+| 38 | `gateway.authentication.credentialLogin.rotationIntervalSeconds` | config | 86400秒を保持 |
+| 39 | `gateway.authentication.credentialLogin.rotationGraceSeconds` | config | 300秒を保持 |
+| 40 | `gateway.authentication.credentialLogin.rotationHandoffSeconds` | config | 600秒を保持 |
+| 41 | `gateway.authentication.credentialLogin.rotationCandidateTtlSeconds` | config | 600秒を保持 |
+| 42 | `gateway.authentication.credentialLogin.transactionLifetimeSeconds` | config | 明示値600秒を保持 |
+| 43 | `gateway.authentication.credentialLogin.loginCallsPerMinute` | config | 毎分10回を保持 |
+| 44 | `gateway.publicHostName` | params | Gateway公開DNS名 |
+| 45 | `gateway.existingWafPolicyId` | 資材固定 | 資材所有の用途別WAFへ固定 |
+| 46 | `gateway.rateLimits.subscriptionKey.overrides` | 資材固定 | 静的caller別上書きを廃止し購読SQL profileを使用 |
+| 47 | `gateway.rateLimits.application.overrides` | 資材固定 | 追加アプリ区分の静的上書きを廃止 |
+| 48 | `management.adminUsername` | params | 初期Linux管理者名 |
+| 49 | `management.sshPublicKeyFile` | params | 既存保護鍵参照と同環境内生成 |
+| 50 | `management.loginAssignments` | params | VMログイン主体と権限 |
+| 51 | `monitoring.operatorEmailAddresses` | params | 監視通知先メール |
+| 52 | `monitoring.auditAllowedIpAddresses` | 資材固定 | 初期Storage公開ipRulesを空に固定 |
+| 53 | `monitoring.auditReaders` | 資材固定 | 追加監査readerを空に固定。管理VM MIは保持 |
+| 54 | `certificate.contactEmail` | params | ACME連絡先 |
+| 55 | `certificate.domainNames` | 資材固定 | Gateway／Portal公開名2件から正確なDNS名を生成 |
+| 56 | `certificate.plugin` | 資材固定 | Azure Public DNS DNS-01へ固定 |
+| 57 | `certificate.azureDnsSubscriptionId` | params | 事前作成したDNS zoneのSubscription |
+| 58 | `certificate.azureDnsManagedIdentityResourceId` | params | 事前作成したDNS更新UAMI Resource ID |
+| 59 | `authorization.projectAdministrators` | 資材固定 | 追加Project管理者を初期空に固定 |
+| 60 | `authorization.projectDevelopers` | 資材固定 | 追加Project開発者を初期空に固定 |
+| 61 | `authorization.foundryReaders` | 資材固定 | 追加Foundry readerを初期空に固定 |
+| 62 | `authorization.catalogReaders` | 資材固定 | 追加API Center readerを初期空に固定 |
+| 63 | `credentialProviders` | 分割 | 標準Graph固定契約／共通定義／環境登録へ分離 |
+| 64 | `apiDefinitions` | 資材固定 | API正本を常用し公開置換入力を廃止 |
+| 65 | `tags` | params | 利用者タグmapを保持 |
+| 66 | `publishApis` | 資材固定 | 内部trueとし実行入口の計画／反映境界を保持 |
+| 67 | `portal.publicHostName` | params | Portal公開DNS名 |
+| 68 | `portalApiKeys.platformGroupId` | params | 初回の管理グループObject ID |
+| 69 | `portalApiKeys.groupNamePattern` | params | 環境別の所有候補表示名正規表現 |
+| 70 | `portalApiKeys.verificationSubscriptions` | 資材固定 | 安定した検証購読を内部生成、同一IDの既存キー保持 |
+| 71 | `portalApiKeys.groups` | 分割 | 管理グループと全標準製品を導出し共通上限をconfig化 |
+
+
+### 63. 標準Graph providerの内部16項目
+
+標準`graphDelegated`スロットに対してparams 2末端、config 4末端、資材固定10末端です。追加providerの汎用契約には別の定義／登録境界を適用し、標準Graphの固定化を理由に汎用OAuth2や別tenantのaad接続を廃止しません。
+
+| 番号 | 旧標準providerの末端 | 配置・現行形 |
 | --- | --- | --- |
-| `network.addressSpaces` | `["10.40.0.0/24","10.40.1.0/24","10.40.2.0/24","10.40.3.0/24"]` | 必須のVNet IPv4 CIDR配列。/24×4、最後の10.40.3.0/24はサブネット未作成の予備。 |
-| `network.subnetPrefixes.agw` | `"10.40.0.0/24"` | AppGW専用サブネット。 |
-| `network.subnetPrefixes.pep` | `"10.40.1.0/24"` | Private Endpoint用サブネット。 |
-| `network.subnetPrefixes.firewall` | `"10.40.2.0/26"` | AzureFirewallSubnet。 |
-| `network.subnetPrefixes.apim` | `"10.40.2.64/26"` | Internal APIM専用サブネット。 |
-| `network.subnetPrefixes.management` | `"10.40.2.128/26"` | Linux管理VM用サブネット。 |
-| `network.subnetPrefixes.aca` | `"10.40.2.192/26"` | Core管理ポータルのACA専用サブネット。基本/26、最小/27。他の5区画と同じ一覧で指定。 |
-| `portal.publicHostName` | `"portal.example.com"` | Core管理ポータルの公開FQDN。`portal.`で始まるGatewayとは別の名前を指定し、証明書SANにも含める。 |
-| `network.firewall.snatPrivateRanges` | `["IANAPrivateRanges"]` | SNATせずprivate宛先とみなす範囲。API往復の送信元保持も考慮。 |
-| `network.firewall.idpsPrivateRanges` | `[]` | Premium IDPSのprivate判定範囲を上書き。[]は独自の範囲を指定しない。 |
-| `network.firewall.bypassTrafficSettings` | `[]` | Premium IDPSの検査除外。[]は追加除外なし。Standardでは指定しない。 |
-| `monitoring.auditAllowedIpAddresses` | `[]` | 監査Storageへの公開アクセス許可元IPv4/CIDR。[]は公開IP許可を追加しない。API入口の制限とは別。 |
+| 63.1 | `name` | 資材固定：論理名`graph-delegated` |
+| 63.2 | `displayName` | config：`graphDelegated.displayName`、既存表示名保持 |
+| 63.3 | `identityProvider` | 資材固定：`aad` |
+| 63.4 | `clientId` | params：`graphDelegated.clientId` |
+| 63.5 | `clientSecretFile` | params：`graphDelegated.clientSecretFile` |
+| 63.6 | `oauthTenantId` | 資材固定：トップレベル`entraTenantId`から導出 |
+| 63.7 | `scopes` | config：`graphDelegated.scopes`、権限文字列保持 |
+| 63.8 | `resourceUri` | 資材固定：`https://graph.microsoft.com` |
+| 63.9 | `authorizationUrl` | 標準aadに不要な自由入力を削除 |
+| 63.10 | `tokenUrl` | 標準aadに不要な自由入力を削除 |
+| 63.11 | `refreshUrl` | 標準aadに不要な自由入力を削除 |
+| 63.12 | `connectionNames` | 資材固定：初期`[]`。本人接続は動的作成 |
+| 63.13 | `identityEndpoint` | 資材固定：`https://graph.microsoft.com/v1.0/me` |
+| 63.14 | `identityIdProperty` | 資材固定：`id` |
+| 63.15 | `pool.count` | config：12を保持 |
+| 63.16 | `pool.capacity` | config：8000を保持 |
 
-予備の10.40.3.0/24にはサブネット・NSG・ルートテーブルを作りません。管理VMはprivate接続で、SSH許可規則があってもインターネットからの経路は作られません。
+12×8000は設定上の割当枠であり、保証される利用者数・スループットやAzure公式quotaではありません。pool数・容量の変更は、既存接続・suffix・割当済み数を別途確認し、値の移設と同時に変更しません。
 
-管理VMのNICにpublic IPはありません。この資材はBastion・VPN・ExpressRoute・管理VMへのDNAT入口を自動構築しません。
-公開入口のあるBastionを別途利用する場合は「管理者PC → Bastion → 管理VMのprivate IP」の経路になり、
-企業の管理接続元を絞る場合は、構築後にNSGをAzureポータルで編集します。Bastionの利用時は通常AzureBastionSubnetのCIDRがVM側の送信元になり、管理者PCやBastionのpublic IPではありません。
-VPN・既存踏み台・NATを利用する場合も、VMに届く実際の送信元IPv4/CIDRと往復経路を確認します。
-[MicrosoftのBastion対象VM側NSG要件](https://learn.microsoft.com/en-us/azure/bastion/bastion-nsg#target-vm-subnet)
+### 71. 検証用所有グループの内部3項目
 
-資材の証明書処理などは、VM Agent経由のManaged Run Commandを使います。これらの標準処理のためにSSHの受信許可を追加する必要はありません。
-[MicrosoftのManaged Run Command](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/run-command-managed)
-
-AppGWの固定入口・API認証と、管理VMの標準SSH／企業向け編集後の接続境界は[動作テスト](../testing/integration-tests.md)で確認します。NSGの初期構築・再配備での再現性と廃止入力の拒否は[構築テスト](../testing/construction-tests.md)で確認します。
-
-### API・権限の記述形式
-
-API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてparamsへ記載します。
-
-#### 権限配列の要素
-
-| パラメタ名 | 公開サンプル値 | 意味 |
+| 番号 | 旧末端 | 配置・現行形 |
 | --- | --- | --- |
-| `authorization.<配列>[].principalId` | 配列空 | 対象User/Group/ServicePrincipalのObject ID。 |
-| `authorization.<配列>[].principalType` | 配列空 | User/Group/ServicePrincipal。Azure RBACを付与し、Entra管理ロールを付与しない。 |
-| `management.loginAssignments[].principalId` | 配列空 | VMログイン主体Object ID。 |
-| `management.loginAssignments[].principalType` | 配列空 | User/Group/ServicePrincipal。 |
-| `management.loginAssignments[].role` | 配列空 | User/Administrator。NSG許可・接続経路とは別。 |
-| `monitoring.auditReaders[].principalId` | 配列空 | 監査読取主体。 |
-| `monitoring.auditReaders[].principalType` | 配列空 | 読取主体の種類。 |
-| `monitoring.auditReaders[].collector` | 配列空 | 監査の地域別収集先。 |
-| `monitoring.auditReaders[].containerName` | 配列空 | 読取対象コンテナー名。Linux OSログはam-syslog。Japan側のAPIMログはinsights-logs-gatewaylogs／insights-logs-gatewayllmlogs／insights-logs-websocketconnectionlogs。 |
+| 71.1 | `groups[].groupId` | 資材固定：paramsの`platformGroupId`から管理グループ1件を生成 |
+| 71.2 | `groups[].products[].productId` | 資材固定：標準API正本にある全承認製品を管理グループへ適用 |
+| 71.3 | `groups[].products[].maxSubscriptions` | config：`portalApiKeys.verificationMaxSubscriptions`、初期5 |
 
-#### APIの定義（apiDefinitions[]）
+管理グループへの全標準製品承認は初期構成の判断です。すべての利用者へ検証用製品を許可する意味ではありません。既存の追加所有グループ・製品subset・異なる件数上限は、意図した移行を確認するまで自動で置換しません。
 
-以下の短縮名はA=`apiDefinitions[]`、O=`A.operations[]`、C=`A.authorization.operationConstraints.<操作名>`です。空配列なら[標準API定義](../../apps/gateway/apim/apis/)の19ファイルを登録時に自動展開します。以下の各項目は、APIを個別指定する場合に使います。
+## OAuth providerの登録と定義
+
+保護paramsの標準登録は次の形です。APIリソースのegakumi-api Client IDは`entra.audience`へ入れ、下流OAuth Client IDと混同しません。
+
+```json
+{
+  "credentialProviders": {
+    "graphDelegated": {
+      "clientId": "<GRAPH_OAUTH_CLIENT_ID>",
+      "clientSecretFile": "./secrets/entra-client-secret.txt"
+    }
+  }
+}
+```
+
+共通configの標準定義は次の形です。表示名・scope・poolは今回変更していません。
+
+```json
+{
+  "credentialProviders": {
+    "graphDelegated": {
+      "displayName": "Delegated Graph connection",
+      "scopes": "openid profile email offline_access https://graph.microsoft.com/User.Read",
+      "pool": { "count": 12, "capacity": 8000 }
+    }
+  }
+}
+```
+
+追加接続はconfigの`credentialProviders.additional[]`に`name`・`displayName`・`identityProvider`・`scopes`とプロトコル別定義を置き、paramsの同じ`additional[]`へ`name`・`clientId`・`clientSecretFile`・任意の`oauthTenantId`を置きます。aadは`resourceUri`、oauth2は`authorizationUrl`・`tokenUrl`・`refreshUrl`を定義し、必要に応じて`connectionNames`・`identityEndpoint`・`identityIdProperty`・`pool`を指定します。
+
+追加定義と登録は論理名で1対1に照合します。未知名・重複・欠落・標準slotとの衝突は拒否し、大小文字を暗黙に変更しません。一般的な配列の全置換で部分providerを合成せず、専用処理で完全な内部provider配列へ戻して検証します。秘密参照の宣言元基準、現在のアプリID／secret、物理provider名・pool所属、本人の`tid+oid`検証を保持します。
+
+`config.gateway.authentication.credentialLogin`は`providerNames`と共通セッション設定です。任意の独立接続窓口を使う場合の保護paramsは次の抜粋です。
+
+```json
+{
+  "gateway": {
+    "authentication": {
+      "credentialLogin": {
+        "identity": {
+          "clientId": "<IDENTITY_APP_CLIENT_ID>",
+          "clientSecretFile": "./secrets/credential-identity-client-secret.txt"
+        }
+      }
+    }
+  }
+}
+```
+
+identityは任意で、指定時はClient IDと保護秘密参照を両方設定します。tenantは`entraTenantId`から導出します。省略時の選択CM provider由来の本人確認と、Portalが`portalAuthentication.credentialProviderName`で選ぶ既存アプリ／secretは維持します。今回の配置整理だけでTools用アプリや新しい認証方式へ切り替えません。アプリ移行・権限・同意・旧取引排出・既存refresh tokenの扱いは[別のEntra作業計画](../reference/entra-app-rollout-plan.md)で確認します。
+
+## PortalのAPIキー所有グループ（portalApiKeys）
+
+公開paramsは`platformGroupId`と`groupNamePattern`だけです。公開例は`groupNamePattern:""`で、`platformGroupId`を省略しています。初回Portal配備の対話でこの2項目を入力し、同じ保護paramsへ保存します。表示名・製品・購読数を対話入力しません。
+
+```json
+{
+  "portalApiKeys": {
+    "platformGroupId": "<PLATFORM_GROUP_OBJECT_ID>",
+    "groupNamePattern": "^ORG_"
+  }
+}
+```
+
+`^ORG_`は独立した架空の命名規則例で、既定値ではありません。Graphから取得した表示名・現在の所属・`securityEnabled=true`を確認します。空欄は初回入力待ちであり全許可ではありません。無人実行では2項目を事前に設定します。
+
+configは`portalApiKeys.verificationMaxSubscriptions:5`を共通初期値にします。管理グループ1件・標準API正本の全製品・この上限から内部`groups`を生成し、製品ごとに`platform-<productId>`の安定した内部検証購読を生成します。`groups`と`verificationSubscriptions`を公開paramsへ保存しません。同一ID・同一製品スコープの既存APIM購読はキーを保持して採用し、明示的404だけを新規作成の根拠にします。
+
+通常の新規キーは固定の`released-apis`製品に紐づき、利用者に製品を選ばせません。通常キーの所有候補の発見と購読数上限は、管理グループ向け検証購読の設定とは別です。会社情報はPortalの会社管理から登録し、paramsに会社台帳を作りません。[Portal配備・受入手順](portal.md)を参照してください。
+
+## 既存入力の移行を確認する
+
+資材固定とした旧入力は、空配列・空object・空文字・`false`・`null`でも公開params/configで拒否します。配置を移した共通値も旧paramsの位置では受け付けません。検査を通すために未知項目の除外やschemaの緩和を行いません。
+
+既存paramsとstateを保護保存してから、旧値と新しい内部生成値を比較します。標準と一致する空／固定値の削除、共通値のconfig移設、標準provider slotへの登録分離を人が確認し、現在のID・secret参照・認証方式・pool値を保持します。既存の非標準／非空権限、WAF参照、IP例外、caller上書き、API置換、別tenant、Portal所有グループ／製品subset／購読IDを自動変換・削除しません。標準との差があれば、影響・所有者・復旧と対象限定の移行方法を確定してから進みます。
+
+新しい公開例のコピーで稼働中設定を置換したり、公開入力整理の一括反映だけを理由に認証方式やClient IDを切り替えたりしません。Azure反映と全環境再構築E2Eは未実施であり、既存環境の受入完了を意味しません。
+
+## API・権限の記述形式
+
+標準APIの内容は[API正本](../../apps/gateway/apim/apis/)で管理します。以下の詳細契約を公開params入力の一覧と混同しません。独自APIの追加・変更は対象限定の運用計画で扱い、接続先・認証・WAF・監査と既存APIへの影響を確認します。
+
+#### API正本の定義
+
+以下は資材開発者向けのAPI正本と解決済み内部配列の契約参照です。AはAPI定義1件、Oは`A.operations[]`、Cは`A.authorization.operationConstraints.<操作名>`を表します。公開paramsへ`apiDefinitions`を記入する手順ではありません。公開API正本には公式共通URLと独立した架空例だけを置き、実環境のURL・ID・秘密は転記しません。
 
 | パラメタ名 | 公開サンプル値 | 意味 |
 | --- | --- | --- |
@@ -318,11 +416,11 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 | `A.path` | 追加API例ごとに設定 | 公開パス。 |
 | `A.apiType` | 通常http | API種類。 |
 | `A.backendService` | 追加API例ごとに設定 | foundryOpenAi/foundryCognitive/foundryServices/external。外部ツールはexternalを指定。 |
-| `A.backendUrl` | 外部API例で置換用URL | externalのTLS接続先。採用するbackendの実URLを指定。基盤Foundryは自動算出。 |
+| `A.backendUrl` | 公式共通URLまたは独立した架空例 | externalのTLS接続先。公開資材へ実環境のURLを転記しない。基盤Foundryは内部生成。 |
 | `A.backendAudience` | 下流ごとの例 | APIMが下流tokenを取得する宛先。 |
 | `A.productId` | 各API例のProduct | 検証用APIM Product。`released-apis`は予約名のためここへ指定しません。契約・配賦先IDとは別。 |
 | `A.released` | 省略時false、標準19 APIはtrue | 通常キー用`released-apis`製品への所属。生成MCPも同じ状態です。falseへ変更してGateway配備すると通常製品との関連だけを解除し、API本体・検証用所属・購読を保持します。 |
-| `A.subscriptionKeyHeader` | 省略時は共通値 | 明示時は`gateway.authentication.subscriptionKeyHeader`と一致させる。ヘッダー名の大文字・小文字は区別しない。 |
+| `A.subscriptionKeyHeader` | 固定の`api-key` | 内部共通認証と一致させる。公開params/configにヘッダー選択入力は設けない。 |
 | `A.backendHeaders` | 通常{} | 非秘密の固定ヘッダー。鍵やtokenは格納不可。 |
 | `A.keySubscriptions` | 省略する場合は`[]` | このAPIのProductに作成するAPIM購読の配列。 |
 | `A.operations` | 操作ごとの例 | 公開操作配列。 |
@@ -355,7 +453,7 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 
 各検査・転送・認証ポリシーの役割は[APIMポリシー一覧](../reference/apim-policy-catalog.md)を参照してください。
 
-棚卸⑦ではquery部品を観測専用へ変更する。`queryObservation`はAPI定義で対象を指定するだけで、paramsに観測／拒否modeや専用Named Valueを用意しない。旧`gateway.queryGuards`・`queryGuard`参照は廃止対象であり、現行入力に使わない。観測専用化だけでクエリの下流転送やモデル・ツールの互換性が整ったとは扱わず、後続の入力検査・URI変換・WAFを別に棚卸する。ローカル改修・検証は完了し、Azureには未反映で、Azureへのまとめ反映と受入は別工程である。[対象設定と移行手順](../operations/apim.md#操作mcp受付のurlクエリ観測)を参照する。
+`queryObservation`はAPI正本で指定する観測ラベルです。paramsに観測／拒否modeや専用Named Valueを設けません。旧`gateway.queryGuards`・`queryGuard`参照は現行入力に使いません。観測設定と、下流URI変換・WAF・通信の受入は別に確認します。[対象設定と移行手順](../operations/apim.md#操作mcp受付のurlクエリ観測)を参照してください。
 
 #### 認証設定と購読
 
@@ -377,53 +475,7 @@ API、初期権限、監査読取主体の`monitoring.auditReaders`はすべてp
 | `__CM_CLIENT_ID__` | CM providerが利用するEntraアプリのApplication（client）ID |
 | `__TENANT_ID__` | CMのOAuth認証先テナント |
 
-CMの共通入力例です。provider側に`identityEndpoint`等も設定します。
-
-```json
-"authentication": {
-  "subscriptionKeyHeader": "api-key",
-  "credentialLogin": {
-    "providerNames": ["graph-delegated"],
-    "idleTimeoutSeconds": 604800,
-    "absoluteLifetimeSeconds": 2592000,
-    "rotationIntervalSeconds": 86400,
-    "rotationGraceSeconds": 300,
-    "rotationHandoffSeconds": 600,
-    "rotationCandidateTtlSeconds": 600,
-    "transactionLifetimeSeconds": 300,
-    "loginCallsPerMinute": 10
-  }
-}
-```
-
-| `credentialLogin`の項目 | 既定値 | 制約・動作 |
-| --- | --- | --- |
-| `idleTimeoutSeconds` | 604800（7日） | 300〜31536000秒。最終の本人検証済み業務利用から数え、最長期限を超えない |
-| `absoluteLifetimeSeconds` | 2592000（30日） | 300〜31536000秒。無操作期限以上。認証完了を起点に固定する |
-| `rotationIntervalSeconds` | 86400（24時間） | 300〜2592000秒、最長期限未満。経過後の最初の業務利用で更新候補を返す |
-| `rotationGraceSeconds` | 300（5分） | 1〜3600秒、更新間隔未満。更新確定から旧値を受け付ける固定猶予 |
-| `rotationHandoffSeconds` | 600（10分） | 60〜3600秒。候補を初めて発行してから更新確定が必要になるまでの時間 |
-| `rotationCandidateTtlSeconds` | 600（10分） | 60〜3600秒、引き渡し猶予以下。保存・確定する候補の有効期間 |
-| `transactionLifetimeSeconds` | 300（5分） | 60〜600秒。認証開始時に固定する取引の寿命 |
-| `identity` | 省略 | 指定時は`tenantId`・`clientId`・`clientSecretFile`をすべて設定する。下流CM providerとは別のOIDC本人確認設定 |
-
-セッションの6つの期限・更新設定は認証完了時にセッションへ固定します。設定変更で既存セッションの最長期限は延長しません。ポーリング・ヘルスチェック・更新確定は無操作期限を延長せず、期限切れ・失効済みのセッションも復活させません。
-
-R0では、必要に応じて`gateway.authentication.credentialLogin.identity`へ現在のWebアプリの3値を明示し、CM providerを変更しても窓口の本人確認が暗黙に切り替わらないようにします。新しい`egakumi-credential`アプリへの切替は後続工程です。下記は`credentialLogin`へ追加する抜粋で、secret値をparamsへ記入するものではありません。
-
-```json
-"identity": {
-  "tenantId": "<IDENTITY_TENANT_ID>",
-  "clientId": "<CURRENT_IDENTITY_APP_CLIENT_ID>",
-  "clientSecretFile": "./secrets/entra-client-secret.txt"
-}
-```
-
-`tenantId`と`clientId`は非ゼロGUID、ファイル参照はparams基準で解決します。`tenantId`は`providerNames`で選択した全CM providerの`oauthTenantId`と一致させます。同じEntraアプリの既存secretファイルは参照できますが、別アプリと同じファイルを共有すると設定検査で拒否します。省略時は選択CM provider由来の現行本人確認設定を維持します。このsecretはサーバー専用で、Codexへ配布せず、Codex／APIアプリのClient IDもこの欄へ入れません。Portalは引き続き`portalAuthentication.credentialProviderName`で選択した既存CMアプリ・secretを使用し、このR0設定では切り替わりません。
-
-本人確認のclient・tenant・secretを変更する前に新規認証開始を止め、旧取引を変更前の設定期限（最大600秒）まで排出するか無効化してから切り替えます。既存CM接続・セッションの`tid+oid`契約と、旧アプリ・secretを保持して復旧できることを別に確認します。進行中の取引や旧refresh tokenを新しいアプリへ転用しません。
-
-`/auth/connections`のstart/status/logout/logout-all/disconnectと、`/auth/connections/session/commit`は購読キーで保護します。認証取引の`transactionId`・`pollSecret`と、バックエンドに保存する本人接続セッションは独立しています。`/auth/connections/browser`のGET/POST launch・callbackは一時取引・起動秘密・Cookie・期限で照合します。SQLは本人・接続の世代と証明ハッシュを管理し、Microsoftのアクセストークン・更新トークンはCMが管理します。[呼出手順](credential-manager-login.md)を参照してください。
+CMアプリ登録と共通セッション設定の公開形は、本ページの[OAuth providerの登録と定義](#oauth-providerの登録と定義)を参照してください。API側の`credentialConnection`は入口認証とは別の下流接続契約です。
 
 #### 操作制約（C）
 
@@ -503,69 +555,16 @@ AI専用WAFは受付容量と検査枠を分離し、先頭2000 KiBだけ検査�
 | `A.credentialConnection.connectionName` | service方式だけ設定 | providerに事前登録した固定サービス接続名。 |
 | `A.credentialConnection.enabled` | 記入例はtrue | falseは利用拒否。匿名接続へ切替しない。 |
 
-`A.mcpProxy.endpoints`は公開設定では配列です。Azureへの送信時だけ、Streamable HTTPは`mcp`、旧SSEは`sse`（GET）と`messages`（POST）をキーにした辞書へ変換し、作成済みbackendを`backendId`で関連付けます。利用者が設定する接続先パスはこの変換で変更しません。配備の受理と、各transportの実接続・tool実行は別に確認します。
+`A.mcpProxy.endpoints`はAPI正本では配列です。Azureへの送信時だけ、Streamable HTTPは`mcp`、旧SSEは`sse`（GET）と`messages`（POST）をキーにした辞書へ変換し、作成済みbackendを`backendId`で関連付けます。利用者が設定する接続先パスはこの変換で変更しません。配備の受理と、各transportの実接続・tool実行は別に確認します。
 
-#### OAuth provider（credentialProviders[]）
-
-追加準備の[egakumi-api](02a-entra-api.md)はAPIリソースの登録です。そのClient IDは前述の`gateway.authentication.entra.audience`へ記入できる準備値で、`credentialProviders[].clientId`へ設定しません。APIアプリの登録だけではBearer経路は有効化されません。以下は現行CMの下流OAuthクライアントの設定です。
-
-[Entraアプリの準備](02-entra.md)で控えた値を、`.local/<environment>/params.local.json`へ記入します。公開例にはGraph本人接続用のproviderがあるため、その`clientId`のゼロGUIDを作成したアプリのIDへ置き換えます。
-
-| Entraの準備で控えた値 | 構築設定の記入先 |
-| --- | --- |
-| アプリケーション（クライアント）ID | `credentialProviders[].clientId` |
-| ディレクトリ（テナント）ID | トップレベルの`entraTenantId`。providerごとに認証先を変える場合は`credentialProviders[].oauthTenantId` |
-| client secretを保存する保護ファイルのパス | `credentialProviders[].clientSecretFile`。入力例は`./secrets/entra-client-secret.txt`。秘密の値はファイル参照で渡す |
-
-Graphの本人接続では、公開例の`identityEndpoint`は`https://graph.microsoft.com/v1.0/me`、`identityIdProperty`は`id`です。シークレットファイルがまだなければ、`azd up`開始時に値を非表示で入力し、`clientSecretFile`の保護ファイルへ保存します。Gateway配備時に、その値をCM providerへ設定します。本人接続の窓口を有効にする`gateway.authentication.credentialLogin`と、対象APIの`credentialConnection`は、[CM共通接続手順](credential-manager-login.md#entraと基盤の準備)を参照してください。
-
-| パラメタ名 | 公開サンプル値 | 意味 |
-| --- | --- | --- |
-| `name` | Graph接続例 | provider識別名。 |
-| `displayName` | Graph接続例 | provider表示名。 |
-| `identityProvider` | Graph例はaad | aad/oauth2。 |
-| `clientId` | 接続アプリIDの置換欄 | 下流認証用アプリ。 |
-| `clientSecretFile` | 保護ファイル参照例 | Git管理外のsecretファイル。 |
-| `oauthTenantId` | 下流OAuth認証先のTenant | 省略時は`entraTenantId`。明示したproviderのテナント設定は維持する。 |
-| `resourceUri` | Graph例はhttps://graph.microsoft.com | aadの対象resource。 |
-| `scopes` | `openid profile email offline_access https://graph.microsoft.com/User.Read` | 下流で要求するscope。Entraアプリで設定・同意した権限と照合する。 |
-| `authorizationUrl` | 汎用OAuth例で設定 | OAuth2認可endpoint。 |
-| `tokenUrl` | 汎用OAuth例で設定 | OAuth2 token endpoint。 |
-| `refreshUrl` | 汎用OAuth例で設定 | OAuth2更新endpoint。 |
-| `connectionNames` | 本人接続は`[]` | 構築時に作成する固定接続名配列。personal接続は共通窓口で動的作成する。 |
-| `identityEndpoint` | `https://graph.microsoft.com/v1.0/me` | personal接続の本人確認先。resourceUriと同じホストの承認済みHTTPS URL。 |
-| `identityIdProperty` | `id` | 本人確認応答から取得する不変IDのプロパティ名。 |
-
-### PortalのAPIキー所有グループ（portalApiKeys）
-
-test・productionの公開例には、初回の対話入力用に`groupNamePattern: ""`と`groups: []`を用意しています。空欄でも`azd up`の基盤・Gateway工程は進みますが、全体の完了には最後のPortal工程で入力が必要です。`postup`から呼ぶ`deploy_portal.py --execute`が、グループ名の正規表現・基盤管理グループのObject ID・許可する製品・製品ごとの購読数上限を同じparamsへ保存します。個別のPortal配備でも同じ入力を使います。
-
-| パラメタ名 | 初期値・入力方法 | 意味 |
-| --- | --- | --- |
-| `portalApiKeys.groupNamePattern` | 初回は空欄から対話入力 | 所有候補にするセキュリティグループの表示名を選ぶRE2互換の正規表現。例：`^ORG_`、`^(ORG_|DEPT_)`。企業の規則を既定値にはしません。 |
-| `portalApiKeys.platformGroupId` | 対話入力後に保存 | 検証用購読の所有グループのうち、管理ダッシュボードを利用できる基盤管理グループのObject ID。 |
-| `portalApiKeys.groups[].groupId` | 対話入力 | 検証用購読の初期所有グループのObject ID。組織の全グループを列挙する欄ではありません。 |
-| `portalApiKeys.groups[].products[].productId` | API定義から選択 | 検証用購読のAPIM製品。通常発行の製品選択には使いません。未選択のまま全許可しません。 |
-| `portalApiKeys.groups[].products[].maxSubscriptions` | 省略時5 | グループが製品ごとに保持できる購読数。利用回数・トークン・金額の上限とは別です。 |
-| `portalApiKeys.verificationSubscriptions` | 初回は`[]` | 基盤管理グループへ登録する検証用購読の宣言。空配列・省略時は、そのグループに許可した製品ごとに`platform-<productId>`という安定した購読IDを用います。無効化の指定ではありません。 |
-| `portalApiKeys.verificationSubscriptions[].subscriptionId` | 既存を使う場合は実APIM購読ID | 既存購読を採用する場合は実際のIDを指定します。対象製品・状態を確認して台帳へ登録し、キー値は変更しません。`master`は指定できません。 |
-| `portalApiKeys.verificationSubscriptions[].productId` | 基盤管理グループに許可した製品 | 購読が利用する製品。既存購読の製品と違う場合は停止します。 |
-| `portalApiKeys.verificationSubscriptions[].displayName` | 1〜80文字 | Portalの台帳に表示する購読の用途名。グループの表示名とは別です。 |
-
-表示名はEntraが正本のためparamsには保存せず、Graphから取得します。正規表現の空欄は未設定であり、全グループの許可にはなりません。非対話で初期構築する場合は、[Portal配備手順](portal.md)の記入例を使って`groups`・`platformGroupId`・`groupNamePattern`を事前設定します。入力が足りない場合はPortal工程が停止し、up全体も失敗で終了します。
-
-通常の新規キーは固定製品`released-apis`に紐づき、利用者に製品を選ばせません。Gateway配備資材がこの製品と`released: true`のAPIの関連を管理し、Portal配備は通常発行カタログをこの製品1件に設定します。通常キーの購読数上限の初期値はグループごとに5件、利用回数・トークンの制限は無制限です。検証用の`groups[].products`や`verificationSubscriptions`とは分けて扱います。
-
-会社名とクライアント種別等の利用情報はparamsに登録しません。会社は基盤管理者の会社管理ページから登録し、通常キー発行時に登録済み会社を選びます。
-
-検証用購読はPortal配備のSQL初期化工程で準備します。宣言した購読がAPIMに存在すればそのまま採用し、存在しない場合だけ作成します。既に台帳に登録済みの購読は、所有者の移管・削除状態・利用制限を再配備で上書きしません。全API向けの組み込み購読や未宣言の既存購読を一括取り込みする処理はありません。
 
 ## 次へ進む前の確認
 
-- 導入先の公開ID・名前・IP・公開名・連絡先を、公開例の見本から置き換えた。
-- secretの値を書かず、必要な参照先だけを設定した。
-- 初期の`azd up`に必要な`publishApis:true`、Product/購読範囲・下流URLと、採用するCMの接続条件を確認した。
-- Portalの初回対話入力を行える。非対話なら`groups`・`platformGroupId`・`groupNamePattern`を事前設定した。
-- `configuration.py validate`が成功し、利用するparamsのパスを控えた。
+- 導入先ID・公開名・IP計画・連絡先とアプリ登録を保護paramsに設定した。
+- 初回生成済みAPIM IDが6文字で、未解決マーカーが残っていない。
+- secret値をJSONへ記載せず、明示した保護参照を確認した。
+- 共通値はconfig、固定契約は資材に置き、旧入力の移行を確認した。
+- Portal初回対話の2項目を用意した。非対話なら事前に設定した。
+- ローカル入力検証と、Azure反映・実接続受入を区別した。
 
 次：[5. configの調整](05-config.md)

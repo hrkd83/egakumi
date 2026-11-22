@@ -334,18 +334,16 @@ class WafLayoutBicepTests(unittest.TestCase):
                 "REQUEST-944-APPLICATION-ATTACK-JAVA")]
             self.assertEqual(entry["exclusionManagedRuleSets"][0]["ruleGroups"], groups)
 
-    def test_external_policy_boundary_remains_readonly(self):
+    def test_standard_sku_has_no_waf_and_external_policy_input_is_removed(self):
         parameters = self.parameters()
-        for changes in ({"existingWafPolicyId": "/fixture-existing-waf"}, {"skuName": "Standard_v2"}):
+        self.assertNotIn("existingWafPolicyId", self.template["parameters"])
+        for changes in ({"skuName": "Standard_v2"},):
             with self.subTest(changes=changes):
                 external = {**parameters, **changes}
                 self.assertEqual(self.policies(external), {})
                 gateway = self.gateway(external)
                 self.assertNotIn("urlPathMaps", gateway)
-                if "existingWafPolicyId" in changes:
-                    self.assertEqual(gateway["firewallPolicy"], {"id": "/fixture-existing-waf"})
-                else:
-                    self.assertNotIn("firewallPolicy", gateway)
+                self.assertNotIn("firewallPolicy", gateway)
 
 
 if __name__ == "__main__":

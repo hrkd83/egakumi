@@ -466,6 +466,102 @@
               }
             }
           }
+        },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Entra利用制限と本人OAuth接続セッションの共通設定です。環境別アプリ登録はparamsに置きます。",
+          "properties": {
+            "entra": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "社員のEntra委任認証に適用する共通利用制限です。",
+              "required": [
+                "userLimits"
+              ],
+              "properties": {
+                "userLimits": {
+                  "$ref": "#/$defs/entraUserLimits"
+                }
+              }
+            },
+            "credentialLogin": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "本人のOAuth接続を作成し、認証完了後に接続セッションを発行する共通窓口です。",
+              "required": [
+                "providerNames"
+              ],
+              "properties": {
+                "providerNames": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+                  },
+                  "description": "本人接続の作成と認証案内に利用するEntraプロバイダー名です。"
+                },
+                "idleTimeoutSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 31536000,
+                  "default": 604800,
+                  "description": "最終の対象業務API利用からの無操作期限。期限切れのセッションは延長しません。"
+                },
+                "absoluteLifetimeSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 31536000,
+                  "default": 2592000,
+                  "description": "本人確認完了からの最長期限。利用や値の更新でも延長しません。"
+                },
+                "rotationIntervalSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "maximum": 2592000,
+                  "default": 86400,
+                  "description": "対象業務APIの利用時にセッション値の更新を開始する間隔。"
+                },
+                "rotationGraceSeconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3600,
+                  "default": 300,
+                  "description": "更新確定後に旧値を受け付ける固定の移行猶予。旧値の利用で延長しません。"
+                },
+                "rotationHandoffSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 3600,
+                  "default": 600,
+                  "description": "更新開始後、保存・確定を待って業務APIを継続できる期間。"
+                },
+                "rotationCandidateTtlSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 3600,
+                  "default": 600,
+                  "description": "更新候補の有効期間。更新確定だけでは利用期限を延長しません。"
+                },
+                "transactionLifetimeSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 600,
+                  "default": 300,
+                  "description": "ログイン開始から認証結果を受け取るまでの有効期間です。"
+                },
+                "loginCallsPerMinute": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000,
+                  "default": 10,
+                  "description": "購読IDごとのログイン開始回数を1分単位で制限します。"
+                }
+              }
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -802,6 +898,77 @@
           }
         }
       ]
+    },
+    "credentialProviders": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OAuth接続の共通定義です。環境別Client IDと秘密ファイル参照はparamsに置きます。",
+      "properties": {
+        "graphDelegated": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "標準Graph委任接続の共通表示名、委任scope、CM poolです。名前・プロトコル・Graph URL・本人IDプロパティは資材で固定します。",
+          "required": [
+            "displayName",
+            "scopes",
+            "pool"
+          ],
+          "properties": {
+            "displayName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scopes": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pool": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "capacity"
+              ],
+              "description": "論理プロファイルを-aからの物理CMプロバイダーへ展開する。",
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 26
+                },
+                "capacity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8000
+                }
+              }
+            }
+          }
+        },
+        "additional": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/credentialProvider"
+          }
+        }
+      },
+      "required": [
+        "graphDelegated"
+      ]
+    },
+    "portalApiKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "検証用の管理グループ・製品設定を内部生成するときに使う共通設定です。",
+      "properties": {
+        "verificationMaxSubscriptions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 5,
+          "description": "標準API正本から求める承認製品ごとに、検証用管理グループへ適用する共通購読数上限です。"
+        }
+      }
     }
   },
   "$defs": {
@@ -924,6 +1091,206 @@
             "User",
             "Administrator"
           ]
+        }
+      }
+    },
+    "credentialProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "追加OAuthプロバイダーの共通定義です。nameでparams側の追加アプリ登録と対応付けます。",
+      "required": [
+        "name",
+        "displayName",
+        "identityProvider",
+        "scopes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identityProvider": {
+          "enum": [
+            "aad",
+            "oauth2"
+          ]
+        },
+        "scopes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceUri": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "authorizationUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "tokenUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "refreshUrl": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$"
+        },
+        "connectionNames": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+          },
+          "description": "事前作成する固定接続名です。共通ログイン窓口から本人接続を作るプロバイダーは空配列を指定できます。"
+        },
+        "identityEndpoint": {
+          "type": "string",
+          "pattern": "^https://[^\\s?#]+$",
+          "description": "resourceUriと同じホストにある固定の本人情報取得URLです。本人接続用Entraプロバイダーに指定します。"
+        },
+        "identityIdProperty": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+          "default": "id",
+          "description": "本人情報の応答から取得する不変IDのプロパティ名です。"
+        },
+        "pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "capacity"
+          ],
+          "description": "論理プロファイルを-aからの物理CMプロバイダーへ展開する。",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 26
+            },
+            "capacity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8000
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "identityProvider": {
+                "const": "aad"
+              }
+            },
+            "required": [
+              "identityProvider"
+            ]
+          },
+          "then": {
+            "required": [
+              "resourceUri"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "identityProvider": {
+                "const": "oauth2"
+              }
+            },
+            "required": [
+              "identityProvider"
+            ]
+          },
+          "then": {
+            "required": [
+              "authorizationUrl",
+              "tokenUrl",
+              "refreshUrl"
+            ]
+          }
+        }
+      ]
+    },
+    "entraUserLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestRate",
+        "tokensPerMinute",
+        "tokenQuota"
+      ],
+      "description": "全社員共通の利用制限を3項目すべて明示します。各nullはその制限の無効化で、非nullには有限の値が必要です。有効なcounterは検証済みtid/oidごとに分け、既存キーの購読counterは維持します。",
+      "properties": {
+        "requestRate": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "本人別HTTP要求回数の制限です。nullで無効化します。人の入力回数とは異なり、ツール継続・retry・並列要求も計数します。",
+          "additionalProperties": false,
+          "required": [
+            "calls",
+            "renewalPeriodSeconds"
+          ],
+          "properties": {
+            "calls": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "renewalPeriodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 300
+            }
+          }
+        },
+        "tokensPerMinute": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "本人別の毎分トークン上限です。nullで無効化します。"
+        },
+        "tokenQuota": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "本人別の期間トークン枠です。nullで無効化します。",
+          "additionalProperties": false,
+          "required": [
+            "tokens",
+            "period"
+          ],
+          "properties": {
+            "tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "period": {
+              "type": "string",
+              "enum": [
+                "Hourly",
+                "Daily",
+                "Weekly",
+                "Monthly",
+                "Yearly"
+              ]
+            }
+          }
         }
       }
     }

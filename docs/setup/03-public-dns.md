@@ -17,11 +17,11 @@ Gateway・Portalの公開名を管理するAzure Public DNSゾーンと、証明
 | `<PUBLIC_ZONE>` | Azure Public DNSで管理する公開ゾーン | DNSゾーン・委任・DNS権限の対象 |
 | `<GATEWAY_FQDN>` | Gatewayの完全なホスト名。`https://`やパスを含めない | `gateway.publicHostName`、本人確認のWeb戻り先 |
 | `<PORTAL_FQDN>` | Gatewayと異なる、`portal.`で始まる公開名 | `portal.publicHostName`、PortalのWeb戻り先 |
-| `<CERTIFICATE_DNS_NAMES>` | Gateway・Portal両方を覆うSAN | `certificate.domainNames` |
+| 公開2名から生成するSAN | Gateway・Portalの正確な公開名2件を確認 | 上記2つのpublicHostNameから内部生成。独立したdomainNames入力は設けない |
 | `<ACME_CONTACT_EMAIL>` | 証明書を管理する連絡先 | `certificate.contactEmail` |
 | DNS担当者 | 委任・ゾーン・ID・権限の管理者 | 事前準備と継続運用 |
 
-ワイルドカード`*.<PUBLIC_ZONE>`は、そのゾーン直下の名前を覆います。ゾーン自身や、さらに深い階層の名前は自動では含みません。公開入口はGateway／PortalのHTTPSです。gRPC専用TCP入口は構成しません。
+証明書のDNS名はGateway・Portalの正確な公開名2件から生成します。今回の初期入力では、別SANやワイルドカードを独立選択する欄を設けません。公開入口はGateway／PortalのHTTPSです。gRPC専用TCP入口は構成しません。
 
 ## 2. Azureの公開ゾーンを用意し、NSを委任する
 
@@ -63,7 +63,7 @@ DNS用のアプリ登録やclient secretは作成しません。Coreは事前作
 
 ## 4. azd upへ渡す入力を確認する
 
-[04. params](04-params.md)・[05. config](05-config.md)を設定し、[06. 構築](06-deploy.md)で`azd up`を実行します。証明書設定は`certificate.mode: dnsPlugin`、`certificate.plugin: Azure`です。
+[04. params](04-params.md)・[05. config](05-config.md)を設定し、[06. 構築](06-deploy.md)で`azd up`を実行します。証明書modeはconfigの`dnsPlugin`、DNS-01プラグインは資材固定のAzureです。公開plugin・domainNames入力は空でも拒否し、DNS名はGateway／Portal公開名から生成します。
 
 DNS側Subscription IDとUAMIのリソースIDは、[04. params](04-params.md)で環境別paramsへ必ず事前設定します。`azd up`は準備済みの参照を検査し、不足・不正があれば構築前に停止します。
 
@@ -77,7 +77,7 @@ CM用Entraアプリのclient secretが必要な構成では、その秘密入力
 
 `postprovision`は、公開ホスト名に最も長く一致するAzure DNSゾーンを探し、Gateway・PortalのAエイリアスを対象環境のAppGW Public IPリソースへ接続します。構築実行者には、ゾーンの読取とAレコード編集の権限が必要です。既存TTL・メタデータは保持し、別サービスを参照するレコードや同名CNAMEがあれば停止します。結果は`.local/<environment>/state/public-dns.json`へ保存します。
 
-構築後は公開DNS、実際のブラウザーからのTLS接続、Portal初期画面、証明書のSAN・期限、管理VMの更新timerを確認します。標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、VMへの関連付け、DNS権限、管理VMからDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGW／APIMが返す証明書の反映は別々に確認します。[運用手順](../operations.md#dns用マネージドidと権限を更新する)
+構築後は公開DNS、実際のブラウザーからのTLS接続、Portal初期画面、証明書のSAN・期限、管理VMの更新timerを確認します。標準configは12時間ごとに確認し、残日数30日以内で更新します。UAMIの存続、VMへの関連付け、DNS権限、管理VMからDNS API・Key Vaultへの接続を維持してください。証明書の更新と、AppGWが公開ホストごとに返す証明書の反映は別々に確認します。[運用手順](../operations.md#dns用マネージドidと権限を更新する)
 
 ## このページの完了状態
 
@@ -86,3 +86,5 @@ CM用Entraアプリのclient secretが必要な構成では、その秘密入力
 - DNS用UAMI、DNS側のロール、構築実行者のID割り当て・Aレコード編集権限を準備した。
 - DNS側Subscription IDとUAMIのリソースIDを、構築前に環境別paramsへ設定できる。
 - 公開ゾーン・DNS用IDをCoreの`azd down`後も保持する方針を確認した。
+
+今回の公開入力整理に伴うAzure一括反映と全環境再構築E2Eは未実施です。既存の非標準SAN・DNS設定・権限は無断変換せず、[入力配置と移行条件](04-params.md#既存入力の移行を確認する)に従って影響と復旧を確認します。

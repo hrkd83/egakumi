@@ -32,6 +32,16 @@ Azure CLI・azdの認証先、`.local/`内の環境名、paramsのTenant／Subsc
 
 Gitからクローンし直しても`.azure/`・`.local/`は復元されません。構築時の環境別領域とazd環境を、別端末への引継ぎや障害に備えて保護保管します。公開用の資材コピーや配布物へ混ぜません。既存の記録を削除して再試行したり、名前からResource IDを推測してstateを作ったりしません。
 
+## 新しい公開入力へ移す前に確認する
+
+公開入力71主項目の判断と新しい登録／定義形は[paramsの判断記録](setup/04-params.md#公開入力71主項目の判断記録)にまとめています。今回の一括改修は資材実装の段階です。Azure反映、全環境再構築E2Eと実受入は未実施であり、最終集約前のローカル試験を一式成功と扱いません。
+
+既存の保護paramsとstateを保持して旧値を比較します。固定化した旧入力は空配列・空object・false・nullでも拒否し、共通値はconfigの正しい位置へ移します。標準Graphはparamsの`credentialProviders.graphDelegated`へClient IDと秘密参照、configの同slotへ表示名・scope・poolを分離します。追加providerは双方の`additional[]`を論理名で照合します。既存の論理／物理provider名、アプリID、秘密参照、scope文字列、pool.count=12とcapacity=8000を配置変更だけで変更しません。
+
+非標準・非空の権限、既存WAF、IP例外、静的caller上書き、API置換、別tenant、Portal追加グループ／製品subset／独自購読IDは無断変換しません。意図した資源・利用範囲・所有者・復旧と対象限定の移行を確定してから進みます。今回のコード変更だけで認証方式やClient IDを新しいアプリへ切り替えません。
+
+`services.apimInstanceId`は初回prepareが公開マーカーを6文字IDへ置換してparamsへ保存し、通常更新では保持します。未解決マーカー・欠落・不正な既存値を更新時に再生成しません。SSH鍵参照と秘密ファイルも同環境の保護領域で保持し、公開例の上書きコピーや別環境入力の自動流用を行いません。
+
 ## 同じ環境を更新する
 
 | 変更対象 | 実行する入口 |
@@ -56,7 +66,7 @@ Gatewayは、採用時のBrokerイメージ作成・DB／CM配備・SQL初期化
 
 ### API・ポリシー・購読を変更する
 
-資材で管理するAPIは [登録定義](../apps/gateway/apim/apis/)を変更し、Gatewayを再配備します。`apiDefinitions: []`は同ディレクトリの標準定義を解決し、明示した配列はその定義を対象にします。解決したAPIや環境固有URLを元のparamsへ書き戻しません。
+資材で管理するAPIは [登録定義](../apps/gateway/apim/apis/)を変更し、Gatewayを再配備します。標準定義を常用で解決し、公開paramsによるAPI一覧の置換と`publishApis`切替は廃止しました。旧入力は空やfalseでも拒否します。解決したAPIや環境固有URLを元のparamsへ書き戻しません。
 
 APIだけの公開処理はFoundryモデルを配備せず、GUI等で変更した現在のcapacity／TPM割当を保持します。モデルの配備ID・名前・版・形式・SKU名・`Succeeded`状態、APIMのRBACとFoundryのローカル認証無効化を照合し、capacityと初期設定値の一致は要求しません。初期基盤構築の`infra/modules/services.bicep`は`services.modelDeployments`のcapacityをモデル配備へ反映するため、構築後の容量維持を目的に基盤構築を再実行せず、Gatewayの公開処理と区別します。
 
@@ -66,7 +76,7 @@ Azure Portal等で個別に追加するAPIは、API／operation・Product所属�
 
 Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（Echo API、Starter／Unlimitedとその購読）を整理します。業務へ転用したもの、範囲を確認できない購読、masterは保持し、`defaultSampleCleanup`へ結果を記録します。WebSocket採用時は既存の診断宛先・他カテゴリを保持して接続ログを有効にし、`webSocketDiagnostics`へ結果を記録します。
 
-標準APIの展開処理は試験用キーを自動発行しません。Portalは設定された`portalApiKeys.verificationSubscriptions`に従う検証用購読を初期化します。空配列の場合も、基盤管理グループの承認製品から`platform-<productId>`を生成するため、検証購読なしの指定にはなりません。通常のAPIキーは利用者がPortalから所有グループを選んで発行し、発行先は`released-apis`です。明示APIの`keySubscriptions`はその設定に従います。認可の分担は [Gatewayの購読キー認証](reference/gateway-key-auth-plan.md)を参照してください。
+標準APIの展開処理は試験用キーを自動発行しません。Portalは`platformGroupId`の管理グループへ標準API正本の全製品を承認し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品ごとの`platform-<productId>`検証購読と内部groupsを生成し、同一ID・同一製品の既存キーを保持します。公開`groups`・`verificationSubscriptions`入力やparams書き戻しは行いません。旧任意購読ID・製品subset等は個別移行を先に確認します。通常のAPIキーは利用者がPortalから所有グループを選んで発行し、発行先は`released-apis`です。認可の分担は [Gatewayの購読キー認証](reference/gateway-key-auth-plan.md)を参照してください。
 
 ## アプリ配備の途中で失敗した場合
 
@@ -83,7 +93,7 @@ Gatewayの公開処理は、未使用と判定できるAPIM初期サンプル（
 python3 scripts/deploy_applications.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-無人実行では保護入力に加え、Portalの`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定します。初回の対話入力は同じparamsへ保存されます。
+無人実行では保護入力に加え、Portalの`portalApiKeys.platformGroupId`と`groupNamePattern`を事前設定します。初回の対話入力もこの2項目だけを同じparamsへ保存します。表示名はGraph、製品は標準API正本、検証購読数上限はconfigから求めます。
 
 ## 構築後にClaudeをGUIで追加する
 

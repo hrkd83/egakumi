@@ -2,7 +2,7 @@
 
 このフォルダーのJSONは、Gatewayへ実際に配備する標準APIの定義です。`<API名>.json`の1 API 1ファイルで管理し、ファイル名とJSON内の`name`を一致させます。
 
-`scripts/deploy_gateway.py`は、paramsの`apiDefinitions: []`なら19ファイルをまとめて読み込みます。非空の配列なら、その配列に明記したAPIだけを対象にします。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。
+`scripts/deploy_gateway.py`は19ファイルの標準API正本を常用で読み込みます。公開params/configの`apiDefinitions`・`publishApis`による一覧置換・切替は廃止し、旧項目は空配列やfalseでも拒否します。ディレクトリ内のJSONはAPIオブジェクトだけを持ち、`apiDefinitions`等の包みは付けません。今回の公開入力整理は既存アプリID・secret・認証fallbackの切替を伴わず、Azure反映と全環境再構築E2Eは未実施です。[入力配置と移行](../../../../docs/setup/04-params.md#公開入力71主項目の判断記録)を参照してください。
 
 | ファイル | 主な機能 |
 | --- | --- |
@@ -51,7 +51,7 @@ BicepはHTTPの操作ID辞書`queryObservations`、またはMCPのHTTPメソッ�
 - APIの公開パス、操作、許可モデル、要求上限、下流接続、製品・購読との関連は、対象APIのJSONで変更します。
 - `released: true`のAPIと生成MCPは、通常キーで使う`released-apis`製品へ関連付けます。省略・`false`は検証用製品のみで、標準19 APIはすべて`true`を明示しています。リリースを取り消す場合は`false`へ変更してGatewayを配備します。`productId`は既存の検証用製品を指定したままにします。
 - モデルの配備名・版・SKU・容量は、`config/test.json`または`config/production.json`で管理します。APIファイルへモデルの配備設定を重複させません。
-- CMプロバイダー、ログイン設定、環境固有のID・公開ホスト名はparamsで管理します。APIファイルには、そのAPIが必要とする本人接続の条件だけを持たせます。
+- CM共通定義・ログインセッション設定はconfig、アプリ登録・秘密参照と環境固有のID・公開ホスト名はparamsで管理します。標準Graphは双方の`credentialProviders.graphDelegated`、追加providerは`additional[]`で定義／登録を分けます。APIファイルには、そのAPIが必要とする本人接続の条件だけを持たせます。
 - 共通ポリシーは[../policies/](../policies/)、APIMへ登録する入出力スキーマは[../schemas/](../schemas/)で管理します。
 
 APIを追加する場合は、重複しない`name`で1ファイルを追加し、公開パス・バックエンド・認可条件・製品との関連をそろえます。APIを変更した後は、ローカルの登録計画を確認してからGateway配備を実行します。ファイルを編集・削除するだけで、既存Azureリソースが自動更新・削除されるわけではありません。

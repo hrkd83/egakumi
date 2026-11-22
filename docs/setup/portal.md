@@ -10,6 +10,8 @@ App Gatewayは公開HTTPSを終端し、Portalへの後段通信とヘルスプ�
 
 言語付きURLへの転送、OAuthの戻り先、Secure CookieとOrigin検査は公開`BETTER_AUTH_URL=https://...`を基準にします。ACAが`X-Forwarded-Proto`を`http`へ上書きしても、内部HTTP URLをブラウザーへ案内しません。本番Firewallの既存IDPS設定と、検証用のIDPS Offはこの変更で切り替えません。
 
+今回の公開入力整理は資材に実装しています。Azureへの一括反映、全環境再構築E2Eと実受入は未実施です。ローカル試験結果の最終集約前に一式成功と判断しません。[入力の配置判断と移行条件](04-params.md#公開入力71主項目の判断記録)を確認してください。
+
 ## 配備資材の置き場所
 
 ```text
@@ -39,7 +41,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 | --- | --- |
 | `azd provision` | 共通SQLサーバー、Private EndpointとDNS、ネットワーク、ACR、Container Apps環境、Portal用実行ID、初期Container App |
 | `azd up` | 共通基盤の構築と入口設定に続き、Gateway、Portalの順にアプリを配備 |
-| Portal配備工程 | Portal専用DB、署名鍵と読み取り権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、グループ別の製品承認、宣言した検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
+| Portal配備工程 | Portal専用DB、署名鍵と読み取り権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
 
 新規構築は `azd up` で基盤からGateway・Portalまでを順に実行します。`postprovision` が基盤の実出力と公開入口を整え、`postup` が `scripts/deploy_applications.py --execute` を通じて既存のGateway・Portal配備コマンドを順番に呼びます。`azd provision` は共通基盤までを対象にします。
 
@@ -49,7 +51,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 
 Portal配備はネットワークRGの専用Firewall規則グループ `rcg-portal-gateway` も管理します。ACAサブネットから、構築入力の `gateway.publicHostName` だけへのHTTPS/443を許可します。既存の共通規則を置き換えず、PortalのサーバーからAPIM経由でモデルを実行するための通信経路を追加します。
 
-DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`で管理します。検証用はBasic・5 DTU・2 GB・バックアップ7日・Local、本番用はGeneral Purpose・2 vCore・32 GB・14日・Geoです。配備コマンドは既存の`.local/<environment>/params.local.json`を正本として読みます。APIキー所有グループが未設定の場合だけ、実行時に対話入力した内容を同じparamsの`portalApiKeys`へ保存します。
+DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`で管理します。検証用はBasic・5 DTU・2 GB・バックアップ7日・Local、本番用はGeneral Purpose・2 vCore・32 GB・14日・Geoです。配備コマンドは既存の`.local/<environment>/params.local.json`を正本として読みます。管理グループObject IDとグループ表示名の正規表現が未設定の場合だけ、初回対話で入力し、同じparamsの`portalApiKeys.platformGroupId`と`groupNamePattern`へ保存します。製品・購読数・内部配列はparamsへ保存しません。
 
 ## Entraと認証の準備
 
@@ -59,7 +61,7 @@ Portalは認証窓口・CMと同じ単一テナントアプリ`AI Gateway Platfo
 https://<PORTAL_HOST>/api/auth/callback/microsoft
 ```
 
-ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には同じアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。既存の有効なclient secretをサーバー側で共用します。本人は検証済みのテナントIDとオブジェクトIDで識別します。
+ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には同じアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。既存の有効なclient secretをサーバー側で共用します。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profileを保持し、今回の公開形変更だけでアプリClient IDや認証方式を切り替えません。本人は検証済みのテナントIDとオブジェクトIDで識別します。
 
 PortalのSQLには利用者・アカウントの対応・ログインセッションと、暗号化したGraph本人接続のクライアント状態を保存します。Microsoftのアクセストークン・更新トークン・IDトークンは保存しません。Graphのトークン管理はCMが担当し、`X-Core-Connection-Session`はPortalログインとは別の期限・用途です。BFFが確認済みtid/oidと購読に紐付け、ブラウザーへ秘密値を公開しません。
 
@@ -74,7 +76,7 @@ export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
 azd up --environment "$DEPLOY_ENVIRONMENT"
 ```
 
-全体構築には `publishApis: true` が必要です。公開用exampleはこの設定ですが、既存のlocal paramsは自動変更しません。`false` のまま `azd up` を実行すると、課金資源の構築前に停止します。基盤だけを準備するときは `azd provision` を使います。
+標準APIは正本から常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧入力は空配列やfalseでも拒否します。基盤だけを準備するときは`azd provision`を使い、アプリの計画／反映は個別コマンドの`--execute`で区別します。既存paramsは自動変換せず、[移行条件](04-params.md#既存入力の移行を確認する)を先に確認します。
 
 Gateway配備に失敗した場合はPortalへ進まず、Portal配備に失敗した場合も `azd up` は失敗として終了します。作成済みの基盤・Gatewayを保持して原因を直し、必要な個別コマンドから再試行できます。全体の成否は実行したコマンドの終了コードで確認し、古い成功結果JSONを流用しません。
 
@@ -96,25 +98,30 @@ python3 scripts/deploy_portal.py \
   --execute
 ```
 
-初回は、`azd up` のPortal工程または個別のPortal配備コマンドで、対象グループ名の正規表現と、検証用購読を所有する基盤管理グループのObject ID・許可する製品・購読数上限を入力します。同じグループを`platformGroupId`として保存し、管理ダッシュボードの閲覧権限に使います。表示名は入力・保存せず、Graphから取得して対象が設定した正規表現に一致するセキュリティグループであることを確認します。既存の所有グループ設定に管理グループ指定だけがない場合は、既存のObject IDから明示的に選択します。環境固有のIDを資材へ固定しません。製品の一覧はAPI定義から取得し、選択しなければ全許可せず停止します。無人実行では`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`をparamsへ設定してください。
+初回は、`azd up`のPortal工程または個別Portal配備で、管理グループObject IDと対象グループ表示名の正規表現だけを入力します。`platformGroupId`は管理画面と検証用購読の管理グループです。表示名は入力・保存せずGraphから取得し、現在の所属、`securityEnabled=true`、正規表現との一致を確認します。無人実行ではこの2項目をparamsへ事前設定してください。
 
-`params/test.example.json`と`params/production.example.json`は`groupNamePattern: ""`・`groups: []`で用意しています。そのままコピーして初回の対話入力を使うか、下の例をもとに自社のObject IDと承認製品を入力します。`platformGroupId`にダミーのIDは設定しません。
+公開例は`groupNamePattern:""`で、`platformGroupId`を省略しています。準備コマンドが作成した保護paramsへ次の2項目を設定するか、初回対話を使います。`<...>`は用途付きプレースホルダーです。
 
 ```json
-"portalApiKeys": {
-  "groupNamePattern": "^ORG_",
-  "platformGroupId": "<基盤管理グループObject ID>",
-  "verificationSubscriptions": [],
-  "groups": [
-    {
-      "groupId": "<EntraグループObject ID>",
-      "products": [{ "productId": "model-users", "maxSubscriptions": 5 }]
-    }
-  ]
+{
+  "portalApiKeys": {
+    "platformGroupId": "<PLATFORM_GROUP_OBJECT_ID>",
+    "groupNamePattern": "^ORG_"
+  }
 }
 ```
 
-`groupNamePattern`は企業・環境ごとのRE2互換の正規表現です。上の`^ORG_`は一社の記入例であり、既定値ではありません。
+共通configは次の形です。初期値5を現在値のまま移設しています。
+
+```json
+{
+  "portalApiKeys": { "verificationMaxSubscriptions": 5 }
+}
+```
+
+管理グループ1件と標準API正本の全製品から、内部の製品承認と検証用購読を自動生成します。製品subsetと購読数を初回対話で選ばせず、生成済みの`groups`・`verificationSubscriptions`を公開paramsへ書き戻しません。旧項目は空配列でも入力検査で拒否します。
+
+`groupNamePattern`は企業・環境ごとのRE2互換の正規表現です。上の`^ORG_`は独立した架空の命名規則例であり、既定値ではありません。
 
 | 設定例 | 対象の名前 |
 | --- | --- |
@@ -127,35 +134,25 @@ python3 scripts/deploy_portal.py \
 
 Graphへ正規表現を送るのではなく、取得した名前をサーバー側で評価します。移管先の検索語は名前の先頭から入力し、検索結果にも同じ正規表現を適用します。対象がないページに続きがある場合は、画面の追加取得で次を確認できます。セキュリティグループ条件は正規表現にかかわらず必須です。
 
-既存のSQL設定は`006_group_name_pattern.sql`で移行します。適用前の固定`ORG_`を初回適用時に`^ORG_`へ変換し、購読・所有グループ・利用制限・監査を保持します。
+既存の`006_group_name_pattern.sql`には初回の固定`ORG_`から`^ORG_`へのSQL移行があります。適用前に現行DBと移行内容を確認し、非標準値をこの例へ無断変換しません。今回の公開params整理は、旧グループ／承認／購読の自動変換を許可するものではありません。
 
-`groups`は構築時の検証用購読の所有グループと製品承認です。通常の利用者のグループを全件列挙する欄ではありません。通常の所有候補は、Graphで現在の所属を確認でき、かつ`securityEnabled=true`で表示名が`groupNamePattern`に一致するグループに限ります。初回の利用時にObject IDで台帳へ登録し、配備で承認した製品カタログを適用します。名前だけを信用せず、キーの表示・発行・更新時にもGraphで所属と属性を確認します。
+通常の所有候補は、Graphで現在の所属を確認でき、`securityEnabled=true`で表示名が`groupNamePattern`に一致するグループです。初回利用時にObject IDで台帳へ登録し、通常発行カタログを適用します。管理グループの検証製品承認をすべての利用者へ配布する設定ではありません。キーの表示・発行・更新時にも現在の所属と属性を確認します。
 
-`verificationSubscriptions`は基盤管理グループの検証用購読です。空配列の場合は、そのグループに承認した製品ごとに`platform-<productId>`という安定した購読IDを生成します。Gateway側の配備で製品を登録した後にPortalを配備します。`azd up` はこの順番で実行し、購読の作成・登録もPortal工程に含めます。個別に更新するときもGateway→Portalの順を守り、購読専用のコマンドを別途実行する必要はありません。
+内部の検証用購読は、標準製品ごとに`platform-<productId>`という安定した購読IDと標準表示名で生成します。Gatewayで製品を登録した後にPortalを配備し、SQL初期化で購読の作成・登録を行います。個別更新でもGateway→Portalの順を守ります。
 
-すでに利用している検証用キーを維持する場合は、既存のAPIM購読IDを明記します。例えば次の設定では、`model-users`向けの指定購読だけを採用します。キー値は記載しません。
+同じ生成ID・同じ製品スコープの購読がAPIMに存在すれば、既存キーを変更せず採用します。明示的404の場合だけ新規作成し、通信障害や権限不足を不存在へ読み替えません。APIM側の既存表示名を勝手に変更せず、masterや生成対象外の共有購読を一括採用しません。
 
-```json
-"verificationSubscriptions": [
-  {
-    "subscriptionId": "<既存APIM購読ID>",
-    "productId": "model-users",
-    "displayName": "基盤管理用Model Gateway検証"
-  }
-]
-```
-
-登録が必要な購読はAPIMを確認し、同じ製品スコープの購読があればキーを変更せず採用します。明示的な404の場合だけ新規作成します。通信障害や権限不足を「存在しない」と扱いません。既存購読のAPIM表示名は変更せず、台帳の用途名には上の`displayName`を使います。`master`の全API向け購読や、設定に宣言していない共有購読は採用しません。
+旧paramsに追加所有グループ、限定した製品、異なる上限、任意の購読IDがある場合は、保護params・SQL台帳・APIM metadataを確認してから個別に移行します。旧入力を削除するだけで新生成IDへ付け替えず、所有者・製品範囲・購読ID・キー保持と復旧方法を確定するまで停止します。
 
 新規処理はAPIM操作前にSQLへ`creating`の予約を残し、同じ購読の削除や並行配備と排他します。途中で失敗した場合も、次のPortal配備でその予約から再開します。登録完了までは購読数の枠を確保し、同じキーを重複発行したり、削除済みの購読を復活させたりしません。
 
-`maxSubscriptions`の既定値はグループ・製品ごとに5件です。作成中、停止中、削除処理中も含め、削除が確定するまで枠を維持します。この値は購読数の制限であり、利用金額の上限ではありません。現在の購読は金額上限なしの`budgetMode: "unlimited"`として保存します。JPY・月次リセットによる金額上限の指定は、Gateway側の金額集計・停止処理を実装するまでは提供しません。
+検証用管理グループの共通購読数上限はconfigの`portalApiKeys.verificationMaxSubscriptions`から内部`maxSubscriptions`へ適用し、初期値は製品ごとに5件です。通常発行キーのカタログ上限とは別です。作成中、停止中、削除処理中も含め、削除が確定するまで枠を維持します。この値は購読数の制限であり、利用金額の上限ではありません。現在の購読は金額上限なしの`budgetMode: "unlimited"`として保存します。JPY・月次リセットによる金額上限の指定は、Gateway側の金額集計・停止処理を実装するまでは提供しません。
 
 処理は次の順で進みます。
 
 1. 管理VMに一時的な組み込み`AcrPush`を付与し、公開ソースだけを渡してイメージを作成します。非公開ACRの`portal`へ登録し、digestを取得します。一時ロールとRun Commandは回収します。
 2. 共通SQLサーバーへPortal専用DBを作成・更新し、`caj-<環境>-<製品>-psql`を配備します。Portal実行IDへ、組み込みの`API Management Service Contributor`を対象APIM単体の範囲で割り当てます。
-3. この手動ジョブを配備スクリプトが起動し、`sql/`のDDL、正本にあるグループ・製品承認、検証用購読の作成・台帳登録、実行用IDのSQL権限を設定します。SQL初期化に成功するまでアプリ本体は更新しません。
+3. この手動ジョブを配備スクリプトが起動し、`sql/`のDDL、管理グループとAPI正本から生成した製品承認、検証用購読の作成・台帳登録、実行用IDのSQL権限を設定します。SQL初期化に成功するまでアプリ本体は更新しません。
 4. Microsoft認証の戻り先には、後述の限定WAF設定を適用します。この段階ではPortalの稼働中backendを切り替えません。
 5. 既存の`ca-<環境>-<製品>-portal`をdigest指定のイメージへ更新し、HTTP80受付、認証用環境変数とKey Vault参照を渡します。今回の期待imageと正常revisionが一致するまで待ち、以前のrevisionがHealthyというだけでは進みません。
 6. FirewallのAppGW→ACA TCP80許可、内部VIP、backend HostとHTTP受付を照合してから、App Gatewayの`behttp-portal`と`probe-portal`を同一ETag付きPUTでHTTP80へ揃えます。認証不要の`/api/health`、HTTP 200判定を使い、ほかのプローブ・API転送・公開証明書を保持します。新しいリビジョンと公開URLのヘルスを確認します。Readinessでは`/api/health/ready`から実行用IDのSQL照会と専用鍵の準備も確認します。

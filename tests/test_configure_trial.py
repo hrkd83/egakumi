@@ -57,6 +57,8 @@ class TrialConfigurationTests(unittest.TestCase):
 
     def test_separate_entra_tenant_sets_personal_oauth_without_changing_azure(self):
         base=configured_base();base['entraTenantId']=OWNER
+        # 個別テナントを省略した内部入力では、Entraの既定テナントを使います。
+        base['credentialProviders'][0].pop('oauthTenantId', None)
         result=self.build(base=base)
         self.assertEqual(result['azureTenantId'],base['azureTenantId'])
         normalized = normalize_configuration(result, base_directory=CORE/'config')

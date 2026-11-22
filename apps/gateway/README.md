@@ -19,7 +19,7 @@ apps/gateway/
 
 ## 配備する
 
-`azd up`は共通基盤を準備した後、この配備コマンドを呼び出します。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。基盤だけを先に作る場合は`azd provision`を使います。
+`azd up`は共通基盤を準備した後、この配備コマンドを呼び出します。今回の公開入力整理のAzure反映と全環境再構築E2Eは未実施です。既存入力の移行は[判断記録](../../docs/setup/04-params.md#既存入力の移行を確認する)を確認し、非標準値を自動変換しません。個別更新・再試行では、構築済み基盤と同じparamsを使い、リポジトリのルートから実行します。基盤だけを先に作る場合は`azd provision`を使います。
 
 ```bash
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
@@ -28,7 +28,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 1行目は保存済みCore stateからのローカル計画、2行目はAzureへの配備です。`--deployment-name`を指定するCIでは、計画時にもCore配備結果をAzureから読み取ります。認証窓口のイメージ作成・登録、credentials DB・CM・実行用ID、SQL初期化、アプリ・照合ジョブ、API・ポリシー・製品・購読、対象パスへのWAF調整の順に進みます。SQL初期化や起動が失敗した場合はAPI登録へ進みません。本人接続を使わない設定では認証窓口の配備を省略します。
 
-既存のDB・CM接続・購読は同じIDで更新します。paramsやconfigを書き換えず、秘密値をイメージへ入れません。`apiDefinitions: []`は[apis/](apim/apis/)にある標準APIをまとめて選び、非空なら指定したAPIを対象にします。定義は`<API名>.json`の1 API 1ファイルで管理し、モデルの配備設定とCMプロバイダーの設定を含めません。
+既存のDB・CM接続・購読は同じIDで更新します。paramsやconfigを書き換えず、秘密値をイメージへ入れません。[apis/](apim/apis/)にある標準API正本を常用で解決します。公開params/configの`apiDefinitions`・`publishApis`によるAPI選択・切替は廃止し、旧項目は空配列やfalseでも拒否します。定義は`<API名>.json`の1 API 1ファイルで管理し、モデルの配備設定とCMプロバイダーの設定を含めません。標準Graphのアプリ登録・秘密参照はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolはconfigの同slotで管理します。追加providerは定義／登録を`additional[]`の論理名で照合します。今回の配置整理だけで既存アプリID・secret・選択CM由来の本人確認fallbackを切り替えません。
 
 通常のAPIキーは`released-apis`（表示名`Released APIs`）製品に紐づき、リリース済みAPIをまとめて利用します。この製品とAPIとの関連もGateway配備資材に含みます。各API定義の`released: true`を関連付けの正本とし、標準APIはすべて明示しています。追加APIは省略時`false`です。`false`へ変更して配備すると、そのAPIと生成MCPの通常製品との関連を解除します。API本体や既存の検証製品・購読を削除せず、今回指定しなかったAPIにも触れません。
 

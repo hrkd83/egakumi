@@ -187,6 +187,8 @@ class SsmlWafTests(unittest.TestCase):
 
     def test_chat_and_responses_keep_media_exclusions_in_their_manifest_profiles(self):
         manifest = json.loads((CORE / "apps/gateway/waf-data-exclusions.json").read_text())["profiles"]
+        source_url_profiles = {profile["name"]: profile["exclusions"] for profile in
+                               json.loads((CORE / "apps/gateway/waf-source-url-exclusions.json").read_text(encoding="utf-8"))["profiles"]}
         content_controls = json.loads((CORE / "apps/gateway/waf-json-content-controls.json").read_text())
         json_pattern = next(item["pattern"] for item in content_controls["formats"] if item["name"] == "json")
         selected = {profile["name"]: profile for profile in manifest
@@ -201,7 +203,8 @@ class SsmlWafTests(unittest.TestCase):
             with self.subTest(purpose=purpose):
                 policy = configured[purpose]
                 self.assertEqual(policy["managedRules"]["exclusions"],
-                                 parameters["wafExclusions"] + selected[purpose]["exclusions"])
+                                 parameters["wafExclusions"] + selected[purpose]["exclusions"] +
+                                 source_url_profiles.get(purpose, []))
                 expected_sets = copy.deepcopy(baseline["managedRules"]["managedRuleSets"])
                 expected_sets[0]["ruleGroupOverrides"] = [{
                     "ruleGroupName": "REQUEST-920-PROTOCOL-ENFORCEMENT",
@@ -251,10 +254,10 @@ class SsmlWafTests(unittest.TestCase):
             self.assertEqual(properties[collection], [])
         self.assertNotIn('grpcEnabled', self.template['parameters'])
 
-    def test_enterprise_policy_and_standard_sku_do_not_create_an_override(self):
+    def test_standard_sku_does_not_create_an_override(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
         ssml = self.resource("g-speech")
-        for changes in ({"existingWafPolicyId": "/enterprise-waf"}, {"skuName": "Standard_v2"}):
+        for changes in ({"skuName": "Standard_v2"},):
             parameters = self.parameters(**changes)
             self.assertFalse(self.value(ssml["condition"], parameters))
             properties = self.value(gateway["properties"], parameters)
@@ -265,8 +268,7 @@ class SsmlWafTests(unittest.TestCase):
             self.assertEqual(basic["ruleType"], "Basic")
             self.assertIn("backendHttpSettings", basic)
             self.assertIn("rewriteRuleSet", basic)
-            if "existingWafPolicyId" in changes:
-                self.assertEqual(properties["firewallPolicy"]["id"], "/enterprise-waf")
+            self.assertNotIn("firewallPolicy", properties)
 
     def test_gateway_identity_callback_excludes_only_code_value_from_three_observed_sql_rules(self):
         parameters = self.parameters()
@@ -281,7 +283,7 @@ class SsmlWafTests(unittest.TestCase):
             "exclusionManagedRuleSets": [{"ruleSetType": "OWASP", "ruleSetVersion": "3.2", "ruleGroups": [{
                 "ruleGroupName": "REQUEST-942-APPLICATION-ATTACK-SQLI",
                 "rules": [{"ruleId": "942430"}, {"ruleId": "942440"}, {"ruleId": "942450"}]}]}]})
-        for changes in ({"existingWafPolicyId": "/enterprise-waf"}, {"skuName": "Standard_v2"}):
+        for changes in ({"skuName": "Standard_v2"},):
             self.assertFalse(self.value(policy["condition"], self.parameters(**changes)))
 
     def test_gateway_identity_callback_exists_without_other_protocol_paths_and_keeps_rewrite(self):
@@ -330,7 +332,7 @@ class SsmlWafTests(unittest.TestCase):
         self.assertEqual(path["properties"]["backendAddressPool"], pathmap["defaultBackendAddressPool"])
         self.assertEqual(path["properties"]["backendHttpSettings"], pathmap["defaultBackendHttpSettings"])
         self.assertTrue(pathmap["defaultBackendAddressPool"]["id"].endswith("bepool-portal"))
-        self.assertFalse(self.value(policy["condition"], self.parameters(existingWafPolicyId="/enterprise-waf")))
+        self.assertNotIn("existingWafPolicyId", self.template["parameters"])
 
     def test_waf_schema_has_only_fixed_purposes_and_manifest_data_policies(self):
         policy_type = "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies"

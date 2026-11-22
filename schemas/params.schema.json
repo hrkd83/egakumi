@@ -61,236 +61,40 @@
     "subscriptionId": {
       "$ref": "#/$defs/guid"
     },
-    "apiDefinitions": {
-      "type": "array",
-      "description": "azd upのGateway工程と個別のGateway配備で、空配列なら標準19 API、非空なら指定したAPIを登録します。標準APIの接続先は基盤出力からメモリー内で解決し、paramsを書き換えません。基盤のWAF・監査ログに必要な情報も同じ定義から事前に準備します。",
-      "items": {
-        "type": "object",
-        "properties": {
-          "backendAuthentication": {
-            "$ref": "#/$defs/backendAuthentication"
-          },
-          "subscriptionKeyHeader": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9-]+$",
-            "description": "省略時はgateway.authentication.subscriptionKeyHeaderを使います。明示時も同じヘッダー名とし、大文字・小文字だけの差は共通値へ正規化します。",
-            "default": "api-key"
-          },
-          "mcp": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 400
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1
-              },
-              "operationNames": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1,
-                "maxItems": 1
-              },
-              "queryObservation": {
-                "$ref": "#/$defs/queryObservationReference"
-              }
-            },
-            "required": [
-              "name",
-              "path",
-              "displayName",
-              "operationNames"
-            ],
-            "not": {
-              "required": [
-                "queryGuard"
-              ]
-            }
-          },
-          "serviceClass": {
-            "enum": [
-              "platform",
-              "sample"
-            ],
-            "description": "platform=基盤が初期提供する正式API、sample=本体を別途配備するサンプル用API。"
-          },
-          "operations": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "object",
-              "properties": {
-                "backendOverride": {
-                  "$ref": "#/$defs/operationBackendOverride"
-                },
-                "queryObservation": {
-                  "$ref": "#/$defs/queryObservationReference"
-                },
-                "inputContract": {
-                  "$ref": "#/$defs/inputContract"
-                }
-              },
-              "not": {
-                "required": [
-                  "queryGuard"
-                ]
-              }
-            }
-          },
-          "authorization": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "mode": {
-                "const": "subscriptionKey",
-                "description": "APIMの有効な購読キーと利用範囲を確認します。"
-              },
-              "operationConstraints": {
-                "type": "object",
-                "additionalProperties": {
-                  "$ref": "#/$defs/operationConstraint"
-                }
-              }
-            },
-            "required": [
-              "mode",
-              "operationConstraints"
-            ]
-          },
-          "websocket": {
-            "type": "object",
-            "properties": {
-              "allowedModels": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1,
-                "uniqueItems": true
-              },
-              "defaultModel": {
-                "type": "string"
-              }
-            }
-          },
-          "credentialConnection": {
-            "$ref": "#/$defs/credentialConnection"
-          },
-          "name": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "backendService": {
-            "type": "string"
-          },
-          "backendUrl": {
-            "type": "string"
-          },
-          "backendPath": {
-            "type": "string"
-          },
-          "backendAudience": {
-            "type": "string"
-          },
-          "productId": {
-            "type": "string"
-          },
-          "keySubscriptions": {
-            "type": "array"
-          },
-          "apiType": {
-            "type": "string"
-          },
-          "backendHeaders": {
-            "type": "object"
-          },
-          "mcpProxy": {
-            "type": "object",
-            "properties": {
-              "endpoints": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "queryObservation": {
-                      "$ref": "#/$defs/queryObservationReference"
-                    }
-                  },
-                  "not": {
-                    "required": [
-                      "queryGuard"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "released": {
-            "type": "boolean",
-            "default": false,
-            "description": "trueのAPIと生成MCPを通常キー用のreleased-apis製品へ関連付けます。省略・falseは検証用製品のみ。falseへ変更したAPIの公開製品との関連はGateway配備時に解除します。"
-          }
-        },
-        "additionalProperties": false
-      }
-    },
     "credentialProviders": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/credentialProvider"
-      }
-    },
-    "authorization": {
       "type": "object",
       "additionalProperties": false,
+      "description": "標準Graph接続と追加OAuth接続の環境別アプリ登録・秘密ファイル参照です。共通表示名・scope・pool・プロトコル定義はconfigに置きます。",
       "properties": {
-        "projectAdministrators": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/principal"
-          },
-          "default": []
+        "graphDelegated": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "標準Graph委任接続用Entraアプリの登録情報です。テナントはentraTenantIdから決まります。",
+          "required": [
+            "clientId",
+            "clientSecretFile"
+          ],
+          "properties": {
+            "clientId": {
+              "$ref": "#/$defs/guid"
+            },
+            "clientSecretFile": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "projectDevelopers": {
+        "additional": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/principal"
+            "$ref": "#/$defs/credentialProvider"
           },
-          "default": []
-        },
-        "foundryReaders": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/principal"
-          },
-          "default": []
-        },
-        "catalogReaders": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/principal"
-          },
-          "default": []
+          "description": "config.credentialProviders.additionalに対応する追加アプリ登録です。"
         }
-      }
+      },
+      "required": [
+        "graphDelegated"
+      ]
     },
     "productName": {
       "type": "string",
@@ -320,7 +124,7 @@
           "pattern": "^[a-z0-9]{6}$",
           "minLength": 6,
           "maxLength": 6,
-          "description": "APIMの構築識別子です。初回のローカル入力準備で生成して保存し、通常の更新では変更しません。"
+          "description": "初回prepare_local_environment.pyで生成・保存する6文字の構築識別子です。通常の更新では保存済み値を保持します。公開テンプレートの未解決マーカーは実入力として受け付けません。"
         }
       },
       "required": [
@@ -336,95 +140,18 @@
         "authentication": {
           "type": "object",
           "additionalProperties": false,
-          "description": "購読キーによる共通認可と、必要なAPIから利用する本人OAuth接続の設定です。",
+          "description": "Entra API audienceと任意の接続窓口アプリ登録です。購読キーヘッダーはapi-keyで固定します。",
           "properties": {
-            "subscriptionKeyHeader": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128,
-              "pattern": "^[A-Za-z0-9-]+$",
-              "default": "api-key",
-              "description": "APIMの購読キーを受信する専用ヘッダー名です。標準はAzure OpenAI互換のapi-keyです。"
-            },
             "entra": {
               "$ref": "#/$defs/entraAuthentication"
             },
             "credentialLogin": {
               "type": "object",
               "additionalProperties": false,
-              "description": "本人のOAuth接続を作成し、認証完了後に接続セッションを発行する共通窓口です。",
-              "required": [
-                "providerNames"
-              ],
+              "description": "独立した接続窓口アプリを使う場合の環境別登録情報です。identityは任意です。",
               "properties": {
                 "identity": {
                   "$ref": "#/$defs/credentialLoginIdentity"
-                },
-                "providerNames": {
-                  "type": "array",
-                  "minItems": 1,
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-                  },
-                  "description": "本人接続の作成と認証案内に利用するEntraプロバイダー名です。"
-                },
-                "idleTimeoutSeconds": {
-                  "type": "integer",
-                  "minimum": 300,
-                  "maximum": 31536000,
-                  "default": 604800,
-                  "description": "最終の対象業務API利用からの無操作期限。期限切れのセッションは延長しません。"
-                },
-                "absoluteLifetimeSeconds": {
-                  "type": "integer",
-                  "minimum": 300,
-                  "maximum": 31536000,
-                  "default": 2592000,
-                  "description": "本人確認完了からの最長期限。利用や値の更新でも延長しません。"
-                },
-                "rotationIntervalSeconds": {
-                  "type": "integer",
-                  "minimum": 300,
-                  "maximum": 2592000,
-                  "default": 86400,
-                  "description": "対象業務APIの利用時にセッション値の更新を開始する間隔。"
-                },
-                "rotationGraceSeconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 3600,
-                  "default": 300,
-                  "description": "更新確定後に旧値を受け付ける固定の移行猶予。旧値の利用で延長しません。"
-                },
-                "rotationHandoffSeconds": {
-                  "type": "integer",
-                  "minimum": 60,
-                  "maximum": 3600,
-                  "default": 600,
-                  "description": "更新開始後、保存・確定を待って業務APIを継続できる期間。"
-                },
-                "rotationCandidateTtlSeconds": {
-                  "type": "integer",
-                  "minimum": 60,
-                  "maximum": 3600,
-                  "default": 600,
-                  "description": "更新候補の有効期間。更新確定だけでは利用期限を延長しません。"
-                },
-                "transactionLifetimeSeconds": {
-                  "type": "integer",
-                  "minimum": 60,
-                  "maximum": 600,
-                  "default": 300,
-                  "description": "ログイン開始から認証結果を受け取るまでの有効期間です。"
-                },
-                "loginCallsPerMinute": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000,
-                  "default": 10,
-                  "description": "購読IDごとのログイン開始回数を1分単位で制限します。"
                 }
               }
             }
@@ -434,100 +161,6 @@
           "type": "string",
           "minLength": 1,
           "description": "公開DNSで管理するAPI入口のFQDN。スキーム・パス・ポートは付けません。"
-        },
-        "existingWafPolicyId": {
-          "type": "string",
-          "default": ""
-        },
-        "rateLimits": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "subscriptionKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "overrides": {
-                  "type": "array",
-                  "default": [],
-                  "uniqueItems": true,
-                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "callerId",
-                      "calls",
-                      "renewalPeriodSeconds"
-                    ],
-                    "properties": {
-                      "calls": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 1000000,
-                        "description": "この契約に適用する要求回数の上限です。"
-                      },
-                      "renewalPeriodSeconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 300,
-                        "description": "この契約の集計期間（秒）です。"
-                      },
-                      "callerId": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512,
-                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
-                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
-                      }
-                    }
-                  }
-                }
-              }
-            },
-            "application": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "overrides": {
-                  "type": "array",
-                  "default": [],
-                  "uniqueItems": true,
-                  "description": "契約ごとの回数と期間を上書きします。同じcallerIdの重複は値が異なっても構築前検査で拒否します。未登録の契約も事前宣言できますが、利用許可は別途登録が必要です。",
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                      "callerId",
-                      "calls",
-                      "renewalPeriodSeconds"
-                    ],
-                    "properties": {
-                      "calls": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 1000000,
-                        "description": "この契約に適用する要求回数の上限です。"
-                      },
-                      "renewalPeriodSeconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 300,
-                        "description": "この契約の集計期間（秒）です。"
-                      },
-                      "callerId": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 512,
-                        "pattern": "^\\S(?:[\\s\\S]*\\S)?(?![\\s\\S])",
-                        "description": "key/token登録と同じ契約IDです。前後の空白を含まない1〜512字。大文字と小文字を区別します。"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       },
       "required": [
@@ -555,9 +188,9 @@
         "sshPublicKeyFile": {
           "type": "string",
           "minLength": 1,
-          "description": "SSH公開鍵の必須入力兼生成先。相対パスは設定ファイル基準。有効なOpenSSH RSA 2048bit以上/Ed25519公開鍵1件は、repo外・秘密鍵なしでも再利用。azd upのpreup末尾で公開鍵と対応秘密鍵がともに存在しないときだけ、repo ROOT/secrets配下の.pubへssh-keygenでパスフレーズなしRSA4096鍵対を生成（POSIX:dir700/private600）。秘密鍵のみ既存・無効な既存公開鍵・repo外の未作成先は上書きせず停止。完成鍵対は失敗/down後も保持し、秘密鍵をGit・Azure・ログへ送信しません。",
+          "description": "SSH公開鍵の必須入力兼生成先。相対参照はparamsファイル基準です。明示された保護入力にある有効なOpenSSH RSA 2048bit以上またはEd25519公開鍵1件は、対応秘密鍵なしでも再利用できます。鍵対がともに存在しない場合の生成先はチェックアウト直下.local/<environment>/secrets/配下に限定し、リンクと所有者専用権限を確認します。秘密鍵だけが既存、公開鍵が無効、外部参照の生成先が未作成の場合は上書きせず停止します。生成した鍵対は失敗/down後も保持します。",
           "examples": [
-            "../secrets/management-ssh.pub"
+            "./secrets/management-ssh.pub"
           ]
         }
       },
@@ -579,21 +212,6 @@
             "format": "email",
             "minLength": 1
           }
-        },
-        "auditAllowedIpAddresses": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true,
-          "description": "監査Storageへ接続を許可する環境ごとのIPv4/CIDRです。空配列はIPによる追加許可なしです。"
-        },
-        "auditReaders": {
-          "type": "array",
-          "items": {
-            "type": "object"
-          },
-          "default": []
         }
       },
       "required": [
@@ -609,22 +227,6 @@
           "format": "email",
           "minLength": 1
         },
-        "domainNames": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 100,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 253
-          },
-          "description": "発行する証明書のDNS名。例: [\"*.example.com\"]。左端一階層のワイルドカード、または通常のホスト名を指定。省略時はGatewayの公開名。Gatewayの公開名を覆う必要があり、ワイルドカードはapex・深い階層を含みません。独立コンソールの証明書は別管理です。"
-        },
-        "plugin": {
-          "const": "Azure",
-          "description": "Azure Public DNSを使用します。構築前に権威ゾーン・NS委任・専用マネージドIDを準備します。"
-        },
         "azureDnsSubscriptionId": {
           "type": "string",
           "format": "uuid",
@@ -639,7 +241,6 @@
       "description": "公開証明書はAzure Public DNSの権威ゾーンと専用マネージドIDを使い、DNS-01で発行・更新します。",
       "required": [
         "contactEmail",
-        "plugin",
         "azureDnsSubscriptionId",
         "azureDnsManagedIdentityResourceId"
       ]
@@ -726,41 +327,6 @@
               ]
             }
           }
-        },
-        "firewall": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "環境依存のIPとIP条件を含むFirewall規則配列です。SKUはconfig側にあるため、Premium専用項目との整合は合成後に検証します。",
-          "properties": {
-            "snatPrivateRanges": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [
-                "IANAPrivateRanges"
-              ],
-              "description": "SNATを行わない宛先範囲。IANAPrivateRangesはRFC 1918・RFC 6598等のAzure既定のプライベート範囲です。"
-            },
-            "idpsPrivateRanges": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true,
-              "default": [],
-              "description": "Premium IDPSが内部とみなすIP範囲。空配列は追加指定なし。Standardでは空配列にします。"
-            },
-            "bypassTrafficSettings": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              },
-              "default": [],
-              "description": "Premium IDPS検査を除外する通信。追加しない場合は空配列。"
-            }
-          }
         }
       }
     },
@@ -785,10 +351,6 @@
         "type": "string"
       }
     },
-    "publishApis": {
-      "type": "boolean",
-      "description": "azd up全体とGateway配備の--executeによる反映を許可するか。falseではupをpreup冒頭の課金資源作成前に停止し、trueへ自動変更しません。個別の登録計画はfalseでも生成できます。基盤だけの構築はazd provisionを使います。"
-    },
     "portal": {
       "type": "object",
       "additionalProperties": false,
@@ -811,96 +373,14 @@
     "entraAuthentication": {
       "type": "object",
       "additionalProperties": false,
-      "description": "業務APIへ追加する社員のEntra委任認証です。tenantはentraTenantIdを使い、対象は業務APIの正本と生成MCPから自動的に求めます。購読キーがある要求はキー認証、キーなしBearer要求は委任トークン認証を使います。有効・無効やクライアント・APIの選択は設けず、指定時は全項目を必須とします。Entra設定を省略した既存構成はキー認証との互換性を維持します。",
+      "description": "業務APIのEntra認証先アプリです。テナントはentraTenantId、委任scopeはGateway.Invokeで固定し、社員共通の利用制限はconfigに置きます。",
       "required": [
-        "audience",
-        "requiredScope",
-        "userLimits"
+        "audience"
       ],
       "properties": {
         "audience": {
           "$ref": "#/$defs/guid",
           "description": "v2アクセストークンの宛先となるAPI用アプリのApplication client IDです。api://のscope URIは指定しません。"
-        },
-        "requiredScope": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,127}$",
-          "default": "Gateway.Invoke",
-          "description": "scpに含める単一の委任scope名です。resource prefixや複数scopeを指定しません。"
-        },
-        "userLimits": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "requestRate",
-            "tokensPerMinute",
-            "tokenQuota"
-          ],
-          "description": "全社員共通の利用制限を3項目すべて明示します。各nullはその制限の無効化で、非nullには有限の値が必要です。有効なcounterは検証済みtid/oidごとに分け、既存キーの購読counterは維持します。",
-          "properties": {
-            "requestRate": {
-              "type": [
-                "object",
-                "null"
-              ],
-              "description": "本人別HTTP要求回数の制限です。nullで無効化します。人の入力回数とは異なり、ツール継続・retry・並列要求も計数します。",
-              "additionalProperties": false,
-              "required": [
-                "calls",
-                "renewalPeriodSeconds"
-              ],
-              "properties": {
-                "calls": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 1000000
-                },
-                "renewalPeriodSeconds": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 300
-                }
-              }
-            },
-            "tokensPerMinute": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "minimum": 1,
-              "maximum": 2147483647,
-              "description": "本人別の毎分トークン上限です。nullで無効化します。"
-            },
-            "tokenQuota": {
-              "type": [
-                "object",
-                "null"
-              ],
-              "description": "本人別の期間トークン枠です。nullで無効化します。",
-              "additionalProperties": false,
-              "required": [
-                "tokens",
-                "period"
-              ],
-              "properties": {
-                "tokens": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 2147483647
-                },
-                "period": {
-                  "type": "string",
-                  "enum": [
-                    "Hourly",
-                    "Daily",
-                    "Weekly",
-                    "Monthly",
-                    "Yearly"
-                  ]
-                }
-              }
-            }
-          }
         }
       }
     },
@@ -908,15 +388,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "tenantId",
         "clientId",
         "clientSecretFile"
       ],
-      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認です。省略時は選択CM provider由来の現行設定を維持します。",
+      "description": "CMの外部API用clientから独立した接続窓口のOIDC本人確認用アプリです。テナントはentraTenantIdから決まります。省略時は選択CM provider由来の現行設定を維持します。",
       "properties": {
-        "tenantId": {
-          "$ref": "#/$defs/guid"
-        },
         "clientId": {
           "$ref": "#/$defs/guid"
         },
@@ -1482,30 +958,16 @@
     "credentialProvider": {
       "type": "object",
       "additionalProperties": false,
-      "description": "OAuth接続先の固定設定です。本人接続用のEntraプロバイダーはidentityEndpointで認証した本人を確認します。",
+      "description": "追加OAuthプロバイダーの環境別登録情報です。nameでconfig側の追加定義と対応付けます。",
       "required": [
         "name",
-        "displayName",
-        "identityProvider",
         "clientId",
-        "clientSecretFile",
-        "scopes",
-        "connectionNames"
+        "clientSecretFile"
       ],
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-        },
-        "displayName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "identityProvider": {
-          "enum": [
-            "aad",
-            "oauth2"
-          ]
         },
         "clientId": {
           "type": "string",
@@ -1517,116 +979,17 @@
         },
         "oauthTenantId": {
           "$ref": "#/$defs/guid"
-        },
-        "scopes": {
-          "type": "string",
-          "minLength": 1
-        },
-        "resourceUri": {
-          "type": "string",
-          "pattern": "^https://[^\\s]+$"
-        },
-        "authorizationUrl": {
-          "type": "string",
-          "pattern": "^https://[^\\s]+$"
-        },
-        "tokenUrl": {
-          "type": "string",
-          "pattern": "^https://[^\\s]+$"
-        },
-        "refreshUrl": {
-          "type": "string",
-          "pattern": "^https://[^\\s]+$"
-        },
-        "connectionNames": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-          },
-          "description": "事前作成する固定接続名です。共通ログイン窓口から本人接続を作るプロバイダーは空配列を指定できます。"
-        },
-        "identityEndpoint": {
-          "type": "string",
-          "pattern": "^https://[^\\s?#]+$",
-          "description": "resourceUriと同じホストにある固定の本人情報取得URLです。本人接続用Entraプロバイダーに指定します。"
-        },
-        "identityIdProperty": {
-          "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
-          "default": "id",
-          "description": "本人情報の応答から取得する不変IDのプロパティ名です。"
-        },
-        "pool": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "count",
-            "capacity"
-          ],
-          "description": "論理プロファイルを-aからの物理CMプロバイダーへ展開する。",
-          "properties": {
-            "count": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 26
-            },
-            "capacity": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 8000
-            }
-          }
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "identityProvider": {
-                "const": "aad"
-              }
-            },
-            "required": [
-              "identityProvider"
-            ]
-          },
-          "then": {
-            "required": [
-              "resourceUri"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "identityProvider": {
-                "const": "oauth2"
-              }
-            },
-            "required": [
-              "identityProvider"
-            ]
-          },
-          "then": {
-            "required": [
-              "authorizationUrl",
-              "tokenUrl",
-              "refreshUrl"
-            ]
-          }
-        }
-      ]
+      }
     },
     "portalApiKeys": {
       "type": "object",
       "additionalProperties": false,
-      "description": "検証用購読の所有グループ・基盤管理グループと承認製品。初期のazd upは基盤・Gatewayの後、Portal工程で未設定項目を対話入力し、同じparamsへ保存します。非対話ではgroups・platformGroupId・groupNamePatternの事前設定が必要です。通常の所有候補は環境別の正規表現に一致するセキュリティグループをGraphから取得し、キー値は含めません。",
+      "description": "初回Portal配備で明示する管理グループObject IDと、対象セキュリティグループ表示名の正規表現です。未設定項目は対話入力して同じparamsへ保存します。承認製品は標準API正本、購読数上限はconfigから決まります。",
       "properties": {
         "platformGroupId": {
           "$ref": "#/$defs/guid",
-          "description": "検証用購読の所有グループのうち、管理ダッシュボードへのアクセスを許可するグループのObject ID。groups内のIDを明示します。"
+          "description": "管理ダッシュボードと検証用購読を所有する管理グループのObject IDです。初回対話入力のため省略できます。"
         },
         "groupNamePattern": {
           "type": "string",
@@ -1638,81 +1001,6 @@
             "^組織_.+$"
           ],
           "description": "対象セキュリティグループの表示名を選ぶRE2互換の正規表現。通常は大文字小文字を区別します。空欄は初回未設定で、azd up後段または個別のPortal配備で対話入力します。非対話では事前設定が必要です。空欄を全許可にはしません。"
-        },
-        "verificationSubscriptions": {
-          "type": "array",
-          "maxItems": 100,
-          "default": [],
-          "description": "Portal配備で基盤管理グループへ登録する検証用購読。未設定の初回は承認製品ごとにplatform-<製品ID>で作成します。既存の購読は実IDを明示して引き継ぎます。キー値は含めません。",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "subscriptionId",
-              "productId",
-              "displayName"
-            ],
-            "properties": {
-              "subscriptionId": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
-                "not": {
-                  "pattern": "^[Mm][Aa][Ss][Tt][Ee][Rr]$"
-                }
-              },
-              "productId": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
-              },
-              "displayName": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 80
-              }
-            }
-          }
-        },
-        "groups": {
-          "type": "array",
-          "maxItems": 1000,
-          "default": [],
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "groupId",
-              "products"
-            ],
-            "properties": {
-              "groupId": {
-                "$ref": "#/$defs/guid"
-              },
-              "products": {
-                "type": "array",
-                "minItems": 1,
-                "maxItems": 100,
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "productId"
-                  ],
-                  "properties": {
-                    "productId": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
-                    },
-                    "maxSubscriptions": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 1000,
-                      "default": 5
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     },

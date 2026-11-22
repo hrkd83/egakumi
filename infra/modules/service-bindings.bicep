@@ -20,14 +20,6 @@ param grantApimSecretAccess bool = false
 param speechEnabled bool = false
 @description('APIM に対象 Foundry アカウントの組み込み Cognitive Services User を付けるか。Cohere 等の呼出しに使いますが、キー一覧取得や他のデータ操作も含むため、OpenAI 呼出し専用ロールより広い権限です。')
 param grantApimFoundryModelsAccess bool = false
-@description('Foundry プロジェクトの管理担当者。principalId と principalType を指定します。')
-param projectAdministrators array = []
-@description('Foundry プロジェクトで開発を行う利用者または ID の一覧。')
-param projectDevelopers array = []
-@description('Foundry アカウントの構成を参照できる利用者または ID の一覧。')
-param foundryReaders array = []
-@description('API Center の API カタログを参照できる利用者または ID の一覧。')
-param catalogReaders array = []
 @description('API Center から今回の APIM の API 一覧を同期できるようにするか。')
 param enableApiCenterIntegration bool = true
 @allowed(['development', 'production', 'staging', 'testing'])
@@ -40,8 +32,6 @@ param catalogLifecycleStage string = 'production'
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = { name: names.keyVault }
 // 既存 Foundry をモデル呼出し権限等の対象として参照します。
 resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = { name: names.foundry }
-// 既存の共有プロジェクトをユーザー権限の対象にします。
-resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' existing = { parent: foundry, name: names.project }
 // 既存 APIM の ID を読み、バックエンド用権限の割当先にします。
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = { name: names.apim }
 // 既存 API Center をカタログ参照権限の対象として参照します。
@@ -55,10 +45,7 @@ var certificatesOfficerRoleId = subscriptionResourceId('Microsoft.Authorization/
 var secretsOfficerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
 var openAiUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
 var foundryUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
-var projectManagerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'eadc314b-1a2d-4efa-be10-5d325db5065e')
-var readerRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
 var apiManagementReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '71522526-b88f-4d52-b57f-d31fc3546d0d')
-var apiCenterDataReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'c7244dfb-f447-457d-b2ba-3999044d1706')
 var languageReaderRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7628b7b8-a8b2-4cdc-b46f-e9b35248918e')
 // Official built-in role: includes SpeechServices/voicelive/realtime/*.
 // https://learn.microsoft.com/azure/role-based-access-control/built-in-roles/ai-machine-learning#cognitive-services-speech-user
@@ -125,36 +112,13 @@ resource projectRuntime 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: foundry
   properties: { principalId: principalIds.project, principalType: 'ServicePrincipal', roleDefinitionId: foundryUserRoleId }
 }
-// 指定管理者へプロジェクト管理権限を付与します。
-resource projectManagers 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for principal in projectAdministrators: {
-  name: guid(project.id, principal.principalId, projectManagerRoleId)
-  scope: project
-  properties: { principalId: principal.principalId, principalType: principal.principalType, roleDefinitionId: projectManagerRoleId }
-}]
-// 指定開発者へプロジェクト利用権限を付与します。
-resource projectUsers 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for principal in projectDevelopers: {
-  name: guid(project.id, principal.principalId, foundryUserRoleId)
-  scope: project
-  properties: { principalId: principal.principalId, principalType: principal.principalType, roleDefinitionId: foundryUserRoleId }
-}]
-// 指定利用者へ Foundry アカウント構成の Reader を付与します。
-resource accountReaders 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for principal in foundryReaders: {
-  name: guid(foundry.id, principal.principalId, readerRoleId)
-  scope: foundry
-  properties: { principalId: principal.principalId, principalType: principal.principalType, roleDefinitionId: readerRoleId }
-}]
+// 初期の企業利用者向けRBACは追加しません。必要な担当者は構築後にIAMで付与します。
 // API Center 自身の MI に APIM の定義を読む権限を付けます。
 resource apiCenterApimReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableApiCenterIntegration) {
   name: guid(apim.id, principalIds.apiCenter, apiManagementReaderRoleId)
   scope: apim
   properties: { principalId: principalIds.apiCenter, principalType: 'ServicePrincipal', roleDefinitionId: apiManagementReaderRoleId }
 }
-// 指定利用者へ API Center のデータ参照権限を付けます。
-resource apiCenterReaders 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for principal in catalogReaders: {
-  name: guid(apiCenter.id, principal.principalId, apiCenterDataReaderRoleId)
-  scope: apiCenter
-  properties: { principalId: principal.principalId, principalType: principal.principalType, roleDefinitionId: apiCenterDataReaderRoleId }
-}]
 
 // 公開 Gateway の URL と環境分類をカタログに登録します。
 resource catalogEnvironment 'Microsoft.ApiCenter/services/workspaces/environments@2024-03-01' = if (enableApiCenterIntegration) {

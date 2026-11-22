@@ -65,7 +65,8 @@ class RetiredGrpcInfrastructureTests(unittest.TestCase):
             self.assertEqual((backends[name]["protocol"], backends[name]["port"]), ("Http", 80))
 
     def test_all_apim_gateway_routes_keep_trusted_rewrite_with_each_waf_mode(self):
-        for changes in ({}, {"existingWafPolicyId": "/fixture/existing-waf"}, {"skuName": "Standard_v2"}):
+        self.assertNotIn("existingWafPolicyId", self.templates["gateway"]["parameters"])
+        for changes in ({}, {"skuName": "Standard_v2"}):
             with self.subTest(changes=changes):
                 properties = self.gateway_properties(**changes)
                 rewrite, = properties["rewriteRuleSets"]

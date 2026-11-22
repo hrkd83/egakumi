@@ -26,9 +26,9 @@ python3 scripts/deployment/lifecycle.py validate
 
 `valid: true`、導出された5RG、公開APIの設定状態を確認します。`WORKFORCE_CONFIG`はup/downが読むparamsの入口です。個人用・過去試験用の`.local/<environment>/state/`内の合成設定や、他人のID・URLを含む設定を使いません。
 
-paramsの`services.apimInstanceId`は第1章で保存した値を使います。第2章で算出したCM戻り先がEntraに保存されていることを確認してください。`azd up`や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
+paramsの`services.apimInstanceId`は第1章の初回prepareが公開マーカー`<AUTO_GENERATED_APIM_INSTANCE_ID>`を6文字IDへ置換して保存した値を使います。未解決マーカーは配備入力として受け付けません。第2章で算出したCM戻り先がEntraに保存されていることを確認してください。`azd up`や途中再開で識別子を生成し直すことはありません。撤去後の新規構築は[新しいAPIM識別子を準備](../operations.md#撤去後に新しく構築する)してから、この章を進めます。
 
-全体構築には`publishApis:true`が必要です。test・productionの公開例はtrueですが、既存のlocal paramsは自動変更しません。falseのまま`azd up`を実行すると、`preup`の冒頭で課金資源の作成前に停止します。基盤だけを準備する場合は、同じ入力で`azd provision`を使います。
+標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧項目は空配列やfalseでも拒否し、既存paramsを無断で自動変換しません。[入力配置と移行条件](04-params.md#既存入力の移行を確認する)を確認してから実行します。基盤だけを準備する場合は、同じ入力で`azd provision`を使います。今回の入力整理のAzure反映・全環境再構築E2Eは未実施です。
 
 第1章で作成した環境別paramsを使います。`secrets/`・`state/`・`generated/`は同じ`.local/<environment>/`の下に置き、`.azure/`はazdだけが管理します。まだ秘密や配備記録がないことは正常です。第2章のCore client secretを安全な保管先から非表示入力できる状態にし、第3章で確認したAzure DNS側Subscription IDとUAMIのリソースIDを用意します。DNS用IDの公開参照はparamsへ事前設定します。Entraのsecretをparams／configへ書き込まず、案内に従って非表示入力します。
 
@@ -96,7 +96,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 これはSerial Console用のローカル認証準備です。PAM認証には認証ログやロックアウトへの影響があり、完了記録は実Serial接続の成功を示しません。Managed Run Commandの保護設定やrootプロセスのメモリー等に値が残り得るため、保持がゼロとは扱いません。実ログインの成功は[管理VMの保守手順](../operations.md#serial-consoleのローカル認証を準備する)で別に確認します。
 
-基盤とGatewayの構築が終わると、最後のPortal工程でAPIキー所有グループの設定を入力します。未設定の`groupNamePattern`・基盤管理グループのObject ID・承認製品と購読数上限を、同じparamsへ保存します。この入力の完了まで`azd up`の完了にはなりません。非対話で初期構築する場合は、`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定してください。
+基盤とGatewayの構築が終わると、最後のPortal工程で未設定の`portalApiKeys.platformGroupId`と`groupNamePattern`だけを対話入力し、同じ保護paramsへ保存します。表示名はGraphから取得します。管理グループ1件と全標準API製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。製品・件数は対話入力せず、内部`groups`・`verificationSubscriptions`をparamsへ書き戻しません。非対話では上記2項目を事前に設定します。不足したままPortal工程を完了できません。
 
 事前チェックは、配備先の一致、必要な秘密情報、追加配備の容量、監査データの保持保護、既存の通信・証明書・稼働アプリの維持を確認します。Azureの応答にある読取メタデータや空の既定値は、実際の設定に影響する項目と分けて扱います。
 
@@ -107,10 +107,10 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 | 入力 | 対話直後 | 構築後・運用中 |
 | --- | --- | --- |
 | DNS用公開ID（Azure） | paramsの`certificate.azureDnsSubscriptionId`・`certificate.azureDnsManagedIdentityResourceId` | 管理VMにUAMIを関連付け、そのIDで認証しDNS側のRBAC権限で更新 |
-| CM用Core client secret | paramsが指すGit管理外の保護ファイル | APIMのOAuth providerへsecure入力 |
+| CM用Core client secret | paramsの`credentialProviders.graphDelegated.clientSecretFile`が指す保護ファイル | 既存のGraph用アプリID・secretを保持し、APIMのOAuth providerへsecure入力 |
 | 管理VMのSSH秘密鍵 | 端末のsecrets内 | 端末だけで保持。公開鍵だけをVMへ設定 |
 | 初期管理VMのローカル認証パスワード | `.local/<environment>/secrets/management-serial-credential.json`へ自動生成・保護保存 | 初回のsecure入力だけで設定。配備成功後にVM個体へ結び付け、既存VMの更新では上書きしない |
-| PortalのAPIキー所有設定 | 同じparamsの`portalApiKeys` | PortalのSQL初期化へ渡す非秘密のグループID・製品承認 |
+| PortalのAPIキー所有設定 | paramsの管理グループID・表示名正規表現、configの共通上限5 | API正本の全製品から承認と安定IDの検証購読を内部生成してSQL初期化へ渡す |
 | azdへの一時配備入力 | `.local/<environment>/generated/main.parameters.json`へ保護保存 | 基盤の後処理で回収。再試行には元のparams・secret・stateを使う |
 
 証明書とACMEの更新状態はKey Vaultへ保管します。Azure DNSはUAMIで認証します。
@@ -135,7 +135,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 管理VMの保守clientと権限はCoreの資材で準備し、Gateway／Portalが後段で作成したApp・JobのIDを保護inventoryへ追加します。対象は構築出力から取得し、公開params/configによる作成フラグはありません。[管理VMからの保守操作](../operations.md#管理vmから保守データを取得する)で、監査Blob・保存ログ・ACAログ・App execの認可と実取得を確認してください。資材のローカル試験通過と、初期Azure配備・保守操作の実環境確認は別の結果です。
 
-`apiDefinitions: []`は標準APIを使う指定です。接続先は作成済み基盤の出力からメモリー内で解決し、paramsの配列は書き換えません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
+標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
 `postprovision`は、第3章で準備したAzure Public DNSゾーンのGateway・Portal用Aエイリアスを、対象環境のAppGW Public IPリソースへ接続します。Portal工程は公開URLのヘルス確認を行うため、その工程までに両ホストの名前解決が必要です。反映が間に合わず停止した場合は、Azure Public DNSと名前解決を確認してPortalの個別コマンドから再試行します。
 

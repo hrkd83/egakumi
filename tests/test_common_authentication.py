@@ -43,12 +43,16 @@ class CommonAuthenticationConfigurationTests(unittest.TestCase):
             with self.subTest(header=header),self.assertRaises(ValueError):
                 common_authentication_settings({"gateway":{"authentication":{"subscriptionKeyHeader":header}}})
 
-    def test_common_schema_exposes_the_subscription_key_header(self):
-        for name in ("params","configuration"):
+    def test_common_key_header_is_fixed_in_public_schemas_and_retained_in_internal_schema(self):
+        for name in ("params","options","configuration"):
             schema=json.loads((CORE/f"schemas/{name}.schema.json").read_text(encoding="utf-8"))
             settings=schema["properties"]["gateway"]["properties"]["authentication"]
             with self.subTest(schema=name):
-                self.assertIn("subscriptionKeyHeader",settings["properties"])
+                if name == "configuration":
+                    self.assertIn("subscriptionKeyHeader",settings["properties"])
+                    self.assertEqual(settings["properties"]["subscriptionKeyHeader"]["default"], "api-key")
+                else:
+                    self.assertNotIn("subscriptionKeyHeader",settings["properties"])
 
 def csharp_expression(raw):
     """XMLから取り出した式だけをC#本文へ変換し、判定自体を再実装しない。"""

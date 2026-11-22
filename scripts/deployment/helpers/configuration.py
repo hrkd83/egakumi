@@ -68,13 +68,13 @@ EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+\Z")
 REGION = re.compile(r"[a-z][a-z0-9]+\Z")
 SECRET_VALUE_KEYS = {"adminPassword", "password", "pfxPassword", "cloudflareToken", "apiToken", "clientSecret", "accessToken", "primaryKey", "secondaryKey"}
 
-# paramsは各企業が確認する入力とIP・IP条件を含む規則に絞る。基盤動作は参照先configへ置き、
-# 大量の設定から変更必須項目を探さずに済むようにする。
+# 導入先の識別・配置・登録情報だけをparamsへ残す。共通動作はconfig、
+# 初期構成の定数と構築情報からの導出は資材が所有する。
 PARAMETER_KEYS = {
     "$schema", "$comment", "configFile", "schemaVersion", "productName",
     "environmentName", "subscriptionId", "azureTenantId", "entraTenantId", "services", "gateway",
-    "management", "monitoring", "certificate", "authorization", "apiDefinitions",
-    "credentialProviders", "publishApis", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
+    "management", "monitoring", "certificate",
+    "credentialProviders", "portal", "portalApiKeys", "network", "location", "foundryLocation", "apiCenterLocation", "tags",
 }
 # このVNet内で構築する資材のアドレスだけをNSGへ動的に渡します。
 # VNet・Firewall DNSとNSG初期集合はBicep内で固定し、公開入力では変更しません。
@@ -87,9 +87,7 @@ RETIRED_NETWORK_INPUTS = {
     "ntpAddressPrefixes", "ntpFqdns", "managementAdditionalSecurityRules",
     "apimKeyVaultAccessEnabled",
 }
-PARAMETER_FIREWALL_IP_KEYS = {
-    "snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings",
-}
+PARAMETER_FIREWALL_IP_KEYS = set()
 RETIRED_FIREWALL_INPUTS = {
     "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
     "apimAdditionalApplicationRules", "managementAdditionalApplicationRules",
@@ -97,34 +95,50 @@ RETIRED_FIREWALL_INPUTS = {
 }
 PARAMETER_SECTION_KEYS = {
     "portal": {"publicHostName"},
-    "network": PARAMETER_NETWORK_IP_KEYS | {"firewall"},
+    "network": PARAMETER_NETWORK_IP_KEYS,
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
-    "gateway": {"publicHostName", "existingWafPolicyId", "authentication", "rateLimits"},
+    "gateway": {"publicHostName", "authentication"},
     "management": {"adminUsername", "sshPublicKeyFile", "loginAssignments"},
-    "monitoring": {"operatorEmailAddresses", "auditAllowedIpAddresses", "auditReaders"},
-    "certificate": {"contactEmail", "domainNames", "plugin", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
-    "authorization": {"projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders"},
+    "monitoring": {"operatorEmailAddresses"},
+    "certificate": {"contactEmail", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"},
 }
 
 
-# 企業固有の情報はparamsだけが所有します。親の一部だけがparamsの項目
-# （rateLimitsの契約別上書き等）は、最下層のパスで明示します。
+# 企業固有の情報はparamsだけが所有します。共通設定と同じ親を持つ欄は
+# 最下層のパスで示し、親全体をparams所有にはしません。
 # 空配列や空文字でもconfigへ置けば拒否し、他企業の値を黙って継承させません。
 PARAMETER_FIREWALL_KEYS = PARAMETER_FIREWALL_IP_KEYS
 PARAMETER_GATEWAY_NESTED_KEYS = {
-    "authentication": {"subscriptionKeyHeader", "credentialLogin", "entra"},
-    "rateLimits": {"subscriptionKey", "application"},
+    "authentication": {"credentialLogin", "entra"},
 }
 PARAMETER_OWNED_PATHS = (
     *((key,) for key in ("schemaVersion", "productName", "environmentName", "subscriptionId", "azureTenantId", "entraTenantId",
                          "location", "foundryLocation", "apiCenterLocation", "tags",
-                         "authorization", "credentialProviders", "apiDefinitions", "publishApis", "portalApiKeys")),
+                         )),
     *(("network", key) for key in PARAMETER_NETWORK_IP_KEYS),
     *(("network", "firewall", key) for key in PARAMETER_FIREWALL_KEYS),
     *((section, key) for section in ("services", "management", "monitoring", "certificate", "portal")
       for key in PARAMETER_SECTION_KEYS[section]),
-    ("gateway", "publicHostName"), ("gateway", "existingWafPolicyId"), ("gateway", "authentication"),
+    ("gateway", "publicHostName"),
+    ("portal",),
+    ("gateway", "authentication", "entra", "audience"),
+    *(("gateway", "authentication", "credentialLogin", "identity", key) for key in ("clientId", "clientSecretFile")),
+    *(("credentialProviders", "graphDelegated", key) for key in ("clientId", "clientSecretFile")),
+    *(("portalApiKeys", key) for key in ("platformGroupId", "groupNamePattern")),
+)
+
+# 旧入力は空値でも受け付けず、値の意味を変える自動移行をしません。
+FIXED_INITIAL_PATHS = (
+    ("authorization",), ("apiDefinitions",), ("publishApis",),
+    *(("network", "firewall", key) for key in ("snatPrivateRanges", "idpsPrivateRanges", "bypassTrafficSettings")),
+    ("gateway", "existingWafPolicyId"),
+    ("gateway", "authentication", "subscriptionKeyHeader"),
+    ("gateway", "authentication", "entra", "requiredScope"),
+    ("gateway", "authentication", "credentialLogin", "identity", "tenantId"),
     *(("gateway", "rateLimits", kind, "overrides") for kind in ("subscriptionKey", "application")),
+    *(("monitoring", key) for key in ("auditAllowedIpAddresses", "auditReaders")),
+    *(("certificate", key) for key in ("domainNames", "plugin")),
+    *(("portalApiKeys", key) for key in ("groups", "verificationSubscriptions")),
 )
 
 
@@ -972,7 +986,7 @@ def _apis(raw: Any, entra_tenant_id: str, deployed_models: set[str], gateway_ori
 
 def entra_tenant_id(configuration: dict) -> str:
     """認証用テナントを返す。省略時はAzureリソース用テナントを使う。"""
-    return configuration.get("entraTenantId", configuration["azureTenantId"])
+    return configuration.get("entraTenantId", configuration.get("azureTenantId"))
 
 
 def _portal_authentication(value: Any) -> dict:
@@ -1011,7 +1025,8 @@ def _portal_authentication(value: Any) -> dict:
 
 def _portal_api_keys(value: Any) -> dict:
     """環境ごとの所有グループと許可製品を検査する。未設定でも基盤構築は妨げない。"""
-    settings = _object(value, "portalApiKeys", {"groups", "platformGroupId", "groupNamePattern", "verificationSubscriptions"})
+    settings = _object(value, "portalApiKeys", {"groups", "platformGroupId", "groupNamePattern", "verificationSubscriptions", "verificationMaxSubscriptions"})
+    _integer(settings.setdefault("verificationMaxSubscriptions", 5), "portalApiKeys.verificationMaxSubscriptions", 1, 1000)
     pattern = settings.setdefault("groupNamePattern", "")
     if not isinstance(pattern, str) or len(pattern) > 512 or re.search(r"[\x00-\x1f\x7f]", pattern):
         _fail("portalApiKeys.groupNamePattern", "must be a regular expression of at most 512 characters without control characters")
@@ -1378,6 +1393,10 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
         _string(provider.get("displayName"), q + ".displayName")
         kind = _choice(provider.get("identityProvider"), q + ".identityProvider", ("aad", "oauth2"))
         _string(provider.get("clientId"), q + ".clientId")
+        if provider["name"] == "graph-delegated" and kind == "aad":
+            # source読込は未入力テンプレートも扱う。実配備用の正規化では
+            # 標準GraphのゼロIDを拒否し、登録済みIDの表記は変更しない。
+            _guid(provider["clientId"], q + ".clientId")
         provider["clientSecretFile"] = _secret_path(provider.get("clientSecretFile"), q + ".clientSecretFile", base)
         provider["oauthTenantId"] = _guid(provider.setdefault("oauthTenantId", c["entraTenantId"]), q + ".oauthTenantId")
         _string(provider.get("scopes"), q + ".scopes")
@@ -1501,6 +1520,15 @@ def _file_reference_fields(raw: dict):
                 if key in settings:
                     yield settings, key, f"{section}.{key}"
     providers = raw.get("credentialProviders")
+    if isinstance(providers, dict):
+        standard = providers.get("graphDelegated")
+        if isinstance(standard, dict) and "clientSecretFile" in standard:
+            yield standard, "clientSecretFile", "credentialProviders.graphDelegated.clientSecretFile"
+        additional = providers.get("additional", [])
+        if isinstance(additional, list):
+            for i, provider in enumerate(additional):
+                if isinstance(provider, dict) and "clientSecretFile" in provider:
+                    yield provider, "clientSecretFile", f"credentialProviders.additional[{i}].clientSecretFile"
     if isinstance(providers, list):
         for i, provider in enumerate(providers):
             if isinstance(provider, dict) and "clientSecretFile" in provider:
@@ -1567,6 +1595,23 @@ def _reject_config_environment_inputs(standard: dict) -> None:
     合成済み内部JSONは分離前の全体を持つため、この境界はconfigFileから
     読む標準configだけに適用します。実値はエラーへ含めません。
     """
+    _reject_fixed_initial_inputs(standard, "config")
+    # 共有する親が不正型だと、paramsのobjectによる置換で標準動作が消える。
+    # マージ前に各sourceの型を検査し、暗黙の既定値への切替を防ぐ。
+    parents = {path[:length] for path in PARAMETER_OWNED_PATHS + FIXED_INITIAL_PATHS
+               for length in range(1, len(path))}
+    for path in sorted(parents, key=lambda item: (len(item), item)):
+        parent = standard
+        for key in path[:-1]:
+            if key not in parent:
+                break
+            parent = parent[key]
+        else:
+            if path[-1] in parent:
+                _object(parent[path[-1]], "config." + ".".join(path))
+    for key in ("$schema", "$comment"):
+        if key in standard:
+            _string(standard[key], "config." + key, maximum=4096)
     for path in sorted(PARAMETER_OWNED_PATHS):
         parent = standard
         for key in path[:-1]:
@@ -1577,6 +1622,15 @@ def _reject_config_environment_inputs(standard: dict) -> None:
             if isinstance(parent, dict) and path[-1] in parent:
                 field = ".".join(path)
                 _fail("config." + field, "move this environment-specific setting to params." + field)
+    authentication = standard.get("gateway", {}).get("authentication", {})
+    _object(authentication, "config.gateway.authentication", {"entra", "credentialLogin"})
+    if "entra" in authentication:
+        _object(authentication["entra"], "config.gateway.authentication.entra", {"userLimits"})
+    if "credentialLogin" in authentication:
+        _object(authentication["credentialLogin"], "config.gateway.authentication.credentialLogin",
+                {"providerNames", "transactionLifetimeSeconds", "loginCallsPerMinute", *SESSION_POLICY_DEFAULTS})
+    if "portalApiKeys" in standard:
+        _object(standard["portalApiKeys"], "config.portalApiKeys", {"verificationMaxSubscriptions"})
     gateway = standard.get("gateway", {})
     if isinstance(gateway, dict) and "grpc" in gateway:
         _fail("config.gateway", "contains unsupported field(s): grpc")
@@ -1592,6 +1646,19 @@ def _reject_config_environment_inputs(standard: dict) -> None:
                 _fail("config.network.firewall", "contains unsupported field(s): " + ", ".join(sorted(unsupported)))
 
 
+def _reject_fixed_initial_inputs(value: dict, label: str) -> None:
+    """廃止した初期入力を拒否し、旧値を読み飛ばした構築を防ぐ。"""
+    for path in FIXED_INITIAL_PATHS:
+        parent = value
+        for key in path[:-1]:
+            if not isinstance(parent, dict) or key not in parent:
+                break
+            parent = parent[key]
+        else:
+            if isinstance(parent, dict) and path[-1] in parent:
+                _fail(label + "." + ".".join(path), "retired initial input; review the prior setting before using fixed material")
+
+
 def load_configuration_source(path: Path | str) -> dict:
     """paramsが参照するconfigと企業固有入力を合成し、未正規化の設定を返す。
 
@@ -1603,7 +1670,11 @@ def load_configuration_source(path: Path | str) -> dict:
     raw = _read_configuration_source(source)
     if "configFile" not in raw:
         return _resolve_file_references(raw, source.parent)
+    _reject_fixed_initial_inputs(raw, "params")
     _object(raw, "parameters", PARAMETER_KEYS)
+    for key in ("$schema", "$comment"):
+        if key in raw:
+            _string(raw[key], "params." + key, maximum=4096)
     for section, allowed in PARAMETER_SECTION_KEYS.items():
         if section in raw:
             _object(raw[section], section, allowed)
@@ -1614,11 +1685,16 @@ def load_configuration_source(path: Path | str) -> dict:
         for key, allowed in PARAMETER_GATEWAY_NESTED_KEYS.items():
             if key in gateway:
                 _object(gateway[key], "gateway." + key, allowed)
-        limits = gateway.get("rateLimits", {})
-        if isinstance(limits, dict):
-            for kind in ("subscriptionKey", "application"):
-                if kind in limits:
-                    _object(limits[kind], "gateway.rateLimits." + kind, {"overrides"})
+        authentication = gateway.get("authentication", {})
+        if isinstance(authentication, dict):
+            if "entra" in authentication:
+                _object(authentication["entra"], "gateway.authentication.entra", {"audience"})
+            if "credentialLogin" in authentication:
+                login = _object(authentication["credentialLogin"], "gateway.authentication.credentialLogin", {"identity"})
+                if "identity" in login:
+                    _object(login["identity"], "gateway.authentication.credentialLogin.identity", {"clientId", "clientSecretFile"})
+    if "portalApiKeys" in raw:
+        _object(raw["portalApiKeys"], "portalApiKeys", {"platformGroupId", "groupNamePattern"})
     reference = _string(raw["configFile"], "configFile", maximum=4096)
     if "://" in reference or "\x00" in reference or Path(reference).suffix.lower() != ".json":
         _fail("configFile", "must reference a local JSON config file")
@@ -1634,15 +1710,64 @@ def load_configuration_source(path: Path | str) -> dict:
     parameters.pop("configFile")
     # 相対参照を宣言元ごとに先に解決する。合成後に1つの基準で解決すると、
     # configとparamsが別フォルダーにある場合に違う秘密ファイルを指し得る。
-    return _merge_configuration(
-        _resolve_file_references(standard, config_source.parent),
-        _resolve_file_references(parameters, source.parent),
-    )
+    resolved_standard = _resolve_file_references(standard, config_source.parent)
+    resolved_parameters = _resolve_file_references(parameters, source.parent)
+    from .credential_provider_inputs import compose_credential_providers
+    provider_options = resolved_standard.pop("credentialProviders", None)
+    provider_registrations = resolved_parameters.pop("credentialProviders", None)
+    effective_tenant = entra_tenant_id(resolved_parameters)
+    # 未正規化の部分設定も読める契約を保ち、片側だけの登録は専用合成で拒否する。
+    providers = (compose_credential_providers(
+        provider_options, provider_registrations,
+        effective_tenant, fail=_fail,
+    ) if provider_options is not None or provider_registrations is not None else [])
+    combined = _merge_configuration(resolved_standard, resolved_parameters)
+    if effective_tenant is not None or "entraTenantId" in resolved_parameters:
+        combined["entraTenantId"] = effective_tenant
+    combined["credentialProviders"] = providers
+    from .initial_configuration import apply_initial_configuration
+    return apply_initial_configuration(combined, fail=_fail)
 
 
 def load_configuration(path: Path | str) -> dict:
     """ファイル読込・params/config合成・全体検査を1つの入口として実行する。"""
     return normalize_configuration(load_configuration_source(path))
+
+
+def _reject_ignored_material_overrides(configuration: dict) -> None:
+    """旧内部JSONの独自資材設定を、固定Bicepが黙って無視することを防ぐ。"""
+    def reject(path):
+        _fail(path, "retired material override; review the prior setting before using fixed Bicep material")
+
+    gateway = configuration.get("gateway", {})
+    if gateway.get("existingWafPolicyId", "") != "":
+        reject("gateway.existingWafPolicyId")
+    for section, keys in (
+        ("monitoring", ("auditAllowedIpAddresses", "auditReaders")),
+        ("authorization", ("projectAdministrators", "projectDevelopers", "foundryReaders", "catalogReaders")),
+    ):
+        source = configuration.get(section, {})
+        for key in keys:
+            if key in source and source[key] != []:
+                reject(section + "." + key)
+    network = configuration.get("network", {})
+    firewall = network.get("firewall", {})
+    if "bypassTrafficSettings" in firewall and firewall["bypassTrafficSettings"] != []:
+        reject("network.firewall.bypassTrafficSettings")
+    spaces = network.get("addressSpaces", [])
+    snat = ["IANAPrivateRanges"]
+    idps = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    for key, accepted in (
+        ("snatPrivateRanges", (snat, [*snat, *spaces])),
+        ("idpsPrivateRanges", ([], idps, [*idps, *spaces])),
+    ):
+        if key not in firewall:
+            continue
+        value = firewall[key]
+        # アドレス集合の順序・重複だけの違いは、独自通信条件として扱いません。
+        if (not isinstance(value, list) or any(not isinstance(item, str) for item in value)
+                or not any(set(value) == set(candidate) for candidate in accepted)):
+            reject("network.firewall." + key)
 
 
 def build_bicep_configuration(configuration: dict) -> dict:
@@ -1651,6 +1776,7 @@ def build_bicep_configuration(configuration: dict) -> dict:
     秘密の内容は別のsecure入力として渡す。この分離により、設定の表示や
     配備状態の保存へ秘密値・ローカル秘密パスが紛れ込むのを防ぐ。
     """
+    _reject_ignored_material_overrides(configuration)
     result = copy.deepcopy(configuration)
     result["apiDefinitions"] = with_catalog_descriptions(configuration)
     # 標準APIの接続先はGateway配備時に解決する。基盤は公開経路と本文形式だけを
@@ -1930,13 +2056,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "render":
             if args.output is None:
                 parser.error("render requires --output")
+            rendered = json.dumps(build_bicep_configuration(config), ensure_ascii=False, indent=2) + "\n"
             from .paths import private_parent
             try:
                 output = private_parent(args.output)
                 descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
                 with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
                     os.fchmod(destination.fileno(), 0o600)
-                    destination.write(json.dumps(build_bicep_configuration(config), ensure_ascii=False, indent=2) + "\n")
+                    destination.write(rendered)
             except (OSError, ValueError):
                 _fail("output", "cannot write a protected runtime output")
         print(json.dumps({"valid": True, "resourceGroupNames": config["resourceGroupNames"], "apiPublicationStatus": config["apiPublicationStatus"]}, ensure_ascii=False))

@@ -314,19 +314,22 @@ class EntraConfigurationTests(unittest.TestCase):
 
 
 class EntraSchemaTests(unittest.TestCase):
-    def test_parameters_own_authentication_and_configuration_reuses_local_definition(self):
+    def test_public_registration_and_shared_limits_are_split_from_complete_internal_authentication(self):
         params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
         combined = json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8"))
         options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
         auth = lambda schema: schema["properties"]["gateway"]["properties"]["authentication"]
         self.assertEqual(auth(params)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
-        self.assertEqual(auth(combined)["properties"]["entra"], {"$ref": "params.schema.json#/$defs/entraAuthentication"})
-        self.assertNotIn("authentication", options["properties"]["gateway"]["properties"])
+        self.assertEqual(auth(combined)["properties"]["entra"], {"$ref": "#/$defs/entraAuthentication"})
+        self.assertEqual(set(params["$defs"]["entraAuthentication"]["properties"]), {"audience"})
+        self.assertEqual(set(auth(options)["properties"]["entra"]["properties"]), {"userLimits"})
+        self.assertEqual(set(combined["$defs"]["entraAuthentication"]["properties"]),
+                         {"audience", "requiredScope", "userLimits"})
         self.assertIn("entra", configuration.PARAMETER_GATEWAY_NESTED_KEYS["authentication"])
 
-    def test_local_schema_requires_complete_definition_without_a_public_toggle(self):
+    def test_internal_schema_requires_complete_definition_without_a_public_toggle(self):
         params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
-        schema = {"$schema": params["$schema"], "$ref": "params.schema.json#/$defs/entraAuthentication"}
+        schema = {"$schema": params["$schema"], "$ref": "configuration.schema.json#/$defs/entraAuthentication"}
         try:
             validator = local_schema_validator(schema)
         except ImportError as error:
@@ -349,12 +352,38 @@ class EntraSchemaTests(unittest.TestCase):
             with self.subTest(removed_field=field):
                 self.assertTrue(list(validator.iter_errors({**entra_fixture(), field: value})))
 
-    def test_params_and_combined_schema_accept_each_null_and_reject_incomplete_or_invalid_limits(self):
+    def test_public_schemas_accept_only_the_authentication_fields_owned_by_each_source(self):
+        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
+        options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
+        config_definition = options["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"]
+        try:
+            registration = local_schema_validator({"$schema": params["$schema"],
+                "$ref": "params.schema.json#/$defs/entraAuthentication"})
+            shared = local_schema_validator({"$schema": options["$schema"],
+                "$defs": options["$defs"], **config_definition})
+        except ImportError as error:
+            self.skipTest(str(error))
+        settings = entra_fixture()
+        self.assertEqual(list(registration.iter_errors({"audience": settings["audience"]})), [])
+        self.assertEqual(list(shared.iter_errors({"userLimits": settings["userLimits"]})), [])
+        for field in ("requiredScope", "userLimits"):
+            with self.subTest(owner="params", foreign_field=field):
+                self.assertTrue(list(registration.iter_errors({"audience": settings["audience"], field: settings[field]})))
+        for field in ("audience", "requiredScope"):
+            with self.subTest(owner="config", foreign_field=field):
+                self.assertTrue(list(shared.iter_errors({"userLimits": settings["userLimits"], field: settings[field]})))
+        self.assertTrue(list(registration.iter_errors({})))
+        self.assertTrue(list(shared.iter_errors({})))
+
+    def test_config_and_combined_schema_accept_each_null_and_reject_incomplete_or_invalid_limits(self):
         params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
         combined = json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8"))
+        options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
         references = {
-            "params": {"$ref": "params.schema.json#/$defs/entraAuthentication"},
-            "configuration": combined["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"],
+            "config": {"$defs": options["$defs"],
+                       **options["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"]},
+            "configuration": {"$defs": combined["$defs"],
+                              **combined["properties"]["gateway"]["properties"]["authentication"]["properties"]["entra"]},
         }
         for source, reference in references.items():
             try:
@@ -367,13 +396,15 @@ class EntraSchemaTests(unittest.TestCase):
                 for name, disable in zip(names, disabled):
                     if disable:
                         settings["userLimits"][name] = None
+                public_settings = {"userLimits": settings["userLimits"]} if source == "config" else settings
                 with self.subTest(source=source, disabled=disabled):
-                    self.assertEqual(list(validator.iter_errors(settings)), [])
+                    self.assertEqual(list(validator.iter_errors(public_settings)), [])
             for missing in names:
                 settings = entra_fixture()
                 settings["userLimits"].pop(missing)
+                public_settings = {"userLimits": settings["userLimits"]} if source == "config" else settings
                 with self.subTest(source=source, missing=missing):
-                    self.assertTrue(list(validator.iter_errors(settings)))
+                    self.assertTrue(list(validator.iter_errors(public_settings)))
             invalid_limits = (
                 None, {}, {"requestRate": None, "tokensPerMinute": None, "tokenQuota": None, "unknownLimit": True},
                 {"requestRate": {}, "tokensPerMinute": None, "tokenQuota": None},
@@ -392,8 +423,9 @@ class EntraSchemaTests(unittest.TestCase):
             for limits in invalid_limits:
                 settings = entra_fixture()
                 settings["userLimits"] = limits
+                public_settings = {"userLimits": settings["userLimits"]} if source == "config" else settings
                 with self.subTest(source=source, invalid_limits=limits):
-                    self.assertTrue(list(validator.iter_errors(settings)))
+                    self.assertTrue(list(validator.iter_errors(public_settings)))
 
 
 class EntraPublicationBoundaryTests(unittest.TestCase):
