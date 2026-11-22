@@ -21,7 +21,7 @@ Entraのアプリ登録・管理者同意はEntra担当者の権限で行いま�
 
 ## paramsから登録用の戻り先を確認する
 
-第1章で用意したparamsの`productName`・`environmentName`・`services.apimInstanceId`・`apiCenterLocation`・`gateway.publicHostName`を使います。`services.apimInstanceId`は準備コマンドが生成した値を保持してください。リポジトリルートで実行します。
+第1章で用意したparamsの`productName`・`environmentName`・`services.apimInstanceId`・`apiCenterLocation`・`gateway.publicHostName`を使います。`services.apimInstanceId`は初回prepareが公開マーカーを英小文字・数字6文字へ置換し、paramsへ保存した値を保持してください。未解決マーカーを登録入力へ使わず、更新時に生成し直しません。リポジトリルートで実行します。
 
 ```sh
 python3 -I -B scripts/prepare_registration.py --config "$DEPLOY_PARAMS_FILE"
@@ -38,10 +38,14 @@ Azureリソースと共用Entraアプリの認証テナントは、同一でも�
 | 設定 | 用途 |
 | --- | --- |
 | `azureTenantId` | Azure構築、RBAC、Key Vault、管理VM、DNS、APIMのMI |
-| `entraTenantId` | 下流OAuthテナントの既定値。省略時はAzure側 |
-| `credentialProviders[].oauthTenantId` | そのCM providerのOAuth認証先 |
+| `entraTenantId` | 標準Graph OAuth・社員API・任意接続窓口の認証先。省略時はAzure側 |
+| `credentialProviders.additional[].oauthTenantId` | 追加CM providerの任意の別認証先。標準Graphには上書き欄を設けない |
 
-CM接続を読み取るaccess policyにはAzure側のAPIM MIを設定します。共用アプリはproviderのOAuthテナントに登録します。Portalもこのアプリを登録したEntraテナントを認証先に指定します。Azure側と異なる場合、Portalの認証先に`azureTenantId`を使わないでください。
+CM接続を読み取るaccess policyにはAzure側のAPIM MIを設定します。標準Graphの共用アプリは`entraTenantId`のテナントに登録します。Portalもこのアプリを登録したEntraテナントを認証先に指定します。Azure側と異なる場合、Portalの認証先に`azureTenantId`を使わないでください。
+
+標準GraphのアプリClient IDと秘密ファイル参照は、保護paramsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`へ設定します。表示名・scope・poolは共通configの同slotへ置き、論理名`graph-delegated`とGraph URL／本人ID契約は資材で固定します。追加providerはconfig定義とparams登録を双方の`additional[]`で論理名照合します。[公開入力の配置判断](04-params.md#公開入力71主項目の判断記録)を参照してください。
+
+この配置整理だけで既存アプリのClient ID・secret・認証方式を切り替えません。任意の`credentialLogin.identity`を省略した場合の選択CM provider由来の本人確認と、Portalの既存profile利用は維持します。アプリ分離は別の作業計画で扱い、今回のAzure一括反映・全環境再構築E2Eは未実施です。
 
 ## 認証窓口・CM・Portalの共用アプリを設定する
 

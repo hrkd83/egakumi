@@ -1,12 +1,31 @@
 """設定・API試験で共有する、秘密値を含まない独立した入力例。"""
 import base64
 import copy
+import json
 import sys
 from pathlib import Path
 
 CORE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CORE / "scripts"))
 from deployment.helpers import configuration
+
+
+def public_fixture(profile="test"):
+    """新しい公開paramsとconfigへ独立した登録情報を入れ、相対参照を保つ。"""
+    parameters = json.loads((CORE / "params" / f"{profile}.example.json").read_text(encoding="utf-8"))
+    options = json.loads((CORE / "config" / f"{profile}.json").read_text(encoding="utf-8"))
+    parameters["configFile"] = "options.json"
+    parameters["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
+    parameters["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
+    parameters["entraTenantId"] = parameters["azureTenantId"]
+    parameters["services"]["apimInstanceId"] = "abc123"
+    parameters["gateway"]["authentication"]["entra"]["audience"] = "33333333-3333-4333-8333-333333333333"
+    parameters["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
+    parameters["certificate"]["azureDnsSubscriptionId"] = parameters["subscriptionId"]
+    parameters["certificate"]["azureDnsManagedIdentityResourceId"] = (
+        "/subscriptions/" + parameters["subscriptionId"] +
+        "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
+    return parameters, options
 
 
 def fixture():

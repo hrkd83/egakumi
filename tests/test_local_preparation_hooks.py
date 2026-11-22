@@ -275,18 +275,17 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
         source = (self.root / ".local/test/params.local.json").resolve()
         lifecycle.private_parent(source, self.root)
         (self.root / "config").mkdir()
-        raw = json.loads((core / "params/test.example.json").read_text())
+        raw = json.loads((core / "params/test.example.json").read_text(encoding="utf-8"))
         for field in ("subscriptionId", "azureTenantId", "entraTenantId"):
             raw[field] = self.config[field]
         for field in ("azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"):
             raw["certificate"][field] = self.config["certificate"][field]
-        raw["gateway"]["authentication"] = copy.deepcopy(self.config["gateway"]["authentication"])
-        raw["gateway"]["authentication"]["credentialLogin"] = copy.deepcopy(
-            connection_fixture()["gateway"]["authentication"]["credentialLogin"])
-        raw["credentialProviders"] = connection_fixture()["credentialProviders"]
+        raw["gateway"]["authentication"] = {"entra": {"audience": "33333333-3333-4333-8333-333333333333"}}
+        raw["services"]["apimInstanceId"] = "abc123"
+        raw["credentialProviders"]["graphDelegated"]["clientId"] = "44444444-4444-4444-8444-444444444444"
         raw["configFile"] = "../../config/test.json"
         raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
-        raw["credentialProviders"][0]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
+        raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         source.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n")
         (self.root / "config/test.json").write_bytes((core / "config/test.json").read_bytes())
         return source
@@ -354,7 +353,7 @@ class LocalPreparationHookTests(LifecycleFixture, unittest.TestCase):
 
             def assert_prepared_inputs(config):
                 values = real_inputs(config)
-                self.assertEqual(values["credentialProviderSecrets"], {"approved-oauth": client_secret})
+                self.assertEqual(values["credentialProviderSecrets"], {"graph-delegated": client_secret})
                 self.assertEqual(values["dnsPluginArgumentsJson"], "")
                 self.assertEqual(values["sshPublicKey"], ssh_fixture_key())
                 self.assertNotIn("preparedPfxBase64", values)

@@ -18,12 +18,12 @@
 ## 5-2. 必要な項目だけを調整する
 
 1. FirewallのSKU・IDPS、AppGW／APIM／VM等のSKUとゾーンを確認する。StandardでIDPSを有効にしない。
-2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。paramsのAPIごとの許可モデルと対応させる。
+2. `services.modelDeployments`で配備するモデル・版・SKU・capacityを選ぶ。API正本の許可モデルと対応させる。
 3. 音声等の利用機能、WAF上限、回数制限、監査保持、削除保護、証明書更新の動作を確認する。通常HTTP／HTTPSの入口保護と、初期NSGの固定集合を確認する。
 4. 同じparamsでローカル検査し、整合を確認する。
 
 ```sh
-python3 scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"
+python3 -B scripts/deployment/helpers/configuration.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
 公開configの`services.modelDeployments`は初期セットです。すべての導入先に、そのモデルの提供地域・利用枠・購入資格があるとは限りません。モデルのカタログ、退役日、SKU、必要TPM／RPMと料金を確認します。capacityの単位・換算はモデルとSKUごとに異なります。APIを公開するときは、削除したモデルを許可一覧に残さず、配備名・公開操作と同時に揃えます。
@@ -32,7 +32,7 @@ Claudeはazdの構築対象外です。専用の配備・Marketplace確認・購
 
 ## 公開証明書の設定
 
-証明書はAzure Public DNSのDNS-01認証で自動発行・更新します。`certificate.mode`は`dnsPlugin`、paramsの`certificate.plugin`は`Azure`を使用します。DNS用UAMIと権限は[公開DNSの準備](03-public-dns.md)で確認します。
+証明書はAzure Public DNSのDNS-01認証で自動発行・更新します。`certificate.mode`は`dnsPlugin`、プラグインは資材固定の`Azure`を使用します。証明書DNS名はparamsのGateway／Portal公開名2件から内部生成し、公開`certificate.plugin`・`domainNames`入力は廃止しました。DNS用UAMIと権限は[公開DNSの準備](03-public-dns.md)で確認します。
 
 ## configリファレンス
 
@@ -41,7 +41,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・業務APIの接続先と認証・権限は前節のparamsへ記載します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・アプリ登録・VMログイン主体は前節のparamsへ記載します。標準APIはAPI正本を常用し、追加Foundry／API Center権限と監査readerは初期空に固定します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
@@ -59,7 +59,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 | `network.appGatewayZones` | テスト：`[]`／本番：`["1","2","3"]` | AppGW用公開IPの可用性ゾーン番号。gateway.zonesと一致させる。[]は番号の明示なし。 |
 | `network.dnsTtl` | `300` | 作成するPrivate DNSレコードのTTL、秒。1〜86400。 |
 
-NSGは全サブネットの通信要件に対応する固定の初期集合をBicepで作成し、送信元・宛先には構築したサブネットCIDRと割当IPを組み込みます。AppGWは公開TCP80／443を別々に許可し、同じVNetのFirewall公開IP `/32`からのHTTPSも独立した規則にします。gRPC専用のTCP8443入口は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`dnsServers`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`と`network.firewall.dnsServers`は入力項目から削除しました。以前のJSONから取り除いてください。管理VMのSSH初期規則とAPIM→Key Vaultの許可も常設します。企業のIP制限・ハブ接続・独自DNSに合わせる変更は構築後にAzureポータルで行い、再構築・再適用時には初期集合との差を再確認します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
+NSGは全サブネットの通信要件に対応する固定の初期集合をBicepで作成し、送信元・宛先には構築したサブネットCIDRと割当IPを組み込みます。AppGWは公開TCP80／443を別々に許可し、同じVNetのFirewall公開IP `/32`からのHTTPSも独立した規則にします。gRPC専用のTCP8443入口は作成しません。`network.clientAddressPrefixes`・`certificatePublicProbeEnabled`・`dnsServers`・`operatorAddressPrefixes`・`operatorProtocol`・`operatorPorts`・`ntpAddressPrefixes`・`ntpFqdns`・`managementAdditionalSecurityRules`・`apimKeyVaultAccessEnabled`と`network.firewall.dnsServers`は入力項目から削除しました。以前のJSONから取り除いてください。管理VMのSSH許可は初期不作成とし、APIM→Key Vaultの許可は常設します。企業のIP制限・ハブ接続・独自DNSに合わせる変更は構築後にAzureポータルで行い、再構築・再適用時には初期集合との差を再確認します。[AppGWの固定NSG規則](../operations/network-security-groups.md#appgwagw)
 
 ルート伝搬はGateway由来経路だけを対象とし、UDR・ピアリング・デフォルトルート変更とは別です。独立VNetには伝搬元Gatewayがないため、既定trueでもGateway由来の経路はありません。Azureの否定形属性へはBicep内部で反転します。[ルート伝搬](https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table)
 
@@ -71,7 +71,7 @@ AppGWと公開IPのゾーン指定は両方同じ値にします。[]はゾー�
 
 規則の作成有無・任意追加規則・追加FQDNは公開設定にしません。廃止した`apimAdditionalNetworkRules`・`managementAdditionalNetworkRules`・`apimAdditionalApplicationRules`・`managementAdditionalApplicationRules`・`apimAllowedFqdns`・`managementAllowedFqdns`は、config／paramsの空値も拒否します。[固定初期集合と内部宛先生成](04-params.md#ネットワーク監査の接続設定)を確認してください。
 
-APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、業務API、認証入力や以下のSKU／IDPS／SNAT設定を削除するものではありません。
+APIMの承認済み証明書到達性と正規API宛先、管理VMの固定配布先と業務ACME／構築ホストを常設規則へ組み込みます。API生成先0でもAPIM規則を空宛先で送信せず、既存証明書規則と重複する基底を維持します。証明書directory、API正本、アプリ登録と以下のSKU／IDPSモード等は維持します。独立した`snatPrivateRanges`・`idpsPrivateRanges`・`bypassTrafficSettings`入力は空値でも拒否します。SNAT除外は`IANAPrivateRanges`と構築VNetのaddressSpaces、Premium IDPSのprivate判定はRFC1918と構築VNet範囲の重複排除から生成し、初期bypassは空に固定します。
 
 | 設定項目 | 標準値 | 意味 |
 | --- | --- | --- |
@@ -112,11 +112,11 @@ Claudeは標準の28モデル・19 APIに含めません。Claude用のparamsや
 
 Core構築後、AzureポータルのGUIからモデルを配備し、APIMにもAPIを手動登録する運用です。購入条件・利用枠・接続先と認証方式を確認し、[手動追加時の公開制御と再配置の注意点](../operations.md#構築後にclaudeをguiで追加する)に従います。
 
-`azd up`は基盤構築後にGateway工程でAPI定義・バックエンドを登録し、続いてPortalを配備します。基盤だけの構築・更新には`azd provision`を使います。構築済み環境はGUIや専用コマンドでも更新でき、GUIでのAPI追加にCoreの一覧への転記は不要です。
+`azd up`は基盤構築後にGateway工程でAPI定義・バックエンドを登録し、続いてPortalを配備します。基盤だけの初期構築には`azd provision`を使います。構築済み基盤の更新は対象限定の運用手順で行います。構築済み環境はGUIや専用コマンドでも更新でき、GUIでのAPI追加にCoreの一覧への転記は不要です。
 
 #### 公開入口（gateway）
 
-共通認可の`gateway.authentication.subscriptionKeyHeader`は企業固有のparamsで設定します。全体ポリシーが購読キーと利用範囲を検証し、API側が操作・モデル・入力の制約と下流認証を設定します。本人接続が必要なAPIはCMを利用します。[共通認証の設定](04-params.md#gateway全体の認証とapiごとの認可)を参照してください。
+共通認可の購読キーヘッダーは資材固定の`api-key`です。公開`gateway.authentication.subscriptionKeyHeader`と社員の`requiredScope`入力は廃止し、scopeは`Gateway.Invoke`へ固定します。全体ポリシーが購読キーと利用範囲を検証し、API側が操作・モデル・入力の制約と下流認証を設定します。本人接続が必要なAPIはCMを利用します。[共通認証の設定](04-params.md#gateway全体の認証とapiごとの認可)を参照してください。
 
 公開入口はAppGWのHTTP／HTTPSです。AppGWが`X-Core-L7-Ingress`を上書きし、APIMの共通ポリシーが入口証明を常設で検査します。APIMへ直接届く要求の拒否は実機試験でも確認します。
 
@@ -148,6 +148,22 @@ APIMが参照するKVは、`publicNetworkAccess: Disabled`と`defaultAction: Den
 gRPCは基盤の提供要件から廃止しました。`gateway.grpc`ブロック全体（公開ホスト名だけの指定や空オブジェクトも含む）と、APIの`apiType: "grpc"`・proto定義は入力検査で拒否します。AppGWのfrontend HTTP/2は維持し、内部APIM／ACAへはHTTP80で転送します。APIMの`Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2`は文字列`"false"`に固定します。
 
 API公開前には、通常HTTP用の配備出力`ingressSecrets`と、常設L7入口証明のKey Vault参照・Named Value・AppGW rewrite・APIM検査が整合することを確認します。不一致の基盤へは公開せず、Coreの入口設備を先に揃えます。Realtime・文書ジョブの所有者署名鍵の準備条件は維持します。
+
+#### 共通認証・OAuth・Portal初期設定
+
+今回の移設で、共通利用制限、セッション値、Graph表示名・scope・pool、検証用購読数の初期値を変更していません。配置判断の全71主項目と分割内訳は[paramsの判断記録](04-params.md#公開入力71主項目の判断記録)にあります。
+
+| config側の設定 | test／production初期値・扱い |
+| --- | --- |
+| `gateway.authentication.entra.userLimits` | requestRate=1000／60秒、tokensPerMinute=null、tokenQuota=null |
+| `gateway.authentication.credentialLogin` | providerNames=`["graph-delegated"]`と共通セッション値。明示transactionLifetimeSeconds=600秒を保持 |
+| `credentialProviders.graphDelegated` | displayName=`Delegated Graph connection`、既存scope文字列、pool.count=12／capacity=8000 |
+| `credentialProviders.additional[]` | name・displayName・identityProvider・scopesとプロトコル別定義。params側登録と1対1照合 |
+| `portalApiKeys.verificationMaxSubscriptions` | 5。内部で管理グループ1件と全標準製品に適用 |
+
+Graph Client ID・秘密ファイル参照と、任意の独立接続窓口identityのClient ID・秘密参照はparamsに残します。標準Graph名・プロトコル・tenant・Graph URL・本人ID契約は資材固定です。追加aad別tenantと汎用OAuth2の定義／登録契約、既存identity省略時fallbackとPortalの選択CM profileは維持します。
+
+API配列の置換、`publishApis`切替、既存WAF Resource ID、caller別`rateLimits.*.overrides`、監査公開IP・追加reader・追加Foundry／API Center権限は公開入力に設けません。旧入力は空やfalseでも拒否します。既存の非標準値は削除・初期値置換を自動実行せず、影響と復旧を確認して個別移行します。今回の配置整理だけで認証方式やClient IDを切り替えません。Azure一括反映・全環境再構築E2Eは未実施です。
 
 #### Linux管理VM（management）
 

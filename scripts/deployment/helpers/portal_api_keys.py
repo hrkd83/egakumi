@@ -1,4 +1,4 @@
-"""Portal配備時の所有グループ承認を、企業別paramsの正本へ対話入力する。"""
+"""Portal管理グループを対話準備し、標準の検証用購読を内部生成する。"""
 from __future__ import annotations
 
 import json
@@ -63,12 +63,12 @@ def _snapshot(path):
 
 
 def prepare_api_key_groups(source, config, *, reader=input, interactive=None):
-    """初回だけ対話で選び、他の設定を維持して同じparamsへ原子的に保存する。"""
+    """管理グループと名前の条件だけを対話入力し、派生設定は保存しない。"""
     settings = config.get('portalApiKeys', {})
-    if settings.get('groups') and settings.get('platformGroupId') and settings.get('groupNamePattern', '').strip():
+    if settings.get('platformGroupId') and settings.get('groupNamePattern', '').strip():
         return config
     if not (sys.stdin.isatty() if interactive is None else interactive):
-        raise ValueError('Portal APIキーの所有グループが未設定、または基盤管理グループ・名前の対象条件が未指定です。portalApiKeys.groups・platformGroupId・groupNamePatternをparamsへ設定するか、対話端末で再実行してください。')
+        raise ValueError('Portalの管理グループと名前の対象条件が未指定です。portalApiKeys.platformGroupId・groupNamePatternをparamsへ設定するか、対話端末で再実行してください。')
     path = Path(source).expanduser().absolute()
     if path.name.endswith('.example.json'):
         raise ValueError('exampleを直接変更せず、企業別のlocal paramsを指定してください。')
@@ -76,58 +76,27 @@ def prepare_api_key_groups(source, config, *, reader=input, interactive=None):
     if load_configuration(path) != config:
         raise ValueError('読込後にparamsが変更されました。APIキー設定を保存せず停止しました。')
     raw = json.loads(original)
-    products = available_products(config)
-    if not products:
-        raise ValueError('APIキーを発行するProductがAPI定義にありません。')
+    if 'configFile' not in raw:
+        raise ValueError('初期Portal設定にはconfigFileを持つlocal paramsを指定してください。')
+    if not available_products(config):
+        raise ValueError('標準APIの正本に検証用Productがありません。')
     pattern = settings.get('groupNamePattern', '')
     if not pattern.strip():
-        pattern = _answer('対象セキュリティグループ名の正規表現（例: ^ORG_、^(ORG_|DEPT_)、既定値なし）: ', reader)
+        pattern = _answer('対象セキュリティグループ名の正規表現（例: ^ORG_、既定値なし）: ', reader)
         if not pattern or len(pattern) > 512 or re.search(r'[\x00-\x1f\x7f]', pattern):
             raise ValueError('グループ名の正規表現は1〜512文字で明示してください。')
-    if settings.get('groups') and settings.get('platformGroupId'):
-        raw['portalApiKeys'] = {**raw.get('portalApiKeys', {}), 'groupNamePattern': pattern}
-        raw['portalApiKeys']['verificationSubscriptions'] = verification_subscriptions(raw['portalApiKeys'])
-        return _save_configuration(path, raw, original, signature, info)
-    if settings.get('groups'):
-        print('\n検証用購読の所有グループから、管理ダッシュボードを利用する基盤管理グループを選びます。', flush=True)
-        for number, group in enumerate(settings['groups'], 1):
-            print(f"{number}. {group['groupId']}", flush=True)
-        selected = _answer('基盤管理グループの番号（既定の自動選択なし）: ', reader)
-        if not selected.isdecimal() or not 1 <= int(selected) <= len(settings['groups']):
-            raise ValueError('基盤管理グループを表示された番号で明示してください。')
-        raw['portalApiKeys'] = {**raw.get('portalApiKeys', {}), 'groupNamePattern': pattern,
-                               'platformGroupId': settings['groups'][int(selected) - 1]['groupId']}
-        raw['portalApiKeys']['verificationSubscriptions'] = verification_subscriptions(raw['portalApiKeys'])
-        return _save_configuration(path, raw, original, signature, info)
-    print('\n検証用購読を所有する基盤管理Entraグループを設定します。個人は所有者にしません。\n'
-          '対象は設定した正規表現に一致するセキュリティグループです。通常利用の所有候補も同じ条件でGraphから取得します。\n'
-          '入力は同じparamsのportalApiKeysへ保存します。qで中止できます。', flush=True)
-    group_id = _answer('EntraグループのObject ID: ', reader)
-    try:
-        group_id = str(UUID(group_id))
-        if UUID(group_id).int == 0:
-            raise ValueError()
-    except ValueError:
-        raise ValueError('有効なEntraグループのObject IDを指定してください。') from None
-    for number, product in enumerate(products, 1):
-        print(f'{number}. {product}', flush=True)
-    selected = _answer('キーの発行を許可するProductの番号（複数はカンマ区切り、全選択の既定値なし）: ', reader)
-    try:
-        numbers = sorted({int(part.strip()) for part in selected.split(',')})
-        if not numbers or any(number < 1 or number > len(products) for number in numbers):
-            raise ValueError()
-    except ValueError:
-        raise ValueError('許可するProductを表示された番号で明示してください。') from None
-    approved_products = []
-    for number in numbers:
-        product = products[number - 1]
-        maximum = _answer(f'{product}の購読数上限 [5]: ', reader) or '5'
-        if not maximum.isdecimal() or not 1 <= int(maximum) <= 1000:
-            raise ValueError('購読数上限は1〜1000で指定してください。')
-        approved_products.append({'productId': product, 'maxSubscriptions': int(maximum)})
-    raw['portalApiKeys'] = {'groupNamePattern': pattern, 'platformGroupId': group_id,
-                            'groups': [{'groupId': group_id, 'products': approved_products}]}
-    raw['portalApiKeys']['verificationSubscriptions'] = verification_subscriptions(raw['portalApiKeys'])
+    group_id = settings.get('platformGroupId')
+    if not group_id:
+        print('管理ダッシュボードと標準検証用購読を所有するEntraグループを設定します。', flush=True)
+        group_id = _answer('EntraグループのObject ID: ', reader)
+        try:
+            group_id = str(UUID(group_id))
+            if UUID(group_id).int == 0:
+                raise ValueError()
+        except ValueError:
+            raise ValueError('有効なEntraグループのObject IDを指定してください。') from None
+    raw['portalApiKeys'] = {**raw.get('portalApiKeys', {}),
+                            'groupNamePattern': pattern, 'platformGroupId': group_id}
     return _save_configuration(path, raw, original, signature, info)
 
 
@@ -148,7 +117,7 @@ def _save_configuration(path, raw, original, signature, info):
         if current != original or current_signature != signature:
             raise ValueError('入力中にparamsが変更されました。APIキー設定を保存せず停止しました。')
         os.replace(temporary, path)
-        print('APIキーの所有グループと許可ProductをparamsのportalApiKeysへ保存しました。', flush=True)
+        print('管理グループとグループ名の条件をparamsのportalApiKeysへ保存しました。', flush=True)
         return updated
     finally:
         if temporary is not None:

@@ -52,6 +52,10 @@ var dnsServers = []
 var firewallSettings = config.?firewall ?? {}
 var firewallTier = firewallSettings.?sku ?? 'Premium'
 var zones = firewallSettings.?zones ?? []
+// 初期の非SNAT範囲とIDPSの内部分類は、標準範囲と構築VNetから生成します。
+// SNAT用の共通タグはIDPSに使えないため、IDPSにはRFC1918のCIDRを明示します。
+var snatPrivateRanges = union(['IANAPrivateRanges'], addressSpaces)
+var idpsPrivateRanges = union(['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'], addressSpaces)
 // Azureの環境定義からStorage suffixとEntraの標準ログイン先を使います。
 // 認証先を利用者の要求ヘッダーや動的な外部URLから選ぶことはありません。
 
@@ -368,14 +372,14 @@ resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' = {
     sku: { tier: firewallTier }
     threatIntelMode: firewallSettings.?threatIntelMode ?? 'Alert'
     // Standard does not support IDPS: omit the entire property. Premium's
-    // Alert/Deny mode, ranges and reviewed signature exceptions are inputs.
+    // Alert/Deny mode and reviewed signature exceptions remain standard settings.
     ...(firewallTier == 'Premium' ? {
       intrusionDetection: {
         mode: firewallSettings.?idpsMode ?? 'Alert'
         configuration: {
-          ...(empty(firewallSettings.?idpsPrivateRanges ?? []) ? {} : { privateRanges: firewallSettings.idpsPrivateRanges })
+          privateRanges: idpsPrivateRanges
           ...(empty(firewallSettings.?signatureOverrides ?? []) ? {} : { signatureOverrides: firewallSettings.signatureOverrides })
-          ...(empty(firewallSettings.?bypassTrafficSettings ?? []) ? {} : { bypassTrafficSettings: firewallSettings.bypassTrafficSettings })
+          bypassTrafficSettings: []
         }
       }
     } : {})
@@ -385,7 +389,7 @@ resource firewallPolicy 'Microsoft.Network/firewallPolicies@2025-01-01' = {
     }
     // Keep private-destination non-SNAT; IDPS classification ranges above
     // are distinct from these SNAT private ranges.
-    snat: { privateRanges: firewallSettings.?snatPrivateRanges ?? ['IANAPrivateRanges'] }
+    snat: { privateRanges: snatPrivateRanges }
   }
 }
 

@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'apps/gateway/deploy'))
 from deployment.helpers.credential_pools import broker_session_settings, physical_providers, logical_profiles, resource_names
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
-from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError
+from deployment.helpers.configuration import normalize_configuration, build_bicep_configuration, ConfigurationError, load_configuration_source
 from prepare_credential_pool_config import transform
 from broker_deployment import wait_for_schema
 from deploy_gateway import foundation_inputs
@@ -23,11 +23,11 @@ from management_fixtures import maintenance_metadata, client_core_outputs
 
 def raw_fixture():
     value = fixture()
-    master = json.loads((ROOT / 'params/test.example.json').read_text(encoding='utf-8'))
+    master = load_configuration_source(ROOT / 'params/test.example.json')
     value['credentialProviders'] = master['credentialProviders']
     value['gateway']['authentication']['credentialLogin'] = master['gateway']['authentication']['credentialLogin']
-    value['certificate']['domainNames'] = master['certificate']['domainNames']
     value['credentialProviders'][0]['clientId'] = '44444444-4444-4444-8444-444444444444'
+    value['credentialProviders'][0]['oauthTenantId'] = value['entraTenantId']
     return value
 
 

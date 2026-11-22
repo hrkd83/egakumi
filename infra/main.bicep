@@ -70,7 +70,6 @@ var ownerTicketEnabled = realtimeEnabled || length(filter(infrastructureApis, ap
 // 通常HTTP(S)の入口証明は初期構成で常設します。
 var useIngressSecrets = true
 var certConfig = configuration.certificate
-var authorization = configuration.authorization
 // Pythonの文書受付と同じ正本POST/binary契約だけに、容量と独立した専用WAFを維持します。
 var documentUploadPaths = flatten(map(filter(infrastructureApis, api => (api.?name ?? '') == 'document-analysis-v1' && api.path == 'tools/documents/v1'), api => map(filter(api.operations, operation => operation.name == 'analyze_document' && operation.method == 'POST' && operation.urlTemplate == '/analyze' && api.authorization.operationConstraints[operation.name].kind == 'documentAnalysis' && (api.authorization.operationConstraints[operation.name].?bodyFormat ?? '') == 'binary'), operation => '/${api.path}${operation.urlTemplate}')))
 // 既存の署名付き2操作だけ、可変IDの位置をAppGW用patternへ写します。任意のtemplateは展開しません。
@@ -145,7 +144,6 @@ module monitoring 'modules/monitoring.bicep' = {
     retentionInDays: monitoringConfig.retentionInDays
     workspaceDailyQuotaGb: monitoringConfig.workspaceDailyQuotaGb
     auditStorageSku: monitoringConfig.auditStorageSku
-    auditAllowedIpAddresses: monitoringConfig.auditAllowedIpAddresses
     auditImmutabilityMode: monitoringConfig.auditImmutabilityMode
     auditRetentionDays: monitoringConfig.auditRetentionDays
     manageAuditImmutabilityPolicies: manageAuditImmutabilityPolicies
@@ -378,10 +376,6 @@ module serviceBindings 'modules/service-bindings.bicep' = if (deployCore) {
     grantApimSecretAccess: true
     speechEnabled: servicesConfig.?speechEnabled ?? false
     grantApimFoundryModelsAccess: servicesConfig.?grantApimFoundryModelsAccess ?? false
-    projectAdministrators: authorization.projectAdministrators
-    projectDevelopers: authorization.projectDevelopers
-    foundryReaders: authorization.foundryReaders
-    catalogReaders: authorization.catalogReaders
     enableApiCenterIntegration: servicesConfig.enableApiCenterIntegration
     catalogEnvironmentKind: servicesConfig.catalogEnvironmentKind
     catalogLifecycleStage: servicesConfig.catalogLifecycleStage
@@ -619,7 +613,6 @@ module gateway 'modules/application-gateway.bicep' = if (deployCore) {
     autoscaleMinCapacity: gatewayConfig.autoscaleMinCapacity
     autoscaleMaxCapacity: gatewayConfig.autoscaleMaxCapacity
     zones: gatewayConfig.zones
-    existingWafPolicyId: gatewayConfig.?existingWafPolicyId ?? ''
     wafMode: gatewayConfig.wafMode
     wafMaxRequestBodySizeInKb: gatewayConfig.?wafMaxRequestBodySizeInKb ?? 128
     wafRequestBodyInspectLimitInKb: gatewayConfig.?wafRequestBodyInspectLimitInKb ?? 128
@@ -655,13 +648,13 @@ module monitoringBindings 'modules/monitoring-bindings.bicep' = if (deployCore) 
     apimSkuName: servicesConfig.apimSkuName
     appInsightsIngestionWarningGb: monitoringConfig.appInsightsIngestionWarningGb
     telemetryPublisherPrincipalIds: [services!.outputs.principalIds.project]
-    // 構築コンテナー全件へのVM読取を合成。既存閲覧者を先に置きGUID表記も保持します。
-    auditReaders: concat(monitoringConfig.auditReaders, map(monitoring.outputs.storage.containerIds, containerId => {
+    // 構築コンテナー全件への管理VM自身の読取を常設します。追加閲覧者は構築後の手動設定です。
+    auditReaders: map(monitoring.outputs.storage.containerIds, containerId => {
       collector: startsWith(toLower(containerId), '${toLower(monitoring.outputs.storage.collectJapan.id)}/') ? 'collectJapan' : 'collectFoundry'
       containerName: last(split(containerId, '/'))
       principalId: management!.outputs.managementVm.principalId
       principalType: 'ServicePrincipal'
-    }))
+    })
   }
 }
 

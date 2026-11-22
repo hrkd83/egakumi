@@ -602,16 +602,16 @@ class ProfilePolicyTests(unittest.TestCase):
                 item = case(identifier, **base, headers=headers)
                 cases.append(item)
                 cls.declared_size_cases[identifier] = (item, suffix == "declared-over-bound")
-        # 本文を使う別操作の既定actualを、共有部品までの同じ経路で確認します。
-        # SSML走査・文書形式検査など、Operation固有の後続処理はこのfixtureの対象外です。
-        cls.actual_size_cases = {}
+        # 文書正本のdeclared設定も、共有部品までの同じ経路で確認します。
+        # 文書形式や実サイズの後続検査は、このprofile/limits fixtureの対象外です。
+        cls.document_size_cases = {}
         for label, api, operation, path, raw in (
             ("document", "document-analysis-v1", "analyze_document", "/analyze", "%PDF-synthetic document"),):
-            identifier = "actual-upload-" + label
+            identifier = "document-upload-" + label
             item = case(identifier, config=apis[api]["authorization"], api=api, operation=operation,
                         path=path, rawBody=raw, headers={"Content-Type": "application/ssml+xml" if label == "speech-tts" else "application/pdf"})
             cases.append(item)
-            cls.actual_size_cases[identifier] = item
+            cls.document_size_cases[identifier] = item
         # TTSの共有サイズ部品は本文を読まず、専用部品がサイズと宣言を1回の読取りで確認します。
         cls.speech_guard_cases = {}
         normal_ssml = '<speak>ok</speak>'
@@ -1276,18 +1276,18 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         self.assertEqual(exercised, {("azure-speech-v1", "stt"), ("openai-audio-v1", "audio-transcriptions"),
                                    ("openai-images-v1", "image-edit")})
 
-    def test_other_standard_uploads_keep_actual_size_checks_and_preserve_the_body(self):
-        for identifier, item in self.actual_size_cases.items():
+    def test_document_upload_uses_registered_declared_size_check_and_preserves_the_body(self):
+        for identifier, item in self.document_size_cases.items():
             with self.subTest(case=identifier):
                 result = self.results[identifier]
                 source = item["config"]["operationConstraints"][item["operation"]]
-                self.assertEqual(source.get("requestBodySizeCheck", "actual"), "actual")
+                self.assertEqual(source["requestBodySizeCheck"], "declared")
                 self.assertTrue(result["requestAllowed"])
                 self.assertTrue(result["profile"]["allowed"])
                 self.assertTrue(result["decision"]["allowed"])
                 self.assertEqual(result["operationConstraint"], result["profile"]["constraint"])
-                self.assertEqual(result["limits"], {"allowed": True, "status": 200, "code": "BOUNDED_UPLOAD"})
-                self.assertEqual(result["reads"], 1)
+                self.assertEqual(result["limits"], {"allowed": True, "status": 200, "code": "DECLARED_SIZE_ONLY"})
+                self.assertEqual(result["reads"], 0)
                 self.assertNotIn("speech", result)
                 self.assertEqual(result["bodyAfter"], item["rawBody"])
 

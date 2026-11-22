@@ -1,4 +1,4 @@
-"""基本設定と正式18 API定義を、公開せずに合成する処理を検証する。
+"""基本設定と正式19 API定義を、公開せずに合成する処理を検証する。
 
 モデルの重複、版の衝突、placeholderの不足、構築対象モデル、相対ファイル参照を調べる。生成した設定は別途確認してからAzureへ適用する。
 """
@@ -18,7 +18,7 @@ from deployment.helpers.configuration import normalize_configuration, build_bice
 
 
 class CoveragePreparationTests(unittest.TestCase):
-    """基本設定と正式18 API定義を、公開せずに合成する処理を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
+    """基本設定と正式19 API定義を、公開せずに合成する処理を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
         self.base = configured_base()
         self.overlay = catalog_overlay()
@@ -112,6 +112,8 @@ class CoveragePreparationTests(unittest.TestCase):
 
     def test_separate_entra_tenant_binds_cm_without_moving_azure(self):
         base = copy.deepcopy(self.base)
+        # 個別テナントを省略した内部入力では、Entraの既定テナントを使います。
+        base["credentialProviders"][0].pop("oauthTenantId", None)
         base["entraTenantId"] = "77777777-7777-4777-8777-777777777777"
         result = prepare_coverage.prepare(base, self.overlay, self.bindings, base_directory=CORE / "config")
         self.assertEqual(result["azureTenantId"], self.base["azureTenantId"])
@@ -169,7 +171,7 @@ class CoveragePreparationTests(unittest.TestCase):
             prepare_coverage.prepare(self.base, self.overlay, self.bindings, base_directory=CORE / "config")
 
     def test_identical_registered_api_is_reused_without_duplicating_it(self):
-        """基本3 APIを準備済みでも、全18 APIの読み込みで同じAPIを増やさない。"""
+        """基本3 APIを準備済みでも、全19 APIの読み込みで同じAPIを増やさない。"""
         inference = next(api for api in self.overlay["apiDefinitions"] if api["name"] == "openai-inference-v1")
         self.base["apiDefinitions"] = [prepare_coverage.substitute(inference, self.bindings)]
         result = prepare_coverage.prepare(self.base, self.overlay, self.bindings, base_directory=CORE / "config")

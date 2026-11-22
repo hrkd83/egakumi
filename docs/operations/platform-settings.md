@@ -183,8 +183,8 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
 [同SDKの取得処理](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/ml/azure-ai-ml/azure/ai/ml/_azure_environments.py)
 も資格情報なしのGETを使用する。この例はVMのIMDSや、管理トークンを発行するAPIではない。
 
-既存のAPI定義配列の**末尾へ追加する一要素**は次のとおり。環境が
-購読キーヘッダーを変更している場合は、`subscriptionKeyHeader`を既存設定へ合わせる。
+公開API正本へ追加する**独立した1 APIファイル**の内容は次のとおり。
+購読キーヘッダーは資材固定の`api-key`を使う。公開paramsによるAPI配列置換は行わない。
 
 ```json
 {
@@ -223,13 +223,12 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
 
 1. 変更前のparamsと、Gの正常な計画を保護保存する。既定の計画保存先は
    `state/gateway-plan.json`である。API定義を変える前に保存し、後続の計画で上書きしない。
-2. `apiDefinitions: []`を使っている場合は、変更前の計画の
-   `parameters.configuration.apiDefinitions`を**全件**コピーし、paramsの
-   `apiDefinitions`をその明示配列へ変更する。その際、各API直下と、存在する場合は
-   `mcp`直下の`catalogDescription`だけを除く。これは配備向けに生成した説明であり、
-   入力Schemaは受け付けない。他の契約項目を省かず、WAF用の簡略なAPI一覧も使わない。
-   既に明示配列なら現在の全要素を保持する。
-3. 末尾へ上記一要素だけを加える。既存のname・path・operations・Product・認証・
+2. [API正本](../../apps/gateway/apim/apis/)の現在のファイル集合とrevisionを保護記録へ控える。
+   計画の`parameters.configuration.apiDefinitions`は生成済み内部配列であり、paramsへ
+   コピーしない。公開`apiDefinitions`・`publishApis`は空やfalseでも拒否する。
+   API正本へ実環境のURL・ID・secretを転記せず、上記の公式共通URLを使う追加だけを扱う。
+3. API正本へ`ops-metadata-v1.json`として上記1件を追加する。既存ファイルを変更せず、
+   既存のname・path・operations・Product・認証・
    profile制約が変更前と一致し、同名API／backend／Named Valueが未使用であることを確認する。
    共用する`connection-users`と`released-apis`の既存購読を削除・再発行しない。
 4. Gの計画と実行を行う。計画の外部FQDNに`management.azure.com`が入ること、
@@ -246,7 +245,8 @@ API公開へ進む。途中で失敗しても追加許可が既に反映され�
    未登録の操作・パスは拒否され、既存APIの代表要求は継続することを確認する。
    実応答全体を公開資料へ貼らず、必要な状態・構造の判定だけを保護記録へ残す。
 
-回収は追加前のparamsへ戻し、Gの計画・実行で既存全APIの正本を確認する。
+回収は今回追加した`ops-metadata-v1.json`だけをAPI正本から除き、変更前のファイル集合と
+契約が維持されることをGの計画・実行で確認する。paramsをAPI配列の保存先にしない。
 Incremental配備は省いた資源を自動削除しないため、Azure Portalの対象APIMで
 `ops-metadata-v1`のProduct所属とAPIを回収し、他APIから参照されていない
 専用backend `ops-metadata-v1-backend`と、非秘密のNamed Value

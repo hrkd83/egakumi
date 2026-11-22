@@ -15,6 +15,8 @@
 
 Portalの管理グループ所属、Azure RBAC、Entraの管理権限は別である。P／Gは既存の個別配備入口であり、設定変更でもDB・権限・API・WAF等を照合する。基盤の`azd up`・`azd provision`を通常保守の入口にしない。
 
+今回の公開入力整理は[71主項目の判断記録](../setup/04-params.md#公開入力71主項目の判断記録)に従う。値の移設だけでID・secret・認証方式・identity省略時fallbackを変更しない。Azureへの一括反映・全環境再構築E2Eは未実施であり、既存運用試験を今回の成功へ読み替えない。
+
 ## 1. 所属・Portalの対象条件・管理グループを変更する
 
 ### 変更する設定を分ける
@@ -23,12 +25,12 @@ Portalの管理グループ所属、Azure RBAC、Entraの管理権限は別で�
 | --- | --- |
 | 同じ所有グループ・管理グループの担当者交代 | EntraのMember所属を変更する。グループIDが同じなら、そのためのPは不要 |
 | 通常のキー所有候補になるグループ名の条件 | 同じ環境のparamsの`portalApiKeys.groupNamePattern`を変更しPで反映。Securityグループ・現在のMember所属は引き続き必須 |
-| Portalの管理グループ自体を変更 | `portalApiKeys.platformGroupId`と、そのIDを含む`portalApiKeys.groups`の承認設定を揃えPで反映 |
-| 明示承認した検証用グループの製品・発行枠 | `portalApiKeys.groups[].products[]`の`productId`・`maxSubscriptions`を変更しPのSQL初期化で反映。製品はAPIMに準備済みのものを使う |
+| Portalの管理グループ自体を変更 | paramsの`portalApiKeys.platformGroupId`を変更しPで反映。内部承認は管理グループとAPI正本から生成。既存購読の所有は別途確認 |
+| 検証用管理グループの共通発行枠 | configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を調整しPで反映。製品は標準API正本の全製品から生成し、公開subset入力は設けない |
 
 1. 新旧の担当者・グループのObject ID、Security属性、Member所属、影響するキーを確認する。担当者交代だけなら既存グループを維持し、新担当の操作確認後に旧担当の所属を回収する。
 2. 対象条件を変える場合は、現在と変更後の正規表現、それぞれで一致するグループを確認する。RE2互換・最大512文字であり、空欄や不正構文を全許可として使わない。
-3. 管理グループIDを変える場合は、新グループを承認配列へ用意し、旧グループのキーと検証用購読を先に点検する。管理グループIDの変更は既存キーの所有者移管ではない。既存の検証用購読IDを新グループへ自動移管する処理もないため、その所有を保持する承認設定を不用意に取り除かない。
+3. 管理グループIDを変える場合は、新グループの適格性と、旧グループのキー・検証用購読を先に点検する。内部承認配列は新しいplatformGroupIdとAPI正本から生成する。管理グループIDの変更は既存キーの所有者移管ではない。既存の検証用購読IDを新グループへ自動移管する処理もないため、旧所有者・登録済み承認と枠を不用意に削除しない。旧公開groups・任意購読ID等は新入力へ自動変換せず、所有を維持する個別移行を先に確認する。
 4. 同じ保護入力でPの計画を読み、目的外の変更がなければ実行する。
 
 ```sh
@@ -39,7 +41,7 @@ python3 -B scripts/operations/release.py --config "$DEPLOY_PARAMS_FILE" --compon
 5. 今回の終了コード・`state/portal-deployment.json`を確認し、新担当のPortal管理操作、所有候補、対象グループのキー操作を確認する。旧担当の所属を外した場合は、更新した画面から権限喪失も確認する。コピー済みAPIキーは所属変更だけでは失効しないため、必要な値の更新は次節で行う。
 6. 戻す場合は今回変更した所属・paramsだけを旧値へ戻す。params変更はPで再反映する。途中で発行・移管・削除したキーまで設定復帰で戻ったとは扱わない。
 
-**設定範囲：** `groups`は検証用購読の明示承認であり、通常利用者のグループ全件を列挙する欄ではない。通常発行は現行資材で`released-apis`に固定され、通常カタログの発行枠は`approved_product_catalog()`が5件を生成する。通常製品や全グループの枠を自由変更するPortal画面・params項目はない。カタログ値の変更だけで、既存グループの登録済み枠が一括更新されるわけでもない。発行枠は主副2値を持つ購読1件として数え、作成中・停止中・削除中も削除確定まで含む。呼出回数・トークン制限とは区別する。
+**設定範囲：** 公開paramsは`platformGroupId`と`groupNamePattern`だけで、内部groups・検証購読は管理グループ1件、標準API正本の全製品、共通上限から生成する。初回対話もこの2項目だけを保存し、公開groups・verificationSubscriptions入力は空配列でも拒否する。検証製品の管理グループ承認を、通常利用者全員の承認とは扱わない。通常発行は現行資材で`released-apis`に固定され、通常カタログの発行枠は`approved_product_catalog()`が5件を生成する。通常製品や全グループの枠を自由変更するPortal画面・params項目はない。カタログ値の変更だけで、既存グループの登録済み枠が一括更新されるわけでもない。発行枠は主副2値を持つ購読1件として数え、作成中・停止中・削除中も削除確定まで含む。呼出回数・トークン制限とは区別する。
 
 ## 2. 主副キーを段階更新し、必要なら停止・再開する
 
@@ -99,8 +101,8 @@ python3 -B scripts/operations/api_key.py --config "$DEPLOY_PARAMS_FILE" \
 
 ### 既存プロファイルのプール増設
 
-1. 同じ環境のparamsの対象`credentialProviders[]`と`pool.count`・`pool.capacity`、既存の物理provider名、SQLプールの容量・割当数を確認する。現在の入力範囲は個数1～26・各容量1～8,000である。保管枠と同時処理性能は別である。
-2. 必要数に合わせて`pool.count`だけを増やす。論理プロファイル名、既存の接尾辞付き物理名、容量、Client ID・secret参照、APIM識別子は維持する。通常の増設でEntraアプリや戻り先を作り直さない。
+1. 同じ環境のparamsの`credentialProviders.graphDelegated`登録、configの同slotの`pool.count`・`pool.capacity`、既存の物理provider名、SQLプールの容量・割当数を確認する。追加providerは双方の`additional[]`を論理名で照合する。現在の入力範囲は個数1～26・各容量1～8,000である。保管枠と同時処理性能は別である。
+2. 必要数に合わせてconfigの対象providerの`pool.count`だけを増やす。論理プロファイル名、既存の接尾辞付き物理名、容量、Client ID・secret参照、APIM識別子は維持する。通常の増設でEntraアプリや戻り先を作り直さない。
 3. Gの計画で追加先と既存資源の保持を確認し、同じ入力で実行する。Gateway一式の照合を伴い、CMだけの専用配備ではない。
 
 ```sh

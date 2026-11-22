@@ -40,7 +40,7 @@ scripts/
 
 | 補助処理 | 役割 | 呼ばれる段階 |
 | --- | --- | --- |
-| `prepare_local_environment.py` | 公開exampleから環境別paramsを作成し、config・secretの相対参照を変換 | 導入先の環境名とprofileの決定後。Azure操作なし |
+| `prepare_local_environment.py` | 公開exampleから環境別paramsを作成し、config・secretの相対参照を変換。APIMマーカーを初回だけ6文字IDへ置換・保存し、更新保持 | 導入先の環境名とprofileの決定後。Azure操作なし |
 | `configuration.py` | 設定の読込・合成・入力検査、秘密ファイルの読込 | 各hook。手動の設定検査・API登録等でも共用 |
 | `catalog_descriptions.py` | API説明の組み立て | 設定の正規化から呼出し。API登録でも共用 |
 | `dns_selection.py` | 準備済みAzure DNS用Subscription・UAMI参照の確認 | `preup` |
@@ -73,7 +73,7 @@ scripts/
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
 ```
 
-`azd up`には`publishApis:true`が必要です。基盤だけを扱う`azd provision`ではGateway・Portalを実行しません。`deploy_applications.py --config <params>`は両アプリの計画、`--execute`付きは順次配備です。Gateway失敗時はPortalを開始せず、Portal失敗時もup全体を失敗にします。個別コマンドを実行し、今回の終了コードと配備記録で成否を確認します。過去の成功記録だけで工程を省略しません。
+標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空やfalseでも拒否します。`azd up`は基盤→Gateway→Portalを順に実行します。基盤だけを扱う`azd provision`ではGateway・Portalを実行しません。`deploy_applications.py --config <params>`は両アプリの計画、`--execute`付きは順次配備です。Gateway失敗時はPortalを開始せず、Portal失敗時もup全体を失敗にします。個別コマンドを実行し、今回の終了コードと配備記録で成否を確認します。過去の成功記録だけで工程を省略しません。
 
 設定の検査・出力だけを手動実行するときは、補助処理のCLIも利用できます。
 
@@ -105,3 +105,5 @@ Gateway・Portalの配備コマンドは`azd up`からも呼ばれ、個別の�
 `realtime_browser.py`は[tests/browser/realtime.html](../tests/browser/realtime.html)をローカル専用relayから配信します。この画面はWebRTC／Voice Liveの回帰試験資材であり、Portal・Gatewayの配備には含めません。
 
 疎通試験は実APIを呼ぶため、推論等の利用料金が発生する場合があります。API登録の明示実行はAzure設定を変更します。各ファイル先頭の説明とCLIの`--help`で対象と実行条件を確認してください。
+
+公開入力71主項目の配置と移行条件は[paramsの判断記録](../docs/setup/04-params.md#公開入力71主項目の判断記録)を参照してください。Graph登録はparams、共通表示名・scope・poolとセッション設定はconfigに置き、既存Client ID・秘密参照・identity省略時fallbackを配置整理だけで変更しません。Portal初回対話はplatformGroupIdとgroupNamePatternだけを保存し、内部承認・検証購読はAPI正本とconfig上限5から生成します。既存非標準値を自動移行せず、今回のAzure反映・全環境再構築E2Eは未実施として扱います。未解決APIMマーカーを通常入力として受け付けず、初回prepare以外で再生成しません。

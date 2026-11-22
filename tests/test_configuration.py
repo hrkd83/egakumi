@@ -26,8 +26,8 @@ class PublicSampleTests(unittest.TestCase):
     """公開サンプルと配備設定の型・値・組合せ・秘密ファイル境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def sample(self, name):
         manifest = CORE / "params" / (name + ".example.json")
-        parameters = json.loads(manifest.read_text())
-        options = json.loads((manifest.parent / parameters["configFile"]).read_text())
+        parameters = json.loads(manifest.read_text(encoding="utf-8"))
+        options = json.loads((manifest.parent / parameters["configFile"]).read_text(encoding="utf-8"))
         raw = configuration.load_configuration_source(manifest)
         raw["subscriptionId"] = "11111111-1111-4111-8111-111111111111"
         raw["azureTenantId"] = "99999999-9999-4999-8999-999999999999"
@@ -37,6 +37,8 @@ class PublicSampleTests(unittest.TestCase):
             "/subscriptions/" + raw["subscriptionId"] +
             "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
         raw["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
+        raw["credentialProviders"][0]["oauthTenantId"] = raw["entraTenantId"]
+        raw["services"]["apimInstanceId"] = "abc123"
         return parameters, options, configuration.normalize_configuration(raw, base_directory=manifest.parent)
 
     def test_apim_identifier_is_required_parameter_owned_and_never_regenerated(self):
@@ -55,9 +57,9 @@ class PublicSampleTests(unittest.TestCase):
         self.assertIn("apimInstanceId", configuration.PARAMETER_SECTION_KEYS["services"])
         self.assertIn(("services", "apimInstanceId"), configuration.PARAMETER_OWNED_PATHS)
 
-    def test_schema_and_public_examples_require_synthetic_apim_identifier(self):
+    def test_schema_and_templates_distinguish_generated_apim_identifier(self):
         for filename in ("params.schema.json", "configuration.schema.json"):
-            service = json.loads((CORE / "schemas" / filename).read_text())["properties"]["services"]
+            service = json.loads((CORE / "schemas" / filename).read_text(encoding="utf-8"))["properties"]["services"]
             with self.subTest(schema=filename):
                 self.assertIn("apimInstanceId", service["required"])
                 self.assertEqual(service["properties"]["apimInstanceId"]["pattern"], "^[a-z0-9]{6}$")
@@ -65,8 +67,8 @@ class PublicSampleTests(unittest.TestCase):
         for name in ("test", "production"):
             parameters, options, actual = self.sample(name)
             with self.subTest(profile=name):
-                self.assertEqual(parameters["services"]["apimInstanceId"], "k7m2q9")
-                self.assertEqual(actual["services"]["apimInstanceId"], "k7m2q9")
+                self.assertEqual(parameters["services"]["apimInstanceId"], "<AUTO_GENERATED_APIM_INSTANCE_ID>")
+                self.assertEqual(actual["services"]["apimInstanceId"], "abc123")
                 self.assertNotIn("apimInstanceId", options["services"])
 
     def test_required_org_inputs_are_separate_from_standard_options(self):
@@ -77,10 +79,11 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertEqual(parameters["productName"], "egakumi")
                 self.assertEqual(parameters["subscriptionId"], "00000000-0000-0000-0000-000000000000")
                 self.assertEqual(parameters["entraTenantId"], "00000000-0000-0000-0000-000000000000")
-                self.assertEqual(parameters["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
-                self.assertEqual(parameters["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
-                self.assertEqual(parameters["credentialProviders"][0]["clientId"], "00000000-0000-0000-0000-000000000000")
-                self.assertNotIn("oauthTenantId", parameters["credentialProviders"][0])
+                self.assertNotIn("subscriptionKeyHeader", parameters["gateway"]["authentication"])
+                self.assertEqual(actual["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
+                self.assertEqual(options["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
+                self.assertEqual(parameters["credentialProviders"]["graphDelegated"]["clientId"], "00000000-0000-0000-0000-000000000000")
+                self.assertNotIn("oauthTenantId", parameters["credentialProviders"]["graphDelegated"])
                 provider = actual["credentialProviders"][0]
                 self.assertEqual(provider["name"], "graph-delegated")
                 self.assertEqual(provider["pool"], {"count": 12, "capacity": 8000})
@@ -88,7 +91,7 @@ class PublicSampleTests(unittest.TestCase):
                 self.assertEqual(provider["oauthTenantId"], actual["entraTenantId"])
                 self.assertEqual(provider["connectionNames"], [])
                 self.assertEqual(provider["identityEndpoint"], "https://graph.microsoft.com/v1.0/me")
-                self.assertEqual(parameters["credentialProviders"][0]["clientSecretFile"], "../secrets/entra-client-secret.txt")
+                self.assertEqual(parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"], "../secrets/entra-client-secret.txt")
                 deployed = configuration.build_bicep_configuration(actual)
                 self.assertNotIn("clientSecretFile", deployed["credentialProviders"][0])
                 self.assertEqual([item["name"] for item in deployed["credentialPhysicalProviders"]],
@@ -151,13 +154,13 @@ class PublicSampleTests(unittest.TestCase):
             for output in (parameters, options, actual, configuration.build_bicep_configuration(actual)):
                 for key in retired_inputs:
                     self.assertNotIn(key, output["network"])
-                self.assertNotIn("dnsServers", output["network"]["firewall"])
+                self.assertNotIn("dnsServers", output["network"].get("firewall", {}))
             self.assertEqual(network["dnsTtl"], 300)
             self.assertEqual(actual["network"]["dnsTtl"], 300)
-            self.assertEqual(addresses["firewall"]["snatPrivateRanges"], ["IANAPrivateRanges"])
+            self.assertNotIn("firewall", addresses)
+            self.assertEqual(actual["network"]["firewall"]["snatPrivateRanges"], ["IANAPrivateRanges", *addresses["addressSpaces"]])
             self.assertEqual(network["firewall"]["signatureOverrides"], [])
             for key in ("idpsPrivateRanges", "bypassTrafficSettings"):
-                self.assertEqual(addresses["firewall"][key], [])
                 self.assertNotIn(key, network["firewall"])
             retired_firewall_inputs = {
                 "apimAdditionalNetworkRules", "managementAdditionalNetworkRules",
@@ -165,8 +168,9 @@ class PublicSampleTests(unittest.TestCase):
                 "apimAllowedFqdns", "managementAllowedFqdns",
             }
             for output in (parameters, options, actual, configuration.build_bicep_configuration(actual)):
-                self.assertFalse(retired_firewall_inputs.intersection(output["network"]["firewall"]))
-            self.assertEqual(parameters["monitoring"]["auditAllowedIpAddresses"], [])
+                self.assertFalse(retired_firewall_inputs.intersection(output["network"].get("firewall", {})))
+            self.assertNotIn("auditAllowedIpAddresses", parameters["monitoring"])
+            self.assertEqual(actual["monitoring"]["auditAllowedIpAddresses"], [])
             self.assertNotIn("auditAllowedIpAddresses", options["monitoring"])
         for key, value in retired_inputs.items():
             raw = fixture()
@@ -419,6 +423,8 @@ class ConfigurationTests(unittest.TestCase):
             "/subscriptions/" + raw["subscriptionId"] +
             "/resourceGroups/rg-dns-fixture/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi-dns-fixture")
         raw["credentialProviders"][0]["clientId"] = "44444444-4444-4444-8444-444444444444"
+        raw["credentialProviders"][0]["oauthTenantId"] = raw["entraTenantId"]
+        raw["services"]["apimInstanceId"] = "abc123"
         self.assertEqual(raw["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
         self.assertEqual(raw["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
         actual = self.normalize(raw)
@@ -1233,10 +1239,7 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
         locations = ((), ("services",), ("gateway", "authentication"),
                      ("apiDefinitions", 0), ("apiDefinitions", 0, "authorization"),
                      ("apiDefinitions", 0, "mcp"))
-        schemas = {
-            name: local_schema_validator(json.loads((CORE / f"schemas/{name}.schema.json").read_text()))
-            for name in ("configuration", "params")
-        }
+        internal_schema = local_schema_validator(json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8")))
         for location in locations:
             with self.subTest(location=location):
                 raw = pii_fixture()
@@ -1246,11 +1249,29 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
                 target["unexpectedSetting"] = "synthetic"
                 with self.assertRaisesRegex(configuration.ConfigurationError, "unexpectedSetting"):
                     configuration.normalize_configuration(raw, base_directory=CORE / "config")
-                for name, validator in schemas.items():
-                    with self.subTest(schema=name):
-                        errors = list(validator.iter_errors(raw))
-                        self.assertTrue(any(error.validator == "additionalProperties"
-                                            and "unexpectedSetting" in error.message for error in errors))
+                errors = list(internal_schema.iter_errors(raw))
+                self.assertTrue(any(error.validator == "additionalProperties"
+                                    and "unexpectedSetting" in error.message for error in errors))
+        from configuration_fixtures import public_fixture
+        public_schema = local_schema_validator(json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8")))
+        for location in ((), ("services",), ("gateway", "authentication"),
+                         ("credentialProviders", "graphDelegated"), ("portalApiKeys",)):
+            with self.subTest(public_location=location):
+                raw, options = public_fixture()
+                target = raw
+                for part in location:
+                    target = target[part]
+                target["unexpectedSetting"] = "synthetic"
+                errors = list(public_schema.iter_errors(raw))
+                self.assertTrue(any(error.validator == "additionalProperties"
+                                    and "unexpectedSetting" in error.message for error in errors))
+                with tempfile.TemporaryDirectory() as folder:
+                    root = Path(folder)
+                    (root / "options.json").write_text(json.dumps(options), encoding="utf-8")
+                    source = root / "params.json"
+                    source.write_text(json.dumps(raw), encoding="utf-8")
+                    with self.assertRaises(configuration.ConfigurationError):
+                        configuration.load_configuration(source)
 
 
 class PolicySourceTests(unittest.TestCase):

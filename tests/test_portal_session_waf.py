@@ -111,10 +111,9 @@ console.log(JSON.stringify(cookies));
         self.assertEqual(data_scope_exclusions({"scope": "gateway", "paths": ["/auth/connections/browser/identity-callback"]}),
                          [])
 
-    def test_only_portal_https_listener_has_the_new_default_and_enterprise_is_not_replaced(self):
+    def test_only_portal_https_listener_has_the_owned_default_policy(self):
         gateway = next(item for item in self.resources if item["type"] == "Microsoft.Network/applicationGateways")
-        for changes, enabled in (({}, True), ({"existingWafPolicyId": "/enterprise/policy"}, False),
-                                 ({"skuName": "Standard_v2"}, False)):
+        for changes, enabled in (({}, True), ({"skuName": "Standard_v2"}, False)):
             with self.subTest(changes=changes):
                 parameters = self.parameters(**changes)
                 properties = self.value(gateway["properties"], parameters)

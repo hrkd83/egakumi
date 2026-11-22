@@ -119,7 +119,7 @@ APIMからFoundryへの権限は、APIMのManaged Identityに対するAzure RBAC
 | Application ID URIとGateway.Invoke | Portal・Codex等の委任アクセス許可、管理者同意、要求scope |
 | 単一テナント・scope・token versionの保存後確認 | アプリ登録の受入。接続試験の結果とは別に記録 |
 
-**APIのClient IDを既存の`credentialProviders[].clientId`へ設定しません。** そこはCMの下流OAuthクライアント用です。[paramsの認可設定](04-params.md)の`gateway.authentication.entra.audience`へ引き継ぐ値です。公開Entra設定は`audience`・`requiredScope`・`userLimits`の3項目だけで、有効化・対象API・クライアント許可リストは入力しません。専用Productの所属を閉じた配備段階で資材を照合し、対象環境での実APIMの検証・公開・接続受入を別に確認します。登録だけで既存共用アプリを置き換えません。
+**APIのClient IDを`credentialProviders.graphDelegated.clientId`や追加providerの`clientId`へ設定しません。** そこはCMの下流OAuthクライアント用です。[paramsの認可設定](04-params.md)の`gateway.authentication.entra.audience`へ引き継ぐ値です。公開paramsには`audience`を置き、共通`userLimits`はconfigへ移設しました。委任scopeは資材固定の`Gateway.Invoke`で、公開`requiredScope`入力は廃止しています。有効化・対象API・クライアント許可リストは入力しません。専用Productの所属を閉じた配備段階で資材を照合し、対象環境での実APIMの検証・公開・接続受入を別に確認します。登録や今回の入力配置整理だけで既存共用アプリ・Client ID・secret・fallbackを置き換えません。今回のAzure一括反映と全環境再構築E2Eは未実施です。
 
 掲載画像はフルHD（1920×1080ピクセル）の画面を原寸で撮影し、拡大縮小せずPNGで保存しています。文書上で縮小表示される場合は、画像をクリックして原寸画像を開き、確認してください。
 

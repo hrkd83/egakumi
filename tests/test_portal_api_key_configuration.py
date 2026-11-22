@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from configuration_fixtures import configuration, fixture, CORE
+from configuration_fixtures import configuration, fixture, public_fixture, CORE
 
 
 class PortalApiKeyConfigurationTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class PortalApiKeyConfigurationTests(unittest.TestCase):
         }]}
 
     def test_unconfigured_groups_do_not_block_foundation(self):
-        self.assertEqual(configuration.normalize_configuration(fixture())["portalApiKeys"], {"groups": [], "groupNamePattern": "", "verificationSubscriptions": []})
+        self.assertEqual(configuration.normalize_configuration(fixture())["portalApiKeys"], {"groups": [], "groupNamePattern": "", "verificationSubscriptions": [], "verificationMaxSubscriptions": 5})
 
     def test_ownership_is_environment_specific_and_original_is_unchanged(self):
         raw = fixture()
@@ -48,33 +48,54 @@ class PortalApiKeyConfigurationTests(unittest.TestCase):
     def test_standard_config_cannot_silently_supply_another_companys_groups(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            (root / "options.json").write_text(json.dumps({"portalApiKeys": self.value()}), encoding="utf-8")
+            raw, options = public_fixture()
+            options["portalApiKeys"] = self.value()
+            (root / "options.json").write_text(json.dumps(options), encoding="utf-8")
             path = root / "params.json"
-            path.write_text(json.dumps({"configFile": "options.json", "portalApiKeys": {"groups": []}}), encoding="utf-8")
+            path.write_text(json.dumps(raw), encoding="utf-8")
             with self.assertRaisesRegex(configuration.ConfigurationError, "config.portalApiKeys"):
                 configuration.load_configuration_source(path)
 
-    def test_editor_schema_exposes_groups_only_as_environment_input(self):
+    def test_public_schemas_expose_only_owner_inputs_and_shared_count(self):
         params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
         options = json.loads((CORE / "schemas/options.schema.json").read_text(encoding="utf-8"))
-        self.assertIn("portalApiKeys", params["properties"])
-        self.assertNotIn("portalApiKeys", options["properties"])
+        self.assertEqual(set(params["$defs"]["portalApiKeys"]["properties"]), {"platformGroupId", "groupNamePattern"})
+        self.assertEqual(set(options["properties"]["portalApiKeys"]["properties"]), {"verificationMaxSubscriptions"})
 
     def test_display_name_is_not_an_environment_input(self):
         value = self.value()
         value["groups"][0]["displayName"] = "ORG_StaleName"
         with self.assertRaises(configuration.ConfigurationError):
             configuration.normalize_configuration({**fixture(), "portalApiKeys": value})
-        params = json.loads((CORE / "schemas/params.schema.json").read_text(encoding="utf-8"))
-        group = params["$defs"]["portalApiKeys"]["properties"]["groups"]["items"]
+        internal = json.loads((CORE / "schemas/configuration.schema.json").read_text(encoding="utf-8"))
+        group = internal["$defs"]["portalApiKeys"]["properties"]["groups"]["items"]
         self.assertNotIn("displayName", group["properties"])
 
     def test_both_environment_templates_include_interactive_portal_group_settings(self):
         for name in ("test", "production"):
             raw = json.loads((CORE / f"params/{name}.example.json").read_text(encoding="utf-8"))
             with self.subTest(environment=name):
-                self.assertEqual(raw["portalApiKeys"], {"groupNamePattern": "", "groups": [], "verificationSubscriptions": []})
+                self.assertEqual(raw["portalApiKeys"], {"groupNamePattern": ""})
                 self.assertIn("platformGroupId", raw["$comment"])
+
+    def test_shared_count_is_applied_to_generated_approvals_without_saving_derivatives(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            raw, options = public_fixture()
+            raw["portalApiKeys"] = {"platformGroupId": "11111111-aaaa-4111-8111-111111111111", "groupNamePattern": "^ORG_"}
+            options["portalApiKeys"]["verificationMaxSubscriptions"] = 7
+            (root / "options.json").write_text(json.dumps(options), encoding="utf-8")
+            path = root / "params.json"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            before = path.read_bytes()
+            settings = configuration.load_configuration(path)["portalApiKeys"]
+            self.assertEqual(settings["verificationMaxSubscriptions"], 7)
+            self.assertEqual(len(settings["groups"]), 1)
+            self.assertTrue(settings["groups"][0]["products"])
+            self.assertEqual({item["maxSubscriptions"] for item in settings["groups"][0]["products"]}, {7})
+            self.assertEqual({item["productId"] for item in settings["verificationSubscriptions"]},
+                             {item["productId"] for item in settings["groups"][0]["products"]})
+            self.assertEqual(path.read_bytes(), before)
 
     def test_platform_group_is_explicit_and_belongs_to_configured_verification_owners(self):
         value = self.value()

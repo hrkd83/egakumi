@@ -31,7 +31,7 @@
 
 新規実装と変更箇所に以下を適用します。既存の公開名・API契約・設定・保存データとの互換性を保ち、規約のための一括整形や改名は機能変更と分けます。書式の例外が必要な場合は、周辺コードとの整合と理由を変更説明へ残します。Portal固有のルールは [apps/portal/AGENTS.md](apps/portal/AGENTS.md)も参照してください。
 
-Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。WAFポリシーは用途が分かる`wafpol-g-<用途>-<ID>`／`wafpol-p-<用途>-<ID>`とし、同じparamsの`services.apimInstanceId`を末尾へ使います。識別子は初回準備で生成する英小文字・数字6文字で、構築・更新・途中再開・撤去では保持します。撤去後の新規構築では[運用手順](docs/operations.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算はPythonの共通ヘルパーとBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)と[WAFの用途別構成](docs/testing/waf-compatibility.md#用途別のポリシー構成)を確認します。
+Coreの資源名は`<環境>-<製品>`を共通部分とし、APIM名は`apim-<環境>-<製品>-<apimInstanceId>`です。WAFポリシーは用途が分かる`wafpol-g-<用途>-<ID>`／`wafpol-p-<用途>-<ID>`とし、同じparamsの`services.apimInstanceId`を末尾へ使います。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回prepareだけが英小文字・数字6文字へ置換してparamsに保存します。構築・更新・途中再開・撤去では保存済みIDを保持し、未解決マーカーを受け付けず、読込時に再生成しません。撤去後の新規構築では[運用手順](docs/operations.md#撤去後に新しく構築する)で新しい識別子を用意し、EntraのCM戻り先を更新します。名前計算はPythonの共通ヘルパーとBicepで一致させ、任意のAPIM名を指定する別設定は追加しません。[主要名と長さ](README.md#作成される構成)と[WAFの用途別構成](docs/testing/waf-compatibility.md#用途別のポリシー構成)を確認します。
 
 ### Python
 
@@ -178,15 +178,15 @@ Pythonのdocstring、PowerShellのhelp、Bicepの入力説明、policy XMLとshe
 
 `infra/`は共通基盤、`apps/gateway/`と`apps/portal/`はその上で動くアプリの配備単位です。管理VM内で動く共通の証明書・OS設定・保守clientは[infra/guest/](infra/guest/)に置き、各アプリのイメージ構築はそれぞれの`deploy/build-image.sh`に置きます。初期の`azd up`はAPIM本体、共通SQLサーバー・SQL初期化用ID、ネットワーク・Private Endpoint、ACA環境・ACR、共有Entra secretを用意し、`postprovision`で実出力と入口設定を仕上げます。その後、対話可能な`postup`から`deploy_applications.py --execute`を実行します。GatewayのSQL初期化・起動確認・APIと製品の登録に成功してから、Portalの認証DB・検証用購読・イメージと本体を配備します。
 
-`azd provision`は基盤だけを対象にします。全体の`azd up`には`publishApis:true`が必要で、falseなら`preup`の冒頭で課金資源の作成前に停止します。既存のlocal paramsを自動変更しません。標準APIの空配列はメモリー内で解決し、基盤に必要なWAF・監査ログの情報も同じ定義から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
+`azd provision`は基盤だけを対象にします。全体の`azd up`は基盤→Gateway→Portalを順に実行します。標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は空配列やfalseでも拒否します。既存local paramsと非標準値を無断変換せず、[入力配置・移行条件](docs/setup/04-params.md#既存入力の移行を確認する)を確認します。基盤に必要なWAF・監査ログの情報も同じ正本から準備します。環境別endpointを解決したAPI配列をparamsへ書き戻しません。
 
-構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初期グループ設定は最後の対話工程で同じparamsへ保存します。非対話なら`portalApiKeys.groups`・`platformGroupId`・`groupNamePattern`を事前に設定します。
+構築済み環境の更新・途中失敗からの再開では、同じparamsとCoreの`.local/<environment>/state/latest.json`を使ってGateway／Portalの個別コマンドを実行できます。アプリの更新だけで基盤の再構築は不要です。既存CLIを別プロセスで呼び、今回の終了コードで後続工程へ進むため、以前の成功記録を今回の成功と扱いません。Portalの初回対話は`portalApiKeys.platformGroupId`と`groupNamePattern`だけを同じparamsへ保存します。非対話ならこの2項目を事前設定します。内部groups・検証購読は管理グループ1件、標準API正本の全製品、configのverificationMaxSubscriptions（初期5）から生成し、公開paramsへ書き戻しません。
 
-APIM全体ポリシーは[service.xml](apps/gateway/apim/policies/service.xml)、各APIのXMLは`apps/gateway/apim/policies/`、標準APIのJSONは[apps/gateway/apim/apis/](apps/gateway/apim/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、CMプロバイダーと環境固有値はparamsで管理します。`apps/gateway/apim/api-publication.bicep`と`apps/gateway/deploy/api_publication.py`が登録を担当し、`apps/gateway/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
+APIM全体ポリシーは[service.xml](apps/gateway/apim/policies/service.xml)、各APIのXMLは`apps/gateway/apim/policies/`、標準APIのJSONは[apps/gateway/apim/apis/](apps/gateway/apim/apis/)にあります。API定義は`<API名>.json`の1 API 1ファイルで管理し、公開パス・操作・認可・下流接続の変更を対象APIのファイル内で確認できる構成です。モデルの配備・SKU・容量は`config/test.json`または`config/production.json`、標準GraphのClient ID・秘密参照と環境固有値はparams、Graph表示名・scope・poolはconfigの`credentialProviders.graphDelegated`で管理します。追加providerは双方の`additional[]`を論理名で照合します。`apps/gateway/apim/api-publication.bicep`と`apps/gateway/deploy/api_publication.py`が登録を担当し、`apps/gateway/deploy/broker_deployment.py`がアプリ配備を担当します。この2つは統合コマンドから利用する内部実装です。
 
-購読キーによる共通認可は全体ポリシーに集約し、`gateway.authentication.subscriptionKeyHeader`（既定`api-key`）とAPIM標準の購読検証を使います。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
+購読キーによる共通認可は全体ポリシーに集約し、資材固定の購読キーヘッダー`api-key`とAPIM標準の購読検証を使います。公開ヘッダー入力と`requiredScope`は廃止し、社員委任scopeは`Gateway.Invoke`へ固定します。API側は`<base />`で継承し、モデル・入力・出力等の操作制約と下流認証を設定します。API登録は子資源の配備成功を確認した後、ETag付きで共通ポリシーを統合・読戻し確認します。
 
-`gateway.authentication.credentialLogin`を設定すると、[CM共通接続窓口](docs/setup/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
+configの`gateway.authentication.credentialLogin`へ共通セッション設定を置き、paramsには任意identityのClient ID・秘密参照だけを置きます。identityを省略した場合の選択CM provider由来の本人確認とPortalの既存profile利用は維持し、今回の配置整理だけでClient ID・secret・認証方式を切り替えません。`credentialLogin`を設定すると、[CM共通接続窓口](docs/setup/credential-manager-login.md)を追加します。`/auth/connections`のstart/status/logoutは購読必須、`/auth/connections/browser`のlaunch/callbackはブラウザー用の一時取引で保護します。本人セッションを必要とするAPIだけがCMを利用します。キーはサーバー側へ保管し、ブラウザーのJavaScriptへ配布しません。
 
 証明書のDNS-01はAzure Public DNSと事前作成したUAMIを使用します。`scripts/deployment/helpers/dns_selection.py`は準備済みのAzure DNS設定を確認します。DNS側Subscription ID・UAMIリソースIDは構築前にparamsへ必須設定します。`prepare_secrets.py`はCM用Entra secretの案内・非表示入力・保護保存を担当します。`preup`はローカル依存と準備済み公開IDを検査して構築へ進みます。公開例を直接書き換えず導入先paramsを使い、秘密値はparams/configへ書き込みません。
 
@@ -203,9 +203,11 @@ python3 -B scripts/render_apim_policy.py --config "$DEPLOY_PARAMS_FILE" \
 
 同じ環境の保護入力を選び、出力先は未作成のファイルを指定します。変更後は対象の正常・拒否と既存認証を確認します。このXML改修は通常運用のAPI制約変更とは分けて実施します。
 
+今回の公開入力整理は実装段階です。Azure一括反映と全環境再構築E2Eは未実施で、過去の成功や最終集約前のローカル試験を一式成功へ読み替えません。
+
 ## 設定生成と独立した回帰確認
 
-通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。`apiDefinitions: []`は [標準API定義](apps/gateway/apim/apis/)を読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
+通常の構築・更新は[準備コマンド](docs/setup/01-prerequisites.md#1-5-環境別のローカル領域を準備する)で公開例から作成した環境別paramsと、その参照先configを使います。[標準API定義](apps/gateway/apim/apis/)を常用で読み、Gateway配備時にCoreの実outputsから接続先を解決します。標準導入で回帰用の合成設定やbindingsを別に作る必要はありません。
 
 設定を変更するときは [params](docs/setup/04-params.md)・[config](docs/setup/05-config.md)・Schemaを揃え、[ローカル確認](#ローカル確認)を実行します。配備・API公開・撤去では同じ正本設定を使います。
 

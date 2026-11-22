@@ -37,7 +37,7 @@ import json
 from pathlib import Path
 import sys
 
-root, source, rendered, arguments = map(Path, sys.argv[1:])
+root, source, rendered, arguments = map(Path, sys.argv[1:5])
 allowed_runtime_files = {source, rendered, arguments}
 sys.path.insert(0, str(root / "scripts"))
 
@@ -64,6 +64,12 @@ for module in (configuration, lifecycle):
         raise AssertionError("The isolated copy must provide its own implementation")
 if any(actual != root for actual in (lifecycle.ROOT, prepare_secrets.ROOT)):
     raise AssertionError("Moved deployment modules must keep using the repository root")
+if len(sys.argv) > 5:
+    # API配列は公開paramsでは選択せず、配備側が生成した内部JSONだけに設定します。
+    internal = configuration.load_configuration_source(source)
+    internal["apiDefinitions"] = json.loads(sys.argv[5])
+    internal["publishApis"] = True
+    source.write_text(json.dumps(internal), encoding="utf-8")
 normalized = configuration.load_configuration(source)
 workspace = lifecycle.local_paths(normalized, root)
 if (workspace.params != source or workspace.parameters != root / ".local" / normalized["environmentName"] / "generated/main.parameters.json"
@@ -99,7 +105,7 @@ class FreshCloneReadinessTests(unittest.TestCase):
                     "params/*.example.json", "schemas/*.schema.json", "infra/log-privacy.json",
                     "infra/nsg-rule-priorities.json",
                     "apps/gateway/waf-input-contracts.json", "apps/gateway/waf-data-exclusions.json",
-                    "apps/gateway/apim/apis/*.json", "apps/gateway/apim/model-capabilities.json",
+                    "apps/gateway/apim/apis/*.json", "apps/gateway/apim/schemas/*.json", "apps/gateway/apim/model-capabilities.json",
                     "apps/gateway/apim/public-bindings.json")
         for pattern in patterns:
             for source in CORE.glob(pattern):
@@ -124,14 +130,16 @@ class FreshCloneReadinessTests(unittest.TestCase):
         """公開例へ架空の企業情報だけを設定し、標準configは編集しない。"""
         raw = json.loads((self.root / "params" / (profile + ".example.json")).read_text())
         raw.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT)
-        self.assertEqual(raw["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
-        self.assertEqual(raw["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
-        self.assertNotIn("oauthTenantId", raw["credentialProviders"][0])
-        raw["credentialProviders"][0]["clientId"] = GATEWAY
+        standard = json.loads((self.root / "config" / (profile + ".json")).read_text(encoding="utf-8"))
+        self.assertNotIn("subscriptionKeyHeader", raw["gateway"]["authentication"])
+        self.assertEqual(standard["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
+        self.assertNotIn("oauthTenantId", raw["credentialProviders"]["graphDelegated"])
+        raw["credentialProviders"]["graphDelegated"]["clientId"] = GATEWAY
+        raw["services"]["apimInstanceId"] = "abc123"
         raw["portal"]["publicHostName"] = "portal.fresh-clone.example"
         raw["gateway"]["publicHostName"] = PUBLIC_HOST
         self.assertNotIn("grpc", raw["gateway"])
-        raw["certificate"]["domainNames"] = ["*.fresh-clone.example"]
+        self.assertNotIn("domainNames", raw["certificate"])
         raw["certificate"]["contactEmail"] = "operator@fresh-clone.example"
         raw["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION
         raw["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
@@ -139,10 +147,10 @@ class FreshCloneReadinessTests(unittest.TestCase):
         raw["monitoring"]["operatorEmailAddresses"] = ["operator@fresh-clone.example"]
         raw["configFile"] = "../../config/" + profile + ".json"
         raw["management"]["sshPublicKeyFile"] = "./secrets/management-ssh.pub"
-        raw["credentialProviders"][0]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
+        raw["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "./secrets/entra-client-secret.txt"
         return raw
 
-    def check_in_isolated_process(self, profile, parameters):
+    def check_in_isolated_process(self, profile, parameters, *, internal_api_definitions=None):
         """-I/-Sの別プロセスで実loader・CLI・ARM引数生成を一度ずつ通す。"""
         source = self.root / ".local" / parameters["environmentName"] / "params.local.json"
         (self.root / ".local").mkdir(mode=0o700, exist_ok=True)
@@ -151,8 +159,11 @@ class FreshCloneReadinessTests(unittest.TestCase):
         evidence = source.parent / "evidence"
         evidence.mkdir(mode=0o700, exist_ok=True)
         rendered, arguments = evidence / "rendered.json", evidence / "arm-arguments.json"
-        process = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", ISOLATED_CHECK,
-            str(self.root), str(source), str(rendered), str(arguments)],
+        command = [sys.executable, "-I", "-S", "-B", "-c", ISOLATED_CHECK,
+                   str(self.root), str(source), str(rendered), str(arguments)]
+        if internal_api_definitions is not None:
+            command.append(json.dumps(internal_api_definitions))
+        process = subprocess.run(command,
             cwd=self.root, text=True, capture_output=True, timeout=30,
             env={"PATH": str(self.root / "no-external-tools"), "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1"})
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
@@ -196,9 +207,9 @@ class FreshCloneReadinessTests(unittest.TestCase):
                 self.assertTrue(public["publishApis"])
                 self.assertEqual(public["network"]["firewall"]["sku"], "Standard" if profile == "test" else "Premium")
 
-    def test_api_definitions_project_only_registration_fields_into_enterprise_params(self):
-        """APIごとの定義を登録しても、モデル・CMはparams/configで管理する。"""
-        # 登録用JSONは正本のモデル上限を展開してからparamsへ渡す。
+    def test_generated_internal_api_definitions_preserve_registration_and_shared_models(self):
+        """内部生成API配列は保持し、企業登録と標準モデルは公開params/configから合成する。"""
+        # 配備側と同じく、正本のモデル上限を展開して内部API登録用JSONを生成します。
         prepare = subprocess.run([sys.executable, "-I", "-S", "-B", "-c",
             "import json, sys; from pathlib import Path; sys.path.insert(0, 'scripts'); "
             "from standard_apis import load_api_definitions; "
@@ -219,10 +230,11 @@ class FreshCloneReadinessTests(unittest.TestCase):
             with self.subTest(profile=profile):
                 params = self.enterprise_parameters(profile)
                 original_services = copy.deepcopy(params["services"])
-                params["apiDefinitions"] = copy.deepcopy(bound["apiDefinitions"])
-                params["publishApis"] = True
                 self.assertEqual(params["services"], original_services)
-                report, public = self.check_in_isolated_process(profile, params)
+                self.assertNotIn("apiDefinitions", params)
+                self.assertNotIn("publishApis", params)
+                report, public = self.check_in_isolated_process(profile, params,
+                    internal_api_definitions=bound["apiDefinitions"])
                 self.assertTrue(public["publishApis"])
                 self.assertEqual(report["apiNames"], [item["name"] for item in bound["apiDefinitions"]])
                 self.assertEqual(public["credentialProviders"][0]["clientId"], GATEWAY)

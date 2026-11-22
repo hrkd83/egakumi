@@ -18,15 +18,17 @@ Application Gateway・Azure Firewall・API Management・Private Endpointで保�
 
 `azd up`は共通基盤とモデル、証明書・入口を準備した後、Gateway、Portalの順に配備します。GatewayではAPI・認証ポリシーとCM・credentials DB・認証窓口を、Portalではアプリ・専用DB・SQL初期化・公開ヘルス確認まで実行します。
 
-初期構築は、前提・paramsを準備して`azd up`を実行します。`publishApis: true`が必要で、初回のPortalグループ設定は同じコマンドの中で対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
+初期構築は、前提・paramsを準備して`azd up`を実行します。標準API正本を常用で解決し、初回Portalでは管理グループObject IDと表示名正規表現の2項目を同じコマンドの中で対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
 
-APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。第1章の準備コマンドが6文字の英小文字・数字の識別子をローカルparamsへ生成し、第2章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
+APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回自動生成のマーカーです。第1章の準備コマンドが6文字の英小文字・数字へ置換してローカルparamsへ保存し、第2章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
 
 共通基盤は`infra/`、管理VM内で動く証明書・OS設定・保守clientの資材は[infra/guest/](infra/guest/)にあります。Gatewayの配備資材は[apps/gateway/](apps/gateway/)にまとめ、API定義・ポリシーは`apps/gateway/apim/`、認証窓口のアプリ・SQLは`apps/gateway/credential-broker/`、配備用Bicepとイメージ構築スクリプトは`apps/gateway/deploy/`に分けています。
 
 業務APIの入口は、購読キーを提示した場合はAPIM購読キー、キーなしのBearer要求はEntraユーザートークンにより認可します。不正なキーをBearerで救済しません。Graph等の本人OAuth接続を使うAPIは、入口認可に続いて[Credential Managerの共通接続機能](docs/setup/credential-manager-login.md)を利用します。公開APIと配備モデルの正本は [API定義](apps/gateway/apim/apis/)と参照configです。[Gatewayの購読キー認証](docs/reference/gateway-key-auth-plan.md)を参照してください。
 
 HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra Bearer認可を追加する公開資材を実装しています。対象はAPI正本・生成MCP・設定済みCM保護入口から自動生成し、ブラウザーの一時取引認証は専用経路に保持します。Entra設定を省略した旧構成はキー方式を維持します。この全API対応の変更はAzureへ再配備しておらず、実接続の受入は対象環境ごとに確認します。[認可設定と確認範囲](docs/setup/04-params.md)を参照してください。
+
+公開入力71主項目の配置整理も資材に実装しています。Graph登録はparamsの`credentialProviders.graphDelegated`、表示名・scope・poolとログイン共通設定はconfigへ分けます。Portalは管理グループと全標準製品から内部承認・検証購読を生成し、configの`portalApiKeys.verificationMaxSubscriptions`（初期5）を適用します。旧入力・既存非標準値を無断変換せず、現在のアプリID・secret・認証方式とfallbackを保持します。この一括改修のAzure反映・全環境再構築E2Eは未実施です。[判断記録と移行条件](docs/setup/04-params.md#公開入力71主項目の判断記録)を確認してください。
 
 ## 新規クローンから構築する
 
@@ -37,7 +39,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 | 1 | [前提要件の準備](docs/setup/01-prerequisites.md) | GitHubからのクローン、管理端末のツール、Azure権限、命名・公開名・IP計画 |
 | 2 | [Entraアプリの準備](docs/setup/02-entra.md) · [APIアプリ](docs/setup/02a-entra-api.md) · [Codexクライアント](docs/setup/02b-entra-codex.md) | 現行Portal・本人接続の共用構成と、APIトークン認可向けの追加登録 |
 | 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Azure Public DNSの公開ゾーン・NS委任・DNS用マネージドID |
-| 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・利用APIを記入したローカルparams |
+| 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・アプリ登録を記入した保護ローカルparams |
 | 5 | [configの調整・リファレンス](docs/setup/05-config.md) | テスト／本番の標準構成、SKU・モデル・保護機能の選択 |
 | 6 | [azd upでの構築](docs/setup/06-deploy.md) | 認証・事前確認・基盤・公開DNS反映・Gateway・Portalの連続配備 |
 | 7 | [ハブ＆スポーク対応（任意）](docs/setup/07-hub-spoke.md) | ピアリング、中央DNS・Private DNS、出口・ルート伝搬の調整と再確認 |
@@ -54,9 +56,9 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE"
 python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 ```
 
-管理VMで認証窓口のイメージを作成・ACRへ登録し、credentials DB・CM・実行用IDを配備します。SQL初期化と認証窓口の正常起動を確認してから、API・バックエンド・ポリシー・製品・購読を登録します。本人接続を使わない設定では認証窓口の工程を省略します。`apiDefinitions: []`なら[1 API 1ファイルで管理する標準19 API](apps/gateway/apim/apis/)が対象です。
+管理VMで認証窓口のイメージを作成・ACRへ登録し、credentials DB・CM・実行用IDを配備します。SQL初期化と認証窓口の正常起動を確認してから、API・バックエンド・ポリシー・製品・購読を登録します。本人接続を使わない設定では認証窓口の工程を省略します。[1 API 1ファイルで管理する標準19 API正本](apps/gateway/apim/apis/)を常用で解決します。
 
-`.local/<environment>/state/gateway-deployment.json`の`status: deployed`を確認します。API公開にはparamsの`publishApis: true`が必要です。計画確認だけなら`false`のまま使えます。詳細と必要権限は[Gateway配備手順](docs/setup/credential-sql.md#4-gatewayを配備する)を参照してください。
+`.local/<environment>/state/gateway-deployment.json`の`status: deployed`を確認します。計画と反映は個別コマンドの`--execute`で区別します。公開`apiDefinitions`・`publishApis`入力は廃止し、旧項目は空配列やfalseでも拒否します。詳細と必要権限は[Gateway配備手順](docs/setup/credential-sql.md#4-gatewayを配備する)を参照してください。
 
 ### 9. Portalを配備する
 
@@ -77,7 +79,7 @@ python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 `<AZURE_TENANT_ID>`・`<ENTRA_TENANT_ID>`などの`<...>`は、自社環境の値へ置き換える欄です。製品名・環境名・ドメイン・リージョン・クローン先は導入者が決めます。画面の撮影例や公開JSONのサンプル値を、自社の確定値として転記しないでください。JSONの項目名とリポジトリ内のファイル名は、資材の契約としてそのまま使います。
 
-Azure構築先は`azureTenantId`、CM等の認証テナントの既定値は`entraTenantId`で指定します。同一・別テナントの両方に対応し、`entraTenantId`省略時はAzure側と同じ値を使います。CM providerの`oauthTenantId`は接続先の設定です。詳細は[Entraの準備](docs/setup/02-entra.md#azureとentraのテナントを決める)を確認してください。
+Azure構築先は`azureTenantId`、CM等の認証テナントの既定値は`entraTenantId`で指定します。同一・別テナントの両方に対応し、`entraTenantId`省略時はAzure側と同じ値を使います。標準GraphのOAuth tenantは`entraTenantId`から導出します。追加providerの別tenantは`params.credentialProviders.additional[].oauthTenantId`で指定できます。詳細は[Entraの準備](docs/setup/02-entra.md#azureとentraのテナントを決める)を確認してください。
 
 購読キーと本人接続のセッションはアプリのサーバー側で保持します。ブラウザはBFF等を経由し、承認済みSaaSは秘密設定へキーを登録します。購読IDを基本の利用主体として計数し、本人向けAPIだけ追加の本人接続を照合します。
 

@@ -30,8 +30,6 @@ param workspaceDailyQuotaGb int = -1
 @allowed(['Standard_LRS', 'Standard_GRS', 'Standard_RAGRS', 'Standard_ZRS', 'Standard_GZRS', 'Standard_RAGZRS'])
 @description('監査 Storage の冗長化方式。GRS / LRS 等を運用上の復旧要件で選びます。')
 param auditStorageSku string = 'Standard_GRS'
-@description('監査 Storage に直接アクセスを許可する IPv4 一覧。空配列で一般公開にはなりません。')
-param auditAllowedIpAddresses array = []
 @allowed(['Disabled', 'Unlocked', 'Locked'])
 @description('監査 Blob の保存保護。Disabled / Unlocked / Locked の違いを理解して選択します。')
 param auditImmutabilityMode string = 'Locked'
@@ -218,7 +216,8 @@ resource accounts 'Microsoft.Storage/storageAccounts@2023-05-01' = [for account 
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
-      ipRules: [for address in auditAllowedIpAddresses: { value: address, action: 'Allow' }]
+      // 初期閲覧はBlob PEを使います。企業側の公開IP許可は構築後の手動設定です。
+      ipRules: []
       virtualNetworkRules: []
     }
     encryption: {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""既存paramsの本人接続をSQLプール方式へ切り替える。既定は確認のみ。"""
+"""公開paramsのプール設定を検査し、旧内部JSONだけSQLプール方式へ変換する。"""
 from __future__ import annotations
 
 import os
@@ -55,8 +55,18 @@ def main(argv=None):
     path = args.config.expanduser() if args.config else configuration_path(REPOSITORY)
     path = private_output(path if path.is_absolute() else REPOSITORY / path, REPOSITORY)
     original = path.read_bytes()
-    updated = transform(json.loads(original.decode("utf-8")))
-    configuration = normalize_configuration(transform(load_configuration_source(path)))
+    document = json.loads(original.decode("utf-8"))
+    # 公開paramsの登録情報と共通configのプール設定は、それぞれの正本を
+    # 維持する。旧内部JSONの配列形式にだけ、従来の移行処理を適用する。
+    public_input = isinstance(document, dict) and "configFile" in document
+    updated = copy.deepcopy(document) if public_input else transform(document)
+    resolved = load_configuration_source(path)
+    configuration = normalize_configuration(resolved if public_input else transform(resolved))
+    profiles = [provider for provider in configuration["credentialProviders"]
+                if provider["name"] == "graph-delegated"]
+    if len(profiles) != 1 or "pool" not in profiles[0]:
+        raise ValueError("Select exactly one existing Graph credential pool profile")
+    settings = profiles[0]["pool"]
     runtime = local_paths(configuration, REPOSITORY)
     runtime.check_selection(configuration)
     if args.execute:
@@ -83,8 +93,8 @@ def main(argv=None):
         finally:
             Path(staged).unlink(missing_ok=True)
     print(json.dumps({"mode": "execute" if args.execute else "plan", "parameterFileChanged": bool(args.execute and changed),
-        "profile": "graph-delegated", "physicalProviders": 12, "capacityPerProvider": 8000,
-        "subscriptionKeyHeader": updated["gateway"]["authentication"]["subscriptionKeyHeader"],
+        "profile": "graph-delegated", "physicalProviders": settings["count"], "capacityPerProvider": settings["capacity"],
+        "subscriptionKeyHeader": configuration["gateway"]["authentication"]["subscriptionKeyHeader"],
         "backup": str(backup) if backup else None, "azureWrites": 0}, ensure_ascii=False))
     return 0
 

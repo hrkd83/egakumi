@@ -356,6 +356,31 @@
         "calls": 60,
         "renewalPeriodSeconds": 60
       }
+    },
+    "authentication": {
+      "entra": {
+        "userLimits": {
+          "requestRate": {
+            "calls": 1000,
+            "renewalPeriodSeconds": 60
+          },
+          "tokensPerMinute": null,
+          "tokenQuota": null
+        }
+      },
+      "credentialLogin": {
+        "providerNames": [
+          "graph-delegated"
+        ],
+        "transactionLifetimeSeconds": 600,
+        "loginCallsPerMinute": 10,
+        "idleTimeoutSeconds": 604800,
+        "absoluteLifetimeSeconds": 2592000,
+        "rotationIntervalSeconds": 86400,
+        "rotationGraceSeconds": 300,
+        "rotationHandoffSeconds": 600,
+        "rotationCandidateTtlSeconds": 600
+      }
     }
   },
   "management": {
@@ -414,5 +439,18 @@
     "backupRetentionDays": 14,
     "zoneRedundant": false,
     "backupRedundancy": "Geo"
+  },
+  "credentialProviders": {
+    "graphDelegated": {
+      "displayName": "Delegated Graph connection",
+      "scopes": "openid profile email offline_access https://graph.microsoft.com/User.Read",
+      "pool": {
+        "count": 12,
+        "capacity": 8000
+      }
+    }
+  },
+  "portalApiKeys": {
+    "verificationMaxSubscriptions": 5
   }
 }

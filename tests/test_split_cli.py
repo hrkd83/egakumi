@@ -48,16 +48,17 @@ class SplitCliTests(unittest.TestCase):
         self.parameters = json.loads((CORE / "params/test.example.json").read_text())
         self.parameters.update(subscriptionId=SUBSCRIPTION, azureTenantId=TENANT, entraTenantId=TENANT,
                                configFile="../../platform/config/options.json")
-        self.assertEqual(self.parameters["gateway"]["authentication"]["subscriptionKeyHeader"], "api-key")
-        self.assertEqual(self.parameters["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
-        self.assertNotIn("oauthTenantId", self.parameters["credentialProviders"][0])
-        self.parameters["credentialProviders"][0]["clientId"] = CONNECTION
+        self.assertNotIn("subscriptionKeyHeader", self.parameters["gateway"]["authentication"])
+        self.assertEqual(self.options["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
+        self.assertNotIn("oauthTenantId", self.parameters["credentialProviders"]["graphDelegated"])
+        self.parameters["credentialProviders"]["graphDelegated"]["clientId"] = CONNECTION
+        self.parameters["services"]["apimInstanceId"] = "abc123"
         self.parameters["certificate"]["azureDnsSubscriptionId"] = SUBSCRIPTION
         self.parameters["certificate"]["azureDnsManagedIdentityResourceId"] = DNS_IDENTITY
         # 企業固有の参照はparamsだけに置きます。標準configの配置や合成先が
         # 異なるフォルダーでも、同じSSH・CM参照とDNS用IDを保持することを調べます。
         self.parameters["management"]["sshPublicKeyFile"] = "secrets/nonexistent-protected/management.pub"
-        self.parameters["credentialProviders"][0]["clientSecretFile"] = "secrets/nonexistent-protected/connection.txt"
+        self.parameters["credentialProviders"]["graphDelegated"]["clientSecretFile"] = "secrets/nonexistent-protected/connection.txt"
         self.config = self.config_directory / "options.json"
         self.source = self.parameter_directory / "params.local.json"
         self.config.write_text(json.dumps(self.options))
@@ -219,7 +220,7 @@ class SplitCliTests(unittest.TestCase):
         self.assertEqual(compiled["apiDefinitions"], [])
         provider = compiled["credentialProviders"][0]
         self.assertEqual(provider["clientId"], CONNECTION)
-        self.assertNotIn("oauthTenantId", provider)
+        self.assertEqual(provider["oauthTenantId"], TENANT)
         self.assertEqual(load_configuration(output)["credentialProviders"][0]["oauthTenantId"], TENANT)
         self.assertEqual(compiled["gateway"]["authentication"]["credentialLogin"]["providerNames"], ["graph-delegated"])
         expected_secret = (self.parameter_directory / "secrets/nonexistent-protected/connection.txt").resolve()

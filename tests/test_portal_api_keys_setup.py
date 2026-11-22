@@ -1,4 +1,4 @@
-"""Portalの所有グループ入力が正本だけに保存され、無指定で全製品を許可しないことを確認する。"""
+"""明示したPortal管理グループへ標準製品を内部生成し、入力正本だけを保存する。"""
 import contextlib
 import copy
 import io
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from deployment.helpers.configuration import load_configuration
 from deployment.helpers.portal_api_keys import available_products, prepare_api_key_groups, approved_product_catalog, verification_subscriptions
-from configuration_fixtures import fixture
+from configuration_fixtures import public_fixture
 
 
 class PortalApiKeySetupTests(unittest.TestCase):
@@ -20,54 +20,53 @@ class PortalApiKeySetupTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name).resolve() / 'environment.local.json'
-        self.raw = fixture()
-        self.raw['portalApiKeys'] = {'groups': [], 'groupNamePattern': '^ORG_'}
+        self.raw, options = public_fixture()
+        self.raw['portalApiKeys'] = {'groupNamePattern': '^ORG_'}
+        (self.path.parent / 'options.json').write_text(json.dumps(options), encoding='utf-8')
         self.path.write_text(json.dumps(self.raw), encoding='utf-8')
         self.config = load_configuration(self.path)
 
     def test_noninteractive_requires_explicit_owner_group_without_writing(self):
         before = self.path.read_bytes()
-        with self.assertRaisesRegex(ValueError, '所有グループが未設定'):
+        with self.assertRaisesRegex(ValueError, '管理グループ.*未指定'):
             prepare_api_key_groups(self.path, self.config, interactive=False)
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_group_and_selected_products_are_saved_only_to_same_master(self):
-        choices = iter(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '1', ''])
+    def test_only_owner_is_saved_and_all_standard_products_are_generated(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            result = prepare_api_key_groups(self.path, self.config, interactive=True, reader=lambda _: next(choices))
+            result = prepare_api_key_groups(self.path, self.config, interactive=True,
+                reader=lambda _: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
         saved = json.loads(self.path.read_text(encoding='utf-8'))
+        self.assertEqual(saved['portalApiKeys'], {'groupNamePattern': '^ORG_',
+            'platformGroupId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'})
         self.assertEqual({k: v for k, v in saved.items() if k != 'portalApiKeys'},
-                         {k: v for k, v in self.raw.items() if k != 'portalApiKeys'})
-        self.assertEqual(saved['portalApiKeys']['groups'][0]['products'],
-                         [{'productId': available_products(self.config)[0], 'maxSubscriptions': 5}])
-        self.assertEqual(result['portalApiKeys'], saved['portalApiKeys'])
-        self.assertEqual(saved['portalApiKeys']['platformGroupId'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
-        self.assertEqual(saved['portalApiKeys']['groupNamePattern'], '^ORG_')
-        self.assertNotIn('displayName', saved['portalApiKeys']['groups'][0])
-        self.assertEqual(saved['portalApiKeys']['verificationSubscriptions'], [{'subscriptionId': 'platform-' + available_products(self.config)[0],
-            'productId': available_products(self.config)[0], 'displayName': 'Platform verification - ' + available_products(self.config)[0]}])
-        self.assertEqual([path.name for path in self.path.parent.iterdir()], [self.path.name])
+            {k: v for k, v in self.raw.items() if k != 'portalApiKeys'})
+        self.assertEqual(result['portalApiKeys']['groups'][0]['products'],
+            [{'productId': p, 'maxSubscriptions': 5} for p in available_products(self.config)])
+        self.assertEqual(result['portalApiKeys']['verificationSubscriptions'],
+            verification_subscriptions(result['portalApiKeys']))
         self.assertIs(prepare_api_key_groups(self.path, result, interactive=False), result)
 
-    def test_blank_product_selection_does_not_grant_all_products(self):
-        choices = iter(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ''])
-        before = self.path.read_bytes()
-        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, '明示'):
-            prepare_api_key_groups(self.path, self.config, interactive=True, reader=lambda _: next(choices))
-        self.assertEqual(self.path.read_bytes(), before)
+    def test_no_product_or_count_input_is_requested(self):
+        prompts = []
+        def answer(prompt):
+            prompts.append(prompt)
+            self.assertIn('Object ID', prompt)
+            return 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = prepare_api_key_groups(self.path, self.config, interactive=True, reader=answer)
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(len(result['portalApiKeys']['verificationSubscriptions']), len(available_products(self.config)))
 
     def test_concurrent_edits_are_not_overwritten(self):
-        choices = iter(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '1', '5'])
         changed = copy.deepcopy(self.raw)
         changed['tags']['parallel-edit'] = 'kept'
         def answer(_):
-            value = next(choices)
-            if value == '5':
-                self.path.write_text(json.dumps(changed), encoding='utf-8')
-            return value
+            self.path.write_text(json.dumps(changed), encoding='utf-8')
+            return 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
         with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, '入力中にparamsが変更'):
             prepare_api_key_groups(self.path, self.config, interactive=True, reader=answer)
-        self.assertEqual(json.loads(self.path.read_text()), changed)
+        self.assertEqual(json.loads(self.path.read_text(encoding='utf-8')), changed)
 
     def test_cancel_never_writes(self):
         before = self.path.read_bytes()
@@ -75,15 +74,17 @@ class PortalApiKeySetupTests(unittest.TestCase):
             prepare_api_key_groups(self.path, self.config, interactive=True, reader=lambda _: 'q')
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_unconfigured_pattern_is_prompted_and_saved_without_a_default_company(self):
+    def test_unconfigured_pattern_and_owner_are_saved_without_defaults(self):
         self.raw['portalApiKeys']['groupNamePattern'] = ''
         self.path.write_text(json.dumps(self.raw), encoding='utf-8')
-        config = load_configuration(self.path)
-        choices = iter(['^(DEPT_|DIV_)', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '1', ''])
+        choices = iter(['^ORG_', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
         with contextlib.redirect_stdout(io.StringIO()):
-            result = prepare_api_key_groups(self.path, config, interactive=True, reader=lambda _: next(choices))
-        self.assertEqual(result['portalApiKeys']['groupNamePattern'], '^(DEPT_|DIV_)')
-        self.assertNotIn('groupPrefix', result['portalApiKeys'])
+            result = prepare_api_key_groups(self.path, load_configuration(self.path),
+                interactive=True, reader=lambda _: next(choices))
+        saved = json.loads(self.path.read_text(encoding='utf-8'))
+        self.assertEqual(saved['portalApiKeys']['groupNamePattern'], '^ORG_')
+        self.assertEqual(set(saved['portalApiKeys']), {'groupNamePattern', 'platformGroupId'})
+        self.assertTrue(result['portalApiKeys']['groups'])
 
     def test_blank_pattern_does_not_mean_all_groups_and_never_writes(self):
         self.raw['portalApiKeys']['groupNamePattern'] = ''
@@ -94,15 +95,15 @@ class PortalApiKeySetupTests(unittest.TestCase):
             prepare_api_key_groups(self.path, config, interactive=True, reader=lambda _: '')
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_pattern_only_input_preserves_existing_owner_and_product_approvals(self):
-        self.raw['portalApiKeys'] = {'groups': [{'groupId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            'products': [{'productId': available_products(self.config)[0], 'maxSubscriptions': 3}]}],
-            'platformGroupId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'groupNamePattern': ''}
+    def test_pattern_only_input_preserves_owner_and_generated_approvals(self):
+        self.raw['portalApiKeys'] = {'platformGroupId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'groupNamePattern': ''}
         self.path.write_text(json.dumps(self.raw), encoding='utf-8')
+        before = load_configuration(self.path)
         with contextlib.redirect_stdout(io.StringIO()):
-            result = prepare_api_key_groups(self.path, load_configuration(self.path), interactive=True, reader=lambda _: '^会社_')
-        self.assertEqual(result['portalApiKeys']['groups'], self.raw['portalApiKeys']['groups'])
-        self.assertEqual(result['portalApiKeys']['groupNamePattern'], '^会社_')
+            result = prepare_api_key_groups(self.path, before, interactive=True, reader=lambda _: '^ORG_')
+        self.assertEqual(result['portalApiKeys']['groups'], before['portalApiKeys']['groups'])
+        self.assertEqual(result['portalApiKeys']['verificationSubscriptions'], before['portalApiKeys']['verificationSubscriptions'])
+        self.assertEqual(set(json.loads(self.path.read_text(encoding='utf-8'))['portalApiKeys']), {'platformGroupId', 'groupNamePattern'})
 
     def test_invalid_group_id_is_rejected_without_requesting_display_name(self):
         choices = iter(['not-an-object-id'])
@@ -111,18 +112,13 @@ class PortalApiKeySetupTests(unittest.TestCase):
             prepare_api_key_groups(self.path, self.config, interactive=True, reader=lambda _: next(choices))
         self.assertEqual(self.path.read_bytes(), before)
 
-    def test_platform_group_must_be_selected_explicitly(self):
-        self.raw['portalApiKeys']['groups'] = [{'groupId': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            'products': [{'productId': available_products(self.config)[0]}]}]
+    def test_legacy_group_declarations_are_rejected_without_changes(self):
+        self.raw['portalApiKeys']['groups'] = []
         self.path.write_text(json.dumps(self.raw), encoding='utf-8')
-        config = load_configuration(self.path)
         before = self.path.read_bytes()
-        with self.assertRaisesRegex(ValueError, '基盤管理グループ'):
-            prepare_api_key_groups(self.path, config, interactive=False)
+        with self.assertRaisesRegex(ValueError, 'retired initial input'):
+            load_configuration(self.path)
         self.assertEqual(self.path.read_bytes(), before)
-        with contextlib.redirect_stdout(io.StringIO()):
-            result = prepare_api_key_groups(self.path, config, interactive=True, reader=lambda _: '1')
-        self.assertEqual(result['portalApiKeys']['platformGroupId'], config['portalApiKeys']['groups'][0]['groupId'])
 
     def test_normal_catalog_uses_only_released_product_and_keeps_verification_approvals(self):
         config = {'portalApiKeys': {'groups': [

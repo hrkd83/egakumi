@@ -53,7 +53,9 @@
 3. **メンバー**から表のユーザーをUPN・Object IDで照合して選びます。**所有者**だけを設定してMember追加の代わりにしません。対象テナント・グループ名・種類・予定メンバーを見直して**作成**します。
 4. 既存グループへ追加する場合は、そのグループの**メンバー → メンバーの追加**で表の対象者だけを選んで保存します。既存G-ADMINの他の所属や所有者を削除しません。
 5. 保存後に**概要／プロパティ**でObject ID・Security・Assignedを照合し、**メンバー**一覧で表の所属と非所属を確認します。U-Cが別の適格グループへ間接所属していないことも確認します。G-Hは通常利用や既存管理者のグループと混用しません。
-6. [paramsのPortal設定](../setup/04-params.md#portalのapiキー所有グループportalapikeys)へ渡す実Object ID、正規表現、検証用の承認Productと購読数上限を非公開の設定表へまとめます。G-ADMINは`platformGroupId`と初期所有グループの対応を確認します。G-A・G-B・G-Hの適格性とG-Nの非適格性を同じ正規表現で照合し、GUID書式や`configuration.py validate`の成功だけで実在・所属・正規表現の確認に代えません。
+6. [paramsのPortal設定](../setup/04-params.md#portalのapiキー所有グループportalapikeys)へ渡すG-ADMINの実Object IDと表示名正規表現を非公開の設定表へまとめます。公開paramsへ入力するのはplatformGroupIdとgroupNamePatternだけです。G-ADMINの内部承認製品は標準API正本の全製品、共通上限はconfigのverificationMaxSubscriptions（初期5）から生成するため、初回対話でProductや件数を入力しません。通常グループG-A等のカタログとは別に確認します。G-A・G-B・G-Hの適格性とG-Nの非適格性を同じ正規表現で照合し、GUID書式や`configuration.py validate`の成功だけで実在・所属・正規表現の確認に代えません。
+
+今回の公開入力整理は[71主項目の判断記録](../setup/04-params.md#公開入力71主項目の判断記録)に従います。旧groups・verificationSubscriptions入力は空でも拒否し、既存の追加所有者・製品subset・独自IDは無断移行しません。準備値の配置変更だけでアプリClient IDや認証方式・既存fallbackを切り替えません。Azure一括反映・全環境再構築E2Eは未実施です。
 
 ## 4. 保存後の確認と画面エビデンス
 

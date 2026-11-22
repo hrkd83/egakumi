@@ -1,6 +1,6 @@
 # GatewayとCredential Managerの配備
 
-対応表をAzure SQLで管理し、同じ本人には同じCM接続を再利用する。クライアントは論理名`graph-delegated`を指定し、基盤が設定されたプールから割当先を選ぶ。公開paramsの初期値では`graph-delegated-a`〜`graph-delegated-l`を使う。UPNは表示と初期命名に使い、本人確認にはEntraのテナントID・オブジェクトIDを使う。
+対応表をAzure SQLで管理し、同じ本人には同じCM接続を再利用する。クライアントは論理名`graph-delegated`を指定し、基盤が設定されたプールから割当先を選ぶ。共通configの初期`pool.count=12`・`pool.capacity=8000`を使い、内部の物理名`graph-delegated-a`〜`graph-delegated-l`を保持する。UPNは表示と初期命名に使い、本人確認にはEntraのテナントID・オブジェクトIDを使う。
 
 本書は[第4章](04-params.md)で作成した`DEPLOY_PARAMS_FILE`と、第1章で決めた`DEPLOY_ENVIRONMENT`を使う。別のターミナルでは、実際に構築した環境の値を設定し直す。
 
@@ -20,7 +20,7 @@ https://<PORTAL_HOST>/api/auth/callback/microsoft
 
 ## 2. 本人接続の設定を確認する
 
-公開paramsには`graph-delegated`の論理プロファイルとプール設定が含まれる。導入先のClient ID・secretファイル参照、認証テナント、`gateway.authentication.credentialLogin.providerNames`が同じプロファイルを参照することを確認し、設定を検査する。Portalの`portalAuthentication.credentialProviderName`も同じ論理プロファイルを使う。
+公開paramsの`credentialProviders.graphDelegated`にはClient IDと`clientSecretFile`を設定する。共通configの同slotには表示名・scope・pool、`config.gateway.authentication.credentialLogin`にはprovider選択とセッション設定を置く。標準の論理名`graph-delegated`とtenantは固定資材から導出する。追加providerは双方の`additional[]`で定義と登録を論理名照合する。今回の配置整理だけで既存アプリID・secret・本人確認fallbackを切り替えず、現在の認証先と設定を検査する。Portalの`portalAuthentication.credentialProviderName`も同じ論理プロファイルを使う。
 
 ```bash
 python3 scripts/deployment/lifecycle.py validate --config "$DEPLOY_PARAMS_FILE"
@@ -30,7 +30,7 @@ SQLの容量・バックアップ・ゾーン冗長化は`config/test.json`ま�
 
 ## 3. 初期構築を実行する
 
-新規構築は、同じparamsで共通基盤→Gateway→Portalの順にまとめて実行する。Entraの戻り先・秘密ファイル・公開DNSを準備し、paramsの `publishApis: true` を確認する。Portalのグループ設定は初回の対話で入力するか、無人実行なら [Portalの配備手順](portal.md#配備の実行)に従って事前設定する。
+新規構築は、同じparamsで共通基盤→Gateway→Portalの順にまとめて実行する。Entraの戻り先・秘密ファイル・公開DNSを準備する。Portalの管理グループObject IDと表示名正規表現だけを初回の対話で入力するか、無人実行なら [Portalの配備手順](portal.md#配備の実行)に従って事前設定する。
 
 ```bash
 export WORKFORCE_CONFIG="$DEPLOY_PARAMS_FILE"
@@ -39,7 +39,7 @@ azd up --environment "$DEPLOY_ENVIRONMENT"
 
 `azd up` はAPIM本体、共通SQLサーバー、SQL初期化用ID、Private Endpoint、ACA環境・ACR、Key Vaultと共有Entra secretを準備する。`postprovision` が実出力と入口設定を整え、`postup` が `scripts/deploy_applications.py --execute` を通じてGateway配備、Portal配備の順に実行する。credentials DB、CMプロバイダー、認証窓口の実行用ID・Container App・ジョブ・専用鍵・APIMバックエンドはGateway工程が担当する。初期構築では、次節の個別コマンドを重ねて実行する必要はない。
 
-公開用exampleは `publishApis: true` で、既存のlocal paramsは自動変更しない。`false` のまま全体構築を実行すると、課金資源の構築前に停止する。基盤だけを準備する場合は `azd provision` を使う。
+標準API正本を常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止した。旧項目は空配列やfalseでも拒否する。既存入力・非標準値を無断変換せず、[移行条件](04-params.md#既存入力の移行を確認する)を先に確認する。基盤だけを準備する場合は`azd provision`を使う。今回の入力整理のAzure反映と全環境再構築E2Eは未実施である。
 
 SQLサーバーは`sql-<stem>`、Private Endpointは`pe-<stem>-sql`。`<stem>`には環境名とプロダクト名が入る。SQLへの公開アクセスとSQLパスワード認証は無効とし、後続のジョブとアプリはマネージドIDで接続する。
 
@@ -65,7 +65,7 @@ python3 scripts/deploy_gateway.py \
 5. SQL初期化に成功してからContainer Appと定期照合ジョブを配備し、認証窓口の正常起動を確認する。新しいStartup・Readiness・Liveness probeは`/health/gateway-caller-v1`でSQL版4とユーザー主体用の列を毎回検査する。初期化に失敗した場合はアプリ更新とAPI登録に進まない。
 6. API・バックエンド・Product・購読・ポリシーを登録する。必要な診断ログと初期サンプルの整理も行う。
 
-本人接続を使わない設定では認証窓口の配備を省略し、APIの登録を行う。`apiDefinitions: []`は標準19 APIを意味する。APIを公開する実行には`publishApis: true`が必要。
+本人接続を使わない設定では認証窓口の配備を省略し、APIの登録を行う。標準19 API正本を常用で解決する。計画と反映は個別コマンドの`--execute`で区別し、公開paramsの切替フラグを使わない。
 
 本人接続のDB名は`sqldb-<stem>-credentials`、SQL初期化ジョブ名は`caj-<stem>-schema`、定期照合ジョブ名は`caj-<stem>-recon`。SQLの容量・バックアップ・ゾーン冗長化は`credentialBroker`設定を使う。保存データの暗号化はAzure SQL Databaseのサービス管理TDEを使う。[MicrosoftのTDE仕様](https://learn.microsoft.com/azure/azure-sql/database/transparent-data-encryption-tde-overview)
 
@@ -105,7 +105,7 @@ SQLの主要テーブルは`broker.Pools`、`broker.Connections`、`broker.Trans
 
 `Transactions.ConnectionEpochAtVerification`はCM接続を準備・照合した時点の接続失効番号であり、認証完了時にも一致を確認する。認証途中の接続解除と、古いコールバックの完了が競合しても接続を復活させない。
 
-期限は`gateway.authentication.credentialLogin`の`idleTimeoutSeconds`（既定7日）、`absoluteLifetimeSeconds`（30日）、`rotationIntervalSeconds`（24時間）等で指定する。SQLの時刻で失効・期限を判定し、検証済み業務APIでだけ最終利用を更新する。既存セッションの最長期限は設定変更や値の更新で伸ばさない。[本人セッションの契約](credential-manager-login.md)を参照する。
+期限はconfigの`gateway.authentication.credentialLogin`の`idleTimeoutSeconds`（既定7日）、`absoluteLifetimeSeconds`（30日）、`rotationIntervalSeconds`（24時間）等で指定する。SQLの時刻で失効・期限を判定し、検証済み業務APIでだけ最終利用を更新する。既存セッションの最長期限は設定変更や値の更新で伸ばさない。[本人セッションの契約](credential-manager-login.md)を参照する。
 
 初めて`002_session_lifecycle.sql`を適用する既存DBでは、セッション関連定義の変更と旧取引・旧セッションの無効化を伴う。保守時間を確保してSQL→Broker→APIMまで同じ資材で更新し、本人接続を再認証する。適用済みmigrationの通常再配備では、この初期化を繰り返さない。
 
