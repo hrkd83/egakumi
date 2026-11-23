@@ -17,6 +17,8 @@
 
 管理VMの鍵単位のDataActionは`Microsoft.KeyVault/vaults/keys/read`と`Microsoft.KeyVault/vaults/keys/update/action`です。`keys/write`は管理プレーンのActionであり、このKVデータ操作用ロールには指定しません。[Microsoftの操作一覧](https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault)を参照してください。
 
+KVの最新証明書GETはpolicyを含みますが、版指定GETは証明書本体だけを返します。workerは最新の同じ版のpolicy・公開鍵・署名を検証し、証明書ID・鍵ID・thumbprintと結び付けたpolicyをVMの保護checkpointへ保存します。更新後の旧版はこの検証済み記録を使い、現在の別の版のpolicyで代用しません。記録のない過去版を自動採用しません。これは公開metadataの保存で、秘密鍵を取り出す処理ではありません。
+
 ## 実行前の照合
 
 同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。別環境のstate・鍵を黙って探索・コピーしません。`.local/`のルートをリンクにせず、ディレクトリは所有者専用、ファイルは所有者専用にします。運用入口はparams・Core所有記録・現物VM/KVを照合します。

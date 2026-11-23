@@ -56,6 +56,8 @@ ARMがwhat-if結果URLへ付けるopaqueな`c/h/s/t` contextと、Subscription�
 
 RGで宣言したロール定義と割当先のロールIDがSubscription直下の正規形で返る場合にも対応しました。GETの接続先は所有RGに限定したまま、同じSubscription・ロールGUIDと要求済みのscope・権限を照合します。別Subscription・GUID・広いassignable scopeの拒否と、受理済み配備を再送せず正規形の読戻しから再開する回帰を追加し、関連45試験は全件成功しました。
 
+証明書の最新GET（policy付き）と版指定GET（policyなし）を区別しました。workerは同じ最新の版で検証したpolicyを、証明書ID・鍵ID・thumbprintと結び付けてVMの保護checkpointへ保存します。オフライン試験では実際のAPIと同じ省略形を使い、現在の別版のpolicyを旧版へ代用しないことと、記録欠落・違う鍵ID・thumbprintの拒否を追加しました。旧版は発行時に検証した有効期間を使用し、新版の期間変更で旧版の照合を拒否しないケースも確認しました。PowerShellの18ケースは全件成功しました。
+
 ## ローカルで確認する契約
 
 | 試験 | 確認する内容 |

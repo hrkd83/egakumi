@@ -15,10 +15,26 @@ $p = $rsa.ExportParameters($false)
 function Encode-Public($bytes) { [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_') }
 $script:cert = @{ id = $certId; kid = $keyId; cer = [Convert]::ToBase64String($leaf.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)); attributes = @{enabled=$true}; policy = Get-PortalPolicy 12 }
 $script:key = @{ key = @{kid=$keyId; kty='RSA'; n=Encode-Public $p.Modulus; e=Encode-Public $p.Exponent; key_ops=@('sign','verify')}; attributes=@{enabled=$true} }
+$script:historicalMode = $false
 function Invoke-PortalVault {
     param($Method, $Path, $Body)
     if ($Method -ne 'GET') { throw 'Unexpected mutation in certificate validation' }
-    if ($Path.StartsWith('/certificates/')) { return @{status=200;value=$script:cert} }
+    if ($Path -ceq "/certificates/$script:Name") {
+        if ($script:historicalMode) {
+            $latest = $script:cert.Clone()
+            $latest.id = "$script:Vault/certificates/$script:Name/$('b' * 32)"
+            # A later policy must not substitute for a previously verified version.
+            $latest.policy = Get-PortalPolicy 12
+            $latest.policy.key_props.exportable = $true
+            return @{status=200;value=$latest}
+        }
+        return @{status=200;value=$script:cert}
+    }
+    if ($Path.StartsWith('/certificates/')) {
+        $versioned = $script:cert.Clone()
+        $versioned.Remove('policy')
+        return @{status=200;value=$versioned}
+    }
     return @{status=200;value=$script:key}
 }
 function Assert-Rejected([scriptblock]$Run) {
@@ -27,8 +43,23 @@ function Assert-Rejected([scriptblock]$Run) {
     if (-not $failed) { throw 'Expected rejection did not occur' }
 }
 try {
-    $result = Read-PortalCertificate $certId
+    $verified = @{}
+    $result = Read-PortalCertificate $certId -Checkpoint $verified
     if ($result -isnot [hashtable] -or $result.keyId -cne $keyId -or $result.certificateThumbprint -cne $leaf.Thumbprint.ToLowerInvariant() -or $result.ContainsKey('privateKey')) { throw 'Public material validation failed' }
+    if (-not $verified.policyProofs.ContainsKey($certId)) { throw 'Version-bound policy proof was not recorded' }
+    $script:historicalMode = $true
+    $null = Read-PortalCertificate $certId -Checkpoint $verified
+    $script:Months = 6
+    $null = Read-PortalCertificate $certId -Checkpoint $verified
+    $script:Months = 12
+    Assert-Rejected { Read-PortalCertificate $certId }
+    $verified.policyProofs[$certId].keyId = "$script:Vault/keys/$script:Name/$('b' * 32)"
+    Assert-Rejected { Read-PortalCertificate $certId -Checkpoint $verified }
+    $verified.policyProofs[$certId].keyId = $keyId
+    $verified.policyProofs[$certId].certificateThumbprint = 'synthetic-mismatch'
+    Assert-Rejected { Read-PortalCertificate $certId -Checkpoint $verified }
+    $verified.policyProofs[$certId].certificateThumbprint = $leaf.Thumbprint.ToLowerInvariant()
+    $script:historicalMode = $false
     $originalCer = $script:cert.cer
     $corrupted = [Convert]::FromBase64String($originalCer)
     $corrupted[-1] = $corrupted[-1] -bxor 1
@@ -64,5 +95,5 @@ try {
     $result = New-PortalCertificate $checkpoint ('b'*32)
     if ($checkpoint.ContainsKey('request') -or $checkpoint.candidate.keyId -cne $keyId) { throw 'Unknown-response reconciliation failed' }
     Assert-Rejected { New-PortalCertificate @{request=@{requestId='b'*32;baseline=''}} ('c'*32) }
-    Write-Output 'Portal certificate offline checks passed (12 cases)'
+    Write-Output 'Portal certificate offline checks passed (18 cases)'
 } finally { $leaf.Dispose(); $rsa.Dispose() }

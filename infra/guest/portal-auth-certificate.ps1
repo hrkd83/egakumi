@@ -42,13 +42,31 @@ function Get-PortalPolicy {
 }
 
 function Read-PortalCertificate {
-    param([string]$CertificateId, [switch]$AllowDisabled)
+    param([string]$CertificateId, [switch]$AllowDisabled, [hashtable]$Checkpoint = $null)
     $prefix = "$script:Vault/certificates/$script:Name/"
     if (-not $CertificateId.StartsWith($prefix, [StringComparison]::Ordinal) -or $CertificateId.Substring($prefix.Length) -notmatch '^[a-f0-9]{32}$') { throw 'Invalid certificate version' }
-    $cert = (Invoke-PortalVault GET $CertificateId.Substring($script:Vault.Length)).value
+    # Get Latest returns policy; Get Version returns certificate material only.
+    # Bind a verified policy to its immutable version before saving the checkpoint.
+    $latest = (Invoke-PortalVault GET "/certificates/$script:Name").value
+    $proof = $null
+    if ($null -ne $latest -and $latest.id -ceq $CertificateId) {
+        $cert = $latest
+        if (-not $cert.ContainsKey('policy')) { throw 'Latest certificate policy is unavailable' }
+        $policy = $cert.policy
+    } else {
+        $cert = (Invoke-PortalVault GET $CertificateId.Substring($script:Vault.Length)).value
+        if ($null -eq $Checkpoint -or -not $Checkpoint.ContainsKey('policyProofs') -or -not $Checkpoint.policyProofs.ContainsKey($CertificateId)) { throw 'Historical certificate requires its verified policy record' }
+        $proof = $Checkpoint.policyProofs[$CertificateId]
+        if ($proof.certificateId -cne $CertificateId -or $proof.keyId -cne $cert.kid) { throw 'Historical certificate policy record differs' }
+        $policy = $proof.policy
+    }
     if ($null -eq $cert -or $cert.id -cne $CertificateId) { throw 'Certificate identity differs' }
-    $policy = $cert.policy
-    if ($policy.issuer.name -cne 'Self' -or $policy.key_props.exportable -ne $false -or $policy.key_props.reuse_key -ne $false -or $policy.key_props.kty -cne 'RSA' -or $policy.key_props.key_size -ne 3072 -or $policy.x509_props.validity_months -ne $script:Months -or @($policy.lifetime_actions).Count -ne 0) { throw 'Certificate policy differs' }
+    $expectedMonths = $script:Months
+    if ($null -ne $proof) {
+        $expectedMonths = $proof.policy.x509_props.validity_months
+        if ($expectedMonths -notin 1..24) { throw 'Historical certificate validity record differs' }
+    }
+    if ($policy.issuer.name -cne 'Self' -or $policy.key_props.exportable -ne $false -or $policy.key_props.reuse_key -ne $false -or $policy.key_props.kty -cne 'RSA' -or $policy.key_props.key_size -ne 3072 -or $policy.x509_props.validity_months -ne $expectedMonths -or @($policy.lifetime_actions).Count -ne 0) { throw 'Certificate policy differs' }
     $keyPrefix = "$script:Vault/keys/$script:Name/"
     if (-not $cert.kid.StartsWith($keyPrefix, [StringComparison]::Ordinal) -or $cert.kid.Substring($keyPrefix.Length) -notmatch '^[a-f0-9]{32}$') { throw 'Invalid key version' }
     $key = (Invoke-PortalVault GET $cert.kid.Substring($script:Vault.Length)).value
@@ -85,7 +103,13 @@ function Read-PortalCertificate {
                 if (-not $AllowDisabled -and -not $chain.Build($leaf)) { throw 'Self-signed certificate validation failed' }
             } finally { $chain.Dispose() }
         } finally { $rsa.Dispose() }
-        return @{ certificateId = $cert.id; keyId = $cert.kid; certificateThumbprint = $leaf.Thumbprint.ToLowerInvariant(); notBefore = [DateTimeOffset]::new($leaf.NotBefore.ToUniversalTime()).ToUnixTimeSeconds(); expires = [DateTimeOffset]::new($leaf.NotAfter.ToUniversalTime()).ToUnixTimeSeconds(); publicCertificate = $cert.cer }
+        $thumbprint = $leaf.Thumbprint.ToLowerInvariant()
+        if ($null -ne $proof -and $proof.certificateThumbprint -cne $thumbprint) { throw 'Historical certificate material differs from its policy record' }
+        if ($null -ne $Checkpoint) {
+            if (-not $Checkpoint.ContainsKey('policyProofs')) { $Checkpoint.policyProofs = @{} }
+            $Checkpoint.policyProofs[$CertificateId] = @{ certificateId = $cert.id; keyId = $cert.kid; certificateThumbprint = $thumbprint; policy = $policy }
+        }
+        return @{ certificateId = $cert.id; keyId = $cert.kid; certificateThumbprint = $thumbprint; notBefore = [DateTimeOffset]::new($leaf.NotBefore.ToUniversalTime()).ToUnixTimeSeconds(); expires = [DateTimeOffset]::new($leaf.NotAfter.ToUniversalTime()).ToUnixTimeSeconds(); publicCertificate = $cert.cer }
     } finally { $leaf.Dispose() }
 }
 
@@ -115,7 +139,7 @@ function New-PortalCertificate {
         $latest = Invoke-PortalVault GET "/certificates/$script:Name"
         if ($latest.status -eq 200 -and $latest.value.id -cne $Checkpoint.request.baseline) {
             if ($latest.value.tags.requestId -cne $RequestId -or $latest.value.tags.purpose -cne 'portal-authentication') { throw 'An unrelated certificate was created' }
-            $result = Read-PortalCertificate $latest.value.id
+            $result = Read-PortalCertificate $latest.value.id -Checkpoint $Checkpoint
             if ($Checkpoint.ContainsKey('current') -and $result.keyId -ceq $Checkpoint.current.keyId) { throw 'Renewal reused the current private key' }
             if ($Checkpoint.ContainsKey('current')) {
                 $oldKey = (Invoke-PortalVault GET $Checkpoint.current.keyId.Substring($script:Vault.Length)).value.key
@@ -137,8 +161,12 @@ function New-PortalCertificate {
 function Invoke-PortalCertificateAction {
     param([string]$SelectedAction, $Config, $Checkpoint)
     if ($SelectedAction -eq 'Initialize') {
-        if ($Checkpoint.ContainsKey('current')) { return Read-PortalCertificate $Checkpoint.current.certificateId }
-        if ($Checkpoint.ContainsKey('candidate')) { $result = Read-PortalCertificate $Checkpoint.candidate.certificateId }
+        if ($Checkpoint.ContainsKey('current')) {
+            $result = Read-PortalCertificate $Checkpoint.current.certificateId -Checkpoint $Checkpoint
+            Save-PortalCheckpoint $Checkpoint
+            return $result
+        }
+        if ($Checkpoint.ContainsKey('candidate')) { $result = Read-PortalCertificate $Checkpoint.candidate.certificateId -Checkpoint $Checkpoint }
         else {
             $existing = Invoke-PortalVault GET "/certificates/$script:Name"
             # 由来不明の既存鍵を自動採用しません。再開は保存intentに限定します。
@@ -154,10 +182,10 @@ function Invoke-PortalCertificateAction {
     if ($SelectedAction -eq 'Prepare') {
         if ($Config.requestId -notmatch '^[a-f0-9]{32}$') { throw 'Invalid renewal request' }
         if ($Config.currentKeyId -cne $Checkpoint.current.keyId) { throw 'Current certificate differs from the selected state' }
-        if ($Checkpoint.ContainsKey('candidate')) { return Read-PortalCertificate $Checkpoint.candidate.certificateId }
+        if ($Checkpoint.ContainsKey('candidate')) { return Read-PortalCertificate $Checkpoint.candidate.certificateId -Checkpoint $Checkpoint }
         return New-PortalCertificate $Checkpoint $Config.requestId
     }
-    $result = Read-PortalCertificate $Config.certificateId -AllowDisabled:($SelectedAction -eq 'Retire')
+    $result = Read-PortalCertificate $Config.certificateId -AllowDisabled:($SelectedAction -eq 'Retire') -Checkpoint $Checkpoint
     if ($SelectedAction -eq 'Activate') {
         $Checkpoint.current = $result
         if ($Checkpoint.ContainsKey('candidate') -and $Checkpoint.candidate.keyId -ceq $result.keyId) { $Checkpoint.Remove('candidate') }
