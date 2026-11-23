@@ -43,6 +43,8 @@ azd up --environment "$DEPLOY_ENVIRONMENT"
 
 SQLサーバーは`sql-<stem>`、Private Endpointは`pe-<stem>-sql`。`<stem>`には環境名とプロダクト名が入る。SQLへの公開アクセスとSQLパスワード認証は無効とし、後続のジョブとアプリはマネージドIDで接続する。
 
+[Redirect対応資材](../reference/sql-redirect-migration-plan.md)は、SQL PE・DNS・NSGの完成後に接続ポリシーをRedirectへ固定する。既存Proxy環境ではPortal対応driverをProxy下で先に受入し、SQL向けNSG4件の準備後にpolicy子資源だけを切り替える。Portal対応版を確認する前に、通常のCore再配備で接続方式を先行変更しない。初期再構築と既存限定移行の実証は別々に行う。
+
 ## 4. Gatewayを配備する
 
 以下は、構築済み環境でGatewayだけを更新・再試行する場合のコマンドである。同じparamsとCore stateを使う。GitHub Actions、PC上のDocker、PCからのSQL／ACRへの直接接続は不要。

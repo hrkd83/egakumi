@@ -111,7 +111,8 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_schema_helpers.py"
+        "tests/test_schema_helpers.py",
+        "tests/test_sql_connection_policy_operation.py"
       ]
     },
     {
@@ -127,7 +128,10 @@
         "tests/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
-        "tests/test_prepare_credential_pool_config.py"
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -145,7 +149,9 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
-        "tests/test_prepare_credential_pool_config.py"
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -173,6 +179,15 @@
         "tests/test_credential_provider_inputs.py",
         "tests/test_entra_authentication_configuration.py",
         "tests/test_entra_gateway_authentication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.1.25",
+      "reason": "Independent synthetic address inside the existing offline fixture subnet, used only to simulate SQL Private Endpoint IP drift and reject writes; never copied or derived from an environment. Exact value and these two test paths only.",
+      "paths": [
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_redirect_nsg.py"
       ]
     },
     {
@@ -4199,7 +4214,8 @@
       "value": "1.0.0.0",
       "reason": "Public ARM deployment parameters contentVersion constant, not an IP address. Exact value and enumerated source files only.",
       "paths": [
-        "scripts/operations/maintenance.py"
+        "scripts/operations/maintenance.py",
+        "scripts/operations/sql_nsg_upgrade.py"
       ]
     },
     {

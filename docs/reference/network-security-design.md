@@ -4,6 +4,8 @@
 
 本書は初期構築に採用したNSGの通信対応と判断を記録する。定義の正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)であり、5 NSG・カスタム76規則（Allow 70、Deny 6）を構築する。Azureの既定規則30件はこの件数に含めない。`AzureFirewallSubnet`にはNSGを関連付けない。
 
+SQL向け4規則は[Redirect切替](sql-redirect-migration-plan.md)の資材定義を示す。既存環境の移行と実証はPortal対応版の受入後に行い、旧Proxy規則を厳密に認識して限定移行する。
+
 `FLOW-...`は通信要件の識別子、`POLICY-...`は拒否・既定規則の設計判断の識別子、規則の設計IDは資材の`designRecordId`である。同じ接続の送信・受信に同じFLOW IDを付ける。拒否規則や既定規則は通信の件数として加算しない。
 
 ## 初期設計の前提
@@ -106,8 +108,8 @@
 | 222 | `allow-aca-key-vault-https-ingress`<br>`B-PE-03` | `subnet:aca` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Credential Broker等のACAワークロードから構築Key Vault PEへのHTTPS。VNet直接経路の受信許可である。 | `subnet:aca`, `ips:keyVault` |
 | 223 | `allow-mgmt-vm-key-vault-https-ingress`<br>`B-PE-04` | `ip:management` → `ips:keyVault` | TCP／443 | [FLOW-MGMT-KV](network-communication-requirements.md#flow-mgmt-kv) | 管理VMの証明書処理とKey Vault保守。管理VMの単IPと構築PEの全IPだけを組み合わせる。 | `ip:management`, `ips:keyVault` |
 | 224 | `allow-mgmt-vm-foundry-https-ingress`<br>`B-PE-06` | `ip:management` → `ips:foundry` | TCP／443 | [FLOW-MGMT-FOUNDRY](network-communication-requirements.md#flow-mgmt-foundry) | 管理VMからFoundryを保守・確認するprivate HTTPS。APIM業務接続と実行主体を分ける。 | `ip:management`, `ips:foundry` |
-| 225 | `allow-mgmt-vm-sql-1433-ingress`<br>`N-PE-IN-MGMT-SQL` | `ip:management` → `ips:sql` | TCP／1433 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | 管理VMから構築したGateway／Portal DBを直接保守するSQL接続。MIのDB認可と保守clientは別途必要である。 | `ip:management`, `ips:sql` |
-| 226 | `allow-aca-sql-1433-ingress`<br>`B-PE-07` | `subnet:aca` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／資材が作成するJobから共有SQL PEへの接続。SQL connection policyとDB認可を別に満たす。 | `subnet:aca`, `ips:sql` |
+| 225 | `allow-mgmt-vm-sql-ingress`<br>`N-PE-IN-MGMT-SQL` | `ip:management` → `ips:sql` | TCP／1433–65535 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | 管理VMから構築Gateway／Portal DBを直接保守するPE Redirect接続。MIのDB認可と保守clientは別途必要である。 | `ip:management`, `ips:sql` |
+| 226 | `allow-aca-sql-ingress`<br>`B-PE-07` | `subnet:aca` → `ips:sql` | TCP／1433–65535 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／構築Jobから共有SQL PEへのRedirect接続。対応driverとDB認可を別に満たす。 | `subnet:aca`, `ips:sql` |
 | 227 | `allow-aca-acr-https-ingress`<br>`B-PE-08` | `subnet:aca` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | ACAのimage取得に使うACR PEへのHTTPS。registryとdata endpointを含むPE NICの全IPを使う。 | `subnet:aca`, `ips:registry` |
 | 228 | `allow-mgmt-vm-acr-https-ingress`<br>`B-PE-09` | `ip:management` → `ips:registry` | TCP／443 | [FLOW-MGMT-ACR](network-communication-requirements.md#flow-mgmt-acr) | 管理VMのACR保守・image取得／送信。構築管理VM IPとACR PE全IPに限定する。 | `ip:management`, `ips:registry` |
 | 229 | `allow-mgmt-vm-audit-storage-japan-https-ingress`<br>`N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` | `ip:management` → `ips:auditStorageJapan` | TCP／443 | [FLOW-MGMT-AUDIT-JAPAN](network-communication-requirements.md#flow-mgmt-audit-japan) | 管理VMからcollectJapan監査コンテナーのBlob PEを読むHTTPS。Storageタグの包括依存とは別に記録する。 | `ip:management`, `ips:auditStorageJapan` |
@@ -134,7 +136,7 @@
 | 221 | `allow-acr-https-egress`<br>`B-MGMT-03` | `ip:management` → `ips:registry` | TCP／443 | [FLOW-MGMT-ACR](network-communication-requirements.md#flow-mgmt-acr) | 構築ACRのimage保守・取得／送信。registry/data endpointを含む構築PE全IPへ許可する。 | `ip:management`, `ips:registry` |
 | 222 | `allow-apim-https-egress`<br>`B-MGMT-18` | `ip:management` → `subnet:apim` | TCP／443 | [FLOW-MGMT-APIM](network-communication-requirements.md#flow-mgmt-apim) | APIM private gatewayのHTTPS保守。gRPCは廃止し、残すHTTPS通信を名称にも反映する。 | `ip:management`, `subnet:apim` |
 | 223 | `allow-foundry-https-egress`<br>`B-MGMT-21` | `ip:management` → `ips:foundry` | TCP／443 | [FLOW-MGMT-FOUNDRY](network-communication-requirements.md#flow-mgmt-foundry) | Foundryのprivate API保守。管理VMを全資源の保守拠点とするためAPIM以外の実行主体を許可する。 | `ip:management`, `ips:foundry` |
-| 224 | `allow-sql-1433-egress`<br>`N-MGMT-OUT-SQL` | `ip:management` → `ips:sql` | TCP／1433 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | Gateway／Portalの構築DBを管理VMのMIで直接保守するTCP1433。NSGはDB権限を付与しない。 | `ip:management`, `ips:sql` |
+| 224 | `allow-sql-egress`<br>`N-MGMT-OUT-SQL` | `ip:management` → `ips:sql` | TCP／1433–65535 | [FLOW-MGMT-SQL](network-communication-requirements.md#flow-mgmt-sql) | Gateway／Portalの構築DBを管理VMのMIで直接保守するPE Redirect接続。NSGはDB権限を付与しない。 | `ip:management`, `ips:sql` |
 | 225 | `allow-aca-http-egress`<br>`N-MGMT-OUT-ACA-HTTP` | `ip:management` → `ip:aca` | TCP／80 | [FLOW-MGMT-ACA-HTTP](network-communication-requirements.md#flow-mgmt-aca-http) | ACA private ingressのHTTP確認・保守。AppGW→PortalのHTTP80化と整合する到達経路を用意する。 | `ip:management`, `ip:aca` |
 | 226 | `allow-aca-https-egress`<br>`N-MGMT-OUT-ACA-HTTPS` | `ip:management` → `ip:aca` | TCP／443 | [FLOW-MGMT-ACA-HTTPS](network-communication-requirements.md#flow-mgmt-aca-https) | ACA private ingressのHTTPS確認・保守。リージョン共用Dev APIへのログ／exec通信とは別宛先である。 | `ip:management`, `ip:aca` |
 | 227 | `allow-audit-storage-japan-https-egress`<br>`N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` | `ip:management` → `ips:auditStorageJapan` | TCP／443 | [FLOW-MGMT-AUDIT-JAPAN](network-communication-requirements.md#flow-mgmt-audit-japan) | collectJapan監査Blobのprivate閲覧。管理VMのMIへコンテナー単位の読取認可を常設する判断と組み合わせる。 | `ip:management`, `ips:auditStorageJapan` |
@@ -165,7 +167,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-appgw-https-egress`<br>`B-ACA-11` | `subnet:aca` → `ip:appGatewayPublic` | TCP／443 | [FLOW-ACA-APPGW](network-communication-requirements.md#flow-aca-appgw) | Portal等のACAワークロードから公開AppGW経由でAPI入口へ到達するHTTPS。構築AppGW公開IPだけを指定する。 | `subnet:aca`, `ip:appGatewayPublic` |
 | 220 | `allow-key-vault-https-egress`<br>`B-ACA-06` | `subnet:aca` → `ips:keyVault` | TCP／443 | [FLOW-ACA-KV](network-communication-requirements.md#flow-aca-kv) | Broker等が構築Key Vault PEへ接続するHTTPS。private DNS、経路、認可と組み合わせる。 | `subnet:aca`, `ips:keyVault` |
-| 221 | `allow-sql-1433-egress`<br>`B-ACA-07` | `subnet:aca` → `ips:sql` | TCP／1433 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／構築Jobから共有SQL PEへ接続するTCP1433。現在のVNet直接経路を記録する。 | `subnet:aca`, `ips:sql` |
+| 221 | `allow-sql-egress`<br>`B-ACA-07` | `subnet:aca` → `ips:sql` | TCP／1433–65535 | [FLOW-ACA-SQL](network-communication-requirements.md#flow-aca-sql) | Broker／Portal／構築Jobから共有SQL PEへのRedirect接続。VNet直接経路を維持する。 | `subnet:aca`, `ips:sql` |
 | 222 | `allow-acr-https-egress`<br>`B-ACA-08` | `subnet:aca` → `ips:registry` | TCP／443 | [FLOW-ACA-ACR](network-communication-requirements.md#flow-aca-acr) | 構築ACRからimageを取得するHTTPS。PE NICのregistry／data用全IPを許可する。 | `subnet:aca`, `ips:registry` |
 | 223 | `allow-arm-https-egress`<br>`B-ACA-13` | `subnet:aca` → `tag:AzureResourceManager` | TCP／443 | [FLOW-ACA-ARM](network-communication-requirements.md#flow-aca-arm) | Portal／Broker等がARM APIを利用する基盤固有の管理操作。アプリのMI／RBACにより操作対象を限定する。 | `subnet:aca` |
 | 320 | `allow-aca-internal-egress`<br>`B-ACA-02` | `subnet:aca` → `subnet:aca` | Any／Any | [FLOW-ACA-INTERNAL](network-communication-requirements.md#flow-aca-internal) | ACAサブネット内の基盤通信。内部portの完全な固定契約を推測せず、同サブネット宛Anyを明示する。 | `subnet:aca` |

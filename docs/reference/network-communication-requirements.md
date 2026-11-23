@@ -4,6 +4,8 @@
 
 本書は、現在の構築資材が必要とする業務・保守・Azure基盤通信の参照元である。同一の接続を複数のAPIが使う場合は通信を共通化し、APIごとにNSGのポートを追加しない。HTTP、SSE、WebSocket、MCPのAPI契約と公開範囲は、[API定義](../../apps/gateway/apim/apis/)と[API設計](api-design-proposal.md)を参照する。
 
+SQL PE通信は[Redirect切替](sql-redirect-migration-plan.md)の資材変更に合わせた定義である。Azureへの切替と新しい物理接続の実証は別工程で、Portal対応版のProxyでの受入後に行う。
+
 `FLOW-...`は通信要件のIDであり、Azureのルール名ではない。NSG設計の各レコードとFirewall設計の各レコードから同じIDを参照する。終端Denyと既定規則は通信そのものではなく制御方針であるため、NSG側の`POLICY-...`で記録する。通信IDの行にある「FW」は現在の構築経路でFirewallを通過する区間だけを示す。
 
 ## 設計前提と判断
@@ -35,7 +37,7 @@ flowchart LR
     FW -->|HTTP80| Portal[Portal / ACA]
     APIM -->|HTTPS443・直接| Foundry[Foundry PE]
     APIM -->|HTTPS443・直接| Broker[Broker / ACA]
-    Broker -->|TCP1433・直接| SQL[SQL PE]
+    Broker -->|TCP1433–65535・直接| SQL[SQL PE]
     Broker -->|HTTPS443・直接| KV[Key Vault PE]
     Portal -->|HTTPS443・公開Gatewayへ| FW
     FW -->|HTTPS443・送信元変換後| GW
@@ -63,7 +65,7 @@ NSGはstatefulである。許可された接続への応答に逆向きの新規
 | <a id="flow-apim-aca"></a>`FLOW-APIM-ACA` | APIM → ACA環境VIP / Broker | TCP443 / HTTPS。NSGは443と31443 | 本人接続・資格情報の内部窓口 | VNet直接。APIM Outbound、ACA Inbound。FW規則なし |
 | <a id="flow-apim-kv"></a>`FLOW-APIM-KV` | APIM → 構築Key Vault PE群 | TCP443 / HTTPS | Named Value等の基盤秘密参照、カスタムドメイン証明書参照・更新 | PE直接。APIM Outbound、PE Inbound。AzureKeyVaultタグ宛の基盤依存とは別 |
 | <a id="flow-aca-kv"></a>`FLOW-ACA-KV` | ACA App/Job → Key Vault PE群 | TCP443 / HTTPS | Portal/Broker等の構築秘密参照 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
-| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433、SQL接続時のTLS | 本人接続台帳、Portal台帳、schema初期化・更新 | PE直接。ACA Outbound、PE Inbound。FW規則なし |
+| <a id="flow-aca-sql"></a>`FLOW-ACA-SQL` | ACA App/Job → SQL PE群 | TCP1433–65535（初回1433）、SQL接続時のTLS | 本人接続台帳、Portal台帳、schema初期化・更新 | PE Redirectの必要port。ACA Outbound、PE Inbound。直接経路を維持し、FW規則なし |
 | <a id="flow-aca-acr"></a>`FLOW-ACA-ACR` | ACA → 構築ACR PEの全IP | TCP443 / HTTPS | App/Jobイメージ取得 | PE直接。login/dataのPE全IPを両NSGへ設定 |
 | <a id="flow-aca-appgw"></a>`FLOW-ACA-APPGW` | Portal/ACA → 構築AppGW public IP | TCP443 / HTTPS、WSS | Portalサーバーから公開Gateway APIを呼ぶ | FW経由。ACA Outbound、AppGW Inbound。Portal自身への内部HTTP接続とは別 |
 
@@ -76,7 +78,7 @@ AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別�
 | <a id="flow-mgmt-kv"></a>`FLOW-MGMT-KV` | 管理VM → Key Vault PE群 | TCP443 / HTTPS | 証明書・秘密の所定保守処理 | PE直接。管理VM Outbound、PE Inbound、用途別MI/RBAC |
 | <a id="flow-mgmt-foundry"></a>`FLOW-MGMT-FOUNDRY` | 管理VM → Foundry PE群 | TCP443 / HTTPS | Foundryデータ面の保守 | PE直接。管理VM Outbound、PE Inbound。ARM管理は別接続 |
 | <a id="flow-mgmt-acr"></a>`FLOW-MGMT-ACR` | 管理VM → ACR PEの全IP | TCP443 / HTTPS | イメージ配備・取得の保守 | PE直接。管理VM Outbound、PE Inbound |
-| <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE直接。管理VM Outbound、PE Inbound。VMのMI、DB内ユーザーと権限、ODBC clientが必要 |
+| <a id="flow-mgmt-sql"></a>`FLOW-MGMT-SQL` | 管理VM → SQL PE群 | TCP1433–65535（初回1433）、SQL接続時のTLS | 構築Gateway/PortalのDB直接保守 | PE Redirectの必要port。管理VM Outbound、PE Inbound。直接経路を維持し、VMのMI、DB内ユーザーと権限、ODBC clientが必要 |
 | <a id="flow-mgmt-apim"></a>`FLOW-MGMT-APIM` | 管理VM → APIMサブネット | TCP443 / HTTPS | private Gateway側の保守確認 | VNet直接。管理VM Outbound、APIM Inbound。APIM管理用ARMとは別 |
 | <a id="flow-mgmt-aca-http"></a>`FLOW-MGMT-ACA-HTTP` | 管理VM → ACA環境VIP | TCP80 / HTTP。ACA NSGは80と31080 | Portalのprivate HTTP入口確認 | VNet直接。管理VM Outbound、ACA Inbound |
 | <a id="flow-mgmt-aca-https"></a>`FLOW-MGMT-ACA-HTTPS` | 管理VM → ACA環境VIP | TCP443 / HTTPS。ACA NSGは443と31443 | Broker等のprivate HTTPS入口確認 | VNet直接。管理VM Outbound、ACA Inbound。Dev gatewayは別接続 |
@@ -84,7 +86,7 @@ AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別�
 | <a id="flow-mgmt-audit-foundry"></a>`FLOW-MGMT-AUDIT-FOUNDRY` | 管理VM → collectFoundry監査StorageのBlob PE群 | TCP443 / HTTPS | Foundry側監査Blobの閲覧 | PE直接。管理VM Outbound228、PE Inbound230。Foundry APIへの接続とは別 |
 | <a id="flow-mgmt-aca-dev"></a>`FLOW-MGMT-ACA-DEV` | 管理VM → 構築リージョンのACA Dev gateway | TCP443 / HTTPS、WSS | App/環境/Jobのライブログ、App exec | FW経由。NSGのInternet443とFWの単一リージョン宛FQDN規則。ARM token取得・MI/RBAC・対象実行の存続も必要 |
 
-保守操作の権限とclientは[管理VMの保守操作](../operations.md#管理vmから保守データを取得する)を参照する。NSGのTCP1433/443許可だけで、SQL保守、Blob閲覧、ACA execが認可されるわけではない。手動Jobのログ確認のためだけにDDLや初期データ更新を再実行しない。
+保守操作の権限とclientは[管理VMの保守操作](../operations.md#管理vmから保守データを取得する)を参照する。NSGのSQL/HTTPS許可だけで、SQL保守、Blob閲覧、ACA execが認可されるわけではない。手動Jobのログ確認のためだけにDDLや初期データ更新を再実行しない。
 
 ## Azure製品の仕様上の通信
 

@@ -5,6 +5,8 @@
 初期構築は5 NSG・カスタム76ルールの固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
 
+SQL向け4規則は[Redirect切替の資材](../reference/sql-redirect-migration-plan.md)に対応する。Azureへの限定移行と実証はPortal対応版のProxyでの受入後に行う。
+
 - 120から: クライアント要求から発生する通信。
 - 220から: この基盤の設計で追加した内部接続・保守通信。
 - 320から: Azure製品の仕様上の基盤依存・管理通信。
@@ -115,8 +117,8 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 222 | `allow-aca-key-vault-https-ingress` | ACAサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-PE-03` |
 | 223 | `allow-mgmt-vm-key-vault-https-ingress` | 管理VM private IP /32 | Key Vault PE全IP /32 | TCP／443 | `B-PE-04` |
 | 224 | `allow-mgmt-vm-foundry-https-ingress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-PE-06` |
-| 225 | `allow-mgmt-vm-sql-1433-ingress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-PE-IN-MGMT-SQL` |
-| 226 | `allow-aca-sql-1433-ingress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-PE-07` |
+| 225 | `allow-mgmt-vm-sql-ingress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433–65535 | `N-PE-IN-MGMT-SQL` |
+| 226 | `allow-aca-sql-ingress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433–65535 | `B-PE-07` |
 | 227 | `allow-aca-acr-https-ingress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-PE-08` |
 | 228 | `allow-mgmt-vm-acr-https-ingress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-PE-09` |
 | 229 | `allow-mgmt-vm-audit-storage-japan-https-ingress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-PEP-IN-MGMT-AUDIT-STORAGE-JAPAN-HTTPS` |
@@ -143,7 +145,7 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 221 | `allow-acr-https-egress` | 管理VM private IP /32 | ACR PE全IP /32 | TCP／443 | `B-MGMT-03` |
 | 222 | `allow-apim-https-egress` | 管理VM private IP /32 | APIMサブネットCIDR | TCP／443 | `B-MGMT-18` |
 | 223 | `allow-foundry-https-egress` | 管理VM private IP /32 | Foundry PE全IP /32 | TCP／443 | `B-MGMT-21` |
-| 224 | `allow-sql-1433-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433 | `N-MGMT-OUT-SQL` |
+| 224 | `allow-sql-egress` | 管理VM private IP /32 | 共有SQL PE全IP /32 | TCP／1433–65535 | `N-MGMT-OUT-SQL` |
 | 225 | `allow-aca-http-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／80 | `N-MGMT-OUT-ACA-HTTP` |
 | 226 | `allow-aca-https-egress` | 管理VM private IP /32 | ACA共有VIP /32 | TCP／443 | `N-MGMT-OUT-ACA-HTTPS` |
 | 227 | `allow-audit-storage-japan-https-egress` | 管理VM private IP /32 | collectJapan監査Storage Blob PE全IP /32 | TCP／443 | `N-MGMT-OUT-AUDIT-STORAGE-JAPAN-HTTPS` |
@@ -174,7 +176,7 @@ metadata返却先・replicaの`logStreamEndpoint`を照合し、TLS、ライブ�
 
 ## ACA（aca）
 
-APIM→ACAのHTTPS443、ACA→SQL PEのTCP1433、ACA→Key Vault PEのHTTPS443は、
+APIM→ACAのHTTPS443、ACA→SQL PEのTCP1433–65535、ACA→Key Vault PEのHTTPS443は、
 初期構成ではVNet内の直接経路を使います。ACA／APIMの既定の`0.0.0.0/0`経路より、
 VNet・Private Endpointへの具体的な経路が優先されるため、Firewall規則には登録しません。
 通信の許可は送信元と宛先のNSGに記録します。Firewallには現在の経路で通過する通信だけを登録し、
@@ -196,7 +198,7 @@ VNet・Private Endpointへの具体的な経路が優先されるため、Firewa
 | --- | --- | --- | --- | --- | --- |
 | 120 | `allow-appgw-https-egress` | ACAサブネットCIDR | AppGW公開IP /32 | TCP／443 | `B-ACA-11` |
 | 220 | `allow-key-vault-https-egress` | ACAサブネットCIDR | Key Vault PE全IP /32 | TCP／443 | `B-ACA-06` |
-| 221 | `allow-sql-1433-egress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433 | `B-ACA-07` |
+| 221 | `allow-sql-egress` | ACAサブネットCIDR | 共有SQL PE全IP /32 | TCP／1433–65535 | `B-ACA-07` |
 | 222 | `allow-acr-https-egress` | ACAサブネットCIDR | ACR PE全IP /32 | TCP／443 | `B-ACA-08` |
 | 223 | `allow-arm-https-egress` | ACAサブネットCIDR | `AzureResourceManager`タグ | TCP／443 | `B-ACA-13` |
 | 320 | `allow-aca-internal-egress` | ACAサブネットCIDR | ACAサブネットCIDR | Any／Any | `B-ACA-02` |

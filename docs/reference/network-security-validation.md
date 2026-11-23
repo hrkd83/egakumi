@@ -4,6 +4,8 @@
 
 本書は、通信要件、構築資材、設定の読戻し、実操作の関係と、結果の管理方法を定める。公開する合成試験と環境別の実証原本を分け、設定一致だけで通信全件の実証済みとは判定しない。
 
+[SQL Redirect切替](sql-redirect-migration-plan.md)の資材・限定移行処理はローカル合成検証済みで、Azure切替とRedirectの実通信は未実証である。既存のProxyでの結果と、新しいSQL接続方式の確認を区別する。
+
 ## 確認段階
 
 | 段階 | 判定する内容 | この段階だけでは証明しない内容 |
@@ -48,6 +50,20 @@ NSGの既定規則、サービス・タグ、Azure基盤例外、provider内部�
 | 保守clientと導入 | [management_client.py](../../scripts/management_client.py)、[client試験](../../tests/test_management_client.py)、[導入試験](../../tests/test_management_client_install.py) |
 | SQL直接保守 | [SQL認可の資材試験](../../tests/test_sql_management_grants_infra.py)、[SQL client試験](../../tests/test_management_sql_client.py)、[構築DB discovery試験](../../tests/test_management_sql_discovery.py) |
 | Serial初期準備 | [初期module](../../infra/modules/management-serial-initialization.bicep)、[初期処理試験](../../tests/test_serial_initialization.py)、[guest試験](../../tests/test_management_serial_guest.py) |
+
+### SQL Redirect対応の合成検証
+
+SQL Redirect対応のローカル検証は、以下の12スイートを初回に通し実行し、143試験がPASSした。最終レビューでNSG配備loopを4回に固定した後、影響する2スイートを追加条件込みで再実行した。最新版の**145個の試験がPASS、失敗0、エラー0、スキップ0**である。合成ARMとローカルBicepを用い、Azure認証・実通信は実行していない。
+
+| スイート | 確認範囲 |
+| --- | --- |
+| [NSG正本](../../tests/test_nsg_rule_priorities.py)、[固定移行](../../tests/test_fixed_nsg_migration.py)、[固定upgrade](../../tests/test_fixed_nsg_upgrade.py)、[NSG配備順](../../tests/test_nsg_deployment_order.py) | 既存76規則、旧移行の一時優先度、変更対象・既存状態保持 |
+| [SQL NSG4件](../../tests/test_sql_redirect_nsg.py)、[NSG一括操作](../../tests/test_sql_nsg_upgrade_operation.py) | 4childだけのwhat-if/配備、退避・読戻し・撤去、IP/state/ETag競合、保護journal、中断再開、切戻しの拒否条件 |
+| [SQL policy資材](../../tests/test_shared_sql_connection_policy.py)、[SQL配備順](../../tests/test_sql_redirect_deployment_order.py) | policyの単一所有、PE/NSG完成後のRedirect、管理clientとの依存関係 |
+| [policy操作](../../tests/test_sql_connection_policy_operation.py)、[SQL/NSG実API接続](../../tests/test_sql_policy_nsg_integration.py) | policy子だけの一回送信、Portal App/Jobs/revision世代の再照合、4 NSG gate、未知応答からの再送防止 |
+| [管理client](../../tests/test_management_client_assets.py)、[client資材](../../tests/test_management_client_assets_bicep.py) | 通常Redirect照合、専用工程の明示Proxy期待、変更前の対象一致、client限定配備 |
+
+Portal driverの実装と受入verifier、NSG運用CLIの実Azure応答、Proxyでの受入とRedirect限定切替、実宛先・port・性能、新規構築/PE再作成は未実証である。公開CLIのRedirect policy実行とProxy NSG縮小は、対応runtime verifierがない段階では拒否する。
 
 ## 実環境の実証結果の管理
 
