@@ -79,14 +79,14 @@ resource managementNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' exis
 resource acaNsg 'Microsoft.Network/networkSecurityGroups@2025-01-01' existing = { name: acaNsgName }
 resource sqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
-  name: 'allow-aca-sql-1433-ingress'
-  properties: allowRule('allow-aca-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-aca-sql-1433-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
+  name: 'allow-aca-sql-ingress'
+  properties: allowRule('allow-aca-sql-ingress', nsgPriorities.groups.pep.rules['allow-aca-sql-ingress'].priority, 'Inbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433-65535']).properties
 }
 resource managementSqlIn 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: pepNsg
   dependsOn: [sqlIn]
-  name: 'allow-mgmt-vm-sql-1433-ingress'
-  properties: allowRule('allow-mgmt-vm-sql-1433-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-sql-1433-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433']).properties
+  name: 'allow-mgmt-vm-sql-ingress'
+  properties: allowRule('allow-mgmt-vm-sql-ingress', nsgPriorities.groups.pep.rules['allow-mgmt-vm-sql-ingress'].priority, 'Inbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433-65535']).properties
 }
 resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: apimNsg
@@ -95,13 +95,13 @@ resource brokerOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-0
 }
 resource acaSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: acaNsg
-  name: 'allow-sql-1433-egress'
-  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.aca.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433']).properties
+  name: 'allow-sql-egress'
+  properties: allowRule('allow-sql-egress', nsgPriorities.groups.aca.rules['allow-sql-egress'].priority, 'Outbound', 'Tcp', [acaPrefix], map(ips, ip => '${ip}/32'), ['1433-65535']).properties
 }
 resource managementSqlOut 'Microsoft.Network/networkSecurityGroups/securityRules@2025-01-01' = {
   parent: managementNsg
-  name: 'allow-sql-1433-egress'
-  properties: allowRule('allow-sql-1433-egress', nsgPriorities.groups.management.rules['allow-sql-1433-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433']).properties
+  name: 'allow-sql-egress'
+  properties: allowRule('allow-sql-egress', nsgPriorities.groups.management.rules['allow-sql-egress'].priority, 'Outbound', 'Tcp', ['${managementPrivateIp}/32'], map(ips, ip => '${ip}/32'), ['1433-65535']).properties
 }
 resource firewall 'Microsoft.Network/firewallPolicies@2025-01-01' existing = { name: firewallPolicyName }
 resource rules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2025-01-01' = {

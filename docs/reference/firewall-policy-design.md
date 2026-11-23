@@ -6,6 +6,8 @@
 
 初期集合は **6 Rule Collection Group（RCG）・11 collection・36 Allow規則**。RCG、collection、規則の作成有無を公開params／configで切り替える入力は設けない。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証済みの業務接続設定だけを該当するアドレスへ差し込む。資材・合成検証・実環境への適用・実通信の確認は別の段階として扱う。
 
+[共有SQLのRedirect切替](sql-redirect-migration-plan.md)でもSQL PE直接経路を維持し、SQL用のFirewall規則は追加しない。PortalのODBC/native依存取得はbuild通信として実経路と既存許可を確認し、必要な追加宛先が判明した場合だけ別の通信として判断する。
+
 ## 設計前提と評価順序
 
 - 初期構築は独立VNet、Azure提供DNSを使用する。VNetのDNSサーバーとFirewallの上流DNSは空配列に固定し、FirewallのDNS proxyは有効にする。VNetのclientが自動的にFirewall DNS proxyを問い合わせる設定にはしない。

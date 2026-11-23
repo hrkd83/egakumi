@@ -14,6 +14,8 @@
 | `waf.py` | 既存の用途別WAFのreconcilerを`--scope gateway/portal/all`で利用 | なし |
 | `nsg_dns.py` | Azure提供DNSを確認し、不要な既知のDNS用NSG子規則だけを回収 | 現物のDNS設定・所有・全対象規則を読む |
 | `nsg_appgw_egress.py` | 既定許可と重複するAppGWの送信3子規則だけを回収 | AppGWサブネット・対向宛先・既定規則・所有と実規則を読む |
+| `sql_nsg_upgrade.py` | [SQL Redirect移行](../../docs/reference/sql-redirect-migration-plan.md)の4 NSG子規則を一括準備・限定反映・読戻し・旧規則撤去。`--runtime-root`で保護入力とstateの所在を明示 | 所有・PE IP・全NSGを読む。反映時のwhat-ifは旧規則退避後に実施 |
+| `sql_connection_policy.py` | 共有SQLのpolicy子資源だけを計画・切戻し。Redirect反映はPortal受入verifierの実装まで拒否 | SQLと対象世代を読む。設定読戻しは実通信の実証とは別 |
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
 
 ```sh

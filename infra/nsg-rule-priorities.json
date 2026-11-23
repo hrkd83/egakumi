@@ -647,7 +647,7 @@
             "443"
           ]
         },
-        "allow-mgmt-vm-sql-1433-ingress": {
+        "allow-mgmt-vm-sql-ingress": {
           "designRecordId": "N-PE-IN-MGMT-SQL",
           "direction": "Inbound",
           "priority": 225,
@@ -661,10 +661,10 @@
             "ips:sql"
           ],
           "destinationPorts": [
-            "1433"
+            "1433-65535"
           ]
         },
-        "allow-aca-sql-1433-ingress": {
+        "allow-aca-sql-ingress": {
           "designRecordId": "B-PE-07",
           "direction": "Inbound",
           "priority": 226,
@@ -678,7 +678,7 @@
             "ips:sql"
           ],
           "destinationPorts": [
-            "1433"
+            "1433-65535"
           ]
         },
         "allow-aca-acr-https-ingress": {
@@ -856,7 +856,7 @@
             "443"
           ]
         },
-        "allow-sql-1433-egress": {
+        "allow-sql-egress": {
           "designRecordId": "N-MGMT-OUT-SQL",
           "direction": "Outbound",
           "priority": 224,
@@ -870,7 +870,7 @@
             "ips:sql"
           ],
           "destinationPorts": [
-            "1433"
+            "1433-65535"
           ]
         },
         "allow-aca-http-egress": {
@@ -1189,7 +1189,7 @@
             "443"
           ]
         },
-        "allow-sql-1433-egress": {
+        "allow-sql-egress": {
           "designRecordId": "B-ACA-07",
           "direction": "Outbound",
           "priority": 221,
@@ -1203,7 +1203,7 @@
             "ips:sql"
           ],
           "destinationPorts": [
-            "1433"
+            "1433-65535"
           ]
         },
         "allow-acr-https-egress": {
