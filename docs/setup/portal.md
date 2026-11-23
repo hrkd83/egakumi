@@ -41,7 +41,7 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 | --- | --- |
 | `azd provision` | 共通SQLサーバー、Private EndpointとDNS、ネットワーク、ACR、Container Apps環境、Portal用実行ID、初期Container App |
 | `azd up` | 共有基盤・Gateway・Portal初期サンプル・KV自己署名認証証明書を準備 |
-| Portal配備工程 | Portal専用DB、署名鍵と読み取り権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
+| Portal配備工程 | Portal専用DB、Cookie署名・購読profileの秘密と読み取り権限、認証証明書の署名権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
 
 新規構築は`azd up`で共有資源・Gateway・Portal ACA初期サンプルと認証証明書を準備します。`postprovision`が管理VMで実行された発行結果を照合し、公開証明書と固定参照を保護保存します。`postup`は`deploy_applications.py --gateway-only --execute`でGatewayだけを配備します。[専用Portalアプリの手動登録](entra-portal.md)後、以下の個別配備でPortal本体をビルドしてサンプルを更新します。`azd provision`ではGateway本体も未配備です。
 
@@ -55,19 +55,21 @@ DBのSKU・容量・バックアップは標準`config`の`portalAuthentication`
 
 ## Entraと認証の準備
 
-Portalは認証窓口・CMと同じ単一テナントアプリ`AI Gateway Platform`を共用します。[Entra事前準備](02-entra.md)に従い、Webの戻り先へ以下を追加します。
+新しい構築資材では、Portal専用のSingle tenant・Webアプリを使います。初期構築で公開証明書を取得した後、[専用Portalアプリの手動登録](entra-portal.md)に従い、アプリ作成・公開証明書・戻り先・必要な権限を一度の依頼にまとめます。WebのPortalログイン戻り先は以下です。
 
 ```text
 https://<PORTAL_HOST>/api/auth/callback/microsoft
 ```
 
-ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には同じアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。新構成は専用Portalアプリへ公開証明書を登録し、専用UAMIからKV内の非exportable鍵でclient assertionへ署名します。新Portalのclient secretは不要です。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profileを保持し、CMの既存Client ID・secretは維持し、Portal本体は`portal.authentication.tenantId/clientId`と保護certificate stateを使います。本人は検証済みのテナントIDとオブジェクトIDで識別します。
+ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には専用Portalアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。専用UAMIからKV内の非exportable鍵でclient assertionへ署名し、新Portalのclient secretは作成しません。Portal本体は`portal.authentication.tenantId/clientId`と保護certificate stateを使います。本人は検証済みのテナントIDとオブジェクトIDで識別します。
+
+CM用アプリは[従来のEntra事前準備](02-entra.md)で管理します。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profile、CMの既存Client ID・secretは維持します。移行対象の旧Portalが使う共用アプリ・secret参照は新Portalの実受入まで復旧用に保持し、受入後にPortal用途の参照を撤去します。
 
 PortalのSQLには利用者・アカウントの対応・ログインセッションと、暗号化したGraph本人接続のクライアント状態を保存します。Microsoftのアクセストークン・更新トークン・IDトークンは保存しません。Graphのトークン管理はCMが担当し、`X-Core-Connection-Session`はPortalログインとは別の期限・用途です。BFFが確認済みtid/oidと購読に紐付け、ブラウザーへ秘密値を公開しません。
 
 ## 配備の実行
 
-初期構築では、Entra・DNS・秘密ファイルとparamsを準備して、リポジトリ直下で実行します。
+初期構築では、Gatewayが必要とするCM/API用のEntra事前準備、DNS、秘密ファイルとparamsを準備し、リポジトリ直下で実行します。Portal専用Entraアプリの登録は公開証明書の取得後です。
 
 以下は[第4章](04-params.md)で作成した`DEPLOY_PARAMS_FILE`と、第1章で決めた`DEPLOY_ENVIRONMENT`を使います。別のターミナルでは、構築対象の同じ値を設定し直してください。
 
@@ -98,7 +100,7 @@ python3 scripts/deploy_portal.py \
   --execute
 ```
 
-初回は、`azd up`のPortal工程または個別Portal配備で、管理グループObject IDと対象グループ表示名の正規表現だけを入力します。`platformGroupId`は管理画面と検証用購読の管理グループです。表示名は入力・保存せずGraphから取得し、現在の所属、`securityEnabled=true`、正規表現との一致を確認します。無人実行ではこの2項目をparamsへ事前設定してください。
+Portal本体の初回個別配備では、管理グループObject IDと対象グループ表示名の正規表現だけを対話入力します。`platformGroupId`は管理画面と検証用購読の管理グループです。表示名は入力・保存せずGraphから取得し、現在の所属、`securityEnabled=true`、正規表現との一致を確認します。無人実行ではこの2項目をparamsへ事前設定してください。
 
 公開例は`groupNamePattern:""`で、`platformGroupId`を省略しています。準備コマンドが作成した保護paramsへ次の2項目を設定するか、初回対話を使います。`<...>`は用途付きプレースホルダーです。
 
