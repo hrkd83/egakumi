@@ -20,6 +20,7 @@
 | 標準DNS | VNetとFirewallの上流DNSをAzure提供DNSへ固定。Firewall DNS proxyを保持 | DNS変更入力と初期カスタムDNS用NSG規則を設けない。Azure提供DNSのNSG例外を、他のDNSや全宛先53番へ一般化しない |
 | 標準時刻 | APIMの外部NTP、管理VMのOS標準NTPとホスト時刻機構 | 外部NTPはNSGでInternet宛UDP123、Firewallでは各送信元サブネットからUDP123を許可。FW側FQDNとクライアントDNSの回答一致に依存させない |
 | 明示Allowと既定許可 | 通信用途を明示しても、AppGW/ACAに必要な既定規則を保持 | 明示Allowが既定許可より狭いだけでは全体の許可範囲は狭まらない。AppGW Outbound、ACA両方向、PE Outboundの境界をNSG設計に記録する |
+| 共有SQLの接続方式 | Proxy固定、SQL PEへTCP1433で直接接続 | [Proxy採用理由](sql-proxy-decision.md)を参照。PortalのSessionロックと接続層を維持し、Redirectへの移行は見送る |
 | Firewallの記録範囲 | 実際にFirewallを通る通信だけをルールにする | PEへ直接接続するSQL/Key Vault等に、将来の迂回を想定したFW規則を置かない。通信要件は本書で記録する |
 | 引渡し後の企業接続 | ハブ＆スポーク、中央DNS、企業NTP、許可元IPを手動で調整 | 初期構築の固定資材を企業設定の再適用手段としない。再実行は手動変更を戻し得るため、必要になった場合は別途差分と所有範囲を確認する |
 
