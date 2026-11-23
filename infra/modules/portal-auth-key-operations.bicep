@@ -12,7 +12,7 @@ resource operatorRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
     description: 'Read the authentication public key and disable an old key version.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
-    permissions: [{ actions: [], notActions: [], dataActions: ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/write'], notDataActions: [] }]
+    permissions: [{ actions: [], notActions: [], dataActions: ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'], notDataActions: [] }]
   }
 }
 resource access 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

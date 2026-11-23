@@ -150,6 +150,21 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
         self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
 
+    def test_management_key_operator_uses_supported_data_actions_on_the_key_scope(self):
+        resources = self.module('portal-auth-key-operations')['properties']['template']['resources']
+        role = next(item for item in resources if item['type'].endswith('/roleDefinitions'))
+        permission, = role['properties']['permissions']
+        # keys/write is a control-plane Action; the KV update REST API uses update/action.
+        # https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault
+        self.assertEqual(permission['actions'], [])
+        self.assertEqual(permission['dataActions'], [
+            'Microsoft.KeyVault/vaults/keys/read',
+            'Microsoft.KeyVault/vaults/keys/update/action',
+        ])
+        assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
+        self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
+        self.assertEqual(assignment['properties']['principalType'], 'ServicePrincipal')
+
     def test_database_is_separate_and_reuses_existing_server(self):
         module = self.module("portal-database", "portal")
         self.assertNotIn("condition", module)

@@ -52,6 +52,8 @@ ARMがwhat-if結果URLへ付けるopaqueな`c/h/s/t` contextと、Subscription�
 
 これは資材のコンパイルと合成応答によるローカル確認です。新規Azure環境での全体構築、管理VMの実runtime・KV発行、Entra登録・実ログインを実証した結果ではありません。既存環境向け入口のAzure実適用は最終what-ifの確認と判断後に行います。
 
+管理VMの旧鍵版無効化に使うDataActionを`Microsoft.KeyVault/vaults/keys/update/action`へ修正しました。`keys/write`は管理プレーンのActionで、DataActionとして指定するとロール定義が拒否されます。Core生成で鍵単位のreadとupdate/actionだけを要求する回帰を追加し、限定追加・再開とPortal認証資材の関連42試験は全件成功しました。これはローカルの資材・合成試験の結果です。
+
 ## ローカルで確認する契約
 
 | 試験 | 確認する内容 |

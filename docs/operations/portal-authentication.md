@@ -15,6 +15,8 @@
 
 署名用UAMIには対象鍵のmetadata読取り・署名だけを付与します。管理VMは発行・照合と旧鍵版の無効化を行うため、より強い運用権限を持ちます。管理VMの既存HTTPS証明書操作権限は継続します。鍵は非exportableでも署名権限の悪用を防げるわけではないため、VM/UAMIとRBACを保護します。
 
+管理VMの鍵単位のDataActionは`Microsoft.KeyVault/vaults/keys/read`と`Microsoft.KeyVault/vaults/keys/update/action`です。`keys/write`は管理プレーンのActionであり、このKVデータ操作用ロールには指定しません。[Microsoftの操作一覧](https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault)を参照してください。
+
 ## 実行前の照合
 
 同じcheckoutの`DEPLOY_PARAMS_FILE`、azd環境、Coreの`state/latest.json`、`state/portal-auth-certificate.json`を選択してください。別環境のstate・鍵を黙って探索・コピーしません。`.local/`のルートをリンクにせず、ディレクトリは所有者専用、ファイルは所有者専用にします。運用入口はparams・Core所有記録・現物VM/KVを照合します。

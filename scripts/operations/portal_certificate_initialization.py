@@ -181,7 +181,7 @@ def stages(ctx, groups, vm, vault, principal, execution_id, compiler=_compiler):
     permission = {'roleName': 'Portal authentication key operations ' + config['resourceGroupNames']['svc'],
                   'description': 'Read the authentication public key and disable an old key version.', 'type': 'CustomRole',
                   'assignableScopes': [groups['svc']], 'permissions': [{'actions': [], 'notActions': [],
-                  'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/write'], 'notDataActions': []}]}
+                  'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'], 'notDataActions': []}]}
     worker_config = {'vaultName': 'kv-' + stem, 'certificateName': config['portal']['certificate']['certificateName'],
                      'validityMonths': config['portal']['certificate']['validityMonths']}
     script = (ROOT / 'infra/guest/portal-auth-certificate-bootstrap.sh').read_text(encoding='utf-8').replace('\r\n', '\n')

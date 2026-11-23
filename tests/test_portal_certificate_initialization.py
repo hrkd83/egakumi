@@ -312,7 +312,7 @@ class WhatIfTests(unittest.TestCase):
 
     def test_wider_key_permissions_are_rejected(self):
         desired = {'type': 'Microsoft.Authorization/roleDefinitions', 'properties': {'assignableScopes': [self.resource],
-            'permissions': [{'actions': [], 'notActions': [], 'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/write'], 'notDataActions': []}]}}
+            'permissions': [{'actions': [], 'notActions': [], 'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'], 'notDataActions': []}]}}
         body = {'id': self.resource, **copy.deepcopy(desired)}
         self.assertTrue(initial._matches(body, self.resource, desired))
         body['properties']['permissions'][0]['dataActions'].append('Microsoft.KeyVault/vaults/secrets/*')
@@ -320,7 +320,7 @@ class WhatIfTests(unittest.TestCase):
 
     def test_null_empty_permissions_and_missing_principal_type_do_not_relax_real_readback(self):
         role = {'type': 'Microsoft.Authorization/roleDefinitions', 'properties': {'permissions': [{
-            'actions': [], 'notActions': [], 'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/write'], 'notDataActions': []}]}}
+            'actions': [], 'notActions': [], 'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'], 'notDataActions': []}]}}
         body = {'id': self.resource, **copy.deepcopy(role)}
         for field in ('actions', 'notActions', 'notDataActions'):
             body['properties']['permissions'][0][field] = None
