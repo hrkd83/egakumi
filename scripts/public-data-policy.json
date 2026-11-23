@@ -1,6 +1,7 @@
 {
   "version": 1,
   "public_uuids": {
+    "11fb06fb-712d-4ddd-98c7-e71bbd588830": "Public ARM guid() namespace documented at https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/template-functions-string#guid; not an environment identity",
     "1c0163c0-47e6-4577-8991-ea5c82e286e4": "Public Azure built-in RBAC role definition; not a deployment identity",
     "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1": "Public Azure built-in RBAC role definition; not a deployment identity",
     "312a565d-c81f-4fd8-895a-4e21e48d571c": "Public Azure built-in RBAC role definition; not a deployment identity",
@@ -111,6 +112,7 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
         "tests/test_schema_helpers.py",
         "apps/portal/tests/client-assertion.test.ts"
       ]
@@ -129,6 +131,7 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
         "apps/portal/tests/client-assertion.test.ts"
       ]
     },
@@ -147,7 +150,8 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
-        "tests/test_prepare_credential_pool_config.py"
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py"
       ]
     },
     {
@@ -164,6 +168,7 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
         "tests/test_publication_source_generation.py"
       ]
     },

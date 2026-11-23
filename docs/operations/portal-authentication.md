@@ -25,6 +25,25 @@
 python3 -B scripts/operations/portal_auth_certificate.py prepare --config "$DEPLOY_PARAMS_FILE"
 ```
 
+## 初期構築と既存環境への限定追加
+
+新規構築は標準の`azd up`を使います。Coreの`infra/main.bicep`が署名専用ID、鍵運用権限、初期発行Run Commandの3部品を呼び出します。TLS工程による固定版PowerShellの準備、KVのPE/DNS・通信規則・RBAC、監査設定の完了後に、管理VMで`Initialize`を実行します。`postprovision`が公開`.cer`と初期証明書stateを収集します。専用Portal EntraアプリのClient IDはこの段階で不要です。初期発行・取得が失敗した場合は構築完了処理を停止し、Coreの作成記録を保持して生成した秘密入り入力を回収します。
+
+構築済みの環境へ証明書準備を追加する場合は、同じ3部品だけを使う`initialize`を選びます。対象は署名ID、カスタムロール定義、対象鍵scopeのロール割当、管理VM Run Commandの計4資源です。既存Portal・管理VM・KV・所有RG、管理VMのCertificates Officer権限、TLS Run Commandの正常終了とPowerShell準備を読み取りで照合します。KVへの実通信と実runtimeの版は発行workerも検査します。
+
+```sh
+# 既存環境の初期発行計画。3部品のwhat-ifと保護checkpointを作成
+python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$DEPLOY_PARAMS_FILE"
+# 最終差分を確認してから実行
+python3 -B scripts/operations/portal_auth_certificate.py initialize --config "$DEPLOY_PARAMS_FILE" --execute
+```
+
+別のsource checkoutから既存の保護runtimeを使う場合は、`--runtime-root "$PROTECTED_RUNTIME_ROOT"`を両コマンドへ明示します。paramsはそのroot直下の`.local/<environment>/params.local.json`、Core記録は同環境の`state/latest.json`を選びます。入力・stateの探索、コピー、書換えは行いません。新しいcheckpointと証跡・公開証明書は明示したruntimeへ所有者専用権限で保存します。`--runtime-root`は初期発行だけで使用できます。
+
+全3部品のwhat-ifで4資源のCreate/NoChangeだけを照合し、Modify/Delete、他資源への書込み、未展開・重複・未解決診断、違う権限やworkerを拒否します。各初回PUTの直前にもwhat-ifを確認します。Run Command内部の証明書生成はARMの4資源には含まれず、変更予測の成功はKV発行成功を意味しません。Entra登録・Portal認証切替は後続の手動登録と個別配備で行います。
+
+初期発行のcheckpointは`state/portal-auth-initialization.json`です。要求・source・VM principalを固定し、PUT前に配備IDを保存します。応答不明や収集・保存の途中失敗では、同じコマンドを再実行して保存済み配備をGETで確認し、PUTを重ねません。Failed/Canceledは停止してcheckpointを保持します。初期発行では`--resume-failed-worker`と更新用の受入フラグを使えません。失敗配備の再実行は、KV・VMのcheckpointを調査し、回復方法を判断してから行います。保存済み入力やsourceを変更して強制再開しません。
+
 ## 更新の段階
 
 | 操作 | 結果と次の担当 |

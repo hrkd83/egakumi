@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Portal認証証明書の更新準備・手動登録確認・切替・受入・復旧・旧版廃止。既定は計画。"""
+"""Portal認証証明書の初期発行・更新・手動登録確認・切替・受入・復旧・旧版廃止。既定は計画。"""
 from __future__ import annotations
 
 import os
@@ -265,14 +265,26 @@ def perform(ctx, state, action, args):
 
 def main(argv=None):
     parser = SafeParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'confirm-registration', 'switch', 'verify', 'rollback', 'retire'))
+    parser.add_argument('action', choices=('initialize', 'prepare', 'confirm-registration', 'switch', 'verify', 'rollback', 'retire'))
     parser.add_argument('--config', required=True)
+    parser.add_argument('--runtime-root', help='Explicit protected runtime checkout for initialization from isolated source')
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--resume-failed-worker', action='store_true', help='Resume a terminal failed worker using its saved KV request checkpoint')
     for flag in ('entra-registration-confirmed', 'login-verified', 'graph-verified', 'job-verified', 'entra-old-certificate-removed'):
         parser.add_argument('--' + flag, action='store_true')
     args = parser.parse_args(argv)
     try:
+        if args.action == 'initialize':
+            if args.resume_failed_worker or any(getattr(args, flag) for flag in
+                    ('entra_registration_confirmed', 'login_verified', 'graph_verified', 'job_verified', 'entra_old_certificate_removed')):
+                raise OperationError('Initialization resumes recorded deployments; failed work requires checkpoint review')
+            from operations.portal_certificate_initialization import load_context, initialize, locked
+            ctx = load_context(args.config, args.runtime_root)
+            with locked(ctx):
+                print(json.dumps(initialize(ctx, execute=args.execute)))
+            return 0
+        if args.runtime_root is not None:
+            raise OperationError('The explicit runtime root is currently supported only for initialization')
         ctx = OperationContext.load(args.config)
         state = read_certificate_state(ctx.config, ctx.workspace)
         print(json.dumps({'action': args.action, 'phase': state['phase'], 'execute': args.execute,
@@ -287,7 +299,7 @@ def main(argv=None):
     except OperationError as error:
         print('Portal certificate operation stopped: ' + str(error), file=sys.stderr)
         return 1
-    except (ValueError, KeyError, OSError, TypeError, subprocess.SubprocessError):
+    except Exception:
         print('Portal certificate operation stopped; review prerequisites and the saved operation before retrying.', file=sys.stderr)
         return 1
 

@@ -74,7 +74,7 @@ def save_public_certificate(workspace, record: dict, filename='portal-auth-publi
         temporary.unlink(missing_ok=True)
 
 
-def collect_initial_certificate(config, outputs, transport, save_json) -> None:
+def collect_initial_certificate(config, outputs, transport, save_json, *, workspace=None) -> None:
     """初期資材が実行したexact Run Commandの終了を確認し、currentを勝手に置換しません。"""
     vm = outputs['managementVm']['id']
     expected_vm = ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['maint']
@@ -91,7 +91,7 @@ def collect_initial_certificate(config, outputs, transport, save_json) -> None:
             or view.get('executionState') != 'Succeeded' or view.get('exitCode') != 0):
         raise ValueError('Initial authentication certificate issuance has not completed successfully')
     record = parse_worker_output(view.get('output', ''), config)
-    workspace = local_paths(config)
+    workspace = workspace if workspace is not None else local_paths(config)
     path = workspace.checked(workspace.state / 'portal-auth-certificate.json')
     if path.exists():
         check_private_permissions(path)
