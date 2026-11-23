@@ -47,6 +47,7 @@ class SyntheticArm:
         self.objects = {}
         self.unknown_put = None
         self.failure = None
+        self.canonical_roles = False
         self.certificate = record(config)
         tags = {'product': config['productName'], 'environment': config['environmentName']}
         for group in self.groups.values():
@@ -88,6 +89,10 @@ class SyntheticArm:
                 'roleDefinitionId': '/providers/Microsoft.Authorization/roleDefinitions/' + initial.CERTIFICATES_OFFICER}}]}}
         if method == 'GET' and path in self.objects:
             observed = copy.deepcopy(self.objects[path])
+            if self.canonical_roles and observed.get('type') == 'Microsoft.Authorization/roleDefinitions':
+                observed['id'] = initial._canonical_role_id(path)
+            if self.canonical_roles and observed.get('type') == 'Microsoft.Authorization/roleAssignments':
+                observed['properties']['roleDefinitionId'] = initial._canonical_role_id(observed['properties']['roleDefinitionId'])
             if path.endswith('/runCommands/initialize-portal-auth-certificate'):
                 observed['properties']['instanceView'] = {'executionState': 'Succeeded', 'exitCode': 0,
                     'output': material.MARKER + json.dumps(self.certificate)}
@@ -168,6 +173,18 @@ class InitializationTests(unittest.TestCase):
             self.run_initial(True)
         self.assertEqual(len(self.writes()), 3)
         self.assertFalse((self.workspace.state / 'portal-auth-certificate.json').exists())
+
+    def test_canonical_role_readback_resumes_without_resubmitting(self):
+        self.arm.canonical_roles = True
+        self.arm.unknown_put = 'key-operations'
+        with self.assertRaises(OperationError):
+            self.run_initial(True)
+        self.assertEqual(len(self.writes()), 2)
+        result = self.run_initial(True)
+        self.assertEqual(result['phase'], 'collected')
+        self.assertEqual(len(self.writes()), 3)
+        self.assertEqual(len({call[1] for call in self.writes()}), 3)
+        self.assertTrue(all('/resourceGroups/' in call[1] for call in self.arm.calls))
 
     def test_public_save_failure_resumes_collection_without_new_put(self):
         with mock.patch.object(material, 'save_public_certificate', side_effect=OSError('synthetic save failure')):
@@ -309,6 +326,26 @@ class WhatIfTests(unittest.TestCase):
         body['properties'].pop('protectedParameters')
         body['properties']['source']['script'] += '\nother'
         self.assertFalse(initial._matches(body, self.resource, desired))
+
+    def test_canonical_role_reference_keeps_subscription_and_guid_fixed(self):
+        canonical = initial._canonical_role_id(self.desired['properties']['roleDefinitionId'])
+        self.change['after']['properties']['roleDefinitionId'] = canonical
+        self.verify(self.document)
+        for reference in (canonical.replace('11111111-1111-4111-8111-111111111111', '44444444-4444-4444-8444-444444444444'),
+                          canonical.replace('22222222-2222-4222-8222-222222222222', '44444444-4444-4444-8444-444444444444')):
+            self.change['after']['properties']['roleDefinitionId'] = reference
+            with self.assertRaises(OperationError):
+                self.verify(self.document)
+
+    def test_canonical_role_definition_keeps_exact_assignable_scope(self):
+        resource = self.desired['properties']['roleDefinitionId']
+        group = resource.split('/providers/', 1)[0]
+        desired = {'type': 'Microsoft.Authorization/roleDefinitions', 'properties': {'assignableScopes': [group],
+            'permissions': [{'actions': [], 'notActions': [], 'dataActions': ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/update/action'], 'notDataActions': []}]}}
+        body = {'id': initial._canonical_role_id(resource), **copy.deepcopy(desired)}
+        self.assertTrue(initial._matches(body, resource, desired))
+        body['properties']['assignableScopes'].append(group + '-other')
+        self.assertFalse(initial._matches(body, resource, desired))
 
     def test_wider_key_permissions_are_rejected(self):
         desired = {'type': 'Microsoft.Authorization/roleDefinitions', 'properties': {'assignableScopes': [self.resource],

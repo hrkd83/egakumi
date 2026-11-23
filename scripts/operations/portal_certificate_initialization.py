@@ -218,9 +218,31 @@ def stages(ctx, groups, vm, vault, principal, execution_id, compiler=_compiler):
     return result
 
 
+def _canonical_role_id(resource_id):
+    """RGで宣言した同じロールのSubscription正規形だけを算出します。"""
+    if not isinstance(resource_id, str):
+        return None
+    match = re.fullmatch(r'(/subscriptions/([^/]+))/resourceGroups/[^/]+/providers/Microsoft\.Authorization/roleDefinitions/([^/]+)', resource_id, re.IGNORECASE)
+    if match is None:
+        return None
+    try:
+        if str(uuid.UUID(match[2])).casefold() != match[2].casefold() or str(uuid.UUID(match[3])).casefold() != match[3].casefold():
+            return None
+    except ValueError:
+        return None
+    return match[1] + '/providers/Microsoft.Authorization/roleDefinitions/' + match[3]
+
+
 def _matches(body, resource_id, desired, *, what_if=False):
     """ARMの空配列省略と付加metadataを許し、要求した権限・workerは照合します。"""
-    if not isinstance(body, dict) or str(body.get('id', '')).casefold() != resource_id.casefold():
+    if not isinstance(body, dict):
+        return False
+    accepted_ids = {resource_id.casefold()}
+    if desired['type'].casefold() == 'microsoft.authorization/roledefinitions':
+        canonical = _canonical_role_id(resource_id)
+        if canonical is not None:
+            accepted_ids.add(canonical.casefold())
+    if str(body.get('id', '')).casefold() not in accepted_ids:
         return False
     def contains(actual, expected, field=None):
         if isinstance(expected, dict):
@@ -242,7 +264,10 @@ def _matches(body, resource_id, desired, *, what_if=False):
                 return False
         if field == 'script' and isinstance(actual, str):
             return actual.replace('\r\n', '\n') == expected.replace('\r\n', '\n')
-        if field in ('id', 'type', 'roleDefinitionId', 'principalId') and isinstance(actual, str):
+        if field == 'roleDefinitionId' and isinstance(actual, str) and isinstance(expected, str):
+            canonical = _canonical_role_id(expected)
+            return actual.casefold() == expected.casefold() or canonical is not None and actual.casefold() == canonical.casefold()
+        if field in ('id', 'type', 'principalId') and isinstance(actual, str):
             return actual.casefold() == expected.casefold()
         return actual == expected
     if desired['type'].endswith('/runCommands'):
@@ -252,6 +277,21 @@ def _matches(body, resource_id, desired, *, what_if=False):
                 or set(properties.get('source', {})) != {'script'}):
             return False
     return contains(body, desired)
+
+
+def _initialized_resource(ctx, resource, api, desired):
+    """ロールだけは所有RGへのGETで正規形を照合し、共通の対象制限は変えません。"""
+    if desired['type'].casefold() != 'microsoft.authorization/roledefinitions':
+        return ctx.verify_resource(resource, api, desired['type'])
+    group = _group(ctx, 'svc')
+    if (not resource.casefold().startswith((group + '/providers/Microsoft.Authorization/roleDefinitions/').casefold())
+            or _canonical_role_id(resource) is None):
+        raise OperationError('The initialization role is outside its verified group')
+    response = ctx.request('GET', resource, api)
+    body = response.get('body')
+    if response.get('statusCode') != 200 or not _matches(body, resource, desired):
+        raise OperationError('The initialized role differs from its exact scope and permissions')
+    return body
 
 
 def verify_what_if(document, resources):
@@ -362,7 +402,7 @@ def _deployment(ctx, stage, receipt, path, *, sleep=time.sleep, clock=time.monot
         if status == 'Succeeded':
             for resource, desired in stage['resources'].items():
                 api = COMPUTE_API if desired['type'].endswith('/runCommands') else ('2023-01-31' if desired['type'].endswith('/userAssignedIdentities') else '2022-04-01')
-                actual = ctx.verify_resource(resource, api, desired['type'])
+                actual = _initialized_resource(ctx, resource, api, desired)
                 if not _matches(actual, resource, desired):
                     raise OperationError('An initialized resource differs from the recorded request')
             receipt['deployments'][stage['name']]['status'] = 'succeeded'

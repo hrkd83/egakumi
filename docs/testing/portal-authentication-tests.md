@@ -54,6 +54,8 @@ ARMがwhat-if結果URLへ付けるopaqueな`c/h/s/t` contextと、Subscription�
 
 管理VMの旧鍵版無効化に使うDataActionを`Microsoft.KeyVault/vaults/keys/update/action`へ修正しました。`keys/write`は管理プレーンのActionで、DataActionとして指定するとロール定義が拒否されます。Core生成で鍵単位のreadとupdate/actionだけを要求する回帰を追加し、限定追加・再開とPortal認証資材の関連42試験は全件成功しました。これはローカルの資材・合成試験の結果です。
 
+RGで宣言したロール定義と割当先のロールIDがSubscription直下の正規形で返る場合にも対応しました。GETの接続先は所有RGに限定したまま、同じSubscription・ロールGUIDと要求済みのscope・権限を照合します。別Subscription・GUID・広いassignable scopeの拒否と、受理済み配備を再送せず正規形の読戻しから再開する回帰を追加し、関連45試験は全件成功しました。
+
 ## ローカルで確認する契約
 
 | 試験 | 確認する内容 |
