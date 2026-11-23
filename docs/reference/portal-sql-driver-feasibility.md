@@ -1,71 +1,86 @@
-# PortalのODBC18接続方式の成立確認と提案
+# PortalのSQL接続方式：標準APIの調査と比較
 
-状態：公開API・配布ソースと現行Portalの静的調査を実施済み。具体部品の選定判断前。native追加対応、Linux/Node24でのビルド、合成SQL接続試作、Azure配備・Redirectの実証は未実施です。Portalの接続コードとDockerfileは変更していません。
+状態：公式仕様、現行Portal、固定版の公開配布ソースを調査済み。標準ODBC構成のLinuxコンテナ確認はビルド環境の失敗で未完了。ACAでのManaged Identity認証、実SQL接続、PE Redirect、性能比較は未実証です。正式Portal・Azure・SQL policyは変更していません。独自native改修の未完成試作は保護領域へ退避し、正式採用していません。
 
-## 確認結果
+## 調査の結論と現時点の推奨
 
-現行Portalは`@azure/identity`で新規接続時にSQL用トークンを取得し、Tediousへ渡しています。Kyselyの標準`MssqlDialect`はTediousのConnection・Request・型定義に依存しているため、ODBC用ライブラリを同じ設定へ渡すだけでは置き換えられません。Portal本体、schema初期化、Graph照合等のSQL利用は共通の`auth-database.ts`を使います。
+現時点では、稼働中のProxy構成を維持することを推奨します。理由は「RedirectやManaged Identityに対応する標準ライブラリが存在しない」ためではなく、現在のPortalを標準の接続機構へ置き換えて、既存の接続固定・認証・型・終了処理を維持できる構成をまだ受入していないためです。独自C++追加を必須・推奨とした前提は撤回します。
 
-候補の公開npm配布物は、配布物のSHA-512 integrityを照合してからソースと型定義を確認しました。
+ODBC18はPE RedirectとManaged Identity認証を標準で扱います。NodeラッパーからODBC自身へトークン取得を任せる候補があります。一方で、現在のKyselyの標準MSSQL DriverはTedious専用であり、ODBCラッパーの単純な依存入替ではPortal全体を移行できません。C++を改修しない候補でも、Kysely連携・開発用認証・接続寿命の設計と回帰が必要です。
 
-| 対象 | 静的に確認した内容 | 現時点の判定 |
+これは方式判断のための調査報告です。Proxy維持へ構築資材を変更した結果でも、Redirectが不可能と証明した結果でもありません。SQL/NSG資材の変更はローカル統合済みですが、Azureへは未適用です。方式の再評価を実環境の切替へ先行させます。
+
+## トークンの位置付け
+
+現在のPortalは、新規SQL接続時にAzure SDKからSQL用Entraトークンを取得してTediousへ渡します。ACAではManaged Identity、管理用のローカル実行ではAzure CLIの資格情報を使用します。利用者のPortalログインとKV証明書によるclient assertionとは別の認証です。
+
+「Portalが取得済みトークンを渡す」は現在の実装方式であり、Redirectの要件ではありません。ODBCの標準`Authentication=ActiveDirectoryMsi`を使えば、ドライバー自身がManaged Identityのトークンを取得します。この方式にSQLパスワードやEntra client secretを追加する必要はありません。
+
+## 標準ライブラリで確認できたこと
+
+| 対象 | 確認できた事実 | 確認の限界 |
 | --- | --- | --- |
-| `msnodesqlv8` 6.2.2 | Node >=22、Node-APIを使用。公開`ConnectDescription`は`conn_str`と`conn_timeout`。接続前処理には取得済みaccess tokenを設定するAPIがない | 追加対応が必要。Node24は宣言範囲内だが、対象コンテナでの実動作は未検証 |
-| `odbc` 2.6.0（node-odbc） | Node >=20。公開`ConnectionParameters`は接続文字列と2種類のtimeout。接続前の属性設定はtimeout用で、取得済みaccess tokenの受渡しAPIがない | 追加対応が必要。単純な依存入替では要件を満たさない |
-| ODBC18のtoken認証 | Microsoftの`SQL_COPT_SS_ACCESS_TOKEN`は接続前のポインター属性。tokenと`UID`・`PWD`・`Trusted_Connection`・`Authentication`の併用はエラー | tokenを接続文字列へ追加する代替は使えない |
-| `msnodesqlv8`のpool | native ODBC環境が`SQL_CP_ONE_PER_HENV`を設定する | Node側poolだけの交換では、新規物理接続・主体固定を確認できない |
-| 現行Kysely接続 | 標準MSSQL DriverがTediousのRequest、パラメーター型、transaction操作を使う | ODBC用Driver層と接続・型・transactionの回帰が必要 |
+| Microsoft ODBC18 | 公式にPE Redirect対応。標準の`ActiveDirectoryMsi`とUAMI指定で認証できる仕様 | 今回のACA・UAMI・SQLでの認証とRedirectは未実証 |
+| Tedious 19.2.1（現行）、20.4.1（最新版のソース確認） | routing処理と案内先への再接続がある。現在のPortalはSQL用トークンと論理hostnameのTLS検証設定を渡している | 汎用routing処理の存在だけでPE Redirect成立とは判定できない |
+| msnodesqlv8 6.2.2 | 接続文字列をODBCへ渡す標準APIがある。取得済みaccess tokenを接続前属性へ設定する公開APIは確認できない | 外部token注入APIの不足は、ODBC自身のMSI認証が使えないことを意味しない |
+| node-odbc 2.6.0、公開fork 2.7.1 | 接続文字列とtimeoutの標準APIがある。確認した型宣言・接続処理に外部token属性を渡す入口はない | これらも標準MSI認証の接続文字列を利用する候補。今回の採用実績ではない |
+| node-mssql 12.8.1のmsnodesqlv8経路 | configオブジェクトの`connectionString`で指定したraw ODBC文字列を標準ラッパーへ渡せる | string overloadは別のparse経路。既定driver名はODBC18ではなく、自動生成時は`config.driver`への明示設定とKyselyへの別の連携が必要 |
+| Kysely 0.29.7（現行）、0.29.9（最新版）の標準MSSQL Driver | TediousのConnection・Request・型・transaction APIを使用する | ODBCラッパーとの標準の直接差し替え入口ではない |
 
-「ODBC18本体がEntra認証を扱える」ことと、「Node接続部品が取得済みトークンを渡せる」ことは別の条件です。上記2候補を現状のまま選定したとは扱いません。
+MicrosoftのPE文書は、対応driver一覧以外からの接続をProxy経由と明記しています。したがって、「TediousがPE Redirectを実証できていない」と「SQL policyをRedirectにするとTediousが接続不能になる」は同じ判断ではありません。現段階で、接続不能になる具体的な原因は特定していません。
 
-## 推奨する試作案
+ODBC18の標準MSI認証について、公式ACA REST仕様は`IDENTITY_ENDPOINT`、`IDENTITY_HEADER`、`X-IDENTITY-HEADER`、API版`2019-08-01`を定義しています。Microsoft配布のODBC 18.5.1.1と18.7.1.1を公開メタデータのSHA256と照合して静的確認し、これらの文字列が含まれることを確認しました。これは対応の可能性を示す補助情報であり、UAMIの正しい選択・token取得・SQL認証が成功した実証には置き換えません。
 
-SQL Server向けの型・結果・transaction機能を持つ`msnodesqlv8`を第一候補とし、次の追加対応を含む独立試作を提案します。公開依存をそのまま使う案より保守範囲が増えるため、この方式の判断を受けてからnative実装へ進みます。
+## 公開Kyselyアダプターもそのままでは置き換えられない
 
-1. 固定版のnative接続入口へ取得済みtokenを渡す項目を追加します。Node側で取得したtokenを、ODBCの`ACCESSTOKEN`形式にして接続前に設定します。tokenを接続文字列・ログ・例外本文へ含めません。Microsoftの保持条件は「connection handleがallocatedの間」です。`SQLDisconnect`やcallback完了ではbufferを解放せず、`SQLFreeHandle(SQL_HANDLE_DBC)`の完了後にzero/freeする寿命管理を扱います。
-2. native ODBCの内部poolを無効にし、PortalのTarn poolだけで接続を所有します。専用コンテナの実効`odbcinst.ini`の`[ODBC]`セクションで`Pooling=No`を起動前に設定し、library側でもNULL HENVへの`SQL_CP_OFF`をHENV割当前に設定・確認します。各poolをDB・SQL用主体・接続先へ固定し、物理接続の作成ごとにAzure SDKからtokenを取得します。複数のpoolや異なるSQL主体の接続が再利用されないことを確認します。
-3. KyselyのMSSQL構文・Adapter・Introspectorを維持し、ODBC用Driverを用意します。標準QueryCompilerの`@1`・`@2`をそのまま使わず、compiler subclass等でplaceholderを`?`へ生成変更し、parametersの順序を保持します。SQL文字列の事後置換や値の連結では対応しません。結果はKyselyの`rows`と`numAffectedRows: bigint`の契約へ対応させます。transactionだけでなく、外部HTTP処理を含む`connection().execute()`全体のSession applockも同じ物理接続へ固定します。
-4. Azure接続はSQL論理hostname、暗号化、証明書検証を維持します。証明書の検証名を固定し、Redirect先の実宛先がSQL PE限定のNSG・直接経路で成立することを実受入します。ローカルSQL認証は従来の開発用loopback構成だけで扱います。
-5. 固定版・整合性検証・再現可能なnativeビルド・差分を管理します。Node24/Debian12用の最小コンテナで先に試し、成立後にPortal本体とschema/reconciliation Jobへ同じ接続層を組み込みます。取得先が増える場合はbuild通信の変更を別途提示します。
+`kysely-typeorm` 0.3.0にはMSSQL対応があり、placeholderを`@0`から生成する処理、結果行と影響行数の変換、QueryRunnerを使う接続層があります。TypeORMのSQL Server driverには標準のdriver-module差し替え設定があり、`extra.connectionString`からconfigオブジェクトへraw ODBC文字列を渡す候補があります。node-mssqlのstring overloadを同等の伝達経路とは扱いません。これらを組み合わせる候補が存在するため、「既存アダプターが一切ない」とは判断しません。
 
-この案には依存のnative追加対応と独自Kysely Driverの保守が含まれます。上流へ自動送信する処理や、固定secret・SQLパスワードへの認証変更は含めません。node-odbcを代替にする場合もtoken用native追加が必要で、SQL Serverの型・結果の対応を比較して判断します。
+ただし、固定版TypeORM 0.3.28のSQL Server QueryRunnerでは、`connect()`は物理接続を取得しません。トランザクション外のqueryはpoolへRequestを作ります。現在のPortalの[同期処理](../../apps/portal/lib/subscription-sync/repository.ts)は、`connection().execute()`全体で同じ物理接続を保持し、Session所有のapplockを取得・外部HTTP処理・解放まで維持します。QueryRunnerという同じオブジェクトを使うだけでは、この契約を満たしません。
 
-native変更は、固定版の`lib/index.d.ts`、`lib/sql-client.js`・`lib/connection.js`の接続引数、`cpp/src/odbc/odbc_connection.cpp`と対応headerの接続前属性・buffer寿命、`cpp/src/odbc/odbc_environment.cpp`のpool設定、および引数を渡すNode-API層を対象にします。改変差分を管理し、依存取得後・nativeビルド前に適用する方法を第一案とします。配布物全体をPortalソースへ複製せず、版・配布物のintegrity・改変差分・ビルド条件を固定して保守します。
+この公開アダプターを使う案でも、同一物理接続の確保、失敗時の破棄、lock解放、型・UTC・精度、SQLエラー、影響行数、既存transactionの回帰が必要です。HTTP処理までDB transactionへ入れて接続固定を代用する変更も、未判断のまま採用しません。TypeORM等の追加依存も含めて保守範囲を評価します。
 
-試作はNode24/Debian12の独立Linuxコンテナとし、C++・make・unixODBC開発環境・固定ODBC18をコンテナ内へ用意します。build contextは独立した公開用試作ソースだけに限定し、checkout全体、`.local/`・`.azure/`、実入力を含めません。基底イメージ・依存・取得先と改変差分を固定します。
+最新版TypeORM 1.1.3のSQL Server QueryRunnerも、同じく非transactionのqueryはpoolへRequestを作り、物理接続を取得しないconnect処理でした。最新版へ更新するだけでこの契約を満たすとは確認できません。また、調査したKysely-TypeORMアダプターのpeer条件はTypeORM 0.3系で、1.1.3をそのまま組み合わせられる宣言ではありません。最新版への依存更新を実施した結果ではありません。
 
-6.2.2は`prebuilds/*.node`を同梱し、installに`node-gyp-build`を使います。source patchの適用やnpm install成功だけでは改変版のロードを証明できません。from-source rebuildを行い、実ロードされたaddonの改変capabilityと保持・解放イベントを確認します。
+## 選択肢と保守負担
 
-## 独立試作で確認する範囲
+| 案 | Portalの経路と認証 | 追加負担と条件 |
+| --- | --- | --- |
+| 現行Proxyを維持 | Tedious＋Kysely、SDKのSQL token、MI・TLS・PEを維持 | Portalの接続層変更は不要。Redirectによる性能改善を見送る。現時点の推奨 |
+| SQL policyはRedirect、Portalは既存driverを維持 | 公式仕様上、PortalはProxy経由となる候補。対応ODBC clientはRedirectを利用する候補 | Portal自身のRedirect目標は達成しない。全clientの実経路とNSG、運用を限定受入する |
+| 標準ODBC MSI＋既存Nodeラッパーへ移行 | ODBC自身がtokenを取得。driver本体・C++の独自改修を避ける候補 | ACA/UAMI、Kysely連携、pool・接続固定、App/Jobs、型・transactionの回帰。現在のローカルAzure CLI token経路の代替設計も必要 |
+| 外部token属性の独自native追加 | 現行SDK token方式をODBCへ持ち込む | C++ binding、tokenのDBC寿命・zero/free、失敗処理、native build、pool、Kysely層を継続保守。現時点では推奨しない |
 
-| 項目 | 判定に必要な確認 |
-| --- | --- |
-| token API | 合成tokenで接続前属性、禁止した認証設定との併用拒否、ログ非露出を確認。DBCがallocatedの間はbufferを保持し、DBC解放→buffer zero/freeの順序をinstrumentationで確認。実SQL認証成功とは区別 |
-| native後始末 | successful openだけでなく、failed-open、timeout、放棄open、GC遅延を確認。未接続・failed-openのclose callbackがsuccessでも、実際のDBC解放・drain成功とは判定しない |
-| Linux/Node24 | 固定ODBC18とnative部品を対象コンテナでfrom-source rebuildし、実ロードaddonの改変capabilityを確認。未改変prebuiltのロードを成功扱いにしない |
-| native pool | 実効unixODBC設定と、HENV割当前の`SQL_CP_OFF`を両方確認。Node側poolだけの設定で物理接続非再利用を判定しない |
-| SQL型と結果 | Unicode、NULL、Boolean、Buffer、BigInt、DateTime2のUTC・精度、影響行数、SQLエラー番号、parameter bindingを確認 |
-| 接続制御 | 同一物理接続でtransaction・分離レベル・Session applock・commit/rollbackと、外部HTTP処理を含む接続固定を確認。timeout・切断・rollback/lock解放失敗の接続をpoolへ返さず、destroy完了まで確認 |
-| アプリ互換性 | Better Auth、既存セッション・キー管理・業務SQL、schema/reconciliation Jobの回帰 |
-| Azure/Redirect | 別の実受入。MI/Azure CLI token、TLS、Proxy下の対応Portal版、新規物理接続のRedirect先・PE内宛先、切戻しを確認 |
+Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portalログインの証明書方式を失うことはありません。主な差はSQL Gateway経由の通信経路です。MicrosoftはRedirectを遅延とスループットの改善のために推奨していますが、今回のPortalの負荷で得られる改善幅は未計測です。共有policyをProxyに維持すれば、Broker・管理client等のODBC側の改善も見送ります。
 
-標準ライブラリの型宣言、nativeモジュールのロード、合成tokenの属性設定だけで、全条件の成立と判断しません。native接続部品の小さな試作結果を示してから、本体の改修範囲を確定します。
+## 実行確認の結果と未確認
 
-## 旧版へ戻す方法
+標準msnodesqlv8とODBC18をNode24/Debian12の独立コンテナで確認しようとしました。build contextは公開用source-only資材に限定し、実入力・checkout全体・私有領域を含めていません。実行時はAzure/実SQL通信を遮断する計画でした。
 
-Driver更新前に、Portal本体とschema/reconciliation Jobの固定イメージ、認証設定、SQL主体・接続先を保護した配備記録へまとめます。試作・Driver更新ではSQL schemaを変更しません。Proxy受入中の復旧は、処理中のSQL要求を終えてpoolとJobを停止し、保存した旧イメージ・設定へ戻して受入します。副作用を伴うSQL要求は自動再送しません。
+ビルド中にdpkgが読み取り専用ファイルシステムで失敗し、その後Docker daemonとの通信がEOFとなりました。標準ライブラリのインストール・ロード・合成接続診断を完了していません。この環境失敗を、ODBC・MSI・Redirectの非対応結果へ数えません。共有Dockerの再起動やディスク修復は行っていません。
 
-Redirect切替後の復旧は、SQL側の限定復旧手順でProxyへの復帰を確認してから旧Portal版へ戻します。旧NSG規則の復旧はSQL側の確認順序に従います。通常Core再配備で暗黙にProxyへ戻したり、Driver失敗をsecret・SQLパスワードへのfallbackで回避したりしません。
+独自native試作も、コード準備と依存lock生成までで、build・load・合成試験は未実施です。正式Portalへ組み込まず、未完成のまま保護退避しています。
 
-## 配備とSQL切替の順序
+## Redirectを引き続き評価する場合の最小確認
 
-工程3とSQL資材のソース統合はローカルで完了しています。Driverは別変更として選定・実装・検証します。対応PortalイメージをSQL Proxyのまま実受入し、pool・Jobの停止と新規接続の確認を含むruntime verifierを整備した後、限定CLIによるSQL切替を別判断で実施します。既定がRedirectのCore資材を未対応Portalの既存環境へ先行適用しません。
+方式を採用する前に、次の具体的な受入計画を提示します。実環境の設定変更を自動で進める指示ではありません。
 
-証明書発行とSQL接続方式は異なる処理です。既存環境で証明書準備だけを先行する適用案では、SQLのpolicyとNSGを変更しない範囲を確認します。[工程3のAzure適用計画](portal-stage3-azure-acceptance-plan.md)と[SQL切替計画](sql-redirect-migration-plan.md)で、適用対象と受入順を照合します。
+1. 実行基盤を利用できる状態で、未改変Nodeラッパーと固定ODBC18のロードを確認する。
+2. ACAの標準MSI認証で、意図したUAMIを選択してSQL Proxyへ新規物理接続する。token本文を出力・保存せず、TLS検証を維持する。
+3. Kysely連携案を選び、同じ物理接続でSession applockの取得から外部HTTP・解放までを保持できること、timeout・切断・解放失敗時にその接続を再利用しないことを確認する。
+4. Portal本体とschema/reconciliation Job、既存認証・キー管理・同期処理の回帰を行う。Azure CLIを使う開発経路の変更がある場合は先に明示する。
+5. 別判断の限定SQL切替で、policyの読戻しだけでなく、新しい物理接続の案内先・実socket宛先・portとPE限定経路を確認する。同じ条件のProxyと性能比較する。
 
-## 根拠
+標準の認証・接続機能で成立しない、既存Portalの契約を大きく変更する必要がある、または保守費用に見合う改善を示せない場合はProxy維持を選びます。業務SQLの自動再送、secret・SQLパスワードへのfallback、TLS検証の無効化で成立させません。
 
-- [Microsoft ODBCのEntra認証と接続属性](https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory?view=sql-server-ver17)
-- [msnodesqlv8 6.2.2の公開配布情報](https://registry.npmjs.org/msnodesqlv8/6.2.2)：`lib/index.d.ts`、`cpp/src/odbc/odbc_connection.cpp`、`cpp/src/odbc/odbc_environment.cpp`
-- [odbc 2.6.0の公開配布情報](https://registry.npmjs.org/odbc/2.6.0)：`lib/odbc.d.ts`、`src/odbc.cpp`
-- 現行ソース：[auth-database.ts](../../apps/portal/lib/auth-database.ts)、[Dockerfile](../../apps/portal/Dockerfile)
+証明書によるPortalログインへの移行はSQL接続policyとは別の作業です。[工程3のAzure適用計画](portal-stage3-azure-acceptance-plan.md)でSQL/NSG等を含まない変更範囲を具体化できれば、SQL driverの選定と分けて進める案を提示できます。
+
+## 根拠と参照先
+
+- [Azure SQL Private EndpointのRedirect仕様](https://learn.microsoft.com/en-us/azure/azure-sql/database/private-endpoint-overview?view=azuresql#use-redirect-connection-policy-with-private-endpoints)
+- [ODBCのMicrosoft Entra認証・標準MSI・access token属性](https://learn.microsoft.com/en-us/sql/connect/odbc/using-azure-active-directory?view=sql-server-ver17)
+- [ACA Managed IdentityのREST仕様](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity#rest-endpoint-reference)
+- [msnodesqlv8 6.2.2](https://registry.npmjs.org/msnodesqlv8/6.2.2)、[node-odbc 2.6.0](https://registry.npmjs.org/odbc/2.6.0)、[ODBC fork 2.7.1](https://registry.npmjs.org/@lukaselmer%2Fodbc/2.7.1)：型宣言と接続前処理を調査
+- [node-mssql 12.8.1](https://registry.npmjs.org/mssql/12.8.1)：msnodesqlv8用ConnectionPoolの接続文字列伝達を調査
+- [Kysely-TypeORM 0.3.0](https://registry.npmjs.org/kysely-typeorm/0.3.0)、[TypeORM 0.3.28](https://registry.npmjs.org/typeorm/0.3.28)：MSSQL QueryCompiler、Driver、SqlServerDriver、SqlServerQueryRunnerを調査
+- 最新版の追加確認：[Kysely 0.29.9](https://registry.npmjs.org/kysely/0.29.9)、[Tedious 20.4.1](https://registry.npmjs.org/tedious/20.4.1)、[TypeORM 1.1.3](https://registry.npmjs.org/typeorm/1.1.3)。配布integrityを照合し、MSSQL Driver、routing、SQL Server QueryRunnerの対象箇所を調査
+- 現行Portal：[SQL認証と接続設定](../../apps/portal/lib/auth-database.ts)、[Session applock](../../apps/portal/lib/subscription-sync/repository.ts)、[SQL切替計画](sql-redirect-migration-plan.md)
