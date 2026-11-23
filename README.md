@@ -16,9 +16,9 @@ Egakumiは、AIを企業・組織の「働き手」として迎え、既存の�
 
 Application Gateway・Azure Firewall・API Management・Private Endpointで保護したFoundryを中心に、AIモデル・PII・文書解析とCMによる本人OAuth接続の正式APIを公開するAzure基盤です。Bicepと`azd up/down`で構築・撤去し、外部サービス向けの汎用protocol中継も備えます。
 
-`azd up`は共通基盤とモデル、証明書・入口を準備した後、Gateway、Portalの順に配備します。GatewayではAPI・認証ポリシーとCM・credentials DB・認証窓口を、Portalではアプリ・専用DB・SQL初期化・公開ヘルス確認まで実行します。
+`azd up`は共有基盤・モデル・Gateway・Portal ACA初期サンプルと、KV内のPortal認証鍵・公開証明書を準備します。公開証明書を取得して[専用Portal Entraアプリを手動登録](docs/setup/entra-portal.md)した後、Portal本体を独立してビルド・配備します。
 
-初期構築は、前提・paramsを準備して`azd up`を実行します。標準API正本を常用で解決し、初回Portalでは管理グループObject IDと表示名正規表現の2項目を同じコマンドの中で対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
+初期構築は、前提・paramsを準備して`azd up`を実行し、公開証明書取得→手動Entra登録→Portal本体配備へ進みます。標準API正本を常用で解決し、初回Portalでは管理グループObject IDと表示名正規表現の2項目をPortal本体の個別配備コマンドで対話入力できます。GitHub ActionsやPC上のDockerは必要ありません。GatewayとPortalの[個別配備コマンド](docs/operations.md#同じ環境を更新する)も、更新・再試行に引き続き使えます。
 
 APIM名は`apim-<environment>-<product>-<apimInstanceId>`です。公開例の`<AUTO_GENERATED_APIM_INSTANCE_ID>`は初回自動生成のマーカーです。第1章の準備コマンドが6文字の英小文字・数字へ置換してローカルparamsへ保存し、第2章で同じ値からEntraのCM戻り先を確定します。構築・更新・途中再開では識別子を保持し、撤去後の新規構築は[新しいAPIM識別子の準備](docs/operations.md#撤去後に新しく構築する)から進めます。
 
@@ -32,7 +32,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 
 ## 新規クローンから構築する
 
-1〜5で前提・設定を準備し、6の`azd up`で基盤・Gateway・Portalを構築して、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。Azure Public DNSの公開ゾーン保持やドメイン購入の費用は、Coreとは別に確認します。
+1〜5で前提・設定を準備し、6の`azd up`で基盤・GatewayとPortal初期サンプルを構築し、Entra登録後に9でPortal本体を配備して、10の受入確認へ進みます。7は企業ネットワークを使う場合の構成手順、8・9はアプリの個別更新・再試行の入口です。企業接続を後から整える必要がある場合は、先に`azd provision`で基盤だけを作り、7の完了後に8・9を順に実行できます。Azure Public DNSの公開ゾーン保持やドメイン購入の費用は、Coreとは別に確認します。
 
 | 順番 | 手順 | この段階で用意するもの |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ HTTP・WebSocket・MCP・Realtime・CMを含む業務APIへ、同じURLのEntra 
 | 3 | [公開DNSの準備](docs/setup/03-public-dns.md) | Azure Public DNSの公開ゾーン・NS委任・DNS用マネージドID |
 | 4 | [paramsの準備・リファレンス](docs/setup/04-params.md) | 導入先のID・公開名・IP・アプリ登録を記入した保護ローカルparams |
 | 5 | [configの調整・リファレンス](docs/setup/05-config.md) | テスト／本番の標準構成、SKU・モデル・保護機能の選択 |
-| 6 | [azd upでの構築](docs/setup/06-deploy.md) | 認証・事前確認・基盤・公開DNS反映・Gateway・Portalの連続配備 |
+| 6 | [azd upでの構築](docs/setup/06-deploy.md) | 事前確認・基盤・公開DNS・Gateway・Portal初期サンプルと認証証明書の準備 |
 | 7 | [ハブ＆スポーク対応（任意）](docs/setup/07-hub-spoke.md) | ピアリング、中央DNS・Private DNS、出口・ルート伝搬の調整と再確認 |
 | 8 | [Gatewayの個別配備](#8-gatewayを配備する) | API・ポリシー・製品・購読、CM、credentials DB、認証窓口・SQL初期化・照合ジョブ |
 | 9 | [Portalの個別配備](#9-portalを配備する) | Next.jsイメージ、Portal専用DB・SQL初期化、アプリ、ヘルス監視・認証callback用WAF設定 |

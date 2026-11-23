@@ -1,5 +1,7 @@
 # 5. configの調整・リファレンス
 
+Portal認証証明書の初期設定は`portal.certificate`で、KV自己署名・非exportable RSA、既定12か月・60日前更新準備です。Portal Client IDは初期構築後に手動登録してから入力します。[構築順序](entra-portal.md)と[更新運用](../operations/portal-authentication.md)を参照してください。
+
 前：[4. params](04-params.md) · [README](../../README.md) · 次：[6. azd upでの構築](06-deploy.md)
 
 ## このページのゴール

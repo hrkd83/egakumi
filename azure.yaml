@@ -9,7 +9,7 @@ infra:
   provider: bicep
   path: infra
   module: main
-# provisionで共通基盤と証明書・入口を準備し、upの最後にGateway→Portalを配備します。
+# provisionで共通基盤・Portal初期サンプル・認証公開証明書を準備し、upの最後にGatewayを配備します。
 # 各アプリの専用コマンドは、個別更新・再試行でも独立して使えます。
 workflows:
   up:
@@ -32,12 +32,12 @@ hooks:
   postprovision:
     shell: sh
     run: python3 scripts/deployment/lifecycle.py postprovision
-  # 基盤の実配置を記録し入口が整ってから、同じparams・stateで両アプリを順に配備する。
+  # Portal本体は専用Entraアプリの手動登録後、deploy_portal.pyで独立して配備する。
   postup:
-    # Portalの初回グループ設定を既存の配備コマンドから対話入力できます。
+    # Gateway配備の対話入力を端末へ接続します。
     interactive: true
     shell: sh
-    run: python3 scripts/deploy_applications.py --execute
+    run: python3 scripts/deploy_applications.py --gateway-only --execute
   # 本体削除前: 保護/保持と対象IDを照合し、モデル・APIM・Gateway/PortalのCA・ジョブ・CAE・管理VMを回収する。
   # 自動管理RGのIDを変更前に保存し、全CA/ジョブ→CAE→ACAサブネットの解放後にRG削除へ進む。
   predown:

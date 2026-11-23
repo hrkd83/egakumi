@@ -279,3 +279,22 @@ PASS項目内の持越しとして、`DEP-005`の未登録Subscriptionでの初�
 | 構築テストの受入判断・未解決事項・確認者と日時 | 未実施 |
 
 基盤の作成成功だけでGateway・Portalの配備完了にしません。構築成功、業務動作、撤去完了をそれぞれ記録し、未実施・保持待ち・残存費用を残したまま全件完了としません。
+
+## Portal証明書方式の追加構築試験
+
+状態：予定・ローカル検証中。Azure上の新規構築E2Eは未実施です。
+
+初期構築は共有資源・Gateway・Portal ACA初期サンプル・KV認証証明書の準備まで、Portal本体は公開証明書の手動Entra登録後に独立して配備します。正式な順序は[初期構築](../setup/06-deploy.md)、[Entra登録](../setup/entra-portal.md)、[Portal配備](../setup/portal.md)を参照します。
+
+| 境界 | 確認 |
+| --- | --- |
+| 初期入力 | Portal Client ID未確定を許容。Gateway/CMの従来事前準備は満たす |
+| 資源責任 | 共用CAE、KV、ACR、SQL、管理VM、初期ACAはCoreが所有。Portal本体配備は既存基盤を参照 |
+| 初期証明書 | 構築資材が専用workerの管理VM配置・実行・成功確認・公開証明書の保護保存まで担当 |
+| 登録待ち | ACA初期サンプルを維持。Portal管理機能の受入済みとは表示しない |
+| 本体配備 | 専用Entra登録結果と保護stateが揃った時だけビルド・DB初期化・認証・ジョブへ進む |
+| 再実行 | current証明書の照合・再利用。本体配備済みACAを初期サンプルへ戻さない |
+| 失敗と再開 | 未完了・応答不明を成功へ読み替えず、記録したexact対象から再開。別環境stateを探索しない |
+| 公開境界 | `.local/`と`.azure/`をGit、コンテナcontext、アーカイブ、CI成果物へ混入させない |
+
+証明書方式の具体的なローカル試験と実受入項目は[Portal認証試験](portal-authentication-tests.md)にまとめます。API用OAuth・全Try・SQL Driver変更はそれぞれの設計・受入境界で検証します。

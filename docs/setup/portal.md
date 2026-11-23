@@ -40,10 +40,10 @@ scripts/deploy_portal.py     手元とCIから共通で使う配備コマンド
 | 工程 | 作成・更新するもの |
 | --- | --- |
 | `azd provision` | 共通SQLサーバー、Private EndpointとDNS、ネットワーク、ACR、Container Apps環境、Portal用実行ID、初期Container App |
-| `azd up` | 共通基盤の構築と入口設定に続き、Gateway、Portalの順にアプリを配備 |
+| `azd up` | 共有基盤・Gateway・Portal初期サンプル・KV自己署名認証証明書を準備 |
 | Portal配備工程 | Portal専用DB、署名鍵と読み取り権限、SQL初期化ジョブ、認証・APIキー台帳と実行用SQL権限、管理グループと標準API正本から生成する製品承認・検証用APIM購読の作成・台帳登録、APIMの購読管理権限、Portalイメージ、既存Container Appの本体 |
 
-新規構築は `azd up` で基盤からGateway・Portalまでを順に実行します。`postprovision` が基盤の実出力と公開入口を整え、`postup` が `scripts/deploy_applications.py --execute` を通じて既存のGateway・Portal配備コマンドを順番に呼びます。`azd provision` は共通基盤までを対象にします。
+新規構築は`azd up`で共有資源・Gateway・Portal ACA初期サンプルと認証証明書を準備します。`postprovision`が管理VMで実行された発行結果を照合し、公開証明書と固定参照を保護保存します。`postup`は`deploy_applications.py --gateway-only --execute`でGatewayだけを配備します。[専用Portalアプリの手動登録](entra-portal.md)後、以下の個別配備でPortal本体をビルドしてサンプルを更新します。`azd provision`ではGateway本体も未配備です。
 
 **Portal専用DBはPortal配備資材で管理します。構築済み基盤のPortalだけを更新・再試行するときは、`deploy_portal.py --execute` を使えます。** 共通SQLサーバー`sql-<環境>-<製品>`を再利用し、その中へ`sqldb-<環境>-<製品>-portal`を作成します。CM用の`...-credentials` DBとは分離します。
 
@@ -61,7 +61,7 @@ Portalは認証窓口・CMと同じ単一テナントアプリ`AI Gateway Platfo
 https://<PORTAL_HOST>/api/auth/callback/microsoft
 ```
 
-ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には同じアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。既存の有効なclient secretをサーバー側で共用します。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profileを保持し、今回の公開形変更だけでアプリClient IDや認証方式を切り替えません。本人は検証済みのテナントIDとオブジェクトIDで識別します。
+ログイン時に要求するスコープは`openid profile email`です。グループ所属照会には同じアプリのアプリケーション権限`GroupMember.Read.All`と`User.ReadBasic.All`、および管理者同意を準備します。新構成は専用Portalアプリへ公開証明書を登録し、専用UAMIからKV内の非exportable鍵でclient assertionへ署名します。新Portalのclient secretは不要です。標準Graphの登録値はparamsの`credentialProviders.graphDelegated.clientId`・`clientSecretFile`に置き、共通表示名・scope・poolはconfigに置きます。内部の論理名`graph-delegated`、秘密参照名と選択profileを保持し、CMの既存Client ID・secretは維持し、Portal本体は`portal.authentication.tenantId/clientId`と保護certificate stateを使います。本人は検証済みのテナントIDとオブジェクトIDで識別します。
 
 PortalのSQLには利用者・アカウントの対応・ログインセッションと、暗号化したGraph本人接続のクライアント状態を保存します。Microsoftのアクセストークン・更新トークン・IDトークンは保存しません。Graphのトークン管理はCMが担当し、`X-Core-Connection-Session`はPortalログインとは別の期限・用途です。BFFが確認済みtid/oidと購読に紐付け、ブラウザーへ秘密値を公開しません。
 
@@ -78,7 +78,7 @@ azd up --environment "$DEPLOY_ENVIRONMENT"
 
 標準APIは正本から常用で解決し、公開`apiDefinitions`・`publishApis`入力は廃止しました。旧入力は空配列やfalseでも拒否します。基盤だけを準備するときは`azd provision`を使い、アプリの計画／反映は個別コマンドの`--execute`で区別します。既存paramsは自動変換せず、[移行条件](04-params.md#既存入力の移行を確認する)を先に確認します。
 
-Gateway配備に失敗した場合はPortalへ進まず、Portal配備に失敗した場合も `azd up` は失敗として終了します。作成済みの基盤・Gatewayを保持して原因を直し、必要な個別コマンドから再試行できます。全体の成否は実行したコマンドの終了コードで確認し、古い成功結果JSONを流用しません。
+Gateway配備に失敗した場合は初期構築が失敗します。Portal本体はEntra登録後の独立した工程で、失敗時はその個別コマンドの終了結果を確認します。作成済みの基盤・Gatewayを保持して原因を直し、必要な個別コマンドから再試行できます。全体の成否は実行したコマンドの終了コードで確認し、古い成功結果JSONを流用しません。
 
 以下はPortalだけを配備・再配備する手順です。前提はコア基盤とGatewayの構築完了、Azure CLIへのログイン、Python 3.11以上、Bicep CLIです。手元のDockerや公開ACRは不要です。既存管理VMから、コア基盤で用意した通信経路を使ってイメージを作成します。
 

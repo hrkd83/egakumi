@@ -1,5 +1,7 @@
 # Portalを修正・更新・切り戻す
 
+新構成のPortal本体は、初期構築→公開証明書取得→[手動Entra登録](../setup/entra-portal.md)の後に独立して配備します。鍵版・thumbprintは保護stateで固定します。[認証証明書の更新・復旧](portal-authentication.md)は本体・Graphジョブを同じ固定イメージで切り替える運用です。
+
 [共通手順](common.md) · [運用テスト](../testing/operations-tests.md)
 
 対象は既存Portalの画面・文言・ガイド・入力や結果表示の修正である。新しい管理機能やDB変更を、この手順の試験のために追加しない。手順の机上確認と、実環境への更新・受入は別に記録する。

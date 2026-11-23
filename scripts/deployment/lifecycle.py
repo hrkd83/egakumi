@@ -1810,10 +1810,12 @@ def postprovision(config: dict) -> None:
     # 仕上げが失敗しても、作成済み資源の正確な撤去記録を失わない順番にする。
     try:
         _save_deployment_state(config, outputs)
+        from .helpers.portal_auth_certificate import collect_initial_certificate
+        transport = ArmTransport(config)
+        collect_initial_certificate(config, outputs, transport, protected_json)
         dns_receipt_path = local_paths(config, ROOT).state / "public-dns.json"
         # 以前の成功記録を、今回の仕上げに成功した記録として残さない。
         dns_receipt_path.unlink(missing_ok=True)
-        transport = ArmTransport(config)
         serial_password = _read_initial_serial_deployment_input(config)
         if serial_password and response.get("properties", {}).get("provisioningState") != "Succeeded":
             raise DeploymentError("The initial Core deployment success could not be verified; retain its pending credential")

@@ -1,5 +1,7 @@
 # Portalのローカル認証テスト
 
+証明書方式の新構成では、専用の開発用Entraアプリと登録済み公開証明書、対応する保護certificate stateを先に準備します。ローカル署名だけAzureCliCredentialを使い、Azure側KV tenantを指定します。KV Private Endpointへ到達できる端末・DNS/RBACが必要です。認証Entra tenantとAzure tenantを混同しません。以下の共用secret手順は切替前の旧構成用です。[新構成の登録](../setup/entra-portal.md)と[認証試験](portal-authentication-tests.md)を参照してください。
+
 Microsoft Entra IDへのログイン、ローカルSQL Serverへの本人・セッション保存、Tool GatewayのGraph本人接続を確認します。正式な[Entra事前準備](../setup/02-entra.md)には公開URLだけを記載し、以下のlocalhost設定は開発用だけに追加します。
 
 ## 1. 開発用Entraの戻り先

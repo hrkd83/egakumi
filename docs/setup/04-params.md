@@ -1,5 +1,7 @@
 # 4. paramsの準備・リファレンス
 
+Portal初期構築では`portal.authentication`を省略できます。管理VMでKV自己署名証明書を準備した後、Entra担当が専用アプリを作成・公開証明書を登録し、`portal.authentication.tenantId/clientId`を保護paramsへ設定します。鍵版とthumbprintは同じ環境の保護stateから読みます。[Portal Entra登録](entra-portal.md)を参照してください。
+
 前：[3. 公開DNSの準備](03-public-dns.md) · [README](../../README.md) · 次：[5. configの調整](05-config.md)
 
 ## このページのゴール

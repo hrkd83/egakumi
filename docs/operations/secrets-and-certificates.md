@@ -1,5 +1,7 @@
 # EntraのsecretとTLS証明書を更新する
 
+Portal専用EntraアプリはKV内の非exportable自己署名鍵によるclient assertionを使います。HTTPS証明書・CM client secret・Cookie署名鍵とは別用途です。初期生成は構築資材が管理VMで実行し、更新は[Portal認証の運用](portal-authentication.md)の専用スクリプトを使います。
+
 [共通手順](common.md) · [Entra準備](../setup/02-entra.md) · [運用テスト](../testing/operations-tests.md)
 
 構築済み環境の通常更新に使う。共通手順で同じparams・state・資源IDを照合する。

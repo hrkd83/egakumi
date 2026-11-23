@@ -27,6 +27,8 @@ param sqlServer string
 param databaseSettings object
 param vaultName string
 param credentialProviderName string
+param authentication object = {}
+param authIdentity object
 param clientId string
 param tenantId string
 param publicOrigin string
@@ -44,6 +46,12 @@ param profileSecret string = ''
 @description('SQL初期化成功後の2回目の配備だけでtrueにします。')
 param deployApplication bool = false
 param imageDigest string
+
+module authKeyAccess 'auth-key-access.bicep' = if (!empty(authentication)) {
+  name: '${stem}-portal-auth-key-access'
+  params: { vaultName: vaultName, keyName: split(authentication.keyId, '/')[4], authIdentity: authIdentity }
+}
+var authRuntimeIdentity = empty(authentication) ? {} : authIdentity
 
 module gatewayEgress 'gateway-egress.bicep' = {
   name: '${stem}-portal-gateway-egress'
@@ -70,6 +78,7 @@ module database 'database.bicep' = {
     vaultName: vaultName
     runtimeIdentity: runtimeIdentity
     credentialProviderName: credentialProviderName
+    certificateAuthentication: !empty(authentication)
     signingSecret: signingSecret
     profileSecret: profileSecret
   }
@@ -116,6 +125,8 @@ module application 'application.bicep' = if (deployApplication) {
     publicOrigin: publicOrigin
     gatewayOrigin: gatewayOrigin
     clientSecretUri: database.outputs.clientSecretUri
+    authentication: authentication
+    authIdentity: authRuntimeIdentity
     signingSecretUri: database.outputs.signingSecretUri
     expectedEgressIp: expectedEgressIp
     apimResourceId: apiKeys.outputs.apimResourceId
@@ -139,6 +150,8 @@ module groupReconciliation 'group-reconciliation-job.bicep' = if (deployApplicat
     clientId: clientId
     tenantId: tenantId
     clientSecretUri: database.outputs.clientSecretUri
+    authentication: authentication
+    authIdentity: authRuntimeIdentity
   }
 }
 
@@ -185,6 +198,8 @@ output authentication object = {
   databaseId: database.outputs.databaseId
   runtimeIdentity: runtimeIdentity
   schemaIdentity: schemaIdentity
+  certificateAuthentication: authentication
+  authIdentity: authRuntimeIdentity
   credentialProviderName: credentialProviderName
   tenantId: tenantId
   clientId: clientId

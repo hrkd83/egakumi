@@ -1,6 +1,8 @@
 import "server-only";
 
 import { z } from "zod";
+import { ClientAssertionCredential } from "@azure/identity";
+import { createClientAssertion } from "../client-assertion.ts";
 import type { AuthEnvironment } from "../auth-environment.ts";
 import { ApiKeyError, type ApiKeyActor } from "./contracts.ts";
 import { requestApiKeyJson, type ApiKeyHttpOptions } from "./http-client.ts";
@@ -21,7 +23,7 @@ export interface ApiKeyDirectory extends ApiKeyMembership {
 }
 
 /** グループ規則だけをSQLから読み、所属結果を永続キャッシュしないための依存です。 */
-export type GraphApiKeyOptions = ApiKeyHttpOptions & { now?: () => number; readPolicy?: () => Promise<ApiKeyGroupPolicy> };
+export type GraphApiKeyOptions = ApiKeyHttpOptions & { now?: () => number; readPolicy?: () => Promise<ApiKeyGroupPolicy>; getToken?: () => Promise<{ token: string; expiresOnTimestamp: number } | null> };
 
 const tokenSchema = z.object({ access_token: z.string().min(1), expires_in: z.number().int().min(60).max(86_400), token_type: z.string().regex(/^bearer$/i) });
 const membershipSchema = z.object({ value: z.array(z.uuid()).max(20) });
@@ -33,21 +35,28 @@ const directoryPageSchema = z.object({ value: z.array(directoryGroupSchema).max(
  * @remarks checkMemberGroupsは入れ子の所属も判定します。所属結果はキャッシュしません。
  */
 export class GraphApiKeyMembership implements ApiKeyDirectory {
-  private settings: Pick<AuthEnvironment, "microsoftClientId" | "microsoftClientSecret" | "microsoftTenantId">;
+  private settings: Pick<AuthEnvironment, "microsoftClientId" | "microsoftClientSecret" | "microsoftTenantId" | "certificate">;
+  private assertionToken?: GraphApiKeyOptions["getToken"];
   private options: ApiKeyHttpOptions;
   private now: () => number;
   private cachedToken: { value: string; expiresAt: number } | undefined;
   private pendingToken: Promise<string> | undefined;
   private readPolicy: (() => Promise<ApiKeyGroupPolicy>) | undefined;
 
-  constructor(settings: Pick<AuthEnvironment, "microsoftClientId" | "microsoftClientSecret" | "microsoftTenantId">, options: GraphApiKeyOptions = {}) {
-    if (!z.uuid().safeParse(settings.microsoftClientId).success || !z.uuid().safeParse(settings.microsoftTenantId).success || !settings.microsoftClientSecret) {
+  constructor(settings: Pick<AuthEnvironment, "microsoftClientId" | "microsoftClientSecret" | "microsoftTenantId" | "certificate">, options: GraphApiKeyOptions = {}) {
+    if (!z.uuid().safeParse(settings.microsoftClientId).success || !z.uuid().safeParse(settings.microsoftTenantId).success
+      || (!settings.microsoftClientSecret && !settings.certificate) || (settings.microsoftClientSecret && settings.certificate)) {
       throw new ApiKeyError("ConfigurationUnavailable", 503);
     }
     this.settings = settings;
     this.options = options;
     this.now = options.now ?? Date.now;
     this.readPolicy = options.readPolicy;
+    if (settings.certificate) {
+      const credential = new ClientAssertionCredential(settings.microsoftTenantId, settings.microsoftClientId,
+        createClientAssertion(settings.microsoftTenantId, settings.microsoftClientId, settings.certificate), { retryOptions: { maxRetries: 0 } });
+      this.assertionToken = options.getToken ?? (() => credential.getToken("https://graph.microsoft.com/.default"));
+    }
   }
 
   /** 短い有効期限余裕を残し、同時要求によるトークン取得の重複だけをまとめます。 */
@@ -61,12 +70,20 @@ export class GraphApiKeyMembership implements ApiKeyDirectory {
 
   /** 固定テナントへclient credentials要求を送り、秘密値を永続化しません。 */
   private async requestToken(): Promise<string> {
+    if (this.assertionToken) {
+      try {
+        const result = await this.assertionToken();
+        if (!result?.token || result.expiresOnTimestamp <= this.now() + 60_000) throw new Error();
+        this.cachedToken = { value: result.token, expiresAt: result.expiresOnTimestamp };
+        return result.token;
+      } catch { throw new ApiKeyError("AuthorizationUnavailable", 503); }
+    }
     const result = await requestApiKeyJson(`https://login.microsoftonline.com/${this.settings.microsoftTenantId}/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_id: this.settings.microsoftClientId,
-        client_secret: this.settings.microsoftClientSecret,
+        client_secret: this.settings.microsoftClientSecret!,
         grant_type: "client_credentials",
         scope: "https://graph.microsoft.com/.default",
       }).toString(),

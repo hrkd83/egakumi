@@ -21,6 +21,7 @@ from deployment.helpers.configuration import load_configuration
 from deployment.helpers.paths import REPOSITORY, local_paths
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
 from deployment.helpers.portal_authentication import prepare_secret
+from deployment.helpers.portal_auth_certificate import deployment_authentication
 from deployment.helpers.portal_resources import resource_names
 from deployment.helpers.portal_image import source_bundle, build_image, reusable_image, read_build_receipt
 from deployment.helpers.portal_gateway import configure_portal_probe, configure_portal_callback_waf
@@ -99,11 +100,15 @@ def deployment_inputs(config, state, image_digest=None):
         raise ValueError('Shared SQL server is missing from the completed foundation')
     maintenance = management_maintenance_inputs(config, portal.get('managementMaintenance'))
     management_client_inventory(config, state)
+    authentication = config['portal'].get('authentication', {})
+    if not authentication or not all(authentication.get(key) for key in ('tenantId', 'clientId', 'keyId', 'certificateThumbprint')):
+        raise ValueError('Complete the dedicated Portal Entra registration and load the issued certificate state before deploying')
     profile_name = config['portalAuthentication']['credentialProviderName']
-    profiles = [value for value in config['credentialProviders'] if value['name'] == profile_name]
-    if len(profiles) != 1:
-        raise ValueError('Portal requires one configured Entra credential profile')
-    profile = profiles[0]
+    if not authentication['keyId'].startswith('https://' + f'kv-{stem}.vault.azure.net/keys/'):
+        raise ValueError('Portal authentication key must belong to the selected Core vault')
+    auth_identity = portal.get('authIdentity')
+    if not isinstance(auth_identity, dict) or str(auth_identity.get('id', '')).lower() != (identities + f'id-{stem}-portal-auth').lower():
+        raise ValueError('The dedicated authentication identity is missing from the initial foundation')
     return {
         'stem': stem, 'location': config['location'],
         'tags': {**config.get('tags', {}), 'product': config['productName'], 'environment': config['environmentName'], 'azd-env-name': config['environmentName']},
@@ -119,7 +124,8 @@ def deployment_inputs(config, state, image_digest=None):
         'managementSqlClientId': maintenance.get('sqlClientId', ''),
         'managementRoleDefinitionIds': maintenance['roleDefinitionIds'],
         'databaseSettings': config['portalAuthentication'], 'vaultName': f'kv-{stem}',
-        'credentialProviderName': profile_name, 'clientId': profile['clientId'], 'tenantId': profile['oauthTenantId'],
+        'credentialProviderName': profile_name, 'clientId': authentication['clientId'], 'tenantId': authentication['tenantId'],
+        'authentication': authentication, 'authIdentity': auth_identity,
         'publicOrigin': 'https://' + config['portal']['publicHostName'],
         # Core出力との一致を確認した公開ドメインを使い、共通購読キーは配備しません。
         'gatewayOrigin': gateway_origin,
@@ -132,7 +138,7 @@ def deployment_inputs(config, state, image_digest=None):
 
 def verify_foundation(config, values, transport):
     """今回使う共通リソースだけを読み、現在のマネージドID情報を取得する。"""
-    for key in ('runtimeIdentity', 'schemaIdentity'):
+    for key in ('runtimeIdentity', 'schemaIdentity', 'authIdentity'):
         expected_id = values[key]['id']
         body = checked(transport, 'GET', expected_id + '?api-version=2023-01-31', label='Read Portal identity')
         properties = body.get('properties', {})
@@ -165,8 +171,9 @@ def verify_foundation(config, values, transport):
         product = checked(transport, 'GET', product_path + '?api-version=2024-05-01', label='Read approved API key product')
         if str(product.get('id', '')).lower() != product_path.lower() or not product.get('properties', {}).get('subscriptionRequired'):
             raise ValueError('APIキー管理には配備済みの購読必須Productが必要です。Gateway配備を確認してください。')
-    secret = prefix + 'Microsoft.KeyVault/vaults/' + values['vaultName'] + '/secrets/core-credential-' + values['credentialProviderName']
-    checked(transport, 'GET', secret + '?api-version=2023-07-01', label='Read shared Entra secret metadata')
+    if not values.get('authentication'):
+        secret = prefix + 'Microsoft.KeyVault/vaults/' + values['vaultName'] + '/secrets/core-credential-' + values['credentialProviderName']
+        checked(transport, 'GET', secret + '?api-version=2023-07-01', label='Read shared Entra secret metadata')
 
 
 def signing_secret(config, values, transport, root=REPOSITORY):
@@ -332,6 +339,7 @@ def main(argv=None):
     parser.add_argument('--state-file', type=Path)
     parser.add_argument('--deployment-name', help='Completed Core subscription deployment, when using CI or no local state file')
     parser.add_argument('--image-digest', help='Use an already registered portal image instead of building it')
+    parser.add_argument('--certificate-slot', choices=('current', 'candidate', 'previous'), default='current')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     config = load_configuration(args.config)
@@ -348,9 +356,12 @@ def main(argv=None):
             {key: value['value'] for key, value in result.get('properties', {}).get('outputs', {}).items()})
     else:
         state = json.loads(Path(args.state_file).read_text(encoding='utf-8'))
+    resolved_authentication = deployment_authentication(config, workspace, args.certificate_slot)
+    config['portal']['authentication'] = resolved_authentication
     values = deployment_inputs(config, state, args.image_digest)
     if args.execute:
         config = prepare_api_key_groups(args.config, config)
+        config['portal']['authentication'] = resolved_authentication
         values = deployment_inputs(config, state, args.image_digest)
     data, source_hash = (None, None) if args.image_digest else source_bundle()
     build_record = workspace.state / 'portal-build.json'
@@ -386,6 +397,7 @@ def main(argv=None):
     gateway_readiness = deploy_release(config, values, template, transport,
                                       record=upgrade_journal(config, 'portal-http80'), state=state)
     result = {'status': 'deployed', 'database': plan['database'], 'application': plan['application'],
+        'authentication': values['authentication'],
         'sqlInitialized': True, 'applicationReady': True, 'publicHealthVerified': True,
         'imageDigest': values['imageDigest'], 'publicUrl': values['publicOrigin'], 'azdUpExecuted': False,
         'gatewayProbe': gateway_readiness['probe'], 'callbackWaf': gateway_readiness['callbackWaf'],

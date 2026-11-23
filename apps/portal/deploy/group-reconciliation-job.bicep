@@ -12,6 +12,8 @@ param database string
 param clientId string
 param tenantId string
 param clientSecretUri string
+param authentication object = {}
+param authIdentity object = {}
 
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = { name: environmentName }
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
@@ -20,7 +22,7 @@ resource reconciliation 'Microsoft.App/jobs@2025-01-01' = {
   name: 'caj-${stem}-psync'
   location: location
   tags: tags
-  identity: { type: 'UserAssigned', userAssignedIdentities: { '${runtimeIdentity.id}': {} } }
+  identity: { type: 'UserAssigned', userAssignedIdentities: union({ '${runtimeIdentity.id}': {} }, empty(authIdentity) ? {} : { '${authIdentity.id}': {} }) }
   properties: {
     environmentId: environment.id
     workloadProfileName: 'Consumption'
@@ -30,23 +32,27 @@ resource reconciliation 'Microsoft.App/jobs@2025-01-01' = {
       replicaRetryLimit: 0
       scheduleTriggerConfig: { cronExpression: '*/15 * * * *', replicaCompletionCount: 1, parallelism: 1 }
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
-      secrets: [{ name: 'microsoft-client-secret', keyVaultUrl: clientSecretUri, identity: runtimeIdentity.id }]
+      secrets: empty(authentication) ? [{ name: 'microsoft-client-secret', keyVaultUrl: clientSecretUri, identity: runtimeIdentity.id }] : []
     }
     template: { containers: [{
       name: 'reconcile'
       image: '${registry.properties.loginServer}/portal@${imageDigest}'
       command: ['node', '--conditions=react-server', '--experimental-strip-types', 'scripts/reconcile-api-key-groups.ts']
-      env: [
+      env: concat([
         { name: 'NODE_ENV', value: 'production' }
         { name: 'MICROSOFT_CLIENT_ID', value: clientId }
         { name: 'MICROSOFT_TENANT_ID', value: tenantId }
-        { name: 'MICROSOFT_CLIENT_SECRET', secretRef: 'microsoft-client-secret' }
         { name: 'PORTAL_SQL_SERVER', value: sqlServer }
         { name: 'PORTAL_SQL_DATABASE', value: database }
         { name: 'PORTAL_SQL_AUTH', value: 'managed-identity' }
         { name: 'AZURE_TENANT_ID', value: tenant().tenantId }
         { name: 'AZURE_CLIENT_ID', value: runtimeIdentity.clientId }
-      ]
+      ], empty(authentication) ? [{ name: 'MICROSOFT_CLIENT_SECRET', secretRef: 'microsoft-client-secret' }] : [
+        { name: 'PORTAL_AUTH_KEY_ID', value: authentication.keyId }
+        { name: 'PORTAL_AUTH_CERTIFICATE_THUMBPRINT', value: authentication.certificateThumbprint }
+        { name: 'PORTAL_AUTH_SIGNING_MODE', value: 'managed-identity' }
+        { name: 'PORTAL_AUTH_IDENTITY_CLIENT_ID', value: authIdentity.clientId }
+      ])
       resources: { cpu: json('0.5'), memory: '1Gi' }
     }] }
   }

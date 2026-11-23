@@ -1,13 +1,14 @@
 import "server-only";
 
 import { z } from "zod";
+import { readCertificateAuthentication, type CertificateAuthentication } from "./client-assertion.ts";
 
 /** ログインを受け付けるURLと、サーバーだけで使うEntra・Cookie署名の設定です。 */
 const authEnvironmentSchema = z.object({
   baseURL: z.url(),
   secret: z.string().min(32),
   microsoftClientId: z.uuid().transform((value) => value.toLowerCase()),
-  microsoftClientSecret: z.string().min(1),
+  microsoftClientSecret: z.string().min(1).optional(),
   microsoftTenantId: z.uuid().transform((value) => value.toLowerCase()),
 });
 
@@ -26,7 +27,7 @@ const sqlEnvironmentSchema = z.object({
 });
 
 /** 検証済みのログイン設定です。秘密値はブラウザーへ渡しません。 */
-export type AuthEnvironment = z.infer<typeof authEnvironmentSchema>;
+export type AuthEnvironment = z.infer<typeof authEnvironmentSchema> & { certificate?: CertificateAuthentication };
 /** 接続方式を検証済みのSQL設定です。 */
 export type SqlEnvironment = z.infer<typeof sqlEnvironmentSchema>;
 
@@ -45,6 +46,7 @@ function parseEnvironment<T>(schema: z.ZodType<T>, values: unknown, label: strin
  * @returns 許可した公開URL、署名鍵、Entraアプリの設定。
  */
 export function getAuthEnvironment(): AuthEnvironment {
+  const certificate = readCertificateAuthentication();
   const settings = parseEnvironment(authEnvironmentSchema, {
     baseURL: process.env.BETTER_AUTH_URL,
     secret: process.env.BETTER_AUTH_SECRET,
@@ -52,13 +54,16 @@ export function getAuthEnvironment(): AuthEnvironment {
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET,
     microsoftTenantId: process.env.MICROSOFT_TENANT_ID,
   }, "Portal authentication");
+  if ((!certificate && !settings.microsoftClientSecret) || (certificate && settings.microsoftClientSecret)) {
+    throw new Error("Portal authentication requires exactly one client credential method");
+  }
   const url = new URL(settings.baseURL);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.username || url.password || url.search || url.hash || url.pathname !== "/"
       || (url.protocol !== "https:" && !(url.protocol === "http:" && local && process.env.NODE_ENV !== "production"))) {
     throw new Error("BETTER_AUTH_URL must be an HTTPS origin, or a local HTTP origin during development");
   }
-  return { ...settings, baseURL: url.origin };
+  return { ...settings, certificate, baseURL: url.origin };
 }
 
 /**
