@@ -38,6 +38,24 @@ APIM側のこの確認はテキスト上の仮適用です。WAF側には関連c
 
 既存環境でCoreを再適用する場合、既存のTLS・公開DNS・通信整備等のhookも対象になります。適用判断には、テンプレートの差分とhookの変更を両方含めます。新規構築の`azd up`と、稼働中環境への再適用を同じ操作として扱いません。
 
+### 既存環境の初期証明書準備：限定追加の案
+
+この追加案は判断前で、専用の実行入口は未実装です。新規構築はCoreとhookを使う既定の手順を維持します。構築済みの環境では、Coreと同じ次の3部品だけをIncrementalで追加する入口を整備する案です。
+
+| 部品 | 既存資材と処理 |
+| --- | --- |
+| 署名専用ID | [auth-identity.bicep](../../apps/portal/deploy/auth-identity.bicep)をID用RGへ配備 |
+| 鍵運用権限 | [portal-auth-key-operations.bicep](../../infra/modules/portal-auth-key-operations.bicep)をKVのRGへ配備。ロール定義と対象鍵scopeの割当を照合 |
+| 初期発行worker | [portal-auth-certificate.bicep](../../infra/modules/portal-auth-certificate.bicep)を管理VMのRGへ配備。専用workerがKV内で秘密鍵と自己署名証明書を生成 |
+
+この入口は既存PortalのContainer Appへ書き込まず、初期サンプルへの置換や認証切替を行いません。SQL、APIM、WAF、TLS、DNS、基盤ネットワークの再配備を呼びません。管理VMの証明書操作権限、既存KV PE・DNSと、固定版PowerShellの準備を前提として照合します。実行時のworkerもPowerShellの版を検査し、条件不足のまま発行を始めません。準備不足を認めた場合は、その準備に必要な差分を先に提示します。
+
+初期発行の運用入口を既存の[証明書運用CLI](../../scripts/operations/portal_auth_certificate.py)へ追加する案です。対象paramsと同じ環境の保護stateを照合し、別のsource checkoutから実行する場合だけ保護runtimeのrootを明示します。入力・stateを探索したりコピーしたりしません。既定では計画を表示し、実行操作で3部品の対象、変更予測、保存した実行intentを確認して順に配備します。応答不明時に変更要求を重ねず、今回のRun Commandの終了と公開証明書を照合して再開します。
+
+発行後は既存の収集処理で公開`.cer`と初期証明書stateを指定した保護runtimeへ保存します。秘密鍵・PFX・backing secretは取得しません。専用Entraアプリの手動登録、Portal本体の個別配備、実受入は後続の工程です。
+
+適用前の変更予測では、署名ID・ロール定義・ロール割当・発行Run Command以外への変更がないことと、未解決の診断がないことを確認します。Run Commandの変更予測は、VM内部でのKV証明書生成や実通信の成功を証明しません。限定追加の方針判断、実行入口の実装とローカル検証、実適用の差分提示と判断を順に行います。
+
 ## 適用前に提示・確認するもの
 
 1. 利用者が明示した対象環境の保護params、同じcheckoutのazd環境とCore stateを選択し、所有・権限・保存先を照合します。別checkoutや別環境の入力を探索・コピーして採用しません。
