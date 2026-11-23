@@ -2,6 +2,8 @@
 
 状態：工程3の下記ローカル確認を実施済み。実環境の試験は予定項目であり、成功記録ではありません。工程4のAPI用OAuthとTry接続は別設計・別受入です。[実施計画](../reference/portal-stages-3-4-plan.md)と[手動Entra登録](../setup/entra-portal.md)を参照します。
 
+SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定しました。既存Tedious/Kysely・SQL用MI認証を維持し、証明書認証の受入を独立して進めます。SQL/NSG取消資材の統合は未完了です。以下の172試験は旧Redirect案のローカル統合時の履歴であり、取消後の資材を確認した結果ではありません。
+
 ## ローカル確認結果
 
 | 対象 | 結果 |
@@ -43,7 +45,7 @@
 | 6 | 手動Entra登録 | 専用アプリ作成・公開証明書・固定callback・権限・同意を一度の依頼にまとめて照合。新Portal secretを作らない |
 | 7 | Portal本体の個別配備 | stateと登録結果を使用し、イメージ・DB初期化・権限・ジョブを準備。基盤を作り直さない |
 
-既存NSG/FWのKV PE向けHTTPS443、Entra HTTPS443、管理VMツール配布先を実効経路とともに確認します。EntraからKVへの通信はありません。自己署名の発行に外部CA通信はありません。SQL Proxy/Redirectの変更は並行計画の別要因として試験します。
+既存NSG/FWのKV PE向けHTTPS443、Entra HTTPS443、管理VMツール配布先を実効経路とともに確認します。EntraからKVへの通信はありません。自己署名の発行に外部CA通信はありません。SQLはProxyを維持し、取消後のpolicy・SQL向けNSGのTCP1433と証明書工程の整合性を確認します。Redirectへの変更とdriver試作の受入は実施対象から外します。
 
 ## 認証・更新・復旧試験
 

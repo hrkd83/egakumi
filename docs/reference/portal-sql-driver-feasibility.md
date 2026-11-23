@@ -1,14 +1,14 @@
 # PortalのSQL接続方式：標準APIの調査と比較
 
-状態：公式仕様、現行Portal、固定版の公開配布ソースを調査済み。標準ODBC構成のLinuxコンテナ確認はビルド環境の失敗で未完了。ACAでのManaged Identity認証、実SQL接続、PE Redirect、性能比較は未実証です。正式Portal・Azure・SQL policyは変更していません。独自native改修の未完成試作は保護領域へ退避し、正式採用していません。
+状態：共有SQLのProxy維持とRedirect変更の取りやめを決定済み。PortalのTedious/Kysely接続層と既存のSQL認証を維持し、ODBC移行・独自native採用・driver試作は取りやめます。AzureへRedirectを反映していないため、Azure切戻し操作は不要です。SQL/NSG取消資材のローカル統合は未完了です。以下の調査結果を記録として保全し、未実施の認証・接続・Redirect・性能確認を成功扱いにしません。保護退避済みの試作は変更・削除しません。
 
-## 調査の結論と現時点の推奨
+## 採用方針と調査の位置付け
 
-現時点では、稼働中のProxy構成を維持することを推奨します。理由は「RedirectやManaged Identityに対応する標準ライブラリが存在しない」ためではなく、現在のPortalを標準の接続機構へ置き換えて、既存の接続固定・認証・型・終了処理を維持できる構成をまだ受入していないためです。独自C++追加を必須・推奨とした前提は撤回します。
+今回の方針は、共有SQLをProxyで維持することに確定しました。理由は「RedirectやManaged Identityに対応する標準ライブラリが存在しない」ためではなく、現在のPortalを標準の接続機構へ置き換えて、既存の接続固定・認証・型・終了処理を維持するための追加実装と保守負担を避けるためです。独自C++追加を必須・推奨とした前提は撤回し、その実装を進めません。
 
 ODBC18はPE RedirectとManaged Identity認証を標準で扱います。NodeラッパーからODBC自身へトークン取得を任せる候補があります。一方で、現在のKyselyの標準MSSQL DriverはTedious専用であり、ODBCラッパーの単純な依存入替ではPortal全体を移行できません。C++を改修しない候補でも、Kysely連携・開発用認証・接続寿命の設計と回帰が必要です。
 
-これは方式判断のための調査報告です。Proxy維持へ構築資材を変更した結果でも、Redirectが不可能と証明した結果でもありません。SQL/NSG資材の変更はローカル統合済みですが、Azureへは未適用です。方式の再評価を実環境の切替へ先行させます。
+これは取りやめたRedirect案の調査報告です。Redirectが不可能と証明した結果ではありません。NetworkタスクがSQL/NSG・構築・運用資材の取消コミットを用意し、Portalタスクが取り込む分担です。資材がProxyへ戻ったことは取消統合後に確認します。共有資材の取消を両タスクで重複して実施せず、証明書認証の改修と調査記録を保持します。
 
 ## トークンの位置付け
 
@@ -41,14 +41,14 @@ ODBC18の標準MSI認証について、公式ACA REST仕様は`IDENTITY_ENDPOINT
 
 最新版TypeORM 1.1.3のSQL Server QueryRunnerも、同じく非transactionのqueryはpoolへRequestを作り、物理接続を取得しないconnect処理でした。最新版へ更新するだけでこの契約を満たすとは確認できません。また、調査したKysely-TypeORMアダプターのpeer条件はTypeORM 0.3系で、1.1.3をそのまま組み合わせられる宣言ではありません。最新版への依存更新を実施した結果ではありません。
 
-## 選択肢と保守負担
+## 比較した案と採否
 
 | 案 | Portalの経路と認証 | 追加負担と条件 |
 | --- | --- | --- |
-| 現行Proxyを維持 | Tedious＋Kysely、SDKのSQL token、MI・TLS・PEを維持 | Portalの接続層変更は不要。Redirectによる性能改善を見送る。現時点の推奨 |
-| SQL policyはRedirect、Portalは既存driverを維持 | 公式仕様上、PortalはProxy経由となる候補。対応ODBC clientはRedirectを利用する候補 | Portal自身のRedirect目標は達成しない。全clientの実経路とNSG、運用を限定受入する |
-| 標準ODBC MSI＋既存Nodeラッパーへ移行 | ODBC自身がtokenを取得。driver本体・C++の独自改修を避ける候補 | ACA/UAMI、Kysely連携、pool・接続固定、App/Jobs、型・transactionの回帰。現在のローカルAzure CLI token経路の代替設計も必要 |
-| 外部token属性の独自native追加 | 現行SDK token方式をODBCへ持ち込む | C++ binding、tokenのDBC寿命・zero/free、失敗処理、native build、pool、Kysely層を継続保守。現時点では推奨しない |
+| 現行Proxyを維持（採用） | Tedious＋Kysely、SDKのSQL token、MI・TLS・PEを維持 | Portalの接続層変更は不要。Redirectによる性能改善を見送る |
+| SQL policyはRedirect、Portalは既存driverを維持（取りやめ） | 公式仕様上、PortalはProxy経由となる候補。対応ODBC clientはRedirectを利用する候補 | Portal自身のRedirect目標は達成しない。全clientの実経路とNSG、運用の限定受入が必要だった |
+| 標準ODBC MSI＋既存Nodeラッパーへ移行（取りやめ） | ODBC自身がtokenを取得。driver本体・C++の独自改修を避ける候補 | ACA/UAMI、Kysely連携、pool・接続固定、App/Jobs、型・transactionの回帰と、ローカルAzure CLI認証の代替設計が必要だった |
+| 外部token属性の独自native追加（取りやめ） | 現行SDK token方式をODBCへ持ち込む | C++ binding、tokenのDBC寿命・zero/free、失敗処理、native build、pool、Kysely層の継続保守が必要だった |
 
 Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portalログインの証明書方式を失うことはありません。主な差はSQL Gateway経由の通信経路です。MicrosoftはRedirectを遅延とスループットの改善のために推奨していますが、今回のPortalの負荷で得られる改善幅は未計測です。共有policyをProxyに維持すれば、Broker・管理client等のODBC側の改善も見送ります。
 
@@ -60,9 +60,9 @@ Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portal�
 
 独自native試作も、コード準備と依存lock生成までで、build・load・合成試験は未実施です。正式Portalへ組み込まず、未完成のまま保護退避しています。
 
-## Redirectを引き続き評価する場合の最小確認
+## 取りやめた検証案の記録
 
-方式を採用する前に、次の具体的な受入計画を提示します。実環境の設定変更を自動で進める指示ではありません。
+次の確認案は今回の実行予定から外しました。検証を実施・受入した記録ではありません。
 
 1. 実行基盤を利用できる状態で、未改変Nodeラッパーと固定ODBC18のロードを確認する。
 2. ACAの標準MSI認証で、意図したUAMIを選択してSQL Proxyへ新規物理接続する。token本文を出力・保存せず、TLS検証を維持する。
@@ -70,9 +70,9 @@ Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portal�
 4. Portal本体とschema/reconciliation Job、既存認証・キー管理・同期処理の回帰を行う。Azure CLIを使う開発経路の変更がある場合は先に明示する。
 5. 別判断の限定SQL切替で、policyの読戻しだけでなく、新しい物理接続の案内先・実socket宛先・portとPE限定経路を確認する。同じ条件のProxyと性能比較する。
 
-標準の認証・接続機能で成立しない、既存Portalの契約を大きく変更する必要がある、または保守費用に見合う改善を示せない場合はProxy維持を選びます。業務SQLの自動再送、secret・SQLパスワードへのfallback、TLS検証の無効化で成立させません。
+標準の認証・接続機能を現在のPortalへ組み込む負担と、保守費用に見合う改善が未実証であることを踏まえ、今回の選択はProxy維持です。driver変更とRedirect検証は再開しません。
 
-証明書によるPortalログインへの移行はSQL接続policyとは別の作業です。[工程3のAzure適用計画](portal-stage3-azure-acceptance-plan.md)でSQL/NSG等を含まない変更範囲を具体化できれば、SQL driverの選定と分けて進める案を提示できます。
+証明書によるPortalログインへの移行は独立して継続します。SQL driver選定やRedirect検証を待機条件にせず、[工程3のAzure適用計画](portal-stage3-azure-acceptance-plan.md)で証明書準備・登録・配備の変更範囲を具体化します。
 
 ## 根拠と参照先
 
@@ -83,4 +83,4 @@ Proxy維持で、Managed Identity・SQLのTLS検証・Private Endpoint・Portal�
 - [node-mssql 12.8.1](https://registry.npmjs.org/mssql/12.8.1)：msnodesqlv8用ConnectionPoolの接続文字列伝達を調査
 - [Kysely-TypeORM 0.3.0](https://registry.npmjs.org/kysely-typeorm/0.3.0)、[TypeORM 0.3.28](https://registry.npmjs.org/typeorm/0.3.28)：MSSQL QueryCompiler、Driver、SqlServerDriver、SqlServerQueryRunnerを調査
 - 最新版の追加確認：[Kysely 0.29.9](https://registry.npmjs.org/kysely/0.29.9)、[Tedious 20.4.1](https://registry.npmjs.org/tedious/20.4.1)、[TypeORM 1.1.3](https://registry.npmjs.org/typeorm/1.1.3)。配布integrityを照合し、MSSQL Driver、routing、SQL Server QueryRunnerの対象箇所を調査
-- 現行Portal：[SQL認証と接続設定](../../apps/portal/lib/auth-database.ts)、[Session applock](../../apps/portal/lib/subscription-sync/repository.ts)、[SQL切替計画](sql-redirect-migration-plan.md)
+- 現行Portal：[SQL認証と接続設定](../../apps/portal/lib/auth-database.ts)、[Session applock](../../apps/portal/lib/subscription-sync/repository.ts)
