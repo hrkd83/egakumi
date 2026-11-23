@@ -24,7 +24,11 @@ resource server 'Microsoft.Sql/servers@2023-08-01' = {
     }
   }
 }
-// 接続policyはPrivate Endpointの構築後に専用moduleが設定します。
+// Proxy接続でSQL通信を1433番に固定し、必要な宛先だけをネットワークで許可します。
+resource connectionPolicy 'Microsoft.Sql/servers/connectionPolicies@2023-08-01' = {
+  parent: server
+  name: 'default'
+  properties: { connectionType: 'Proxy' }
+}
 output id string = server.id
-output name string = server.name
 output host string = server.properties.fullyQualifiedDomainName

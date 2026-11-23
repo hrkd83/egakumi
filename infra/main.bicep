@@ -581,14 +581,6 @@ module credentialNetwork 'modules/credential-broker-network.bicep' = if (deployC
   dependsOn: [portalNetworkBindings]
 }
 
-// SQL PE、DNS、固定NSGが完成してから共有SQLの接続方式を確定します。
-module sqlConnectionPolicy 'modules/shared-sql-connection-policy.bicep' = if (deployCore) {
-  name: '${stem}-sql-connection-policy'
-  scope: svcGroup
-  params: { sqlServerName: credentialSql!.outputs.name }
-  dependsOn: [credentialNetwork]
-}
-
 // Coreで実際に構築した対象だけを渡します。App配備は後段で作成したJobを追加します。
 var managementClientInventory = deployCore ? {
   schemaVersion: 1
@@ -617,7 +609,7 @@ module managementClient 'modules/management-maintenance-client.bicep' = if (depl
     inventory: managementClientInventory
   }
   // PyPI/OSパッケージの既存の構築用経路とVMの初期設定が完成してから準備します。
-  dependsOn: [sqlConnectionPolicy, certificate, managementPortalAccess, managementLogAnalytics, auditPrivateDnsLink]
+  dependsOn: [credentialNetwork, certificate, managementPortalAccess, managementLogAnalytics, auditPrivateDnsLink]
 }
 // 証明書とネットワーク側の経路が揃ったら、公開入口を構築します。
 module gateway 'modules/application-gateway.bicep' = if (deployCore) {

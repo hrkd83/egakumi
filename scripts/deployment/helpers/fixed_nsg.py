@@ -385,7 +385,6 @@ def _temporary_priorities(group):
 
 def _classify(parents, bindings, *, require_complete=False):
     fixed = _catalog('nsg-rule-priorities.json'); legacy = _catalog('nsg-legacy-rule-definitions.json')
-    sql_retirement = _catalog('sql-proxy-nsg-retirement.json')
     plan = []
     for key in GROUPS:
         current = _inventory(parents[key]); desired = fixed['groups'][key]['rules']
@@ -394,16 +393,12 @@ def _classify(parents, bindings, *, require_complete=False):
             actual = _properties(child)
             if name in desired and actual == _definition(desired[name], bindings): continue
             old = older['rules'].get(name)
-            temporary_priority = temporary.get(name)
-            if old is None:
-                old = sql_retirement['groups'].get(key, {'rules': {}})['rules'].get(name)
-                temporary_priority = old['temporaryPriority'] if old is not None else None
             if old is None: raise FixedNsgError('An NSG has an unknown, manually modified or conflicting child rule')
             candidates = [old] + [{**old, **alternative} for alternative in old.get('alternatives', [])]
-            matched = next((r for r in candidates if actual in (_definition(r, bindings), {**_definition(r, bindings), 'priority': temporary_priority})), None)
+            matched = next((r for r in candidates if actual in (_definition(r, bindings), {**_definition(r, bindings), 'priority': temporary[name]})), None)
             if matched is None: raise FixedNsgError('An NSG child differs from the exact owned legacy definition')
             plan.append({'group': key, 'name': name, 'child': child, 'originalPriority': old['priority'],
-                          'temporaryPriority': temporary_priority, 'properties': actual})
+                         'temporaryPriority': temporary[name], 'properties': actual})
         if require_complete:
             if parents[key] is None or any(name not in current or _properties(current[name]) != _definition(rule, bindings) for name, rule in desired.items()):
                 raise FixedNsgError('The complete fixed NSG rule set has not been deployed and verified')
@@ -647,14 +642,13 @@ def _wait_change(config, transport, before, expected, child_id, target_propertie
     raise FixedNsgError('NSG migration remains pending; inspect current state before retrying')
 
 
-def _apply(config, transport, parents, plan, *, deleting, record, max_checks, wait_seconds, sleep, before_change=None):
+def _apply(config, transport, parents, plan, *, deleting, record, max_checks, wait_seconds, sleep):
     if not callable(record):
         raise FixedNsgError('NSG mutation requires a protected record callback')
     writes = 0; emit = record
     for item in plan:
         key, name = item['group'], item['name']; parent = parents[key]
         if not deleting and item['properties']['priority'] == item['temporaryPriority']: continue
-        if before_change is not None: before_change()
         fresh = _read(config, transport, parent['id'], NSG_TYPE)
         if _snapshot(fresh) != _snapshot(parent) or _etag(fresh) != _etag(parent):
             raise FixedNsgError('An NSG changed before the requested child migration')
@@ -767,256 +761,3 @@ def complete_fixed_nsg_rules(config, transport, *, execute=False, record=None, m
         if _classify(_parents(config, transport), bindings, require_complete=True): raise FixedNsgError('Owned legacy NSG children remain after completion')
     result = {'status': 'completed' if execute else 'planned', 'plannedDeletes': len(plan), 'azureWrites': writes}
     emit('result', result); return result
-
-
-def _sql_mode(target_mode):
-    if target_mode not in ('Redirect', 'Proxy'):
-        raise FixedNsgError('The internal SQL NSG migration phase is invalid')
-    return target_mode
-
-
-def _sql_rows(bindings, target_mode):
-    """Keep old definitions and temporary slots independent of the historic catalog."""
-    _sql_mode(target_mode)
-    fixed = _catalog('nsg-rule-priorities.json')
-    retired = _catalog('sql-proxy-nsg-retirement.json')
-    rows = []
-    for group, definition in retired['groups'].items():
-        for old_name, old in definition['rules'].items():
-            new_name = old['replacementName']
-            new = fixed['groups'][group]['rules'][new_name]
-            source_name, source, target_name, target = ((old_name, old, new_name, new)
-                if target_mode == 'Redirect' else (new_name, new, old_name, old))
-            rows.append({'group': group, 'name': source_name, 'targetName': target_name,
-                         'source': _definition(source, bindings), 'target': _definition(target, bindings),
-                         'originalPriority': source['priority'], 'temporaryPriority': old['temporaryPriority']})
-    if (len(rows) != 4 or {r['group'] for r in rows} != {'pep', 'management', 'aca'}
-            or any(r['source']['access'] != 'Allow' or r['target']['access'] != 'Allow'
-                   or r['source']['protocol'] != 'Tcp' or r['target']['protocol'] != 'Tcp'
-                   or r['source']['priority'] != r['target']['priority'] for r in rows)):
-        raise FixedNsgError('The fixed SQL NSG migration catalog is invalid')
-    return rows
-
-
-def _sql_without_rules(parents, bindings):
-    names = {}
-    for row in _sql_rows(bindings, 'Redirect'):
-        names.setdefault(row['group'], set()).update((row['name'], row['targetName']))
-    result = copy.deepcopy(parents)
-    for group, parent in result.items():
-        if parent is not None:
-            parent['properties']['securityRules'] = [r for r in parent['properties']['securityRules']
-                if r['name'].casefold() not in names.get(group, set())]
-    return result
-
-
-def _sql_binding_view(bindings):
-    return {'subnets': bindings['subnets'], 'ips': {'management': bindings['ips']['management']},
-            'ipSets': {'sql': bindings['ipSets']['sql']}}
-
-
-def _sql_context(config, transport):
-    bindings = read_fixed_nsg_bindings(config, transport)
-    parents = _parents(config, transport)
-    if any(parents[group] is None for group in GROUPS):
-        raise FixedNsgError('The SQL-only migration requires all existing fixed NSGs')
-    unrelated = _sql_without_rules(parents, bindings)
-    if _classify(unrelated, bindings):
-        raise FixedNsgError('Unrelated legacy NSG rules require their separate migration')
-    fixed = _catalog('nsg-rule-priorities.json')
-    excluded = {(r['group'], r['targetName']) for r in _sql_rows(bindings, 'Redirect')}
-    for group in GROUPS:
-        current = _inventory(unrelated[group])
-        if any(name not in current for name in fixed['groups'][group]['rules']
-               if (group, name) not in excluded):
-            raise FixedNsgError('The unrelated fixed NSG inventory is incomplete')
-    return bindings, parents
-
-
-def _sql_plan(parents, bindings, target_mode, *, require_target=False, require_retired=False):
-    plan = []
-    for row in _sql_rows(bindings, target_mode):
-        current = _inventory(parents[row['group']])
-        source = current.get(row['name']); target = current.get(row['targetName'])
-        if target is not None and _properties(target) != row['target']:
-            raise FixedNsgError('A target SQL NSG rule differs from the fixed definition')
-        if require_target and target is None:
-            raise FixedNsgError('All four target SQL NSG rules must be verified before retirement')
-        if require_retired and source is not None:
-            raise FixedNsgError('Owned source SQL NSG rules remain after migration')
-        if source is None:
-            if target is None: raise FixedNsgError('A required owned SQL NSG rule is unavailable')
-            continue
-        actual = _properties(source)
-        staged = {**row['source'], 'priority': row['temporaryPriority']}
-        if actual not in (row['source'], staged):
-            raise FixedNsgError('An owned SQL NSG rule was manually changed')
-        for name, child in current.items():
-            if name in (row['name'], row['targetName']): continue
-            properties = _properties(child)
-            if (properties['direction'] == row['source']['direction']
-                    and properties['priority'] in (row['temporaryPriority'], row['target']['priority'])):
-                raise FixedNsgError('A SQL NSG migration priority is occupied by another rule')
-        plan.append({**row, 'child': source, 'properties': actual})
-    return sorted(plan, key=lambda r: (GROUPS.index(r['group']), -r['originalPriority']))
-
-
-def _sql_proxy_guard(config, transport, proxy_connections_verified):
-    if proxy_connections_verified is not True:
-        raise FixedNsgError('Proxy NSG rollback requires verified physical connection drain')
-    groups, stem, _ = _scope(config)
-    identity = groups['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem + '/connectionPolicies/default'
-    response = _request(transport, 'GET', identity, api='2023-08-01')
-    body = response.get('body')
-    properties = body.get('properties') if isinstance(body, dict) else None
-    if (response['statusCode'] != 200 or not isinstance(body, dict) or _ref(body) != identity.casefold()
-            or not isinstance(properties, dict) or properties.get('connectionType') != 'Proxy'):
-        raise FixedNsgError('SQL NSG rollback requires the current Proxy connection policy')
-
-
-def _sql_baseline(baseline, bindings, parents, target_mode):
-    if (not isinstance(baseline, dict) or baseline.get('targetMode') != target_mode
-            or baseline.get('bindings') != bindings or not isinstance(baseline.get('parents'), dict)
-            or set(baseline['parents']) != set(GROUPS)):
-        raise FixedNsgError('The protected SQL NSG migration baseline differs')
-    before = _sql_without_rules(baseline['parents'], bindings)
-    after = _sql_without_rules(parents, bindings)
-    if any(_snapshot(before[group]) != _snapshot(after[group]) for group in GROUPS):
-        raise FixedNsgError('An unrelated NSG setting changed during the SQL-only migration')
-
-
-def _sql_before_change(config, transport, bindings, target_mode, proxy_connections_verified):
-    fresh = read_fixed_nsg_bindings(config, transport,
-        _required_bindings=frozenset({('ips', 'management'), ('ipSets', 'sql')}))
-    if _sql_binding_view(fresh) != _sql_binding_view(bindings):
-        raise FixedNsgError('SQL PE or management addresses changed during migration')
-    if target_mode == 'Proxy': _sql_proxy_guard(config, transport, proxy_connections_verified)
-
-
-def prepare_sql_nsg_rules(config, transport, *, target_mode='Redirect', execute=False, record=None,
-                          proxy_connections_verified=False, max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """Stage only the four exact SQL source children; never update NSG parents.
-
-    Return a protected baseline for parameters/readback/retirement. Proxy is an
-    internal rollback phase entered only after callers verify physical drain.
-    """
-    _sql_mode(target_mode); _limits(max_checks, wait_seconds)
-    if type(execute) is not bool: raise FixedNsgError('SQL NSG execution mode must be an explicit boolean')
-    if execute and not callable(record): raise FixedNsgError('SQL NSG mutation requires a protected record callback')
-    if target_mode == 'Proxy': _sql_proxy_guard(config, transport, proxy_connections_verified)
-    bindings, parents = _sql_context(config, transport)
-    plan = _sql_plan(parents, bindings, target_mode)
-    emit = record if callable(record) else (lambda event, value: None)
-    emit('sql-nsg-plan', {'targetMode': target_mode, 'parents': parents, 'bindings': bindings, 'targets': plan})
-    writes = _apply(config, transport, parents, plan, deleting=False, record=record,
-        max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep,
-        before_change=lambda: _sql_before_change(config, transport, bindings, target_mode,
-                                                 proxy_connections_verified)) if execute else 0
-    fresh_bindings, fresh_parents = _sql_context(config, transport)
-    baseline = {'targetMode': target_mode, 'bindings': bindings, 'parents': parents}
-    _sql_baseline(baseline, fresh_bindings, fresh_parents, target_mode)
-    remaining = _sql_plan(fresh_parents, fresh_bindings, target_mode)
-    if execute and any(r['properties']['priority'] != r['temporaryPriority'] for r in remaining):
-        raise FixedNsgError('Owned SQL NSG source priorities were not fully staged')
-    result = {'status': 'staged' if execute else 'planned', 'targetMode': target_mode,
-              'plannedMoves': sum(r['properties']['priority'] != r['temporaryPriority'] for r in plan),
-              'azureWrites': writes, 'bindings': fresh_bindings, 'parents': fresh_parents}
-    emit('sql-nsg-result', result)
-    return result
-
-
-def sql_nsg_upgrade_parameters(config, transport, *, baseline, target_mode='Redirect',
-                               proxy_connections_verified=False):
-    """Bind the four-child Bicep only after all conflicting source priorities move."""
-    _sql_mode(target_mode)
-    if target_mode == 'Proxy': _sql_proxy_guard(config, transport, proxy_connections_verified)
-    bindings, parents = _sql_context(config, transport)
-    _sql_baseline(baseline, bindings, parents, target_mode)
-    if any(r['properties']['priority'] != r['temporaryPriority']
-           for r in _sql_plan(parents, bindings, target_mode)):
-        raise FixedNsgError('SQL NSG source priorities must be staged before the four-child deployment')
-    return {'resourcePrefix': config['resourceStem'], 'targetMode': target_mode,
-            'bindings': _sql_binding_view(bindings)}
-
-
-def verify_sql_nsg_rules(config, transport, *, target_mode='Redirect', baseline=None, require_retired=False):
-    """Read-only four-tuple gate. It does not certify SQL connections or pool drain."""
-    _sql_mode(target_mode)
-    if type(require_retired) is not bool: raise FixedNsgError('SQL NSG retirement verification is invalid')
-    bindings, parents = _sql_context(config, transport)
-    if baseline is not None: _sql_baseline(baseline, bindings, parents, target_mode)
-    plan = _sql_plan(parents, bindings, target_mode, require_target=True, require_retired=require_retired)
-    return {'targetMode': target_mode, 'sqlRulesVerified': 4, 'legacySqlRules': len(plan), 'runtimeVerified': False}
-
-
-def verify_sql_nsg_upgrade_what_if(config, document, bindings, *, target_mode='Redirect'):
-    """Reject incomplete expansion or any predicted write outside four SQL children."""
-    _sql_mode(target_mode)
-    groups, stem, _ = _scope(config)
-    if isinstance(document, dict):
-        document = copy.deepcopy(document)
-        properties = document.get('properties')
-        if isinstance(properties, dict):
-            if (properties.get('error') is not None or properties.get('diagnostics') not in (None, [])
-                    or properties.get('potentialChanges') not in (None, [])):
-                raise FixedNsgError('SQL NSG what-if has unresolved nested diagnostics')
-            if 'changes' in properties:
-                if 'changes' in document and document['changes'] != properties['changes']:
-                    raise FixedNsgError('SQL NSG what-if has conflicting change lists')
-                document['changes'] = properties['changes']
-        document.setdefault('diagnostics', [])
-    if (not isinstance(document, dict) or document.get('status') != 'Succeeded'
-            or document.get('error') is not None or document.get('diagnostics') != []
-            or document.get('potentialChanges') not in (None, []) or not isinstance(document.get('changes'), list)):
-        raise FixedNsgError('SQL NSG what-if is incomplete or has unresolved diagnostics')
-    expected = {(groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[row['group']]
-                 + '/securityRules/' + row['targetName']).casefold(): row['target']
-                for row in _sql_rows(bindings, target_mode)}
-    seen = set(); observed = set()
-    for change in document['changes']:
-        if not isinstance(change, dict) or not isinstance(change.get('resourceId'), str):
-            raise FixedNsgError('SQL NSG what-if resource identity is unavailable')
-        identity = change['resourceId'].casefold(); action = change.get('changeType')
-        if identity in seen: raise FixedNsgError('SQL NSG what-if resource identity is duplicated')
-        seen.add(identity)
-        if identity not in expected:
-            if action not in ('NoChange', 'Ignore'):
-                raise FixedNsgError('SQL NSG what-if would write an unrelated resource or NSG parent')
-            continue
-        if action not in ('Create', 'Modify', 'NoChange'):
-            raise FixedNsgError('SQL NSG what-if ignores or deletes a target child')
-        body = change.get('after')
-        if action == 'NoChange' and body is None: body = change.get('before')
-        if (not isinstance(body, dict) or body.get('id') is not None and _ref(body) != identity
-                or body.get('type') is not None and str(body['type']).casefold() != (NSG_TYPE + '/securityRules').casefold()
-                or _properties(body) != expected[identity]):
-            raise FixedNsgError('SQL NSG what-if differs from an exact target tuple')
-        observed.add(identity)
-    if observed != set(expected): raise FixedNsgError('SQL NSG what-if did not expand all four target children')
-    return {'sqlChildrenVerified': 4, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
-
-
-def complete_sql_nsg_rules(config, transport, *, baseline, target_mode='Redirect', execute=False, record=None,
-                           proxy_connections_verified=False, max_checks=30, wait_seconds=2, sleep=time.sleep):
-    """After four target readbacks, remove only the exact four source SQL children."""
-    _sql_mode(target_mode); _limits(max_checks, wait_seconds)
-    if type(execute) is not bool: raise FixedNsgError('SQL NSG execution mode must be an explicit boolean')
-    if execute and not callable(record): raise FixedNsgError('SQL NSG mutation requires a protected record callback')
-    if target_mode == 'Proxy': _sql_proxy_guard(config, transport, proxy_connections_verified)
-    bindings, parents = _sql_context(config, transport)
-    _sql_baseline(baseline, bindings, parents, target_mode)
-    plan = _sql_plan(parents, bindings, target_mode, require_target=True)
-    emit = record if callable(record) else (lambda event, value: None)
-    emit('sql-nsg-retirement-plan', {'targetMode': target_mode, 'parents': parents, 'bindings': bindings, 'targets': plan})
-    writes = _apply(config, transport, parents, plan, deleting=True, record=record,
-        max_checks=max_checks, wait_seconds=wait_seconds, sleep=sleep,
-        before_change=lambda: _sql_before_change(config, transport, bindings, target_mode,
-                                                 proxy_connections_verified)) if execute else 0
-    fresh_bindings, fresh_parents = _sql_context(config, transport)
-    _sql_baseline(baseline, fresh_bindings, fresh_parents, target_mode)
-    _sql_plan(fresh_parents, fresh_bindings, target_mode, require_target=True, require_retired=execute)
-    if target_mode == 'Proxy': _sql_proxy_guard(config, transport, proxy_connections_verified)
-    result = {'status': 'completed' if execute else 'planned', 'targetMode': target_mode,
-              'plannedDeletes': len(plan), 'azureWrites': writes, 'sqlRulesVerified': 4, 'runtimeVerified': False}
-    emit('sql-nsg-result', result)
-    return result

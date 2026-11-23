@@ -4,7 +4,7 @@
 
 [統合・Azure適用計画](portal-stage3-azure-acceptance-plan.md)に、共有差分の照合結果、最初のAzure適用の変更範囲と、適用前の判断・受入順序を記載する。ローカル実装の完了を、稼働中Portalの認証切替完了として扱わない。
 
-SQLはProxy維持と決定し、Redirect変更、PortalのTedious/Kysely接続層の変更、Native試作は取りやめた。SQL/NSG・構築・運用資材はNetworkタスクの取消コミットをPortalタスクが取り込み、Proxyとの整合性を確認する。取消統合は未完了で、AzureへRedirectは未適用のためAzure切戻し操作は不要。証明書認証の工程3と工程4の設計は独立して継続し、driver選定・Redirect検証を待機条件にしない。
+SQLはProxy維持と決定し、Redirect変更、PortalのTedious/Kysely接続層の変更、Native試作は取りやめた。Networkの取消コミット`5f72d83`をPortalタスクが取り込み、SQL policyのProxy・SQL向けNSG4件のTCP1433と、工程3の証明書実装の保持を確認した。取消後の実装資材は`511575f`と一致する。AzureへRedirectは未適用のためAzure切戻し操作は不要。証明書認証の工程3と工程4の設計は独立して継続し、driver選定・Redirect検証を待機条件にしない。
 
 共有基盤の初期構築でPortalのACA初期サンプルを起動し、構築資材から管理VM上の専用発行スクリプトを実行する。スクリプトがKVへ要求し、KV内にPortal認証専用の非exportable秘密鍵と自己署名証明書を生成する。公開証明書を取り出した後、Entra担当が専用アプリを手動作成・設定する。Portal本体は独立した配備工程でビルドし、初期サンプルから更新する。
 

@@ -1,6 +1,6 @@
 # PortalのSQL接続方式：標準APIの調査と比較
 
-状態：共有SQLのProxy維持とRedirect変更の取りやめを決定済み。PortalのTedious/Kysely接続層と既存のSQL認証を維持し、ODBC移行・独自native採用・driver試作は取りやめます。AzureへRedirectを反映していないため、Azure切戻し操作は不要です。SQL/NSG取消資材のローカル統合は未完了です。以下の調査結果を記録として保全し、未実施の認証・接続・Redirect・性能確認を成功扱いにしません。保護退避済みの試作は変更・削除しません。
+状態：共有SQLのProxy維持とRedirect変更の取りやめを決定済み。PortalのTedious/Kysely接続層と既存のSQL認証を維持し、ODBC移行・独自native採用・driver試作は取りやめます。AzureへRedirectを反映していないため、Azure切戻し操作は不要です。Networkの取消コミット`5f72d83`をローカルへ取り込み、SQL/NSGと証明書資材の保持を確認しました。以下の調査結果を記録として保全し、未実施の認証・接続・Redirect・性能確認を成功扱いにしません。保護退避済みの試作は変更・削除しません。
 
 ## 採用方針と調査の位置付け
 
@@ -8,7 +8,7 @@
 
 ODBC18はPE RedirectとManaged Identity認証を標準で扱います。NodeラッパーからODBC自身へトークン取得を任せる候補があります。一方で、現在のKyselyの標準MSSQL DriverはTedious専用であり、ODBCラッパーの単純な依存入替ではPortal全体を移行できません。C++を改修しない候補でも、Kysely連携・開発用認証・接続寿命の設計と回帰が必要です。
 
-これは取りやめたRedirect案の調査報告です。Redirectが不可能と証明した結果ではありません。NetworkタスクがSQL/NSG・構築・運用資材の取消コミットを用意し、Portalタスクが取り込む分担です。資材がProxyへ戻ったことは取消統合後に確認します。共有資材の取消を両タスクで重複して実施せず、証明書認証の改修と調査記録を保持します。
+これは取りやめたRedirect案の調査報告です。Redirectが不可能と証明した結果ではありません。NetworkタスクがSQL/NSG・構築・運用資材の取消コミットを作成し、Portalタスクが取り込みました。SQL policyはProxy、SQL向けNSG4件はTCP1433へ戻り、Redirect専用のmodule・CLI・manifestを除去しました。実装資材は工程3の証明書改修済みコミット`511575f`と一致し、証明書認証の改修と調査記録を保持しています。取消後のローカル検証結果は[認証試験](../testing/portal-authentication-tests.md)に記録します。
 
 ## トークンの位置付け
 

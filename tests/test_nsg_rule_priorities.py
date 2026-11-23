@@ -227,11 +227,11 @@ class NsgRulePriorityTests(unittest.TestCase):
             ('portal-network-bindings', 'appgwPortalOut', 'agw', 'allow-aca-http-egress'),
             ('portal-network-bindings', 'managementPortalHttpOut', 'management', 'allow-aca-http-egress'),
             ('portal-network-bindings', 'managementPortalHttpsOut', 'management', 'allow-aca-https-egress'),
-            ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-ingress'),
-            ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-ingress'),
+            ('credential-broker-network', 'sqlIn', 'pep', 'allow-aca-sql-1433-ingress'),
+            ('credential-broker-network', 'managementSqlIn', 'pep', 'allow-mgmt-vm-sql-1433-ingress'),
             ('credential-broker-network', 'brokerOut', 'apim', 'allow-aca-https-egress'),
-            ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-egress'),
-            ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-egress'))
+            ('credential-broker-network', 'acaSqlOut', 'aca', 'allow-sql-1433-egress'),
+            ('credential-broker-network', 'managementSqlOut', 'management', 'allow-sql-1433-egress'))
         for m, symbol, g, name in additional:
             item = self.templates[m]['resources'][symbol]
             self.assertNotIn('condition', item, (m, symbol)); self.assertNotIn(name, result[g])

@@ -83,7 +83,7 @@ class CertificateMaterialTests(unittest.TestCase):
                 'executionState': 'Succeeded', 'exitCode': 0, 'output': material.MARKER + json.dumps(self.record)}}}}
             transport = SimpleNamespace(request=mock.Mock(return_value=response))
             def save_json(path, state):
-                path.parent.mkdir(parents=True, exist_ok=True)
+                material.private_parent(path, workspace.repository)
                 path.write_text(json.dumps(state), encoding='utf-8')
                 path.chmod(0o600)
             with mock.patch.object(material, 'local_paths', return_value=workspace), mock.patch('deployment.helpers.private_permissions._windows_owner_acl'):

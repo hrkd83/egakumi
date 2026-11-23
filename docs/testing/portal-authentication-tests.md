@@ -2,7 +2,7 @@
 
 状態：工程3の下記ローカル確認を実施済み。実環境の試験は予定項目であり、成功記録ではありません。工程4のAPI用OAuthとTry接続は別設計・別受入です。[実施計画](../reference/portal-stages-3-4-plan.md)と[手動Entra登録](../setup/entra-portal.md)を参照します。
 
-SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定しました。既存Tedious/Kysely・SQL用MI認証を維持し、証明書認証の受入を独立して進めます。SQL/NSG取消資材の統合は未完了です。以下の172試験は旧Redirect案のローカル統合時の履歴であり、取消後の資材を確認した結果ではありません。
+SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定しました。既存Tedious/Kysely・SQL用MI認証を維持し、証明書認証の受入を独立して進めます。Networkの取消コミット`5f72d83`をローカルへ取り込み、SQL/NSGと証明書資材の保持を確認しました。以下の172試験は旧Redirect案のローカル統合時の履歴であり、取消後の資材を確認した結果ではありません。
 
 ## ローカル確認結果
 
@@ -17,9 +17,22 @@ SQLはProxy維持、Redirect変更とPortal driver試作は取りやめと決定
 | 型検査・lint・build | 型検査成功、lintのエラーなし（既存警告あり）。buildはNext.jsの更新推奨で初回停止し、案内に従った再実行で成功 |
 | 依存監査 | Next.js由来のmoderate検出3件が残る。監査時は修正版なし。build再実行は脆弱性の修正を意味しない |
 | 公開境界・文書 | ローカル作業ツリー混入検査成功。参照先を照合し、既存の構築試験と変更対象外の総合計画・総合試験書を保持 |
-| SQL/NSG資材とのローカル統合 | Core・PortalのBicep生成を含む関連172試験を実行し、168成功、Windowsリンク権限が必要な4件は未実施。混入検査のexact pathも両コミットの集合を照合して保持。APIM資材の統合とAzure反映は未実施 |
+| 旧Redirect案とのローカル統合（履歴） | Core・PortalのBicep生成を含む関連172試験を実行し、168成功、Windowsリンク権限が必要な4件は未実施。混入検査のexact pathも両コミットの集合を照合して保持。APIM資材の統合とAzure反映は未実施 |
 
 これらは合成データ・ローカルコンパイルの結果です。Azureでの鍵発行、Entra登録、ログイン、更新・復旧の実受入、および既知のNext.js脆弱性への対応は残ります。
+
+### Proxy取消後のローカル確認
+
+Networkの取消コミット`5f72d83`を取り込んだ後、9スイート102試験を確認しました。初回は101成功、証明書保存の1件でエラーでした。合成fixtureの親ディレクトリ作成がPOSIXの700権限を満たしていなかったため、fixtureだけを正式な`private_parent`へ合わせました。権限検査は緩めず、証明書の14試験をWSLの通常一時領域で再実行して全件成功しました。修正後の対象102試験に未解決の失敗・エラー・スキップはありません。
+
+| 対象 | 確認内容 |
+| --- | --- |
+| `test_portal_auth_certificate`、`test_portal_authentication_infra` | 初期公開証明書・state・更新段階、Core/PortalのBicep生成、初期workerと署名ID・権限 |
+| `test_management_client_assets`、`test_management_client_assets_bicep` | Proxyを要求する照合と限定配備、管理client・network・credential networkのBicep生成 |
+| `test_deploy_applications` | 初期構築のGateway-only入口とPortal個別配備の分担 |
+| `test_nsg_rule_priorities`、`test_fixed_nsg_migration`、`test_fixed_nsg_upgrade`、`test_nsg_deployment_order` | 固定NSG集合・SQL向け4規則のTCP1433・既存移行と配備順 |
+
+`infra/`、`scripts/`、`apps/`の実装は証明書改修済みコミット`511575f`と一致します。Redirect専用module・CLI・manifestと残存参照を除去し、Portal用の公開データ許可定義を保持しました。これらは合成検証であり、Azure操作・SQL実接続・証明書発行・Entraログインの受入ではありません。
 
 ## ローカルで確認する契約
 

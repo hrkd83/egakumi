@@ -23,40 +23,11 @@ FAMILIES = {'applicationIds': 'applications', 'jobIds': 'jobs', 'environmentIds'
 SQL_ALIASES = {'gateway': 'credentials', 'portal': 'portal'}
 
 
-def _expected_sql_server_id(config):
-    return ('/subscriptions/' + config['subscriptionId'] + '/resourceGroups/'
-            + config['resourceGroupNames']['svc'] + '/providers/Microsoft.Sql/servers/sql-'
-            + config['resourceStem'])
-
-
-def _require_sql_connection_type(expected):
-    if expected not in ('Redirect', 'Proxy'):
-        raise ValueError('Select an explicit Redirect or Proxy SQL connection policy expectation')
-
-
-def verify_sql_connection_policy(config, server_id, transport, *, expected_connection_type='Redirect'):
-    """構築出力のSQL serverと、通常または専用移行工程の明示期待を照合する。"""
-    _require_sql_connection_type(expected_connection_type)
-    if (not isinstance(server_id, str)
-            or server_id.casefold() != _expected_sql_server_id(config).casefold()):
-        raise ValueError('SQL connection policy requires the exact constructed server output')
-    from .credential_image import checked
-    target = server_id + '/connectionPolicies/default'
-    policy = checked(transport, 'GET', target + '?api-version=' + SQL_API,
-                     label='Verify constructed SQL connection policy')
-    properties = policy.get('properties') if isinstance(policy, dict) else None
-    if (not isinstance(policy, dict) or str(policy.get('id', '')).casefold() != target.casefold()
-            or not isinstance(properties, dict) or properties.get('connectionType') != expected_connection_type):
-        raise ValueError('SQL connection policy differs from the constructed '
-                         + expected_connection_type + ' expectation')
-    return deepcopy(policy)
-
-
 def _expected_targets(config):
     """期待名は取り違え検出だけに使い、出力がないIDを補って配備しない。"""
     stem = config['resourceStem']
     base = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.App/'
-    sql = _expected_sql_server_id(config) + '/databases/sqldb-' + stem + '-'
+    sql = '/subscriptions/' + config['subscriptionId'] + '/resourceGroups/' + config['resourceGroupNames']['svc'] + '/providers/Microsoft.Sql/servers/sql-' + stem + '/databases/sqldb-' + stem + '-'
     return {
         'gateway': {
             'applicationIds': [base + 'containerApps/ca-' + stem + '-credentials'],
@@ -177,14 +148,12 @@ def _client_template():
     return run(['az', 'bicep', 'build', '--file', str(REPOSITORY / 'infra/modules/management-maintenance-client.bicep'), '--stdout'])
 
 
-def update_management_client_assets(config, state, outputs, transport, *, component,
-                                    expected_sql_connection_type='Redirect', template=None,
+def update_management_client_assets(config, state, outputs, transport, *, component, template=None,
                                     repository=REPOSITORY, timeout=1800, sleep=time.sleep, monotonic=time.monotonic):
     """実構築確認→client単独Incremental→runCommand読戻しを行い、本文を公開しない。"""
     # Local imports keep the shared lifecycle free of a helper import cycle.
     from ..lifecycle import protected_json
     from .credential_image import checked
-    _require_sql_connection_type(expected_sql_connection_type)
     inventory = management_client_inventory(config, state)
     workspace = local_paths(config, repository)
     checkpoint = workspace.checked(workspace.state / 'management-client-inventory.json')
@@ -219,8 +188,11 @@ def update_management_client_assets(config, state, outputs, transport, *, compon
             if body.get('properties', {}).get('status') != 'Online':
                 raise ValueError('A constructed SQL maintenance database is not online')
             server = target.rsplit('/databases/', 1)[0]
-            verify_sql_connection_policy(config, server, transport,
-                expected_connection_type=expected_sql_connection_type)
+            policy = checked(transport, 'GET', server + '/connectionPolicies/default?api-version=' + SQL_API,
+                             label='Verify fixed SQL maintenance connection policy')
+            if (str(policy.get('id', '')).casefold() != (server + '/connectionPolicies/default').casefold()
+                    or policy.get('properties', {}).get('connectionType') != 'Proxy'):
+                raise ValueError('SQL maintenance requires the constructed TCP1433 Proxy policy')
         elif body.get('properties', {}).get('provisioningState') != 'Succeeded':
             raise ValueError('A constructed ACA maintenance target is not ready')
     vm = inventory['managementVmId']
@@ -250,8 +222,7 @@ def update_management_client_assets(config, state, outputs, transport, *, compon
     parameters = {'vmName': vm.rsplit('/', 1)[-1], 'location': config['location'],
                   'tags': {**config.get('tags', {}), **tags}, 'inventory': inventory}
     record = workspace.checked(workspace.root / 'evidence' / ('management-client-' + component + '.json'))
-    receipt = {'status': 'planned', 'component': component, 'managementVmId': vm, 'inventory': inventory,
-               'expectedSqlConnectionType': expected_sql_connection_type, 'runtimeVerified': False}
+    receipt = {'status': 'planned', 'component': component, 'managementVmId': vm, 'inventory': inventory, 'runtimeVerified': False}
     protected_json(record, receipt)
     checked(transport, 'PUT', path, {'properties': {'mode': 'Incremental', 'template': template,
         'parameters': {key: {'value': value} for key, value in parameters.items()}}}, label='Deploy management maintenance client only')

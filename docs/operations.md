@@ -185,7 +185,7 @@ sudo "$MAINTENANCE_PYTHON" -I -B "$MAINTENANCE_CLIENT" \
 | Appへの限定exec | `app-exec --resource-id '<APP_RESOURCE_ID>' --revision '<REVISION_NAME>' --replica '<REPLICA_NAME>' --container '<CONTAINER_NAME>' --command-file "$MAINTENANCE_INPUT_DIRECTORY/command.txt" --seconds 60` | 明示したコンテナーへ、保護コマンドファイルの内容だけを送る |
 | SQL直接保守 | `sql-query --database credentials --query-file "$MAINTENANCE_INPUT_DIRECTORY/maintenance.sql"` | `credentials`または`portal`の構築DBだけを選択。SQL本文は保護ファイルへ保存 |
 
-SQLは管理VM自身のMIで認証し、構築サーバーのFQDNへ初回TCP1433で接続します。[Redirect対応資材](reference/sql-redirect-migration-plan.md)はSQL PE宛TCP1433–65535を許可し、固定ODBC Driver 18で暗号化とサーバー証明書検証を維持します。Azure切替と新規物理接続の実証は別工程です。SQL本文・結果・失敗時の詳細は保護ファイルへ保存し、tokenは保存しません。更新SQLの実行と結果保存は別の段階です。commit後に結果保存が失敗した場合も、更新を未実行と決めつけて再送しません。
+SQLは管理VM自身のMIで認証し、構築サーバーのFQDNへTCP1433で接続します。固定ODBC Driver 18で暗号化とサーバー証明書検証を維持します。SQL本文・結果・失敗時の詳細は保護ファイルへ保存し、tokenは保存しません。更新SQLの実行と結果保存は別の段階です。commit後に結果保存が失敗した場合も、更新を未実行と決めつけて再送しません。
 
 ログ取得は`follow=false`の有限tailで、`--tail`は0〜300です。JobログはPreview APIを使い、client内でmetadata用とreplica／token用のAPI版を固定しています。実環境での提供状況・認可・実行ログ保持を確認するまでは取得成功を保証しません。
 
