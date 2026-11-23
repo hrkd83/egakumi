@@ -213,6 +213,7 @@ Azure提供DNS、VM IMDS、DHCP、Agent host channel、ホスト時刻提供、l
 | `DEC-NSG-NTP` | APIM／管理VMのInternet宛UDP123を明示 | VNet標準DNSとFirewallの独立したFQDN回答差でNTPを遮断しない。daemon同期とAPIM時刻確認は通信許可と分けて実証する。 |
 | `DEC-NSG-LB-ANY` | AppGW／APIMのLB受信は送信元以外Any | AzureLoadBalancerタグを明示し、両製品の基盤probe許可を統一する。ACAのnode port要件へは横展開しない。 |
 | `DEC-NSG-TERMINAL-DENY` | AppGW／APIM／PE／管理VMの受信、APIM／管理VMの送信に終端拒否 | 列挙した許可以外を拒否する。AppGWの公式送信制約とACAのmanaged基盤依存に対する例外を残す。 |
+| `DEC-SQL-PROXY` | 共有SQLはProxy、SQL向け送受信4規則はTCP1433 | 宛先を構築SQL PEへ限定し、Portalの同一接続・Sessionロックを維持する。[採用理由とライブラリ比較](sql-proxy-decision.md)を参照。 |
 | `DEC-NSG-AUDIT-BLOB-PE` | 監査Storage2組へBlob PEと管理VM送受信4規則を常設 | 監査Blobのprivate閲覧を用意し、各構築監査コンテナーのData Reader認可と組み合わせる。 |
 | `DEC-NSG-NO-FIREWALL-SUBNET` | AzureFirewallSubnetへ顧客NSGを関連付けない | Azure Firewallの公式制約を守り、顧客通信はFirewall Policyで管理する。 |
 
