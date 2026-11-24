@@ -43,6 +43,8 @@ azd up --environment "$DEPLOY_ENVIRONMENT"
 
 SQLサーバーは`sql-<stem>`、Private Endpointは`pe-<stem>-sql`。`<stem>`には環境名とプロダクト名が入る。SQLへの公開アクセスとSQLパスワード認証は無効とし、後続のジョブとアプリはマネージドIDで接続する。
 
+共有SQLの接続ポリシーはProxy固定、Private Endpointへの通信はTCP1433とする。[Proxyを採用する理由](../reference/sql-proxy-decision.md)に、ネットワークの制限、Portalが同じSQL接続を保持する理由、ライブラリの対応範囲と性能上のトレードオフを記載する。
+
 ## 4. Gatewayを配備する
 
 以下は、構築済み環境でGatewayだけを更新・再試行する場合のコマンドである。同じparamsとCore stateを使う。GitHub Actions、PC上のDocker、PCからのSQL／ACRへの直接接続は不要。
