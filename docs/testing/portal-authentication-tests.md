@@ -60,6 +60,12 @@ RGで宣言したロール定義と割当先のロールIDがSubscription直下�
 
 ## ローカルで確認する契約
 
+### 工程4の設計前ライブラリ確認
+
+[詳細設計案](../reference/portal-stage4-design.md)の根拠として、既存Better Auth `1.7.14`の公開`better-auth/oauth2`を直接読み、合成データで9ケースを確認しました。公開export、S256 PKCE・form_post・state/nonce、`private_key_jwt`の非同期assertionによるコード要求と更新要求、保護パラメーター、client secret併用の拒否、既存JOSEによるID tokenの署名・本人・nonce・別署名の検査は全件成功しました。
+
+これは配布APIの呼出しとメモリー内の署名検証だけです。実KV・Entra・SQLへ通信せず、秘密鍵をファイルへ保存していません。PortalのAPI用OAuth handler、保存・更新競合、Cookie、全Try、実環境の成功には数えません。工程4の本体・依存・SQL・配備設定は変更していません。
+
 | 試験 | 確認する内容 |
 | --- | --- |
 | `tests/portal-auth-certificate-offline.ps1` | 合成RSA鍵・公開証明書をメモリー内で用意。Self・非exportable・新鍵生成方針・公開鍵対応を照合し、他鍵、disabled、private JWK、version未固定、現行版廃止を拒否。保存intentから不明POSTを再送せず再開 |
