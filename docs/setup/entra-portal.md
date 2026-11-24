@@ -82,10 +82,10 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 ## Azureポータルで操作する
 
 1. 認証対象tenantへ切り替え、「Microsoft Entra ID」→「アプリの登録」→「新規登録」を開きます。専用PortalアプリをSingle tenantで作成し、WebのPortalログイン戻り先を指定します。
-2. 「認証」でWebのRedirect URIを確認し、API用戻り先も同時に追加します。2件とも実際のPortal公開HTTPSホストを使い、表の固定パスと一致させます。Implicit grantのアクセストークン・IDトークンのチェック、Public client flowsはOFFにします。ローカル開発を行う場合だけ、専用の開発用アプリとlocalhost戻り先を別途設計します。
+2. 「認証」（`Authentication (Preview)`と表示される場合があります）でWebのRedirect URIを確認し、API用戻り先も同時に追加します。タブに分かれている画面では「リダイレクト URI の構成」からWebを選んで追加し、「設定」でフローを確認します。2件とも実際のPortal公開HTTPSホストを使い、表の固定パスと一致させます。Implicit grantのアクセストークン・IDトークンのチェック、Public client flowsはOFFにします。ローカル開発を行う場合だけ、専用の開発用アプリとlocalhost戻り先を別途設計します。
 3. 「証明書とシークレット」→「証明書」→「証明書のアップロード」から公開`.cer`を登録します。「クライアントシークレット」で新しいsecretを作成しません。
 4. 登録されたthumbprintと有効期限が、保護stateの`current.certificateThumbprint`・`current.expires`と一致することを確認します。別用途のTLS証明書を選んでいないことも確認します。
-5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの「アプリケーションの許可」を選び、`GroupMember.Read.All`と`User.ReadBasic.All`を追加します。Graphの「委任されたアクセス許可」ではOIDC用の`openid`・`profile`・`email`・`offline_access`を追加・確認します。次に「所属する組織で使用しているAPI」から、保護paramsの`gateway.authentication.entra.audience`で特定した既存APIアプリを選び、「委任されたアクセス許可」の`Gateway.Invoke`を追加します。ID tokenで本人を確認する構成なので、未使用の既定`User.Read`を新Portalアプリに残さないよう確認します。
+5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの「アプリケーションの許可」を選び、`GroupMember.Read.All`と`User.ReadBasic.All`を追加します。権限グループを展開し、行頭の選択欄で対象の行を選びます。Graphの「委任されたアクセス許可」では、未使用の既定`User.Read`の選択を外し、OIDC用の`openid`・`profile`・`email`・`offline_access`を追加・確認します。次に「所属する組織で使用しているAPI」から、保護paramsの`gateway.authentication.entra.audience`で特定した既存APIアプリを選び、「委任されたアクセス許可」の`Gateway.Invoke`を追加します。保存後に、Graphの2件がApplication、OIDCの4件と`Gateway.Invoke`がDelegatedであり、新Portalアプリに`User.Read`が残っていないことを確認します。
 6. 必要な管理者同意を実施し、許可の種類・対象API・同意状態を確認します。Entra担当が必要とする申請・承認は組織の手続きに従います。
 7. 「概要」のDirectory tenant IDとApplication client IDを構築担当へ安全に渡します。Object IDをClient IDの代わりに入力しません。利用者割当必須や条件付きアクセスがある場合は、受入用の利用者も許可されていることを確認します。
 
@@ -93,7 +93,7 @@ Portalログインで要求する`openid profile email`はOIDCのscopeです。A
 
 ## 操作画面を取得する
 
-アプリ内ブラウザの表示領域そのものを**1920×1080ピクセル（フルHD）**にして撮影します。ページ全体の縦長画像や、撮影後に拡大縮小した画像を代用せず、原寸PNGで保存した画像の実寸を確認します。各画面は実際の作成・設定・保存後確認に合わせて取得します。
+アプリ内ブラウザの表示領域そのものを**1920×1080ピクセル（フルHD）**にして撮影します。ページ全体の縦長画像や、撮影後に拡大縮小した画像を代用せず、撮影APIが返す原寸JPEG（`.jpg`）を保存して実寸を確認します。PNGが必要な場合は、原本を残して解像度を変えずに変換します。各画面は実際の作成・設定・保存後確認に合わせて取得します。
 
 撮影前に不要なメニューを畳み、一覧の列幅・表示位置を調整して、戻り先や設定値が省略されず読めることを確認します。設定値そのものは撮影のために変更しません。撮影後は表示領域の撮影用設定を元に戻します。
 
