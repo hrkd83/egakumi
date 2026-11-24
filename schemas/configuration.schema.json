@@ -1373,6 +1373,65 @@
         "publicHostName": {
           "type": "string",
           "pattern": "^portal\\."
+        },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "初期構築後に手動登録する専用Portalアプリ。通常はtenantId/clientIdだけを入力し、鍵とthumbprintは保護stateから読みます。初期構築では省略できます。",
+          "required": [
+            "tenantId",
+            "clientId"
+          ],
+          "properties": {
+            "tenantId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "clientId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "keyId": {
+              "type": "string",
+              "pattern": "^https:\\/\\/[a-zA-Z0-9-]+\\.vault\\.azure\\.net/keys/[a-zA-Z0-9-]+/[a-fA-F0-9]{32}$"
+            },
+            "certificateThumbprint": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{40}$"
+            }
+          },
+          "dependentRequired": {
+            "keyId": [
+              "certificateThumbprint"
+            ],
+            "certificateThumbprint": [
+              "keyId"
+            ]
+          }
+        },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "KV自己署名・非exportable RSA認証証明書。12か月/60日前は運用既定値です。",
+          "properties": {
+            "certificateName": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{1,127}$",
+              "default": "portal-auth"
+            },
+            "validityMonths": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24,
+              "default": 12
+            },
+            "renewBeforeDays": {
+              "type": "integer",
+              "minimum": 7,
+              "maximum": 90,
+              "default": 60
+            }
+          }
         }
       },
       "description": "Core管理ポータルの必須公開ホスト。専用サブネットはnetwork.subnetPrefixes.acaへ指定します。",

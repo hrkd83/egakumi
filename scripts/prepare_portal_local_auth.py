@@ -22,6 +22,7 @@ import subprocess
 
 from deployment.helpers.configuration import load_configuration, _read_protected_file
 from deployment.helpers.paths import REPOSITORY, local_paths, private_parent
+from deployment.helpers.portal_auth_certificate import deployment_authentication
 
 
 class PreparationError(ValueError):
@@ -108,10 +109,12 @@ def expected_settings(configuration: dict) -> dict[str, str]:
     """既存のEntraアプリ参照からローカル用の公開設定だけを組み立てる。"""
     profile = configuration["portalAuthentication"]["credentialProviderName"]
     providers = [item for item in configuration["credentialProviders"] if item["name"] == profile]
-    if len(providers) != 1:
+    authentication = configuration.get("portal", {}).get("authentication")
+    if not authentication and len(providers) != 1:
         raise PreparationError("The Portal Entra credential profile must match exactly one configured provider")
-    provider = providers[0]
+    provider = providers[0] if not authentication else {"clientId": authentication["clientId"], "oauthTenantId": authentication["tenantId"]}
     return {
+        **({"PORTAL_AUTH_KEY_ID": authentication["keyId"], "PORTAL_AUTH_CERTIFICATE_THUMBPRINT": authentication["certificateThumbprint"], "PORTAL_AUTH_SIGNING_MODE": "azure-cli", "AZURE_TENANT_ID": configuration["azureTenantId"]} if authentication else {}),
         "BETTER_AUTH_URL": "http://localhost:3000",
         "MICROSOFT_CLIENT_ID": provider["clientId"],
         "MICROSOFT_TENANT_ID": provider["oauthTenantId"],
@@ -166,13 +169,16 @@ def prepare(configuration: dict, root: Path, *, execute: bool, accept_sql_eula: 
         raise PreparationError("SQL Server Developer EULA consent is required: review it, then pass --accept-sql-eula")
     if any(existing) and not all(existing):
         raise PreparationError("Only one local settings file exists; review it before creating the pair. No files were changed")
+    if configuration.get('portal', {}).get('authentication') and not configuration['portal']['authentication'].get('keyId'):
+        configuration['portal']['authentication'] = deployment_authentication(configuration, local_paths(configuration, root))
     expected = expected_settings(configuration)
-    profile = configuration["portalAuthentication"]["credentialProviderName"]
-    provider = next(item for item in configuration["credentialProviders"] if item["name"] == profile)
-    client_secret = _read_protected_file(provider["clientSecretFile"], "Portal Entra client secret")
-    if not client_secret or any(c in client_secret for c in "\r\n\0"):
-        raise PreparationError("The existing Entra client secret must be a non-empty, single-line value")
-    expected["MICROSOFT_CLIENT_SECRET"] = client_secret
+    if not configuration.get("portal", {}).get("authentication"):
+        profile = configuration["portalAuthentication"]["credentialProviderName"]
+        provider = next(item for item in configuration["credentialProviders"] if item["name"] == profile)
+        client_secret = _read_protected_file(provider["clientSecretFile"], "Portal Entra client secret")
+        if not client_secret or any(c in client_secret for c in "\r\n\0"):
+            raise PreparationError("The existing Entra client secret must be a non-empty, single-line value")
+        expected["MICROSOFT_CLIENT_SECRET"] = client_secret
     if all(existing):
         for path in paths:
             private_parent(path, root)

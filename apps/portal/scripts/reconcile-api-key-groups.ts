@@ -9,14 +9,16 @@ import { GraphApiKeyMembership } from "../lib/api-keys/graph.ts";
 import { SqlApiKeyRepository } from "../lib/api-keys/repository.ts";
 import { SqlApiKeyAdministrationRepository } from "../lib/api-key-administration/repository.ts";
 import { ApiKeyAdministrationService } from "../lib/api-key-administration/service.ts";
+import { readCertificateAuthentication } from "../lib/client-assertion.ts";
 
 /** 定期照合はPortalログイン用のCookie署名鍵や公開URLを必要としません。 */
 export function readReconciliationDirectoryEnvironment(environment: Readonly<Record<string, string | undefined>>) {
-  const parsed = z.object({ microsoftClientId: z.uuid(), microsoftClientSecret: z.string().min(1), microsoftTenantId: z.uuid() })
+  const certificate = readCertificateAuthentication(environment);
+  const parsed = z.object({ microsoftClientId: z.uuid(), microsoftClientSecret: z.string().min(1).optional(), microsoftTenantId: z.uuid() })
     .safeParse({ microsoftClientId: environment.MICROSOFT_CLIENT_ID,
       microsoftClientSecret: environment.MICROSOFT_CLIENT_SECRET, microsoftTenantId: environment.MICROSOFT_TENANT_ID });
-  if (!parsed.success) throw new ApiKeyError("ConfigurationUnavailable", 503);
-  return parsed.data;
+  if (!parsed.success || (!certificate && !parsed.data.microsoftClientSecret) || (certificate && parsed.data.microsoftClientSecret)) throw new ApiKeyError("ConfigurationUnavailable", 503);
+  return { ...parsed.data, certificate };
 }
 
 /** 登録済み所有グループの観測だけを更新し、成功・不明の件数だけを出力します。 */

@@ -453,6 +453,31 @@ module portalPullIdentity 'modules/portal-identity.bicep' = if (deployCore) {
   params: { stem: stem, location: location, tags: tags }
 }
 
+// Portalアプリの登録前にAzure側の署名ID・非exportable自己署名証明書を準備します。
+module portalAuthIdentity '../apps/portal/deploy/auth-identity.bicep' = if (deployCore) {
+  name: '${stem}-portal-auth-identity'
+  scope: idGroup
+  params: { stem: stem, location: location, tags: tags }
+}
+module portalAuthKeyOperations 'modules/portal-auth-key-operations.bicep' = if (deployCore) {
+  name: '${stem}-portal-auth-key-operations'
+  scope: svcGroup
+  params: { vaultName: serviceNames.keyVault, keyName: portalConfig.certificate.certificateName, principalId: management!.outputs.managementVm.principalId }
+  dependsOn: [services]
+}
+module portalAuthCertificate 'modules/portal-auth-certificate.bicep' = if (deployCore) {
+  name: '${stem}-portal-auth-certificate'
+  scope: maintGroup
+  params: {
+    vmName: management!.outputs.managementVm.name
+    location: location
+    tags: tags
+    config: { vaultName: serviceNames.keyVault, certificateName: portalConfig.certificate.certificateName, validityMonths: portalConfig.certificate.validityMonths }
+  }
+  // TLS工程が固定版PowerShellを準備し、KV PE/DNS/RBACと監査が整ってから専用workerを実行します。
+  dependsOn: [certificate, portalAuthKeyOperations, networkBindings, serviceBindings, auditConfiguration]
+}
+
 module portalRegistry 'modules/portal-registry.bicep' = if (deployCore) {
   name: '${stem}-portal-registry'
   scope: svcGroup
@@ -731,6 +756,8 @@ output cleanup object = {
 }
 
 output portal object = deployCore ? union(portal!.outputs.platform, {
+  authIdentity: portalAuthIdentity!.outputs.identity
+  authCertificateRunCommandId: portalAuthCertificate!.outputs.runCommandId
   managementMaintenance: { principalId: management!.outputs.managementVm.principalId, roleDefinitionIds: managementMaintenanceRoles!.outputs.roleDefinitionIds }
   registryName: portalRegistry!.outputs.name
   registryId: portalRegistry!.outputs.id

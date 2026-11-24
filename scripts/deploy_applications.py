@@ -34,6 +34,7 @@ def main(argv=None) -> int:
                         default=None)
     parser.add_argument('--state-file', type=Path)
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--gateway-only', action='store_true', help='Initial construction leaves the Portal sample running')
     args = parser.parse_args(argv)
     try:
         source = _repository_path(args.config or configuration_path(REPOSITORY))
@@ -49,7 +50,10 @@ def main(argv=None) -> int:
         if args.execute and config.get('publishApis') is not True:
             raise ApplicationDeploymentError('Set publishApis=true for the Gateway and Portal installation.')
         mode = '配備' if args.execute else '計画'
-        for name, filename in (('Gateway', 'deploy_gateway.py'), ('Portal', 'deploy_portal.py')):
+        applications = [('Gateway', 'deploy_gateway.py')]
+        if not args.gateway_only:
+            applications.append(('Portal', 'deploy_portal.py'))
+        for name, filename in applications:
             print(f'{name}: {mode}を開始します。', flush=True)
             command = [sys.executable, str(REPOSITORY / 'scripts' / filename),
                        '--config', str(source), '--state-file', str(state_file)]
@@ -61,7 +65,7 @@ def main(argv=None) -> int:
             if result.returncode:
                 print(f'{name} deployment stopped; inspect this stage before retrying.', file=sys.stderr)
                 return result.returncode if result.returncode > 0 else 1
-        print(f'GatewayとPortalの{mode}が完了しました。', flush=True)
+        print(f'指定したアプリの{mode}が完了しました。', flush=True)
         return 0
     except ApplicationDeploymentError as error:
         print('Application deployment stopped: ' + str(error), file=sys.stderr)

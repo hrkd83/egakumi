@@ -4,7 +4,7 @@
 
 ## このページのゴール
 
-新規クローンに自社のparamsと、Entra・DNS担当者が準備した資格情報を与え、1回の`azd up`で共通基盤、Gateway、Portalまで順に構築します。コマンドの正常終了、公開DNSの反映、APIの実応答とPortalへのサインインを分けて確認します。
+新規クローンに自社のparamsと、Entra・DNS担当者が準備した資格情報を与え、`azd up`で共有資源・Gateway・Portal初期サンプル・認証公開証明書を準備します。[手動Entra登録](entra-portal.md)後にPortal本体を個別配備します。コマンドの正常終了、公開DNSの反映、APIの実応答とPortalへのサインインを分けて確認します。
 
 **このページの`azd up`からCore設備の作成と課金が始まります。** 公開DNS等、事前準備で別途作成した資源の費用は第3章で確認します。 第1〜5章の準備・料金・保持方針を確定してから実行してください。使い終えた検証環境は[撤去手順](../operations.md#撤去する)で削除します。
 
@@ -137,7 +137,7 @@ Core成功後に、元の世代を持つ配備出力とVM UUID・SAMI・tenant�
 
 標準API正本を常用で読み込み、接続先は作成済み基盤の出力からメモリー内で解決します。公開paramsにAPI一覧の選択欄は設けず、内部配列も書き戻しません。標準APIに必要なWAFの経路・本文形式と監査ログ等の情報は基盤工程へ先に反映します。
 
-`postprovision`は、第3章で準備したAzure Public DNSゾーンのGateway・Portal用Aエイリアスを、対象環境のAppGW Public IPリソースへ接続します。Portal工程は公開URLのヘルス確認を行うため、その工程までに両ホストの名前解決が必要です。反映が間に合わず停止した場合は、Azure Public DNSと名前解決を確認してPortalの個別コマンドから再試行します。
+`postprovision`は、第3章で準備したAzure Public DNSゾーンのGateway・Portal用Aエイリアスを、対象環境のAppGW Public IPリソースへ接続します。後続のPortal本体配備は公開URLのヘルス確認を行うため、その工程までに両ホストの名前解決が必要です。反映が間に合わず停止した場合は、Azure Public DNSと名前解決を確認してPortalの個別コマンドから再試行します。
 
 API Centerの同名削除履歴が残る場合は、5RG作成後に対象環境のsvc RG内の同名1件だけを所有照合して復元し、Bicepを再適用します。確認不能なら停止します。個別に別名の資源を追加しません。
 
@@ -177,7 +177,7 @@ python3 scripts/deploy_gateway.py --config "$DEPLOY_PARAMS_FILE" --execute
 
 `.local/<environment>/state/gateway-deployment.json`の完了結果を確認したら、公開APIの疎通試験へ進みます。paramsは、このコマンドでは編集しません。初回の認証窓口用共有鍵は保護されたローカルファイルへ生成し、Key Vaultへ登録します。
 
-Portalの計画確認と反映は次のとおりです。Gatewayの製品登録後に実行し、SQL初期化・起動・公開ヘルスの確認まで待ちます。詳細は[Portal配備手順](portal.md)を参照してください。
+初期構築の公開証明書を取得し、[専用Portal Entraアプリの手動登録](entra-portal.md)を一度の依頼で完了して、環境別paramsへtenantId/clientIdを設定します。その後のPortal計画確認と反映は次のとおりです。Gatewayの製品登録後に実行し、SQL初期化・起動・公開ヘルスの確認まで待ちます。詳細は[Portal配備手順](portal.md)を参照してください。
 
 ```sh
 python3 scripts/deploy_portal.py --config "$DEPLOY_PARAMS_FILE"
@@ -196,7 +196,7 @@ Gatewayに失敗するとPortalへ進まず、Portalに失敗した場合もup�
 
 ## 完了条件と次の作業
 
-- up全体の正常終了、実行したGateway・Portal配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
+- up全体の正常終了、実行したGateway配備・証明書準備と、後続のPortal個別配備の成功記録、Azure側の作成状態、公開DNS／TLSを確認した。
 - 選んだAPIの実応答とPortalのMicrosoftサインインを、配備成功とは別に確認した。
 - 通知先を使う場合は初回確認と実受信を確認した。
 - 管理VMの証明書更新設定と、DNS用UAMIの関連付け・DNS側RBAC権限を確認した。

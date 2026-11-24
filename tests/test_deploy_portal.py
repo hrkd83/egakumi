@@ -30,7 +30,11 @@ def fixture():
         'portalAuthentication': {'credentialProviderName': 'graph-delegated'},
         'credentialProviders': [{'name': 'graph-delegated', 'clientId': '33333333-3333-4333-8333-333333333333',
                                   'oauthTenantId': '44444444-4444-4444-8444-444444444444'}],
-        'portal': {'publicHostName': 'portal.example.com'},
+        'portal': {'publicHostName': 'portal.example.com', 'authentication': {
+            'tenantId': '44444444-4444-4444-8444-444444444444',
+            'clientId': '33333333-3333-4333-8333-333333333333',
+            'keyId': 'https://kv-test-sample.vault.azure.net/keys/portal-auth/' + 'a'*32,
+            'certificateThumbprint': 'a'*40}},
         'gateway': {'publicHostName': 'gateway.example.com'},
         'apiDefinitions': [],
     }
@@ -46,6 +50,7 @@ def fixture():
             'registryName': 'acrtestsample', 'pullIdentityId': identities + 'id-test-sample-portal-pull',
             'runtimeIdentity': {'id': identities + 'id-test-sample-portal-pull'},
             'schemaIdentity': {'id': identities + 'id-test-sample-credential-schema'},
+            'authIdentity': {'id': identities + 'id-test-sample-portal-auth'},
             'sharedSqlServer': 'sql-test-sample.database.windows.net',
             'applicationId': portal.group_scope(config) + '/providers/Microsoft.App/containerApps/ca-test-sample-portal'},
     }
@@ -54,6 +59,10 @@ def fixture():
 
 class PortalDeploymentTests(unittest.TestCase):
     def setUp(self):
+        # 証明書stateの境界は専用試験で確認し、配備順序のfixtureへ登録済み設定を渡します。
+        authentication = mock.patch.object(portal, 'deployment_authentication', side_effect=lambda config, workspace, slot: config['portal']['authentication'])
+        authentication.start()
+        self.addCleanup(authentication.stop)
         # Dedicated tests verify the readonly guest probe. The App CLI tests
         # only exercise the fixed internal-input wiring and deployment order.
         discovery = mock.patch.object(portal, 'discover_management_sql_identity',
@@ -297,7 +306,7 @@ class PortalDeploymentTests(unittest.TestCase):
             lambda c, s: s['outputs']['portal'].update(applicationId='/another/app'),
             lambda c, s: s['outputs']['portal'].update(runtimeIdentity={'id': '/another/identity'}),
             lambda c, s: s['outputs']['portal'].update(sharedSqlServer='other.database.windows.net'),
-            lambda c, s: c.update(credentialProviders=[]),
+            lambda c, s: c['portal'].pop('authentication'),
         ):
             config, state = fixture()
             mutate(config, state)

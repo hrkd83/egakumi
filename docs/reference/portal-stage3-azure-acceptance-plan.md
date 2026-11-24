@@ -1,0 +1,83 @@
+# Portal工程3の統合・Azure適用計画
+
+状態：工程3の資材・認証処理・更新運用はローカル検証済み。各環境のAzure適用・証明書発行・専用Entraアプリ登録・Portal切替・実受入は、確定差分と保護記録で管理します。この文書は適用前の確認項目と変更範囲を示す計画であり、実行結果ではありません。工程4の実装方針は合意済みで、初回Entra設定は[手動登録手順](../setup/entra-portal.md)へ確定しました。
+
+## 次の作業と担当
+
+共有SQLはProxy維持、Redirect変更・Portal driver変更・Native試作は取りやめと決定しました。[標準APIの調査と比較](portal-sql-driver-feasibility.md)は終了した調査の記録として保持します。Networkの取消コミット`5f72d83`をPortalタスクがローカルへ取り込みました。SQL policyはProxy、SQL向けNSG4件はTCP1433で、実装資材は証明書改修済みの`511575f`と一致します。取消を独立に重ねず、Portalの証明書資材と公開データ許可定義を保持しました。
+
+証明書認証の工程はPortalタスクが独立して継続します。driverの選定・試作・Redirect実証を待つ工程はありません。Coreとhookの変更範囲、初期証明書準備、一度のEntra登録、Portal個別配備の適用案を具体化して提示します。AzureにRedirectは未適用のため、Azure切戻し操作は不要です。APIM/WAF資材は依存を含む確定コミットを待って統合しますが、証明書工程の設計整理を並行タスク全体の完了待ちにしません。
+
+専用Entraアプリの手動作成・公開証明書登録は、証明書の準備と一度の登録に含める設定の確定後にEntra管理担当が行います。稼働中Portalの認証は、この作業では切り替えていません。
+
+## 統合準備
+
+工程3の実装コミットは`511575f`です。並行作業の共有ファイルは`infra/main.bicep`と`docs/setup/portal.md`です。比較した差分は、WAF経路生成と公開経路集約、購読profile・制限部品の案内、Portal認証資材と構築順序です。双方の差分を重ねる`git apply --check`は通過し、比較元のファイルとインデックスは変更していません。
+
+APIM側のこの確認はテキスト上の仮適用です。WAF側には関連catalog等の依存があるため、共有2ファイルだけを先に取り込まず、依存を含む確定コミットと統合します。APIM側の確定コミットは未取得で、ソースへ反映していません。
+
+旧Redirect案の`b44e6d7`は、ローカル統合コミット`521a92f`で工程3へ取り込みました。当時のCore・PortalのBicep生成を含む関連172試験は168成功、Windowsのリンク作成権限が必要な4件は未実施でした。この結果は旧案の履歴であり、取消後の検証結果には数えません。
+
+取消コミット`5f72d83`の取り込みでは、共有Bicep・初期証明書worker・署名ID・構築hook・Portal認証コードを保持しました。公開データ許可定義はPortalの追加pathを保持してSQL Redirect専用のpathと合成IPレコードだけを除去し、工程3の内容へ一致させました。取消後の関連試験とBicep生成は[認証試験](../testing/portal-authentication-tests.md)に記録します。これはローカルの資材確認で、Azureの配備差分・証明書発行・実ログインの確認ではありません。
+
+原checkoutの未コミット作業は保持しています。APIM側の確定コミットを取得後、共有差分・依存・文書参照と混入検査のpath移設を照合し、追加の統合箇所に対応するコンパイル・回帰を実施します。並行作業全体の完了を、適用計画の整理やEntra設定の先行設計を始める条件にしません。
+
+## 最初のAzure適用で確認する変更
+
+初期証明書準備に使う資材は[Core入口](../../infra/main.bicep)と構築hookです。Coreには次の変更が追加されています。
+
+| 対象 | 変更・処理 |
+| --- | --- |
+| ID用RG | Portal署名専用UAMIを作成 |
+| KVの対象鍵scope | 管理VMへ公開鍵の照合・旧鍵版無効化用のread/writeを付与。発行には既存の証明書操作権限を使用 |
+| 管理VM | 同期Run Commandで専用workerを配置し、`Initialize`を実行。既存TLS工程が用意する固定版PowerShellを確認 |
+| Key Vault | Portal認証専用のSelf/RSA3072/非exportable証明書を初回生成。新しい秘密鍵もKV内で生成し、既存currentは照合して再利用 |
+| 構築hook・保護保存先 | 今回のVMコマンドの正常終了と公開鍵・公開証明書・版・期限を照合し、公開`.cer`とstateを保存 |
+
+秘密鍵・PFX・backing secretはVM、ACA、ローカルへ取り出しません。証明書取得だけでは稼働中Portalの認証設定は切り替わりません。
+
+既存環境でCoreを再適用する場合、既存のTLS・公開DNS・通信整備等のhookも対象になります。適用判断には、テンプレートの差分とhookの変更を両方含めます。新規構築の`azd up`と、稼働中環境への再適用を同じ操作として扱いません。
+
+### 既存環境の初期証明書準備：承認済みの限定追加方式
+
+3部品だけを限定追加する実装方針は承認済みです。専用の実行入口を実装し、[ローカル検証](../testing/portal-authentication-tests.md#限定追加入口と全体構築の確認)で初期の関連133試験を確認しました。結果URLと省略metadataへの対応後の対象試験も成功しました。Azure実適用は対象環境の最終差分を提示して判断を受け、実行結果を保護記録で確認します。新規構築はCoreとhookを使う既定の手順を維持し、同じ3部品の呼出し・依存順・正式postprovisionからの公開証明書収集までを合成検証しました。構築済みの環境では、Coreと同じ次の3部品だけをIncrementalで追加します。
+
+| 部品 | 既存資材と処理 |
+| --- | --- |
+| 署名専用ID | [auth-identity.bicep](../../apps/portal/deploy/auth-identity.bicep)をID用RGへ配備 |
+| 鍵運用権限 | [portal-auth-key-operations.bicep](../../infra/modules/portal-auth-key-operations.bicep)をKVのRGへ配備。ロール定義と対象鍵scopeの割当を照合 |
+| 初期発行worker | [portal-auth-certificate.bicep](../../infra/modules/portal-auth-certificate.bicep)を管理VMのRGへ配備。専用workerがKV内で秘密鍵と自己署名証明書を生成 |
+
+この入口は既存PortalのContainer Appへ書き込まず、初期サンプルへの置換や認証切替を行いません。SQL、APIM、WAF、TLS、DNS、基盤ネットワークの再配備を呼びません。管理VMの証明書操作権限、既存KV PE・DNSと、固定版PowerShellの準備を前提として照合します。実行時のworkerもPowerShellの版を検査し、条件不足のまま発行を始めません。準備不足を認めた場合は、その準備に必要な差分を先に提示します。
+
+初期発行の運用入口は既存の[証明書運用CLI](../../scripts/operations/portal_auth_certificate.py)の`initialize`です。[実行手順](../operations/portal-authentication.md#初期構築と既存環境への限定追加)に従い、対象paramsと同じ環境の保護stateを照合し、別のsource checkoutから実行する場合だけ保護runtimeのrootを明示します。入力・stateを探索したりコピーしたりしません。既定では計画を表示し、`--execute`で3部品の対象、変更予測、保存した実行intentを確認して順に配備します。応答不明時に変更要求を重ねず、今回のRun Commandの終了と公開証明書を照合して再開します。Failed/Canceledの自動再実行は行わず、checkpointを調査して回復方法を判断します。
+
+発行後は既存の収集処理で公開`.cer`と初期証明書stateを指定した保護runtimeへ保存します。秘密鍵・PFX・backing secretは取得しません。専用Entraアプリの手動登録、Portal本体の個別配備、実受入は後続の工程です。
+
+適用前の変更予測では、署名ID・ロール定義・ロール割当・発行Run Command以外への変更がないことと、未解決の診断がないことを確認します。Run Commandの変更予測は、VM内部でのKV証明書生成や実通信の成功を証明しません。承認済みの方式で実行入口の実装とローカル検証を完了し、完成した入口の実適用差分を提示して判断を受けます。
+
+## 適用前に提示・確認するもの
+
+1. 利用者が明示した対象環境の保護params、同じcheckoutのazd環境とCore stateを選択し、所有・権限・保存先を照合します。別checkoutや別環境の入力を探索・コピーして採用しません。
+2. 統合した資材のCore変更計画を取得し、新規・変更・削除される資源と、実行されるhookを確認します。稼働中Portalが初期サンプルへ戻らないことも対象にします。
+3. 署名UAMI、鍵運用権限、VM worker、KV証明書生成以外に変更が出る場合、その内容を適用案へ明示します。SQL接続方式、WAF、APIM、TLS、DNS等の未判断変更をまとめて反映しません。
+4. 現行Portalのイメージ・認証設定・ジョブ・必要な権限の復旧参照を保護保存し、適用対象・順序・確認方法を利用者へ提示して判断を受けます。
+
+SQL接続policyはProxyを維持し、PortalのTedious/KyselyとSQL用Managed Identity・Azure CLI認証を継続します。取消統合後の構築・照合資材もProxyへ揃えました。証明書準備・認証切替へSQL driver変更やSQL接続方式の切替を含めません。Coreとhookの実際の適用差分は引き続き確認し、証明書以外の変更がある場合は具体的な範囲を先に提示します。
+
+対象環境を明示していない段階や、実際の変更計画を取得していない段階で、既存環境への適用差分が確定したとは記載しません。正確な入力・差分・証跡は`.local/<environment>/`へ保護保存し、公開文書には転載しません。
+
+## 実施順序と判断の区切り
+
+| 段階 | 実施内容 | 次へ進む条件 |
+| --- | --- | --- |
+| 1. 初期証明書準備 | 新規は全体構築のCore・hook、既存環境は判断済みの3部品限定追加入口を実行し、KVで自己署名証明書を発行、公開`.cer`と固定参照を取得 | VMコマンド成功、鍵と証明書の対応、非exportable・Self・版・期限、保護保存を確認 |
+| 2. Entraの一度の登録 | 専用Portalアプリ作成、公開証明書、Portalログインcallback、工程4用callbackと`Gateway.Invoke`、Graph権限・同意を手動登録 | 合意済みの設計と確定した手順に沿い、公開証明書と対象アプリの一致、登録結果を照合 |
+| 3. Portal本体配備 | 個別配備入口でイメージをビルドし、DB・署名権限・本体・Graphジョブを準備 | 配備計画と復旧参照を提示して判断を受け、設定・イメージを読戻し |
+| 4. 実受入 | ログイン、tid/oidによる本人照合、既存APIキー管理、Graph管理、定期ジョブ、KVへの実通信を確認 | [認証試験](../testing/portal-authentication-tests.md)の対象条件を満たす |
+| 5. 更新・復旧の受入 | 新鍵の準備、手動公開証明書追加、固定参照切替、実確認、復旧、旧証明書削除・旧鍵版無効化を確認 | [更新運用](../operations/portal-authentication.md)の各段階を実受入 |
+| 6. 旧Portal撤去 | Portal用途の旧secret参照・読取り権限・旧callbackと移行用ソース処理を照合して撤去 | 新Portalの実受入と復旧期間の終了。CM用secret・callbackの利用を維持 |
+
+Entraアプリ作成と初回公開証明書登録を分けて申請しません。工程4の登録設定は初回申請前に確定し、工程4の認証処理・Try接続の実装は詳細設計の判断後に進めます。PortalのSQL Driver変更とSQL Redirect切替は今回取りやめました。
+
+HTTPSヘルス、設定の読戻し、ローカル署名成功をEntraログインや更新運用の実受入へ置き換えません。Next.js依存の既知脆弱性は[ローカル検証結果](../testing/portal-authentication-tests.md)の残件であり、依存更新の方針も別途確認します。

@@ -1,6 +1,7 @@
 {
   "version": 1,
   "public_uuids": {
+    "11fb06fb-712d-4ddd-98c7-e71bbd588830": "Public ARM guid() namespace documented at https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/template-functions-string#guid; not an environment identity",
     "1c0163c0-47e6-4577-8991-ea5c82e286e4": "Public Azure built-in RBAC role definition; not a deployment identity",
     "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1": "Public Azure built-in RBAC role definition; not a deployment identity",
     "312a565d-c81f-4fd8-895a-4e21e48d571c": "Public Azure built-in RBAC role definition; not a deployment identity",
@@ -111,7 +112,10 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_schema_helpers.py"
+        "tests/test_portal_certificate_initialization.py",
+        "tests/test_schema_helpers.py",
+        "apps/portal/tests/client-assertion.test.ts",
+        "tests/test_sql_connection_policy_operation.py"
       ]
     },
     {
@@ -127,7 +131,12 @@
         "tests/test_fixed_initial_configuration.py",
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
-        "tests/test_prepare_credential_pool_config.py"
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
+        "apps/portal/tests/client-assertion.test.ts",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -145,7 +154,10 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
-        "tests/test_prepare_credential_pool_config.py"
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -162,6 +174,7 @@
         "tests/test_fixed_parameter_materials.py",
         "tests/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
+        "tests/test_portal_certificate_initialization.py",
         "tests/test_publication_source_generation.py"
       ]
     },
@@ -904,7 +917,8 @@
         "infra/guest/certificate.ps1",
         "scripts/waf_probe.py",
         "tests/certificate-network-boundary-offline.ps1",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "infra/guest/portal-auth-certificate.ps1"
       ]
     },
     {
@@ -2506,7 +2520,8 @@
         "scripts/waf_probe.py",
         "tests/certificate-azure-identity-offline.ps1",
         "tests/certificate-network-boundary-offline.ps1",
-        "tests/test_publish_apis.py"
+        "tests/test_publish_apis.py",
+        "infra/guest/portal-auth-certificate.ps1"
       ]
     },
     {
@@ -4199,7 +4214,8 @@
       "value": "1.0.0.0",
       "reason": "Public ARM deployment parameters contentVersion constant, not an IP address. Exact value and enumerated source files only.",
       "paths": [
-        "scripts/operations/maintenance.py"
+        "scripts/operations/maintenance.py",
+        "scripts/operations/sql_nsg_upgrade.py"
       ]
     },
     {
@@ -4820,6 +4836,32 @@
       "reason": "Independent synthetic OAuth client-ID test sentinel or fixed platform subscription-name prefix; contains no deployment or user identifier. Exact source paths only.",
       "paths": [
         "tests/test_credential_provider_inputs.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-synthetic.vault.azure.net",
+      "reason": "Independent synthetic Key Vault hostname used only in offline Portal certificate/signature fixtures; not copied from any deployment. Exact source paths and value only.",
+      "paths": [
+        "apps/portal/tests/client-assertion.test.ts",
+        "tests/portal-auth-certificate-offline.ps1"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "kv-test-sample.vault.azure.net",
+      "reason": "Independent synthetic Key Vault hostname paired with the existing test-sample foundation fixture for offline Portal deployment tests; not copied from a deployment. Exact source path and value only.",
+      "paths": [
+        "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.1.25",
+      "reason": "Independent synthetic address inside the existing offline fixture subnet, used only to simulate SQL Private Endpoint IP drift and reject writes; never copied or derived from an environment. Exact value and these two test paths only. Retained for exact scanning of retired SQL Redirect fixtures in Git history; operational files remain removed.",
+      "paths": [
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_redirect_nsg.py"
       ]
     }
   ],

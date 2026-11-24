@@ -52,7 +52,12 @@ class ApplicationDeploymentTests(unittest.TestCase):
         applications.load_configuration.assert_called_once_with(self.source)
         for call in applications.subprocess.run.call_args_list:
             self.assertEqual(call.kwargs, {'cwd': self.root, 'shell': False, 'check': False})
-        self.assertIn('GatewayとPortalの計画が完了しました。', self.output.getvalue())
+        self.assertIn('指定したアプリの計画が完了しました。', self.output.getvalue())
+
+    def test_initial_workflow_leaves_the_portal_sample(self):
+        self.assertEqual(applications.main(['--gateway-only']), 0)
+        self.assertEqual(len(self.run_commands()), 1)
+        self.assertEqual(Path(self.run_commands()[0][1]).name, 'deploy_gateway.py')
 
     def test_unselected_environment_does_not_start_either_child(self):
         with mock.patch.dict(os.environ, {'PYTHONDONTWRITEBYTECODE': '1'}, clear=True):
@@ -77,7 +82,7 @@ class ApplicationDeploymentTests(unittest.TestCase):
         applications.subprocess.run.side_effect = run
         self.assertEqual(applications.main(['--execute']), 0)
         self.assertEqual(stages, ['deploy_gateway.py', 'deploy_portal.py'])
-        self.assertIn('GatewayとPortalの配備が完了しました。', self.output.getvalue())
+        self.assertIn('指定したアプリの配備が完了しました。', self.output.getvalue())
 
     def test_environment_and_explicit_paths_are_resolved_from_repository(self):
         selected = self.source.parent / 'selected.json'

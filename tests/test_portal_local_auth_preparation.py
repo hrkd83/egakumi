@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -82,8 +83,10 @@ class LocalPortalPreparationTests(unittest.TestCase):
         self.assertFalse((self.root / "secrets").exists())
         for key in ("runtimeEnvironmentFile", "sqlAdminEnvironmentFile"):
             path = Path(result[key])
-            self.assertEqual(0o600, path.stat().st_mode & 0o777)
-            self.assertEqual(0o700, path.parent.stat().st_mode & 0o777)
+            # WindowsはPOSIX modeでDACLを表せません。native ACLは専用試験で確認します。
+            if os.name != 'nt':
+                self.assertEqual(0o600, path.stat().st_mode & 0o777)
+                self.assertEqual(0o700, path.parent.stat().st_mode & 0o777)
 
     def test_repeated_execution_preserves_every_byte(self):
         first = self.prepare(execute=True, accept_sql_eula=True)
@@ -153,7 +156,12 @@ class LocalPortalPreparationTests(unittest.TestCase):
     def test_private_output_links_are_refused_before_creation(self):
         outside = Path(self.temporary.name) / "outside"
         outside.mkdir()
-        (self.root / ".local").symlink_to(outside, target_is_directory=True)
+        try:
+            (self.root / ".local").symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symbolic-link privilege is unavailable')
+            raise
         with self.assertRaisesRegex(ValueError, "symbolic links"):
             self.prepare(execute=True, accept_sql_eula=True)
         self.assertEqual([], list(outside.iterdir()))

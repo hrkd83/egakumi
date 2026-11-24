@@ -4,6 +4,7 @@ import type { AuthEnvironment } from "./auth-environment";
 import { createIdentityGate, createMicrosoftProfileResolver, withoutOAuthTokens } from "./auth-identity.ts";
 import { portalAuthModels } from "./auth-schema.ts";
 import { portalAuthLogger } from "./auth-logger.ts";
+import { createClientAssertion } from "./client-assertion.ts";
 
 /**
  * Microsoftへの認証要求とSQL保存の方針を、実行環境の値から組み立てます。
@@ -25,7 +26,9 @@ export function createPortalAuthOptions(environment: AuthEnvironment, database: 
     socialProviders: {
       microsoft: {
         clientId: environment.microsoftClientId,
-        clientSecret: environment.microsoftClientSecret,
+        ...(environment.certificate
+          ? { clientAssertion: createClientAssertion(environment.microsoftTenantId, environment.microsoftClientId, environment.certificate) }
+          : { clientSecret: environment.microsoftClientSecret }),
         tenantId: environment.microsoftTenantId,
         disableDefaultScope: true,
         scope: ["openid", "profile", "email"],

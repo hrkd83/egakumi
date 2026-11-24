@@ -34,6 +34,15 @@ def load_scanner():
 class PublicDataGuardTests(unittest.TestCase):
     """入力の実値を失敗ログへ再掲せず、CLIの結果を検証する。"""
 
+    def symlink(self, path: Path, target: Path, *, directory=False) -> None:
+        """OSが実際にリンクを作れる場合に境界を確認し、権限不足は未実施と区別する。"""
+        try:
+            path.symlink_to(target, target_is_directory=directory)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symbolic-link privilege is unavailable')
+            raise
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="public-guard-test-")
         self.addCleanup(self.temporary.cleanup)
@@ -187,7 +196,7 @@ class PublicDataGuardTests(unittest.TestCase):
 
     def test_generated_catalog_approves_only_the_same_official_audience_constants(self) -> None:
         policy = Path(__file__).resolve().parents[1] / "scripts/public-data-policy.json"
-        self.policy_data = json.loads(policy.read_text())
+        self.policy_data = json.loads(policy.read_text(encoding='utf-8'))
         self.policy_data["public_author_names"] = ["Example developer"]
         self.save_policy()
         name = "apps/portal/lib/generated/model-api-definitions.json"
@@ -260,7 +269,7 @@ class PublicDataGuardTests(unittest.TestCase):
     def test_symlink_is_blocked_in_index_and_worktree(self) -> None:
         target = self.directory / "outside.txt"
         target.write_text("Synthetic public data.")
-        (self.repository / "linked.txt").symlink_to(target)
+        self.symlink(self.repository / "linked.txt", target)
         self.git("add", "linked.txt")
         self.outcome(self.check("--staged"), 1, "unsupported-file-mode")
         self.outcome(self.check("--worktree"), 1, "symlink-review-required")
@@ -441,7 +450,7 @@ class PublicDataGuardTests(unittest.TestCase):
         for root in (".local", ".azure"):
             with self.subTest(root=root):
                 linked = self.repository / root
-                linked.symlink_to(outside, target_is_directory=True)
+                self.symlink(linked, outside, directory=True)
                 self.policy_data["literal_exceptions"] = [{
                     "path": root, "rule": "private-runtime-root-symlink",
                     "value": root, "reason": "Synthetic attempted boundary override",
@@ -554,7 +563,7 @@ class PublicDataGuardTests(unittest.TestCase):
         outside = self.directory / "outside-study"
         outside.mkdir()
         (self.repository / "docs").mkdir()
-        (self.repository / "docs/study").symlink_to(outside, target_is_directory=True)
+        self.symlink(self.repository / "docs/study", outside, directory=True)
         self.outcome(self.check("--worktree"), 1, "symlink-review-required")
 
     def test_forced_study_tracking_is_refused_even_with_reviewed_hash(self) -> None:

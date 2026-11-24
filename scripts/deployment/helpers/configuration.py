@@ -94,7 +94,7 @@ RETIRED_FIREWALL_INPUTS = {
     "apimAllowedFqdns", "managementAllowedFqdns",
 }
 PARAMETER_SECTION_KEYS = {
-    "portal": {"publicHostName"},
+    "portal": {"publicHostName", "authentication", "certificate"},
     "network": PARAMETER_NETWORK_IP_KEYS,
     "services": {"publisherName", "publisherEmail", "apimInstanceId"},
     "gateway": {"publicHostName", "authentication"},
@@ -1334,7 +1334,31 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     _integer(mon.setdefault("appInsightsIngestionWarningGb", 80), "monitoring.appInsightsIngestionWarningGb", 1, 100000)
     _bool(mon.setdefault("enableLogAlerts", False), "monitoring.enableLogAlerts")
     c["monitoring"] = mon
-    portal = _object(c.get("portal"), "portal", {"publicHostName"})
+    portal = _object(c.get("portal"), "portal", {"publicHostName", "authentication", "certificate"})
+    portal_cert = _object(portal.setdefault("certificate", {}), "portal.certificate", {"certificateName", "validityMonths", "renewBeforeDays"})
+    cert_name = _string(portal_cert.setdefault("certificateName", "portal-auth"), "portal.certificate.certificateName", maximum=127)
+    if not re.fullmatch(r"[a-z0-9-]+", cert_name):
+        _fail("portal.certificate.certificateName", "must use lowercase letters, digits and hyphens")
+    _integer(portal_cert.setdefault("validityMonths", 12), "portal.certificate.validityMonths", 1, 24)
+    _integer(portal_cert.setdefault("renewBeforeDays", 60), "portal.certificate.renewBeforeDays", 7, 90)
+    if portal_cert["certificateName"] == c["certificate"]["certificateName"]:
+        _fail("portal.certificate.certificateName", "must differ from the HTTPS certificate name")
+    if "authentication" in portal:
+        auth_path = "portal.authentication"
+        auth = _object(portal["authentication"], auth_path, {"tenantId", "clientId", "keyId", "certificateThumbprint"})
+        for field in ("tenantId", "clientId"):
+            auth[field] = _guid(auth.get(field), auth_path + "." + field)
+        if ("keyId" in auth) != ("certificateThumbprint" in auth):
+            _fail(auth_path, "explicit key version and thumbprint must be supplied together")
+        if "keyId" in auth:
+            key = _string(auth["keyId"], auth_path + ".keyId")
+            # URLの正規表現を独立させ、公開データ検査でもURLとして誤読させません。
+            if not re.fullmatch(re.escape("https://") + r"[a-z0-9-]+\.vault\.azure\.net/keys/[a-z0-9-]+/[a-f0-9]{32}", key, re.I):
+                _fail(auth_path + ".keyId", "must pin an Azure Key Vault key version")
+            thumbprint = _string(auth["certificateThumbprint"], auth_path + ".certificateThumbprint")
+            if not re.fullmatch(r"[a-fA-F0-9]{40}", thumbprint):
+                _fail(auth_path + ".certificateThumbprint", "must be the public certificate SHA-1 thumbprint paired with the key version")
+            auth["certificateThumbprint"] = thumbprint.lower()
     portal_host = _host(portal.get("publicHostName"), "portal.publicHostName")
     cert = _object(c.get("certificate"), "certificate", {"mode", "certificateName", "contactEmail", "directory", "plugin", "renewBeforeDays", "checkEveryHours", "moduleVersion", "dnsSleepSeconds", "validationTimeoutSeconds", "minimumValidDays", "domainNames", "azureDnsSubscriptionId", "azureDnsManagedIdentityResourceId"})
     validate_supported_certificate(cert)
@@ -1484,7 +1508,7 @@ def normalize_configuration(raw: dict, *, base_directory: Path | str = ".") -> d
     # カタログ用の説明も無料の設定検査で作れることを先に確認する。
     # 説明自体はBicep入力時にだけ追加し、利用者の設定ファイルへは混ぜない。
     with_catalog_descriptions(c)
-    portal = _object(c.get("portal"), "portal", {"publicHostName"})
+    portal = _object(c.get("portal"), "portal", {"publicHostName", "authentication", "certificate"})
     host = _host(portal.get("publicHostName"), "portal.publicHostName")
     if not host.startswith("portal.") or host == g["publicHostName"]:
         _fail("portal.publicHostName", "must be a distinct portal subdomain")

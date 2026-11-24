@@ -130,6 +130,41 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
                     and resource["name"] == "[format('{0}-" + name + "', "
                     + ("variables" if target == "core" else "parameters") + "('stem'))]")
 
+    def test_initial_certificate_runs_after_runtime_network_and_role_preparation(self):
+        module = self.module('portal-auth-certificate')
+        dependency_text = json.dumps(module['dependsOn'])
+        for dependency in ('portal-auth-key-operations', 'service-bindings', 'network-bindings', 'certificate', 'management-audit'):
+            self.assertIn(dependency, dependency_text)
+        command, = module['properties']['template']['resources']
+        self.assertEqual(command['properties']['asyncExecution'], False)
+        self.assertEqual(command['properties']['treatFailureAsDeploymentFailure'], True)
+        embedded_sources = [value for value in module['properties']['template']['variables'].values() if isinstance(value, str)]
+        self.assertTrue(any('worker.ps1 -Action Initialize' in value for value in embedded_sources))
+        self.assertTrue(any('EGAKUMI_PORTAL_AUTH' in value for value in embedded_sources))
+        self.assertNotIn('clientId', module['properties']['parameters']['config']['value'])
+
+    def test_dedicated_signer_has_only_public_read_and_sign_on_the_key_scope(self):
+        resources = self.module('portal-auth-key-access', 'portal')['properties']['template']['resources']
+        role = next(item for item in resources if item['type'].endswith('/roleDefinitions'))
+        self.assertEqual(role['properties']['permissions'][0]['dataActions'], ['Microsoft.KeyVault/vaults/keys/read', 'Microsoft.KeyVault/vaults/keys/sign/action'])
+        assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
+        self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
+
+    def test_management_key_operator_uses_supported_data_actions_on_the_key_scope(self):
+        resources = self.module('portal-auth-key-operations')['properties']['template']['resources']
+        role = next(item for item in resources if item['type'].endswith('/roleDefinitions'))
+        permission, = role['properties']['permissions']
+        # keys/write is a control-plane Action; the KV update REST API uses update/action.
+        # https://learn.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations#microsoftkeyvault
+        self.assertEqual(permission['actions'], [])
+        self.assertEqual(permission['dataActions'], [
+            'Microsoft.KeyVault/vaults/keys/read',
+            'Microsoft.KeyVault/vaults/keys/update/action',
+        ])
+        assignment = next(item for item in resources if item['type'].endswith('/roleAssignments'))
+        self.assertIn('Microsoft.KeyVault/vaults/keys', assignment['scope'])
+        self.assertEqual(assignment['properties']['principalType'], 'ServicePrincipal')
+
     def test_database_is_separate_and_reuses_existing_server(self):
         module = self.module("portal-database", "portal")
         self.assertNotIn("condition", module)
@@ -244,21 +279,24 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
         template = self.module("portal-application", "portal")["properties"]["template"]
         app, = [item for item in template["resources"] if item["type"] == "Microsoft.App/containerApps"]
         secrets = app["properties"]["configuration"]["secrets"]
-        self.assertEqual({secret['name'] for secret in secrets}, {
-            'auth-signing-secret', 'microsoft-client-secret', 'subscription-profile-secret'})
-        self.assertTrue(all("value" not in secret and "keyVaultUrl" in secret for secret in secrets))
-        self.assertTrue(all(secret["identity"] == "[parameters('runtimeIdentity').id]" for secret in secrets))
+        self.assertIsInstance(secrets, str)
+        self.assertIn("if(empty(parameters('authentication'))", secrets)
+        self.assertIn("auth-signing-secret", secrets)
+        self.assertIn("subscription-profile-secret", secrets)
+        self.assertIn("microsoft-client-secret", secrets)
+        self.assertIn("parameters('runtimeIdentity').id", secrets)
         environment = template["variables"]["variables"]
-        self.assertEqual(environment["PORTAL_SQL_AUTH"], "managed-identity")
-        self.assertEqual(environment["PORTAL_SUBSCRIPTION_SYNC_ENABLED"], "true")
-        self.assertEqual(environment["PORTAL_CANONICAL_SQL_SERVER"], "[parameters('sqlServer')]")
-        self.assertEqual(environment["PORTAL_CANONICAL_SQL_DATABASE"], "[parameters('database')]")
-        self.assertEqual(environment["AZURE_CLIENT_ID"], "[parameters('runtimeIdentity').clientId]")
-        self.assertEqual(environment["MICROSOFT_TENANT_ID"], "[parameters('tenantId')]")
-        self.assertEqual(environment["AZURE_TENANT_ID"], "[tenant().tenantId]")
-        self.assertEqual(environment["PORTAL_APIM_AUTH"], "managed-identity")
-        self.assertEqual(environment["PORTAL_APIM_RESOURCE_ID"], "[parameters('apimResourceId')]")
-        self.assertEqual(environment["PORTAL_GATEWAY_URL"], "[parameters('gatewayOrigin')]")
+        for name, expression in {
+            'PORTAL_SQL_AUTH': "'managed-identity'", 'PORTAL_SUBSCRIPTION_SYNC_ENABLED': "'true'",
+            'PORTAL_CANONICAL_SQL_SERVER': "parameters('sqlServer')", 'PORTAL_CANONICAL_SQL_DATABASE': "parameters('database')",
+            'AZURE_CLIENT_ID': "parameters('runtimeIdentity').clientId", 'MICROSOFT_TENANT_ID': "parameters('tenantId')",
+            'AZURE_TENANT_ID': 'tenant().tenantId', 'PORTAL_APIM_AUTH': "'managed-identity'",
+            'PORTAL_APIM_RESOURCE_ID': "parameters('apimResourceId')", 'PORTAL_GATEWAY_URL': "parameters('gatewayOrigin')",
+        }.items():
+            self.assertIn("'" + name + "', " + expression, environment)
+        certificate_variables = template['variables']['certificateVariables']
+        self.assertIn("'PORTAL_AUTH_KEY_ID', parameters('authentication').keyId", certificate_variables)
+        self.assertIn("'PORTAL_AUTH_CERTIFICATE_THUMBPRINT', parameters('authentication').certificateThumbprint", certificate_variables)
         self.assertNotIn("PORTAL_GATEWAY_SUBSCRIPTION_KEY", environment)
         self.assertNotIn("PORTAL_GATEWAY_SUBSCRIPTION_KEY_FILE", environment)
         self.assertEqual(self.module("portal-application", "portal")["properties"]["parameters"]["gatewayOrigin"],
@@ -278,15 +316,16 @@ class PortalAuthenticationBicepTests(unittest.TestCase):
             "cronExpression": "*/15 * * * *", "replicaCompletionCount": 1, "parallelism": 1})
         self.assertEqual(config["replicaRetryLimit"], 0)
         self.assertEqual(config["replicaTimeout"], 300)
-        secret, = config["secrets"]
-        self.assertNotIn("value", secret)
-        self.assertEqual(secret["keyVaultUrl"], "[parameters('clientSecretUri')]")
-        self.assertEqual(secret["identity"], "[parameters('runtimeIdentity').id]")
+        self.assertIsInstance(config['secrets'], str)
+        self.assertIn("if(empty(parameters('authentication'))", config['secrets'])
+        self.assertIn("parameters('clientSecretUri')", config['secrets'])
         container, = job["properties"]["template"]["containers"]
         self.assertIn("scripts/reconcile-api-key-groups.ts", container["command"])
-        environment = {item["name"]: item for item in container["env"]}
-        self.assertEqual(environment["PORTAL_SQL_AUTH"]["value"], "managed-identity")
-        self.assertEqual(environment["AZURE_CLIENT_ID"]["value"], "[parameters('runtimeIdentity').clientId]")
+        environment = container['env']
+        self.assertIn("'PORTAL_SQL_AUTH', 'value', 'managed-identity'", environment)
+        self.assertIn("'AZURE_CLIENT_ID', 'value', parameters('runtimeIdentity').clientId", environment)
+        self.assertIn("PORTAL_AUTH_KEY_ID", environment)
+        self.assertIn("PORTAL_AUTH_CERTIFICATE_THUMBPRINT", environment)
         self.assertNotIn("PORTAL_APIM_RESOURCE_ID", environment)
         self.assertFalse(any(item["type"].startswith("Microsoft.Authorization/") for item in resources))
         schema = self.module("portal-schema-job", "portal")["properties"]["template"]["variables"]["variables"]

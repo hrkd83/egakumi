@@ -8,6 +8,7 @@ param settings object
 param vaultName string
 param runtimeIdentity object
 param credentialProviderName string
+param certificateAuthentication bool = false
 @secure()
 param signingSecret string = ''
 @secure()
@@ -70,7 +71,7 @@ resource signingKeyAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   properties: { roleDefinitionId: keyVaultSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
   dependsOn: [signingKey]
 }
-resource credentialSecretAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource credentialSecretAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!certificateAuthentication) {
   name: guid(credentialSecret.id, runtimeIdentity.principalId, keyVaultSecretUser)
   scope: credentialSecret
   properties: { roleDefinitionId: keyVaultSecretUser, principalId: runtimeIdentity.principalId, principalType: 'ServicePrincipal' }
@@ -85,5 +86,5 @@ output sqlServerId string = server.id
 output database string = database.name
 output databaseId string = database.id
 output signingSecretUri string = '${vault.properties.vaultUri}secrets/core-portal-auth-secret'
-output clientSecretUri string = '${vault.properties.vaultUri}secrets/${credentialSecret.name}'
+output clientSecretUri string = certificateAuthentication ? '' : '${vault.properties.vaultUri}secrets/${credentialSecret.name}'
 output profileSecretUri string = '${vault.properties.vaultUri}secrets/core-subscription-profile-key'
