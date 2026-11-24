@@ -114,7 +114,8 @@
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
         "tests/test_schema_helpers.py",
-        "apps/portal/tests/client-assertion.test.ts"
+        "apps/portal/tests/client-assertion.test.ts",
+        "tests/test_sql_connection_policy_operation.py"
       ]
     },
     {
@@ -132,7 +133,10 @@
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
-        "apps/portal/tests/client-assertion.test.ts"
+        "apps/portal/tests/client-assertion.test.ts",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -151,7 +155,9 @@
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
-        "tests/test_portal_certificate_initialization.py"
+        "tests/test_portal_certificate_initialization.py",
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_sql_policy_nsg_integration.py"
       ]
     },
     {
@@ -4208,7 +4214,8 @@
       "value": "1.0.0.0",
       "reason": "Public ARM deployment parameters contentVersion constant, not an IP address. Exact value and enumerated source files only.",
       "paths": [
-        "scripts/operations/maintenance.py"
+        "scripts/operations/maintenance.py",
+        "scripts/operations/sql_nsg_upgrade.py"
       ]
     },
     {
@@ -4846,6 +4853,15 @@
       "reason": "Independent synthetic Key Vault hostname paired with the existing test-sample foundation fixture for offline Portal deployment tests; not copied from a deployment. Exact source path and value only.",
       "paths": [
         "tests/test_deploy_portal.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "10.70.1.25",
+      "reason": "Independent synthetic address inside the existing offline fixture subnet, used only to simulate SQL Private Endpoint IP drift and reject writes; never copied or derived from an environment. Exact value and these two test paths only. Retained for exact scanning of retired SQL Redirect fixtures in Git history; operational files remain removed.",
+      "paths": [
+        "tests/test_sql_nsg_upgrade_operation.py",
+        "tests/test_sql_redirect_nsg.py"
       ]
     }
   ],
