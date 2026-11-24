@@ -1,6 +1,6 @@
 # Portal専用Entraアプリの手動登録
 
-状態：構築・手動登録手順のWIPです。工程3の資材・運用手順はローカル検証済みです。対象環境の適用・受入状況は保護記録で確認します。[工程4の詳細設計案](../reference/portal-stage4-design.md)は判断前で、以下の工程4用設定はその設計に含む未確定案です。
+状態：工程3の資材・運用手順はローカル検証済みです。[工程4の詳細設計](../reference/portal-stage4-design.md)の実装方針は合意済みで、初回の手動登録に含める設定を本書へ確定しました。対象環境のEntra登録・Portal配備・実受入は保護記録で確認します。工程4の正式実装・実受入は未実施のWIPです。
 
 初期構築の後に、この手順でアプリ作成と公開証明書の登録を一度の依頼にまとめます。Entraを管理する担当がAzureポータルで操作します。構築資材からEntraアプリを作成したり、管理者同意を自動付与したりしません。
 
@@ -13,13 +13,13 @@
 | 順序 | 実施すること | 担当 |
 | --- | --- | --- |
 | 1. 共有資材の構築 | KV・管理VM・ACAなどの共有資源とPortalの初期サンプルを用意。KV内に秘密鍵・自己署名証明書を発行し、公開`.cer`を取得 | 構築資材 |
-| 2. 新しいPortal用Entraアプリの作成 | 新規アプリ作成、公開証明書、Portalログインの戻り先、Graph管理権限、判断済みの工程4用設定を一度の依頼で登録 | Entra管理担当が手動操作。本書の対象 |
+| 2. 新しいPortal用Entraアプリの作成 | 新規アプリ作成、公開証明書、Portalログインの戻り先、Graph管理権限、本書の工程4用設定を一度の依頼で登録 | Entra管理担当が手動操作。本書の対象 |
 | 3. 工程3のPortal配備・受入 | 登録結果を使ってPortal本体をビルド・配備し、証明書認証・Graph管理・定期ジョブ等を受入 | Portalの配備資材と受入担当 |
-| 4. 工程4の実装・追加配備・受入 | 詳細設計の判断後、API用認証・トークン管理・各Tryへの接続を正式実装し、追加配備・受入 | Portalの実装・配備・受入担当 |
+| 4. 工程4の実装・追加配備・受入 | 工程3の受入後、合意済みの詳細設計に沿ってAPI用認証・トークン管理・各Tryへの接続を正式実装し、追加配備・受入 | Portalの実装・配備・受入担当 |
 
 本書の「初回登録」は、順序2の**新しいEntraアプリを作成し、必要な証明書と設定をその作成時にまとめて登録すること**です。証明書更新時は、このアプリへ新しい公開証明書を追加します。
 
-順序2で申請を一度にまとめるため、Entraの設定に影響する工程4の設計を先に確定します。工程4用設定を登録しただけでは、API用OAuthや各Tryが実装・受入済みになるわけではありません。[詳細設計](../reference/portal-stage4-design.md)では、API認証の流れ、ライブラリ、保存・更新・失効、全Tryと受入をまとめて判断します。URIやscope名だけの承認依頼には分割せず、判断前の内容を確定済みの登録指示として扱いません。
+順序2で申請を一度にまとめるため、Entraの設定に影響する工程4の設計を先に合意しました。本書の設定を同じ作成・設定作業で完了します。工程4用設定を登録しただけでは、API用OAuthや各Tryが実装・受入済みになるわけではありません。認証の流れ、ライブラリ、保存・更新・失効、全Tryと受入は[詳細設計](../reference/portal-stage4-design.md)に従います。
 
 ## 初期構築で用意するもの
 
@@ -47,6 +47,15 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 
 以下のドメインとIDは独立した例示・プレースホルダーです。実際の値は対象環境の保護入力・保護stateから担当者間で確認します。
 
+登録作業前に、構築担当が次の入力を確認します。PortalアプリのClient IDは新規作成後に決まります。
+
+| 入力 | 確認元・用途 |
+| --- | --- |
+| 認証tenant | 保護paramsの`entraTenantId`。Portalと既存APIの利用者認証を同じtenantへ揃える。`azureTenantId`はKV・ACA等のAzure管理用であり、登録先の代わりに使わない |
+| Portalの公開HTTPSホスト | 保護paramsの`portal.publicHostName`。以下の2つの戻り先へ同じホストを使う |
+| 既存APIアプリのClient ID | 保護paramsの`gateway.authentication.entra.audience`。アクセス許可の追加で既存APIアプリを選ぶために使う |
+| 公開証明書 | 初期構築で取得した`portal-auth-public.cer`と同じ環境の`state/portal-auth-certificate.json`。証明書のthumbprint・期限を照合する |
+
 | 項目 | 設定 |
 | --- | --- |
 | 登録先tenant | Portalの利用者を認証するEntra tenant。KV/ACAのAzure tenantとは区別する |
@@ -54,26 +63,31 @@ KVの秘密鍵、PFX、backing secretは取り出しません。Entra担当へ�
 | サポートされるアカウント | この組織ディレクトリ内のアカウントのみ（Single tenant） |
 | プラットフォーム | Web |
 | PortalログインのRedirect URI | `https://portal.example.com/api/auth/callback/microsoft` |
-| 工程4のAPI用Redirect URI | `https://portal.example.com/api/api-auth/callback`。API試行用の追加認証からPortalへ戻る固定経路の未確定案。初回登録前に工程4設計を説明して判断を受ける |
+| 工程4のAPI用Redirect URI | `https://portal.example.com/api/api-auth/callback`。API試行用の追加認証からPortalへ戻る固定経路 |
 | 証明書 | 初期構築で取得した`portal-auth-public.cer` |
 | Graph Application権限 | `GroupMember.Read.All`、`User.ReadBasic.All`。Portal管理と定期照合用 |
 | GraphのOIDC Delegated権限 | `openid`、`profile`、`email`、`offline_access`。ID tokenとAPI用更新トークン要求に対応する同意を同じ作業で確認 |
-| API Delegated権限 | 既存のAPI用アプリが公開する`Gateway.Invoke`を、新しいPortal用アプリに追加する工程4用の先行案。ユーザー本人のアクセストークンでGateway APIを呼ぶための許可。API用アプリの構築・scope公開は[Entra準備](02-entra.md)の前提 |
+| API Delegated権限 | 既存のAPI用アプリが公開する`Gateway.Invoke`を、新しいPortal用アプリに追加。完全なscopeは`api://<API_APP_CLIENT_ID>/Gateway.Invoke`。ユーザー本人のアクセストークンでGateway APIを呼ぶための許可。API用アプリの構築・scope公開は[APIアプリの準備](02a-entra-api.md)の前提 |
 | 管理者同意 | 上記権限を組織の手続きに従って同意 |
 | Implicit grant / Public client flows | 無効 |
 | 新Portalのclient secret | 作成しない |
+| 利用者割当・条件付きアクセス | 組織のルールを確認し、割当必須の場合は受入利用者の割当も同じ作業で実施 |
 
 Portalログインで要求する`openid profile email`はOIDCのscopeです。API用OAuthの`offline_access`は更新トークンを要求するscopeです。どちらもKV鍵やGraph Application権限を表すものではありません。Portalログイン用ID tokenをAPI試行へ送信しません。Graph下流OBOは工程5の別実装です。
+
+`/api/api-auth/complete`はPortal内部の完了処理で、Entraの戻り先には登録しません。既存APIアプリへPortalの証明書や戻り先を追加する操作はありません。公開済みの`Gateway.Invoke`を新しいPortalクライアントへ許可し、管理者同意を付与します。
 
 ## Azureポータルで操作する
 
 1. 認証対象tenantへ切り替え、「Microsoft Entra ID」→「アプリの登録」→「新規登録」を開きます。専用PortalアプリをSingle tenantで作成し、WebのPortalログイン戻り先を指定します。
-2. 「認証」でWebのRedirect URIを確認し、判断済みのAPI用戻り先も同時に追加します。Implicit grantのアクセストークン・IDトークンのチェック、Public client flowsはOFFにします。ローカル開発を行う場合だけ、専用の開発用アプリとlocalhost戻り先を別途設計します。
+2. 「認証」でWebのRedirect URIを確認し、API用戻り先も同時に追加します。2件とも実際のPortal公開HTTPSホストを使い、表の固定パスと一致させます。Implicit grantのアクセストークン・IDトークンのチェック、Public client flowsはOFFにします。ローカル開発を行う場合だけ、専用の開発用アプリとlocalhost戻り先を別途設計します。
 3. 「証明書とシークレット」→「証明書」→「証明書のアップロード」から公開`.cer`を登録します。「クライアントシークレット」で新しいsecretを作成しません。
 4. 登録されたthumbprintと有効期限が、保護stateの`current.certificateThumbprint`・`current.expires`と一致することを確認します。別用途のTLS証明書を選んでいないことも確認します。
-5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの「アプリケーションの許可」を選び、`GroupMember.Read.All`と`User.ReadBasic.All`を追加します。Graphの「委任されたアクセス許可」ではOIDC用の`openid`・`profile`・`email`・`offline_access`を確認します。次に「所属する組織で使用しているAPI」からAPI用アプリを選び、「委任されたアクセス許可」の`Gateway.Invoke`を追加します。設計どおりID tokenで本人を確認する構成では、未使用の既定`User.Read`を新Portalアプリに残さないよう確認します。
+5. 「APIのアクセス許可」→「アクセス許可の追加」でMicrosoft Graphの「アプリケーションの許可」を選び、`GroupMember.Read.All`と`User.ReadBasic.All`を追加します。Graphの「委任されたアクセス許可」ではOIDC用の`openid`・`profile`・`email`・`offline_access`を追加・確認します。次に「所属する組織で使用しているAPI」から、保護paramsの`gateway.authentication.entra.audience`で特定した既存APIアプリを選び、「委任されたアクセス許可」の`Gateway.Invoke`を追加します。ID tokenで本人を確認する構成なので、未使用の既定`User.Read`を新Portalアプリに残さないよう確認します。
 6. 必要な管理者同意を実施し、許可の種類・対象API・同意状態を確認します。Entra担当が必要とする申請・承認は組織の手続きに従います。
 7. 「概要」のDirectory tenant IDとApplication client IDを構築担当へ安全に渡します。Object IDをClient IDの代わりに入力しません。利用者割当必須や条件付きアクセスがある場合は、受入用の利用者も許可されていることを確認します。
+
+同じ作業の最後に、2件のWeb戻り先、公開証明書と期限、Graphの許可種類、既存APIの`Gateway.Invoke`、管理者同意、受入利用者の割当を保存後の画面で再確認します。構築担当へはDirectory tenant ID・新PortalのApplication client IDと、この確認が完了した結果を引き継ぎます。登録だけをPortalログインや工程4の実接続の成功に数えません。
 
 ## 登録後のPortal配備
 
