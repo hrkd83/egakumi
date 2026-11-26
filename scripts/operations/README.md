@@ -14,6 +14,8 @@
 | `waf.py` | 既存の用途別WAFのreconcilerを`--scope gateway/portal/all`で利用 | なし |
 | `nsg_dns.py` | Azure提供DNSを確認し、不要な既知のDNS用NSG子規則だけを回収 | 現物のDNS設定・所有・全対象規則を読む |
 | `nsg_appgw_egress.py` | 既定許可と重複するAppGWの送信3子規則だけを回収 | AppGWサブネット・対向宛先・既定規則・所有と実規則を読む |
+| `management_host_time.py` | 明示したruntime／evidenceで`inspect/apply/verify`を分け、SSH／rsyslogを変更せずPHC時刻だけを先行設定・確認 | 所有VM・同一世代と既存commandを読む。guest確認の実行にも`--execute`を使う |
+| `management_time_network.py` | PHC確認後、管理用の旧NTP NSG childとFW規則だけを条件付きで撤去 | 所有・関連付け・PHC証跡・NSG全条件・対象RCGの現在条件を読む |
 | `monitoring.py` | 対象Action groupのメール宛先、または既存アラート1規則の閾値を更新 | 現物を読んで比較する |
 
 ```sh

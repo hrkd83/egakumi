@@ -43,7 +43,7 @@ Schema：[標準config](../../schemas/options.schema.json)／[合成設定](../.
 
 ### 標準値を変える場合だけ確認する項目（config）
 
-以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・アプリ登録・VMログイン主体は前節のparamsへ記載します。標準APIはAPI正本を常用し、追加Foundry／API Center権限と監査readerは初期空に固定します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則と標準NTPもBicep内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
+以下はconfig側のSKU・ゾーン・ポート・モデル配備・通信と保護機能の標準設定です。リージョン・タグ・このVNet内のIP計画・アプリ登録・VMログイン主体は前節のparamsへ記載します。標準APIはAPI正本を常用し、追加Foundry／API Center権限と監査readerは初期空に固定します。VNetとFirewallのDNSはBicep内でAzure提供DNSに固定し、JSONの入力項目にはしません。NSG／Firewallの初期規則、APIMの外部NTP許可と管理VMのAzureホスト時刻同期も資材内で固定します。API・権限の要素形式は[paramsの記述形式](04-params.md#api権限の記述形式)で説明します。`environmentName`は命名用です。test/dev/prodという文字列でSKU・保持・保護を切り替えません。
 
 `[]`は空配列、`{}`は空オブジェクトです。空配列の意味は項目ごとに異なります。相対ファイル参照は**それを記載したJSONのフォルダー基準**で解決し、2ファイルを合成しても参照先を変えません。両ファイルの`$schema`はエディター補助、`$comment`は説明で、Azureへ送信しません。
 
@@ -171,7 +171,11 @@ API配列の置換、`publishApis`切替、既存WAF Resource ID、caller別`rat
 
 管理VMはUbuntu 24.04 LTS amd64＋SSH公開鍵認証です。現在の自動構築が対応するイメージはCanonical / ubuntu-24_04-lts / serverで、別ディストリビューション・custom imageを指定して動作保証するものではありません。SSHのパスワード認証・RDPは構成しません。初期VMのSerial Console用ローカル認証は[配備工程](06-deploy.md)で別に準備します。証明書取得・更新は固定版PowerShell 7.6.7をLinuxで動かし、定期実行はsystemd timer、OSログ収集はLinux AMA/DCRで行います。
 
-時刻同期は既存Chronyを優先し、Ubuntu標準の`/etc/chrony/sources.d/90-core-platform.sources`にBicepで固定した`ntp.ubuntu.com`を設定します。既存PHC/refclock・confdir/sourcedir・OS側のsource設定は保持し、未知の企業設定や既定poolを自動削除しません。NSGはInternet宛UDP123、Firewallは管理サブネットから宛先`*`へのUDP123を許可し、FQDNでは限定しません。既存の他Internet NTP sourceも到達可能なため、`ntp.ubuntu.com`だけが選ばれるとは扱いません。timesyncdのみのイメージでは専用drop-inを使い、両方のサービスが無い場合は明示的に失敗します。サービス稼働・構文確認と、実際の同期元・精度の確認は別に行います。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
+Microsoft LearnはAzureホスト時刻を通常最適な同期元とし、最新LinuxイメージのChrony＋PHC構成を案内しています。管理VMの時刻同期はUbuntu 24.04のChronyでAzureホストのPHCを唯一の同期元にします。`/dev/ptp_hyperv`がcharacter deviceで、対応する`clock_name`が`hyperv`であることを変更前に確認し、PHCの`refid`を`AZUR`として設定します。既知のUbuntu標準外部NTP／pool／source読込経路を無効化し、外部NTPへのfallbackやtimesyncdへの切替は行いません。PHC・Chronyの不足、未知の企業時刻設定、変更された旧管理ファイルは変更前に失敗させます。旧`90-core-platform.sources`とtimesyncd用`90-core-platform.conf`は、既知の管理内容と完全一致する場合だけ移行します。
+
+設定後は時間を限定した`chronyc waitsync`に加え、PHC／`AZUR`の選択と`Normal`の同期状態を確認します。サービス起動・同期確認が失敗した場合は元の設定へ復旧します。ホストからguestへの提供はVMBus／PHCによる非IPの連携なので、管理VM用NSGのUDP123規則とFirewallの`allow-mgmt-vm-ntp`を撤去し、UDP319／320も追加しません。既存環境ではPHC同期の成立を確認した後に、完全一致する旧管理NSG規則のETag付き限定削除と所有Firewall collectionの更新・読戻しを行います。APIM独自の外部NTP UDP123要件は維持します。今回のAzure反映・実VMの同期と精度の確認は未実施です。[Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)
+
+通常CoreのNSG／Firewall更新はguest監査より先なので、既存管理VMは[現行guest監査moduleの単独先行適用](../operations/network-security-groups.md#管理vmのホスト時計へ先行移行する)が必要です。Core前の読取gateは所有、現行script全文一致、RunCommand成功とPHC同期成立の出力を確認し、旧結果・未適用・失敗は変更前に停止します。先行成功証跡は適用時の同期成立を示すもので、現在の同期元・`Normal`状態・offset／精度は別に確認します。
 
 認証監査はSSH・PAMの認証/account/sessionを保持します。コマンド本文を含むsudoの`COMMAND=`行とcron本文は、AMA転送前のrsyslog規則でイベントごと収集対象から除外し、マスク済み行は新造しません。DCR側の追加マスクは維持します。rsyslogの構文検査とサービス操作は失敗段階を分けて返します。
 

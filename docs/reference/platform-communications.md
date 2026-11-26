@@ -2,7 +2,7 @@
 
 [通信要件](network-communication-requirements.md) · [NSG設計](network-security-design.md) · [Firewall設計](firewall-policy-design.md) · [検証・実証結果の管理](network-security-validation.md) · [保守の共通確認](../operations/common.md)
 
-初期構築は独立VNet、Azure提供DNS、標準NTPを使用する。NSGでは、構築したサブネットCIDRと割当IPを使って業務・保守・Azure基盤への通信を明示する。一方、同じホスト内の処理、Azureの基盤例外、サービス内部の処理は、通常のNSG Allowの名前・優先度・IP／ポートへ置き換えない。本書はその通信要件と成立条件を記録する。
+初期構築は独立VNet、Azure提供DNS、APIMの外部NTPと管理VMのAzureホストPHC同期を使用する。NSGでは、構築したサブネットCIDRと割当IPを使って業務・保守・Azure基盤への通信を明示する。一方、同じホスト内の処理、Azureの基盤例外、サービス内部の処理は、通常のNSG Allowの名前・優先度・IP／ポートへ置き換えない。本書はその通信要件と成立条件を記録する。
 
 NSGは状態を保持するため、許可された接続への応答だけを理由に逆方向Allowを追加しない。Azure提供DNSやIMDSには専用のサービス・タグによる制御もある。通常の`deny-any-ingress`／`deny-any-egress`で、以下のすべてを遮断できるという設計にはしない。[NSGの評価と基盤サービス](https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview)
 
@@ -85,13 +85,15 @@ Azure DHCPはNSGの基本サービス例外として扱う。最初のIP取得�
 
 [guest監査設定](../../infra/guest/configure-audit.sh)は、コマンド本文を含むsudo／cronイベントをAMA転送前に除外し、rsyslog構文検査と稼働確認を行う。AMAのforwarder自体を手製の固定port設定へ置き換えない。DCRの関連付けと収集条件、実Agent版、listener／socket、queue、local Firewallやsocket権限、実ログ到着を確認する。AMAから外部Monitorへの通信は別のNSG送信要件である。
 
-### ホスト時刻と外部NTP
+### 管理VMのAzureホスト時刻とAPIMの外部NTP
 
 [Azure Linuxの時刻同期](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync)には、VMICTimeSyncによる起動・保守復帰時の補正と、Chrony等がPHCを使う継続同期がある。VMICTimeSync単独で恒久的な同期を保証する説明にしない。Linuxの[Hyper-V実装](https://github.com/torvalds/linux/blob/master/drivers/hv/hv_util.c)は機構の参考であり、実VMのkernel版一致や同期精度の証明ではない。
 
-[guest監査設定](../../infra/guest/configure-audit.sh)は既存PHC／refclock／OS設定を保持し、既存Chronyまたはtimesyncdへ標準外部NTP `ntp.ubuntu.com`を設定する。NSGの`allow-time-sync-egress`はInternet宛UDP123、Firewallの`allow-mgmt-vm-ntp`は管理サブネットから宛先`*`へのUDP123を許可する。FQDNのDNS回答一致には依存せず、既存の他Internet sourceも到達可能となる。実際の選択元・同期・精度の確認は別に行う。APIM独自のNTP依存も別要件として維持する。
+[guest監査設定](../../infra/guest/configure-audit.sh)はUbuntu 24.04のChronyを必須とし、AzureホストのPHCを唯一の同期元にする。変更前に`/dev/ptp_hyperv`のcharacter deviceと`clock_name=hyperv`を検証し、PHCの`refid`を`AZUR`に固定する。既知のUbuntu標準外部NTP／pool／source読込経路を無効化する。旧`90-core-platform.sources`とtimesyncd用`90-core-platform.conf`は既知の管理内容と完全一致した場合だけ移行し、未知の企業時刻設定・変更済み旧管理ファイルは変更前に失敗させる。外部NTPへのfallbackやtimesyncdへの切替は行わない。
 
-今回、PTPデバイスの新規構成、同期元の強制選択switch、UDP319／320のNSG Allowは追加しない。実driver、PHC device／symlink、選択source、時刻同期・精度・復帰補正を運用で確認する。企業のNTPへ手動変更する場合はguest／NSG／Firewallを揃え、再配備による標準外部NTPの再適用を考慮する。
+設定後は時間を限定した`chronyc waitsync`とPHC／`AZUR`の選択、`Normal`の同期状態を確認し、サービス・同期確認の失敗時は元設定へ復旧する。既存環境の旧管理NSG325とFirewallの`allow-mgmt-vm-ntp`はPHC同期成立後に、完全一致する旧tupleのETag付き削除と所有collectionの更新・読戻しで撤去する。VMBus／PHCの非IP連携にUDP123／319／320の許可は不要であり、ネットワークPTPを追加しない。APIMのNSG328と`allow-apim-ntp`によるUDP123許可は維持する。実driver、PHC device／symlink、選択source、同期精度・保守復帰時の補正は実VMで別に確認する。今回のAzure反映・実VM同期は未実施である。企業NTPへの変更はguest／NSG／Firewallの所有範囲を改めて調整し、この初期資材による自動移行対象にしない。
+
+通常Coreはguest監査より先にNSG／Firewallを更新するため、既存VMは[現行guest監査moduleを単独先行適用](../operations/network-security-groups.md#管理vmのホスト時計へ先行移行する)する。Core前に所有・現行script全文一致・RunCommand成功とPHC同期成立の出力を読取gateで照合し、旧結果・未適用・失敗なら停止する。この証跡は先行適用時の成立確認であり、現在精度の自動保証にしない。
 
 ### Managed OS Disk
 
@@ -125,6 +127,6 @@ guest Storage HTTPS443、ARMによる資源操作、Diskのimport／export、SAS
 
 ## 再構築と運用確認の境界
 
-構築資材は、固定NSG集合、標準DNS／外部NTP、構築管理ID、Agent／AMA／DCR、managed OS Disk、managed Boot Diagnostics、Firewallサブネットの非関連付けを再適用する。企業の手動変更をBicepで再現する新しい入力や、これらの通信のNSG作成フラグは設けない。
+構築資材は、固定NSG集合、標準DNS、APIMの外部NTP許可と管理VMのAzureホストPHC同期、構築管理ID、Agent／AMA／DCR、managed OS Disk、managed Boot Diagnostics、Firewallサブネットの非関連付けを再適用する。企業の手動変更をBicepで再現する新しい入力や、これらの通信のNSG作成フラグは設けない。未知の企業時刻設定は初期時刻設定へ自動で戻さず、変更前に停止する。
 
 合成試験では資材の生成条件と変更範囲を検証する。実環境では、名前解決、管理IDの用途・認可、Agentの版とhostchannel、DHCP、AMAの実local転送と収集、時刻同期と保守復帰、Disk I/O、診断保存・閲覧を確認する。現在構成の受入確認と、未公開のACA内部保守wire・将来のレジストリ／Storage依存の留保を区別する。結果と制約は[検証文書](network-security-validation.md)の保護実施票で管理し、文書化だけで実通信検証完了としない。

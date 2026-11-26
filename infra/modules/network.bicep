@@ -134,7 +134,7 @@ var nsgDefinitions = [
       allowRule('allow-monitor-egress', nsgPriorities.groups.management.rules['allow-monitor-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['AzureMonitor'], ['443'])
       allowRule('allow-storage-egress', nsgPriorities.groups.management.rules['allow-storage-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Storage'], ['443'])
       allowRule('allow-internet-egress', nsgPriorities.groups.management.rules['allow-internet-egress'].priority, 'Outbound', 'Tcp', [subnetPrefixes.management], ['Internet'], ['80', '443'])
-      allowRule('allow-time-sync-egress', nsgPriorities.groups.management.rules['allow-time-sync-egress'].priority, 'Outbound', 'Udp', [subnetPrefixes.management], ['Internet'], ['123'])
+      // Host PHC time reaches the guest over VMBus; no UDP123 or network PTP allow is required.
     ]
   }
   {
@@ -449,26 +449,14 @@ resource platformRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
         priority: 210
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
         action: { type: 'Allow' }
-        rules: concat(map(managementPlatformDependencies, dependency => {
+        rules: map(managementPlatformDependencies, dependency => {
           name: 'allow-mgmt-vm-${dependency.name}'
           ruleType: 'NetworkRule'
           sourceAddresses: [subnetPrefixes.management]
           destinationAddresses: dependency.destinations
           destinationPorts: ['443']
           ipProtocols: ['TCP']
-        }), [
-
-          {
-            name: 'allow-mgmt-vm-ntp'
-            ruleType: 'NetworkRule'
-            sourceAddresses: [subnetPrefixes.management]
-            // Standard-DNS clients and Firewall resolve independently; match UDP123 without an FQDN.
-            // The management NSG limits this flow to Internet; guest time sources are managed separately.
-            destinationAddresses: ['*']
-            destinationPorts: ['123']
-            ipProtocols: ['UDP']
-          }
-        ])
+        })
       }
 
 

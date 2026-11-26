@@ -714,6 +714,22 @@
             "443"
           ]
         },
+        "allow-time-sync-egress": {
+          "direction": "Outbound",
+          "priority": 325,
+          "access": "Allow",
+          "protocol": "Udp",
+          "sourcePort": "*",
+          "source": [
+            "subnet:management"
+          ],
+          "destination": [
+            "tag:Internet"
+          ],
+          "destinationPorts": [
+            "123"
+          ]
+        },
         "allow-time-sync": {
           "direction": "Outbound",
           "priority": 260,
