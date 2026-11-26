@@ -297,7 +297,7 @@ APIキー管理画面のキー詳細から「利用制限の設定」を開き�
 
 APIMは検証済み購読IDを使って専用の内部APIへ照会し、正常な応答を30秒キャッシュします。キャッシュのない状態でSQL・通信・認証が失敗した場合は503を返し、無制限へ切り替えません。Portal管理外の既存購読は、SQL照会に成功した場合だけ未設定の無制限として扱います。全体ポリシー`service.xml`の再生成は不要です。
 
-`subscription-profile.xml`は固定処理の共通ソースですが、キャッシュポリシーの制約によりAPIMのfragmentリソースにはせず、Gateway配備時に各APIのXMLへ展開します。購読設定の変更では再展開しません。`rate-limit.xml`が取得済みデータで回数制限を適用し、本文を扱う`token-limit.xml`は対応するHTTP APIだけから参照します。
+[SQL購読profileのsnippet](../../apps/gateway/apim/policies/snippets/quota/subscription-profile/README.md)はXMLと同名C#で管理し、キャッシュポリシーの制約によりAPIMのfragmentリソースにはせず、Gateway配備時に各APIのXMLへ展開します。購読設定の変更では再展開しません。[core-rate-limit](../../apps/gateway/apim/policies/fragments/quota/core-rate-limit/README.md)が取得済みデータで回数制限を適用し、[core-token-limits](../../apps/gateway/apim/policies/fragments/quota/core-token-limits/README.md)は対応するHTTP APIだけから参照します。取得不備503の直前に、既存監査へpolicy-error／LIMIT_PROFILE_UNAVAILABLE／503を記録します。取得応答本文や例外詳細は記録しません。
 
 トークン制限は現在、Foundry OpenAIのHTTP Chat Completions / stateless Responses操作が対象です。入力と出力の合計を扱い、SSEはAPIMの推計を含みます。画像・音声・Realtime・Embedding等へトークン制限を推測適用しません。期間の境界はUTCで、月次は毎月1日00:00 UTC（日本時間09:00）です。金額上限の保証ではありません。
 
