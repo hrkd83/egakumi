@@ -1,0 +1,13 @@
+# CMの下流応答と再認証案内
+
+AzureのPolicy fragment名`core-credential-connection-outbound`を維持し、同名XML／C#を正本として管理します。C#はclaims要求による短絡拒否の監査メッセージ1式だけを所有し、`__CORE_CREDENTIAL_CONNECTION_OUTBOUND_CSHARP__`へ展開します。共通主体の投影コードを同名C#へ保持し、この式には別のC#を差し込むmarkerを残しません。
+
+HTTPとCM付き外部MCPで、下流応答を扱います。先に既存の接続更新ヘッダーを削除し、検証済みの使用結果とrotation候補だけを後段で応答ヘッダーへ戻します。新しい変数・解析・Policy fragmentは追加しません。
+
+下流403の`insufficient_claims`は、既存のヘッダー長・本文バイト数の条件で判定し、`CONNECTION_CLAIMS_REQUIRED`の固定監査と要求ID・no-store付き403案内を返します。任意のclaims本文や下流の認証ヘッダーを転送せず、未対応claimsによる再認証ループを防ぎます。監査には共通入口の識別情報を投影し、入力本文・下流本文・資格情報・例外の詳細は記録しません。
+
+その他の下流401は、既存の所有セッションを使う再認証処理へ渡して409へ変換します。claims以外の下流403は権限不足として403を維持します。検証済みの世代・期限とrotation候補を返す条件、接続所有者と本人セッションの照合、下流の認証案内・Cookie等の削除、既存の再認証snippetと監査の差込みを変更しません。
+
+MOD-115で監査messageを同名C#へ結線し、Bicepの配備／保護source・Python・fixture・Razor・同名所有を正規配置へ揃え、直下の旧XMLを撤去しました。compactで複製する監査説明を含め、full／compact／omitで移設前との構造・属性・実式トークンが一致しました。旧observerの独立sourceへの参照はこのconsumerから解消しました。他の複数statementのXML式は今回の対象外で、後続の区画化候補として維持します。
+
+関連73件が55.059秒で全件成功しました。失敗・エラー・スキップはありません。下流401／403・claims・再認証・更新案内、主体監査、配備／保護source・容量・構文・所有を確認済みです。Azure反映と実下流claims／再認証の受入は未実施です。

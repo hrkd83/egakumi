@@ -32,7 +32,7 @@ gatewayQueryObservation
 
 観測JSONは`route`・`httpMethod`・`presence`・`duplicates`の4項目です。ログ互換のため、`route`は既存の名前のまま、選択した観測ラベルを表します。APIMの解析済み項目からクエリの有無と、同じ引数に複数値があるかを取得します。末尾の`?`だけで解析済み項目が0件なら`presence: none`です。取得に失敗した場合は`unknown`を残し、要求を拒否しません。
 
-HTTPは`<base />`直後の`core-api-request-preparation`に続き、操作・モデル設定の選択と本文読取りより前に観測します。生成MCPは要求準備・API認可後、ツール引数の本文検査前に観測します。外部MCPは`query-observation-inbound.xml`を`protocol.xml`へ差し込み、要求準備の後に実行します。WebSocketではこの差し込みを空にします。認証完了は要求準備が確認し、この部品では再確認しません。
+HTTPは`<base />`直後の`core-api-request-preparation`に続き、操作・モデル設定の選択と本文読取りより前に観測します。生成MCPは要求準備・API認可後、ツール引数の本文検査前に観測します。外部MCPは[query-observation-inbound](../../../snippets/audit/query-observation-inbound/README.md)を`protocol.xml`へ差し込み、要求準備の後に実行します。WebSocketではこの差し込みを空にします。認証完了は要求準備が確認し、この部品では再確認しません。
 
 `core-query-telemetry`は観測結果を共通の要求情報・認証済み利用者に関連付けます。イベント名`query-guard`、`schemaVersion: 2`、`auditSchemaVersion: 2`は維持し、modeと件数区分は出力しません。新規の処理段階は`received`・`backend-response`・`policy-error`です。旧schema 1の記録の読取り互換はKQLで扱います。
 

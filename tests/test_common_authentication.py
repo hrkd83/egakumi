@@ -325,11 +325,12 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
 
     def test_broker_migration_replaces_only_owned_cache_and_anonymous_route(self):
         from deployment.helpers.apim_authentication import merge_common_authentication_policy, render_service_policy, validate_common_authentication_policy, _render_inline_common_authentication_service_policy
-        from browser_exception_projection import project_browser_exception_to_previous
+        from authentication_source_fixture import credential_broker_inline_fixture
+        from deployment.helpers.apim_browser_exception import expand_browser_exception_fragment
         from test_credential_login import settings
         import re
         login = settings()
-        root = ET.fromstring(project_browser_exception_to_previous(_render_inline_common_authentication_service_policy(login), login))
+        root = ET.fromstring(credential_broker_inline_fixture(login))
         inbound = root.find("inbound")
         anonymous = inbound.find("choose[@id='core-common-authentication']/when")
         anonymous.set("condition", re.sub(r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)', '', anonymous.get("condition")))
@@ -346,7 +347,7 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
         merged, changed = merge_common_authentication_policy(old, login, migrate_credential_broker=True)
         self.assertTrue(changed)
         self.assertNotIn("core-credential-login-cache", merged)
-        self.assertIn("identity-callback", project_browser_exception_to_previous(merged, login))
+        self.assertIn("identity-callback", expand_browser_exception_fragment(merged, login=login))
         self.assertIsNotNone(ET.fromstring(merged).find(
             "inbound/include-fragment[@fragment-id='core-credential-browser-exception']"))
         self.assertIsNotNone(ET.fromstring(merged).find("inbound/set-header[@name='X-Manual']"))
@@ -428,7 +429,9 @@ class CommonAuthenticationWiringTests(unittest.TestCase):
                     self.assertEqual(fragment.get("fragment-id"),"core-api-authentication-result")
                     decision=(CORE / "apps/gateway/apim/policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs").read_text(encoding="utf-8")
                 else:
-                    decision=policy.find("./inbound/set-variable[@name='gatewayDecision']").get("value")
+                    from deployment.helpers.apim_audit import render_audit_policy
+                    raw=policy_fixture_path(CORE / "apps/gateway/apim/policies", filename).read_text(encoding="utf-8")
+                    decision=ET.fromstring(render_audit_policy(raw)).find("./inbound/set-variable[@name='gatewayDecision']").get("value")
                 self.assertIn("context.Subscription",decision)
                 self.assertIn("subscription:",decision)
                 self.assertEqual(policy.findall(".//validate-jwt"),[])

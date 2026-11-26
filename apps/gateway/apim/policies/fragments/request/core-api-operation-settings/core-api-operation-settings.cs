@@ -1,6 +1,6 @@
 // 目的：操作の基本設定に、要求したモデルの設定を反映して後続処理へ渡します。
 // この同名C#をcore-api-operation-settings.xmlへ展開してAzureの部品を生成します。
-// 本文・キー・トークンは結果や監査へ保存せず、モデル選択に必要な情報だけを返します。
+// 本文・キー・トークンは結果や監査へ保存せず、モデル選択の情報と測定バイト数だけを返します。
 
 // 設定を準備できるまではallowed=falseにします。成功結果にはエラー用のstatusを持たせません。
 // 失敗を返す箇所で、原因に対応する応答コード400・413・500と監査コードを指定します。
@@ -94,6 +94,9 @@ try {
     effective.Remove("settingId");
     result["requestedModel"] = requestedModel;
     result["effectiveModel"] = effectiveModel;
+    // 元の本文の測定値だけを引き継ぎます。後段は同じ本文を再読取りせず、選択後の上限と比較します。
+    // 本文を読まない操作の成功結果には、この項目を追加しません。
+    result["requestBodyBytes"] = bytes.Length;
     result["constraint"] = effective;
     result["allowed"] = true;
     return result.ToString(Newtonsoft.Json.Formatting.None);

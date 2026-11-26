@@ -38,21 +38,19 @@ class AuditFragmentTests(unittest.TestCase):
             render_common_authentication_fragments(entra_enabled=False), entra_enabled=False)
         expanded = ET.fromstring(expand_audit_fragments(
             expand_browser_exception_fragment(expand_trusted_ingress_fragment(service))))
-        previous = ET.fromstring(render_audit_policy((POLICIES / "service-inline-audit-v2.xml").read_text(encoding="utf-8")))
         inbound = expanded.find("inbound")
         self.assertEqual([node.get("id") for node in inbound],
             ["core-request-context", "core-trusted-ingress", "core-credential-browser-exception",
              "core-common-authentication", "core-audit-authenticated-subject"])
-        # 主体の式は棚卸で整理するため、固定旧式とはwriterの契約を比較します。
-        # 実処理の同値性と追加SID境界はtest_audit_subject_contractで旧／新両式を実行します。
+        # Current variable ownership is fixed independently of expression formatting.
         self.assertEqual({key: value for key, value in inbound[-1].attrib.items() if key != "value"},
-                         {key: value for key, value in previous.find("inbound")[-1].attrib.items() if key != "value"})
+                         {"id": "core-audit-authenticated-subject", "name": "gatewayAuthenticatedSubject"})
         current = ET.fromstring(render_audit_fragments()["core-audit-authenticated-subject"])[0]
         self.assertEqual(inbound[-1].attrib, current.attrib)
         self.assertFalse(expanded.findall(".//include-fragment"))
 
     def test_existing_inline_and_unrelated_fragments_are_not_rewritten(self):
-        inline = (POLICIES / "service-inline-audit-v2.xml").read_text(encoding="utf-8")
+        inline = '<policies><inbound><set-variable name="synthetic-unrelated" value="@(true)" /></inbound></policies>'
         self.assertEqual(expand_audit_fragments(inline), inline)
         unrelated = '<policies><inbound><include-fragment fragment-id="core-gateway-telemetry" /></inbound></policies>'
         self.assertEqual(expand_audit_fragments(unrelated), unrelated)
@@ -80,14 +78,13 @@ class AuditFragmentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             expand_audit_fragments(service.replace("<policies><inbound>", "<fragment>").replace("</inbound></policies>", "</fragment>"))
 
-    def test_request_source_indentation_is_generated_without_reformatting_old_markers(self):
+    def test_request_source_indentation_is_generated_without_reformatting_subject_marker(self):
         fragment = render_audit_fragments()["core-request-context"]
         self.assertIn("\n      var snapshot = new JObject", fragment)
         self.assertIn("\n          [&quot;requestId&quot;]", fragment)
         from xml.sax.saxutils import escape
         for marker, filename in (
             ("__CORE_AUTHENTICATED_SUBJECT_CSHARP__", "fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs"),
-            ("__AUDIT_AUTHENTICATED_SUBJECT_CSHARP__", "expressions/legacy/audit-authenticated-subject.cs"),
         ):
             source = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             with self.subTest(marker=marker):

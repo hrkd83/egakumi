@@ -59,7 +59,7 @@ WebRTCの音声と主DataChannel
 
 | 実装 | 確認した内容 | 遅延評価への意味 |
 | --- | --- | --- |
-| [Realtime作成policy](../../apps/gateway/apim/policies/realtime-create.xml#L1) | APIMが短期資格情報を取得し、続いてSDPを送る。資格情報を要求内に保持する | 接続開始には直列の上流処理がある。確立後の音声フレームごとにこの処理を行う構成ではない |
+| [Realtime作成policy](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L1) | APIMが短期資格情報を取得し、続いてSDPを送る。資格情報を要求内に保持する | 接続開始には直列の上流処理がある。確立後の音声フレームごとにこの処理を行う構成ではない |
 | [WebSocket policy](../../apps/gateway/apim/policies/api-templates/protocol.xml#L1) | 初回handshakeの認可と上流への接続 | 通話中の音声はAPIMを経由するが、各メッセージに通常RESTのpolicyを適用する仕組みではない |
 | [AppGW](../../infra/modules/application-gateway.bicep#L325) | 応答バッファリング無効、backend timeoutは設定値600秒 | SSEの逐次転送を支える。600秒は会話の応答速度を表す値ではない |
 | [APIM転送](../../apps/gateway/apim/policies/api-templates/protocol.xml#L152) | `buffer-response="false"`、timeout 240秒 | 応答の逐次転送とtimeoutの設定であり、TCPの再送待ちやモデル処理を除去しない |
@@ -83,7 +83,7 @@ WebRTCの音声と主DataChannel
 | Core：Realtime mini | 現行CoreはminiのWebRTCを公開しない | miniが必要な場合だけ、固定モデルの作成・終了・所有者契約を追加設計する |
 | Core：Voice Liveを選ぶ場合 | WebRTC用WSS制御契約はある。RealtimeのREST契約とは別 | 専用の制御URL・モデル・API版・認可を使用し、サービス固有のメディア経路と終了を受け入れる |
 
-根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/api-templates/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/api-templates/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network-bindings.bicep#L144)。
+根拠：[Realtime制御API定義](../../apps/gateway/apim/apis/openai-realtime-control-v1.json)、[Realtime作成policy](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L1)、[共通のapp-only判定](../../apps/gateway/apim/policies/api-templates/gateway.xml#L76)、[protocolのapp-only判定](../../apps/gateway/apim/policies/api-templates/protocol.xml#L79)、[所有者の照合](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-hangup.xml#L10)、[通信の最終拒否規則](../../infra/modules/network-bindings.bicep#L144)。
 
 ### 既存Coreを利用する接続手順
 
@@ -105,7 +105,7 @@ Realtimeでは、自社アプリが次の既存契約へ合わせればよい。
 4. ICE／DTLS・DataChannelの成立を確認し、電話側の音声をtrackへ供給する。受信trackの音声を電話側の形式へ戻して送る。必要な会話設定・イベント処理は、自社アプリが採用APIに沿ってDataChannel等で行う。
 5. 通話終了・接続失敗・時間上限時には、電話側の再生待ちとWebRTC接続を片付け、同じ認証主体と所有者チケットで`POST /models/realtime/v1/calls/{callId}/hangup`を呼ぶ。音声が聞こえなくなったことと、Azure側の終了確認を別に記録する。作成成功後にanswer適用やICEが失敗した場合も回収対象とする。
 
-Coreは既にSDPを代理交換する方式を採用しており、Microsoftもこの方式を掲載する。ブラウザーで生成したSDPだけを要求する制限はCoreの入口にはない。一方、任意のサーバー用ライブラリとAzureのSDP・codec・DataChannelの互換性まで確認済みという意味ではない。[MicrosoftのSDP代理交換](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-webrtc#set-up-webrtc)、[CoreのSDP入力検証](../../apps/gateway/apim/policies/realtime-create.xml#L10)、[回帰試験用ブラウザーの接続処理](../../tests/browser/realtime.html#L72)
+Coreは既にSDPを代理交換する方式を採用しており、Microsoftもこの方式を掲載する。ブラウザーで生成したSDPだけを要求する制限はCoreの入口にはない。一方、任意のサーバー用ライブラリとAzureのSDP・codec・DataChannelの互換性まで確認済みという意味ではない。[MicrosoftのSDP代理交換](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-webrtc#set-up-webrtc)、[CoreのSDP入力検証](../../apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml#L10)、[回帰試験用ブラウザーの接続処理](../../tests/browser/realtime.html#L72)
 
 Voice Liveを選ぶ場合、自社アプリはCoreの`wss://<Gateway>/models/voice-live/webrtc`へ接続し、`rtc.call.sdp.create`の`sdp_offer`と採用するsession設定を送る。上流は固定登録した`/voice-live/realtime/calls`で、通常音声WSS用の`/voice-live/realtime`とは異なる。`rtc.call.sdp.created`のanswerを適用し、音声はWebRTC、必要な制御はWSSまたはDataChannelで扱う。`model-voice-live-webrtc`の`invoke`へのapp-only登録を追加する。Realtimeの作成・hangup・所有者チケットをそのままVoice Liveの契約とは扱わず、電話切断時のセッション終了も別に受け入れる。[CoreのVoice Live制御定義](../../apps/gateway/apim/apis/azure-voice-live-webrtc-v1.json)、[MicrosoftのVoice Live交渉と制御](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-webrtc#set-up-webrtc-connection)
 

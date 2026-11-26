@@ -20,6 +20,7 @@ from deployment.helpers.portal_gateway import portal_session_exclusions, _writab
 from deployment.helpers.waf_names import (DATA_POLICY_KEYS, POLICY_KEYS,
                                            policy_id as waf_policy_id, policy_name, predecessor_policy_id)
 from deployment.helpers.waf_body import ai_body_settings, ai_content_type_profile
+from deployment.helpers import waf_body
 from test_gateway_callback_waf import CONFIG, GATEWAY_ID, BASE_ID, POOL, BACKEND, REWRITE, gateway, policy, api_mapping
 from test_waf_contracts import common_data_before_manifest
 
@@ -1058,6 +1059,9 @@ class DataWafTests(unittest.TestCase):
             config['apiDefinitions'] = [{'path': path.rsplit('/', 1)[0].lstrip('/'), 'operations': [{
                 'name': 'operation', 'method': 'POST', 'urlTemplate': '/' + path.rsplit('/', 1)[1]}]}
                 for path in profile['paths']]
+            if name == 'g-images':
+                from standard_apis import infrastructure_api_definitions
+                config['apiDefinitions'] = infrastructure_api_definitions([])
             if scope == 'portal':
                 config['portal'] = {'publicHostName': 'portal.example.test'}
                 properties = source['properties']
@@ -1125,7 +1129,7 @@ class DataWafTests(unittest.TestCase):
         profile = selected[0]
         self.assertEqual(profile['scope'], 'gateway')
         self.assertEqual(profile['name'], 'g-images')
-        self.assertEqual(len(profile['paths']), 6)
+        self.assertEqual(len(profile['paths']), 4)
         image = [item for item in profile['exclusions'] if item['selector'] == 'input_image']
         self.assertEqual(image, [media_data_exclusion('input_image')])
         self.assertTrue(any(item['selector'] == 'prompt' for item in profile['exclusions']))
@@ -1357,7 +1361,16 @@ class DataWafTests(unittest.TestCase):
                     self.assertEqual({entry['selector'] for entry in previous['exclusions']}, selectors)
                 with self.subTest(profile=name):
                     base = policy()
-                    old_policy = desired_policy(base, previous, configuration())
+                    if name == 'g-images':
+                        controls = json.loads(waf_body.JSON_CONTROLS.read_text(encoding='utf-8'))
+                        next(p for p in controls['profiles'] if p['name'] == name)['paths'] = previous['paths']
+                        with tempfile.TemporaryDirectory(prefix='waf-prior-image-controls-') as folder:
+                            target = Path(folder) / 'synthetic-controls.json'
+                            target.write_text(json.dumps(controls), encoding='utf-8')
+                            with mock.patch.object(waf_body, 'JSON_CONTROLS', target):
+                                old_policy = desired_policy(base, previous, configuration())
+                    else:
+                        old_policy = desired_policy(base, previous, configuration())
                     updated = desired_policy(base, profile, configuration(), sources=(old_policy,))
                     properties = updated['properties']
                     self.assertEqual(properties['policySettings'], old_policy['properties']['policySettings'])

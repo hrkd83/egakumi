@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from test_contract_rate_policy import expression as original_expression, PWSH
 from deployment.helpers.apim_audit import render_audit_policy
 from policy_fixture_paths import policy_fixture_path
+from test_credential_login import operation_error_methods
 
 CORE=Path(__file__).resolve().parents[1]
 
@@ -32,6 +33,7 @@ SETTINGS={'backendService':'foundryOpenAi','backendAuthentication':'managedIdent
  'websocketModel':'','targetAgent':'','llmOperationIds':[],'knownAgents':[BIND],'measurementRole':'execution'}
 CLAIMS={'ver':'2.0','tid':TENANT,'oid':PRINCIPAL,'azp':CLIENT,'idtyp':'app','roles':['Gateway.Invoke.App']}
 DECISION={'allowed':True,'method':'subscriptionKey','callerId':'subscription:subscription-a'}
+USER_CALLER='user:'+TENANT+':'+PRINCIPAL
 SOURCE=r'''
 using System;
 using System.Collections.Generic;
@@ -56,12 +58,15 @@ public class Body {
 public class Request { public Headers Headers=new Headers(); public Body Body=new Body(); public Dictionary<string,string> MatchedParameters=new Dictionary<string,string>(); }
 public class Response { public Headers Headers=new Headers(); public int StatusCode=200; public Body Body {get {throw new Exception("Do not read response body");}} }
 public class Named { public string Id="responses-create"; }
+public class LastError { public string PolicyId="",Source="",Reason=""; }
 public class Context {
  public Guid RequestId=Guid.Parse("66666666-6666-4666-8666-666666666666");
  public Request Request=new Request(); public Response Response=new Response();
  public Named Api=new Named(); public Named Operation=new Named(); public Named Subscription=new Named(); public Dictionary<string,object> Variables=new Dictionary<string,object>();
+ public LastError LastError=new LastError();
 }
 public static class AuditFixture {
+ __MODEL_ERROR__
  public static string Claim(Context context) { __CLAIM__ }
  public static string Inject(Context context) { __INJECT__ }
  public static string BodyModel(Context context) { __BODY_MODEL__ }
@@ -88,11 +93,20 @@ public static class AuditFixture {
    }
    if(item["controlRaw"]!=null) c.Variables["gatewayControlSettings"]=(string)item["controlRaw"];
    c.Variables["gatewayDecision"]=item["decision"].ToString(Formatting.None);
+   if(item["userAuthentication"] is JObject) {
+    c.Variables["gatewayEntraAuthenticationValidated"]=true;
+    c.Variables["gatewayUserAuthentication"]=item["userAuthentication"].ToString(Formatting.None);
+   }
    c.Variables["gatewayAuditPhase"]="backend-response"; c.Variables["gatewayAuditCode"]="BACKEND_RESPONSE";
    c.Request.Body.Text=(string)item["body"]??"{}";
    c.Request.Body.BlockReads=(bool?)item["httpModel"] == false;
    if(item["pathModel"]!=null) c.Request.MatchedParameters["deployment"]=(string)item["pathModel"];
    c.Operation.Id=(string)item["operation"]??"responses-create";
+   // 本文編集へ、先行するHTTP操作設定の準備済み値を渡します。
+   c.Variables["gatewayOperationConstraint"]=item["settings"]["operationConstraints"][c.Operation.Id].ToString(Formatting.None);
+   if(item["constraintRaw"]!=null) c.Variables["gatewayOperationConstraint"]=(string)item["constraintRaw"];
+   if((bool?)item["constraintMissing"]==true) c.Variables.Remove("gatewayOperationConstraint");
+   if((bool?)item["constraintObject"]==true) c.Variables["gatewayOperationConstraint"]=new JObject();
    if(item["parent"]!=null) c.Request.Headers["X-Core-Agent-Parent-Id"]=item["parent"] is JArray?((JArray)item["parent"]).Select(x=>(string)x).ToArray():new string[]{(string)item["parent"]};
    if(item["claims"] is JObject) {
     var jwt=new Jwt();
@@ -102,12 +116,21 @@ public static class AuditFixture {
    foreach(var entry in ((JObject)item["headers"]).Properties()) c.Response.Headers[entry.Name]=entry.Value is JArray?((JArray)entry.Value).Select(x=>(string)x).ToArray():new string[]{(string)entry.Value};
    var before=(string)c.Variables["gatewayDecision"];
    c.Variables["gatewayAgentTrace"]=Claim(c);
-   if(!c.Request.Body.BlockReads) c.Variables["gatewayAuditBodyModel"]=BodyModel(c);
+   if(!c.Request.Body.BlockReads) {
+    try { c.Variables["gatewayAuditBodyModel"]=BodyModel(c); }
+    catch {
+     c.LastError.PolicyId=__BODY_MODEL_POLICY_ID__;c.LastError.Source="set-variable";c.LastError.Reason="ExpressionValueEvaluationFailure";
+     if(item.Property("errorPolicyId")!=null)c.LastError.PolicyId=(string)item["errorPolicyId"];
+     var failure=BodyModelError(c);failure["requestBodyReads"]=c.Request.Body.Reads;
+     output[(string)item["name"]]=failure;continue;
+    }
+   }
    c.Variables["gatewayAuditModel"]=Model(c);
    c.Variables["gatewayBackendResponseIds"]=Backend(c);
    /* 親serviceが下流IDを上書きした後でも退避値を監査できることを検査します。 */
    c.Response.Headers["apim-request-id"]=new string[]{c.RequestId.ToString()};
    var record=JObject.Parse(Telemetry(c));
+   record["bodyModelResult"]=c.Variables.ContainsKey("gatewayAuditBodyModel")?(string)c.Variables["gatewayAuditBodyModel"]:null;
    record["injectedMetadata"]=c.Request.Body.BlockReads || (bool?)item["skipInjection"] == true?null:JObject.Parse(Inject(c))["metadata"];
    record["requestBodyReads"]=c.Request.Body.Reads;
    record["allReadsPreserved"]=c.Request.Body.AllReadsPreserved;
@@ -136,16 +159,19 @@ class AuditContextTests(unittest.TestCase):
   rerank=copy.deepcopy(SETTINGS); rerank['backendService']='foundryServices'
   rerank['operationConstraints']={'rerank':{'kind':'rerank','allowedModels':['approved-model']}}
   add('rerank',settings=rerank,operation='rerank')
-  add('rerank-unapproved',settings=rerank,operation='rerank',body=json.dumps({'model':'PRIVATE_UNAPPROVED_MODEL'}))
+  add('rerank-invalid-model',settings=rerank,operation='rerank',body=json.dumps({'model':'PRIVATE_INVALID_MODEL/secret'}))
+  add('rerank-unregistered',settings=rerank,operation='rerank',body=json.dumps({'model':'future-synthetic-model'}))
   for name,changed in [('person',{**CLAIMS,'idtyp':'user','scp':'Gateway.Invoke'}),
       ('wrong-client',{**CLAIMS,'azp':PARENT}),('wrong-principal',{**CLAIMS,'oid':PARENT}),
       ('wrong-role',{**CLAIMS,'roles':['Other.Role']}),('multiple-oid',{**CLAIMS,'oid':[PRINCIPAL,PRINCIPAL]})]: add(name,claims=changed)
   add('key',claims=None,decision={**DECISION,'method':'subscriptionKey'})
-  add('wrong-caller',decision={**DECISION,'callerId':'other-agent'})
-  add('wrong-method',decision={**DECISION,'method':'entra'})
-  add('denied',decision={**DECISION,'allowed':False})
-  add('missing-subscription',nullSubscription=True)
-  add('empty-subscription',subscriptionId='')
+  # 認証不備は実上位処理を実行するtest_agent_trace_policyで止めます。
+  # この監査fixtureへは確認済みのcallerIdを渡し、本人情報を再検査させません。
+  add('verified-user',nullSubscription=True,decision={'allowed':True,'method':'user',
+      'callerId':USER_CALLER,'allocationId':USER_CALLER,'verifiedTenantId':TENANT,
+      'verifiedPrincipalId':PRINCIPAL,'verifiedClientId':CLIENT},
+      userAuthentication={'schemaVersion':1,'callerId':USER_CALLER,'allocationId':USER_CALLER,
+        'tenantId':TENANT,'principalId':PRINCIPAL,'clientId':CLIENT})
   add('invalid-parent',parent='not-a-guid PRIVATE_TEXT')
   add('duplicate-parent',parent=[PARENT,PARENT])
   add('zero-parent',parent='00000000-0000-0000-0000-000000000000')
@@ -157,7 +183,8 @@ class AuditContextTests(unittest.TestCase):
    add(name,settings=settings,parent=None)
   add('bad-header',headers={'apim-request-id':'PRIVATE_TOKEN','x-ms-request-id':[BACKEND,BACKEND], 'Set-Cookie':'PRIVATE_COOKIE'})
   add('alternate-id',headers={'x-request-id':'req_abcdefgh12345678'})
-  add('unapproved-model',body=json.dumps({'model':'PRIVATE_UNAPPROVED_MODEL'}))
+  add('invalid-model',body=json.dumps({'model':'PRIVATE_INVALID_MODEL/secret'}))
+  add('unregistered-model',body=json.dumps({'model':'future-synthetic-model'}))
   settings=copy.deepcopy(SETTINGS); settings['backendService']='foundryServices'; settings['llmOperationIds']=[]
   add('no-metrics-source',settings=settings)
   # HTTPモデルの抽出だけを先行し、opaqueなprotocolには本文を読む式を実行しません。
@@ -173,7 +200,26 @@ class AuditContextTests(unittest.TestCase):
    if item['name'] in cls.rolling_cases:
     old=copy.deepcopy(item); old.update(name=item['name']+'-legacy-mixed',legacySettings=True); cases.append(old)
   add('malformed-new-control',legacySettings=True,controlRaw='{broken')
+  # 本文モデルreaderだけの取得元を対照し、他の監査設定の独立した停止契約は維持します。
+  add('prepared-constraint-with-broken-controls',controlRaw='{broken')
+  add('prepared-live-model',constraintRaw=json.dumps({'kind':'liveCreate','model':'fixed-synthetic-model'}),skipInjection=True)
+  add('prepared-embeddings-model',constraintRaw=json.dumps({'kind':'textEmbeddings'}))
+  add('prepared-invalid-constraint',constraintRaw='{broken',skipInjection=True)
+  for name,patch in (('missing',{'constraintMissing':True}),('null',{'constraintRaw':'null'}),('array',{'constraintRaw':'[]'}),
+      ('scalar',{'constraintRaw':'7'}),('object-value',{'constraintObject':True}),
+      ('kind-type',{'constraintRaw':json.dumps({'kind':[]})}),('fixed-type',{'constraintRaw':json.dumps({'kind':'liveCreate','model':[]})})):
+   add('prepared-failure-'+name,**patch)
+  for name,policy_id in (('similar','core-audit-body-model-read-extra'),('null',None),('empty','')):
+   add('prepared-other-id-'+name,constraintRaw='{broken',errorPolicyId=policy_id)
   source=SOURCE
+  gateway=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/gateway/apim/policies','gateway.xml').read_text(encoding='utf-8')))
+  guard=copy.deepcopy(gateway.find('on-error/choose[@id="core-audit-body-model-error"]'))
+  # 共通のquery監査は構造で確認し、状態・Gateway監査・停止応答の実guardをこのfixtureで実行します。
+  guard.find('when').remove(guard.find('when/include-fragment[@fragment-id="core-query-telemetry"]'))
+  error_xml='<policies><on-error>'+ET.tostring(guard,encoding='unicode')+'<return-response><set-status code="502" reason="Unrelated error" /></return-response></on-error></policies>'
+  source=source.replace('__MODEL_ERROR__',operation_error_methods(error_xml,'BodyModelError'))
+  body_model=ET.parse(policy_fixture_path(CORE/'apps/gateway/apim/policies','audit-body-model.xml')).getroot()
+  source=source.replace('__BODY_MODEL_POLICY_ID__',json.dumps(body_model.find('set-variable').get('id')))
   for marker,filename,xpath,attr in [
     ('__CLAIM__','audit-context.xml','./set-variable[@name="gatewayAgentTrace"]','value'),
     ('__INJECT__','gateway.xml','./inbound/choose[@id="core-hosted-response-metadata"]/when/set-body',None),
@@ -202,7 +248,12 @@ class AuditContextTests(unittest.TestCase):
    self.assertNotIn('verifiedPrincipalId',self.results[name])
    self.assertNotIn('verifiedTenantId',self.results[name])
    self.assertNotIn('verifiedClientId',self.results[name])
-  for name in ['wrong-caller','wrong-method','denied','missing-subscription','empty-subscription','invalid-parent','duplicate-parent','zero-parent','missing-parent']:
+  user=self.results['verified-user']
+  self.assertEqual(user['parentLinkStatus'],'candidate')
+  self.assertEqual(user['claimedParentId'],PARENT)
+  self.assertEqual(user['parentClaimActorId'],USER_CALLER)
+  self.assertEqual(user['callerId'],USER_CALLER)
+  for name in ['invalid-parent','duplicate-parent','zero-parent','missing-parent']:
    with self.subTest(name=name): self.assertNotIn('claimedParentId',self.results[name])
 
  def test_model_audit_requires_current_control_settings_without_legacy_fallback(self):
@@ -233,15 +284,19 @@ class AuditContextTests(unittest.TestCase):
   self.assertEqual(self.results['valid']['usageStatus'],'none')
   self.assertEqual(self.results['chat']['usageStatus'],'native-log-join-required')
   self.assertNotIn('usage',self.results['valid'])
-  self.assertNotIn('targetModel',self.results['unapproved-model'])
+  self.assertNotIn('targetModel',self.results['invalid-model'])
+  self.assertEqual(self.results['unregistered-model']['targetModel'],'future-synthetic-model')
+  self.assertEqual(self.results['unregistered-model']['usageStatus'],'none')
   self.assertEqual(self.results['no-metrics-source']['usageStatus'],'none')
 
- def test_rerank_model_remains_auditable_without_llm_token_usage_or_unapproved_names(self):
+ def test_rerank_model_remains_auditable_without_llm_token_usage_and_omits_invalid_model_format(self):
   self.assertEqual(self.results['rerank']['targetModel'],'approved-model')
   self.assertEqual(self.results['rerank']['usageStatus'],'none')
   self.assertTrue(self.results['rerank']['allReadsPreserved'])
-  self.assertNotIn('targetModel',self.results['rerank-unapproved'])
-  self.assertNotIn('PRIVATE',json.dumps(self.results['rerank-unapproved']))
+  self.assertEqual(self.results['rerank-unregistered']['targetModel'],'future-synthetic-model')
+  self.assertEqual(self.results['rerank-unregistered']['usageStatus'],'none')
+  self.assertNotIn('targetModel',self.results['rerank-invalid-model'])
+  self.assertNotIn('PRIVATE',json.dumps(self.results['rerank-invalid-model']))
 
  def test_http_model_reader_preserves_the_body_but_native_common_audit_never_reads_it(self):
   """分割後の実C#でモデル名・usage方式を保ち、nativeは読取0・秘密非記録を確かめる。"""
@@ -259,6 +314,26 @@ class AuditContextTests(unittest.TestCase):
    self.assertEqual(self.results[name]['callerId'],DECISION['callerId'])
   self.assertNotIn('targetModel',self.results['native-unread'])
   self.assertEqual(self.results['websocket-unread']['targetModel'],'approved-model')
+  self.assertEqual(self.results['prepared-constraint-with-broken-controls']['bodyModelResult'],'approved-model')
+  self.assertEqual(self.results['prepared-live-model']['bodyModelResult'],'fixed-synthetic-model')
+  self.assertEqual(self.results['prepared-live-model']['requestBodyReads'],0)
+  self.assertEqual(self.results['prepared-embeddings-model']['bodyModelResult'],'approved-model')
+  self.assertTrue(self.results['prepared-embeddings-model']['allReadsPreserved'])
+  for name in ('prepared-invalid-constraint','prepared-failure-missing','prepared-failure-null','prepared-failure-array',
+      'prepared-failure-scalar','prepared-failure-object-value','prepared-failure-kind-type','prepared-failure-fixed-type'):
+   failure=self.results[name]
+   self.assertEqual(failure['status'],500)
+   self.assertEqual(failure['requestBodyReads'],0)
+   self.assertEqual([(a['phase'],a['code'],a['status']) for a in failure['audits']],[('policy-error','OPERATION_SETTINGS_INVALID',500)])
+   self.assertEqual(failure['headers']['Cache-Control'],'no-store')
+   self.assertFalse(failure['hasBody'])
+  for name in ('similar','null','empty'):
+   failure=self.results['prepared-other-id-'+name]
+   self.assertEqual(failure['status'],502)
+   self.assertEqual(len(failure['audits']),0)
+  source=(CORE/'apps/gateway/apim/policies/fragments/audit/core-audit-body-model/core-audit-body-model.cs').read_text(encoding='utf-8')
+  self.assertIn('context.Variables["gatewayOperationConstraint"]',source)
+  self.assertNotIn('context.Variables["gatewayControlSettings"]',source)
 
  def test_all_protocols_strip_claims_and_capture_backend_before_base(self):
   for name in ['gateway.xml','protocol.xml','mcp.xml']:
@@ -272,10 +347,19 @@ class AuditContextTests(unittest.TestCase):
    self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-audit-context"]'))
    first=list(root.find('outbound'))[0]
    self.assertEqual(first.attrib.get('fragment-id'),'core-backend-audit')
-  fragment=ET.parse(CORE/'apps/gateway/apim/policies/audit-context.xml').getroot()
+  root=ET.fromstring(render_audit_policy(policy_fixture_path(CORE/'apps/gateway/apim/policies','gateway.xml').read_text(encoding='utf-8')))
+  error=list(root.find('on-error'));guard=root.find('on-error/choose[@id="core-audit-body-model-error"]')
+  self.assertEqual(error[0].tag,'base')
+  self.assertLess(error.index(guard),next(i for i,n in enumerate(error) if n.get('name')=='gatewayAuditPhase'))
+  raw=policy_fixture_path(CORE/'apps/gateway/apim/policies','gateway.xml').read_text(encoding='utf-8')
+  tail=raw[raw.index('<on-error>'):]
+  self.assertLess(tail.index('__RATE_LIMIT_ERROR_XML__'),tail.index('__AUDIT_BODY_MODEL_ERROR_XML__'))
+  branch=list(guard.find('when'));self.assertEqual(branch[-1].tag,'return-response')
+  self.assertEqual([n.get('fragment-id') for n in branch if n.tag=='include-fragment'],['core-gateway-telemetry','core-query-telemetry'])
+  fragment=ET.parse(policy_fixture_path(CORE/'apps/gateway/apim/policies','audit-context.xml')).getroot()
   self.assertEqual(fragment.find('./set-header').attrib['exists-action'],'delete')
   self.assertIsNone(fragment.find('./choose/when/set-header'))
-  self.assertEqual(self.results['valid']['injectedMetadata'],{'sample_mode':'fixed','core_parent_request_id':'66666666-6666-4666-8666-666666666666'})
+  self.assertEqual(self.results['target']['injectedMetadata'],{'sample_mode':'fixed','core_parent_request_id':'66666666-6666-4666-8666-666666666666'})
   self.assertIsNone(fragment.find('.//set-body'))
 
 if __name__=='__main__': unittest.main()

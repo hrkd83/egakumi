@@ -8,13 +8,18 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from policy_fixture_paths import policy_fixture_path
 
 
 CORE = Path(__file__).resolve().parents[1]
-POLICY = CORE / "apps/gateway/apim/policies/token-limit.xml"
+sys.path.insert(0, str(CORE / "scripts"))
+from deployment.helpers.apim_audit import render_audit_policy
+
+POLICY = policy_fixture_path(CORE / "apps/gateway/apim/policies", "token-limit.xml")
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 PERIODS = ("Hourly", "Daily", "Weekly", "Monthly", "Yearly")
 
@@ -35,7 +40,7 @@ class TokenLimitExpressionTests(unittest.TestCase):
     def setUpClass(cls):
         if not PWSH:
             raise unittest.SkipTest("PowerShell with bundled Roslyn is required")
-        root = ET.parse(POLICY).getroot()
+        root = ET.fromstring(render_audit_policy(POLICY.read_text(encoding="utf-8")))
         methods, assignments, calls = [], [], []
         for variable in ("gatewayTokensPerMinute", "gatewayTokenQuota", "gatewayTokenQuotaPeriod"):
             body = expression_body(root.find(f'.//set-variable[@name="{variable}"]').get("value"))
@@ -120,13 +125,13 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 class SubscriptionProfileFetchExpressionTests(unittest.TestCase):
     """取得した不正値を整数へ丸めず拒否し、正規の無制限と区別する。"""
 
-    POLICY = CORE / "apps/gateway/apim/policies/subscription-profile.xml"
+    POLICY = policy_fixture_path(CORE / "apps/gateway/apim/policies", "subscription-profile.xml")
 
     @classmethod
     def setUpClass(cls):
         if not PWSH:
             raise unittest.SkipTest("PowerShell with bundled Roslyn is required")
-        node = ET.parse(cls.POLICY).find('.//set-variable[@name="gatewayFetchedProfile"]')
+        node = ET.fromstring(render_audit_policy(cls.POLICY.read_text(encoding="utf-8"))).find('.//set-variable[@name="gatewayFetchedProfile"]')
         body = expression_body(node.get("value"))
         source = r'''
 using System;

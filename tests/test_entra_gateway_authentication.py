@@ -15,8 +15,7 @@ from deployment.helpers.apim_authentication import (
     ENTRA_OPEN_PRODUCT_ID, entra_authentication_settings, merge_common_authentication_policy,
     read_managed_entra_authentication, render_service_policy,
     transition_common_authentication_policy, validate_common_authentication_policy,
-    _render_service_policy, _render_literal_service_policy, _render_audit_v1_service_policy,
-    _render_inline_audit_v2_service_policy, _render_inline_common_authentication_service_policy, entra_authentication_named_values,
+    _render_inline_common_authentication_service_policy, entra_authentication_named_values,
     validate_entra_named_values, validate_entra_named_value, ENTRA_NAMED_VALUES,
 )
 from deployment.helpers.apim_audit import render_audit_policy, expand_audit_fragments
@@ -48,12 +47,6 @@ LIMITS = {"requestRate": {"calls": 25, "renewalPeriodSeconds": 60},
 def settings():
     return {"enabled": True, "tenantId": TENANT, "audience": AUDIENCE,
             "requiredScope": "Gateway.Invoke",
-            "apiNames": ["openai-inference-v1", "second-model-api"], "userLimits": copy.deepcopy(LIMITS)}
-
-
-def legacy_settings():
-    return {"enabled": True, "tenantId": TENANT, "audience": AUDIENCE,
-            "allowedClientIds": [CLIENT, SECOND_CLIENT], "requiredScope": "Gateway.Invoke",
             "apiNames": ["openai-inference-v1", "second-model-api"], "userLimits": copy.deepcopy(LIMITS)}
 
 
@@ -146,15 +139,19 @@ class EntraRenderingTests(unittest.TestCase):
             policy = (policy_fixture_path(POLICIES, filename)).read_text(encoding="utf-8")
             with self.subTest(filename=filename):
                 self.assertNotIn("gatewayEntraOperationSupported", policy)
-                authentication = policy
-                preparation = policy
+                authentication = render_audit_policy(policy)
+                # 3テンプレートの共通認証確認は同じ部品にあるため、正式なincludeと正本を確認します。
+                preparation_call = ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-request-preparation']")
+                self.assertIsNotNone(preparation_call)
+                preparation = render_audit_policy(policy_fixture_path(POLICIES, "core-api-request-preparation.xml").read_text(encoding="utf-8"))
+                self.assertNotIn("gatewayEntraOperationSupported", preparation)
+                guard = next(node for node in ET.fromstring(preparation).findall("./choose/when")
+                             if "gatewayCommonAuthenticationValidated" in node.get("condition", ""))
+                self.assertEqual(guard.find("return-response/set-status").get("code"), "503")
                 if filename == "gateway.xml":
-                    # HTTPの共通認証確認とBearer結果参照は別部品へ移したため、各呼出しと正本を確認します。
-                    self.assertIsNotNone(ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-request-preparation']"))
+                    # HTTPのBearer結果参照も別部品へ移したため、その呼出しと正本を確認します。
                     self.assertIsNotNone(ET.fromstring(policy).find("./inbound/include-fragment[@fragment-id='core-api-authentication-result']"))
-                    preparation = policy_fixture_path(POLICIES, "core-api-request-preparation.xml").read_text(encoding="utf-8")
-                    authentication = render_audit_policy((POLICIES / "fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml").read_text(encoding="utf-8"))
-                    self.assertNotIn("gatewayEntraOperationSupported", preparation)
+                    authentication = render_audit_policy(policy_fixture_path(POLICIES, "core-api-authentication-result.xml").read_text(encoding="utf-8"))
                     self.assertNotIn("gatewayEntraOperationSupported", authentication)
                 self.assertIn("gatewayCommonAuthenticationValidated", preparation)
                 self.assertIn("gatewayEntraAuthenticationValidated", authentication)
@@ -162,9 +159,11 @@ class EntraRenderingTests(unittest.TestCase):
                 source = next(node for node in inbound if node.get("name") == "gatewayApiSettingsSource")
                 call = next(node for node in inbound if node.get("fragment-id") == "core-api-settings")
                 base = next(node for node in inbound if node.tag == "base")
+                preparation_call = next(node for node in inbound if node.get("fragment-id") == "core-api-request-preparation")
                 self.assertEqual(source.get("value"), "__API_SETTINGS_BASE64__")
                 self.assertEqual(inbound.index(call), inbound.index(source) + 1)
                 self.assertLess(inbound.index(call), inbound.index(base))
+                self.assertLess(inbound.index(base), inbound.index(preparation_call))
                 for node in inbound[:inbound.index(base)]:
                     self.assertNotIn("context.Request.Headers", ET.tostring(node, encoding="unicode"))
                     self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
@@ -182,35 +181,26 @@ class EntraRenderingTests(unittest.TestCase):
         self.assertNotIn("Contains(api)", bearer.get("condition"))
         self.assertNotIn("__ENTRA_API_NAMES_CSHARP__", policy)
 
-    def test_previous_generation_modes_keep_their_fixed_operation_guard(self):
-        for mode in ("literal", "audit_v1", "inline_audit_v2", "inline_trusted_ingress", "omit_explanations"):
-            previous = _render_service_policy(entra=settings(), **{mode: True})
-            root = policy_root(previous)
-            gates = [node for node in root.iter("when")
-                     if "gatewayEntraOperationSupported" in node.get("condition", "")]
-            with self.subTest(mode=mode):
-                self.assertEqual(len(gates), 1)
-                self.assertEqual(gates[0].find("return-response/set-status").get("code"), "403")
-                self.assertEqual(read_managed_entra_authentication(previous, expected_entra=settings()), settings())
-                with self.assertRaises(ValueError):
-                    validate_common_authentication_policy(previous, entra=settings())
 
     def test_current_policy_does_not_accept_a_copied_retired_operation_guard(self):
-        previous = policy_root(_render_audit_v1_service_policy(entra=settings()))
-        gate = next(node for node in previous.iter("choose")
-                    if node.find("when") is not None and "gatewayEntraOperationSupported" in node.find("when").get("condition", ""))
+        # Independently synthesize the retired capability gate; no legacy producer is required.
+        gate = ET.fromstring('<choose><when condition="@(!context.Variables.ContainsKey(&amp;quot;gatewayEntraOperationSupported&amp;quot;))"><return-response><set-status code="403" reason="Synthetic retired operation guard" /></return-response></when></choose>'.replace('&amp;quot;', '&quot;'))
         current = policy_root(render_service_policy(entra=settings()))
         bearer = next(node for node in current.find("inbound/choose") if node.find("validate-azure-ad-token") is not None)
-        bearer.insert(3, copy.deepcopy(gate))
+        bearer.insert(3, gate)
         with self.assertRaises(ValueError):
             validate_common_authentication_policy(ET.tostring(current, encoding="unicode"), entra=settings())
 
     def test_employee_profile_fragment_has_no_nested_includes(self):
-        profile = ET.parse(POLICIES / "subscription-profile.xml").getroot()
+        profile = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "subscription-profile.xml").read_text(encoding="utf-8")))
+        initial = profile[0]
+        self.assertEqual(initial.tag, "set-variable")
+        self.assertEqual(initial.get("name"), "gatewaySubscriptionProfile")
+        self.assertEqual(json.loads(initial.get("value")), {"requestRate": None, "tokensPerMinute": None, "tokenQuota": None})
         employee = profile.find("choose/when")
         self.assertEqual([node.tag for node in employee], ["include-fragment"])
         self.assertEqual(employee[0].get("fragment-id"), "core-entra-user-profile")
-        fragment = ET.parse(POLICIES / "entra-user-profile.xml").getroot()
+        fragment = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "entra-user-profile.xml").read_text(encoding="utf-8")))
         self.assertEqual(fragment.tag, "fragment")
         self.assertEqual([node.tag for node in fragment], ["set-variable"])
         self.assertFalse(fragment.findall(".//include-fragment"))
@@ -218,9 +208,9 @@ class EntraRenderingTests(unittest.TestCase):
 
     def test_explicit_broker_and_entra_migrations_can_be_composed(self):
         from test_credential_login import settings as login_settings
-        from browser_exception_projection import project_browser_exception_to_previous
+        from authentication_source_fixture import credential_broker_inline_fixture
         login = login_settings()
-        previous = ET.fromstring(project_browser_exception_to_previous(_render_inline_common_authentication_service_policy(login), login))
+        previous = ET.fromstring(credential_broker_inline_fixture(login))
         anonymous = previous.find("./inbound/choose[@id='core-common-authentication']/when")
         old_condition, count = re.subn(r' \|\| \(context\.Operation\.Id == "identity-callback"[^)]*\)', "", anonymous.get("condition"))
         self.assertEqual(count, 1); anonymous.set("condition", old_condition)
@@ -234,48 +224,6 @@ class EntraPolicyTransitionTests(unittest.TestCase):
     def policy(self, entra):
         return merge_common_authentication_policy(None, entra=entra)[0]
 
-    def test_audit_v1_named_value_read_requires_expected_settings_and_explicit_full_transition(self):
-        document = policy_root(_render_audit_v1_service_policy(entra=settings()))
-        for section in ("inbound", "outbound", "on-error"):
-            ET.SubElement(document.find(section), "set-variable", {"name": "audit-manual-" + section, "value": "kept"})
-        document.find("backend/forward-request").set("timeout", "181")
-        previous = ET.tostring(document, encoding="unicode")
-        with self.assertRaises(ValueError): read_managed_entra_authentication(previous)
-        self.assertEqual(read_managed_entra_authentication(previous, expected_entra=settings()), settings())
-        with self.assertRaises(ValueError): merge_common_authentication_policy(previous, entra=settings())
-        current, changed = transition_common_authentication_policy(previous, previous_entra=settings(), entra=settings())
-        self.assertTrue(changed)
-        validate_common_authentication_policy(current, entra=settings())
-        self.assertIn("authenticatedSubject", "".join(render_common_authentication_fragments(entra_enabled=True).values()))
-        parsed = policy_root(current)
-        for section in ("inbound", "outbound", "on-error"):
-            self.assertEqual(parsed.find(section + "/set-variable[@name='audit-manual-" + section + "']").get("value"), "kept")
-        self.assertEqual(parsed.find("backend/forward-request").get("timeout"), "181")
-        expanded=policy_root(expand_audit_fragments(
-            expand_browser_exception_fragment(expand_trusted_ingress_fragment(current))))
-        self.assertIn("requestReceivedAt", expanded.find("inbound/set-variable[@id='core-request-context']").get("value"))
-        self.assertEqual(len(expanded.findall("inbound/choose[@id='core-trusted-ingress']/when/trace")), 1)
-        self.assertEqual(transition_common_authentication_policy(current, previous_entra=settings(), entra=settings()), (current, False))
-
-    def test_audit_v1_reader_and_transition_reject_owned_changes_and_incomplete_blocks(self):
-        previous = _render_audit_v1_service_policy(entra=settings())
-        variants = [previous.replace("Trusted ingress required", "Manual ingress decision"),
-                    previous.replace('new JProperty(&quot;requestId&quot;', 'new JProperty(&quot;manualId&quot;', 1),
-                    previous.replace('name="gatewayCommonAuthenticationValidated"', 'name="manual-marker"', 1)]
-        for identifier in ("core-request-context", "core-trusted-ingress", "core-common-authentication", "core-entra-authentication-error"):
-            document = policy_root(previous)
-            for section in document:
-                match = next((node for node in section if node.get("id") == identifier), None)
-                if match is not None: section.remove(match)
-            variants.append(ET.tostring(document, encoding="unicode"))
-        document = policy_root(previous)
-        ET.SubElement(document.find("inbound"), "set-variable", {"id": "core-audit-authenticated-subject", "name": "gatewayAuthenticatedSubject", "value": "{}"})
-        variants.append(ET.tostring(document, encoding="unicode"))
-        for variant in variants:
-            with self.subTest(policy=variant), self.assertRaises(ValueError):
-                read_managed_entra_authentication(variant, expected_entra=settings())
-            with self.subTest(policy=variant), self.assertRaises(ValueError):
-                transition_common_authentication_policy(variant, previous_entra=settings(), entra=settings())
 
     def test_current_subject_writer_is_owned_ordered_and_cannot_be_overwritten(self):
         previous = render_service_policy(entra=settings())
@@ -292,41 +240,6 @@ class EntraPolicyTransitionTests(unittest.TestCase):
             with self.subTest(change=kind), self.assertRaises(ValueError):
                 read_managed_entra_authentication(candidate, expected_entra=settings())
 
-    def test_inline_audit_v2_requires_verified_explicit_fragment_transition(self):
-        previous = _render_inline_audit_v2_service_policy(entra=settings())
-        self.assertEqual(read_managed_entra_authentication(previous, expected_entra=settings()), settings())
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(previous, entra=settings())
-        with self.assertRaises(ValueError):
-            validate_common_authentication_policy(previous, entra=settings())
-        current, changed = transition_common_authentication_policy(
-            previous, previous_entra=settings(), entra=settings())
-        self.assertTrue(changed)
-        validate_common_authentication_policy(current, entra=settings())
-        references = policy_root(current).findall("inbound/include-fragment")
-        self.assertEqual([node.get("fragment-id") for node in references],
-                         ["core-request-context", "core-trusted-ingress", "core-credential-browser-exception",
-                          "core-audit-authenticated-subject"])
-        self.assertEqual(transition_common_authentication_policy(
-            current, previous_entra=settings(), entra=settings()), (current, False))
-        changed_request = previous.replace('new JProperty(&quot;requestId&quot;',
-                                           'new JProperty(&quot;manualId&quot;', 1)
-        with self.assertRaises(ValueError):
-            read_managed_entra_authentication(changed_request, expected_entra=settings())
-        with self.assertRaises(ValueError):
-            transition_common_authentication_policy(
-                changed_request, previous_entra=settings(), entra=settings())
-
-    def test_inline_audit_v2_request_source_is_independent_of_current_fragment(self):
-        from unittest import mock
-        previous = _render_inline_audit_v2_service_policy(entra=settings())
-        original = Path.read_text
-        def read(path, *args, **kwargs):
-            if path.name in ("service.xml", "core-request-context.xml", "core-request-context.cs"):
-                raise AssertionError("Inline source used current request fragment")
-            return original(path, *args, **kwargs)
-        with mock.patch.object(Path, "read_text", read):
-            self.assertEqual(_render_inline_audit_v2_service_policy(entra=settings()), previous)
 
     def test_current_audit_references_cannot_run_twice_or_after_custom_processing(self):
         for identifier in ("core-request-context", "core-audit-authenticated-subject"):
@@ -345,22 +258,6 @@ class EntraPolicyTransitionTests(unittest.TestCase):
                 with self.subTest(fragment=identifier, change=kind), self.assertRaises(ValueError):
                     read_managed_entra_authentication(ET.tostring(document,encoding="unicode"), expected_entra=settings())
 
-    def test_audit_v1_freeze_uses_only_fixed_xml_and_fixed_helpers(self):
-        from unittest import mock
-        from deployment.helpers import apim_authentication
-        from test_credential_login import settings as login_settings
-        login = login_settings()
-        previous = _render_audit_v1_service_policy(login, entra=settings())
-        original = Path.read_text
-        def read(path, *args, **kwargs):
-            if path.name in ("service.xml", "core-gateway-telemetry.xml", "core-common-authentication.xml", "core-common-authentication.cs", "core-entra-authentication-error.xml", "core-audit-authenticated-subject.cs"):
-                raise AssertionError("Frozen audit rendering used a current source")
-            return original(path, *args, **kwargs)
-        with mock.patch.object(Path, "read_text", read), mock.patch.object(
-                apim_authentication.credential_login, "anonymous_policy", side_effect=AssertionError("Used current anonymous source")), mock.patch.object(
-                apim_authentication.credential_login, "key_only_gateway_telemetry", side_effect=AssertionError("Used current telemetry source")):
-            self.assertEqual(_render_audit_v1_service_policy(login, entra=settings()), previous)
-            self.assertEqual(read_managed_entra_authentication(previous, login, expected_entra=settings()), settings())
 
     def test_reader_recognizes_only_fully_validated_managed_settings(self):
         self.assertIsNone(read_managed_entra_authentication(self.policy(None)))
@@ -426,12 +323,18 @@ class EntraPolicyTransitionTests(unittest.TestCase):
             self.assertEqual(parsed.find("backend/forward-request").get("timeout"), "180")
             self.assertIn("manual comment kept", policy)
 
-    def test_transition_requires_explicit_matching_previous_settings(self):
-        previous = _render_literal_service_policy(entra=settings())
-        wrong = settings(); wrong["audience"] = OTHER
-        for supplied in (None, wrong):
+    def test_transition_requires_explicit_compatible_previous_settings(self):
+        previous = _render_inline_common_authentication_service_policy(entra=settings())
+        for supplied in (None, {"enabled": False}):
             with self.subTest(previous=supplied), self.assertRaises(ValueError):
                 transition_common_authentication_policy(previous, previous_entra=supplied, entra=None)
+        # NamedValue XML does not encode its actual audience. Its separate typed
+        # readback must reject a mismatched logical expectation before transition.
+        name = "core-entra-api-audience"
+        body = {"properties": {"displayName": name, "secret": False,
+                               "value": entra_authentication_named_values(settings())[name]}}
+        with self.assertRaises(ValueError):
+            validate_entra_named_value(body, name, OTHER)
         changed, updated = transition_common_authentication_policy(
             self.policy(None), previous_entra=None, entra=settings())
         self.assertTrue(updated)
@@ -451,82 +354,6 @@ class EntraPolicyTransitionTests(unittest.TestCase):
                 lambda: transition_common_authentication_policy(orphan, previous_entra=None, entra=None),
                 lambda: transition_common_authentication_policy(orphan, previous_entra=None, entra=settings())):
             with self.assertRaises(ValueError): operation()
-
-    def test_known_legacy_policy_is_readable_and_migrates_only_to_current_desired_settings(self):
-        previous_settings = legacy_settings()
-        document = policy_root(_render_service_policy(entra=previous_settings, legacy=True))
-        for section in ("inbound", "outbound", "on-error"):
-            ET.SubElement(document.find(section), "set-variable", {"name": "legacy-manual-" + section, "value": "kept"})
-        previous = ET.tostring(document, encoding="unicode")
-        self.assertEqual(read_managed_entra_authentication(previous), previous_settings)
-        with self.assertRaises(ValueError):
-            render_service_policy(entra=previous_settings)
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(previous, entra=previous_settings)
-        changed, updated = transition_common_authentication_policy(
-            previous, previous_entra=previous_settings, entra=settings())
-        self.assertTrue(updated)
-        self.assertEqual(read_managed_entra_authentication(changed, expected_entra=settings()), settings())
-        self.assertNotIn("client-application-ids", changed)
-        for section in ("inbound", "outbound", "on-error"):
-            self.assertEqual(policy_root(changed).find(section + "/set-variable[@name='legacy-manual-" + section + "']").get("value"), "kept")
-        disabled, updated = transition_common_authentication_policy(
-            previous, previous_entra=previous_settings, entra={"enabled": False})
-        self.assertTrue(updated)
-        self.assertIsNone(read_managed_entra_authentication(disabled))
-        with self.assertRaises(ValueError):
-            transition_common_authentication_policy(changed, previous_entra=settings(), entra=previous_settings)
-
-    def test_legacy_readback_rejects_unknown_fields_changed_xml_and_incomplete_settings(self):
-        previous = _render_service_policy(entra=legacy_settings(), legacy=True)
-        invalid_settings = []
-        for field in legacy_settings():
-            incomplete = legacy_settings()
-            del incomplete[field]
-            invalid_settings.append(incomplete)
-        invalid_settings.extend(({**legacy_settings(), "unknown": True},
-                                 {**legacy_settings(), "allowedClientIds": []},
-                                 {**legacy_settings(), "allowedClientIds": [CLIENT, CLIENT]}))
-        for supplied in invalid_settings:
-            with self.subTest(settings=supplied), self.assertRaises(ValueError):
-                read_managed_entra_authentication(previous.replace(encoded(legacy_settings()), encoded(supplied)))
-        for changed in (previous.replace("<application-id>" + CLIENT + "</application-id>", "<application-id>" + OTHER + "</application-id>"),
-                        previous.replace('failed-validation-httpcode="401"', 'failed-validation-httpcode="200"')):
-            with self.assertRaises(ValueError):
-                read_managed_entra_authentication(changed)
-
-    def test_literal_blob_readback_and_common_only_transition_remain_strict(self):
-        previous = _render_literal_service_policy(entra=settings())
-        self.assertEqual(read_managed_entra_authentication(previous), settings())
-        changed, updated = transition_common_authentication_policy(previous, previous_entra=settings(), entra=settings())
-        self.assertTrue(updated)
-        self.assertEqual(read_managed_entra_authentication(changed, expected_entra=settings()), settings())
-        self.assertEqual(policy_root(previous).find("backend").find("forward-request").attrib,
-                         policy_root(changed).find("backend").find("forward-request").attrib)
-        self.assertNotIn(encoded(settings()), changed)
-        invalid = [previous.replace(encoded(settings()), encoded({**settings(), "userLimits": {}}), 1),
-                   previous.replace('tenant-id="' + TENANT + '"', 'tenant-id="' + OTHER + '"'),
-                   previous.replace('name="gatewayCommonAuthenticationValidated"', 'name="untrusted"', 1)]
-        for document in invalid:
-            with self.subTest(document=document), self.assertRaises(ValueError):
-                read_managed_entra_authentication(document)
-
-    def test_literal_freeze_does_not_follow_current_policy_or_helper_changes(self):
-        from unittest import mock
-        from deployment.helpers import apim_authentication
-        from test_credential_login import settings as login_settings
-        login = login_settings()
-        previous = _render_literal_service_policy(login, entra=settings())
-        original = Path.read_text
-        def read(path, *args, **kwargs):
-            if path.name in ("service.xml", "core-gateway-telemetry.xml", "core-common-authentication.xml", "core-common-authentication.cs", "core-entra-authentication-error.xml"):
-                raise AssertionError("Frozen rendering used a current policy source")
-            return original(path, *args, **kwargs)
-        with mock.patch.object(Path, "read_text", read), mock.patch.object(
-                apim_authentication.credential_login, "anonymous_policy", side_effect=AssertionError("Used current anonymous source")), mock.patch.object(
-                apim_authentication.credential_login, "key_only_gateway_telemetry", side_effect=AssertionError("Used current telemetry source")):
-            self.assertEqual(_render_literal_service_policy(login, entra=settings()), previous)
-            self.assertEqual(read_managed_entra_authentication(previous, login), settings())
 
 
 class EntraNamedValueTests(unittest.TestCase):
@@ -607,6 +434,54 @@ class EntraExpressionTests(unittest.TestCase):
         base = CSHARP.split("public static class CommonAuthenticationFixture")[0]
         base = base.replace("public class Named { public string Id; }", "public class Named { public string Id; public string UrlTemplate; }")
         base = base.replace("public class Context {", "public class Response { public int StatusCode = 200; }\npublic class Context { public Response Response = new Response(); public string NamedTenant, NamedScope, NamedLimits; public JObject Fault;")
+        base = base.replace("public Dictionary<string,object> Variables = new Dictionary<string,object>();",
+                            "public TokenCounterVariables Variables = new TokenCounterVariables();")
+        base = base.replace("public class Response {", r'''public class TokenCounterVariables : Dictionary<string,object> {
+ public bool CounterLocked;
+ public bool EnabledLocked;
+ public bool ProfileLocked;
+ public int UserAuthenticationReads, EntraMarkerReads;
+ public int EnabledEntraMarkerReads;
+ public int EnabledUserLimitsReads;
+ public int ProfileEntraMarkerReads;
+ public int ProfileDecisionReads;
+ public int ProfileUserLimitsReads;
+ void Check(string key) {
+  if (ProfileLocked && key == "gatewayEntraUserLimits") {
+   ProfileUserLimitsReads++;
+   throw new Exception("Employee profile attempted to reopen the original employee limit settings");
+  }
+  if (ProfileLocked && key == "gatewayDecision") {
+   ProfileDecisionReads++;
+   throw new Exception("Employee profile attempted to reopen the handed-off authentication decision");
+  }
+  if (ProfileLocked && key == "gatewayEntraAuthenticationValidated") {
+   ProfileEntraMarkerReads++;
+   throw new Exception("Employee profile attempted to repeat employee authentication completion check");
+  }
+  if (EnabledLocked && key == "gatewayEntraAuthenticationValidated") {
+   EnabledEntraMarkerReads++;
+   throw new Exception("Token enabled attempted to repeat employee authentication completion check");
+  }
+  if (EnabledLocked && key == "gatewayEntraUserLimits") {
+   EnabledUserLimitsReads++;
+   throw new Exception("Token enabled attempted to reopen already verified employee limits");
+  }
+  if (CounterLocked && key == "gatewayUserAuthentication") {
+   UserAuthenticationReads++;
+   throw new Exception("Token counter attempted to reopen verified employee JSON");
+  }
+  if (CounterLocked && key == "gatewayEntraAuthenticationValidated") {
+   EntraMarkerReads++;
+   throw new Exception("Token counter attempted to repeat employee authentication completion check");
+  }
+ }
+ public new object this[string key] { get { Check(key); return base[key]; } set { base[key] = value; } }
+ public new bool ContainsKey(string key) { Check(key); return base.ContainsKey(key); }
+ public new bool TryGetValue(string key, out object value) { Check(key); return base.TryGetValue(key, out value); }
+ public T GetValueOrDefault<T>(string key, T fallback) { object value; return TryGetValue(key, out value) ? (T)value : fallback; }
+}
+public class Response {''')
         def method(name, filename, xpath, attribute="value", return_type="string"):
             from policy_fixture_paths import policy_fixture_path
             node = policy_root(render_audit_policy(policy_fixture_path(POLICIES, filename).read_text(encoding="utf-8"))).find(xpath)
@@ -627,26 +502,32 @@ class EntraExpressionTests(unittest.TestCase):
             method("Parent", "audit-context.xml", ".//set-variable[@name='gatewayAgentTrace']"),
             method("Telemetry", "core-gateway-telemetry.xml", ".//trace/message", attribute=None),
         ])
-        # Decision直後の失敗分岐だけを実XMLから取り出し、既存アダプターで監査とHTTP応答を実行します。
-        gateway = ET.parse(policy_fixture_path(POLICIES, "gateway.xml")).getroot()
-        decision_failure = next(node for node in gateway.findall("./inbound/choose")
-                                if "gatewayDecision" in node.find("when").get("condition", ""))
-        cls.decision_failure_reason = decision_failure.find("when/return-response/set-status").get("reason")
-        failure_policy = ET.Element("policies")
-        ET.SubElement(failure_policy, "inbound").append(copy.deepcopy(decision_failure))
-        # 共通認証用アダプターが自動展開しない、この既知の監査フラグメントも正本から展開します。
-        failure_branch = failure_policy.find("inbound/choose/when")
-        telemetry_call = failure_branch.find("include-fragment[@fragment-id='core-gateway-telemetry']")
+        # 各APIのDecision直後の失敗分岐を実XMLから取り出し、既存アダプターで監査と応答を実行します。
+        cls.decision_failure_reasons = {}
         telemetry = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "core-gateway-telemetry.xml").read_text(encoding="utf-8")))
-        telemetry_position = list(failure_branch).index(telemetry_call)
-        failure_branch.remove(telemetry_call)
-        for offset, node in enumerate(telemetry):
-            failure_branch.insert(telemetry_position + offset, copy.deepcopy(node))
-        failure_methods, failure_inbound = compile_inbound(failure_policy, trace_messages=True)
-        # 同じfixtureへ二つの実XMLブロックを組み込むので、自動生成された補助関数名だけを区別します。
-        failure_methods = re.sub(r"\bExpression(\d+)\b", r"DecisionFailureExpression\1", failure_methods)
-        failure_inbound = re.sub(r"\bExpression(\d+)\b", r"DecisionFailureExpression\1", failure_inbound)
-        methods += "\n" + failure_methods + "\nstatic int DecisionFailure(Context context) { " + failure_inbound + " return 200; }"
+        for api, label, filename in (("decision", "DecisionFailure", "gateway.xml"),
+                                     ("protocol", "ProtocolFailure", "protocol.xml"),
+                                     ("mcp", "McpFailure", "mcp.xml")):
+            gateway = ET.parse(policy_fixture_path(POLICIES, filename)).getroot()
+            decision_failure = next(node for node in gateway.findall("./inbound/choose")
+                                    if "gatewayDecision" in node.find("when").get("condition", ""))
+            cls.decision_failure_reasons[api] = decision_failure.find("when/return-response/set-status").get("reason")
+            failure_policy = ET.Element("policies")
+            ET.SubElement(failure_policy, "inbound").append(copy.deepcopy(decision_failure))
+            # 共通認証用アダプターが自動展開しない監査フラグメントも正本から展開します。
+            failure_branch = failure_policy.find("inbound/choose/when")
+            telemetry_call = failure_branch.find("include-fragment[@fragment-id='core-gateway-telemetry']")
+            telemetry_position = list(failure_branch).index(telemetry_call)
+            failure_branch.remove(telemetry_call)
+            for offset, node in enumerate(telemetry):
+                failure_branch.insert(telemetry_position + offset, copy.deepcopy(node))
+            failure_methods, failure_inbound = compile_inbound(failure_policy, trace_messages=True)
+            # 同じfixtureへ実XMLブロックを組み込むので、自動生成された補助関数名だけを区別します。
+            failure_methods = re.sub(r"\bExpression(\d+)\b", label + r"Expression\1", failure_methods)
+            failure_inbound = re.sub(r"\bExpression(\d+)\b", label + r"Expression\1", failure_inbound)
+            methods += "\n" + failure_methods + "\nstatic int " + label + "(Context context) { " + failure_inbound + " return 200; }"
+        profile_template = ET.fromstring(render_audit_policy(policy_fixture_path(POLICIES, "subscription-profile.xml").read_text(encoding="utf-8")))
+        profile_initial = profile_template.find('./set-variable[@name="gatewaySubscriptionProfile"]').get("value")
         source = base + r'''
 public static class EntraFixture {
  __METHODS__
@@ -756,22 +637,186 @@ public static class EntraFixture {
     if ((bool?)item["httpDecisionOnly"] != true) {
      result["protocol"] = JObject.Parse(Protocol(c)); result["mcp"] = JObject.Parse(Mcp(c));
     }
-    if (!(bool)result["decision"]["allowed"]) {
-     // statusは先に行った共通認証の結果です。API側のHTTP応答と監査は別項目へ保存します。
-     var failureStatus = DecisionFailure(c);
-     result["decisionFailure"] = new JObject(new JProperty("status", failureStatus),
+    foreach (var api in new [] { "decision", "protocol", "mcp" }) {
+     if (result[api] == null || (bool)result[api]["allowed"]) continue;
+     // statusは共通認証の結果です。各APIの実拒否枝へそのAPIの引渡し結果を渡します。
+     c.Variables["gatewayDecision"] = result[api].ToString(Formatting.None);
+     c.ResponseHeaders.Clear();
+     var traceCount = c.TraceMessages.Count;
+     var failureStatus = api == "decision" ? DecisionFailure(c)
+       : api == "protocol" ? ProtocolFailure(c) : McpFailure(c);
+     result[api + "Failure"] = new JObject(new JProperty("status", failureStatus),
        new JProperty("headers", JObject.FromObject(c.ResponseHeaders)),
+       new JProperty("auditCount", c.TraceMessages.Count - traceCount),
        new JProperty("audit", JObject.Parse(c.TraceMessages.Last())));
     }
+    c.Variables["gatewayDecision"] = result["decision"].ToString(Formatting.None);
     if ((bool)result["decision"]["allowed"]) {
      try {
-      c.Variables["gatewayRateLimitExempt"] = false;
-      c.Variables["gatewaySubscriptionProfile"] = (string)result["decision"]["method"] == "user" ? UserProfile(c) : "{}";
+      c.Variables["gatewayRateLimitExempt"] = (bool?)item["rateExempt"] ?? false;
+       // 実認証と全APIの引渡し後、社員profileへ進む直前だけ成功印/allowedの孤立対照を注入します。
+       var profileDecisionBefore = (string)c.Variables["gatewayDecision"];
+       object profileEntraBefore;
+       var profileEntraHadValue = c.Variables.TryGetValue("gatewayEntraAuthenticationValidated", out profileEntraBefore);
+       object profileLimitsBefore, profileUserBefore;
+       var profileLimitsHadValue = c.Variables.TryGetValue("gatewayEntraUserLimits", out profileLimitsBefore);
+       var profileUserHadValue = c.Variables.TryGetValue("gatewayUserAuthentication", out profileUserBefore);
+       string normalProfileBefore = null;
+       if ((bool?)item["restoreProfileAfterRead"] == true) {
+        normalProfileBefore = ((JObject)JObject.Parse((string)profileUserBefore)["limits"]).ToString(Formatting.None);
+       }
+      if (item.Property("profileEntraValidated") != null) {
+       if (item["profileEntraValidated"].Type == JTokenType.Null) c.Variables.Remove("gatewayEntraAuthenticationValidated");
+       else c.Variables["gatewayEntraAuthenticationValidated"] = (bool)item["profileEntraValidated"];
+      }
+       if (item.Property("profileDecisionAllowed") != null) {
+        var profileDecision = JObject.Parse((string)c.Variables["gatewayDecision"]);
+        profileDecision["allowed"] = item["profileDecisionAllowed"];
+        c.Variables["gatewayDecision"] = profileDecision.ToString(Formatting.None);
+       }
+       // profile用の本人再照合を撤去した対照です。正式な認証/引渡し結果はこの直前まで正常です。
+       if (item.Property("profileDecisionRaw") != null) {
+        if (item["profileDecisionRaw"].Type == JTokenType.Null) c.Variables.Remove("gatewayDecision");
+        else c.Variables["gatewayDecision"] = (string)item["profileDecisionRaw"];
+       }
+       if (item["profileDecisionPatch"] is JObject profilePatch) {
+        var profileDecision = JObject.Parse((string)c.Variables["gatewayDecision"]);
+        foreach (var property in profilePatch.Properties()) profileDecision[property.Name] = property.Value.DeepClone();
+        c.Variables["gatewayDecision"] = profileDecision.ToString(Formatting.None);
+       }
+      // 実認証と全APIの引渡しは正常のまま、社員profile直前の一致する内部枠だけを変更します。
+       // UserProfileの取得結果を観測し、不正値の孤立対照は計数前に正常profileへ復元します。
+      if (item.Property("profileRequestRate") != null) {
+       var profileUser = JObject.Parse((string)c.Variables["gatewayUserAuthentication"]);
+       var profileLimits = JObject.Parse((string)c.Variables["gatewayEntraUserLimits"]);
+       ((JObject)profileUser["limits"])["requestRate"] = item["profileRequestRate"].DeepClone();
+       profileLimits["requestRate"] = item["profileRequestRate"].DeepClone();
+       c.Variables["gatewayUserAuthentication"] = profileUser.ToString(Formatting.None);
+       c.Variables["gatewayEntraUserLimits"] = profileLimits.ToString(Formatting.None);
+      }
+       // 実認証後の内部faultだけを社員profileへ渡し、JObjectの再検査を行わない取得を観測します。
+      if (item["profileLimits"] is JObject) {
+       var profileUser = JObject.Parse((string)c.Variables["gatewayUserAuthentication"]);
+       profileUser["limits"] = item["profileLimits"].DeepClone();
+       c.Variables["gatewayUserAuthentication"] = profileUser.ToString(Formatting.None);
+       c.Variables["gatewayEntraUserLimits"] = item["profileLimits"].ToString(Formatting.None);
+      }
+       // 認証済みsnapshot側だけの有効/不正なlimitsを、profile取得区間へ人工的に渡します。
+       if (item.Property("profileSnapshotLimits") != null) {
+        var profileUser = JObject.Parse((string)c.Variables["gatewayUserAuthentication"]);
+        profileUser["limits"] = item["profileSnapshotLimits"].DeepClone();
+        c.Variables["gatewayUserAuthentication"] = profileUser.ToString(Formatting.None);
+       }
+       if ((bool?)item["profileSnapshotLimitsMissing"] == true) {
+        var profileUser = JObject.Parse((string)c.Variables["gatewayUserAuthentication"]);
+        profileUser.Remove("limits");
+        c.Variables["gatewayUserAuthentication"] = profileUser.ToString(Formatting.None);
+       }
+       if (item.Property("profileUserRaw") != null) {
+        if (item["profileUserRaw"].Type == JTokenType.Null) c.Variables.Remove("gatewayUserAuthentication");
+        else c.Variables["gatewayUserAuthentication"] = (string)item["profileUserRaw"];
+       }
+      if ((bool?)item["profileUserLimitsMissing"] == true) c.Variables.Remove("gatewayEntraUserLimits");
+       if (item.Property("profileUserLimitsRaw") != null) c.Variables["gatewayEntraUserLimits"] = (string)item["profileUserLimitsRaw"];
+       if (item["profileOriginalLimits"] is JObject originalLimits) c.Variables["gatewayEntraUserLimits"] = originalLimits.ToString(Formatting.None);
+       c.Variables.ProfileLocked = true;
+       try {
+        c.Variables["gatewaySubscriptionProfile"] = (string)result["decision"]["method"] == "user" ? UserProfile(c) : __PROFILE_INITIAL__;
+        } catch (Exception error) {
+         // 取得式から出た例外をadapterで観測し、検査での拒否や公開HTTP応答は追加しません。
+         result["profileReadError"] = error.GetType().Name;
+         throw;
+        } finally {
+        c.Variables.ProfileLocked = false;
+        // profileだけの孤立対照を復元し、rate/TokenEnabled/Counter/監査の確認へ持ち越しません。
+        c.Variables["gatewayDecision"] = profileDecisionBefore;
+        if (profileEntraHadValue) c.Variables["gatewayEntraAuthenticationValidated"] = profileEntraBefore;
+        else c.Variables.Remove("gatewayEntraAuthenticationValidated");
+        if (profileLimitsHadValue) c.Variables["gatewayEntraUserLimits"] = profileLimitsBefore;
+        else c.Variables.Remove("gatewayEntraUserLimits");
+        if (profileUserHadValue) c.Variables["gatewayUserAuthentication"] = profileUserBefore;
+        else c.Variables.Remove("gatewayUserAuthentication");
+        result["profileEntraReads"] = c.Variables.ProfileEntraMarkerReads;
+        result["profileDecisionReads"] = c.Variables.ProfileDecisionReads;
+        result["profileOriginalLimitsReads"] = c.Variables.ProfileUserLimitsReads;
+       }
       result["profile"] = JObject.Parse((string)c.Variables["gatewaySubscriptionProfile"]);
-      result["rate"] = JObject.Parse(Rate(c)); result["tokenEnabled"] = TokenEnabled(c);
-      result["tokenKey"] = TokenKey(c);
-      c.Request.Headers["X-Core-Agent-Parent-Id"] = new [] { "__PARENT__" };
-      c.Variables["gatewayAgentTrace"] = Parent(c); result["audit"] = JObject.Parse(Telemetry(c));
+       if (normalProfileBefore != null) {
+        // 返却された人工snapshotはprofileへ記録済みです。後続は正式認証済みの正常枠で確認します。
+        c.Variables["gatewaySubscriptionProfile"] = normalProfileBefore;
+        result["countedProfile"] = JObject.Parse(normalProfileBefore);
+       }
+      result["rate"] = JObject.Parse(Rate(c));
+      // 共通認証・API引渡し・profile・rateが成功した後、TokenEnabled直前だけ孤立対照を注入します。
+      var tokenDecisionBefore = (string)c.Variables["gatewayDecision"];
+      object tokenEntraBefore;
+      var tokenEntraHadValue = c.Variables.TryGetValue("gatewayEntraAuthenticationValidated", out tokenEntraBefore);
+      object tokenLimitsBefore;
+      var tokenLimitsHadValue = c.Variables.TryGetValue("gatewayEntraUserLimits", out tokenLimitsBefore);
+       object tokenControlsBefore;
+       var tokenControlsHadValue = c.Variables.TryGetValue("gatewayControlSettings", out tokenControlsBefore);
+      if (item.Property("tokenEntraValidated") != null) {
+       if (item["tokenEntraValidated"].Type == JTokenType.Null) c.Variables.Remove("gatewayEntraAuthenticationValidated");
+       else c.Variables["gatewayEntraAuthenticationValidated"] = (bool)item["tokenEntraValidated"];
+      }
+      if (item["tokenUserLimits"] is JObject) c.Variables["gatewayEntraUserLimits"] = item["tokenUserLimits"].ToString(Formatting.None);
+      if ((bool?)item["tokenUserLimitsMissing"] == true) c.Variables.Remove("gatewayEntraUserLimits");
+      if (item.Property("tokenEnabledAllowed") != null) {
+       var enabledDecision = JObject.Parse((string)c.Variables["gatewayDecision"]);
+       enabledDecision["allowed"] = item["tokenEnabledAllowed"];
+       c.Variables["gatewayDecision"] = enabledDecision.ToString(Formatting.None);
+      }
+       // 内部一覧の対照は認証/profile/rateの成功後だけ注入し、利用者の認証失敗と区別します。
+       if ((bool?)item["tokenOperationListMissing"] == true || item.Property("tokenOperationList") != null) {
+        var tokenControls = JObject.Parse((string)c.Variables["gatewayControlSettings"]);
+        if ((bool?)item["tokenOperationListMissing"] == true) tokenControls.Remove("tokenLimitOperationIds");
+        else tokenControls["tokenLimitOperationIds"] = item["tokenOperationList"].DeepClone();
+        c.Variables["gatewayControlSettings"] = tokenControls.ToString(Formatting.None);
+       }
+      c.Variables.EnabledLocked = true;
+      try { result["tokenEnabled"] = TokenEnabled(c); }
+       catch (Exception error) {
+        // 実有効化式から伝播した例外を、この呼出し用adapterだけで観測します。
+        // falseへの変換や公開応答は追加せず、先行profileのlimitsRejectedとも分けます。
+        result["tokenEnabledError"] = error.GetType().Name;
+       }
+      finally {
+       c.Variables.EnabledLocked = false;
+       // この単体対照の変更をCounterや監査へ持ち越さず、有効化式だけを観測します。
+       c.Variables["gatewayDecision"] = tokenDecisionBefore;
+       if (tokenEntraHadValue) c.Variables["gatewayEntraAuthenticationValidated"] = tokenEntraBefore;
+       else c.Variables.Remove("gatewayEntraAuthenticationValidated");
+       if (tokenLimitsHadValue) c.Variables["gatewayEntraUserLimits"] = tokenLimitsBefore;
+       else c.Variables.Remove("gatewayEntraUserLimits");
+        if (tokenControlsHadValue) c.Variables["gatewayControlSettings"] = tokenControlsBefore;
+        else c.Variables.Remove("gatewayControlSettings");
+      }
+      result["tokenEnabledEntraReads"] = c.Variables.EnabledEntraMarkerReads;
+      result["tokenEnabledUserLimitsReads"] = c.Variables.EnabledUserLimitsReads;
+       if ((bool?)result["tokenEnabled"] == true) {
+       // TokenEnabled成功後の単体対照だけがdecisionを差し替えます。正式入口でのID変更ではありません。
+       if (item["tokenCounterDecision"] is JObject counterPatch) {
+        var counterDecision = JObject.Parse((string)c.Variables["gatewayDecision"]);
+        foreach (var property in counterPatch.Properties()) {
+         if (property.Value.Type == JTokenType.Null) counterDecision.Remove(property.Name);
+         else counterDecision[property.Name] = property.Value.DeepClone();
+        }
+        c.Variables["gatewayDecision"] = counterDecision.ToString(Formatting.None);
+       }
+       c.Variables.CounterLocked = true;
+       try { result["tokenKey"] = TokenKey(c); }
+       finally {
+        c.Variables.CounterLocked = false;
+        c.Variables["gatewayDecision"] = result["decision"].ToString(Formatting.None);
+       }
+       result["tokenKeyUserReads"] = c.Variables.UserAuthenticationReads;
+       result["tokenKeyEntraReads"] = c.Variables.EntraMarkerReads;
+      }
+       // 例外時は後続Counter/通常監査へ進みません。既存on-errorの応答はこのadapterでは作りません。
+       if (result["tokenEnabledError"] == null) {
+        c.Request.Headers["X-Core-Agent-Parent-Id"] = new [] { "__PARENT__" };
+        c.Variables["gatewayAgentTrace"] = Parent(c); result["audit"] = JObject.Parse(Telemetry(c));
+       }
      } catch { result["limitsRejected"] = true; }
     }
    }
@@ -779,7 +824,7 @@ public static class EntraFixture {
   }
   return output.ToString(Formatting.None);
  }
-}'''.replace("__METHODS__", methods).replace("__INBOUND__", inbound).replace("__PARENT__", PARENT).replace("__OPEN_PRODUCT__", ENTRA_OPEN_PRODUCT_ID).replace("__DEFAULT_SETTINGS__", encoded(settings()))
+}'''.replace("__METHODS__", methods).replace("__INBOUND__", inbound).replace("__PARENT__", PARENT).replace("__OPEN_PRODUCT__", ENTRA_OPEN_PRODUCT_ID).replace("__DEFAULT_SETTINGS__", encoded(settings())).replace("__PROFILE_INITIAL__", json.dumps(profile_initial))
         claims = {"ver": "2.0", "tid": TENANT, "oid": PERSON, "azp": CLIENT, "scp": "Other.Read Gateway.Invoke"}
         cases = []
         def add(name, **changes):
@@ -898,7 +943,8 @@ public static class EntraFixture {
         for name, product in (("key-product", "existing-product"), ("key-api-scope", None), ("key-all-api-scope", None), ("key-service-scope", None)):
             add(name, headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer arbitrary"}, subscription=True, product=product)
         add("key-duplicate-auth", headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": ["Bearer one", "Basic two"]}, subscription=True)
-        add("blank-native-subscription", headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer SYNTHETIC_TOKEN"}, subscription=True, subscriptionId=" ")
+        for name, subscription_id in (("blank-native-subscription", " "), ("empty-native-subscription", "")):
+            add(name, headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer SYNTHETIC_TOKEN"}, subscription=True, subscriptionId=subscription_id)
         for name in ("invalid-key-fallback", "stopped-key-fallback", "out-of-scope-key-fallback"):
             add(name, headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer SYNTHETIC_TOKEN"})
         for name, key in (("blank-key-valid-bearer", " "), ("empty-key-valid-bearer", ""), ("duplicate-key-valid-bearer", ["one", "two"])):
@@ -907,7 +953,107 @@ public static class EntraFixture {
             add(name, headers={"X-Gateway-Key": key, "Authorization": "Bearer SYNTHETIC_TOKEN"}, subscription=True)
         add("invalid-key-valid-bearer", headers={"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Bearer SYNTHETIC_TOKEN"})
         add("drop-marker", dropMarker=True); add("tamper-caller", tamper={"callerId": "user:untrusted"})
-        add("tamper-unlimited", tamper={"limits": {**LIMITS, "tokensPerMinute": None}})
+        # 旧一致拒否対照は、profile直前だけ型として有効なsnapshotを変更する対照へ限定します。
+        add("tamper-unlimited", profileSnapshotLimits={**LIMITS, "tokensPerMinute": None})
+        add("profile-entra-marker-missing", profileEntraValidated=None)
+        add("profile-entra-marker-failed", profileEntraValidated=False)
+        add("profile-isolated-allowed-false", profileDecisionAllowed=False)
+        cls.profile_decision_cases = []
+        for label, changes in (
+            ("missing", {"profileDecisionRaw": None}), ("malformed", {"profileDecisionRaw": "{broken"}),
+            ("caller", {"profileDecisionPatch": {"callerId": "user:untrusted"}}),
+            ("allocation", {"profileDecisionPatch": {"allocationId": "user:untrusted"}}),
+        ):
+            identifier = "profile-isolated-decision-" + label
+            cls.profile_decision_cases.append(identifier)
+            add(identifier, **changes)
+        add("token-counter-decision-fields-removed", tokenCounterDecision={"allowed": None, "callerId": None, "allocationId": None})
+        add("token-counter-other-person", tokenCounterDecision={"verifiedPrincipalId": OTHER})
+        add("token-enabled-isolated-marker-missing", tokenEntraValidated=None)
+        add("token-enabled-isolated-marker-false", tokenEntraValidated=False)
+        add("token-enabled-isolated-allowed-false", tokenEnabledAllowed=False)
+        add("token-enabled-isolated-original-missing", tokenUserLimitsMissing=True)
+        add("token-enabled-isolated-original-mismatch", tokenUserLimits={**LIMITS, "tokensPerMinute": None})
+        cls.token_operation_errors = {}
+        cls.token_operation_controls = {}
+        for caller, context in (("user", {}), ("key", {
+            "headers": {"X-Gateway-Key": "SYNTHETIC_KEY", "Authorization": "Basic arbitrary"},
+            "subscription": True,
+        })):
+            for exempt in (False, True):
+                suffix = caller + ("-exempt" if exempt else "-counted")
+                for label, value, exception in (
+                    ("missing", None, "ArgumentNullException"), ("null", None, "InvalidCastException"),
+                    ("object", {}, "InvalidCastException"), ("string", "responses-create", "InvalidCastException"),
+                    ("integer", 42, "InvalidCastException"),
+                ):
+                    identifier = "token-operations-" + label + "-" + suffix
+                    cls.token_operation_errors[identifier] = (caller, exception)
+                    fault = {"tokenOperationListMissing": True} if label == "missing" else {"tokenOperationList": value}
+                    add(identifier, **context, **fault, rateExempt=exempt)
+                for label, operations, matches in (
+                    ("empty", [], False), ("other", ["unrelated-operation"], False),
+                    ("matching", ["unrelated-operation", "responses-create"], True),
+                ):
+                    identifier = "token-operations-" + label + "-" + suffix
+                    cls.token_operation_controls[identifier] = (caller, matches and not exempt)
+                    add(identifier, **context, tokenOperationList=operations, rateExempt=exempt)
+        # 一覧faultは先行認証/社員profileを通過した場合だけ注入するため、正規の先行停止は変わりません。
+        add("token-operations-native-stopped", nativeAccepted=False, tokenOperationList={})
+        add("token-operations-profile-stopped", profileSnapshotLimits=None, tokenOperationList=None)
+        add("profile-user-limits-missing", profileUserLimitsMissing=True)
+        add("profile-original-limits-malformed", profileUserLimitsRaw="{broken")
+        add("profile-original-limits-mismatch", profileOriginalLimits={**LIMITS, "tokensPerMinute": None})
+        cls.profile_object_cases = {}
+        cls.common_profile_settings_inputs = {}
+        cls.profile_acquisition_cases = {"token-operations-profile-stopped": "NullReferenceException"}
+        for label, limits in (
+            ("null", None), ("array", []), ("empty", {}),
+            ("extra", {**LIMITS, "unexpected": None}),
+            ("missing-tpm", {"requestRate": LIMITS["requestRate"], "tokenQuota": LIMITS["tokenQuota"], "unexpected": None}),
+            ("quota-period", {**LIMITS, "tokenQuota": {**LIMITS["tokenQuota"], "period": "monthly"}}),
+        ):
+            identifier = "profile-structure-" + label
+            if isinstance(limits, dict):
+                cls.profile_object_cases[identifier] = limits
+                cls.common_profile_settings_inputs["common-" + identifier] = limits
+                add(identifier, profileSnapshotLimits=limits, restoreProfileAfterRead=True)
+            else:
+                cls.profile_acquisition_cases[identifier] = "NullReferenceException"
+                add(identifier, profileSnapshotLimits=limits)
+        for label, fault, exception in (
+            ("user-missing", {"profileUserRaw": None}, "KeyNotFoundException"),
+            ("user-malformed", {"profileUserRaw": "{broken"}, "JsonReaderException"),
+            ("limits-missing", {"profileSnapshotLimitsMissing": True}, "NullReferenceException"),
+            ("limits-scalar", {"profileSnapshotLimits": 42}, "NullReferenceException"),
+        ):
+            identifier = "profile-acquisition-" + label
+            cls.profile_acquisition_cases[identifier] = exception
+            add(identifier, **fault)
+        for label, limits in (
+            ("tpm-missing", {key: value for key, value in LIMITS.items() if key != "tokensPerMinute"}),
+            ("quota-missing", {key: value for key, value in LIMITS.items() if key != "tokenQuota"}),
+            ("tpm-type", {**LIMITS, "tokensPerMinute": 1.5}),
+            ("quota-type", {**LIMITS, "tokenQuota": {**LIMITS["tokenQuota"], "tokens": 1.5}}),
+            ("tpm-range", {**LIMITS, "tokensPerMinute": 0}),
+            ("quota-range", {**LIMITS, "tokenQuota": {**LIMITS["tokenQuota"], "tokens": 0}}),
+        ):
+            identifier = "profile-token-limits-" + label
+            cls.profile_object_cases[identifier] = limits
+            cls.common_profile_settings_inputs["common-" + identifier] = limits
+            add(identifier, profileLimits=limits, restoreProfileAfterRead=True)
+        cls.profile_rate_boundaries = {}
+        for label, calls, period, allowed in (('minimum', 1, 1, True), ('maximum', 1000000, 300, True),
+                                              ('calls-over', 1000001, 50, False), ('period-over', 11, 301, False)):
+            identifier = "profile-rate-range-" + label
+            cls.profile_rate_boundaries[identifier] = (calls, period, allowed)
+            rate = {"calls": calls, "renewalPeriodSeconds": period}
+            add(identifier, profileRequestRate=rate, rateExempt=True, restoreProfileAfterRead=not allowed)
+            if not allowed:
+                cls.common_profile_settings_inputs["common-" + identifier] = {**LIMITS, "requestRate": rate}
+        # 同じ不正値を正式なNamed Limitsとして渡すと、実common認証がprofileより前に500で停止します。
+        for identifier, limits in cls.common_profile_settings_inputs.items():
+            add(identifier, limitsRaw=json.dumps(limits))
         with tempfile.TemporaryDirectory(prefix="core-entra-auth-") as folder:
             p = Path(folder)
             (p / "fixture.cs").write_text(source, encoding="utf-8")
@@ -938,9 +1084,243 @@ public static class EntraFixture {
             self.assertEqual(self.results[name]["rate"]["counterKey"], first["rate"]["counterKey"])
             self.assertEqual(self.results[name]["tokenKey"], first["tokenKey"])
         self.assertNotEqual(self.results["other-user"]["tokenKey"], first["tokenKey"])
+        self.assertEqual(self.results["other-user"]["tokenKey"], "core-tokens-v1:user:" + TENANT + ":" + OTHER)
+        other_counter = self.results["other-user"]["rate"]["counterKey"]
+        self.assertEqual(other_counter, "ai-gateway-rate-v3:user:" + base64.b64encode((TENANT + ":" + OTHER).encode()).decode())
+        self.assertNotEqual(other_counter, first["rate"]["counterKey"])
         normalized = self.results["canonical-named-tenant"]
         self.assertEqual(normalized["status"], 200)
         self.assertEqual(normalized["decision"]["verifiedTenantId"], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        self.assertEqual(normalized["rate"]["counterKey"], "ai-gateway-rate-v3:user:" + base64.b64encode(
+            ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:" + PERSON).encode()).decode())
+
+    def test_employee_profile_uses_the_verified_result_without_rechecking_allowed_or_success_marker(self):
+        normal = self.results["employee"]
+        for name in ("profile-entra-marker-missing", "profile-entra-marker-failed", "profile-isolated-allowed-false"):
+            row = self.results[name]
+            with self.subTest(isolated_before_profile=name):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertTrue(row[api]["allowed"])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertEqual(row["profile"], LIMITS)
+                self.assertEqual(row["profileEntraReads"], 0)
+                self.assertEqual(row["rate"], normal["rate"])
+                self.assertTrue(row["tokenEnabled"])
+                self.assertEqual(row["tokenKey"], normal["tokenKey"])
+                self.assertEqual(row["audit"]["verifiedTenantId"], normal["audit"]["verifiedTenantId"])
+                self.assertEqual(row["audit"]["verifiedPrincipalId"], normal["audit"]["verifiedPrincipalId"])
+        # 元の認証や引渡しを省かず、実UserProfileを呼んだ全対照で成功印への非アクセスを確認します。
+        for name, row in self.results.items():
+            if "profileEntraReads" in row:
+                with self.subTest(profile_invocation=name):
+                    self.assertEqual(row["profileEntraReads"], 0)
+
+    def test_employee_profile_reads_verified_limits_without_reopening_the_decision(self):
+        normal = self.results["employee"]
+        for identifier in self.profile_decision_cases:
+            row = self.results[identifier]
+            with self.subTest(isolated_before_profile=identifier):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertEqual(row[api], normal[api])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertEqual(row["profile"], LIMITS)
+                self.assertEqual(row["profileDecisionReads"], 0)
+                self.assertEqual(row["profileEntraReads"], 0)
+                # 孤立対照の復元後は、確認済みの同じ社員へ回数/トークン枠と監査を引き継ぎます。
+                self.assertEqual(row["rate"], normal["rate"])
+                self.assertTrue(row["tokenEnabled"])
+                self.assertEqual(row["tokenKey"], normal["tokenKey"])
+                self.assertEqual(row["audit"]["verifiedTenantId"], normal["audit"]["verifiedTenantId"])
+                self.assertEqual(row["audit"]["verifiedPrincipalId"], normal["audit"]["verifiedPrincipalId"])
+        # 人工JObjectの取得と取得失敗の停止も、不要なdecisionを読み直しません。
+        for identifier, row in self.results.items():
+            if "profileDecisionReads" in row:
+                with self.subTest(profile_invocation=identifier):
+                    self.assertEqual(row["profileDecisionReads"], 0)
+
+    def test_token_counter_uses_handed_off_identity_without_reopening_employee_json(self):
+        normal_key = self.results["employee"]["tokenKey"]
+        self.assertEqual(self.results["token-counter-decision-fields-removed"]["tokenKey"], normal_key)
+        self.assertEqual(self.results["token-counter-other-person"]["tokenKey"], self.results["other-user"]["tokenKey"])
+        for name, row in self.results.items():
+            if "tokenKey" in row:
+                with self.subTest(case=name):
+                    self.assertEqual(row["tokenKeyUserReads"], 0)
+                    self.assertEqual(row["tokenKeyEntraReads"], 0)
+
+    def test_token_enabled_uses_verified_profile_without_rechecking_prior_authentication_or_limits(self):
+        for name in ("token-enabled-isolated-marker-missing", "token-enabled-isolated-marker-false",
+                     "token-enabled-isolated-allowed-false", "token-enabled-isolated-original-missing",
+                     "token-enabled-isolated-original-mismatch"):
+            row = self.results[name]
+            with self.subTest(isolated_after_profile=name):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertTrue(row[api]["allowed"])
+                self.assertEqual(row["profile"], LIMITS)
+                self.assertTrue(row["tokenEnabled"])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertEqual(row["tokenKey"], self.results["employee"]["tokenKey"])
+        for name, row in self.results.items():
+            if "tokenEnabled" in row:
+                with self.subTest(case=name):
+                    self.assertEqual(row["tokenEnabledEntraReads"], 0)
+                    self.assertEqual(row["tokenEnabledUserLimitsReads"], 0)
+
+    def test_employee_profile_uses_the_verified_snapshot_without_reopening_original_limits(self):
+        normal = self.results["employee"]
+        for identifier in ("profile-user-limits-missing", "profile-original-limits-malformed", "profile-original-limits-mismatch", "tamper-unlimited"):
+            row = self.results[identifier]
+            with self.subTest(isolated_before_profile=identifier):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertEqual(row[api], normal[api])
+                self.assertFalse(row.get("limitsRejected", False))
+                expected = {**LIMITS, "tokensPerMinute": None} if identifier == "tamper-unlimited" else LIMITS
+                self.assertEqual(row["profile"], expected)
+                self.assertEqual(row["profileOriginalLimitsReads"], 0)
+                self.assertEqual(row["profileEntraReads"], 0)
+                self.assertEqual(row["profileDecisionReads"], 0)
+                self.assertEqual(row["rate"], normal["rate"])
+                self.assertTrue(row["tokenEnabled"])
+                self.assertEqual(row["tokenKey"], normal["tokenKey"])
+                self.assertEqual(row["audit"]["verifiedPrincipalId"], normal["audit"]["verifiedPrincipalId"])
+        # limitsを取得できない停止も含め、元設定への再アクセスを各実UserProfile呼出しで検出します。
+        for identifier, row in self.results.items():
+            if "profileOriginalLimitsReads" in row:
+                with self.subTest(profile_invocation=identifier):
+                    self.assertEqual(row["profileOriginalLimitsReads"], 0)
+
+    def test_employee_profile_returns_the_obtained_object_without_revalidating_settings(self):
+        normal = self.results["employee"]
+        for identifier, expected in self.profile_object_cases.items():
+            row = self.results[identifier]
+            with self.subTest(isolated_after_authentication=identifier):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertEqual(row[api], normal[api])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertNotIn("profileReadError", row)
+                self.assertEqual(row["profile"], expected)
+                # 人工的な不正JObjectの返却だけを観測し、計数には正式な正常profileを渡します。
+                self.assertEqual(row["countedProfile"], LIMITS)
+                self.assertEqual(row["rate"], normal["rate"])
+                self.assertTrue(row["tokenEnabled"])
+                self.assertEqual(row["tokenKey"], normal["tokenKey"])
+                for reads in ("profileEntraReads", "profileDecisionReads", "profileOriginalLimitsReads"):
+                    self.assertEqual(row[reads], 0)
+
+    def test_employee_profile_acquisition_errors_stop_before_rate_and_counter(self):
+        for name, exception in self.profile_acquisition_cases.items():
+            row = self.results[name]
+            with self.subTest(isolated_after_authentication=name):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertTrue(row[api]["allowed"])
+                self.assertTrue(row["limitsRejected"])
+                self.assertEqual(row["profileReadError"], exception)
+                for reads in ("profileEntraReads", "profileDecisionReads", "profileOriginalLimitsReads"):
+                    self.assertEqual(row[reads], 0)
+                for stage in ("profile", "countedProfile", "rate", "tokenEnabled", "tokenKey"):
+                    self.assertNotIn(stage, row)
+
+    def test_common_authentication_rejects_the_same_invalid_settings_before_profile_acquisition(self):
+        # profile直前の人工snapshot変更と違い、正式な会社設定の不備は先行commonの500で停止します。
+        for identifier in self.common_profile_settings_inputs:
+            row = self.results[identifier]
+            with self.subTest(formal_configuration=identifier):
+                self.assertEqual(row["status"], 500)
+                self.assertFalse(row["commonValidated"])
+                self.assertFalse(row["entraValidated"])
+                self.assertFalse(row["hasUserAuthentication"])
+                self.assertEqual(row["failureAudit"]["code"], "INVALID_GATEWAY_CONFIGURATION")
+                self.assertEqual(row["failureAudit"]["authenticatedSubject"]["principalId"], PERSON)
+                for stage in ("decision", "profile", "profileReadError", "profileOriginalLimitsReads", "rate", "tokenEnabled", "tokenKey"):
+                    self.assertNotIn(stage, row)
+
+    def test_token_operation_list_errors_propagate_after_authentication_even_when_exempt(self):
+        # 欠落のcast結果は.NET nullなのでAnyで例外になり、JSON null/別型はJArrayへのcastで失敗します。
+        # 免除判定がAnyより先に短絡すると欠落だけfalseへ戻るため、免除あり/なし双方を対照にします。
+        for identifier, (caller, exception) in self.token_operation_errors.items():
+            row = self.results[identifier]
+            with self.subTest(case=identifier):
+                self.assertEqual(row["status"], 200)  # 共通認証の結果。TokenEnabled用の公開HTTP状態は作りません。
+                self.assertTrue(row["commonValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertTrue(row[api]["allowed"])
+                baseline = self.results["employee" if caller == "user" else "key"]
+                self.assertEqual(row["profile"], baseline["profile"])
+                self.assertEqual(row["rate"]["counterKey"], baseline["rate"]["counterKey"])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertEqual(row["tokenEnabledError"], exception)
+                self.assertEqual(row["tokenEnabledEntraReads"], 0)
+                self.assertEqual(row["tokenEnabledUserLimitsReads"], 0)
+                for stage in ("tokenEnabled", "tokenKey", "audit"):
+                    self.assertNotIn(stage, row)
+
+    def test_token_operation_lists_keep_empty_nonmatching_and_exempt_enforcement_disabled(self):
+        for identifier, (caller, enabled) in self.token_operation_controls.items():
+            row = self.results[identifier]
+            with self.subTest(case=identifier):
+                baseline = self.results["employee" if caller == "user" else "key"]
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                self.assertEqual(row["decision"], baseline["decision"])
+                self.assertEqual(row["profile"], baseline["profile"])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertNotIn("tokenEnabledError", row)
+                self.assertEqual(row["tokenEnabled"], enabled)
+                self.assertEqual(row["tokenEnabledEntraReads"], 0)
+                self.assertEqual(row["tokenEnabledUserLimitsReads"], 0)
+                if enabled:
+                    self.assertEqual(row["tokenKey"], baseline["tokenKey"])
+                else:
+                    self.assertNotIn("tokenKey", row)
+                self.assertIn("audit", row)
+
+    def test_prior_authentication_and_profile_failures_stop_before_token_operation_faults(self):
+        native = self.results["token-operations-native-stopped"]
+        self.assertEqual(native["status"], 401)
+        self.assertFalse(native["nativeOutput"])
+        for stage in ("decision", "profile", "rate", "tokenEnabled", "tokenEnabledError", "tokenKey"):
+            self.assertNotIn(stage, native)
+        profile = self.results["token-operations-profile-stopped"]
+        self.assertEqual(profile["status"], 200)
+        self.assertTrue(profile["commonValidated"])
+        self.assertTrue(profile["decision"]["allowed"])
+        self.assertTrue(profile["limitsRejected"])
+        self.assertEqual(profile["profileReadError"], "NullReferenceException")
+        for stage in ("profile", "rate", "tokenEnabled", "tokenEnabledError", "tokenKey"):
+            self.assertNotIn(stage, profile)
+
+    def test_employee_profile_returns_rate_values_and_keeps_cleanup_exemption(self):
+        for identifier, (calls, period, allowed) in self.profile_rate_boundaries.items():
+            row = self.results[identifier]
+            with self.subTest(case=identifier):
+                self.assertEqual(row["status"], 200)
+                self.assertTrue(row["commonValidated"])
+                self.assertTrue(row["entraValidated"])
+                for api in ("decision", "protocol", "mcp"):
+                    self.assertTrue(row[api]["allowed"])
+                self.assertFalse(row.get("limitsRejected", False))
+                self.assertNotIn("profileReadError", row)
+                self.assertEqual(row["profile"], {**LIMITS, "requestRate": {"calls": calls, "renewalPeriodSeconds": period}})
+                if not allowed:
+                    self.assertEqual(row["countedProfile"], LIMITS)
+                expected_rate = (calls, period) if allowed else (LIMITS["requestRate"]["calls"], LIMITS["requestRate"]["renewalPeriodSeconds"])
+                self.assertEqual((row["rate"]["calls"], row["rate"]["renewalPeriodSeconds"]), expected_rate)
+                self.assertFalse(row["rate"]["enabled"])
+                self.assertFalse(row["tokenEnabled"])
+                self.assertNotIn("tokenKey", row)
+                self.assertEqual(row["rate"]["counterKey"], self.results["employee"]["rate"]["counterKey"])
 
     def test_a_new_api_with_the_owned_product_uses_the_same_verified_bearer_identity(self):
         row = self.results["new-api-same-user"]
@@ -956,7 +1336,10 @@ public static class EntraFixture {
         for case in ('employee-legacy-mixed', *('employee-'+suffix+'-new-control' for suffix in ('malformed', 'null', 'blank', 'array', 'scalar'))):
             invalid=self.results[case]
             self.assertTrue(invalid['decision']['allowed'])
-            self.assertTrue(invalid['limitsRejected'])
+            self.assertEqual(invalid['profile'], LIMITS)
+            self.assertIn('rate', invalid)
+            self.assertFalse(invalid.get('limitsRejected', False))
+            self.assertIn('tokenEnabledError', invalid)
             self.assertNotIn('tokenEnabled',invalid)
             self.assertNotIn('tokenKey',invalid)
 
@@ -995,12 +1378,12 @@ public static class EntraFixture {
                     self.assertEqual(self.results[name][api]["method"], "subscriptionKey")
                     self.assertEqual(self.results[name][api]["callerId"], "subscription:subscription-a")
         for name in ("invalid-key", "blank-key", "empty-key", "no-key-values", "duplicate-key", "repeated-key-values",
-                     "invalid-key-valid-bearer", "blank-native-subscription",
+                     "invalid-key-valid-bearer", "blank-native-subscription", "empty-native-subscription",
                      "invalid-key-fallback", "stopped-key-fallback", "out-of-scope-key-fallback",
                      "blank-key-valid-bearer", "empty-key-valid-bearer", "duplicate-key-valid-bearer", "new-api-invalid-key-valid-bearer"):
             self.assertEqual(self.results[name]["status"], 401); self.assertFalse(self.results[name]["nativeOutput"])
-            for api in ("decision", "protocol", "mcp"):
-                self.assertNotIn(api, self.results[name], "Common authentication must reject before API decisions run")
+            for stage in ("decision", "protocol", "mcp", "profile", "rate", "tokenEnabled", "tokenKey"):
+                self.assertNotIn(stage, self.results[name], "Common authentication must reject before API decisions and limits run")
 
     def test_bearer_requires_keyless_owned_open_product_context(self):
         for name in ("missing-product", "wrong-product", "keyless-native-subscription", "new-api-missing-product", "new-api-wrong-product"):
@@ -1034,7 +1417,7 @@ public static class EntraFixture {
                 self.assertNotIn("protocol", row)
                 self.assertNotIn("mcp", row)
 
-    def test_http_decision_requires_entra_success_and_inherits_verified_identity(self):
+    def test_all_api_decisions_require_entra_success_and_inherit_verified_identity(self):
         rejected = [
             "decision-gatewayEntraAuthenticationValidated-" + state
             for state in ("missing", "failed")
@@ -1047,20 +1430,22 @@ public static class EntraFixture {
                 self.assertEqual(row["decision"], {"allowed": False})
                 for api in ("decision", "protocol", "mcp"):
                     self.assertFalse(row[api]["allowed"])
-                failure = row["decisionFailure"]
-                self.assertEqual(failure["status"], 500)
-                self.assertEqual(self.decision_failure_reason, "Gateway processing failed")
-                self.assertEqual(failure["audit"]["phase"], "policy-error")
-                self.assertEqual(failure["audit"]["code"], "AUTHENTICATION_PROCESSING_ERROR")
-                self.assertEqual(failure["audit"]["status"], 500)
-                self.assertEqual(failure["headers"]["apim-request-id"], failure["audit"]["requestId"])
-                for detail in ("{broken", "JsonReaderException", "KeyNotFoundException"):
-                    self.assertNotIn(detail, json.dumps(failure))
-                self.assertNotIn("profile", row)
-                self.assertNotIn("rate", row)
-                self.assertNotIn("tokenKey", row)
+                    failure = row[api + "Failure"]
+                    with self.subTest(api=api):
+                        self.assertEqual(failure["status"], 500)
+                        self.assertEqual(self.decision_failure_reasons[api], "Gateway processing failed")
+                        self.assertEqual(failure["auditCount"], 1)
+                        self.assertEqual(failure["audit"]["phase"], "policy-error")
+                        self.assertEqual(failure["audit"]["code"], "AUTHENTICATION_PROCESSING_ERROR")
+                        self.assertEqual(failure["audit"]["status"], 500)
+                        self.assertEqual(failure["headers"]["apim-request-id"], failure["audit"]["requestId"])
+                        self.assertEqual(failure["headers"]["Cache-Control"], "no-store")
+                        for detail in ("{broken", "JsonReaderException", "KeyNotFoundException"):
+                            self.assertNotIn(detail, json.dumps(failure))
+                for stage in ("profile", "rate", "tokenEnabled", "tokenKey"):
+                    self.assertNotIn(stage, row)
         # 共通処理が本人情報と呼出者・利用枠を照合した後、この単体fixtureだけが値を変更します。
-        # HTTPは再照合せずJSONの値を引き継ぎます。後段の利用枠・監査まで通ることは意味しません。
+        # 全APIは再照合せずJSONの値を引き継ぎます。後段の利用枠・監査まで通ることは意味しません。
         for name, field, value in (("decision-user-caller-changed", "callerId", "user:untrusted"),
                                    ("decision-user-allocation-changed", "allocationId", "user:untrusted"),
                                    ("decision-user-principal-changed", "verifiedPrincipalId", "invalid"),
@@ -1073,22 +1458,23 @@ public static class EntraFixture {
             with self.subTest(changed_identity=name):
                 self.assertEqual(row["decision"], expected)
                 for api in ("protocol", "mcp"):
-                    self.assertFalse(row[api]["allowed"], api)
+                    self.assertEqual(row[api], expected, api)
         # この単体fixtureは先行部品を呼ばず、common印を認証後に変更します。
         # 実際のAPI順序では、common印の欠落・falseはcore-api-request-preparationが503で停止します。
-        # HTTPのDecisionはその確認を繰り返さず、Entra印を確認して共通検証済み本人情報を引き継ぎます。
+        # 全APIのDecisionはその確認を繰り返さず、Entra印を確認して共通検証済み本人情報を引き継ぎます。
         for state in ("missing", "failed"):
             row = self.results["decision-gatewayCommonAuthenticationValidated-" + state]
             with self.subTest(common_marker=state):
                 self.assertEqual(row["decision"], self.results["employee"]["decision"])
                 for api in ("protocol", "mcp"):
-                    self.assertFalse(row[api]["allowed"], api)
-        # APIMの購読は通常書換えできません。この人工差替えではHTTPだけが購読主体を選びます。
+                    self.assertEqual(row[api], self.results["employee"]["decision"], api)
+        # APIMの購読は通常書換えできません。この単体fixtureは認証後に人工的に差し替えます。
+        # 全APIの引渡しは購読主体を選び、実際のBearer入口での購読混在は先行する共通認証が拒否します。
         mixed = self.results["decision-subscription-mixed"]
         self.assertEqual(mixed["decision"], {"allowed": True, "method": "subscriptionKey",
                                            "callerId": "subscription:unexpected-subscription"})
         for api in ("protocol", "mcp"):
-            self.assertFalse(mixed[api]["allowed"], api)
+            self.assertEqual(mixed[api], mixed["decision"], api)
 
     def test_configured_null_limits_disable_only_the_selected_enforcement(self):
         for mask in range(8):
@@ -1097,6 +1483,10 @@ public static class EntraFixture {
             self.assertFalse(row.get("limitsRejected", False))
             self.assertEqual(row["rate"]["enabled"], not bool(mask & 1))
             self.assertEqual(row["tokenEnabled"], (mask & 6) != 6)
+            if row["tokenEnabled"]:
+                self.assertEqual(row["tokenKey"], self.results["employee"]["tokenKey"])
+            else:
+                self.assertNotIn("tokenKey", row)
             for index, field in enumerate(("requestRate", "tokensPerMinute", "tokenQuota")):
                 self.assertEqual(row["profile"][field], None if mask & (1 << index) else LIMITS[field])
             self.assertEqual(row["audit"]["verifiedPrincipalId"], PERSON)
@@ -1115,7 +1505,6 @@ public static class EntraFixture {
             if (name.startswith(("wrong-", "missing-", "duplicate-")) and not name.startswith("missing-limit-")) or name in ("zero-oid", "native-rejected", "no-auth", "basic", "query-credential"):
                 with self.subTest(case=name): self.assertIn(row["status"], (401, 403))
         self.assertFalse(self.results["drop-marker"]["decision"]["allowed"])
-        self.assertTrue(self.results["tamper-unlimited"]["limitsRejected"])
 
     def test_native_required_claims_reject_values_before_the_identity_expression(self):
         for name in ("wrong-ver", "wrong-scp", "missing-ver", "missing-scp", "configured-scope-rejected"):
@@ -1123,6 +1512,8 @@ public static class EntraFixture {
             with self.subTest(case=name):
                 self.assertEqual(row["status"], 401)
                 self.assertFalse(row["nativeOutput"])
+                self.assertNotIn("tokenEnabled", row)
+                self.assertNotIn("tokenKey", row)
         accepted = self.results["configured-scope-accepted"]
         self.assertEqual(accepted["status"], 200)
         self.assertTrue(accepted["nativeOutput"])

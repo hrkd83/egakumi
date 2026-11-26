@@ -47,6 +47,7 @@ public static class PiiApiLimitFixture {
   static string MapBody(Context context) { __BODY__ }
   static int Input(Context context) { __INPUT__ }
   static string Request(Context context) { __REQUEST__ }
+  static string RequestSettings(Context context) { __REQUEST_SETTINGS__ }
   static string InputError(Context context) { return __INPUT_ERROR__; }
   public static string Run(string casesJson) {
     var results = new JObject();
@@ -73,6 +74,7 @@ public static class PiiApiLimitFixture {
         result["operationStatus"] = status;
         context.Variables["piiInputStatus"] = status;
         if (status == 200) {
+          context.Variables["piiRequestModelVersion"] = RequestSettings(context);
           var request = JObject.Parse(Request(context));
           result["requestConstructed"] = true;
           result["forwardedTextUnchanged"] = (string)request["analysisInput"]["documents"][0]["text"] ==
@@ -90,6 +92,7 @@ public static class PiiApiLimitFixture {
         source = source.replace("__LIMITS__", LIMIT_EXPRESSION)
         source = source.replace("__CONDITION__", condition[2:-1]).replace("__BODY__", mapped_body[2:-1])
         source = source.replace("__INPUT__", fixtures.INPUT_EXPRESSION).replace("__REQUEST__", fixtures.REQUEST_EXPRESSION)
+        source = source.replace("__REQUEST_SETTINGS__", fixtures.REQUEST_SETTINGS_EXPRESSION)
         source = source.replace("__INPUT_ERROR__", input_error[2:-1])
         # Small explicit adopter contract keeps byte-boundary fixtures compact;
         # shipped provider-envelope boundary is exercised in test_pii_policy.

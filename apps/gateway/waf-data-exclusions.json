@@ -5526,9 +5526,7 @@
       "paths": [
         "/models/blackforestlabs/v1/flux-2/edits",
         "/models/blackforestlabs/v1/flux-2/generations",
-        "/models/openai-images/v1/deployments/gpt-image-2.5-flare/edits",
-        "/models/openai-images/v1/deployments/gpt-image-2.5-sunburst/edits",
-        "/models/openai-images/v1/deployments/gpt-image-2/edits",
+        "/models/openai-images/v1/deployments/*",
         "/models/openai-images/v1/generations"
       ],
       "exclusions": [
@@ -5965,7 +5963,7 @@
       "name": "g-transcribe",
       "scope": "gateway",
       "paths": [
-        "/models/openai-audio/v1/deployments/gpt-transcribe/transcriptions"
+        "/models/openai-audio/v1/deployments/*"
       ],
       "exclusions": [
         {

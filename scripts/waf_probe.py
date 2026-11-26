@@ -163,8 +163,9 @@ def load_routes(root: Path = ROOT) -> list[Route]:
         for operation in api["operations"]:
             constraint = api.get("authorization", {}).get("operationConstraints", {}).get(operation["name"], {})
             full = "/" + api["path"].strip("/") + "/" + operation["urlTemplate"].lstrip("/")
-            # The pathModel allowlist is finite and is the same source used by
-            # publication. An invented deployment would exercise another route.
+            # Keep the registered models as finite baseline test inputs. The
+            # dedicated WAF pattern can cover additional deployment names;
+            # model_path_route_probes checks that scope separately.
             deployments = constraint.get("allowedModels", []) if "{deployment}" in full and constraint.get("parameter") == "deployment" else [None]
             if not deployments:
                 raise ValueError("deployment path lacks a finite model allowlist")
@@ -313,6 +314,10 @@ def _binary_fixture(mime: str, text: str = "Synthetic WAF media boundary fixture
         return result[:4] + struct.pack("<I", len(result) - 8) + result[8:]
     if mime == "application/pdf":
         return b"%PDF-1.4\n% Synthetic WAF boundary fixture\n% " + content.replace(b"\n", b"\n% ") + b"\n%%EOF\n"
+    if mime == "application/json":
+        # Document's provider-native JSON input contains a Base64 document;
+        # it is separate from the Portal's raw-file upload formats.
+        return json_bytes({"base64Source": base64.b64encode(_binary_fixture("application/pdf", text)).decode("ascii")})
     if mime == "image/png":
         def chunk(name: bytes, data: bytes) -> bytes:
             return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data) & 0xffffffff)
@@ -1461,7 +1466,11 @@ def image_prompt_probes(routes: list[Route]) -> list[Probe]:
         for label, value in (("unknown-sqli", CONTROL_SQL), ("unknown-xss", "<script>alert(1)</script>")):
             add("control-" + label, baseline, intent="attack_control", extra={"_attack": value}, field_name="_attack")
         add("control-query-sqli", baseline, intent="attack_control", query=[("id", CONTROL_SQL)], field_name="query:id")
-        add("control-neighbor-xss", "<script>alert(1)</script>", intent="attack_control", path=route.path + "/neighbor")
+        # A child of the model prefix now has the same prompt exclusion. Keep
+        # this WAF rejection control outside that prefix; APIM operation limits
+        # within the prefix are checked by the separate route corpus.
+        neighbor = route.path.replace("/deployments/", "/deployments-neighbor/", 1) if route.operation == "openai-images-v1:image-edit" else route.path
+        add("control-neighbor-xss", "<script>alert(1)</script>", intent="attack_control", path=neighbor + "/neighbor")
         add("query-collision-prompt", baseline, intent="validation", query=[("prompt", CONTROL_SQL)], field_name="query:prompt")
         if route.target == "gateway" and route.path == "/models/blackforestlabs/v1/flux-2/edits":
             for label, metadata_text in (("plain", "Synthetic reference image"), ("sql-text", CONTROL_SQL),
@@ -1471,6 +1480,45 @@ def image_prompt_probes(routes: list[Route]) -> list[Probe]:
     ids = [case.case_id for case in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate image prompt case IDs")
+    return cases
+
+
+def model_path_route_probes(routes: list[Route]) -> list[Probe]:
+    """Check the two model-prefix routes separately from finite media fixtures.
+
+    These anonymous cases never prove that a new model is deployed. Unknown
+    suffixes and methods require correlated APIM rejection evidence; a WAF
+    transit or an unattributed HTTP status alone is not that evidence.
+    """
+    operations = {"openai-images-v1:image-edit", "openai-audio-v1:audio-transcriptions"}
+    selected = {}
+    for route in routes:
+        if route.target == "gateway" and route.method == "POST" and route.operation in operations:
+            selected.setdefault(route.operation, route)
+    if set(selected) != operations:
+        raise ValueError("model route probes require the two standard model-path POST contracts")
+    cases = []
+    for operation in sorted(selected):
+        baseline = selected[operation]
+        prefix, _, ending = baseline.path.partition("/deployments/")
+        _, _, suffix = ending.partition("/")
+        future = prefix + "/deployments/waf-probe-unregistered-model/" + suffix
+        body, mime = _body(baseline, "Synthetic model route fixture")
+        for label, method, path, boundary in (
+            ("registered", "POST", baseline.path, "waf_transit"),
+            ("unregistered", "POST", future, "waf_transit"),
+            ("unregistered-query", "POST", future, "waf_transit"),
+            ("unknown-suffix", "POST", future.rsplit("/", 1)[0] + "/other", "operation_reject"),
+            ("extra-segment", "POST", future + "/extra", "operation_reject"),
+            ("different-method", "GET", future, "operation_reject"),
+        ):
+            route = replace(baseline, method=method, path=path)
+            cases.append(_probe(route, "model-route-" + label, "model-route-" + label,
+                body=body if method == "POST" else None,
+                headers=[("Content-Type", mime)] if method == "POST" else [],
+                query=[("trace", "synthetic")] if label == "unregistered-query" else [],
+                intent="validation" if boundary == "operation_reject" else "compatibility",
+                expected_boundary=boundary))
     return cases
 
 
@@ -2103,7 +2151,8 @@ def build_corpus(routes: list[Route] | None = None, root: Path = ROOT) -> list[P
                 cases.append(_probe(route, f"inspect-boundary-{size}", "inspection-boundary", intent="validation",
                     body=b"p" * size, headers=[("Content-Type", (route.content_types or ("application/octet-stream",))[0])]))
 
-    document_mimes = next((route.content_types for route in routes if route.constraint.get("kind") == "documentAnalysis"), ())
+    document_mimes = next((tuple(mime for mime in route.content_types if mime != "application/json")
+                           for route in routes if route.constraint.get("kind") == "documentAnalysis"), ())
     for route in routes:
         if route.target == "portal" and route.path == "/api/tools/documents" and route.method == "POST":
             portal_input = {"model": "prebuilt-read", "apiKeyId": "portal-00000000-0000-4000-8000-000000000001"}
@@ -2250,6 +2299,12 @@ def boundary_verdict(case: Probe, result: dict) -> dict:
             "apim-ssml-dtd-rejection", "correlated-application-rejection"}
         verdict = "pass" if confirmed else "fail" if classification == "response_received" else "unresolved"
         reason = "application-boundary-rejected" if confirmed else "application-guard-not-proven"
+    elif expected == "operation_reject":
+        # Authentication rejection is not evidence that a URL/method lacks an
+        # APIM operation. Require that specific rejection to be log-correlated.
+        confirmed = evidence == "correlated-apim-operation-rejection" and result.get("status") in {404, 405}
+        verdict = "pass" if confirmed else "fail" if classification == "response_received" else "unresolved"
+        reason = "apim-operation-rejected" if confirmed else "apim-operation-boundary-not-proven"
     elif expected == "waf_transit":
         if classification == "waf_block":
             verdict, reason = "fail", "legitimate-data-blocked-by-waf"
@@ -2472,18 +2527,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jndi-fields-only", action="store_true", help="Use the standalone anonymous JNDI data-field/control corpus.")
     parser.add_argument("--ai-coding-only", action="store_true", help="Use the bounded anonymous Responses/Chat coding-content and exclusion-control corpus.")
     parser.add_argument("--image-prompts-only", action="store_true", help="Use the bounded anonymous image generation/edit prompt, media and control corpus.")
+    parser.add_argument("--model-routes-only", action="store_true", help="Use the separate anonymous model-path WAF/APIM routing corpus.")
     parser.add_argument("--workers", type=int, default=2, choices=(1, 2, 3, 4))
     parser.add_argument("--requests-per-second", type=float, default=2.0, help="Aggregate rate, > 0 and <= 4 (default 2).")
     parser.add_argument("--timeout", type=float, default=20.0, help="Per-request socket timeout, 1 to 60 seconds.")
     args = parser.parse_args(argv)
     if not 0 < args.requests_per_second <= 4 or not 1 <= args.timeout <= 60:
         parser.error("rate must be > 0 and <= 4; timeout must be 1 to 60")
-    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only, args.image_prompts_only, args.wire_shapes_only)) > 1:
+    if sum((args.raw_body_guards_only, args.jndi_fields_only, args.ai_coding_only, args.image_prompts_only, args.wire_shapes_only, args.model_routes_only)) > 1:
         parser.error("select only one standalone corpus")
     try:
         pattern = re.compile(args.case_filter)
         routes = load_routes()
         corpus = (wire_shape_probes(routes, exhaustive=args.suite == "exhaustive") if args.wire_shapes_only else
+                  model_path_route_probes(routes) if args.model_routes_only else
                   image_prompt_probes(routes) if args.image_prompts_only else ai_coding_probes(routes) if args.ai_coding_only else
                   jndi_field_probes(routes) if args.jndi_fields_only else raw_body_guard_controls(routes) if args.raw_body_guards_only else
                   build_corpus(routes) if args.suite == "legacy" else incident_corpus(routes) if args.suite == "incident" else

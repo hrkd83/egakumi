@@ -1,0 +1,11 @@
+<fragment>
+  <!-- 通常HTTPのモデルAPIだけで、受付条件を通過した要求からモデル名を取り出します。
+       preserveContentは後続の実モデル呼出しへ同じ本文を渡すために必要です。
+       本文全体や入力文は変数・ログへ保存せず、共通監査へモデル名だけを渡します。
+       登録一覧と照合せず、新しく配備したモデルも既存の文字種・長さ条件で記録します。
+       WebSocketやMCPの中継にはこのfragmentを含めません。APIMは未実行分岐の
+       Body.Asも事前bufferの対象にするため、単なるif分岐での共用は避けます。 -->
+  <set-variable name="gatewayAuditBodyModel" id="core-audit-body-model-read" value="@{
+    __CORE_AUDIT_BODY_MODEL_CSHARP__
+  }" />
+</fragment>

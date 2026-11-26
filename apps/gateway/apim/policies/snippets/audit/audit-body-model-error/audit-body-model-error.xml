@@ -1,0 +1,18 @@
+<fragment>
+<!-- 本文モデルreaderの内部設定取得失敗だけ500で停止し、本文不備の空文字は維持します。 -->
+<choose id="core-audit-body-model-error">
+  <when condition="@(context.LastError.PolicyId == &quot;core-audit-body-model-read&quot;)">
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <set-variable name="gatewayAuditCode" value="OPERATION_SETTINGS_INVALID" />
+    <set-variable name="gatewayAuditStatus" value="@(500)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <set-variable name="gatewayQueryPhase" value="policy-error" />
+    <include-fragment fragment-id="core-query-telemetry" />
+    <return-response>
+      <set-status code="500" reason="Gateway processing failed" />
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    </return-response>
+  </when>
+</choose>
+</fragment>

@@ -160,7 +160,7 @@ class PolicyExpression(ArmExpression):
         if name == "or": return any(self.evaluate(parameters, index, argument, bindings) for argument in arguments)
         if name == "and":
             return all(self.evaluate(parameters, index, argument, bindings) for argument in arguments)
-        extra = {"variables", "replace", "base64", "string", "join", "items", "map", "reduce", "contains", "length", "flatten", "union", "startsWith", "greater", "empty", "split", "first", "last", "substring", "endsWith", "or", "uniqueString", "indexOf"}
+        extra = {"variables", "replace", "base64", "string", "join", "items", "map", "reduce", "contains", "length", "flatten", "union", "startsWith", "greater", "empty", "split", "first", "last", "substring", "endsWith", "or", "uniqueString", "indexOf", "sub"}
         if name not in extra:
             return super().evaluate(parameters, index, tree, bindings)
         values = [self.evaluate(parameters, index, argument, bindings) for argument in arguments]
@@ -191,6 +191,7 @@ class PolicyExpression(ArmExpression):
         if name == "contains": return values[1] in values[0]
         if name == "indexOf": return values[0].index(values[1]) if values[1] in values[0] else -1
         if name == "length": return len(values[0])
+        if name == "sub": return values[0] - values[1]
         if name == "split": return values[0].split(values[1])
         if name == "first": return values[0][0]
         if name == "last": return values[0][-1]

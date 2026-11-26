@@ -16,9 +16,10 @@ import unittest
 import xml.etree.ElementTree as ET
 from deployment.helpers import credential_login
 from test_credential_login import settings, TENANT
+from policy_fixture_paths import policy_fixture_path
 
 
-POLICY = Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies/credential-login/launch.xml"
+POLICY = policy_fixture_path(Path(__file__).resolve().parents[1] / "apps/gateway/apim/policies", "credential-login/launch.xml")
 TRANSACTION = "a" * 64
 LAUNCH = "c" * 64
 HARNESS = r"""

@@ -1,0 +1,7 @@
+<fragment>
+  <!-- 対象Chat操作だけを親フローが呼びます。本文を一度読み、store=falseへ書き換えた文字列を返します。 -->
+  <!-- 空文字はJSONオブジェクトを取得できない入力です。監査・400応答・set-bodyは親フローが実行します。 -->
+  <set-variable id="core-chat-store-disabled" name="gatewayChatRequestBody" value="@{
+      __CORE_CHAT_STORE_DISABLED_CSHARP__
+    }" />
+</fragment>

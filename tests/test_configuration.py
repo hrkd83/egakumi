@@ -645,6 +645,17 @@ class ConfigurationTests(unittest.TestCase):
         operation.update(urlTemplate="/users/{id}", templateParameters=[{"name": "id", "type": "string", "required": True}],
                          backendUrlTemplate="/users/{id}?$select=id")
         self.assertEqual(self.normalize(raw)["apiDefinitions"][0]["operations"][0]["backendUrlTemplate"], "/users/{id}?$select=id")
+        # pathModelもモデル名以外の固定URIを設定として保持し、別のparameter名で登録できます。
+        operation.update(urlTemplate="/vendors/{vendor}/models/{modelName}",
+                         templateParameters=[{"name": name, "type": "string", "required": True} for name in ("vendor", "modelName")],
+                         backendUrlTemplate="/custom/{vendor}/models/{modelName}/invoke?api-version=preview")
+        raw["apiDefinitions"][0]["authorization"]["operationConstraints"][operation["name"]].update(
+            kind="pathModel", parameter="modelName", allowedModels=["synthetic-model"])
+        result = configuration.build_bicep_configuration(self.normalize(raw))["apiDefinitions"][0]
+        self.assertEqual(result["operations"][0]["backendUrlTemplate"], "/custom/{vendor}/models/{modelName}/invoke?api-version=preview")
+        self.assertEqual(result["backendUrl"], raw["apiDefinitions"][0]["backendUrl"])
+        self.assertEqual(result["authorization"]["operationConstraints"][operation["name"]]["parameter"], "modelName")
+        self.assertEqual(result["authorization"]["operationConstraints"][operation["name"]]["allowedModels"], ["synthetic-model"])
 
     def test_backend_rewrite_rejects_authority_credentials_policy_syntax_and_unknown_parameters(self):
         invalid = ["https://graph.microsoft.com/v1.0/me", "//user:password@example.invalid/me", "/%2fexample.invalid/me",
@@ -792,7 +803,11 @@ class ConfigurationTests(unittest.TestCase):
             {"principalId": principal, "principalType": "Group", "collector": "collectFoundry", "containerName": "insights-logs-audit"},
         ]
         actual = self.normalize(raw)
-        self.assertEqual(configuration.build_bicep_configuration(actual)["monitoring"]["auditReaders"], raw["monitoring"]["auditReaders"])
+        # 内部設定の読取りでは所有するcollector/containerへのgrantを保持します。
+        self.assertEqual(actual["monitoring"]["auditReaders"], raw["monitoring"]["auditReaders"])
+        # 固定資材へ渡す際は旧overrideを黙って無視せず、移行確認のため拒否します。
+        with self.assertRaisesRegex(configuration.ConfigurationError, r"monitoring\.auditReaders"):
+            configuration.build_bicep_configuration(actual)
         for collector, container in (("collectFoundry", "insights-logs-gatewaylogs"),
                                      ("collectFoundry", "insights-logs-gatewayllmlogs"),
                                      ("collectFoundry", "insights-logs-websocketconnectionlogs"),
@@ -928,7 +943,8 @@ class ConfigurationTests(unittest.TestCase):
             self.normalize(raw)
 
     def test_stateful_agent_and_other_response_routes_are_rejected(self):
-        for method, route in (("GET", "/responses"), ("DELETE", "/responses/{response_id}"), ("POST", "/agents/invoke")):
+        for method, route in (("GET", "/responses"), ("DELETE", "/responses/{response_id}"),
+                              ("POST", "/agents/invoke"), ("POST", "/neighbor")):
             with self.subTest(method=method, route=route):
                 raw = api_fixture()
                 op = raw["apiDefinitions"][0]["operations"][0]
@@ -1277,31 +1293,49 @@ class UnknownConfigurationFieldTests(unittest.TestCase):
 class PolicySourceTests(unittest.TestCase):
     """公開サンプルと配備設定の型・値・組合せ・秘密ファイル境界を検証するためのケースをまとめる。正常系と拒否・失敗系を分け、実機確認と混同しない。"""
     def setUp(self):
-        self.root = ET.parse(CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").getroot()
-        self.guard = next(element.attrib["value"] for element in self.root.iter("set-variable") if element.attrib.get("name") == "gatewayTargetAllowed")
+        from deployment.helpers.apim_audit import render_audit_policy
+        self.root = ET.fromstring(render_audit_policy(
+            (CORE / "apps/gateway/apim/policies/api-templates/gateway.xml").read_text(encoding="utf-8")))
+        self.guard = (CORE / "apps/gateway/apim/policies/fragments/request/core-api-target-validation/core-api-target-validation.cs").read_text(encoding="utf-8")
 
-    def test_stateless_post_has_exact_route_and_allowed_models(self):
-        self.assertIn('kind == "statelessResponses"', self.guard)
-        self.assertIn('context.Request.Method != "POST"', self.guard)
-        self.assertIn('context.Operation.UrlTemplate != "/responses"', self.guard)
-        self.assertIn('constraint["allowedModels"]', self.guard)
+    def test_stateless_route_matching_is_delegated_without_model_revalidation(self):
+        branch = self.guard.split('if (kind == "statelessResponses") {', 1)[1].split('if (kind == "hostedAgentPost")', 1)[0]
+        self.assertNotIn('context.Request.Method', branch)
+        self.assertNotIn('context.Operation.UrlTemplate', branch)
+        self.assertNotIn('constraint["allowedModels"]', self.guard)
+        self.assertNotIn('body["model"]', self.guard)
+        for delegated_source in ('context.Request.Method', 'context.Operation.UrlTemplate', 'context.Operation.Id'):
+            self.assertNotIn(delegated_source, self.guard)
 
-    def test_stored_state_fields_are_blocked_without_narrowing_native_optional_fields(self):
-        declaration = self.guard.split("var stateFields =", 1)[1].split(";", 1)[0]
-        for forbidden in ("previous_response_id", "conversation", "conversation_id", "prompt"):
-            self.assertIn('"' + forbidden + '"', declaration)
-        self.assertNotIn('"metadata"', declaration)
-        self.assertNotIn('"client_metadata"', declaration)
-        self.assertIn("stateFields.Any", self.guard)
-        self.assertIn('"item_reference"', self.guard)
-        self.assertIn('"$..file_id"', self.guard)
-        self.assertIn('"background"', self.guard)
+    def test_state_reference_presence_is_not_rejected_while_other_input_conditions_remain(self):
+        branch = self.guard.split('if (kind == "statelessResponses") {', 1)[1].split('if (kind == "hostedAgentPost")', 1)[0]
+        self.assertNotIn('stateFields', branch)
+        for forwarded_or_normalized in ('previous_response_id', 'conversation', 'conversation_id', 'prompt'):
+            self.assertNotIn('body.Property("' + forwarded_or_normalized + '")', branch)
+        self.assertNotIn('input.SelectTokens("$..type")', branch)
+        for field in ('file_id', 'file_ids', 'vector_store_ids'):
+            self.assertNotIn('input.SelectTokens("$..' + field + '")', branch)
+        self.assertNotIn('body["background"]', branch)
+        self.assertNotIn('body["include"]', branch)
+        self.assertNotIn('allowedIncludes', branch)
 
     def test_store_false_is_forced_without_rewriting_sse_response(self):
         branch = next(node for node in self.root.findall("inbound/choose/when") if "gatewayStatelessResponses" in node.attrib.get("condition", ""))
         bodies = list(branch.iter("set-body"))
         self.assertEqual(len(bodies), 1)
         self.assertIn('body["store"] = false', bodies[0].text)
+        self.assertNotIn('body["previous_response_id"] =', bodies[0].text)
+        self.assertIn('body.Property("conversation") != null', bodies[0].text)
+        self.assertIn('body["conversation"] = JValue.CreateNull()', bodies[0].text)
+        self.assertNotIn('body["prompt"] =', bodies[0].text)
+        self.assertIn('body.Property("background") != null', bodies[0].text)
+        self.assertIn('body["background"] = false', bodies[0].text)
+        self.assertNotIn('item.Remove("id")', bodies[0].text)
+        self.assertNotIn('input.RemoveAt(', bodies[0].text)
+        self.assertNotIn('item["id"] =', bodies[0].text)
+        for forwarded_field in ('tools', 'tool_choice'):
+            self.assertNotIn('body["' + forwarded_field + '"] =', bodies[0].text)
+        self.assertEqual(bodies[0].text.count('context.Request.Body.As<string>'), 1)
         self.assertIsNone(self.root.find("outbound/set-body"))
         self.assertEqual(self.root.find("backend/forward-request").attrib["buffer-response"], "false")
 

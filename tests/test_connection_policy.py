@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
 from deployment.helpers import credential_login
+from deployment.helpers.apim_audit import render_audit_policy
 from test_credential_login import settings
 from policy_fixture_paths import policy_fixture_path
 
@@ -19,11 +20,13 @@ class ConnectionPolicyTests(unittest.TestCase):
         cls.inbound=ET.fromstring(credential_login.render_connection("credential-connection.xml",settings(),telemetry))
         cls.use=ET.fromstring(credential_login.render_connection("credential-session-use.xml",settings(),telemetry))
         cls.outbound=ET.fromstring(credential_login.render_connection("credential-connection-outbound.xml",settings(),telemetry))
+        cls.caller_error=ET.parse(POLICIES/"snippets/authentication/credential-caller-error/credential-caller-error.xml").getroot()
 
     def test_subscription_session_selection_precedes_cm_acquisition(self):
         children=list(self.inbound)
         self.assertEqual(children[0].get("name"),"credentialCallerId")
         self.assertEqual(children[1].get("name"),"gatewayConnectionSelection")
+        self.assertIsNone(self.inbound.find("choose[@id='core-credential-caller-required']"))
         acquire=self.inbound.find(".//get-authorization-context")
         session=self.inbound.find(".//send-request[@response-variable-name='gatewayConnectionSessionResponse']")
         self.assertIsNotNone(session)
@@ -36,6 +39,49 @@ class ConnectionPolicyTests(unittest.TestCase):
         for attribute in ("provider-id","authorization-id"):
             self.assertIn("gatewayConnectionSelection",acquire.get(attribute))
             self.assertNotIn("context.Request",acquire.get(attribute))
+
+    def test_internal_caller_error_is_audited_by_the_api_before_session_use(self):
+        guard=self.caller_error.find("choose[@id='core-credential-caller-required']")
+        when=guard.find('when')
+        self.assertEqual(when.find('include-fragment').get('fragment-id'),'core-gateway-telemetry')
+        self.assertEqual(len(when.findall('include-fragment')),1)
+        self.assertEqual(when.find("set-variable[@name='gatewayAuditPhase']").get('value'),'policy-error')
+        self.assertEqual(when.find("set-variable[@name='gatewayAuditCode']").get('value'),'AUTHENTICATION_PROCESSING_ERROR')
+        response=when.find('return-response')
+        self.assertEqual(response.find('set-status').attrib,{'code':'500','reason':'Gateway processing failed'})
+        self.assertIsNone(response.find('set-body'))
+        self.assertEqual(response.find("set-header[@name='Cache-Control']/value").text,'no-store')
+        gateway=ET.parse(POLICIES/'api-templates/gateway.xml').getroot()
+        connection=gateway.find(".//include-fragment[@fragment-id='core-credential-connection']")
+        self.assertIn('__CREDENTIAL_CALLER_ERROR_XML__',connection.tail)
+        parent=next(node for node in gateway.iter() if connection in list(node))
+        self.assertEqual(list(parent)[list(parent).index(connection)+1].get('fragment-id'),'core-credential-session-use')
+        # 外部MCPも同じsnippetを同じ接続→sessionの間に展開します。
+        publication=(CORE/'apps/gateway/apim/api-publication.bicep').read_text(encoding='utf-8')
+        mcp=next(line for line in publication.splitlines() if line.lstrip().startswith('credentialInbound:'))
+        self.assertLess(mcp.index('core-credential-connection'),mcp.index('${credentialCallerErrorXml}'))
+        self.assertLess(mcp.index('${credentialCallerErrorXml}'),mcp.index('core-credential-session-use'))
+        accepted=gateway.find("inbound/set-variable[@name='gatewayAuditPhase'][@value='accepted']")
+        self.assertIsNotNone(accepted)
+        inbound=list(gateway.find('inbound'))
+        cm=next(node for node in inbound if connection in node.iter())
+        self.assertLess(inbound.index(cm),inbound.index(accepted))
+
+    def test_sql_use_keeps_the_verified_selection_gate_without_a_second_identity_guard(self):
+        call=self.use.find(".//send-request[@response-variable-name='gatewayConnectionUseResponse']")
+        guard=self.use.find('choose/when')
+        self.assertIn('["allowed"]',guard.get('condition'))
+        self.assertIn('personal',guard.get('condition'))
+        self.assertIn(call,list(guard))
+        self.assertFalse(any('gatewayConnectionIdentityStatus' in node.get('condition','') for node in self.use.iter('when')))
+        self.assertIsNone(self.inbound.find(".//set-variable[@name='gatewayVerifiedConnectionSubject']"))
+
+    def test_legacy_sql_use_basename_renders_the_canonical_xml_and_csharp(self):
+        source=POLICIES/'fragments/authentication/core-credential-session-use/core-credential-session-use.xml'
+        expected=ET.fromstring(render_audit_policy(source.read_text(encoding='utf-8'),source_comments='compact'))
+        path=".//set-variable[@name='gatewayConnectionUseResult']"
+        self.assertEqual(self.use.find(path).get('value'),expected.find(path).get('value'))
+        self.assertFalse((POLICIES/'credential-session-use.xml').exists())
 
     def test_downstream_forbidden_is_safe_and_distinct_from_reauthentication(self):
         branches=[node for node in self.outbound.findall("choose/when") if node.get('condition').startswith('@(context.Response.StatusCode ==')]

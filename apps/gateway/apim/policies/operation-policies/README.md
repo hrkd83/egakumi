@@ -6,8 +6,17 @@ Credential Managerのログイン、文書解析、Realtimeなどの機能ごと
 
 | 正本 | Azureの適用先 | 役割 |
 | --- | --- | --- |
-| `document-analysis/document-analysis.xml` | `document-analysis-v1` APIの`analyze_document`操作（POST `/analyze`） | `<base />`でAPIポリシーを継承した後、既存の固定提供元へ解析開始を送り、受付チケットと公開応答を組み立てる |
-| `document-analysis/document-analysis-status.xml` | 同APIの`get_document_operation`操作（GET `/operations/{operationId}`） | `<base />`でAPIポリシーを継承した後、既存のチケット・モデル照合で固定提供元の状態と結果を取得する |
+| `credential-login/start.xml`・同名C# | credential-manager-login APIのPOST `/start` | 共通認証済みcallerを引き継ぎ、固定Brokerへログイン開始を中継する。30秒転送・回数枠を維持する |
+| `credential-login/launch.xml` | credential-manager-browser APIのGET `/launch` | 起動秘密をfragmentから取り出して消し、同一originの起動POSTと限定したMicrosoftログイン先へ進むHTMLを返す |
+| `credential-login/launch-post.xml` | 同APIのPOST `/launch` | 固定originを確認し、Brokerへ起動取引を中継する。取引・session照合と既存応答を維持する |
+| `credential-login/identity-callback.xml` | 同APIのGET `/identity-callback` | code／state・Cookieを固定Brokerへ渡し、OIDC・取引・sessionの照合と応答を維持する |
+| `credential-login/callback.xml`・同名C# | 同APIのGET `/callback` | 入力・取引・Graph本人照合の固定3区画を展開し、本人一致後に接続完了をBrokerへ通知する |
+| `document-analysis/document-analysis.xml`・同名C# | `document-analysis-v1` APIの`analyze_document`操作（POST `/analyze`） | `<base />`でAPIポリシーを継承した後、既存の固定提供元へ解析開始を送り、受付チケットと公開応答を組み立てる |
+| `document-analysis/document-analysis-status.xml`・同名C# | 同APIの`get_document_operation`操作（GET `/operations/{operationId}`） | `<base />`でAPIポリシーを継承した後、既存のチケット・モデル照合で固定提供元の状態と結果を取得する |
+| `realtime/realtime-create.xml` | realtimeCreateを宣言したHTTP操作 | `<base />`の本人情報を通話作成前に受け取り、短期token・SDP交換後に既存v3／v4の署名チケットを発行する |
+| `live/live-create.xml`・同名C# | liveCreateを宣言したHTTP操作 | 固定モデルのLive要求と公開sessionId／SDP応答を変換する。共通入口・backend・on-errorを継承し、短絡400／502へno-storeを付ける |
+| `pii/pii.xml`・同名C# | PII REST操作 | 入力・固定要求・待ち時間・公開結果・監査の5区画を展開する。原文や提供元生エラーを応答・監査へ出さず、生成MCPの参照先RESTを維持する |
+| `realtime/realtime-hangup.xml` | realtimeHangupを宣言したHTTP操作 | 確認済み所有者と外部チケットの署名・期限・call IDを照合し、固定終了先へ送る |
 
 Documentの開始・状態取得ポリシーは、機能別の`document-analysis/`へ置く。API全体に適用する共有`api-templates/gateway.xml`とは、Azureの適用先が異なる。入力の確認は、継承先のAPIポリシーが[core-document-input-validation](../fragments/request/core-document-input-validation/README.md)を利用回数制限・下流接続準備・`accepted`監査より前で呼んで行い、開始操作では繰り返さない。modelの欠落・複数値・空値と`.`／`..`は400・`DocumentInvalidInput`、内部のモデル情報の引渡し失敗は500・`DocumentAnalysisUnavailable`とし、監査では後者を`OPERATION_SETTINGS_INVALID`へ分類する。2モデル一覧による拒否と、そのためだけの内部設定JSONの再読取りは撤去し、モデルの利用可否は提供元へ任せる。チケット・返却URIとのモデル照合と固定接続先は維持する。
 

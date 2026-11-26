@@ -1,4 +1,4 @@
-"""Keep WAF inspection independent from AI request acceptance on finite paths."""
+"""正式な操作経路で、WAFの本文検査と提供元の受付可否を分離する。"""
 from __future__ import annotations
 
 import copy
@@ -30,7 +30,7 @@ def portal_document_profile(profile):
 
 
 def managed_ai_paths(config):
-    """Return only published exact Gateway paths with managed AI body policies.
+    """Return published Gateway paths with managed AI body policies.
 
     This helper uses raw API contracts and has no configuration-loader dependency.
     Authentication, administration, custom and unexpanded routes never receive the
@@ -39,7 +39,7 @@ def managed_ai_paths(config):
     # Import lazily: the public contract renderer has no configuration-loader
     # dependency. Resolve deployment URLs from selected canonical operations,
     # so adding a model does not require another WAF selector/model allowlist.
-    from waf_contracts import require_source_routes
+    from waf_contracts import model_operation_waf_path, require_source_routes
     manifest = require_source_routes(config.get("apiDefinitions", []))
     standard = {path for profile in manifest["profiles"] if profile["scope"] == "gateway"
                 and profile["name"] not in ("g-document-status", "g-realtime-ticket")
@@ -60,8 +60,13 @@ def managed_ai_paths(config):
             route = operation.get("urlTemplate", "")
             constraint = constraints.get(operation.get("name"), {})
             path = "/" + prefix + route
+            model_waf_path = model_operation_waf_path(api, operation, constraint)
+            if model_waf_path in standard:
+                selected.add(model_waf_path)
             candidates = [path]
-            if "{deployment}" in path:
+            if model_waf_path:
+                candidates = []
+            elif "{deployment}" in path:
                 candidates = [path.replace("{deployment}", model) for model in constraint.get("allowedModels", [])
                               if isinstance(model, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", model)]
             selected.update(value for value in candidates

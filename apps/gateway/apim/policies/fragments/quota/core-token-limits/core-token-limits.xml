@@ -1,0 +1,39 @@
+<fragment>
+  <!-- ========== トークン利用枠の選択と計数（core-token-limits） ========== -->
+  <!-- 目的：認証済み主体の毎分・累積トークン枠を、対応するHTTP Chat／Responsesへ適用します。 -->
+  <!-- 処理：XMLで有効化と枠の値を選び、同名C#が用意した既存カウンターIDをnative計数へ渡します。 -->
+  <!-- 社員の認証と利用枠の検査は先行処理へ集約し、準備済みの枠を使います。 -->
+  <set-variable name="gatewayLlmTokenLimitEnabled" value="@{
+      __CORE_TOKEN_LIMITS_ENABLED_CSHARP__
+    }" />
+  <choose><when condition="@((bool)context.Variables[&quot;gatewayLlmTokenLimitEnabled&quot;])">
+    <set-variable name="gatewayTokenCounterKey" value="@{
+      __CORE_TOKEN_LIMITS_CSHARP__
+    }" />
+    <!-- 準備済みprofileの値を標準ポリシーへ渡します。nullを0にするのは未適用の分岐用内部値です。 -->
+    <set-variable name="gatewayTokensPerMinute" value="@((int?)JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;])[&quot;tokensPerMinute&quot;] ?? 0)" />
+    <set-variable name="gatewayTokenQuota" value="@{
+      var quota = JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;])[&quot;tokenQuota&quot;] as JObject;
+      return quota == null ? 0 : (int)quota[&quot;tokens&quot;];
+    }" />
+    <!-- quotaがnullのMonthlyはquota未適用時の内部値で、利用者の期間指定を補完しません。 -->
+    <set-variable name="gatewayTokenQuotaPeriod" value="@{
+      var quota = JObject.Parse((string)context.Variables[&quot;gatewaySubscriptionProfile&quot;])[&quot;tokenQuota&quot;] as JObject;
+      return quota == null ? &quot;Monthly&quot; : (string)quota[&quot;period&quot;];
+    }" />
+    <!-- SQLの上限値はInt32で保持します。APIMへはTPMをInt32、累積token-quotaをInt64で渡します。 -->
+    <!-- 両枠・毎分枠だけ・累積枠だけを選び、必要な属性で同じカウンターを1回適用します。 -->
+    <!-- estimate-prompt-tokensは既存の標準ポリシーの設定として維持します。 -->
+    <choose>
+      <when condition="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;] &gt; 0 &amp;&amp; (int)context.Variables[&quot;gatewayTokenQuota&quot;] &gt; 0)">
+        <llm-token-limit id="core-tokens-combined" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
+      </when>
+      <when condition="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;] &gt; 0)">
+        <llm-token-limit id="core-tokens-rate" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" tokens-per-minute="@((int)context.Variables[&quot;gatewayTokensPerMinute&quot;])" estimate-prompt-tokens="true" />
+      </when>
+      <when condition="@((int)context.Variables[&quot;gatewayTokenQuota&quot;] &gt; 0)">
+        <llm-token-limit id="core-tokens-quota" counter-key="@((string)context.Variables[&quot;gatewayTokenCounterKey&quot;])" token-quota="@(Convert.ToInt64(context.Variables[&quot;gatewayTokenQuota&quot;]))" token-quota-period="@((string)context.Variables[&quot;gatewayTokenQuotaPeriod&quot;])" estimate-prompt-tokens="true" />
+      </when>
+    </choose>
+  </when></choose>
+</fragment>

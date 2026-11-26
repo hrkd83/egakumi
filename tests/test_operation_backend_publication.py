@@ -77,7 +77,7 @@ class OperationBackendPublicationTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertLess(len(first), 80)
 
-    def test_dynamic_websocket_model_is_set_only_after_registry_authorization(self):
+    def test_dynamic_websocket_model_is_set_only_after_common_authentication(self):
         api = self.fixture()
         api.update(apiType="websocket", backendUrl="wss://realtime.example.com", backendAuthentication={"mode": "managedIdentity"},
                    websocket={"allowedModels": ["standard", "mini"], "defaultModel": "standard", "queryParameters": {"api-version": "fixed"}})
