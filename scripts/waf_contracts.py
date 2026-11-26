@@ -31,6 +31,12 @@ APP_GROUPS = frozenset({
     'REQUEST-944-APPLICATION-ATTACK-JAVA',
 })
 APP_RULES = {'REQUEST-921-PROTOCOL-ATTACK': frozenset({'921110', '921130'})}
+# AppGWは中間wildcardを扱えないため、この2用途だけ配備名の親パスへ適用します。
+# 操作の署名は下のcatalogを正本とし、モデル一覧からWAFの範囲を作りません。
+MODEL_WAF_PATHS = {
+    'g-images': '/models/openai-images/v1/deployments/*',
+    'g-transcribe': '/models/openai-audio/v1/deployments/*',
+}
 
 
 def _read(path):
@@ -42,6 +48,11 @@ def load_contracts(root=ROOT):
     data = _read(Path(root) / CATALOG)
     if data.get('version') != 1 or not isinstance(data.get('profiles'), list):
         raise ValueError('WAF input catalog requires version 1 and profiles')
+    model_routes = {route['profile']: route for route in data.get('modelOperationWafRoutes', [])}
+    if len(model_routes) != len(data.get('modelOperationWafRoutes', [])) or any(
+            route.get('scope') != 'gateway' or route.get('wafPath') != MODEL_WAF_PATHS.get(name)
+            for name, route in model_routes.items()):
+        raise ValueError('Model WAF route catalog requires unique reviewed profile scopes')
     if set(data.get('groupSets', {}).get('ai-data', [])) != APP_GROUPS:
         raise ValueError('AI data types require the seven reviewed application attack groups')
     if data.get('groupSetRuleExclusions') != {
@@ -60,6 +71,22 @@ def load_contracts(root=ROOT):
         for override in profile.get('legacy', []):
             if override['rules'] not in data['legacyRuleSets']:
                 raise ValueError('Unknown reviewed legacy rule set')
+        for index, binding in enumerate(profile.get('bindings', [])):
+            if 'modelOperationWafRoute' in binding:
+                route = model_routes.get(binding['modelOperationWafRoute'])
+                if (set(binding) != {'modelOperationWafRoute'} or not route
+                        or profile['name'] != route['profile'] or profile['scope'] != route['scope']):
+                    raise ValueError('Model WAF binding must reference its own reviewed route')
+                profile['bindings'][index] = {key: value for key, value in route.items()
+                                              if key not in ('profile', 'scope')}
+        for binding in profile.get('bindings', []):
+            if binding.get('kind') == 'pathModel' and 'wafPath' in binding:
+                if (profile['scope'] != 'gateway'
+                        or binding['wafPath'] != MODEL_WAF_PATHS.get(profile['name'])
+                        or binding.get('parameter') != 'deployment'
+                        or binding.get('bodyFormat') != 'multipart'
+                        or binding['wafPath'] != '/' + binding['path'] + '/deployments/*'):
+                    raise ValueError('Only the reviewed model operation may use its WAF deployment prefix')
     for value in data['types'].values():
         list(_walk(value, data))
     return data
@@ -158,13 +185,30 @@ def _operation(api, binding):
         if (op['name'], op.get('method'), op.get('urlTemplate'), constraint.get('kind'),
                 body_format, tuple(constraint.get('contentTypes') or [])) == (
                 binding['operation'], binding['method'], binding['urlTemplate'], binding.get('kind'),
-                binding.get('bodyFormat'), tuple(binding.get('contentTypes') or [])):
+                binding.get('bodyFormat'), tuple(binding.get('contentTypes') or [])) and (
+                'parameter' not in binding or constraint.get('parameter') == binding['parameter']):
             return op, constraint
     return None
 
 
+def model_operation_waf_path(api, operation, constraint, root=ROOT):
+    """正式catalogの操作署名に一致した場合だけ、承認済みの末尾パターンを返す。"""
+    catalog = load_contracts(root)
+    for profile in catalog['profiles']:
+        expected = MODEL_WAF_PATHS.get(profile['name'])
+        if not expected or profile['scope'] != 'gateway':
+            continue
+        for binding in profile.get('bindings', []):
+            if binding.get('kind') != 'pathModel' or binding.get('wafPath') != expected:
+                continue
+            matched = _operation(api, binding)
+            if matched and matched == (operation, constraint):
+                return expected
+    return None
+
+
 def profile_paths(profile, root=ROOT, apis=None):
-    """Resolve finite model-bearing URLs only from canonical operation contracts."""
+    """正式な操作契約から、完全パスと承認済み2用途の末尾パターンを作る。"""
     if profile['scope'] == 'portal':
         return list(profile['portalPaths'])
     definitions = _apis(root) if apis is None else apis
@@ -178,10 +222,13 @@ def profile_paths(profile, root=ROOT, apis=None):
             matched = _operation(api, binding)
             if not matched:
                 continue
-            _, constraint = matched
+            operation, constraint = matched
             path = '/' + api['path'].strip('/') + binding['urlTemplate']
             if binding.get('signedPattern'):
                 paths.append(binding['signedPattern'])
+            elif binding.get('kind') == 'pathModel' and binding.get('wafPath'):
+                if model_operation_waf_path(api, operation, constraint, root) == binding['wafPath']:
+                    paths.append(binding['wafPath'])
             elif binding.get('wafPath'):
                 paths.append(binding['wafPath'])
             elif '{deployment}' in path:
@@ -239,13 +286,31 @@ def generated_manifest(root=ROOT, apis=None):
     return result
 
 
+def _route_intersects_model_prefix(route, pattern):
+    """公開templateが2用途の親パスに入り得るかを、大小文字を区別せず確認する。"""
+    prefix_parts = pattern[:-1].strip('/').split('/')
+    route_parts = route.strip('/').split('/')
+    for index, expected in enumerate(prefix_parts):
+        if index >= len(route_parts):
+            return False
+        part = route_parts[index]
+        before_wildcard = part.split('*', 1)[0]
+        expression = ''.join('[^/]+' if re.fullmatch(r'\{[^{}]+\}', token) else re.escape(token)
+                             for token in re.split(r'(\{[^{}]+\})', before_wildcard))
+        if '*' in part:
+            # 任意suffixを持つ公開操作が入り得る場合は、自動で同じ用途に分類しません。
+            return re.match(expression, expected, flags=re.IGNORECASE) is not None
+        if not re.fullmatch(expression, expected, flags=re.IGNORECASE):
+            return False
+    return len(route_parts) > len(prefix_parts) or route.endswith('/')
+
+
 def require_source_routes(apis, root=ROOT):
     """Keep parameter overrides consistent with the static Bicep route asset.
 
-    Removing/subsetting models is safe. A new deployment-bearing route must be
-    declared in the canonical API source and regenerated, rather than quietly
-    leaving Bicep on a protocol-only policy while Python selects a data policy.
-    This is a routing check; semantic exclusions never branch on model IDs.
+    The two reviewed deployment prefixes do not depend on model-list changes.
+    A changed operation or another HTTP/MCP entry under either prefix requires
+    a WAF scope review. Other finite routes keep their canonical-source check.
     """
     canonical = {p['name']: set(p['paths']) for p in generated_manifest(root)['profiles']}
     selected = generated_manifest(root, apis=apis)
@@ -255,9 +320,18 @@ def require_source_routes(apis, root=ROOT):
     tuned = {path for paths in canonical.values() for path in paths if '*' not in path}
     matched = {path for profile in selected['profiles'] for path in profile['paths']}
     for api in apis:
+        mcp_path = api.get('mcp', {}).get('path')
+        if isinstance(mcp_path, str) and any(_route_intersects_model_prefix(
+                '/' + mcp_path.strip('/') + '/mcp', pattern) for pattern in MODEL_WAF_PATHS.values()):
+            raise ValueError('A MCP entry intersects a model WAF prefix; review its WAF scope before deployment')
         for operation in api.get('operations', []):
             path = '/' + str(api.get('path', '')).strip('/') + str(operation.get('urlTemplate', ''))
             constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
+            for pattern in MODEL_WAF_PATHS.values():
+                if _route_intersects_model_prefix(path, pattern) and (
+                        model_operation_waf_path(api, operation, constraint, root) != pattern
+                        or pattern not in matched):
+                    raise ValueError('A WAF-tuned route has a changed API input contract or overlaps a model WAF prefix; review its canonical operation and MIME before deployment')
             paths = [path.replace('{deployment}', m) for m in constraint.get('allowedModels', [])
                      if isinstance(m, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', m)] if '{deployment}' in path else [path]
             if any(value in tuned and value not in matched for value in paths):
@@ -323,7 +397,10 @@ def check_legacy_coverage(previous, current):
     profiles = {p['name']: p for p in current['profiles']}
     for before in previous['profiles']:
         after = profiles.get(before['name'])
-        if not after or before['scope'] != after['scope'] or not set(before['paths']) <= set(after['paths']):
+        if not after or before['scope'] != after['scope'] or not all(
+                path in after['paths'] or any(pattern == MODEL_WAF_PATHS.get(before['name'])
+                                            and path.casefold().startswith(pattern[:-1].casefold())
+                                            for pattern in after['paths']) for path in before['paths']):
             omissions.append(before['name'] + ': route scope')
             continue
         for old in before['entries']:

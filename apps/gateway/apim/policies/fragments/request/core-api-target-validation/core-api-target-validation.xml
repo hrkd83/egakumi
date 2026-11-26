@@ -1,0 +1,23 @@
+<fragment>
+  <!-- ========== モデル・機能の確認（core-api-target-validation） ========== -->
+  <!-- 目的：準備済みの操作設定に従い、モデルと操作固有の本文機能を確認します。 -->
+  <!-- 処理：操作設定を直接読み、パスmodelの空欄等と各操作に残る条件を確認し、gatewayTargetDecisionへ許可・状態・原因を格納します。 -->
+  <!-- 本文modelの型と登録一覧を再確認せず、型確認だけのJSON読取りも省きます。モデルの利用可否は提供元へ任せます。 -->
+  <!-- Hosted・Live・Realtime開始／切断・Document開始／結果取得・PIIのメソッド・パス・操作IDは再確認せず、正式設定検査とAPIMの操作照合へ任せます。 -->
+  <!-- 専用の本文・SDP・クエリ・所有者チケットの検査は維持します。 -->
+  <!-- Responsesはinput配列直下のtype=code_interpreter_callだけを403にし、利用者別に隔離されないコンテナの参照を止めます。 -->
+  <!-- 受け付けたprevious_response_id・promptとinputのID・type・ファイル参照は、削除・上書き・IDによる独自の403を行わず原値で提供元へ渡します。 -->
+  <!-- inputの必須・型、conversation_id、includeの一覧・型は提供元へ任せます。toolsはfunction限定です。 -->
+  <!-- tool_choiceのオブジェクトはfunction指定とfunctionだけを選ぶallowed_toolsを受け付け、名前・mode・空配列の適否は提供元へ任せます。 -->
+  <!-- Hostedのstream型は提供元へ任せ、metadataもサンプル用項目・型・値で拒否しません。親要求IDを付ける後続処理は維持します。 -->
+  <!-- Prompt／Hostedのinputは必須・型・role・content・許可項目を独自に制限せず、ID・file_idも原値で提供元へ渡します。 -->
+  <!-- Agentの本文4項目限定を撤去し、登録済みの指示・toolsを使うためinstructions・tools・agent_reference・promptの既存拒否を明示します。 -->
+  <!-- previous_response_id・agent_session_idの既存拒否と、配列直下の明示的なcode_interpreter_callの403は維持します。 -->
+  <!-- 呼び出し元はResponsesとHostedにstore=falseを強制し、background指定時はfalse、conversation指定時はnullへ揃えます。 -->
+  <!-- conversationはResponseのstoreとは別に会話へ入出力を保存するため、保存防止の書換えを維持します。 -->
+  <!-- 同名C#をここへ展開してAzureへ反映します。監査と失敗応答は呼び出し元のHTTP APIが行います。 -->
+  <!-- 内部設定の取得・解析失敗は500、Responses・Hosted・A2AのJSON読取り不備は400です。読めた本文の残る条件と他用途の本文側例外403は維持します。 -->
+  <set-variable name="gatewayTargetDecision" value="@{
+      __CORE_API_TARGET_VALIDATION_CSHARP__
+    }" />
+</fragment>

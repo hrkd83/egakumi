@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from test_gateway_limits_telemetry import PWSH
+from deployment.helpers.apim_audit import render_audit_policy
+from policy_fixture_paths import policy_fixture_path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,21 +17,22 @@ class ToolAuthorizationErrorTests(unittest.TestCase):
             self.skipTest("PowerShell Roslyn is required")
         expressions = {}
         for file, variable in (("pii.xml", "gatewayAuditStatus"), ("document-analysis.xml", "documentPolicyErrorStatus")):
+            policies = ROOT / "apps/gateway/apim/policies"
             source = "operation-policies/document-analysis/document-analysis.xml" if file == "document-analysis.xml" else file
-            root = ET.parse(ROOT / "apps/gateway/apim/policies" / source)
+            root = ET.fromstring(render_audit_policy(policy_fixture_path(policies, source).read_text(encoding="utf-8")))
             value = root.find("./on-error/set-variable[@name='" + variable + "']").get("value")
             expressions[file] = value[2:-1]
         source = r'''
 using System;
-public class LastError { public string Source,Reason; }
+public class LastError { public string Source,Reason,PolicyId; }
 public class Context { public LastError LastError=new LastError(); }
 public static class ToolErrorFixture {
  public static int Pii(Context context) { return __PII__; }
  public static int Document(Context context) { return __DOCUMENT__; }
  public static string Run() {
-  var cases=new[]{new[]{"authorization","SubscriptionKeyNotFound"},new[]{"authorization","SubscriptionKeyInvalid"},new[]{"validate-jwt","TokenExpired"},new[]{"forward-request","BackendConnectionFailure"},new[]{"forward-request","BackendConnectionTimeout"},new[]{"set-variable","ExpressionValueEvaluationFailure"}};
+  var cases=new[]{new[]{"authorization","SubscriptionKeyNotFound",""},new[]{"authorization","SubscriptionKeyInvalid",""},new[]{"validate-jwt","TokenExpired",""},new[]{"forward-request","BackendConnectionFailure",""},new[]{"forward-request","BackendConnectionTimeout",""},new[]{"set-variable","ExpressionValueEvaluationFailure",""},new[]{"set-variable","ExpressionValueEvaluationFailure","core-pii-input-validation"},new[]{"set-variable","ExpressionValueEvaluationFailure","core-pii-input-validation-extra"},new[]{"set-variable","ExpressionValueEvaluationFailure",null}};
   var result=new System.Collections.Generic.List<int[]>();
-  foreach(var pair in cases){var c=new Context();c.LastError.Source=pair[0];c.LastError.Reason=pair[1];result.Add(new[]{Pii(c),Document(c)});}
+  foreach(var pair in cases){var c=new Context();c.LastError.Source=pair[0];c.LastError.Reason=pair[1];c.LastError.PolicyId=pair[2];result.Add(new[]{Pii(c),Document(c)});}
   return Newtonsoft.Json.JsonConvert.SerializeObject(result);
  }
 }'''.replace("__PII__",expressions["pii.xml"]).replace("__DOCUMENT__",expressions["document-analysis.xml"])
@@ -43,6 +46,6 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
 """,encoding="utf-8")
             result=subprocess.run([PWSH,"-NoProfile","-File",str(path/"run.ps1")],capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(json.loads(result.stdout),[[401,401],[401,401],[401,502],[502,502],[504,502],[502,502]])
+        self.assertEqual(json.loads(result.stdout),[[401,401],[401,401],[401,502],[502,502],[504,502],[502,502],[500,502],[502,502],[502,502]])
 
 if __name__ == "__main__": unittest.main()

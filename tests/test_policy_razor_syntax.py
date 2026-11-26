@@ -38,6 +38,38 @@ def policy_expressions():
                             *(POLICIES / "credential-login").glob("*.xml"), SERVICE_POLICY,
                             POLICIES / "fragments/request/core-query-observation/core-query-observation.xml",
                             POLICIES / "fragments/request/core-api-input-validation/core-api-input-validation.xml",
+                            policy_fixture_path(POLICIES, "core-api-target-validation.xml"),
+                            policy_fixture_path(POLICIES, "core-entra-user-profile.xml"),
+                            policy_fixture_path(POLICIES, "core-credential-connection.xml"),
+                            policy_fixture_path(POLICIES, "core-credential-connection-outbound.xml"),
+                            policy_fixture_path(POLICIES, "core-credential-session-use.xml"),
+                            policy_fixture_path(POLICIES, "core-backend-audit.xml"),
+                            policy_fixture_path(POLICIES, "core-audit-body-model.xml"),
+                            policy_fixture_path(POLICIES, "core-audit-context.xml"),
+                            policy_fixture_path(POLICIES, "realtime-create.xml"),
+                            policy_fixture_path(POLICIES, "live-create.xml"),
+                            policy_fixture_path(POLICIES, "pii.xml"),
+                            policy_fixture_path(POLICIES, "document-analysis.xml"),
+                            policy_fixture_path(POLICIES, "document-analysis-status.xml"),
+                            policy_fixture_path(POLICIES, "credential-telemetry.xml"),
+                            policy_fixture_path(POLICIES, "realtime-hangup.xml"),
+                            policy_fixture_path(POLICIES, "core-realtime-observer.xml"),
+                            policy_fixture_path(POLICIES, "realtime-owner-context.xml"),
+                            policy_fixture_path(POLICIES, "credential-challenge.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/start.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/launch.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/launch-post.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/identity-callback.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/callback.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/status.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/disconnect.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/logout-all.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/logout.xml"),
+                            policy_fixture_path(POLICIES, "credential-login/session-commit.xml"),
+                            POLICIES / "snippets/authentication/credential-caller-error/credential-caller-error.xml",
+                            policy_fixture_path(POLICIES, "subscription-profile.xml"),
+                            policy_fixture_path(POLICIES, "rate-limit-error.xml"),
+                            policy_fixture_path(POLICIES, "mcp-rate-cleanup.xml"),
                             policy_fixture_path(POLICIES, "core-model-limits.xml")])):
         rendered = render_audit_policy(path.read_text(encoding="utf-8"))
         if any(marker in rendered for marker in SOURCE_EXPRESSION_FILES):
@@ -121,7 +153,7 @@ class PolicyRazorSyntaxTests(unittest.TestCase):
                 self.assertEqual(self.results[case["id"]], [])
 
     def test_credential_login_operation_policies_are_included(self):
-        for name in ("start", "status", "launch-post", "callback", "logout"):
+        for name in ("start", "status", "launch-post", "callback", "logout", "core-credential-connection", "core-credential-session-use"):
             with self.subTest(operation=name):
                 self.assertTrue(any(case["id"].startswith(name + ".xml:") for case in self.cases))
 
@@ -134,6 +166,18 @@ class PolicyRazorSyntaxTests(unittest.TestCase):
         cases = [case for case in self.cases if case["id"].startswith("core-api-input-validation.xml:")]
         self.assertEqual(len(cases), 1)
         self.assertEqual(self.results[cases[0]["id"]], [])
+
+    def test_employee_profile_expression_is_checked_from_its_canonical_fragment(self):
+        cases = [case for case in self.cases if case["id"].startswith("core-entra-user-profile.xml:")]
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(self.results[cases[0]["id"]], [])
+
+    def test_subscription_profile_expressions_are_checked_from_the_canonical_snippet(self):
+        cases = [case for case in self.cases if case["id"].startswith("subscription-profile.xml:")]
+        self.assertTrue(any('gatewayProfileResponse' in case['body'] for case in cases))
+        self.assertTrue(any(case['body'].strip() == 'return 503;' for case in cases))
+        for case in cases:
+            self.assertEqual(self.results[case['id']], [])
 
     def test_audit_detects_legal_csharp_that_razor_rejects(self):
         for case_id in ("invalid-if-foreach", "invalid-loop", "invalid-else"):

@@ -197,11 +197,11 @@ SQL移行後に旧imageだけへ戻しても復旧しない。対応版で前進
 
 | 定義 | APIM上の部品・処理 |
 | --- | --- |
-| `credential-connection.xml` | `core-credential-connection`。Brokerの`/v2/session/authorize`、CMトークン取得、Graph本人照合 |
-| `credential-session-use.xml` | `core-credential-session-use`。照合後の`/v2/session/use`で失効・期限を再検証し、業務利用と更新候補を確定 |
-| `credential-connection-outbound.xml` | `core-credential-connection-outbound`。業務応答の更新ヘッダー、Graphの再認証・claims要求を分類 |
-| `credential-challenge.xml` | 認証が必要な場合に短命取引と仮セッションを発行。各共通部品へ組み込むテンプレート |
-| `credential-login/*.xml` | 公開start/status/commit/logout/logout-all/disconnect・ブラウザー戻り先をBrokerへ中継 |
+| `fragments/authentication/core-credential-connection/core-credential-connection.xml`・同名C# | `core-credential-connection`。確認済みcallerIdの引き渡し、Brokerの`/v2/session/authorize`、CMトークン取得、Graph本人照合 |
+| `fragments/authentication/core-credential-session-use/core-credential-session-use.xml` | `core-credential-session-use`。照合後の`/v2/session/use`で失効・期限を再検証し、業務利用と更新候補を確定 |
+| `fragments/authentication/core-credential-connection-outbound/core-credential-connection-outbound.xml` | `core-credential-connection-outbound`。業務応答の更新ヘッダー、Graphの再認証・claims要求を分類 |
+| `snippets/authentication/credential-challenge/credential-challenge.xml`・同名C# | 認証が必要な場合に短命取引と仮セッションを発行。既存部品へinline展開し、状態と200応答の秘密・期限・Gateway URLを検査する |
+| `operation-policies/credential-login/`のXML・必要な同名C# | 確認済みcallerを引き継ぎ、start/status/commit/logout/logout-all/disconnect・ブラウザー戻り先を固定Brokerへ中継する。各操作の入出力と維持条件は同フォルダーのREADMEで管理する |
 
 GUIでは「API」→「ポリシーフラグメント」と、対象API・OperationのInbound/Outbound processingを確認する。`core-credential-session-use`は本人照合の後に呼ぶ。ヘルスやstatusには含めない。公開API・フラグメントの登録処理は`apps/gateway/apim/api-publication.bicep`で管理し、手動設定だけで済ませない。
 

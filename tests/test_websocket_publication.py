@@ -115,7 +115,9 @@ class WebSocketPublicationTests(unittest.TestCase):
                        "set-method", "set-body", "xml-to-json", "json-to-xml", "xsl-transform",
                        "validate-content", "validate-parameters", "validate-headers", "validate-status-code"}
         for filename in ("protocol.xml", "service.xml", "core-api-settings.xml", "core-api-request-preparation.xml", "core-gateway-telemetry.xml", "realtime-observer.xml", "rate-limit.xml", "rate-limit-error.xml"):
-            root = ET.parse(SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)).getroot()
+            from deployment.helpers.apim_audit import render_audit_policy
+            path = SERVICE_POLICY if filename == "service.xml" else policy_fixture_path(POLICIES, filename)
+            root = ET.fromstring(render_audit_policy(path.read_text(encoding="utf-8")))
             with self.subTest(filename=filename):
                 self.assertFalse({node.tag for node in root.iter()} & unsupported)
                 self.assertFalse(any(node.get("name", "").lower() == "host"
@@ -128,7 +130,7 @@ class WebSocketPublicationTests(unittest.TestCase):
         self.assertIsNotNone(protocol.find('./inbound/set-variable[@name="gatewayProtocolQueryAllowed"]'))
         fragments = {node.get("fragment-id") for node in protocol.iter("include-fragment")}
         self.assertEqual(fragments, {"core-api-settings", "core-api-request-preparation", "core-gateway-telemetry", "core-rate-limit", "core-audit-context", "core-backend-audit"})
-        observer = ET.parse(POLICIES / "realtime-observer.xml")
+        observer = ET.parse(policy_fixture_path(POLICIES, "realtime-observer.xml"))
         self.assertIsNotNone(observer.find('./set-variable[@name="realtimeObserverOwnerValid"]'))
         self.assertEqual(observer.find('./choose/when/return-response/set-status').get("code"), "403")
         service = ET.parse(SERVICE_POLICY)

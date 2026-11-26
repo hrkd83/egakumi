@@ -67,6 +67,7 @@ class ApiSettingsRuntimeTests(unittest.TestCase):
         }
         control = {
             "operationId": "", "tokenLimitOperationIds": ["lookup", "create"],
+            "chatStoreDisabledOperationIds": ["create"],
             "operationConstraints": {"create": {
                 "kind": "bodyModel", "allowedModels": ["2026-01-01T00:00:00Z", "合成モデル"],
                 "maxRequestBytes": 1024, "allowTextOnly": True, "optional": None}},

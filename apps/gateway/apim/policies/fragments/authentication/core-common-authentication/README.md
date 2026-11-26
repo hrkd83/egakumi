@@ -2,6 +2,12 @@
 
 このフォルダは、Azureポータルのポリシーフラグメント `core-common-authentication` の正本を管理する。同名XMLがSTEP4の分岐と処理順を定義し、同名C#が各 `set-variable` に差し込む5つの式を持つ。C#ファイル全体を1つのメソッドとして呼び出す構成ではない。
 
+## MOD-145の失敗監査生成の補正
+
+Bicepが認証失敗監査へ渡す主体readerを、現在の監査本文のraw引用符と一致する形へ補正しました。旧XML entityを探す置換はMOD-134の本文encoder変更後に一致せず、`gatewayAuthenticatedSubject`のままになっていました。現在はPythonと同じく、失敗時に確認した`gatewayEntraFailureSubject`を一意に参照します。正常監査、認証条件、401・内部500・要求ID・no-storeの応答は変更しません。
+
+変更前Bicepと監査生成の3説明modeを保存し、Bicepの変更がreaderの2文字列だけ、監査本文の変更がreader1箇所だけで他の構造・属性・式が同じことを確認しました。この3mode対照は監査生成の比較で、Bicep全体の3mode展開証明ではありません。補完したcompiled-sourceの別実行1件は4.451秒で不一致を検出しました。補正後はその既存試験を含む40件32.503秒が全件成功し、Entra有効／無効の資源・Python正本・保護source一致、失敗主体・内部500の主体・401監査と応答を確認しました。独立レビューに追加所見はありません。ローカル検証済みでAzure未反映です。
+
 ```text
 service.xml の STEP4
     ↓ include-fragment

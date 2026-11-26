@@ -115,7 +115,8 @@
         "tests/test_portal_certificate_initialization.py",
         "tests/test_schema_helpers.py",
         "apps/portal/tests/client-assertion.test.ts",
-        "tests/test_sql_connection_policy_operation.py"
+        "tests/test_sql_connection_policy_operation.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -136,7 +137,8 @@
         "apps/portal/tests/client-assertion.test.ts",
         "tests/test_sql_connection_policy_operation.py",
         "tests/test_sql_nsg_upgrade_operation.py",
-        "tests/test_sql_policy_nsg_integration.py"
+        "tests/test_sql_policy_nsg_integration.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -157,7 +159,8 @@
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
         "tests/test_sql_connection_policy_operation.py",
-        "tests/test_sql_policy_nsg_integration.py"
+        "tests/test_sql_policy_nsg_integration.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -175,7 +178,8 @@
         "tests/test_local_preparation_hooks.py",
         "tests/test_prepare_credential_pool_config.py",
         "tests/test_portal_certificate_initialization.py",
-        "tests/test_publication_source_generation.py"
+        "tests/test_publication_source_generation.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -3213,17 +3217,19 @@
         "tests/test_entra_gateway_authentication.py",
         "tests/test_api_request_preparation.py",
         "tests/test_gateway_query_guard.py",
-        "tests/test_gateway_query_observation.py"
+        "tests/test_gateway_query_observation.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
       "rule": "unknown-uuid",
       "value": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "reason": "Reviewed independent synthetic fixture UUID; exact value and enumerated source paths only.",
       "paths": [
         "apps/portal/tests/connection-session-client.test.ts",
         "clients/connection-session/typescript/connection-session.test.ts",
-        "tests/test_credential_client_v2.py"
+        "tests/test_credential_client_v2.py",
+        "tests/test_mcp_pii_request_id.py"
       ]
     },
     {
@@ -3263,7 +3269,8 @@
         "tests/test_pii_policy.py",
         "tests/test_portal_api_keys_setup.py",
         "tests/test_entra_gateway_authentication.py",
-        "tests/test_api_request_preparation.py"
+        "tests/test_api_request_preparation.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -3285,7 +3292,8 @@
         "apps/portal/tests/model-key-choices.test.ts",
         "tests/test_gateway_limits_telemetry.py",
         "tests/test_pii_policy.py",
-        "tests/test_document_analysis_policy.py"
+        "tests/test_document_analysis_policy.py",
+        "tests/test_phase12_audit_checks.py"
       ]
     },
     {
@@ -3858,7 +3866,8 @@
       "value": "synthetic-subscription",
       "paths": [
         "tests/audit_identification_fixture.py",
-        "tests/test_audit_subject_contract.py"
+        "tests/test_audit_subject_contract.py",
+        "tests/test_phase12_audit_checks.py"
       ],
       "reason": "Independent offline test fixture or deliberately invalid identifier label; no live Entra identity, subscription or credential."
     },
@@ -4863,6 +4872,282 @@
         "tests/test_sql_nsg_upgrade_operation.py",
         "tests/test_sql_redirect_nsg.py"
       ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "11111111-1111-4111-8111-111111111111",
+      "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
+      "paths": [
+        "params/production.example.json",
+        "params/test.example.json",
+        "tests/audit_identification_fixture.py",
+        "tests/test_api_request_preparation.py",
+        "tests/test_audit_identification.py",
+        "tests/test_credential_provider_inputs.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_entra_publication_bootstrap.py",
+        "tests/test_fixed_initial_configuration.py",
+        "tests/test_fixed_parameter_materials.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_schema_helpers.py",
+        "tests/test_agent_trace_policy.py",
+        "tests/test_mcp_pii_request_id.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "22222222-2222-4222-8222-222222222222",
+      "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
+      "paths": [
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_credential_provider_inputs.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_entra_named_value_refresh.py",
+        "tests/test_fixed_initial_configuration.py",
+        "tests/test_fixed_parameter_materials.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_agent_trace_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "33333333-3333-4333-8333-333333333333",
+      "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
+      "paths": [
+        "tests/audit_identification_fixture.py",
+        "tests/configuration_fixtures.py",
+        "tests/test_audit_identification.py",
+        "tests/test_credential_provider_inputs.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_entra_named_value_publication.py",
+        "tests/test_fixed_initial_configuration.py",
+        "tests/test_fixed_parameter_materials.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_local_preparation_hooks.py",
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_agent_trace_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "44444444-4444-4444-8444-444444444444",
+      "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
+        "tests/audit_identification_fixture.py",
+        "tests/test_audit_identification.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_entra_named_value_publication.py",
+        "tests/test_fixed_initial_configuration.py",
+        "tests/test_fixed_parameter_materials.py",
+        "tests/test_local_preparation_hooks.py",
+        "tests/test_prepare_credential_pool_config.py",
+        "tests/test_publication_source_generation.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-a",
+      "reason": "Independent synthetic subscription label used only to reject mixed key/user caller contracts in offline tests.",
+      "paths": [
+        "apps/gateway/credential-broker/tests/test_verified_user_caller.py",
+        "tests/test_contract_rate_policy.py",
+        "tests/test_gateway_limits_telemetry.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscription-other",
+      "reason": "Independent synthetic subscription label used only for offline rate-limit counter separation; not copied from an environment. Exact value and source path only.",
+      "paths": [
+        "tests/test_contract_rate_policy.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "subscriptionId",
+      "reason": "Existing synthetic fixture, code expression or interface label reviewed in context; no live identity/credential",
+      "paths": [
+        "apps/gateway/credential-broker/credential_broker/store.py",
+        "apps/gateway/apim/policies/fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs",
+        "apps/gateway/apim/policies/snippets/audit/credential-telemetry/credential-telemetry.cs",
+        "apps/gateway/apim/policies/fragments/authentication/core-credential-connection-outbound/core-credential-connection-outbound.cs",
+        "apps/gateway/apim/policies/fragments/audit/core-query-telemetry/core-query-telemetry.cs"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "169.254.169.254",
+      "reason": "Public Azure IMDS link-local endpoint for managed identity; not a deployment-specific host. Exact path/value only.",
+      "paths": [
+        "apps/gateway/deploy/build-image.sh",
+        "apps/portal/deploy/build-image.sh",
+        "guest/build-credential-broker.sh",
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
+        "scripts/waf_probe.py",
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "ai.azure.com",
+      "reason": "Public Foundry token audience documented by Microsoft and used in synthetic deployment fixtures; exact host and enumerated source paths only.",
+      "paths": [
+        "apps/gateway/apim/apis/azure-voice-live-webrtc-v1.json",
+        "apps/gateway/apim/apis/azure-voice-live-ws-v1.json",
+        "apps/gateway/apim/apis/cohere-inference-v1.json",
+        "apps/gateway/apim/apis/openai-transcription-ws-v1.json",
+        "apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml",
+        "scripts/deployment/helpers/configuration.py",
+        "tests/fixtures/external-api-definitions.json",
+        "tests/test_api_protocols.py",
+        "tests/test_audit_publication.py",
+        "tests/test_configuration.py",
+        "tests/test_realtime_policy.py",
+        "apps/portal/lib/generated/model-api-definitions.json"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "cognitiveservices.azure.com",
+      "reason": "Public Cognitive Services token audience documented by Microsoft and used in synthetic deployment fixtures; exact host and enumerated source paths only.",
+      "paths": [
+        "apps/gateway/apim/apis/azure-speech-v1.json",
+        "apps/gateway/apim/apis/blackforest-images-v1.json",
+        "apps/gateway/apim/apis/document-analysis-v1.json",
+        "apps/gateway/apim/apis/microsoft-decision-v1.json",
+        "apps/gateway/apim/apis/openai-audio-v1.json",
+        "apps/gateway/apim/apis/openai-embeddings-v1.json",
+        "apps/gateway/apim/apis/openai-images-v1.json",
+        "apps/gateway/apim/apis/openai-inference-v1.json",
+        "apps/gateway/apim/apis/openai-live-control-v1.json",
+        "apps/gateway/apim/apis/openai-live-ws-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-control-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-observer-v1.json",
+        "apps/gateway/apim/apis/openai-realtime-ws-v1.json",
+        "apps/gateway/apim/apis/pii-v1.json",
+        "apps/gateway/apim/policies/document-analysis.xml",
+        "apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml",
+        "scripts/deployment/helpers/configuration.py",
+        "tests/configuration_fixtures.py",
+        "tests/test_api_contract_configuration.py",
+        "tests/test_api_migration.py",
+        "tests/test_api_protocols.py",
+        "tests/test_audit_publication.py",
+        "tests/test_operation_backend_publication.py",
+        "tests/test_realtime_policy.py",
+        "tests/test_shared_mcp_configuration.py",
+        "apps/portal/lib/generated/model-api-definitions.json",
+        "tests/test_entra_publication.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-host",
+      "value": "fixture.vault.azure.net",
+      "reason": "Existing illustrative endpoint, code-generated placeholder or synthetic fixture host; exact path/value only",
+      "paths": [
+        "tests/test_api_protocols.py",
+        "tests/test_api_publication_size.py",
+        "tests/test_prepare_coverage.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "169.254.169.254",
+      "reason": "Public Azure IMDS link-local endpoint for managed identity; not a deployment-specific address. Exact path/value only, no private-range exemption.",
+      "paths": [
+        "apps/gateway/deploy/build-image.sh",
+        "apps/portal/deploy/build-image.sh",
+        "guest/build-credential-broker.sh",
+        "guest/certificate.ps1",
+        "infra/guest/certificate.ps1",
+        "scripts/waf_probe.py",
+        "tests/certificate-azure-identity-offline.ps1",
+        "tests/certificate-network-boundary-offline.ps1",
+        "tests/test_publish_apis.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "66666666-6666-4666-8666-666666666666",
+      "reason": "Independent repeated-digit or repeated-character synthetic UUIDs used only in offline authentication, ownership, schema and construction fixtures; not copied from an environment. Exact values and source paths only.",
+      "paths": [
+        "apps/portal/tests/document-operation.test.ts",
+        "tests/test_api_protocols.py",
+        "tests/test_audit_context.py",
+        "tests/test_audit_usage.py",
+        "tests/test_configuration.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/test_fixed_initial_configuration.py",
+        "tests/test_parameter_ip_ownership.py",
+        "tests/test_publish_apis.py",
+        "tests/test_split_configuration.py",
+        "tests/test_agent_trace_policy.py"
+      ]
+    },
+    {
+      "rule": "unknown-uuid",
+      "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "reason": "Existing reviewed synthetic fixture UUID; exact value in this one source path only",
+      "paths": [
+        "apps/portal/tests/graph-tool-server.test.ts",
+        "apps/portal/tests/model-key-choices.test.ts",
+        "apps/portal/tests/model-stream.test.ts",
+        "apps/portal/tests/pii-mcp.test.ts",
+        "tests/test_apim_hostname_preservation.py",
+        "tests/test_application_infrastructure_cleanup.py",
+        "tests/test_cleanup.py",
+        "tests/test_common_authentication.py",
+        "tests/test_contract_rate_policy.py",
+        "tests/test_document_analysis_policy.py",
+        "tests/test_gateway_limits_telemetry.py",
+        "tests/test_grpc_network.py",
+        "tests/test_integration_client.py",
+        "tests/test_lifecycle.py",
+        "tests/test_lifecycle_transport.py",
+        "tests/test_live_api.py",
+        "tests/test_local_preparation_hooks.py",
+        "tests/test_network_preservation.py",
+        "tests/test_pii_policy.py",
+        "tests/test_portal_api_keys_setup.py",
+        "tests/test_entra_authentication_configuration.py",
+        "tests/test_audit_identification.py",
+        "tests/test_entra_gateway_authentication.py",
+        "tests/test_api_request_preparation.py",
+        "tests/test_gateway_query_guard.py",
+        "tests/test_gateway_query_observation.py",
+        "tests/test_mcp_argument_validation.py"
+      ]
+    },
+    {
+      "rule": "embedded-data-review-required",
+      "value": "data:image/png;base64,AA==",
+      "reason": "Exactly one NUL byte AA== in an intentionally invalid offline image-policy fixture; no private payload.",
+      "paths": [
+        "tests/test_api_profile_policy.py",
+        "tests/test_api_protocols.py"
+      ]
+    },
+    {
+      "rule": "nonpublic-ip",
+      "value": "1.0.0.0",
+      "reason": "Public ARM deployment parameters contentVersion constant, not an IP address. Exact value and enumerated source files only.",
+      "paths": [
+        "scripts/operations/maintenance.py"
+      ]
+    },
+    {
+      "rule": "environment-identifier",
+      "value": "synthetic-other-subscription",
+      "reason": "Independent repeated-character UUID or explicitly synthetic subscription label used only in offline audit ownership and failure-classification fixtures; exact value and enumerated source paths only.",
+      "paths": [
+        "tests/test_phase12_audit_checks.py"
+      ]
     }
   ],
   "reviewed_binary_assets": [
@@ -5200,6 +5485,11 @@
       "path": "docs/images/entra-codex-setup/12-assignment-not-required.png",
       "sha256": "ddcaaa77d2d70d24cef185ff50f41fe024f3487d5d51ddca249606a4d2f5b16b",
       "reason": "User-requested Entra setup screenshot at 1920x1080. Tenant/subscription identifiers and secrets masked; original pixels outside masking preserved and reviewed in protected evidence."
+    },
+    {
+      "path": "apps/gateway/apim/policies/fragments/authentication/core-credential-connection/core-credential-connection.xml",
+      "sha256": "679eb4496597b19897c197c6d0a47cf3de7679f9bca8f71c1356992bfb8e11b8",
+      "reason": "Authored policy decodes runtime settings/sentinel placeholders, not a stored real config or credential. Exact source snapshot only."
     }
   ]
 }

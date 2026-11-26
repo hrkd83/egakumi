@@ -154,7 +154,7 @@ class WafLayoutBicepTests(unittest.TestCase):
                 self.assertTrue(rule["backendHttpSettings"]["id"].endswith("/behttp-" + backend))
                 self.assertEqual("rewriteRuleSet" in rule, scope == "gateway")
         counts = {profile["name"]: len(profile["paths"]) for profile in self.profiles}
-        for name, count in (("g-images", 6), ("g-embeddings", 2), ("g-pii-rest", 1), ("g-pii-mcp", 1), ("p-pii-redact", 2)):
+        for name, count in (("g-images", 4), ("g-embeddings", 2), ("g-pii-rest", 1), ("g-pii-mcp", 1), ("p-pii-redact", 2)):
             self.assertEqual(counts[name], count)
         listener = next(item["properties"] for item in gateway["httpListeners"] if item["name"] == "portal-https")
         self.assertTrue(listener["firewallPolicy"]["id"].endswith("/" + self.name("p-base")))

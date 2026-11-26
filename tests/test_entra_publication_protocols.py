@@ -119,6 +119,30 @@ class ProtocolGraphTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         publication.read_policy_graph(manifest, transport)
 
+    def test_previous_metadata_guard_requires_matching_previous_source(self):
+        """旧guardの読戻し互換は完全一致に限定し、新規受付や改変へ広げない。"""
+        previous=publication.PREVIOUS_PRM_GUARD
+        current=publication.PRM_GUARD
+        changed=previous.replace('code="404"','code="200"')
+        old_policy=publication.OPEN_PRODUCT_POLICY.replace('<inbound>','<inbound>'+previous)
+        with self.assertRaises(ValueError):
+            publication._xml(old_policy,inherited=True)
+        publication._xml(publication.OPEN_PRODUCT_POLICY.replace('<inbound>','<inbound>'+current),inherited=True)
+        for api in ('proxy','native-tool'):
+            for expected,observed,allowed in ((previous,previous,True),(current,current,True),
+                                              (previous,current,False),(current,previous,False),
+                                              (previous,changed,False),(changed,changed,False)):
+                with self.subTest(api=api,expected=expected==previous,observed=observed==previous,allowed=allowed):
+                    manifest,transport=protocol_fixture()
+                    resource_id=APIM+'/apis/'+api+'/policies/policy'
+                    manifest.policies[resource_id]=publication.OPEN_PRODUCT_POLICY.replace('<inbound>','<inbound>'+expected)
+                    transport.inventory[resource_id]=response(resource_id,{
+                        'value':publication.OPEN_PRODUCT_POLICY.replace('<inbound>','<inbound>'+observed)})
+                    if allowed:publication.read_policy_graph(manifest,transport)
+                    else:
+                        with self.assertRaises(ValueError):publication.read_policy_graph(manifest,transport)
+                    self.assertTrue(all(call[0]=='GET' for call in transport.calls))
+
     def test_grpc_missing_import_readback_is_not_assumed_compatible(self):
         manifest, transport = protocol_fixture()
         properties = transport.inventory[APIM + "/apis/rpc"]["body"]["properties"]
@@ -172,6 +196,130 @@ class FreshPreflightTests(unittest.TestCase):
 
 
 class GeneratedSourceTests(unittest.TestCase):
+    def test_compiled_mcp_metadata_guards_preserve_boundaries_before_anonymous_authentication(self):
+        """実生成guardを実共通認証より先に実行し、本文を読まず予約パスだけ404にする。"""
+        import json
+        import subprocess
+        import tempfile
+        import xml.etree.ElementTree as ET
+        from arm_helpers import compiled_policy_value
+        from bicep_helpers import compile_bicep
+        from test_api_protocols import bound_external_coverage, configuration
+        from test_common_authentication import CSHARP, compile_inbound
+        from test_gateway_limits_telemetry import PWSH
+        from deployment.helpers.apim_authentication import render_service_policy
+        if not PWSH:self.skipTest('PowerShell Roslyn is required; Azure routing is not tested')
+        core=Path(__file__).resolve().parents[1]
+        canonical=(core/'apps/gateway/apim/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
+        self.assertEqual(publication.PRM_GUARD,canonical)
+        expected=publication._structure(ET.fromstring(canonical))
+        config=configuration.normalize_configuration(bound_external_coverage(),base_directory=core/'config')
+        definitions=[api for api in config['apiDefinitions'] if api['apiType']=='mcp' or 'mcp' in api]
+        self.assertTrue(any(api['apiType']=='mcp' for api in definitions))
+        self.assertTrue(any('mcp' in api for api in definitions))
+        template=compile_bicep('apps/gateway/apim/api-publication.bicep')
+        common_methods,common_inbound=compile_inbound(ET.fromstring(render_service_policy()),trace_messages=True)
+        methods=[common_methods];selectors=[];cases=[];expectations={}
+        for index,api in enumerate(definitions):
+            api.setdefault('backendUrl','https://provider.example.com'+api.get('backendPath',''))
+            generated='mcp' in api
+            name=api['mcp']['name'] if generated else api['name']
+            policy=ET.fromstring(compiled_policy_value(template,{'apiDefinitions':[api]},
+                resource_name='mcpPolicies' if generated else 'apiPolicies'))
+            inbound=policy.find('inbound');children=list(inbound)
+            base=inbound.find('base');self.assertIsNotNone(base)
+            guards=[node for node in children if publication._structure(node)==expected]
+            self.assertEqual(len(guards),1,name)
+            guard=guards[0]
+            self.assertLess(children.index(guard),children.index(base),name)
+            self.assertIsNone(guard.find('.//set-body'))
+            self.assertEqual(guard.find('./when/return-response/set-status').attrib,{'code':'404','reason':'Not Found'})
+            self.assertNotIn('__MCP_PRM_GUARD_XML__',ET.tostring(policy,encoding='unicode'))
+            # 原本の条件・応答を抽出する。base前位置は上で実生成全体から確認し、
+            # 実共通認証へ戻る処理だけを後段の共通メソッドへ接続する。
+            adapted=ET.Element('policies');ET.SubElement(adapted,'inbound').append(copy.deepcopy(guard))
+            guard_methods,guard_body=compile_inbound(adapted)
+            prefix='MetadataGuard'+str(index)+'Expression'
+            methods.append(guard_methods.replace('Expression',prefix))
+            methods.append('static int MetadataGuard'+str(index)+'(Context context) { '+guard_body.replace('Expression',prefix)+' return 0; }')
+            selectors.append(('if' if index==0 else 'else if')+' (name == '+json.dumps(name)+') status=MetadataGuard'+str(index)+'(context);')
+            api_prefix='/'+(api['mcp']['path'] if generated else api['path'])
+            reserved='/.well-known/oauth-protected-resource'
+            paths=(
+                ('terminal',reserved,True),('api-terminal',api_prefix+reserved,True),
+                ('child',api_prefix+reserved+'/',True),('nested-child',api_prefix+reserved+'/nested/path',True),
+                ('case',api_prefix+reserved.upper(),True),('depth',api_prefix+'/one/two'+reserved,True),
+                ('mixed-child',api_prefix+'/.WeLl-KnOwN/Oauth-Protected-Resource/child',True),
+                ('similar-suffix',api_prefix+reserved+'-example',False),
+                ('similar-plural',api_prefix+reserved+'s',False),
+                ('similar-letter',api_prefix+reserved+'X',False),
+                ('similar-child',api_prefix+reserved+'-example/child',False),
+                ('similar-directory',api_prefix+'/.well-known-example/oauth-protected-resource',False),
+                ('similar-prefix',api_prefix+'/prefix-.well-known/oauth-protected-resource',False),
+                ('later-terminal',api_prefix+reserved+'-example'+reserved,True),
+                ('later-child',api_prefix+reserved+'-example'+reserved+'/child',True),
+                ('normal',api_prefix+'/mcp',False),('root','/',False),
+            )
+            for label,path,rejected in paths:
+                identifier=name+'-'+label
+                cases.append({'id':identifier,'policy':name,'path':path})
+                expectations[identifier]=rejected
+        self.assertGreaterEqual(len(definitions),2)
+        # 共通fixtureの要求・Context型を再利用し、本文読取りがあれば必ず試験を止める。
+        source=CSHARP.split('public static class CommonAuthenticationFixture {',1)[0]
+        # traceを実行する共通監査式は、応答前のResponse=nullも参照します。
+        source=source.replace('public class Context {','public class FixtureResponse { public int StatusCode; }\npublic class Context { public FixtureResponse Response;')
+        original='public object Body { get { throw new Exception("Common authentication read a request body"); } }'
+        self.assertIn(original,source)
+        source=source.replace(original,'public int BodyReads; public object Body { get { BodyReads++; throw new Exception("MCP metadata guard read a request body"); } }')
+        source+=r'''
+public static class MetadataFixture {
+ __METHODS__
+ static int Evaluate(Context context,string name) {
+  var status=0;__SELECTORS__ else throw new Exception("Unknown metadata fixture policy");
+  if(status!=0)return status;
+  context.Variables["fixtureBaseReached"]=true;
+  __COMMON_INBOUND__ return 200;
+ }
+ public static string Run(string json) {
+  var results=new JObject();
+  foreach(JObject item in JArray.Parse(json)) {
+   var c=new Context();c.Api.Id=(string)item["policy"];c.Operation.Id="invoke";c.Request.Method="GET";
+   c.Request.Url.Path=(string)item["path"];c.Request.OriginalUrl.Path=c.Request.Url.Path;
+   c.Request.Headers["X-Core-L7-Ingress"]=new [] {"fixture-ingress"};
+   var status=Evaluate(c,(string)item["policy"]);
+   results[(string)item["id"]]=new JObject(new JProperty("status",status),
+    new JProperty("anonymous",c.Subscription==null&&c.Token==null),
+    new JProperty("baseReached",c.Variables.ContainsKey("fixtureBaseReached")),
+    new JProperty("bodyReads",c.Request.BodyReads),new JProperty("headers",JObject.FromObject(c.ResponseHeaders)),
+    new JProperty("requestId",c.RequestId.ToString()),new JProperty("auditCount",c.TraceMessages.Count));
+  }
+  return results.ToString(Formatting.None);
+ }
+}'''.replace('__METHODS__','\n'.join(methods)).replace('__SELECTORS__',' '.join(selectors)).replace('__COMMON_INBOUND__',common_inbound)
+        with tempfile.TemporaryDirectory()as directory:
+            folder=Path(directory)
+            (folder/'fixture.cs').write_text(source,encoding='utf-8')
+            (folder/'cases.json').write_text(json.dumps(cases),encoding='utf-8')
+            (folder/'run.ps1').write_text("""$ErrorActionPreference='Stop'
+$refs=@(Get-ChildItem (Join-Path $PSHOME 'ref/*.dll')|ForEach-Object FullName)+@([Newtonsoft.Json.Linq.JObject].Assembly.Location)
+Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs')) -ReferencedAssemblies $refs -CompilerOptions '/nowarn:1701'
+[MetadataFixture]::Run((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))
+""",encoding='utf-8')
+            result=subprocess.run([PWSH,'-NoProfile','-File',str(folder/'run.ps1')],capture_output=True,text=True,encoding='utf-8',timeout=60)
+        self.assertEqual(result.returncode,0,result.stderr)
+        observed=json.loads(result.stdout)
+        self.assertEqual(set(observed),set(expectations))
+        for identifier,rejected in expectations.items():
+            with self.subTest(case=identifier):
+                value=observed[identifier]
+                self.assertTrue(value['anonymous']);self.assertEqual(value['bodyReads'],0)
+                self.assertEqual(value['status'],404 if rejected else 401)
+                self.assertEqual(value['baseReached'],not rejected)
+                if rejected:
+                    self.assertEqual(value['headers'],{'apim-request-id':value['requestId']})
+                    self.assertEqual(value['auditCount'],0)
+
     def test_compiled_source_represents_the_real_assignments_for_every_protocol(self):
         from bicep_helpers import compile_bicep
         from test_api_protocols import bound_external_coverage, configuration

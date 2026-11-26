@@ -6,6 +6,7 @@ ARMはソースファイルだけでなく、変数・copyループの展開結�
 """
 from bicep_helpers import compile_bicep
 
+import base64
 import copy
 import json
 from pathlib import Path
@@ -356,6 +357,7 @@ class ApiPublicationSizeTests(unittest.TestCase):
                 for entry in source_case["policies"]:
                     self.assertNotIn("__AUDIT_", entry["value"])
                     self.assertNotIn("__CORE_", entry["value"])
+                    self.assertNotIn("__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__", entry["value"])
                 browser_case = case["source"]["expanded"]["outputs"]["credentialBrowserPublicationSource"]["value"]
                 self.assertEqual(bool(browser_case), credential_enabled)
 
@@ -365,6 +367,18 @@ class ApiPublicationSizeTests(unittest.TestCase):
                 parameters = copy.deepcopy(self.parameters)
                 if credential_enabled:
                     parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
+                # 追加HTTPの外部キー認証も、CM変数を用意せず宣言した下流認証を生成します。
+                external = copy.deepcopy(next(api for api in parameters["apiDefinitions"]
+                                              if api["name"] == "graph-profile-v1"))
+                external.pop("credentialConnection")
+                external.update(name="synthetic-external-header-api", path="contracts/external-header",
+                                displayName="Synthetic external header API",
+                                backendUrl="https://provider.example.com/v1", backendAudience="https://provider.example.com",
+                                backendHeaders={"x-ms-client-request-id": "synthetic-external-request-id"},
+                                backendAuthentication={"mode": "keyVaultHeader", "headerName": "Authorization",
+                                                       "headerValuePrefix": "Bearer ",
+                                                       "secretIdentifier": "https://fixture.vault.azure.net/secrets/registered-provider"})
+                parameters["apiDefinitions"].append(external)
                 expanded = expand(self.template, parameters)
                 reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
                 source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
@@ -381,29 +395,85 @@ class ApiPublicationSizeTests(unittest.TestCase):
                     value = raw_policies[entry["suffix"]]
                     self.assertEqual(entry["value"], value)
                     policies[entry["suffix"]] = value
-                model_names = {api["name"] for api in parameters["apiDefinitions"]
-                               if api["apiType"] == "http" and api["backendService"] == "foundryOpenAi"
-                               and api["backendAuthentication"]["mode"] == "managedIdentity" and "credentialConnection" not in api}
+                http_apis = {"/apis/" + api["name"] + "/policies/policy": api for api in parameters["apiDefinitions"]
+                             if api["apiType"] == "http"}
+                non_cm_http = {suffix: api for suffix, api in http_apis.items() if "credentialConnection" not in api}
+                self.assertTrue(non_cm_http)
+                self.assertTrue(set(http_apis) <= set(policies))
                 self.assertTrue(source["apis"])
+                preparation = ET.fromstring(policies["/policyFragments/core-api-request-preparation"])
+                request_ids = preparation.findall('set-header[@name="x-ms-client-request-id"]')
+                self.assertEqual([(node.get("exists-action"), node.find("value").text) for node in request_ids],
+                                 [("override", "@(context.RequestId.ToString())")])
                 for suffix, value in policies.items():
                     root = ET.fromstring(value)
                     for include in root.iter("include-fragment"):
                         fragment = include.get("fragment-id")
                         self.assertIn("/policyFragments/" + fragment, policies, (suffix, fragment))
-                    if suffix in {"/apis/" + name + "/policies/policy" for name in model_names}:
+                    if suffix in http_apis:
+                        api = http_apis[suffix]
+                        inbound = root.find("inbound")
+                        nodes = list(inbound)
+                        prepare = inbound.find('include-fragment[@fragment-id="core-api-request-preparation"]')
+                        self.assertIsNotNone(prepare)
+                        self.assertEqual(len(inbound.findall('include-fragment[@fragment-id="core-api-request-preparation"]')), 1)
+                        self.assertEqual(nodes.index(prepare), nodes.index(inbound.find("base")) + 1)
+                        # 固定の再設定はなく、明示した下流認証・headerのwriterだけを残します。
+                        backends = [operation["backendOverride"] for operation in api["operations"] if "backendOverride" in operation] + [api]
+                        declared = []
+                        for backend in backends:
+                            authentication = backend["backendAuthentication"]
+                            if (authentication["mode"] == "keyVaultHeader"
+                                    and authentication["headerName"].casefold() == "x-ms-client-request-id"):
+                                # keyVaultHeaderはAPI側だけで受付可能で、操作別overrideには使えません。
+                                declared.append((authentication["headerName"],
+                                                 authentication["headerValuePrefix"] + "{{" + api["name"] + "-backend-secret}}"))
+                            declared.extend((name, text) for name, text in backend.get("backendHeaders", {}).items()
+                                            if name.casefold() == "x-ms-client-request-id")
+                        writers = [node for node in inbound.iter("set-header")
+                                   if node.get("name").casefold() == "x-ms-client-request-id"]
+                        self.assertEqual([(node.get("name"), node.find("value").text) for node in writers], declared, suffix)
+                        self.assertTrue(all(node.get("exists-action") == "override" for node in writers))
+                    if suffix in non_cm_http:
+                        api = non_cm_http[suffix]
+                        inbound = root.find("inbound")
+                        self.assertNotIn("gatewayCredentialConnection", value, suffix)
+                        self.assertIsNone(inbound.find('set-variable[@name="gatewayCredentialConnection"]'))
                         self.assertFalse(any(node.get("fragment-id").startswith("core-credential-") for node in root.iter("include-fragment")))
-                        self.assertEqual(root.find('./inbound/set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
-                        self.assertIsNotNone(root.find("./inbound/authentication-managed-identity"))
-                        self.assertIsNone(root.find('./inbound/choose/otherwise/authentication-managed-identity'))
+                        for header in ("Authorization", api["subscriptionKeyHeader"], "Ocp-Apim-Subscription-Key", "api-key"):
+                            self.assertIsNotNone(inbound.find('set-header[@name="' + header + '"][@exists-action="delete"]'))
+                        for query in ("subscription-key", "api-key"):
+                            self.assertIsNotNone(inbound.find('set-query-parameter[@name="' + query + '"][@exists-action="delete"]'))
+                        if not any("backendOverride" in operation for operation in api["operations"]):
+                            self.assertIsNotNone(inbound.find('set-backend-service[@backend-id="' + api["name"] + '-backend"]'))
+                            if api["backendAuthentication"]["mode"] == "managedIdentity":
+                                identity = inbound.find("authentication-managed-identity")
+                                self.assertIsNotNone(identity)
+                                self.assertEqual(identity.get("resource"), api["backendAudience"])
+                                self.assertIsNone(root.find('./inbound/choose/otherwise/authentication-managed-identity'))
+                            elif api["backendAuthentication"]["mode"] == "keyVaultHeader":
+                                authentication = api["backendAuthentication"]
+                                backend = inbound.find('set-header[@name="' + authentication["headerName"] + '"][@exists-action="override"]')
+                                self.assertIsNotNone(backend)
+                                self.assertEqual(backend.find("value").text,
+                                                 authentication["headerValuePrefix"] + "{{" + api["name"] + "-backend-secret}}")
+                                ingress = inbound.find('set-header[@name="' + authentication["headerName"] + '"][@exists-action="delete"]')
+                                if ingress is not None:
+                                    self.assertLess(list(inbound).index(ingress), list(inbound).index(backend))
+                                for request_id in inbound.findall("set-header"):
+                                    if request_id.get("name").casefold() == "x-ms-client-request-id" and request_id is not backend:
+                                        self.assertLess(list(inbound).index(backend), list(inbound).index(request_id))
                 self.assertNotIn("reference(", source_without_identity_binding(self.template))
 
     def test_http_without_cm_preserves_operation_backend_selection_and_header_cleanup(self):
         parameters = copy.deepcopy(self.parameters)
         api = next(api for api in parameters["apiDefinitions"] if api["name"] == "openai-inference-v1")
+        api["backendHeaders"]["x-ms-client-request-id"] = "synthetic-default-request-id"
         operation = api["operations"][0]
         operation["backendOverride"] = {name: copy.deepcopy(api[name]) for name in (
             "backendUrl", "backendService", "backendAudience", "backendAuthentication", "backendHeaders")}
         operation["backendOverride"]["backendUrl"] += "/alternate"
+        operation["backendOverride"]["backendHeaders"]["x-ms-client-request-id"] = "synthetic-operation-request-id"
         expanded = expand(self.template, parameters)
         policy = next(resource["properties"]["value"] for resource in expanded["resources"]
                       if resource["type"] == "Microsoft.ApiManagement/service/apis/policies"
@@ -416,10 +486,22 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertIsNotNone(selection.find("when/authentication-managed-identity"))
         self.assertIsNotNone(selection.find("otherwise/set-backend-service"))
         self.assertIsNotNone(selection.find("otherwise/authentication-managed-identity"))
-        self.assertEqual(inbound.find('set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
+        self.assertIsNone(inbound.find('set-variable[@name="gatewayCredentialConnection"]'))
+        self.assertNotIn("gatewayCredentialConnection", policy)
         self.assertFalse(any(node.get("fragment-id").startswith("core-credential-")
                              for node in root.iter("include-fragment")))
-        self.assertLess(list(inbound).index(inbound.find("base")), list(inbound).index(selection))
+        nodes = list(inbound)
+        preparation = inbound.find('include-fragment[@fragment-id="core-api-request-preparation"]')
+        self.assertIsNotNone(preparation)
+        self.assertEqual(nodes.index(preparation), nodes.index(inbound.find("base")) + 1)
+        self.assertLess(nodes.index(preparation), nodes.index(selection))
+        self.assertIsNone(inbound.find('set-header[@name="x-ms-client-request-id"]'))
+        for branch, expected in ((selection.find("when"), "synthetic-operation-request-id"),
+                                 (selection.find("otherwise"), "synthetic-default-request-id")):
+            request_id = branch.find('set-header[@name="x-ms-client-request-id"]')
+            self.assertIsNotNone(request_id)
+            self.assertEqual(request_id.find("value").text, expected)
+            self.assertLess(list(branch).index(branch.find("authentication-managed-identity")), list(branch).index(request_id))
         for header in ("Authorization", "X-Core-Connection-Session", "X-Core-Connection-Poll", "X-Core-Connection-Transaction"):
             self.assertIsNotNone(inbound.find('set-header[@name="' + header + '"][@exists-action="delete"]'))
 
@@ -467,16 +549,86 @@ class ApiPublicationSizeTests(unittest.TestCase):
         self.assertEqual(len(graph_policies), 1)
         for policy in graph_policies:
             root = ET.fromstring(policy)
-            connection = root.find('./inbound/choose/when/include-fragment[@fragment-id="core-credential-connection"]')
+            connection = root.find('./inbound/include-fragment[@fragment-id="core-credential-connection"]')
             self.assertIsNotNone(connection)
-            self.assertIsNotNone(root.find('./inbound/choose/when/include-fragment[@fragment-id="core-credential-session-use"]'))
-            self.assertIsNotNone(root.find('./outbound/choose/when/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
+            self.assertIsNotNone(root.find('./inbound/include-fragment[@fragment-id="core-credential-session-use"]'))
+            self.assertIsNotNone(root.find('./outbound/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
             self.assertNotEqual(root.find('./inbound/set-variable[@name="gatewayCredentialConnection"]').get("value"), "")
             self.assertEqual(root.findall('.//validate-azure-ad-token'), [])
         fragment_names = {r["name"].rsplit('/', 1)[-1] for r in expanded["resources"]
                           if r["type"] == "Microsoft.ApiManagement/service/policyFragments"}
         self.assertTrue({"core-credential-connection", "core-credential-connection-outbound"} <= fragment_names)
         self.assertFalse({"core-obo", "core-obo-outbound"} & fragment_names)
+
+    def test_disabled_http_cm_uses_the_same_direct_connection_flow_for_standard_and_additional_apis(self):
+        parameters = copy.deepcopy(self.parameters)
+        parameters["credentialLogin"] = copy.deepcopy(self.credential_login)
+        parameters["entraAuthentication"] = {"enabled": True}
+        graph = next(api for api in parameters["apiDefinitions"] if api["name"] == "graph-profile-v1")
+        graph["credentialConnection"]["enabled"] = False
+        extra = copy.deepcopy(graph)
+        extra.update(name="synthetic-extra-cm-api", path="contracts/extra-cm",
+                     displayName="Synthetic additional CM API")
+        parameters["apiDefinitions"].append(extra)
+        expanded = expand(self.template, parameters)
+        reader = SizeExpression("[true()]", self.template["variables"], functions=self.template.get("functions", []))
+        source = reader.resolve(self.template["outputs"]["entraPublicationSource"]["value"], expanded["parameters"])
+        source_policies = {entry["suffix"]: entry["value"] for entry in source["policies"]}
+        self.assertEqual(sum(api["name"] == extra["name"] for api in source["apis"]), 1)
+        for api in (graph, extra):
+            with self.subTest(api=api["name"]):
+                policy = next(resource["properties"]["value"] for resource in expanded["resources"]
+                              if resource["type"] == "Microsoft.ApiManagement/service/apis/policies"
+                              and resource["name"].endswith("/" + api["name"] + "/policy"))
+                self.assertEqual(source_policies["/apis/" + api["name"] + "/policies/policy"], policy)
+                root = ET.fromstring(policy)
+                inbound = root.find("inbound")
+                prepare = inbound.find('include-fragment[@fragment-id="core-api-request-preparation"]')
+                self.assertIsNotNone(prepare)
+                self.assertEqual(list(inbound).index(prepare), list(inbound).index(inbound.find("base")) + 1)
+                self.assertEqual([node.find("value").text for node in inbound.iter("set-header")
+                                  if node.get("name").casefold() == "x-ms-client-request-id"],
+                                 [text for name, text in api["backendHeaders"].items() if name.casefold() == "x-ms-client-request-id"])
+                configured = inbound.find('set-variable[@name="gatewayCredentialConnection"]')
+                decoded = json.loads(base64.b64decode(configured.get("value")))
+                self.assertEqual(decoded, api["credentialConnection"])
+                self.assertIs(decoded["enabled"], False)
+                # 無効はCM未設定ではありません。埋めた設定の直後に同じ接続・使用時確認へ進めます。
+                nodes = list(inbound)
+                position = nodes.index(configured)
+                self.assertEqual([(node.tag, node.get("fragment-id")) for node in nodes[position + 1:position + 4]],
+                                 [("include-fragment", "core-credential-connection"),
+                                  ("choose", None),
+                                  ("include-fragment", "core-credential-session-use")])
+                self.assertEqual(nodes[position + 2].get("id"), "core-credential-caller-required")
+                self.assertEqual([node.get("fragment-id") for node in inbound.iter("include-fragment")
+                                  if node.get("fragment-id").startswith("core-credential-")],
+                                 ["core-credential-connection", "core-credential-session-use"])
+                self.assertFalse(any("gatewayCredentialConnection" in node.get("condition", "")
+                                     for node in inbound.iter("when")))
+                self.assertEqual([node.tag for node in inbound.iter() if node.tag.startswith("authentication-")], [])
+                self.assertIsNotNone(inbound.find('set-backend-service[@backend-id="' + api["name"] + '-backend"]'))
+                self.assertIsNotNone(root.find('./outbound/include-fragment[@fragment-id="core-credential-connection-outbound"]'))
+        # 実配備する共通部品にもenabledの拒否と停止応答が残ることを確認します。
+        fragments = {resource["name"].rsplit("/", 1)[-1]: resource["properties"]["value"]
+                     for resource in expanded["resources"]
+                     if resource["type"] == "Microsoft.ApiManagement/service/policyFragments"}
+        for name in ("core-api-request-preparation", "core-credential-connection", "core-credential-session-use"):
+            self.assertEqual(source_policies["/policyFragments/" + name], fragments[name])
+        preparation = ET.fromstring(fragments["core-api-request-preparation"])
+        self.assertEqual([(node.get("exists-action"), node.find("value").text)
+                          for node in preparation.findall('set-header[@name="x-ms-client-request-id"]')],
+                         [("override", "@(context.RequestId.ToString())")])
+        connection = ET.fromstring(fragments["core-credential-connection"])
+        selection = "".join(connection.find('set-variable[@name="gatewayConnectionSelection"]').get("value").split())
+        self.assertIn('newJProperty("allowed",false)', selection)
+        self.assertIn('newJProperty("status",403)', selection)
+        self.assertIn('if(configured["enabled"]?.Type!=JTokenType.Boolean||!(bool)configured["enabled"]){returnresult.ToString();}', selection)
+        session_use = ET.fromstring(fragments["core-credential-session-use"])
+        denied = next(node for node in session_use.findall("./choose/when")
+                      if '!(bool)JObject.Parse((string)context.Variables["gatewayConnectionSelection"])["allowed"]'
+                      in node.get("condition", ""))
+        self.assertIsNotNone(denied.find("return-response"))
 
     def test_subscription_overrides_still_fit(self):
         parameters = copy.deepcopy(self.parameters)
@@ -504,6 +656,17 @@ class ApiPublicationSizeTests(unittest.TestCase):
         result = self.assert_split_budgets(parameters)
         source = result["source"]["expanded"]["outputs"]["entraPublicationSource"]["value"]
         self.assertEqual(sum(api["name"] == extra["name"] for api in source["apis"]), 1)
+        policy = next(entry["value"] for entry in source["policies"]
+                      if entry["suffix"] == "/apis/" + extra["name"] + "/policies/policy")
+        self.assertNotIn("gatewayCredentialConnection", policy)
+        inbound = ET.fromstring(policy).find("inbound")
+        self.assertIsNone(inbound.find('set-variable[@name="gatewayCredentialConnection"]'))
+        preparation = inbound.find('include-fragment[@fragment-id="core-api-request-preparation"]')
+        self.assertIsNotNone(preparation)
+        self.assertEqual(list(inbound).index(preparation), list(inbound).index(inbound.find("base")) + 1)
+        self.assertEqual([node.find("value").text for node in inbound.iter("set-header")
+                          if node.get("name").casefold() == "x-ms-client-request-id"],
+                         [text for name, text in extra["backendHeaders"].items() if name.casefold() == "x-ms-client-request-id"])
 
     def test_generated_profile_routes_and_live_operation_match_public_contracts(self):
         expanded = expand(self.template, copy.deepcopy(self.parameters))
@@ -550,13 +713,16 @@ class ApiPublicationSizeTests(unittest.TestCase):
             self.assertNotIn("__ARM_", value)
             root = ET.fromstring(value)
             operation_name = policy["name"].split("/")[-2]
-            raw_policy = (CORE / "apps/gateway/apim/policies/credential-login" / (operation_name + ".xml")).read_text()
-            expected = reader.resolve("[__bicep.renderCredentialLogin(parameters('fixturePolicy'), parameters('fixtureSettings'))]",
+            from policy_fixture_paths import policy_fixture_path
+            from deployment.helpers.apim_audit import render_audit_policy
+            raw_policy = render_audit_policy(policy_fixture_path(
+                CORE / "apps/gateway/apim/policies", "credential-login/" + operation_name + ".xml").read_text(encoding="utf-8"))
+            expected = reader.resolve("[__bicep.renderCredentialLoginOperation(parameters('fixturePolicy'), parameters('fixtureSettings'), '')]",
                                       {**expanded["parameters"], "fixturePolicy": raw_policy, "fixtureSettings": fixture_settings})
             self.assertEqual(ET.tostring(root), ET.tostring(ET.fromstring(expected)), operation_name)
             for response in root.findall(".//return-response"):
                 self.assertIsNotNone(response.find("set-header[@name='apim-request-id']"))
-        self.assert_split_budgets(parameters)
+        result = self.assert_split_budgets(parameters)
         diagnostics = [r for r in expanded["resources"] if r["type"].endswith("/diagnostics") and "/credential-manager-" in r["name"]]
         self.assertEqual(len(diagnostics), 2)
         for diagnostic in diagnostics:
@@ -567,6 +733,14 @@ class ApiPublicationSizeTests(unittest.TestCase):
         oversized_fragments={fragment['name'].rsplit('/',1)[-1]:len(fragment['properties']['value'].encode('utf-8'))
                              for fragment in fragments if len(fragment['properties']['value'].encode('utf-8'))>=32768}
         self.assertFalse(oversized_fragments,'Credential fragment UTF-8 bytes exceed the publication budget: '+str(oversized_fragments))
+        source_policies={entry['suffix']:entry['value'] for entry in result['source']['expanded']['outputs']['entraPublicationSource']['value']['policies']}
+        session_value=next(fragment['properties']['value'] for fragment in fragments
+                           if fragment['name'].endswith('/core-credential-session-use'))
+        self.assertEqual(source_policies['/policyFragments/core-credential-session-use'],session_value)
+        expected_session=credential_login.render_connection('credential-session-use.xml',fixture_settings,telemetry='synthetic-enabled')
+        self.assertEqual(ET.tostring(ET.fromstring(session_value)),ET.tostring(ET.fromstring(expected_session)))
+        self.assertLess(len(expected_session.encode('utf-8')),32768)
+        self.assertNotIn('__CORE_CREDENTIAL_USE_RESULT_CSHARP__',session_value)
         credential_audit_messages = []
         for fragment in fragments:
             value=fragment['properties']['value']

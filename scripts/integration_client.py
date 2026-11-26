@@ -32,12 +32,14 @@ import logging
 import math
 from pathlib import Path
 import re
-import stat
+import tempfile
 import time
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
-from deployment.helpers.paths import private_parent
+from deployment.helpers.paths import _no_links, private_parent
+from deployment.helpers.private_permissions import check_private_permissions, protect_new_path, regular_path
+from deployment.helpers.client_tls import verified_tls_context
 
 
 KNOWN_FIELDS = frozenset((
@@ -53,36 +55,33 @@ CORRELATION_HEADERS = ("apim-request-id", "request-id", "x-request-id", "x-ms-re
 
 def private_text(path: str | Path) -> str:
     """通常ファイル・所有者・600相当の権限・サイズを確認して資格情報を読む。"""
-    path = Path(path)
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-        raise ValueError("Protected file must be an owner-only regular file")
+    # Inputs may be explicitly selected outside the checkout. Inspect links
+    # without applying output-only boundaries or creating/repairing any paths.
+    path = Path(os.path.abspath(Path(path).expanduser()))
+    _no_links(path, Path(path.anchor))
+    info = regular_path(path)
+    check_private_permissions(path)
     if info.st_size > 1024 * 1024:
         raise ValueError("Protected file is too large")
-    return path.read_text().strip()
+    return path.read_text(encoding="utf-8").strip()
 
 
 def private_write(path: str | Path, value: str) -> None:
-    """リンクをたどらず、所有者だけが読める権限でローカルファイルを保存する。"""
+    """空の一時ファイルを保護してからテキストを書き、原子的に置換する。"""
     path = private_parent(Path(path))
-    # private_parent already rejects links for every component. Keep the
-    # additional atomic no-follow flag on platforms providing it; Windows does
-    # not expose O_NOFOLLOW and must use the checked protected parent instead.
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(path, flags, 0o600)
+    check_private_permissions(path.parent, directory=True)
+    if path.exists():
+        check_private_permissions(path)
+    descriptor, temporary = tempfile.mkstemp(prefix=".integration-", dir=path.parent)
     try:
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o600)
-        else:
-            os.chmod(path, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            protect_new_path(Path(temporary))
             stream.write(value)
-    except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        raise
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def endpoint(value: str) -> str:
@@ -293,7 +292,8 @@ async def rest_probe(url, kind, body, headers, *, stream=False, timeout=120, sto
     # 本文を保存しなくても、どの要求を確認したか辿れるようにする。
     request_headers = {**headers, "x-ms-client-request-id": result["requestId"], "Accept": "text/event-stream" if stream else "application/json"}
     try:
-        async with httpx2.AsyncClient(transport=transport or httpx2.AsyncHTTPTransport(retries=0),
+        async with httpx2.AsyncClient(transport=transport if transport is not None else
+                                     httpx2.AsyncHTTPTransport(verify=verified_tls_context(), retries=0),
                                      follow_redirects=False, timeout=timeout, trust_env=False) as client:
             result["httpAttempts"] += 1
             async with client.stream("GET" if kind == "connection" else "POST", endpoint(url),
@@ -471,21 +471,25 @@ def oauth_provider(url, config, redirect_handler, callback_handler, token_file=N
                                redirect_handler=approved_redirect, callback_handler=callback_handler)
 
 
-async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, token_file=None, timeout=120, transport=None) -> dict:
+async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, token_file=None, timeout=120, transport=None,
+                    strict_tool_contract=False) -> dict:
     """公式SDKでMCPの接続とツール実行を確認し、本文を除いた証跡を返す。
 
     認証のチャレンジと再送は記録するが、ツールの自動再実行やストリーム再開は拒否する。
     外部メタデータURLとPOST先を制限し、資格情報を別ホストへ送らない。
+    strict_tool_contractでは、object/string/requiredのPII schemaと一覧の完了をツール実行前に要求する。
     """
     import httpx2
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     started = time.monotonic()
+    pii_result_request_id = ""
     result = {"kind": "mcp", "status": None, "normalTerminal": False, "succeeded": False,
               "startedAt": datetime.now(timezone.utc).isoformat(),
               "authenticationMode": "sdk-oauth-pkce" if oauth_config else "manual-credential",
               "oauthFlowVerified": False, "httpSteps": [], "toolPostCount": 0,
-              "diagnosticsVersion": 2, "mcpPhase": "connecting", "toolsListReceived": False}
+              "diagnosticsVersion": 2, "mcpPhase": "connecting", "toolsListReceived": False,
+              "toolContractCheckedBeforeCall": False}
     url = endpoint(url)
     resource = urlsplit(url)
     shared_resource = f"{resource.scheme}://{resource.netloc}"
@@ -503,6 +507,8 @@ async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, t
                 "expectedNameSuffix": item.name.endswith("pii_redact_text"),
                 "inputSchemaObject": schema.get("type") == "object", "inputPropertyCount": len(properties),
                 "textPropertyPresent": "text" in properties, "languagePropertyPresent": "language" in properties,
+                "textPropertyString": isinstance(properties.get("text"), dict) and properties["text"].get("type") == "string",
+                "languagePropertyString": isinstance(properties.get("language"), dict) and properties["language"].get("type") == "string",
                 "requiredFieldsMatch": required_valid and set(required) == {"text", "language"}}
 
     async def request_hook(request):
@@ -577,7 +583,8 @@ async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, t
             result["status"] = response.status_code
 
     try:
-        async with httpx2.AsyncClient(transport=transport or httpx2.AsyncHTTPTransport(retries=0), auth=oauth,
+        async with httpx2.AsyncClient(transport=transport if transport is not None else
+                                     httpx2.AsyncHTTPTransport(verify=verified_tls_context(), retries=0), auth=oauth,
                                      headers=headers, timeout=timeout, trust_env=False, follow_redirects=False,
                                      event_hooks={"request": [request_hook], "response": [response_hook]}) as client:
             async with streamable_http_client(url, http_client=client, terminate_on_close=False) as (read, write):
@@ -601,6 +608,15 @@ async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, t
                     result["toolInputFieldsValid"] = tool is not None and set(tool.input_schema.get("properties", {})) == {"text", "language"}
                     if not result["toolPresent"] or not result["toolInputFieldsValid"]:
                         raise ValueError("Expected PII tool schema was not advertised")
+                    if strict_tool_contract:
+                        descriptor = tool_descriptor(tool)
+                        required = ("expectedNameEquals", "inputSchemaObject", "textPropertyPresent", "languagePropertyPresent",
+                                    "textPropertyString", "languagePropertyString", "requiredFieldsMatch")
+                        if (not result["toolsCapabilityAdvertised"] or result["toolsListMorePages"]
+                                or descriptor["inputPropertyCount"] != 2
+                                or any(descriptor[key] is not True for key in required)):
+                            raise ValueError("The complete PII tool contract was not advertised")
+                        result["toolContractCheckedBeforeCall"] = True
                     result["mcpPhase"] = "calling-tool"
                     called = await session.call_tool("pii_redact_text", arguments)
                     result["mcpPhase"] = "inspecting-tool-result"
@@ -612,6 +628,15 @@ async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, t
                     result["contractShapeValid"] = json_shape("pii", value)
                     result["normalTerminal"] = not called.is_error and result["contractShapeValid"]
                     result["succeeded"] = result["normalTerminal"]
+                    if strict_tool_contract and result["normalTerminal"] and result["toolContractCheckedBeforeCall"]:
+                        # PIIの固定結果にあるREST操作のIDだけを候補として保持します。
+                        # 外側MCPのHTTPヘッダーIDとは別で、所有は後続のnative監査で照合します。
+                        returned_id = value.get("requestId")
+                        if isinstance(returned_id, str) and re.fullmatch(
+                                r"[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}", returned_id):
+                            parsed_id = uuid.UUID(returned_id)
+                            if parsed_id.int != 0:
+                                pii_result_request_id = str(parsed_id)
                     if oauth_config:
                         steps = result["httpSteps"]
                         result["oauthFlowVerified"] = bool(result["succeeded"] and any(item["role"] == "mcp" and item["status"] == 401 for item in steps)
@@ -637,6 +662,9 @@ async def mcp_probe(url, arguments, headers, *, oauth_config=None, login=None, t
         result["failureLeaves"] = leaves
         result["rpcErrorCodes"] = rpc_errors
     steps = result["httpSteps"]
+    # SDKの後始末で失敗した場合も候補を出さず、通常のCLI/defaultには項目を追加しません。
+    if strict_tool_contract and result.get("succeeded") is True and result.get("normalTerminal") is True and pii_result_request_id:
+        result["piiResultRequestId"] = pii_result_request_id
     result["oauthResourceChallengeObserved"] = bool(oauth_config and any(item["role"] == "mcp" and item["status"] == 401 for item in steps))
     result["oauthTokenExchangeSucceeded"] = bool(oauth_config and any(item["role"] == "token" and item["status"] == 200 for item in steps))
     result["elapsedMs"] = round((time.monotonic() - started) * 1000, 2)
@@ -704,7 +732,12 @@ def main():
     finally:
         if login:
             login.close()
-    private_write(args.output, json.dumps(result, ensure_ascii=True, indent=2) + "\n")
+    try:
+        private_write(args.output, json.dumps(result, ensure_ascii=True, indent=2) + "\n")
+    except (ValueError, OSError):
+        print(json.dumps({"kind": args.kind, "succeeded": False,
+                          "failureClass": "client-output-storage", "probeResult": result}, ensure_ascii=True))
+        return 2
     print(json.dumps(result, ensure_ascii=True))
     return 0 if result["succeeded"] else 1
 

@@ -4,14 +4,19 @@
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import importlib.util
 import json
 import logging
+import os
 from pathlib import Path
 import socket
+import sys
 import tempfile
 import time
+import types
 import unittest
+from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import ProxyHandler, build_opener, urlopen
 
@@ -49,13 +54,19 @@ class SummaryTests(unittest.TestCase):
             path.write_text("secret-token")
             path.chmod(0o644)
             with self.assertRaises(ValueError): probe.auth_headers(path)
-            path.chmod(0o600)
+            path.unlink()
+            path.touch()
+            probe.protect_new_path(path)
+            path.write_text("secret-token", encoding="utf-8")
             self.assertEqual(probe.auth_headers(path)["Authorization"], "Bearer secret-token")
             path.write_text("secret\ninjection")
             with self.assertRaises(ValueError): probe.auth_headers(path)
             path.unlink()
-            path.symlink_to(Path(temp) / "other")
-            with self.assertRaises((ValueError, FileNotFoundError)): probe.auth_headers(path)
+            if os.name != "nt":
+                # Windows junction rejection has a native fixture in the
+                # portability suite and does not require symlink privileges.
+                path.symlink_to(Path(temp) / "other")
+                with self.assertRaises((ValueError, FileNotFoundError)): probe.auth_headers(path)
 
     def test_chat_partial_and_missing_finish_are_not_success(self):
         stream = probe.StreamSummary("chat", time.monotonic())
@@ -123,6 +134,107 @@ class SummaryTests(unittest.TestCase):
         for field in ("authorization_endpoint", "token_endpoint"):
             with self.assertRaises(ValueError):
                 probe.validate_oauth_config({**config, field: "https://unapproved.example/token"})
+
+
+class MCPContractTests(unittest.IsolatedAsyncioTestCase):
+    """実clientのtools/call手前を合成SDKで通し、型不一致の実行を防ぐ。"""
+    async def contract_probe(self, schema, *, next_cursor=None, strict=True, tools_capability=True):
+        url = "https://gateway.example.com/tools/pii/mcp/v1/mcp"
+        calls, clients = [], []
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                self.hooks = kwargs["event_hooks"]
+                clients.append(self)
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+
+        class FakeSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+            async def initialize(self):
+                return types.SimpleNamespace(capabilities=types.SimpleNamespace(tools={} if tools_capability else None))
+            async def list_tools(self):
+                return types.SimpleNamespace(tools=[types.SimpleNamespace(name="pii_redact_text", input_schema=schema)],
+                    next_cursor=next_cursor)
+            async def call_tool(self, name, arguments):
+                request = types.SimpleNamespace(method="POST", url=url, extensions={}, headers={},
+                    content=json.dumps({"method": "tools/call", "params": {"name": name, "arguments": arguments}}).encode())
+                await clients[0].hooks["request"][0](request)
+                calls.append((name, arguments))
+                return types.SimpleNamespace(structured_content=pii_result(), content=[], is_error=False)
+
+        @asynccontextmanager
+        async def fake_stream(*args, **kwargs):
+            yield object(), object()
+
+        http = types.ModuleType("httpx2")
+        http.AsyncClient = FakeClient
+        http.AsyncHTTPTransport = lambda **kwargs: object()
+        session_module = types.ModuleType("mcp.client.session")
+        session_module.ClientSession = FakeSession
+        stream_module = types.ModuleType("mcp.client.streamable_http")
+        stream_module.streamable_http_client = fake_stream
+        modules = {"httpx2": http, "mcp.client.session": session_module, "mcp.client.streamable_http": stream_module}
+        with mock.patch.dict(sys.modules, modules), \
+                mock.patch.object(probe, "verified_tls_context", return_value=object()):
+            result = await probe.mcp_probe(url, {"text": "SYNTHETIC-PII-INPUT", "language": "ja"},
+                {"Authorization": "Bearer <SYNTHETIC_TOKEN>"}, strict_tool_contract=strict)
+        return result, calls
+
+    def schema(self):
+        return {"type": "object", "properties": {"text": {"type": "string"}, "language": {"type": "string"}},
+                "required": ["text", "language"]}
+
+    async def test_strict_numeric_or_incomplete_schema_and_more_pages_never_call_tool(self):
+        changes = (
+            lambda s: s["properties"].update(text={"type": "number"}, language={"type": "integer"}),
+            lambda s: s["properties"].update(text={"type": ["string", "number"]}),
+            lambda s: s.update(type="array"), lambda s: s.update(required=["text"]),
+            lambda s: s["properties"].update(extra={"type": "string"}),
+        )
+        for change in changes:
+            schema = self.schema()
+            change(schema)
+            result, calls = await self.contract_probe(schema)
+            self.assertFalse(result["succeeded"])
+            self.assertFalse(result["toolContractCheckedBeforeCall"])
+            self.assertEqual(result["toolPostCount"], 0)
+            self.assertEqual(calls, [])
+            self.assertEqual(result["mcpPhase"], "checking-tool-schema")
+        for kwargs in ({"next_cursor": "synthetic-next-page"}, {"tools_capability": False}):
+            result, calls = await self.contract_probe(self.schema(), **kwargs)
+            self.assertFalse(result["succeeded"])
+            self.assertEqual(calls, [])
+            self.assertEqual(result["toolPostCount"], 0)
+
+    async def test_strict_string_contract_is_checked_before_exactly_one_call(self):
+        result, calls = await self.contract_probe(self.schema())
+        self.assertTrue(result["succeeded"])
+        self.assertTrue(result["toolContractCheckedBeforeCall"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["toolPostCount"], 1)
+        descriptor = result["toolDescriptors"][0]
+        self.assertTrue(descriptor["textPropertyString"])
+        self.assertTrue(descriptor["languagePropertyString"])
+        self.assertTrue(descriptor["requiredFieldsMatch"])
+        self.assertNotIn("SYNTHETIC-PII-INPUT", json.dumps(result))
+        self.assertNotIn("<SYNTHETIC_TOKEN>", json.dumps(result))
+
+    async def test_opt_in_preserves_existing_default_contract_behavior(self):
+        schema = self.schema()
+        schema["properties"]["text"] = {"type": "number"}
+        result, calls = await self.contract_probe(schema, strict=False)
+        self.assertTrue(result["succeeded"])
+        self.assertFalse(result["toolContractCheckedBeforeCall"])
+        self.assertFalse(result["toolDescriptors"][0]["textPropertyString"])
+        self.assertEqual(len(calls), 1)
 
 
 @unittest.skipUnless(httpx2, "Use .tools/integration-venv for the actual SDK fixture tests")
@@ -378,10 +490,11 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sdk_token_store_is_separate_owner_only_and_cache_is_not_initial_login(self):
         with tempfile.TemporaryDirectory() as temp:
+            probe.protect_new_path(Path(temp), directory=True)
             token_file = Path(temp) / "sdk-tokens.json"
             fresh, _ = await self.mcp_fixture(token_file=token_file)
             self.assertTrue(fresh["oauthFlowVerified"])
-            self.assertEqual(token_file.stat().st_mode & 0o777, 0o600)
+            probe.check_private_permissions(token_file)
             self.assertIn("tokens", json.loads(probe.private_text(token_file)))
             cached, authorization = await self.mcp_fixture(token_file=token_file)
             self.assertTrue(cached["succeeded"])
@@ -393,6 +506,7 @@ class HttpTests(unittest.IsolatedAsyncioTestCase):
             reserved.bind(("127.0.0.1", 0))
             port = reserved.getsockname()[1]
         with tempfile.TemporaryDirectory() as temp:
+            probe.protect_new_path(Path(temp), directory=True)
             url_file = Path(temp) / "login.url"
             config = {"redirect_uri": f"http://localhost:{port}", "authorization_endpoint": "https://identity.example/authorize"}
             login = probe.LoopbackLogin(config, url_file, 10)

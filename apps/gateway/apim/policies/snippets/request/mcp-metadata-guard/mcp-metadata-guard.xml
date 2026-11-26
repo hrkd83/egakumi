@@ -1,0 +1,4 @@
+<!-- 目的：MCPの個別認証メタデータを、下流や公開toolへ転送しません。 -->
+<!-- 処理：予約パスの終端または子パスだけを、共通認証より前に404で終了します。 -->
+<!-- APIのprefix・パスの深さ・大小文字による違いは従来どおり許容し、似た別名は拒否しません。 -->
+<choose><when condition="@(context.Request.OriginalUrl.Path.EndsWith(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) || context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource/&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>

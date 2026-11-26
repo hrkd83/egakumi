@@ -31,6 +31,7 @@ from urllib.parse import parse_qsl, urlsplit
 from uuid import UUID
 
 from deployment.helpers.paths import LocalPaths, private_output, private_parent
+from deployment.helpers.private_permissions import check_private_permissions, protect_new_path
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -45,45 +46,77 @@ def checked_auth_path(path: Path, *, private_input: bool = False) -> Path:
     try:
         target = private_output(path if path.is_absolute() else CORE / path, CORE)
         if target.exists():
-            info = target.stat()
-            if (not stat.S_ISREG(info.st_mode) or (private_input and info.st_mode & 0o077)
-                    or (hasattr(os, "getuid") and info.st_uid != os.getuid())):
-                raise SigninError("AUTH_UNSAFE_FILE")
+            # Inputs and existing outputs are private artifacts. Inspect the
+            # actual Windows DACL; never repair an existing shared file.
+            check_private_permissions(target)
         return target
-    except ValueError:
+    except (ValueError, OSError):
         raise SigninError("AUTH_UNSAFE_FILE") from None
 
 
-def signin_paths(environment_name: str | None) -> LocalPaths:
-    """実paramsを開かず、明示環境、AZURE_ENV_NAME、azd既定環境の順に選ぶ。"""
+def signin_paths(environment_name: str | None, *, runtime_root: Path | None = None) -> LocalPaths:
+    """実paramsを開かず、明示checkoutと環境から認証の保存先を選ぶ。"""
     try:
+        repository = CORE
+        if runtime_root is not None:
+            # Inspect the original path before resolve() can hide a junction.
+            # This selects storage only; source imports continue to use CORE.
+            repository = runtime_root.expanduser()
+            if not repository.is_absolute() or not repository.is_dir():
+                raise ValueError("Select an existing absolute runtime checkout")
+            private_output(repository / ".local/.signin-boundary", CORE)
+            private_output(repository / ".azure/config.json", CORE)
+            repository = repository.resolve()
+            for directory in (repository / ".local", repository / ".azure"):
+                if directory.exists():
+                    check_private_permissions(directory, directory=True)
         selected = environment_name or os.environ.get("AZURE_ENV_NAME")
         if not selected:
-            selection = private_output(CORE / ".azure/config.json", CORE)
+            selection = private_output(repository / ".azure/config.json", CORE)
             if selection.exists():
+                if runtime_root is not None:
+                    check_private_permissions(selection)
                 selected = json.loads(selection.read_text(encoding="utf-8")).get("defaultEnvironment")
         if not selected:
             raise ValueError("Select an environment")
-        return LocalPaths(CORE, selected)
+        runtime = LocalPaths(repository, selected)
+        if runtime_root is not None:
+            for directory in (runtime.root, runtime.secrets, runtime.state):
+                if directory.exists():
+                    check_private_permissions(directory, directory=True)
+        return runtime
     except (ValueError, OSError, AttributeError):
         raise SigninError("AUTH_INVALID_ARGUMENTS") from None
 
 
 def protected_text(path: Path, value: str) -> None:
     """所有者限定の一時ファイルへ書いて置換し、リンクや中途半端な出力を避ける。"""
-    path = checked_auth_path(path)
+    temporary = None
     try:
-        private_parent(path, CORE)
+        path = private_parent(checked_auth_path(path), CORE)
+        check_private_permissions(path.parent, directory=True)
+        handle, temporary = tempfile.mkstemp(prefix=".auth-", dir=path.parent)
+        try:
+            stream = os.fdopen(handle, "w", encoding="utf-8")
+        except BaseException:
+            os.close(handle)
+            raise
+        with stream:
+            protect_new_path(Path(temporary))
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except (OSError, UnicodeError):
+        raise SigninError("AUTH_FAILED") from None
     except ValueError:
         raise SigninError("AUTH_UNSAFE_FILE") from None
-    handle, temporary = tempfile.mkstemp(prefix=".auth-", dir=path.parent)
-    try:
-        os.fchmod(handle, 0o600)
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(value)
-        os.replace(temporary, path)
     finally:
-        Path(temporary).unlink(missing_ok=True)
+        if temporary is not None:
+            try:
+                Path(temporary).unlink(missing_ok=True)
+            except OSError:
+                raise SigninError("AUTH_FAILED") from None
 
 
 def read_protected_text(path: Path) -> str:
@@ -93,9 +126,11 @@ def read_protected_text(path: Path) -> str:
         handle = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(handle, "r", encoding="utf-8") as stream:
             info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            if not stat.S_ISREG(info.st_mode):
                 raise SigninError("AUTH_UNSAFE_FILE")
-            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+            # Preserve the POSIX descriptor checks without treating numeric
+            # Windows modes as evidence of an owner-only DACL.
+            if os.name != "nt" and (stat.S_IMODE(info.st_mode) != 0o600 or info.st_uid != os.geteuid()):
                 raise SigninError("AUTH_UNSAFE_FILE")
             return stream.read()
     except (OSError, UnicodeError):
@@ -318,6 +353,8 @@ def parse_arguments(argv=None):
         command.add_argument("--client-id", required=True)
         command.add_argument("--scope", action="append", required=True)
         command.add_argument("--environment", help="Local environment; default: AZURE_ENV_NAME or saved azd selection")
+        command.add_argument("--runtime-root", type=Path,
+                             help="Explicit absolute runtime checkout; source checkout stays unchanged")
         command.add_argument("--token-file", type=Path, help="Protected token output; default: .local/<environment>/secrets")
         command.add_argument("--cache-file", type=Path)
         if name == "user-token":
@@ -340,24 +377,32 @@ def parse_arguments(argv=None):
             raise SigninError("AUTH_INVALID_ARGUMENTS")
     elif len(arguments.scope) != 1 or not arguments.scope[0].endswith("/.default"):
         raise SigninError("AUTH_INVALID_ARGUMENTS")
-    runtime = signin_paths(arguments.environment)
-    arguments.login_url_file = checked_auth_path(runtime.state / "gateway-login-url.txt")
-    arguments.token_file = checked_auth_path(arguments.token_file if arguments.token_file else runtime.secrets / (
+    runtime = signin_paths(arguments.environment, runtime_root=arguments.runtime_root)
+
+    def auth_path(path: Path, *, private_input: bool = False) -> Path:
+        # Relative file arguments follow the explicitly selected runtime.
+        # Explicit external protected files remain allowed, but neither the
+        # source checkout nor the runtime checkout's public area is external.
+        target = checked_auth_path(path if path.is_absolute() else runtime.repository / path,
+                                   private_input=private_input)
+        if target.is_relative_to(CORE.resolve()) or target.is_relative_to(runtime.repository):
+            try:
+                runtime.checked(target)
+            except ValueError:
+                raise SigninError("AUTH_UNSAFE_FILE") from None
+        return target
+
+    arguments.login_url_file = auth_path(runtime.state / "gateway-login-url.txt")
+    arguments.token_file = auth_path(arguments.token_file if arguments.token_file else runtime.secrets / (
         "gateway-access-token.txt" if arguments.mode == "user-token" else "service-access-token.txt"))
     if arguments.cache_file is not None:
-        arguments.cache_file = checked_auth_path(arguments.cache_file, private_input=True)
+        arguments.cache_file = auth_path(arguments.cache_file, private_input=True)
     if arguments.mode == "app-token":
-        arguments.client_secret_file = checked_auth_path(arguments.client_secret_file, private_input=True)
+        arguments.client_secret_file = auth_path(arguments.client_secret_file, private_input=True)
     paths = [arguments.token_file, arguments.cache_file]
     if arguments.mode == "app-token":
         paths.append(arguments.client_secret_file)
     paths = [path for path in paths if path is not None]
-    try:
-        for path in paths:
-            if path.is_relative_to(CORE.resolve()):
-                runtime.checked(path)
-    except ValueError:
-        raise SigninError("AUTH_UNSAFE_FILE") from None
     if len(set(paths + [arguments.login_url_file])) != len(paths) + 1:
         raise SigninError("AUTH_INVALID_ARGUMENTS")
     return arguments

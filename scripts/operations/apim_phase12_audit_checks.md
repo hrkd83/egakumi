@@ -1,0 +1,23 @@
+# 工程1・2の監査照合
+
+[apim_phase12_audit_checks.py](apim_phase12_audit_checks.py)は、範囲を固定したKQLの組立と結果の純粋な評価を行います。ファイル、認証、Azure、VMにはアクセスしません。実行側は、選択済みの保護領域で要求のmanifest、資源ID、時刻、認証主体と実行モデルを明示します。
+
+`build_first_phase`はAPIMのnative行と必要項目だけのtraceを取得する2クエリー、`build_second_phase`はその実測のAppGW transaction IDを使う集計、Access、Firewall、Chat利用量の4クエリーを返します。実行は[管理VM経由の入口](apim_phase12_audit_vm.md)へ渡します。本文、全ヘッダー、URI、任意のエラーtraceは射影しません。
+
+`QueryRows`へ渡す前に実行側がtableの列と行を照合します。partial、切詰め、overflow、ログ欠測、未確認の数値をゼロへ置き換えず保留します。署名を検証した認証主体、APIと操作、HTTP結果、親子の明示参照、同じAppGW transaction、モデルを照合し、Chat利用量はprovider IDと有限の整数を確認します。
+
+MCPの外側HTTPとPII RESTは別の要求です。確認した固定PII結果のrequestIdまたはbackend応答IDだけを子の候補とし、子のnative API・操作・主体も個別に照合します。時刻の近さや利用者のparent claimで候補を補いません。
+
+生成PII MCPの`notifications/initialized`は、ツール実行を伴わない初期化通知です。`qualify_initialized_notification`が元のSDK記録で初期化・契約確認・後続の単一ツール呼出し・正常終了を確認した場合だけ、POST 202の通知受領を評価します。nativeの202、認証済みの受付と要求情報、完全な矛盾のないtrace、後段のAppGW 202を要求し、欠測や後続エラーは保留または不一致にします。この条件を`initialize`・`tools/list`・`tools/call`や外部MCPへ広げず、ツール実行とREST子要求の確認は別に維持します。
+
+WebSocketでは、接続クエリで指定するモデルと接続後のフレームで指定するモデルを区別します。Live／TranscriptionのセッションモデルはSDKの返却値を別に確認し、handshakeのモデル監査へ読み替えません。モデルが返却されなかった場合は、実モデルの一致を未証明として保持します。
+
+Code Interpreterの403は、本人のAPI認可が成立した後の機能拒否として確認します。不正Bearerの401は、明示した認証拒否とbackend未実行を確認します。未実行のobserverとWebRTCを合格へ含めず、HTTP受入、SDK確認、監査照合、全工程完了を区別します。
+
+## 呼出し側の限定した補足照合
+
+nativeの`BackendResponseCode`が`null`の場合は元の値を保持し、0へ補完しません。呼出し側で終端応答の補足証明を判断する場合は、厳密な管理読戻しと現在の生成世代を照合した正本で、該当分岐が即時`return-response`となり`forward-request`へ進まないことを確認します。同じ要求ID・認証主体・API／操作の完全な実traceでその分岐と終端を確認し、後続の転送・実行・エラーと矛盾しない場合だけ限定した証明を別に記録します。ログのbackend値0を観測したことには読み替えず、元の厳密評価と未確認値を保持します。
+
+元要求のnative・AppGW等に欠測が残る場合も、その要求の生記録と欠測を保持します。追加要求で代表ケースの充足を判断する場合は、同じケース・保護snapshot・認証済みの本人であることを照合し、追加要求のnative ID・実trace・AppGWへの一意な実リンクと機能結果を個別に確認します。追加要求によるケース確認は別の結果として管理し、元要求を相関確認済みとして上書きしません。時刻だけの結合や元のIDの置換は行いません。
+
+この補足照合は呼出し側の個別記録で扱い、公開の純粋評価部品の結果を変更しません。補足用の一時的な照合コードの使用を、正規helperへの統合済みや実環境全体の完了として扱いません。

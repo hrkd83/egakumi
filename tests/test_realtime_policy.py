@@ -15,15 +15,22 @@ import xml.etree.ElementTree as ET
 
 CORE = Path(__file__).resolve().parents[1]
 POLICIES = CORE / "apps/gateway/apim/policies"
+from deployment.helpers.apim_audit import render_audit_policy
+from test_common_authentication import csharp_expression
 PWSH = os.environ.get("WORKFORCE_PWSH") or shutil.which("pwsh")
 if not PWSH:
     candidate = CORE / ".tools/powershell/7.6.7/pwsh"
     PWSH = str(candidate) if candidate.exists() else None
 
 
+def policy_tree(filename):
+    return ET.ElementTree(ET.fromstring(render_audit_policy(
+        policy_fixture_path(POLICIES, filename).read_text(encoding="utf-8"))))
+
+
 def expression(filename, xpath, attribute=None):
     """XML内の指定位置からAPIMの実C#式を取り出す。想定外の形式なら試験を止める。"""
-    node = ET.parse(policy_fixture_path(POLICIES, filename)).find(xpath)
+    node = policy_tree(filename).find(xpath)
     value = node.get(attribute) if attribute else node.text
     assert value.strip().startswith("@{") and value.strip().endswith("}")
     return value.strip()[2:-1].replace("{{core-realtime-ticket-key}}", "a" * 128)
@@ -75,18 +82,27 @@ public static class TicketFixture {
   public static string CleanupUrl(Context context) { __CLEANUP_URL__ }
   public static bool CleanupAccepted(Context context) { __CLEANUP_ACCEPTED__ }
   public static string CleanupFailureBody(Context context) { __CLEANUP_FAILURE_BODY__ }
-  public static string Sign(Context context) { __SIGN__ }
-  public static bool Verify(Context context) { __VERIFY__ }
-  public static bool Observe(Context context) { __OBSERVE__ }
+  public static string AuthenticationResult(Context context) { __AUTH_RESULT__ }
+  public static string OwnerContext(Context context) { __OWNER_CONTEXT__ }
+  public static int SessionTtl(Context context) { __SESSION_TTL__ }
+  public static void PrepareOwner(Context context) {
+    context.Variables["realtimeOwnerContext"]=OwnerContext(context);
+    context.Variables["realtimeSessionTtlSeconds"]=SessionTtl(context);
+  }
+  public static string Sign(Context context) { PrepareOwner(context); __SIGN__ }
+  public static bool Verify(Context context) { PrepareOwner(context); __VERIFY__ }
+  public static bool Observe(Context context) { PrepareOwner(context); __OBSERVE__ }
   public static Context NewContext(string caller="caller-a",string contract="contract-a",int ttl=600,string tenant="11111111-1111-4111-8111-111111111111",string principal="22222222-2222-4222-8222-222222222222") {
     var context = new Context();
     context.Subscription = new Named { Id=caller };
+    context.Variables["gatewayOperationSelection"]="{}";
     context.Variables["gatewayDecision"] = new JObject(new JProperty("allowed",true),new JProperty("method","subscriptionKey"),new JProperty("callerId","subscription:"+caller),new JProperty("contractId",contract)).ToString();
     context.Variables["gatewayOperationConstraint"] = new JObject(new JProperty("sessionTtlSeconds",ttl),new JProperty("model","fixed-model"),new JProperty("maxOutputTokens",64)).ToString();
     context.Variables["gatewayValidatedToken"] = new Jwt { Claims = new Dictionary<string,string[]> { {"tid",new string[]{tenant}}, {"oid",new string[]{principal}} } };
     context.Variables["realtimeCallId"] = "rtc_synthetic-a";
     context.Variables["realtimeSdp"] = "v=0\r\ns=synthetic\r\n";
     context.Request.MatchedParameters["callId"] = "rtc_synthetic-a";
+    context.Variables["gatewayDecision"]=AuthenticationResult(context);
     return context;
   }
   public static bool Check(string token,string caller="caller-a",string contract="contract-a",string call="rtc_synthetic-a") {
@@ -99,8 +115,9 @@ public static class TicketFixture {
     var context=NewContext(); context.Subscription=null;
     var caller="user:"+tenant+":"+principal;
     context.Variables["gatewayEntraAuthenticationValidated"]=true;
-    context.Variables["gatewayUserAuthentication"]=new JObject(new JProperty("tenantId",tenant),new JProperty("principalId",principal),new JProperty("callerId",caller)).ToString();
+    context.Variables["gatewayUserAuthentication"]=new JObject(new JProperty("tenantId",tenant),new JProperty("principalId",principal),new JProperty("callerId",caller),new JProperty("allocationId",caller)).ToString();
     context.Variables["gatewayDecision"]=new JObject(new JProperty("allowed",true),new JProperty("method","user"),new JProperty("callerId",caller),new JProperty("verifiedTenantId",tenant),new JProperty("verifiedPrincipalId",principal)).ToString();
+    context.Variables["gatewayDecision"]=AuthenticationResult(context);
     return context;
   }
   public static string Run() {
@@ -126,7 +143,11 @@ public static class TicketFixture {
     checks["userTicketAsKey"]=Verify(userContext);
     userContext=NewUser(); userContext.Request.Headers["X-Core-Call-Ticket"]=new[]{userTicket};
     userContext.Variables["gatewayEntraAuthenticationValidated"]=false;
-    checks["unvalidatedUser"]=Verify(userContext);
+    userContext.Variables["gatewayUserAuthentication"]="{OLD_USER_JSON_MUST_NOT_BE_READ";
+    checks["preparedUserWithoutLegacyData"]=Verify(userContext);
+    userContext.Request.Url.Query["call_id"]=new[]{"rtc_synthetic-a"};
+    checks["preparedObserverWithoutLegacyData"]=Observe(userContext);
+    checks["preparedCreateWithoutLegacyData"]=!String.IsNullOrEmpty(Sign(userContext));
     foreach (var queryName in new [] {"handle", "X-Core-Call-Ticket", "call_id"}) {
       var withQuery = NewContext(); withQuery.Request.Headers["X-Core-Call-Ticket"] = new string[] {ticket};
       withQuery.Request.Url.Query[queryName] = new string[] {"synthetic-unused"};
@@ -154,17 +175,11 @@ public static class TicketFixture {
     sameLabels.Request.Url.Query["call_id"] = new string[]{"rtc_synthetic-a"};
     checks["observerOtherTenantSameLabels"] = Observe(sameLabels);
 
-    sameLabels = NewContext(); sameLabels.Request.Headers["X-Core-Call-Ticket"] = new string[]{ticket};
-    sameLabels.Subscription.Id = "another-subscription";
-    checks["otherSubscriptionSameLabels"] = Verify(sameLabels);
+    sameLabels = NewContext(caller:"another-subscription");
+    sameLabels.Request.Headers["X-Core-Call-Ticket"] = new string[]{ticket};
+    checks["otherAuthenticatedSubscription"]=Verify(sameLabels);
     sameLabels.Request.Url.Query["call_id"] = new string[]{"rtc_synthetic-a"};
-    checks["observerOtherSubscriptionSameLabels"] = Observe(sameLabels);
-    sameLabels = NewContext(); sameLabels.Request.Headers["X-Core-Call-Ticket"] = new string[]{ticket};
-    sameLabels.Subscription = null;
-    checks["missingVerifiedSubscription"] = Verify(sameLabels);
-    sameLabels = NewContext(); sameLabels.Request.Headers["X-Core-Call-Ticket"] = new string[]{ticket};
-    sameLabels.Subscription.Id = "";
-    checks["emptyVerifiedSubscription"] = Verify(sameLabels);
+    checks["observerOtherAuthenticatedSubscription"]=Observe(sameLabels);
     checks["otherContract"] = Check(ticket,"caller-a","contract-b");
     checks["otherCall"] = Check(ticket,"caller-a","contract-a","rtc_synthetic-b");
     checks["pathInjection"] = Check(ticket,"caller-a","contract-a","../../other");
@@ -291,7 +306,9 @@ public static class TicketFixture {
     context.Request.Url.Query["call_id"] = new string[] {"rtc_synthetic-a", "rtc_synthetic-b"};
     checks["observerDuplicateCall"] = Observe(context);
     context.Request.Url.Query["call_id"] = new string[] {"rtc_synthetic-a"};
-    context.Variables["gatewayDecision"] = new JObject(new JProperty("callerId","caller-b"),new JProperty("contractId","contract-a")).ToString();
+    context = NewContext(caller:"caller-b");
+    context.Request.Headers["X-Core-Call-Ticket"] = new string[] {ticket};
+    context.Request.Url.Query["call_id"] = new string[] {"rtc_synthetic-a"};
     checks["observerOtherCaller"] = Observe(context);
     return checks.ToString(Formatting.None);
   }
@@ -307,27 +324,29 @@ class PolicyStructureTests(unittest.TestCase):
         通常のC#コンパイルだけではこの制約を検出できないため、全公開XMLも調べる。
         """
         constructors = []
-        for path in [*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml")]:
-            for name in re.findall(r"\bthrow\s+new\s+([A-Za-z_][A-Za-z0-9_.]*)\s*\(", path.read_text()):
+        for path in [*POLICIES.glob("*.xml"), *(POLICIES / "api-templates").glob("*.xml"),
+                     *(policy_fixture_path(POLICIES, name) for name in
+                       ("realtime-create.xml", "realtime-hangup.xml", "realtime-observer.xml", "realtime-owner-context.xml"))]:
+            for name in re.findall(r"\bthrow\s+new\s+([A-Za-z_][A-Za-z0-9_.]*)\s*\(", render_audit_policy(path.read_text(encoding="utf-8"))):
                 constructors.append(name)
                 with self.subTest(policy=path.name, exception=name):
                     self.assertIn(name, ("Exception", "System.Exception"))
         self.assertTrue(constructors)
 
     def test_ticket_is_bound_to_verified_gateway_decision_and_not_forwarded(self):
-        create = ET.parse(POLICIES / "realtime-create.xml")
-        hangup = ET.parse(POLICIES / "realtime-hangup.xml")
+        create = policy_tree("realtime-create.xml")
+        hangup = policy_tree("realtime-hangup.xml")
         self.assertEqual(create.find("./inbound")[0].tag, "base")
         self.assertEqual(hangup.find("./inbound")[0].tag, "base")
         self.assertIsNotNone(hangup.find('./inbound/set-header[@name="X-Core-Call-Ticket"][@exists-action="delete"]'))
         self.assertIsNotNone(create.find('./outbound/set-header[@name="Cache-Control"]'))
-        observer = ET.parse(POLICIES / "realtime-observer.xml")
+        observer = policy_tree("realtime-observer.xml")
         self.assertEqual(observer.getroot().tag, "fragment")
         self.assertIsNotNone(observer.find('./set-header[@name="X-Core-Call-Ticket"][@exists-action="delete"]'))
 
     def test_authorization_and_offer_validation_precede_fixed_private_secret_request(self):
         """親の認証を先に完了し、利用者のURLや認証headerを短期token取得へコピーしない。"""
-        create = ET.parse(POLICIES / "realtime-create.xml")
+        create = policy_tree("realtime-create.xml")
         inbound = list(create.find("./inbound"))
         request = create.find("./inbound/send-request")
         self.assertEqual(inbound[0].tag, "base")
@@ -345,7 +364,7 @@ class PolicyStructureTests(unittest.TestCase):
 
     def test_secret_failure_is_fixed_and_audited_without_upstream_diagnostics(self):
         """下流のエラー本文・tokenを使わず、固定コードだけで失敗を報告する。"""
-        create = ET.parse(POLICIES / "realtime-create.xml")
+        create = policy_tree("realtime-create.xml")
         failure = create.find('./inbound/choose/when/set-variable[@name="gatewayAuditCode"]/..')
         self.assertEqual(failure.find('./set-variable[@name="gatewayAuditCode"]').get("value"), "REALTIME_TOKEN_ACQUISITION_FAILED")
         self.assertIsNotNone(failure.find('./include-fragment[@fragment-id="core-gateway-telemetry"]'))
@@ -398,9 +417,24 @@ class PolicyStructureTests(unittest.TestCase):
         self.assertNotIn("__REALTIME_CLIENT_SECRETS_URL__", xml)
         self.assertEqual(root.find("./inbound/send-request").get("mode"), "new")
 
+        def structure(node):
+            return (node.tag, tuple(sorted(node.attrib.items())), (node.text or '').strip(),
+                    tuple(structure(child) for child in node))
+
+        for operation, kind in (("realtime-create", "realtimeCreate"), ("realtime-hangup", "realtimeHangup")):
+            with self.subTest(operation=operation):
+                selected = {**api, "operations": [{"name": operation}],
+                            "authorization": {"operationConstraints": {operation: {"kind": kind}}}}
+                supplied["apiDefinitions"] = [selected]
+                actual = RealtimeExpression(expression, template["variables"], functions=template.get("functions", [])).evaluate(supplied, 0)
+                expected = render_audit_policy(policy_fixture_path(POLICIES, operation + ".xml").read_text(encoding="utf-8"))
+                expected = expected.replace("__REALTIME_CLIENT_SECRETS_URL__", "https://registered-fixture.openai.azure.com/openai/v1/realtime/client_secrets")
+                self.assertNotIn("__REALTIME_", actual)
+                self.assertEqual(structure(ET.fromstring(actual)), structure(ET.fromstring(expected)))
+
     def test_created_call_response_failures_have_fixed_audit_and_public_codes(self):
         """LocationとMIME/SDPの失敗を区別し、下流header・SDPを転記しない。"""
-        create = ET.parse(POLICIES / "realtime-create.xml")
+        create = policy_tree("realtime-create.xml")
         checks = create.findall("./outbound/choose/when/choose/when")
         self.assertEqual(len(checks), 2)
         self.assertEqual(checks[0].find('./set-variable[@name="gatewayAuditCode"]').get("value"), "REALTIME_CALL_LOCATION_INVALID")
@@ -421,7 +455,7 @@ class PolicyStructureTests(unittest.TestCase):
 
     def test_created_call_is_reclaimed_before_returning_an_invalid_answer(self):
         """既知の通話だけを一度終了し、終了未確認の復旧情報を秘密本文と分ける。"""
-        create = ET.parse(POLICIES / "realtime-create.xml")
+        create = policy_tree("realtime-create.xml")
         branch = create.findall("./outbound/choose/when/choose/when")[1]
         cleanup = branch.find("send-request")
         self.assertEqual(cleanup.attrib, {"mode": "new", "response-variable-name": "realtimeCleanupResponse", "timeout": "10", "ignore-error": "true"})
@@ -455,10 +489,13 @@ class PolicyExpressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not PWSH: raise unittest.SkipTest("PowerShell with Roslyn is required")
-        source = SOURCE.replace("__OFFER__", expression("realtime-create.xml", './inbound/set-variable[@name="realtimeSdp"]', "value"))
+        source = SOURCE.replace("__AUTH_RESULT__", expression("core-api-authentication-result.xml", './set-variable[@name="gatewayDecision"]', "value"))
+        source = source.replace("__OWNER_CONTEXT__", expression("realtime-owner-context.xml", './set-variable[@name="realtimeOwnerContext"]', "value"))
+        source = source.replace("__SESSION_TTL__", csharp_expression(policy_tree("realtime-owner-context.xml").find('./set-variable[@name="realtimeSessionTtlSeconds"]').get("value")))
+        source = source.replace("__OFFER__", expression("realtime-create.xml", './inbound/set-variable[@name="realtimeSdp"]', "value"))
         source = source.replace("__SECRET_REQUEST__", expression("realtime-create.xml", "./inbound/send-request/set-body"))
         source = source.replace("__SECRET_TOKEN__", expression("realtime-create.xml", './inbound/set-variable[@name="realtimeEphemeralToken"]', "value"))
-        raw_sdp = ET.parse(POLICIES / "realtime-create.xml").find("./inbound/set-body").text.strip()
+        raw_sdp = policy_tree("realtime-create.xml").find("./inbound/set-body").text.strip()
         assert raw_sdp.startswith("@(") and raw_sdp.endswith(")")
         source = source.replace("__RAW_SDP__", raw_sdp[2:-1])
         source = source.replace("__CALL_LOCATION__", expression("realtime-create.xml", './outbound/choose/when/set-variable[@name="realtimeCallId"]', "value"))
@@ -490,8 +527,12 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
         """ユーザーの通話をtid+oidへ固定し、別人とキー方式への転用を拒否する。"""
         for name in ("userOwner", "userObserver"):
             self.assertTrue(self.checks[name])
-        for name in ("otherUser", "otherUserTenant", "keyTicketAsUser", "userTicketAsKey", "unvalidatedUser"):
+        for name in ("otherUser", "otherUserTenant", "keyTicketAsUser", "userTicketAsKey"):
             self.assertFalse(self.checks[name])
+
+    def test_prepared_user_is_used_without_reopening_legacy_authentication_data(self):
+        for name in ("preparedUserWithoutLegacyData", "preparedObserverWithoutLegacyData", "preparedCreateWithoutLegacyData"):
+            with self.subTest(name=name): self.assertTrue(self.checks[name])
 
     def test_hangup_rejects_all_query_aliases_even_with_the_valid_owner_ticket(self):
         self.assertTrue(self.checks["owner"])
@@ -506,9 +547,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                      "observerOtherVerifiedPrincipalSameLabels", "observerOtherTenantSameLabels"):
             with self.subTest(name=name): self.assertTrue(self.checks[name])
 
-    def test_verified_subscription_cannot_be_replaced_by_a_caller_label(self):
-        for name in ("otherSubscriptionSameLabels","observerOtherSubscriptionSameLabels",
-                     "missingVerifiedSubscription","emptyVerifiedSubscription"):
+    def test_a_new_authenticated_subscription_cannot_use_another_owners_ticket(self):
+        for name in ("otherAuthenticatedSubscription", "observerOtherAuthenticatedSubscription"):
             with self.subTest(name=name): self.assertFalse(self.checks[name])
 
     def test_expired_modified_missing_and_forged_tickets_are_denied(self):

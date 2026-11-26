@@ -1,0 +1,13 @@
+<fragment>
+  <!-- ========== 社員用利用枠の取得（core-entra-user-profile） ========== -->
+  <!-- 目的：共通認証が保持した社員の利用枠を、回数・トークン計数へ渡します。 -->
+  <!-- 処理：同名C#で社員情報JSONを解析し、検査済みのlimitsをgatewaySubscriptionProfileへ渡します。 -->
+  <!-- 認証成功と社員IDは先行処理で確認済みです。認証結果JSONの再読取りとID再照合は行いません。 -->
+  <!-- 元設定は共通認証で検査済みです。元JSONの再読取り・一致比較は行わず、社員JSONの利用枠を取得します。 -->
+  <!-- 利用枠の構造・必須項目・型・範囲・期間の検査は、先行する共通認証へ集約します。 -->
+  <!-- 各枠の明示nullは維持し、内部JSONや利用枠オブジェクトを読めない場合は既存on-errorへ渡します。 -->
+  <!-- SQL照会・cache・入れ子のフラグメントは使用しません。 -->
+  <set-variable name="gatewaySubscriptionProfile" value="@{
+      __CORE_ENTRA_USER_PROFILE_CSHARP__
+    }" />
+</fragment>

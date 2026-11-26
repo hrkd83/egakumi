@@ -98,6 +98,33 @@ class SourceGenerationTests(unittest.TestCase):
         self.assertNotIn("entraPublicationSource", publication["outputs"])
         self.assertTrue(any(call[0] == "POST" and "/exportTemplate?" in call[1] for call in self.transport.calls))
 
+    def test_function_limit_counts_members_across_namespaces_before_any_request(self):
+        def group(namespace, count):
+            return {"namespace": namespace, "members": {
+                "function" + str(index): {"parameters": [], "output": {"type": "string", "value": "synthetic"}}
+                for index in range(count)}}
+
+        for count in (64, 65):
+            self.transport = GenerationTransport()
+            self.template["functions"] = [group("synthetic_one", 32), group("synthetic_two", count - 32)]
+            original = copy.deepcopy(self.template)
+            with self.subTest(function_count=count):
+                if count == 64:
+                    self.generate()
+                    self.assertTrue(self.transport.calls)
+                else:
+                    with self.assertRaisesRegex(ValueError, "ARM template function limit"):
+                        self.generate()
+                    self.assertEqual(self.transport.calls, [])
+                self.assertEqual(self.template, original)
+
+        for malformed in (None, {}, [None], [{"namespace": "synthetic", "members": []}]):
+            self.transport = GenerationTransport()
+            self.template["functions"] = malformed
+            with self.subTest(malformed=malformed), self.assertRaisesRegex(ValueError, "ARM function groups"):
+                self.generate()
+            self.assertEqual(self.transport.calls, [])
+
     def test_matching_successful_generation_is_reused_after_code_verification_without_redeployment(self):
         first = self.generate()
         self.transport.calls.clear()
@@ -284,7 +311,8 @@ class SplitPublicationOrderingTests(unittest.TestCase):
         base.template["outputs"]["publishedApiResourceIds"]["value"] = plan["publishedApiIds"]
         return base, plan, authentication, SplitInitialTransport(original)
 
-    def execute(self, base, plan, authentication, transport, checkpoints):
+    def execute(self, base, plan, authentication, transport, checkpoints, *, failed_closed_stage_attempt=None,
+                restore_recorded_mcp_tool=False):
         saved = bootstrap.transaction_checkpoint
         def checkpoint(*args, generation_id=None, **kwargs):
             value = saved(*args, **kwargs)
@@ -293,7 +321,9 @@ class SplitPublicationOrderingTests(unittest.TestCase):
             return value
         controller = bootstrap.BootstrapControllerTests("runTest")
         with mock.patch.object(bootstrap, "transaction_checkpoint", side_effect=checkpoint):
-            return controller.execute(base, plan, authentication, transport, checkpoints)
+            return controller.execute(base, plan, authentication, transport, checkpoints,
+                                      failed_closed_stage_attempt=failed_closed_stage_attempt,
+                                      restore_recorded_mcp_tool=restore_recorded_mcp_tool)
 
     def test_source_then_resource_graph_checkpoint_and_membership_preserve_the_existing_order(self):
         base, plan, authentication, transport = self.setup_split()

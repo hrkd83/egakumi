@@ -261,30 +261,45 @@ class InitialSerialCredentialTests(unittest.TestCase):
 
 
 class WindowsACLProcessTests(unittest.TestCase):
-    def test_acl_process_receives_path_via_environment_and_never_secret_content(self):
-        target = Path(tempfile.gettempdir()) / "synthetic-serial-acl-file"
-        with mock.patch.object(permissions, "locate_powershell", return_value="pwsh"), \
+    @contextlib.contextmanager
+    def native_worker(self, process=None, *, failure=None):
+        from test_private_acl_worker import FakeACLProcess
+        worker = permissions._WindowsACLWorker()
+        process = process or FakeACLProcess()
+        with mock.patch.object(permissions, "_WINDOWS_ACL_WORKER", worker), \
+             mock.patch.object(permissions, "locate_powershell", return_value="pwsh"), \
              mock.patch.object(permissions, "powershell_environment", return_value={}), \
-             mock.patch.object(permissions.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, '{"ownerOnly":true}', "")) as run:
+             mock.patch.object(permissions.subprocess, "Popen", **(
+                 {"side_effect": failure} if failure else {"return_value": process})) as launch:
+            try:
+                yield process, launch
+            finally:
+                worker.close()
+
+    def test_acl_process_receives_json_path_via_stdin_and_never_secret_content(self):
+        target = Path(tempfile.gettempdir()) / "synthetic-serial-acl-file"
+        with self.native_worker() as (process, launch):
             permissions._windows_owner_acl(target, protect_new=True)
-        argv = run.call_args.args[0]
-        environment = run.call_args.kwargs["env"]
+        argv = launch.call_args.args[0]
+        environment = launch.call_args.kwargs["env"]
         self.assertNotIn(str(target), argv)
-        self.assertEqual(environment["EGAKUMI_SERIAL_ACL_TARGET"], str(target))
-        self.assertEqual(environment["EGAKUMI_SERIAL_ACL_OPERATION"], "protect-new")
-        self.assertEqual(base64.b64decode(argv[-1]).decode("utf-16-le"), permissions._WINDOWS_ACL_SCRIPT)
+        self.assertNotIn("EGAKUMI_SERIAL_ACL_TARGET", environment)
+        self.assertNotIn("EGAKUMI_SERIAL_ACL_OPERATION", environment)
+        self.assertEqual(process.packets, [{"requestId": 1, "path": str(target), "operation": "protect-new"}])
+        self.assertEqual(base64.b64decode(argv[-1]).decode("utf-16-le"), permissions._WINDOWS_ACL_WORKER_SCRIPT)
         self.assertNotIn("password", permissions._WINDOWS_ACL_SCRIPT.lower())
-        self.assertTrue(run.call_args.kwargs["capture_output"])
+        self.assertEqual(launch.call_args.kwargs["stderr"], subprocess.DEVNULL)
 
     def test_failed_acl_check_is_not_treated_as_chmod_protection(self):
-        with mock.patch.object(permissions, "locate_powershell", return_value="pwsh"), \
-             mock.patch.object(permissions, "powershell_environment", return_value={}), \
-             mock.patch.object(permissions.subprocess, "run", return_value=subprocess.CompletedProcess([], 3, "", "Untrusted synthetic metadata")):
+        from test_private_acl_worker import FakeACLProcess
+        process = FakeACLProcess(lambda request, child: "Untrusted synthetic metadata\n")
+        with self.native_worker(process):
             with self.assertRaises(permissions.PrivatePermissionsError) as failure:
                 permissions._windows_owner_acl(Path("synthetic-file"))
         self.assertNotIn("Untrusted synthetic metadata", str(failure.exception))
 
     def test_acl_timeout_malformed_response_or_launch_failure_has_a_fixed_error(self):
+        from test_private_acl_worker import FakeACLProcess
         failures = [
             subprocess.TimeoutExpired("synthetic-untrusted-command", 20, output="synthetic-private-output"),
             OSError("synthetic-private-launch-error"),
@@ -292,11 +307,10 @@ class WindowsACLProcessTests(unittest.TestCase):
             subprocess.CompletedProcess([], 0, '{"ownerOnly":false}', ""),
         ]
         for result in failures:
-            with self.subTest(failure_type=type(result).__name__), \
-                 mock.patch.object(permissions, "locate_powershell", return_value="pwsh"), \
-                 mock.patch.object(permissions, "powershell_environment", return_value={}), \
-                 mock.patch.object(permissions.subprocess, "run", **(
-                     {"side_effect": result} if isinstance(result, Exception) else {"return_value": result})):
+            process = (None if isinstance(result, Exception)
+                       else FakeACLProcess(lambda request, child, value=result.stdout: value + "\n"))
+            with self.subTest(failure_type=type(result).__name__), self.native_worker(
+                    process, failure=result if isinstance(result, Exception) else None):
                 with self.assertRaises(permissions.PrivatePermissionsError) as failure:
                     permissions._windows_owner_acl(Path("synthetic-file"))
                 self.assertEqual(str(failure.exception), "Private runtime storage requires owner-only Windows ACLs")

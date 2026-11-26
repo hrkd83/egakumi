@@ -26,6 +26,18 @@ class StandardAuthorizationConfigurationTests(unittest.TestCase):
         self.assertEqual(auth["mode"],"subscriptionKey")
         self.assertEqual(set(auth), {"mode", "operationConstraints"})
 
+    def test_formal_configuration_still_rejects_unknown_or_missing_authorization_mode(self):
+        for missing in (False, True):
+            with self.subTest(missing=missing):
+                raw = api_fixture()
+                authorization = raw["apiDefinitions"][0]["authorization"]
+                if missing:
+                    authorization.pop("mode")
+                else:
+                    authorization["mode"] = "unknown"
+                with self.assertRaisesRegex(configuration.ConfigurationError, r"authorization\.mode"):
+                    configuration.normalize_configuration(raw, base_directory=CORE / "config")
+
 
 class StandardAuthorizationExpressionTests(unittest.TestCase):
     @classmethod
@@ -121,9 +133,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
             for protocol in ("http","protocol","mcp"):
                 self.assertFalse(self.results[name][protocol]["allowed"],(name,protocol))
 
-    def test_http_inherits_common_authentication_without_using_the_mode_configuration(self):
+    def test_all_templates_inherit_common_authentication_without_using_the_mode_configuration(self):
         for name in ("unsupported-mode", "missing-mode"):
-            self.assertEqual(self.results[name]["http"], self.results["key"]["http"], name)
-            # ほかのテンプレートに残る方式確認は、今回の変更対象ではありません。
-            for protocol in ("protocol", "mcp"):
-                self.assertFalse(self.results[name][protocol]["allowed"], (name, protocol))
+            for protocol in ("http", "protocol", "mcp"):
+                self.assertEqual(self.results[name][protocol], self.results["key"][protocol], (name, protocol))

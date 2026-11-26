@@ -178,7 +178,7 @@ API定義の認可方式は`subscriptionKey`に統一する。`operationConstrai
 | 共通認証とエラー応答 | `apps/gateway/apim/policies/service.xml`、`scripts/deployment/helpers/apim_authentication.py`、`scripts/render_apim_policy.py` |
 | APIとProductと購読 | `apps/gateway/apim/api-publication.bicep`、`scripts/deploy_gateway.py`、`scripts/api_migration.py` |
 | API固有の認可と転送 | `apps/gateway/apim/policies/api-templates/gateway.xml`、`protocol.xml`、`mcp.xml`、`rate-limit.xml`、`audit-context.xml`、`gateway-telemetry.xml` |
-| 音声のセッション所有者 | `apps/gateway/apim/policies/realtime-create.xml`、`realtime-hangup.xml`、`realtime-observer.xml`、関連するLive・WebRTC処理 |
+| 音声のセッション所有者 | `apps/gateway/apim/policies/operation-policies/realtime/realtime-create.xml`、`operation-policies/realtime/realtime-hangup.xml`、`fragments/authentication/core-realtime-observer/core-realtime-observer.xml`、関連するLive・WebRTC処理 |
 | 入力検査とSchema | `scripts/deployment/helpers/configuration.py`、`schemas/params.schema.json`、`configuration.schema.json`、`options.schema.json` |
 | 公開例と生成補助 | `params/test.example.json`、`production.example.json`、`config/test.json`、`production.json`、`apps/gateway/apim/apis/`、`scripts/configure_trial.py`、`prepare_coverage.py` |
 | 名前付きの値の配備 | `apps/gateway/deploy/apim-settings.bicep`、`apps/gateway/deploy/main.bicep`、`scripts/deploy_gateway.py`。共有Key Vaultの秘密はCoreの構築・秘密入力で準備する |

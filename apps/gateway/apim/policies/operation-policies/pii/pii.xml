@@ -1,0 +1,123 @@
+<policies>
+  <!--
+    PII マスキング用の操作ポリシーです。親の共通ポリシーで認証した後に、本文を安全な固定契約へ変換します。
+    入力サイズと形式を検査し、Foundry の PII 解析へ渡して、応答を必要なマスキング結果へ絞ります。
+    元の個人情報・解析結果の生データを監査ログやエラー本文に含めず、キャッシュも許可しません。
+  -->
+  <inbound>
+    <base />
+    <!-- Public input is never a native Language request. Only this operation
+         constructs the fixed downstream request. The API-level gate runs first. -->
+    <set-variable name="piiSettings" value="@(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__PII_SETTINGS_BASE64__&quot;)))" />
+    <set-variable name="piiDocumentId" value="@(context.RequestId.ToString(&quot;N&quot;))" />
+    <!-- 入力の JSON 形式・必須項目・言語・サイズを先に確認。解析 API を呼ぶ前に不正入力を拒否します。 -->
+    <set-variable name="piiInputStatus" id="core-pii-input-validation" value="@{
+      __PII_INPUT_STATUS_CSHARP__
+    }" />
+    <choose>
+      <when condition="@((int)context.Variables[&quot;piiInputStatus&quot;] != 200)">
+        <set-variable name="gatewayAuditPhase" value="rejected" />
+        <set-variable name="gatewayAuditCode" value="@((int)context.Variables[&quot;piiInputStatus&quot;] == 413 ? &quot;REQUEST_TOO_LARGE&quot; : &quot;INVALID_REQUEST&quot;)" />
+        <set-variable name="gatewayAuditStatus" value="@((int)context.Variables[&quot;piiInputStatus&quot;])" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="@((int)context.Variables[&quot;piiInputStatus&quot;])" reason="Invalid PII input" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+          <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["piiInputStatus"] == 413 ? "PiiInputTooLarge" : "PiiInvalidInput"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+        </return-response>
+      </when>
+    </choose>
+    <set-variable name="piiInputBytes" value="@(context.Request.Body.As&lt;byte[]&gt;(preserveContent: true).Length)" />
+    <set-variable name="piiLanguage" value="@((string)context.Request.Body.As&lt;JObject&gt;(preserveContent: true)[&quot;language&quot;])" />
+    <!-- 内部設定だけを専用setterで取得し、固定要求の本文読取り失敗と分類を分けます。 -->
+    <set-variable name="piiRequestModelVersion" id="core-pii-request-settings" value="@{
+      __PII_REQUEST_SETTINGS_CSHARP__
+    }" />
+    <set-body>@{
+      __PII_REQUEST_CSHARP__
+    }</set-body>
+    <!-- The provider's 1 MB limit includes the server-owned Language envelope,
+         not only the caller's compact text/language object. -->
+    <choose id="core-pii-native-request-size"><when condition="@(context.Request.Body.As&lt;byte[]&gt;(preserveContent: true).Length &gt; 1000000)">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="REQUEST_TOO_LARGE" />
+      <set-variable name="gatewayAuditStatus" value="@(413)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response><set-status code="413" reason="PII input exceeds provider request size" />
+        <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+        <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+        <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", "PiiInputTooLarge"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+      </return-response>
+    </when></choose>
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <rewrite-uri template="/language/:analyze-text?api-version=2025-11-01" copy-unmatched-params="false" />
+  </inbound>
+  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <backend><base /></backend>
+  <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
+  <outbound>
+    <!-- 親HTTPのBACKEND_RESPONSEは提供元の状態を先に記録します。
+         この後の公開結果変換とPII専用監査は、異なる状態・結果を記録するため両方維持します。 -->
+    <base />
+    <!-- Shape only the REST result. The generated MCP server references this
+         operation and never buffers/transforms its JSON-RPC or SSE stream. -->
+    <!-- 下流の待ち時間ヘッダーを必要な形式だけで受け取り、自由な値をそのまま応答へ反射しません。 -->
+    <set-variable name="piiRetryAfter" value="@{
+      __PII_RETRY_AFTER_CSHARP__
+    }" />
+    <!-- 下流応答をマスキング API の固定出力に変換します。解析失敗時は元の入力やサービス生エラーを返しません。 -->
+    <set-variable name="piiResult" id="core-pii-result-settings" value="@{
+      __PII_RESULT_CSHARP__
+    }" />
+    <set-status code="@((int)JObject.Parse((string)context.Variables[&quot;piiResult&quot;])[&quot;status&quot;])" reason="PII processing result" />
+    <!-- 公開結果へ変換後の状態をPII_REDACTED／PII_PROCESSING_FAILEDへ記録し、
+         続くcore-pii traceは既存の固定サイズ・件数・モデル版だけを記録します。 -->
+    <set-variable name="gatewayAuditPhase" value="backend-response" />
+    <set-variable name="gatewayAuditCode" value="@(context.Response.StatusCode == 200 ? &quot;PII_REDACTED&quot; : &quot;PII_PROCESSING_FAILED&quot;)" />
+    <set-variable name="gatewayAuditStatus" value="@(context.Response.StatusCode)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <set-variable name="piiAuditModelVersion" id="core-pii-audit-settings" value="@{
+      __PII_AUDIT_SETTINGS_CSHARP__
+    }" />
+    <trace source="core-pii" severity="information"><message>@{
+      __PII_AUDIT_CSHARP__
+    }</message></trace>
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+    <set-header name="Retry-After" exists-action="delete" />
+    <set-header name="x-ms-error-code" exists-action="delete" />
+    <set-header name="Set-Cookie" exists-action="delete" />
+    <choose>
+      <when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;piiRetryAfter&quot;]))">
+        <set-header name="Retry-After" exists-action="override"><value>@((string)context.Variables["piiRetryAfter"])</value></set-header>
+      </when>
+    </choose>
+    <set-body>@{
+      __PII_OUTPUT_CSHARP__
+    }</set-body>
+  </outbound>
+  <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
+  <on-error>
+    <!-- 共通Entraトークン検証の失敗だけ、専用エラー処理より先に認証拒否の監査と401へ渡します。 -->
+    __OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__
+    __RATE_LIMIT_ERROR_XML__
+    __AUDIT_BODY_MODEL_ERROR_XML__
+    <!-- No inherited error message may copy request text, entity values or
+         upstream diagnostics into the public REST/MCP result. -->
+    <set-variable name="gatewayAuditPhase" value="policy-error" />
+    <!-- 内部設定を取得する固定IDだけ500へ分け、他の認証・転送失敗の分類を維持します。 -->
+    <set-variable name="gatewayAuditCode" value="@(context.LastError.PolicyId == &quot;core-pii-input-validation&quot; || context.LastError.PolicyId == &quot;core-pii-request-settings&quot; || context.LastError.PolicyId == &quot;core-pii-audit-settings&quot; || context.LastError.PolicyId == &quot;core-pii-result-settings&quot; ? &quot;PII_SETTINGS_INVALID&quot; : &quot;POLICY_ERROR&quot;)" />
+    <set-variable name="gatewayAuditStatus" value="@(context.LastError.PolicyId == &quot;core-pii-input-validation&quot; || context.LastError.PolicyId == &quot;core-pii-request-settings&quot; || context.LastError.PolicyId == &quot;core-pii-audit-settings&quot; || context.LastError.PolicyId == &quot;core-pii-result-settings&quot; ? 500 : context.LastError.Source == &quot;authorization&quot; &amp;&amp; (context.LastError.Reason == &quot;SubscriptionKeyNotFound&quot; || context.LastError.Reason == &quot;SubscriptionKeyInvalid&quot;) || context.LastError.Source == &quot;validate-azure-ad-token&quot; || context.LastError.Source == &quot;validate-jwt&quot; ? 401 : context.LastError.Reason == &quot;Timeout&quot; || context.LastError.Reason == &quot;BackendConnectionTimeout&quot; ? 504 : 502)" />
+    <include-fragment fragment-id="core-gateway-telemetry" />
+    <return-response>
+      <set-status code="@((int)context.Variables[&quot;gatewayAuditStatus&quot;])" reason="PII processing failed" />
+      <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+      <set-body>@(new JObject(new JProperty("error", new JObject(new JProperty("code", (int)context.Variables["gatewayAuditStatus"] == 500 ? "PiiProcessingFailed" : (int)context.Variables["gatewayAuditStatus"] == 401 ? "PiiAuthenticationFailed" : (int)context.Variables["gatewayAuditStatus"] == 504 ? "PiiTimeout" : "PiiUpstreamFailure"))), new JProperty("requestId", context.RequestId.ToString())).ToString(Newtonsoft.Json.Formatting.None))</set-body>
+    </return-response>
+  </on-error>
+</policies>

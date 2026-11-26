@@ -1,0 +1,8 @@
+<fragment>
+  <!-- 登録済みMCPだけの終了操作を識別します。新しいtool実行を免除するheaderは受け付けません。
+       DELETEはsession終了、notifications/cancelledは要求済み処理の取消です。
+       この判定の後も、backend側のJWT・session所有者検査を省略しません。 -->
+  <set-variable name="gatewayRateLimitExempt" value="@{
+    __MCP_RATE_CLEANUP_CSHARP__
+  }" />
+</fragment>

@@ -22,9 +22,12 @@ def executable_tokens(expression):
 
 class TelemetrySourceExplanationTests(unittest.TestCase):
     def test_canonical_explanations_remain_visible_and_copies_keep_the_reference(self):
-        raw = policy_fixture_path(POLICIES, "core-gateway-telemetry.xml").read_text(encoding="utf-8")
+        xml_path = policy_fixture_path(POLICIES, "core-gateway-telemetry.xml")
+        raw = xml_path.read_text(encoding="utf-8")
         self.assertIn(CORE_GATEWAY_TELEMETRY_MARKER, raw)
-        descriptions = [line.strip() for line in raw.splitlines() if line.lstrip().startswith("/* 説明：")]
+        source = xml_path.with_suffix(".cs").read_text(encoding="utf-8")
+        descriptions = [line.strip()[2:].strip() for line in source.splitlines()
+                        if line.lstrip().startswith("// 説明：")]
         self.assertTrue(descriptions)
         full = render_audit_policy(raw)
         for description in descriptions:

@@ -17,6 +17,8 @@ from test_gateway_limits_telemetry import PWSH
 from test_standard_apis import standard_fixture
 from deployment.helpers.configuration import normalize_configuration
 from deployment.helpers.apim_document_contract import DOCUMENT_API_VERSION, DOCUMENT_API_VERSION_MARKER
+from deployment.helpers.apim_audit import render_audit_policy
+from test_credential_login import operation_error_methods,operation_error_cases,assert_shared_operation_error
 
 ROOT = Path(__file__).resolve().parents[1]
 GATEWAY = ROOT / 'apps/gateway/apim/policies/api-templates/gateway.xml'
@@ -42,7 +44,7 @@ def legacy_scope(owner):
 
 def statement(path, xpath, attribute=None):
     """実XMLの単文・複文式を、テスト用C#メソッドの本体として読み込む。"""
-    node = (path if isinstance(path, ET.Element) else ET.parse(path)).find(xpath)
+    node = (path if isinstance(path, ET.Element) else ET.fromstring(render_audit_policy(path.read_text(encoding='utf-8')))).find(xpath)
     value = (node.get(attribute) if attribute else node.text).strip().replace(DOCUMENT_API_VERSION_MARKER, DOCUMENT_API_VERSION)
     if value.startswith('@{') and value.endswith('}'):
         return value[2:-1]
@@ -76,10 +78,12 @@ public sealed class Response {
  public Dictionary<string,string[]> Headers=new Dictionary<string,string[]>(StringComparer.OrdinalIgnoreCase);
 }
 public sealed class Named { public string Id; }
+public sealed class LastError { public string Source="",Reason="",PolicyId=""; }
 public sealed class Context {
  public Dictionary<string,object> Variables=new Dictionary<string,object>();
  public Request Request=new Request(); public Response Response;
  public Named Api=new Named{Id="synthetic-document-api"}; public Named Subscription=new Named{Id="synthetic-owner"};
+ public Named Operation=new Named{Id="synthetic-document-operation"}; public LastError LastError=new LastError();
  public Guid RequestId=Guid.Parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
 }
 public static class Extensions {
@@ -87,6 +91,7 @@ public static class Extensions {
  public static string GetValueOrDefault(this Dictionary<string,string> source,string key,string fallback) { return source.ContainsKey(key)?source[key]:fallback; }
 }
 public static class DocumentFixture {
+ __OPERATION_ERROR_METHODS__
  static string AuthenticationResult(Context context) { __AUTHENTICATION_RESULT__ }
  static bool AuthenticationFailed(Context context) { __AUTHENTICATION_FAILED__ }
  static string AuthenticationRequestId(Context context) { __AUTHENTICATION_REQUEST_ID__ }
@@ -182,7 +187,11 @@ public static class DocumentFixture {
   var results=new JObject();
   foreach(JObject item in JArray.Parse(input)) {
    var c=New(item); var mode=(string)item["mode"]??"input"; var name=(string)item["id"];
-   if(mode=="input") {
+   if(mode=="error") {
+    var error=(JObject)item["lastError"];c.LastError.Source=(string)error["source"];c.LastError.Reason=(string)error["reason"];c.LastError.PolicyId=(string)error["policyId"];
+    var enabled=(bool?)item["entraEnabled"]!=false;
+    results[name]=(string)item["errorOperation"]=="start"?(enabled?DocumentStartError(c):DocumentStartErrorDisabled(c)):(enabled?DocumentStatusError(c):DocumentStatusErrorDisabled(c));
+   } else if(mode=="input") {
     var bytes=Convert.FromBase64String((string)item["data"]??"");
     if(item["requestSize"]!=null) { bytes=Enumerable.Repeat((byte)32,(int)item["requestSize"]).ToArray(); Encoding.ASCII.GetBytes("%PDF-").CopyTo(bytes,0); }
     c.Request.Body=(bool?)item["noBody"]==true?null:new Body{Data=bytes};
@@ -293,6 +302,7 @@ public static class DocumentFixture {
     var evaluation=Evaluate(c);
     c.Variables["documentPollEvaluation"]=evaluation;
     results[name]=JObject.Parse(evaluation);
+    results[name]["responseReads"]=c.Response==null||c.Response.Body==null?0:c.Response.Body.Reads;
     results[name]["settingsAudit"]=PollSettingsError(c)?new JObject(
       new JProperty("phase",__POLL_AUDIT_PHASE__),new JProperty("code",__POLL_AUDIT_CODE__),new JProperty("status",PollAuditStatus(c))):null;
    }
@@ -414,6 +424,19 @@ class DocumentAnalysisPolicyTests(unittest.TestCase):
             {'id': 'poll-settings-type', 'mode': 'poll', 'status': 200, 'body': analysis_result(), 'settingsValue': 123},
             {'id': 'poll-settings-json', 'mode': 'poll', 'status': 200, 'body': analysis_result(), 'settingsValue': '{SENTINEL_INTERNAL_SETTINGS'},
         ])
+        for label,value in (('missing',{k:v for k,v in SETTINGS.items() if k!='maxResponseBytes'}),
+                ('null',{**SETTINGS,'maxResponseBytes':None}),('type',{**SETTINGS,'maxResponseBytes':'SENTINEL_INTERNAL_LIMIT'}),
+                ('overflow',{**SETTINGS,'maxResponseBytes':2147483648})):
+            cls.cases.append({'id':'poll-settings-limit-'+label,'mode':'poll','status':200,'body':analysis_result(),'settingsValue':json.dumps(value)})
+        for label,value in (('missing',{k:v for k,v in SETTINGS.items() if k!='apiVersion'}),
+                ('null',{**SETTINGS,'apiVersion':None}),('type',{**SETTINGS,'apiVersion':20241130}),
+                ('empty',{**SETTINGS,'apiVersion':''}),('blank',{**SETTINGS,'apiVersion':' '})):
+            for upstream_version in ('present','missing'):
+                response=analysis_result()
+                if upstream_version=='missing':response['analyzeResult'].pop('apiVersion')
+                cls.cases.append({'id':'poll-settings-version-'+label+'-'+upstream_version,'mode':'poll','status':200,'body':response,'settingsValue':json.dumps(value)})
+        no_version=analysis_result();no_version['analyzeResult'].pop('apiVersion')
+        cls.cases.append({'id':'poll-upstream-version-missing','mode':'poll','status':200,'body':no_version})
         for delta in (-1, 0, 1):
             cls.cases.append({'id': 'public-bytes-' + str(delta), 'mode': 'poll', 'status': 200, 'publicBytes': SETTINGS['maxResponseBytes'] + delta})
         cls.cases.append({'id': 'native-oversize', 'mode': 'poll', 'status': 200, 'nativeBytes': SETTINGS['maxResponseBytes'] + 1})
@@ -462,7 +485,20 @@ class DocumentAnalysisPolicyTests(unittest.TestCase):
             'EVALUATE': (STATUS, './outbound/set-variable[@name="documentPollEvaluation"]', 'value'),
             'POLL_SETTINGS_ERROR': (poll_settings_error, '.', 'condition'),
             'POLL_AUDIT_STATUS': (poll_settings_error, './set-variable[@name="gatewayAuditStatus"]', 'value')}
-        source = CSHARP
+        error_methods=[]
+        for operation,path in (('start',START),('status',STATUS)):
+            method='Document'+operation.title()+'Error'
+            error_methods.append(operation_error_methods(path.read_text(encoding='utf-8'),method))
+            error_methods.append(operation_error_methods(path.read_text(encoding='utf-8'),method+'Disabled',entra_enabled=False))
+            for label,last_error in operation_error_cases():
+                cls.cases.append({'id':'operation-error-'+operation+'-'+label,'mode':'error','errorOperation':operation,
+                                  'lastError':last_error,'requestBody':base64.b64encode(b'SENTINEL_ERROR_DETAIL').decode()})
+            cls.cases.append({'id':'operation-error-'+operation+'-disabled','mode':'error','errorOperation':operation,
+                              'entraEnabled':False,'lastError':operation_error_cases()[0][1]})
+            for label,policy_id in (('exact','core-audit-body-model-read'),('similar','core-audit-body-model-read-extra'),('null',None),('empty','')):
+                cls.cases.append({'id':'body-model-error-'+operation+'-'+label,'mode':'error','errorOperation':operation,
+                                  'lastError':{'policyId':policy_id,'source':'set-variable','reason':'ExpressionValueEvaluationFailure'}})
+        source = CSHARP.replace('__OPERATION_ERROR_METHODS__','\n'.join(error_methods))
         for name, args in methods.items():
             source = source.replace('__' + name + '__', statement(*args))
         auth_status = authentication_failure.find('./return-response/set-status')
@@ -494,6 +530,38 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
             if run.returncode:
                 raise AssertionError('Actual document policy C# compilation/execution failed:\n' + run.stderr)
             cls.results = json.loads(run.stdout)
+
+    def test_document_operations_handle_shared_entra_failures_before_dedicated_errors(self):
+        for operation in ('start','status'):
+            assert_shared_operation_error(self,self.results['operation-error-'+operation+'-entra'])
+            for label,_ in operation_error_cases()[1:]:
+                with self.subTest(operation=operation,error=label):
+                    result=self.results['operation-error-'+operation+'-'+label]
+                    expected=401 if label=='subscription' else 504 if label=='timeout' else 429 if label=='rate' else 502
+                    self.assertFalse(result['sharedHandled'])
+                    self.assertTrue(result['legacyReached'])
+                    self.assertEqual(result['status'],expected)
+                    if label=='rate':
+                        self.assertFalse(result['hasBody'])
+                        self.assertEqual(result['headers']['X-Core-Error-Code'],'RATE_LIMIT_EXCEEDED')
+                        self.assertEqual(len(result['audits']),1)
+                        self.assertEqual(result['audits'][0]['code'],'RATE_LIMIT_EXCEEDED')
+                    else:
+                        self.assertEqual(result['body']['error']['code'],'AuthenticationRequired' if expected==401 else 'DocumentAnalysisUnavailable')
+                        self.assertEqual(result['audits'],[])
+                    self.assertNotIn('WWW-Authenticate',result['headers'])
+            disabled=self.results['operation-error-'+operation+'-disabled']
+            self.assertFalse(disabled['sharedHandled'])
+            self.assertTrue(disabled['legacyReached'])
+            self.assertEqual(disabled['status'],502)
+            for label in ('exact','similar','null','empty'):
+                result=self.results['body-model-error-'+operation+'-'+label]
+                self.assertEqual(result['status'],500 if label=='exact' else 502)
+                if label=='exact':
+                    self.assertFalse(result['hasBody'])
+                    self.assertEqual(result['headers']['Cache-Control'],'no-store')
+                    self.assertEqual([(a['phase'],a['code'],a['status']) for a in result['audits']],[('policy-error','OPERATION_SETTINGS_INVALID',500)])
+                else:self.assertEqual(result['audits'],[])
 
     def assert_decision_faults(self, mode):
         for item in self.cases:
@@ -702,6 +770,9 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
     def test_polling_returns_safe_running_result_or_fixed_error(self):
         success = self.results['poll-success']
         self.assertEqual(success['status'], 200)
+        self.assertEqual(success['responseReads'],2)
+        self.assertEqual(self.results['poll-upstream-version-missing']['status'],502)
+        self.assertEqual(self.results['poll-upstream-version-missing']['responseReads'],2)
         body = json.loads(success['result'])
         self.assertEqual(set(body), {'analyzeResult', 'requestId'})
         self.assertEqual(body['analyzeResult']['content'], 'synthetic OCR')
@@ -722,9 +793,10 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                 continue
             result = self.results[item['id']]
             with self.subTest(poll=item['id']):
-                self.assertEqual(set(result), {'status', 'result', 'retryAfter', 'settingsAudit'})
+                self.assertEqual(set(result), {'status', 'result', 'retryAfter', 'settingsAudit', 'responseReads'})
                 if item['id'].startswith('poll-settings-'):
                     self.assertEqual(result['status'], 500)
+                    self.assertEqual(result['responseReads'],0)
                     self.assertEqual(result['settingsAudit'], {'phase': 'policy-error', 'code': 'OPERATION_SETTINGS_INVALID', 'status': 500})
                     public = json.loads(result['result'])
                     self.assertEqual(set(public), {'error', 'requestId'})
@@ -735,6 +807,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
                 else:
                     self.assertIsNone(result['settingsAudit'])
         response = ET.parse(STATUS).find('./outbound/return-response')
+        self.assertEqual(self.results['poll-selected-limit']['responseReads'],1)
+        self.assertEqual(self.results['native-oversize']['responseReads'],1)
         self.assertEqual(response.find('./set-header[@name="Cache-Control"]/value').text, 'no-store')
 
     def test_user_job_is_bound_to_tenant_and_person_across_token_refresh(self):
@@ -816,7 +890,8 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         inbound = ET.parse(GATEWAY).find('inbound')
         blocks = list(inbound)
         target_rejection = next(node for node in inbound.findall('choose')
-                                if node.find('./when/return-response/set-status[@reason="API target is not authorized"]') is not None)
+                                if any('gatewayTargetDecision' in branch.get('condition', '')
+                                       for branch in node.findall('when')))
         gate = inbound.find('./choose[@id="core-document-input-validation"]')
         self.assertIsNotNone(gate)
         constraint = inbound.find('./set-variable[@name="gatewayOperationConstraint"]')
@@ -831,7 +906,7 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs'
         self.assertLess(blocks.index(gate), blocks.index(inbound.find('./set-variable[@name="gatewayAuditPhase"][@value="accepted"]')))
         serialized = ET.tostring(inbound, encoding='unicode')
         self.assertLess(serialized.index('id="core-document-input-validation"'), serialized.index('__DEFAULT_BACKEND_XML__'))
-        self.assertLess(serialized.index('id="core-document-input-validation"'), serialized.index('__BACKEND_AUTHENTICATION_XML__'))
+        self.assertLess(serialized.index('id="core-document-input-validation"'), serialized.index('fragment-id="core-credential-connection"'))
         self.assertIn('== "documentAnalysis"', gate.find('when').get('condition'))
         self.assertIsNotNone(gate.find('./when/include-fragment[@fragment-id="core-document-input-validation"]'))
         self.assertIsNotNone(gate.find('./when/choose/when/return-response/set-status'))
@@ -857,7 +932,7 @@ class DocumentAnalysisPublicationTests(unittest.TestCase):
                  'operation': next(operation for operation in self.api['operations'] if operation['name'] == operation_name),
                  'constraint': copy.deepcopy(self.api['authorization']['operationConstraints'][operation_name])}
         return PolicyExpression(self.policy['properties']['value'], self.template['variables'],
-                                cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({})
+            cache={'operationEntries': [entry]}, functions=self.template['functions']).evaluate({'entraAuthentication': {}})
 
     def test_generated_submit_policy_retains_query_copy_version_override_and_index_default(self):
         """生成XMLの配線を検証する。APIM標準コピーの実転送はAzureで別途確認する。"""

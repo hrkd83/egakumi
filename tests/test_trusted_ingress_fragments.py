@@ -1,62 +1,27 @@
 """STEP2部品化で入口条件・拒否監査・認証前の実行順が変わらないことを検証する。"""
 import copy
-from pathlib import Path
 import unittest
-from unittest import mock
 import xml.etree.ElementTree as ET
 
-from deployment.helpers import apim_authentication, apim_ingress
-from deployment.helpers.apim_audit import SUBJECT_OBSERVATION_MARKER, expand_audit_fragments, render_audit_policy
+from deployment.helpers.apim_audit import expand_audit_fragments
 from deployment.helpers.apim_authentication import (
-    _render_inline_trusted_ingress_service_policy, _structure, merge_common_authentication_policy,
-    read_managed_entra_authentication, render_service_policy, transition_common_authentication_policy,
-    validate_common_authentication_policy,
+    _structure, read_managed_entra_authentication, render_service_policy,
 )
 from deployment.helpers.apim_ingress import (
     TRUSTED_INGRESS_ID, expand_trusted_ingress_fragment, render_trusted_ingress_fragment,
 )
-from test_credential_login import settings as login_settings
 from test_entra_gateway_authentication import settings as entra_settings
-from test_telemetry_source_explanations import executable_tokens
 
 
 INCLUDE = '<include-fragment id="core-trusted-ingress" fragment-id="core-trusted-ingress" />'
 SERVICE = '<policies><inbound>' + INCLUDE + '</inbound></policies>'
 
 
-def with_expected_observation_explanation(xml):
-    """既知の説明差分だけを補い、入口監査以外の構造と実コードは変更しない。"""
-    previous = render_audit_policy(SUBJECT_OBSERVATION_MARKER, source_comments="omit")
-    expected = render_audit_policy(SUBJECT_OBSERVATION_MARKER, source_comments="compact")
-    if not previous or previous not in xml:
-        raise AssertionError("Expected the fixed previous observation source")
-    root = ET.fromstring(xml.replace(previous, expected))
-    messages = root.findall("inbound/choose[@id='core-trusted-ingress']/when/trace/message")
-    if len(messages) != 1:
-        raise AssertionError("Expected one fixed previous ingress observation")
-    compact_root = ET.fromstring(render_trusted_ingress_fragment(source_comments="compact"))
-    full_root = ET.fromstring(render_trusted_ingress_fragment(source_comments="full"))
-    compact = compact_root.find("choose/when/trace/message").text
-    full = full_root.find("choose/when/trace/message").text
-    if messages[0].text != compact or executable_tokens(compact) != executable_tokens(full):
-        raise AssertionError("Expected only the known ingress explanation difference")
-    messages[0].text = full
-    branch = root.find("inbound/choose[@id='core-trusted-ingress']/when")
-    from deployment.helpers.apim_ingress import render_legacy_trusted_ingress_fragment
-    previous_condition = ET.fromstring(render_legacy_trusted_ingress_fragment()).find("choose/when").get("condition")
-    full_condition = full_root.find("choose/when").get("condition")
-    if executable_tokens(branch.get("condition")) != executable_tokens(previous_condition):
-        raise AssertionError("Expected the fixed previous gRPC exemption before projecting its retirement")
-    branch.set("condition", full_condition)
-    return ET.tostring(root, encoding="unicode")
-
-
 def expanded_ingress_prefix(xml):
     """要求情報の準備から入口確認まで、STEP2が担当する全構造を返す。
 
-    固定した旧Globalを期待値として使い、入口条件・拒否応答・監査本文・
-    それらより前に実行される処理の順序をまとめて比較する。後続の認証と
-    認証済み利用者情報は、STEP4の固定hashとSTEP5の実契約で別に検査する。
+    入口条件・拒否応答・監査本文と、入口より前の処理順をまとめて比較する。
+    後続の認証と認証済み利用者情報は、共通認証・主体の実契約で別に検査する。
     """
     expanded = expand_audit_fragments(expand_trusted_ingress_fragment(xml))
     root = ET.fromstring(expanded)
@@ -92,17 +57,9 @@ class TrustedIngressFragmentTests(unittest.TestCase):
         self.assertIn("{{core-l7-ingress-enabled}}", branch.get("condition"))
         self.assertIn("{{core-l7-ingress-secret}}", branch.get("condition"))
 
-    def test_expanded_ingress_prefix_matches_the_fixed_previous_service(self):
-        for login in (None, login_settings()):
-            for entra in (None, entra_settings()):
-                with self.subTest(login=login is not None, entra=entra is not None):
-                    previous = with_expected_observation_explanation(_render_inline_trusted_ingress_service_policy(login, entra=entra))
-                    current = render_service_policy(login, entra=entra)
-                    self.assertEqual(expanded_ingress_prefix(current), expanded_ingress_prefix(previous))
 
     def test_ingress_prefix_rejects_changed_condition_status_audit_and_execution_order(self):
-        previous = with_expected_observation_explanation(_render_inline_trusted_ingress_service_policy())
-        expected = expanded_ingress_prefix(previous)
+        expected = expanded_ingress_prefix(render_service_policy())
         current = expand_audit_fragments(expand_trusted_ingress_fragment(render_service_policy()))
         self.assertEqual(expanded_ingress_prefix(current), expected)
         for mode in ("condition", "status", "audit", "execution-order"):
@@ -124,44 +81,10 @@ class TrustedIngressFragmentTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.assertNotEqual(expanded_ingress_prefix(ET.tostring(root, encoding="unicode")), expected)
 
-    def test_previous_inline_form_requires_verified_explicit_transition(self):
-        document = ET.fromstring(_render_inline_trusted_ingress_service_policy(entra=entra_settings()))
-        ET.SubElement(document.find("inbound"), "set-variable", {"name": "manual-after-authentication", "value": "kept"})
-        document.find("backend/forward-request").set("timeout", "181")
-        previous = ET.tostring(document, encoding="unicode")
-        self.assertEqual(read_managed_entra_authentication(previous, expected_entra=entra_settings()), entra_settings())
-        with self.assertRaises(ValueError):
-            merge_common_authentication_policy(previous, entra=entra_settings())
-        with self.assertRaises(ValueError):
-            validate_common_authentication_policy(previous, entra=entra_settings())
-        current, changed = transition_common_authentication_policy(
-            previous, previous_entra=entra_settings(), entra=entra_settings())
-        self.assertTrue(changed)
-        validate_common_authentication_policy(current, entra=entra_settings())
-        parsed = ET.fromstring(current)
-        self.assertIsNotNone(parsed.find("inbound/include-fragment[@id='core-trusted-ingress']"))
-        self.assertEqual(parsed.find("inbound/set-variable[@name='manual-after-authentication']").get("value"), "kept")
-        self.assertEqual(parsed.find("backend/forward-request").get("timeout"), "181")
-        self.assertEqual(transition_common_authentication_policy(
-            current, previous_entra=entra_settings(), entra=entra_settings()), (current, False))
-
-    def test_previous_service_does_not_follow_current_ingress_sources(self):
-        previous = _render_inline_trusted_ingress_service_policy(login_settings(), entra=entra_settings())
-        original = Path.read_text
-        def read(path, *args, **kwargs):
-            if path.name in ("service.xml", "core-trusted-ingress.xml"):
-                raise AssertionError("Frozen service used current ingress source")
-            return original(path, *args, **kwargs)
-        with mock.patch.object(Path, "read_text", read), mock.patch.object(
-                apim_ingress, "render_trusted_ingress_fragment", side_effect=AssertionError("Used current ingress renderer")):
-            self.assertEqual(_render_inline_trusted_ingress_service_policy(login_settings(), entra=entra_settings()), previous)
-            self.assertEqual(read_managed_entra_authentication(previous, login_settings(), expected_entra=entra_settings()), entra_settings())
-        with self.assertRaises(ValueError):
-            apim_authentication._render_service_policy(inline_audit_v2=True, inline_trusted_ingress=True)
 
     def test_existing_inline_and_unrelated_includes_are_not_rewritten(self):
-        previous = _render_inline_trusted_ingress_service_policy()
-        self.assertEqual(expand_trusted_ingress_fragment(previous), previous)
+        inline = '<policies><inbound><choose id="synthetic-unrelated"><when condition="@(false)" /></choose></inbound></policies>'
+        self.assertEqual(expand_trusted_ingress_fragment(inline), inline)
         unrelated = '<policies><inbound><include-fragment fragment-id="core-gateway-telemetry" /></inbound></policies>'
         self.assertEqual(expand_trusted_ingress_fragment(unrelated), unrelated)
 

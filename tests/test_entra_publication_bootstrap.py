@@ -124,7 +124,8 @@ def controller_fixture():
 
 
 class BootstrapControllerTests(unittest.TestCase):
-    def execute(self, base, plan, authentication, transport, checkpoints, *, timeout_seconds=None):
+    def execute(self, base, plan, authentication, transport, checkpoints, *, timeout_seconds=None,
+                failed_closed_stage_attempt=None, restore_recorded_mcp_tool=False):
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(publish, "prepare_plan", return_value=plan))
             stack.enter_context(mock.patch.object(publish, "verify_common_authentication", return_value=authentication))
@@ -139,6 +140,10 @@ class BootstrapControllerTests(unittest.TestCase):
                 transport.calls.append(("CHECKPOINT", "source", None, None))
                 checkpoints.append(copy.deepcopy(value))
             budget = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
+            if failed_closed_stage_attempt is not None:
+                budget["failed_closed_stage_attempt"] = failed_closed_stage_attempt
+            if restore_recorded_mcp_tool:
+                budget["restore_recorded_mcp_tool"] = True
             return publish.execute_plan(base.config, base.state, plan, base.template, transport, sleep=lambda _: None, checkpoint=checkpoint, **budget)
 
     def test_default_budget_finishes_delayed_stage_and_reopens_without_waiting_out_the_budget(self):

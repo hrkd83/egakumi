@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps/gateway/deploy"))
 import api_publication as publish
 from deployment.helpers.configuration import build_bicep_configuration
-from deployment.helpers.apim_authentication import render_service_policy
+from deployment.helpers.apim_authentication import render_service_policy, validate_common_authentication_policy
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
 from deployment.helpers.subscription_profiles import DEFAULTS as PROFILE_DEFAULTS, PREFIX as PROFILE_PREFIX
 import render_apim_policy
@@ -1276,6 +1276,126 @@ class PublicationTests(unittest.TestCase):
         result = publish.execute_plan(config, self.state, plan, self.template, transport, sleep=lambda _: None)
         self.assertEqual(result["status"], "management-plane-published")
         self.assertIn(rid, [path.split("?")[0] for method, path, _, _ in transport.calls if method == "GET"])
+
+
+class CurrentAuthenticationPublicationTests(unittest.TestCase):
+    """正本と説明だけが異なる既存raw辞書、旧API集合を読取り・再計算で保持する。"""
+
+    def fixture(self, enabled=True, *, previous_explanations=False):
+        from test_entra_named_value_publication import checkpoint_fixture
+
+        base, _, inventory, _, global_policy, saved = checkpoint_fixture(
+            entra_enabled=enabled, previous_explanations=previous_explanations)
+        state = {**base.state, "apiPublicationSourceCheckpoint": copy.deepcopy(saved)}
+        plan = publish.prepare_plan(base.config, state)
+        inventory[plan["apimId"] + "/policies/policy"] = ok(
+            {"properties": {"format": "rawxml", "value": global_policy}, "etag": '"current-fixture"'},
+            headers={"ETag": '"current-fixture"'})
+        identifiers = set(render_common_authentication_fragments(entra_enabled=enabled))
+        fragments = {entry["suffix"].removeprefix("/policyFragments/"): entry["value"]
+                     for entry in saved["source"]["policies"]
+                     if entry["suffix"].removeprefix("/policyFragments/") in identifiers}
+        return base, state, plan, inventory, global_policy, fragments
+
+    def test_management_preflight_uses_actual_current_dictionary_in_both_states_and_stays_read_only(self):
+        for enabled, previous_explanations in ((enabled, previous) for enabled in (False, True)
+                                              for previous in (False, True)):
+            for mode in ("valid", "modified", "missing"):
+                base, state, plan, inventory, global_policy, fragments = self.fixture(
+                    enabled, previous_explanations=previous_explanations)
+                identifier = "core-entra-authentication-error" if enabled else "core-common-authentication"
+                resource_id = plan["apimId"] + "/policyFragments/" + identifier
+                if mode == "missing":
+                    inventory[resource_id] = ok({}, 404)
+                elif mode == "modified":
+                    value = inventory[resource_id]["body"]["properties"]["value"]
+                    if enabled:
+                        document = ET.fromstring(value)
+                        document.find(".//set-header[@name='WWW-Authenticate']/value").text = "Changed challenge"
+                        value = ET.tostring(document, encoding="unicode")
+                    else:
+                        self.assertIn("Invalid subscription key", value)
+                        value = value.replace("Invalid subscription key", "Unreviewed failure", 1)
+                    inventory[resource_id]["body"]["properties"]["value"] = value
+                before_config, before_state, before_inventory = (copy.deepcopy(value) for value in
+                                                                 (base.config, state, inventory))
+                transport = Transport(inventory)
+                with self.subTest(entra=enabled, previous_explanations=previous_explanations, mode=mode):
+                    if mode == "valid":
+                        with mock.patch.object(publish, "transition_common_authentication_policy",
+                                               wraps=publish.transition_common_authentication_policy) as transition:
+                            result = publish.verify_common_authentication(plan, transport)
+                        self.assertEqual(transition.call_count, 1)
+                        self.assertEqual(transition.call_args.kwargs["previous_fragments"], fragments)
+                        self.assertEqual(result["previousValue"], global_policy)
+                        self.assertEqual(result["previousFragments"], fragments)
+                        self.assertEqual(result["previousEntra"], plan["entraAuthentication"] if enabled else None)
+                        validate_common_authentication_policy(result["value"], entra=plan["entraAuthentication"])
+                        result["previousFragments"]["core-common-authentication"] = "Untrusted result mutation"
+                    else:
+                        with self.assertRaises((ValueError, publish.DeploymentError)):
+                            publish.verify_common_authentication(plan, transport)
+                    self.assertEqual(base.config, before_config)
+                    self.assertEqual(state, before_state)
+                    self.assertEqual(inventory, before_inventory)
+                    self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+
+    def test_partial_publication_retains_prior_api_scope_and_actual_recomputed_dictionary(self):
+        class ScopeReadReached(Exception):
+            """Stop before unrelated source generation; authentication executes normally."""
+
+        for altered, previous_explanations in ((altered, previous) for altered in (False, True)
+                                              for previous in (False, True)):
+            base, state, _, inventory, global_policy, fragments = self.fixture(
+                previous_explanations=previous_explanations)
+            settings = copy.deepcopy(state["apiPublicationSourceCheckpoint"]["entraAuthentication"])
+            base.config["apiDefinitions"] = base.config["apiDefinitions"][:1]
+            plan = publish.prepare_plan(base.config, state)
+            self.assertEqual(plan["entraAuthentication"]["apiNames"], ["model"])
+            before_config, before_state, before_inventory = (copy.deepcopy(value) for value in
+                                                             (base.config, state, inventory))
+            transport, calls, strict_results = Transport(inventory), [], []
+            transition = publish.transition_common_authentication_policy
+
+            def checked_transition(*args, **kwargs):
+                calls.append(copy.deepcopy(kwargs))
+                if len(calls) == 2 and altered:
+                    value = kwargs["previous_fragments"]["core-common-authentication"]
+                    self.assertIn("Invalid subscription key", value)
+                    kwargs["previous_fragments"]["core-common-authentication"] = value.replace(
+                        "Invalid subscription key", "Unreviewed intermediate failure", 1)
+                value, changed = transition(*args, **kwargs)
+                validate_common_authentication_policy(value, entra=kwargs["entra"])
+                strict_results.append(value)
+                return value, changed
+
+            # Replace only foundation checks unrelated to this contract. Both
+            # real transitions must use the read dictionary before source work.
+            with self.subTest(altered=altered, previous_explanations=previous_explanations), mock.patch.object(
+                    publish, "verify_subscription_products"), mock.patch.object(
+                    publish, "verify_credential_login"), mock.patch.object(
+                    publish, "verify_websocket_diagnostics"), mock.patch.object(
+                    publish, "merge_firewall", return_value=({}, False, '"unchanged"')), mock.patch.object(
+                    publish, "transition_common_authentication_policy", side_effect=checked_transition), mock.patch.object(
+                    publish.entra_publication, "_source_manifest", side_effect=ScopeReadReached) as source_reader:
+                with self.assertRaises(ValueError if altered else ScopeReadReached):
+                    publish.execute_plan(base.config, state, plan, base.template, transport, sleep=lambda _: None)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(calls[0]["previous_fragments"], fragments)
+                self.assertEqual(calls[1]["previous_fragments"], fragments)
+                self.assertTrue(calls[1]["allow_previous_explanations"])
+                self.assertEqual(calls[1]["entra"]["apiNames"], ["model", "sample"])
+                self.assertEqual(calls[1]["previous_entra"], settings)
+                self.assertEqual(len(strict_results), 1 if altered else 2)
+                if altered:
+                    source_reader.assert_not_called()
+                else:
+                    self.assertEqual(source_reader.call_args.args[2], {"model", "sample"})
+                    self.assertEqual(source_reader.call_args.args[3], global_policy)
+                self.assertEqual(base.config, before_config)
+                self.assertEqual(state, before_state)
+                self.assertEqual(inventory, before_inventory)
+                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
 
 
 if __name__ == "__main__":

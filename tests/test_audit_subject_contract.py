@@ -1,4 +1,4 @@
-"""STEP5の実旧／新C#と全監査emitterを、独立した合成内部状態で比較する。"""
+"""現在の主体C#と全監査emitterを、独立した合成内部状態の契約で検査する。"""
 import itertools
 import json
 from pathlib import Path
@@ -127,16 +127,9 @@ class AuditSubjectContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cases, cls.statuses = cases()
-        # 旧writerは固定inline資材から、現writerは正本CSの実XMLから取得し、同じassemblyで評価します。
+        # 正本CSの実XMLを評価し、独立した期待statusと各emitterの契約を確認します。
         cls.results = run_fixture(cls.cases, subjects_only=True)
 
-    def test_old_and_new_subjects_are_identical_except_the_approved_subscription_range(self):
-        for identifier, result in self.results.items():
-            if identifier in {"sid-241", "sid-256"}:
-                self.assertEqual(result["previous"], {"status": "inconsistent"})
-            else:
-                with self.subTest(case=identifier):
-                    self.assertEqual(result["current"], result["previous"])
 
     def test_missing_false_and_wrong_type_markers_keep_distinct_audit_states(self):
         for identifier, expected in self.statuses.items():

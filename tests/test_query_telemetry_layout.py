@@ -32,7 +32,8 @@ class QueryTelemetryLayoutTests(unittest.TestCase):
         sections = extract_query_telemetry_sections(self.source)
         self.assertEqual(tuple(sections), ("predicate", "message"))
         self.assertNotIn(SUBJECT_OBSERVATION_MARKER, sections["predicate"])
-        self.assertEqual(sections["message"].count(SUBJECT_OBSERVATION_MARKER), 1)
+        self.assertNotIn(SUBJECT_OBSERVATION_MARKER, sections["message"])
+        self.assertEqual(sections["message"].count('context.Variables.TryGetValue("gatewayAuthenticatedSubject"'), 1)
 
     def test_rendering_preserves_both_explanations_and_shared_subject_details(self):
         sections = extract_query_telemetry_sections(self.source)
@@ -47,10 +48,6 @@ class QueryTelemetryLayoutTests(unittest.TestCase):
             for line in source.splitlines():
                 if line.lstrip().startswith("//"):
                     self.assertIn(_with_source_line_comments(line).strip(), expression)
-        shared = (POLICIES / SOURCE_EXPRESSION_FILES[SUBJECT_OBSERVATION_MARKER]).read_text(encoding="utf-8")
-        for line in shared.splitlines():
-            if line.lstrip().startswith("//"):
-                self.assertIn(_with_source_line_comments(line).strip(), message)
         self.assertIn('new JProperty("schemaVersion", 2)', message)
         self.assertIn('new JProperty("auditSchemaVersion", 2)', message)
         self.assertIn('new JProperty("event", "query-guard")', message)

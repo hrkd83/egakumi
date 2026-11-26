@@ -74,7 +74,8 @@ class ContractRatePublicationTests(unittest.TestCase):
                 decision=inbound.find('include-fragment[@fragment-id="core-api-authentication-result"]') if api["apiType"]=="http" else inbound.find('set-variable[@name="gatewayDecision"]')
                 self.assertLess(list(inbound).index(decision),list(inbound).index(calls[0]))
                 self.assertLess(xml.index('fragment-id="core-rate-limit"'),xml.index('__BACKEND_AUTHENTICATION_XML__') if '__BACKEND_AUTHENTICATION_XML__' in xml else xml.index('name="gatewayAuditPhase" value="accepted"'))
-                handler=parsed.find("on-error/choose/when")
+                handler=next(node for node in parsed.findall("on-error/choose/when")
+                             if 'core-rate-limit' in node.get('condition',''))
                 self.assertIn('core-rate-limit',handler.attrib["condition"])
                 self.assertEqual(handler.find("return-response/set-status").attrib["code"],"429")
                 self.assertIsNone(handler.find("return-response/set-body"))
@@ -82,24 +83,30 @@ class ContractRatePublicationTests(unittest.TestCase):
                 if api["apiType"]=="websocket":
                     self.assertIsNone(parsed.find(".//set-body"))
 
-    def test_generated_mcp_counts_only_backing_rest_and_pii_error_keeps_429(self):
+    def test_generated_mcp_counts_only_backing_rest_and_specialized_errors_keep_429(self):
         xml=compiled_policy_value(self.template,self.parameters,resource_name='mcpPolicies')
         generated=ET.fromstring(xml)
         self.assertIsNone(generated.find(".//include-fragment[@fragment-id='core-rate-limit']"))
         self.assertEqual(generated.find("on-error/choose/when/return-response/set-status").attrib["code"],"429")
-        # The raw PII template deliberately retains the rate-error marker.
-        # Verify the final operation assignment that ARM actually deploys.
+        # PIIとDocumentの最終操作値では、認証エラー処理の直後に429を維持します。
         entries=self.evaluate("[variables('operationEntries')]")
-        pii_indexes=[index for index,entry in enumerate(entries) if entry['constraint']['kind']=='pii']
-        self.assertTrue(pii_indexes)
-        for index in pii_indexes:
-            xml=compiled_policy_value(self.template,self.parameters,index,resource_name='operationPolicies')
-            pii=ET.fromstring(xml)
-            first=list(pii.find("on-error"))[0]
-            self.assertEqual(first.tag,"choose")
-            self.assertIn('core-rate-limit',first.find('when').get('condition'))
-            self.assertEqual(first.find("when/return-response/set-status").attrib["code"],"429")
-            self.assertNotIn("__RATE_LIMIT_",xml)
+        indexes=[index for index,entry in enumerate(entries)
+                 if entry['constraint']['kind'] in ('pii','documentAnalysis','documentAnalysisStatus')]
+        self.assertEqual(len(indexes),3)
+        for enabled in (False,True):
+            self.parameters['entraAuthentication']={'enabled':enabled}
+            for index in indexes:
+                with self.subTest(entra_enabled=enabled,kind=entries[index]['constraint']['kind']):
+                    xml=compiled_policy_value(self.template,self.parameters,index,resource_name='operationPolicies')
+                    handlers=list(ET.fromstring(xml).find('on-error'))
+                    if enabled:
+                        self.assertEqual(handlers[0].attrib,{'id':'core-entra-authentication-error','fragment-id':'core-entra-authentication-error'})
+                    first=handlers[int(enabled)]
+                    self.assertEqual(first.tag,"choose")
+                    self.assertIn('core-rate-limit',first.find('when').get('condition'))
+                    self.assertEqual(first.find("when/return-response/set-status").attrib["code"],"429")
+                    self.assertNotIn("__RATE_LIMIT_",xml)
+                    self.assertNotIn("__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__",xml)
 
     def test_shared_fragment_has_single_central_limits_and_no_deferred_counting(self):
         settings={"user":{"enabled":False,"calls":12,"renewalPeriodSeconds":30},
