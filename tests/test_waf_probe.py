@@ -330,13 +330,19 @@ class WafProbeTests(unittest.TestCase):
             for mime in route.content_types:
                 with self.subTest(route=route.path, mime=mime):
                     case = next(case for case in self.cases if case.path == route.path and case.category == "binary-mime" and dict(case.headers)["Content-Type"] == mime)
-                    self.assert_media_signature(mime, case.body)
+                    if mime == "application/json":
+                        value = json.loads(case.body)
+                        self.assertEqual(set(value), {"base64Source"})
+                        self.assert_media_signature("application/pdf", base64.b64decode(value["base64Source"], validate=True))
+                    else:
+                        self.assert_media_signature(mime, case.body)
                     self.assertEqual(case.intent, "compatibility")
         multipart = [case for case in self.cases if case.path == "/api/tools/documents" and case.category == "multipart-mime"]
         document_contract = next(route for route in self.routes if route.constraint.get("kind") == "documentAnalysis")
-        self.assertEqual(set(document_contract.content_types), {"application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/html"})
-        self.assertEqual(len(multipart), len(document_contract.content_types))
-        for mime in document_contract.content_types:
+        self.assertEqual(set(document_contract.content_types), {"application/json", "application/pdf", "image/jpeg", "image/png", "image/tiff", "image/bmp", "image/heif", "image/heic", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/html"})
+        raw_mimes = set(document_contract.content_types) - {"application/json"}
+        self.assertEqual(len(multipart), len(raw_mimes))
+        for mime in raw_mimes:
             case = next(case for case in multipart if ("Content-Type: " + mime).encode() in case.body)
             message = BytesParser(policy=policy.default).parsebytes(b"MIME-Version: 1.0\r\nContent-Type: " + dict(case.headers)["Content-Type"].encode() + b"\r\n\r\n" + case.body)
             part = next(part for part in message.iter_parts() if part.get_param("name", header="content-disposition") == "file")
@@ -1132,7 +1138,8 @@ class WafProbeTests(unittest.TestCase):
         baselines = [case for case in cases if case.category == "image-prompts-baseline"]
         self.assertEqual(len(baselines), 7)
         for baseline in baselines:
-            path_cases = [case for case in cases if case.target == baseline.target and case.path in {baseline.path, baseline.path + "/neighbor"}]
+            neighbor_path = baseline.path.replace("/deployments/", "/deployments-neighbor/", 1) if "/models/openai-images/v1/deployments/" in baseline.path else baseline.path
+            path_cases = [case for case in cases if case.target == baseline.target and case.path in {baseline.path, neighbor_path + "/neighbor"}]
             for family in ("php-variable-function", "sql-source", "html-source", "shell-source", "rfi-url", "path-source"):
                 matched = [case for case in path_cases if case.category == "image-prompts-" + family]
                 self.assertEqual(len(matched), 1)
@@ -1146,7 +1153,32 @@ class WafProbeTests(unittest.TestCase):
             self.assertEqual(collision.query, (("prompt", probe.CONTROL_SQL),))
             self.assertEqual(collision.body, baseline.body)
             neighbor = next(case for case in path_cases if case.category == "image-prompts-control-neighbor-xss")
-            self.assertEqual(neighbor.path, baseline.path + "/neighbor")
+            self.assertEqual(neighbor.path, neighbor_path + "/neighbor")
+
+    def test_model_route_corpus_distinguishes_waf_transit_from_apim_operation_rejection(self):
+        cases = probe.model_path_route_probes(self.routes)
+        self.assertEqual(len(cases), 12)
+        self.assertEqual(len({case.case_id for case in cases}), 12)
+        self.assertEqual(Counter(probe.expected_boundary(case) for case in cases),
+                         {"waf_transit": 6, "operation_reject": 6})
+        self.assertTrue(all(case.auth_mode == "anonymous" and case.target == "gateway" for case in cases))
+        self.assertTrue(all(not any(name.lower() in {"api-key", "authorization", "cookie"} for name, _ in case.headers) for case in cases))
+        self.assertLess(max(len(case.body or b"") for case in cases), 4096)
+        for case in cases:
+            self.assertEqual(probe.boundary_verdict(case, {"classification": "response_received"})["functional_success"], False)
+            if probe.expected_boundary(case) == "operation_reject":
+                self.assertEqual(probe.boundary_verdict(case, {"classification": "application_rejected"})["verdict"], "unresolved")
+                self.assertEqual(probe.boundary_verdict(case, {"classification": "application_rejected", "status": 401, "evidence": "correlated-application-rejection"})["verdict"], "unresolved")
+                self.assertEqual(probe.boundary_verdict(case, {"classification": "application_rejected", "status": 401, "evidence": "correlated-apim-operation-rejection"})["verdict"], "unresolved")
+                self.assertEqual(probe.boundary_verdict(case, {"classification": "application_rejected", "status": 404, "evidence": "correlated-apim-operation-rejection"})["verdict"], "pass")
+            if case.method == "GET":
+                self.assertIsNone(case.body)
+                self.assertEqual(case.headers, ())
+        query = [case for case in cases if case.category == "model-route-unregistered-query"]
+        self.assertEqual(len(query), 2)
+        self.assertTrue(all(case.query == (("trace", "synthetic"),) for case in query))
+        with self.assertRaisesRegex(ValueError, "two standard"):
+            probe.model_path_route_probes([route for route in self.routes if route.operation != "openai-audio-v1:audio-transcriptions"])
 
     def test_image_prompt_json_uses_provider_native_fields_and_invalid_model_canaries(self):
         cases = [case for case in probe.image_prompt_probes(self.routes) if dict(case.headers)["Content-Type"] == "application/json"]

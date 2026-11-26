@@ -2,6 +2,7 @@
 import copy
 import json
 import unittest
+import xml.etree.ElementTree as ET
 
 import test_publish_apis as legacy
 import test_entra_publication_bootstrap as bootstrap
@@ -16,6 +17,7 @@ from deployment.helpers.apim_audit import render_audit_fragments
 from deployment.helpers.apim_ingress import TRUSTED_INGRESS_ID, render_trusted_ingress_fragment
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
+from authentication_source_fixture import annotated_authentication_source
 
 publish = legacy.publish
 
@@ -42,8 +44,11 @@ def configured():
     return base, plan, inventory
 
 
-def checkpoint_fixture():
+def checkpoint_fixture(*, entra_enabled=True, previous_explanations=False):
     base, plan, inventory = configured()
+    if not entra_enabled:
+        base.config["gateway"]["authentication"].pop("entra")
+        plan = publish.prepare_plan(base.config, base.state)
     _, _, _, initial = bootstrap.controller_fixture()
     source = copy.deepcopy(initial.source)
     global_policy = render_service_policy(entra=plan["entraAuthentication"])
@@ -52,12 +57,24 @@ def checkpoint_fixture():
     fragments = render_audit_fragments()
     fragments[TRUSTED_INGRESS_ID] = render_trusted_ingress_fragment()
     fragments[BROWSER_EXCEPTION_ID] = render_browser_exception_fragment()
-    fragments.update(render_common_authentication_fragments(entra_enabled=True))
+    fragments.update(render_common_authentication_fragments(entra_enabled=entra_enabled))
     for name, value in fragments.items():
         source["policies"].append({"suffix": "/policyFragments/" + name, "value": value})
         rid = plan["apimId"] + "/policyFragments/" + name
         inventory[rid] = response(rid, {"format": "rawxml", "value": value})
     saved = publish.source_checkpoint(plan, source, global_policy)
+    if previous_explanations:
+        # Represent an already-saved annotated raw source. A new checkpoint
+        # still requires canonical code; do not pass annotations to its writer.
+        global_policy = annotated_authentication_source(global_policy)
+        identifiers = set(render_common_authentication_fragments(entra_enabled=entra_enabled))
+        for entry in source["policies"]:
+            identifier = entry["suffix"].removeprefix("/policyFragments/")
+            if identifier in identifiers:
+                entry["value"] = annotated_authentication_source(entry["value"])
+                inventory[plan["apimId"] + entry["suffix"]] = response(
+                    plan["apimId"] + entry["suffix"], {"format": "rawxml", "value": entry["value"]})
+        saved = {**saved, "globalPolicy": global_policy, "source": copy.deepcopy(source)}
     return base, plan, inventory, source, global_policy, saved
 
 
@@ -114,19 +131,57 @@ class EntraFoundationPublicationTests(unittest.TestCase):
 
 class IndependentAuthenticationCheckpointTests(unittest.TestCase):
     def test_checkpoint_preserves_old_api_source_and_restores_independent_expectations(self):
-        base, plan, _, source, global_policy, saved = checkpoint_fixture()
-        self.assertEqual(saved["source"], source)
-        self.assertFalse(any(entry["suffix"].rsplit("/", 1)[-1] in ENTRA_NAMED_VALUES for entry in source["namedValues"]))
-        self.assertEqual(saved["globalPolicy"], global_policy)
-        self.assertEqual(saved["entraAuthentication"], plan["entraAuthentication"])
-        self.assertEqual(saved["entraNamedValues"], plan["entraNamedValues"])
-        state = {**base.state, "apiPublicationSourceCheckpoint": saved}
-        restored = publish.prepare_plan(base.config, state)
-        self.assertEqual(restored["previousEntraAuthentication"], plan["entraAuthentication"])
-        self.assertEqual(restored["previousGlobalPolicy"], global_policy)
-        old = {key: copy.deepcopy(value) for key, value in saved.items()
-               if key not in ("globalPolicy", "entraAuthentication", "entraNamedValues")}
-        self.assertIsNone(publish.checkpoint_authentication(old, plan))
+        for enabled, previous_explanations in ((enabled, previous) for enabled in (False, True)
+                                              for previous in (False, True)):
+            base, plan, _, source, global_policy, saved = checkpoint_fixture(
+                entra_enabled=enabled, previous_explanations=previous_explanations)
+            state = {**base.state, "apiPublicationSourceCheckpoint": saved}
+            before_config, before_state, before_source = (copy.deepcopy(value) for value in
+                                                         (base.config, state, source))
+            with self.subTest(entra=enabled, previous_explanations=previous_explanations):
+                self.assertEqual(saved["source"], source)
+                self.assertFalse(any(entry["suffix"].rsplit("/", 1)[-1] in ENTRA_NAMED_VALUES
+                                     for entry in source["namedValues"]))
+                self.assertEqual(saved["globalPolicy"], global_policy)
+                self.assertEqual(saved["entraAuthentication"], plan["entraAuthentication"])
+                self.assertEqual(saved["entraNamedValues"], plan["entraNamedValues"])
+                restored = publish.prepare_plan(base.config, state)
+                self.assertEqual(restored["previousEntraAuthentication"], plan["entraAuthentication"])
+                self.assertEqual(restored["previousGlobalPolicy"], global_policy)
+                self.assertEqual(base.config, before_config)
+                self.assertEqual(state, before_state)
+                self.assertEqual(source, before_source)
+                old = {key: copy.deepcopy(value) for key, value in saved.items()
+                       if key not in ("globalPolicy", "entraAuthentication", "entraNamedValues")}
+                self.assertIsNone(publish.checkpoint_authentication(old, plan))
+
+    def test_checkpoint_rejects_its_missing_or_tampered_current_dictionary_without_rewriting_it(self):
+        for enabled in (False, True):
+            _, plan, _, _, _, saved = checkpoint_fixture(entra_enabled=enabled)
+            original = copy.deepcopy(saved)
+            identifiers = ("core-common-authentication", "core-entra-authentication-error") if enabled else (
+                "core-common-authentication",)
+            for identifier in identifiers:
+                suffix = "/policyFragments/" + identifier
+                for missing in (False, True):
+                    invalid = copy.deepcopy(saved)
+                    if missing:
+                        invalid["source"]["policies"] = [entry for entry in invalid["source"]["policies"]
+                                                         if entry["suffix"] != suffix]
+                    else:
+                        entry = next(item for item in invalid["source"]["policies"] if item["suffix"] == suffix)
+                        if identifier == "core-common-authentication":
+                            self.assertIn("Invalid subscription key", entry["value"])
+                            entry["value"] = entry["value"].replace("Invalid subscription key", "Unreviewed failure", 1)
+                        else:
+                            document = ET.fromstring(entry["value"])
+                            document.find(".//set-header[@name='WWW-Authenticate']/value").text = "Changed challenge"
+                            entry["value"] = ET.tostring(document, encoding="unicode")
+                    before = copy.deepcopy(invalid)
+                    with self.subTest(entra=enabled, fragment=identifier, missing=missing), self.assertRaises(ValueError):
+                        publish.checkpoint_authentication(invalid, plan)
+                    self.assertEqual(invalid, before)
+                    self.assertEqual(saved, original)
 
     def test_inconsistent_or_partial_checkpoint_cannot_supply_expected_authentication(self):
         _, plan, _, _, _, saved = checkpoint_fixture()

@@ -19,7 +19,8 @@ import re
 import time
 
 from deployment.helpers.paths import REPOSITORY
-from waf_contracts import (APP_GROUPS, APP_RULES, approved_group_scopes, generated_manifest,
+from waf_contracts import (APP_GROUPS, APP_RULES, MODEL_WAF_PATHS, approved_group_scopes,
+                           generated_manifest, model_operation_waf_path,
                            require_source_routes, render as check_contract_manifest)
 from deployment.helpers.portal_gateway import (_etag, _ok, _writable, _writable_policy, gateway_id,
                                                 NETWORK_API, portal_session_exclusions)
@@ -127,9 +128,11 @@ def _validate_manifest(data):
             control = CONTROL_DATA_SCOPES.get(profile['name'], {})
             signed_path = (isinstance(path_value, str) and profile['scope'] == control.get('scope')
                            and path_value in control.get('paths', ()))
-            if (not isinstance(path_value, str) or not (re.fullmatch(r'/[A-Za-z0-9_./-]+', path_value) or signed_path)
+            model_path = (profile['scope'] == 'gateway'
+                          and path_value == MODEL_WAF_PATHS.get(profile['name']))
+            if (not isinstance(path_value, str) or not (re.fullmatch(r'/[A-Za-z0-9_./-]+', path_value) or signed_path or model_path)
                     or any(part in ('', '.', '..') for part in path_value[1:].rstrip('/').split('/')) or key in paths):
-                raise ValueError('WAF manifest paths must be unique exact or approved signed-operation paths')
+                raise ValueError('WAF manifest paths must be unique exact or approved operation paths')
             paths.add(key)
         selectors = set()
         for item in profile['exclusions']:
@@ -204,7 +207,7 @@ def _approved_observer(api, operation, constraint):
 
 
 def published_paths(config):
-    """Publish exact routes and only two signed-operation identifier patterns."""
+    """Publish exact routes and the approved signed/model operation patterns."""
     result = set()
     for api in _apis(config):
         mcp_path = api.get('mcp', {}).get('path')
@@ -213,14 +216,17 @@ def published_paths(config):
         prefix = str(api.get('path', '')).strip('/')
         for operation in api.get('operations', []):
             path = '/' + prefix + str(operation.get('urlTemplate', ''))
+            constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
+            model_path = model_operation_waf_path(api, operation, constraint)
             candidates = [path]
             if '{deployment}' in path:
-                constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
                 candidates = [path.replace('{deployment}', name) for name in constraint.get('allowedModels', [])
                               if isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', name)]
-            result.update(value for value in candidates
-                          if value != OBSERVER_PATH and re.fullmatch(r'/[A-Za-z0-9_./-]+', value))
-            constraint = api.get('authorization', {}).get('operationConstraints', {}).get(operation.get('name'), {})
+            if model_path:
+                result.add(model_path)
+            else:
+                result.update(value for value in candidates
+                              if value != OBSERVER_PATH and re.fullmatch(r'/[A-Za-z0-9_./-]+', value))
             if _approved_observer(api, operation, constraint):
                 result.add(OBSERVER_PATH)
             signature = (api.get('name'), api.get('path'), operation.get('name'), operation.get('method'),
@@ -233,9 +239,13 @@ def selected_profiles(config, scopes=('gateway', 'portal'), manifest=None):
     data = load_manifest() if manifest is None else _validate_manifest(manifest)
     available = published_paths(config)
     # Canonical API operation signatures authorize tuning; model identifiers
-    # only expand {deployment} URLs. Custom APIs sharing a URL do not inherit it.
+    # do not restrict the two approved model route families.
     canonical = manifest is None or data == generated_manifest()
-    dynamic = {p['name']: p for p in require_source_routes(_apis(config))['profiles']} if canonical else {}
+    model_patterns = set(MODEL_WAF_PATHS.values())
+    needs_model_routes = any(profile['scope'] == 'gateway' and model_patterns.intersection(profile['paths'])
+                             for profile in data['profiles'])
+    routes = require_source_routes(_apis(config)) if canonical or needs_model_routes else None
+    dynamic = {p['name']: p for p in routes['profiles']} if canonical else {}
     selected = []
     for profile in data['profiles']:
         if profile['scope'] not in scopes:
@@ -264,6 +274,70 @@ def _unique(items):
         if item not in result:
             result.append(copy.deepcopy(item))
     return result
+
+
+def _path_pattern(value):
+    """Interpret only literal paths and one terminal AppGW wildcard."""
+    if (not isinstance(value, str) or not value.startswith('/')
+            or any(character in value for character in ('?', '#', '\\', '\x00'))
+            or value.count('*') > 1 or '*' in value and not value.endswith('*')):
+        raise ValueError('Model WAF routing has an unsupported existing path pattern')
+    return value[:-1].casefold() if value.endswith('*') else value.casefold(), value.endswith('*')
+
+
+def path_patterns_overlap(left, right):
+    """Compare AppGW exact/terminal patterns without case-sensitive matching."""
+    left_path, left_wildcard = _path_pattern(left)
+    right_path, right_wildcard = _path_pattern(right)
+    if left_wildcard and right_wildcard:
+        return left_path.startswith(right_path) or right_path.startswith(left_path)
+    if left_wildcard:
+        return right_path.startswith(left_path)
+    if right_wildcard:
+        return left_path.startswith(right_path)
+    return left_path == right_path
+
+
+def _path_pattern_covers(pattern, path):
+    parent, wildcard = _path_pattern(pattern)
+    child, child_wildcard = _path_pattern(path)
+    return child.startswith(parent) if wildcard else not child_wildcard and child == parent
+
+
+def _check_model_route_overlaps(mapping, profile, identifier, base_id, pool, backend):
+    """Keep the approved model family from taking over independent routes."""
+    pattern = MODEL_WAF_PATHS.get(profile['name'])
+    if profile['scope'] != 'gateway' or pattern not in profile['paths']:
+        return
+    for rule in mapping.get('pathRules', []):
+        current = rule['properties']
+        paths = current.get('paths', [])
+        if not isinstance(paths, list) or not paths:
+            raise ValueError('Model WAF routing has an unsupported existing path pattern')
+        # The same owned route may replace its finite model paths. Any old
+        # paths outside the approved new scope must be reviewed before removal.
+        if rule.get('name') == 'waf-data-' + profile['name']:
+            if str(current.get('firewallPolicy', {}).get('id', '')).casefold() != identifier.casefold():
+                raise ValueError('Data WAF path rule name has another owner')
+            if current.get('backendAddressPool') != pool or current.get('backendHttpSettings') != backend:
+                raise ValueError('Data WAF owned path has another backend')
+            if current.get('rewriteRuleSet') != mapping.get('defaultRewriteRuleSet'):
+                raise ValueError('Data WAF owned path has a distinct rewrite')
+            if not all(any(_path_pattern_covers(wanted, path) for wanted in profile['paths']) for path in paths):
+                raise ValueError('Model WAF owned path rule has an unapproved scope')
+            continue
+        for path in paths:
+            if not path_patterns_overlap(path, pattern):
+                continue
+            # A parent route using the same default protection, forwarding and
+            # rewrite is the existing fallback. Keep it for the other paths.
+            default_parent = (_path_pattern(path)[1] and path.casefold() != pattern.casefold()
+                and _path_pattern_covers(path, pattern)
+                and str(current.get('firewallPolicy', {}).get('id', base_id)).casefold() == base_id.casefold()
+                and current.get('backendAddressPool') == pool and current.get('backendHttpSettings') == backend
+                and current.get('rewriteRuleSet') == mapping.get('defaultRewriteRuleSet'))
+            if not default_parent:
+                raise ValueError('Model WAF prefix overlaps an independent path rule')
 
 
 def canonical_gateway(body):
@@ -590,6 +664,14 @@ def reconcile(config, transport, *, scopes=('gateway', 'portal'), manifest=None,
             cache[identifier] = (observed, value)
         return cache[identifier]
     _, base = read_policy(base_id)
+    # Inspect the original route map before any profile can remove or reorder
+    # paths in the candidate update. All Azure PUTs remain after validation.
+    model_routing_snapshot = _writable(source)
+    for profile in profiles:
+        if profile['scope'] != 'gateway' or MODEL_WAF_PATHS.get(profile['name']) not in profile['paths']:
+            continue
+        mapping, pool, backend = _scope_mapping(model_routing_snapshot, expected, profile['scope'])
+        _check_model_route_overlaps(mapping, profile, policy_id(config, profile['name']), base_id, pool, backend)
     for profile in profiles:
         identifier = policy_id(config, profile['name'])
         owned_keys = ['g-base', *PROTOCOL_POLICY_KEYS[profile['scope']],

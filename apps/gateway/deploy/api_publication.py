@@ -19,6 +19,7 @@ import json
 import re
 import time
 import uuid
+from urllib.parse import urlsplit, parse_qs
 
 from deployment.helpers.configuration import API_NAME, entra_tenant_id
 from deployment.helpers.apim_naming import apim_instance_id, apim_name
@@ -50,6 +51,7 @@ APIM_API = "2024-05-01"
 NETWORK_API = "2025-01-01"
 DEPLOYMENT_API = "2022-09-01"
 MONITOR_API = "2021-05-01-preview"
+ARM_TEMPLATE_FUNCTION_LIMIT = 64
 MODULE = ROOT / "apps/gateway/apim/api-publication.bicep"
 LAYERS = ("id", "nw", "monitor", "svc", "maint")
 SOURCE_GENERATION_OUTPUT = "publicationSourceGenerationId"
@@ -253,7 +255,8 @@ def checkpoint_authentication(saved, plan):
     elif observed != {}:
         raise ValueError("The disabled authentication source must not declare Entra NamedValues")
     parsed = read_managed_entra_authentication(saved["globalPolicy"], plan.get("credentialLogin"), expected_entra=entra,
-                                              fragments=_authentication_fragment_source(saved["source"]))
+                                              fragments=_authentication_fragment_source(saved["source"]),
+                                              allow_previous_explanations=True)
     if (parsed or {"enabled": False}) != entra:
         raise ValueError("The protected global authentication source is inconsistent")
     names = {entry.get("name") for entry in saved["source"].get("apis", []) if isinstance(entry, dict)}
@@ -386,6 +389,14 @@ def _publication_parameter_values(parameters):
             for item in parameters.values())):
         raise ValueError("Publication source generation parameters must contain the reviewed literal inputs")
     return {name: item["value"] for name, item in parameters.items()}
+
+
+def _recorded_parameters_match(left, right):
+    """Recovery evidence retains literal JSON types, including bool versus int."""
+    def encoded(value):
+        return json.dumps(_publication_parameter_values(value), sort_keys=True, ensure_ascii=True,
+                          separators=(",", ":"), allow_nan=False)
+    return encoded(left) == encoded(right)
 
 
 def _checked_source_job(body, config, plan, generation_id, parameters, *, require_complete=True):
@@ -556,6 +567,230 @@ def _prior_publication_source(prior_response, config, plan, transport):
     return source
 
 
+def read_failed_closed_stage_attempt(evidence, prior_response, config, plan, apim, transport):
+    """Read one recorded failed attempt; its generated source is never a checkpoint.
+
+    The caller explicitly supplies the protected compiled template and the
+    matching PUT intent/accepted response. Their names or an asserted source
+    alone cannot authorize recovery: both live recorded templates, literal
+    inputs, identity, generation binding and terminal failed job are checked.
+    This helper performs GET/export reads only, never retries a mutation.
+    """
+    if not isinstance(evidence, dict) or set(evidence) != {"template", "intent", "response", "nativeProductsBefore"}:
+        raise ValueError("Complete recorded failed-stage evidence is required")
+    template, intent, receipt = evidence["template"], evidence["intent"], evidence["response"]
+    validate_publication_template(template)
+    path = plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API
+    if (not isinstance(intent, dict) or set(intent) != {"method", "path", "body", "headers"}
+            or intent["method"] != "PUT" or intent["path"] != path or intent["headers"] not in (None, {})
+            or not isinstance(receipt, dict) or set(receipt) != {"method", "path", "response"}
+            or receipt["method"] != "PUT" or receipt["path"] != path
+            or not isinstance(receipt["response"], dict)
+            or receipt["response"].get("statusCode") not in (200, 201, 202, 204)):
+        raise ValueError("Failed-stage evidence must identify one accepted API publication PUT")
+    body = intent["body"]
+    tags = {"azd-env-name": config["environmentName"], "azd-project-name": PROJECT_NAME}
+    properties = body.get("properties") if isinstance(body, dict) else None
+    if (not isinstance(body, dict) or set(body) != {"tags", "properties"} or body["tags"] != tags
+            or not isinstance(properties, dict) or set(properties) != {"mode", "template", "parameters"}
+            or properties["mode"] != "Incremental"):
+        raise ValueError("Failed-stage intent must retain the exact API-only ownership and mode")
+    _owned(apim, plan["apimId"], config, "API Management")
+    if prior_response.get("statusCode") != 200:
+        raise ValueError("The recorded failed API publication is missing")
+    prior = prior_response.get("body")
+    if not isinstance(prior, dict) or prior.get("properties", {}).get("provisioningState") != "Failed":
+        raise ValueError("Recovery requires the same terminal Failed API publication")
+    _prior_published_ids(prior, config, plan)
+    parameters = publication_parameters(template, plan["parameters"])
+    if (not _recorded_parameters_match(properties["parameters"], parameters)
+            or not _recorded_parameters_match(prior["properties"].get("parameters"), parameters)):
+        raise ValueError("Failed-stage inputs differ from the unchanged current publication plan")
+    principal = apim.get("identity", {}).get("principalId")
+    generation_id = source_generation_id(plan, template, identity_principal_id=principal)
+    publication, generation = split_publication_templates(template)
+    if generation is None:
+        raise ValueError("Failed-stage recovery requires the resource-free source generation binding")
+    for value in (publication, generation):
+        value.setdefault("outputs", {})[SOURCE_GENERATION_OUTPUT] = {"type": "string", "value": generation_id}
+    generation["outputs"][SOURCE_PRINCIPAL_OUTPUT] = {"type": "string", "value": SOURCE_PRINCIPAL_EXPRESSION}
+    if (canonical_publication_template(properties["template"]) != canonical_publication_template(publication)
+            or _export_publication_template(transport, plan["deploymentId"]) != canonical_publication_template(publication)):
+        raise ValueError("Failed API publication does not match its recorded attempted code")
+    generation_path = generation_id + "?api-version=" + DEPLOYMENT_API
+    generated_response = transport.request("GET", generation_path)
+    generated = require_success(generated_response, "Read the recorded failed-stage source generation")
+    if not _recorded_parameters_match(generated.get("properties", {}).get("parameters"), parameters):
+        raise ValueError("Recorded failed-stage generation inputs differ from their exact literal values")
+    source, browser = _checked_source_job(generated, config, plan, generation_id, parameters)
+    _verify_generated_template(transport, generation_id, generated, generation, principal)
+    operations_snapshot = read_failed_stage_operations(prior, template, source, browser, plan, transport)
+    native_manifest = entra_publication._source_manifest(source, plan["apimId"],
+        {entry["name"] for entry in source["apis"]}, plan.get("previousGlobalPolicy"))
+    entra_publication.validate_native_product_before(native_manifest, evidence["nativeProductsBefore"])
+    binding = {"deployment": copy.deepcopy(prior), "generation": copy.deepcopy(generated),
+               "generationId": generation_id, "parameters": copy.deepcopy(parameters),
+               "source": source, "browserSource": browser, "template": copy.deepcopy(template),
+               "operationsSnapshot": operations_snapshot, "nativeProductsBefore": copy.deepcopy(evidence["nativeProductsBefore"])}
+    confirm_failed_closed_stage_attempt(binding, config, plan, transport)
+    snapshot = {plan["deploymentId"]: (path, None, copy.deepcopy(prior_response)),
+                generation_id: (generation_path, None, copy.deepcopy(generated_response))}
+    snapshot.update(operations_snapshot)
+    return binding, snapshot
+
+
+def recorded_missing_mcp_tool(binding, current, attempted, corrected):
+    """Derive one restoration witness from the verified failed parent update."""
+    resources = binding["template"]["resources"]
+    entries = resources.values() if isinstance(resources, dict) else resources
+    if not any(entry.get("type", "").casefold() == "microsoft.apimanagement/service/apis/tools" for entry in entries):
+        raise ValueError("Recorded MCP restoration requires its exact declared tool resource")
+    tools = {rid: properties for rid, properties in current.api_children.items() if "/tools/" in rid}
+    if len(tools) != 1:
+        raise ValueError("Recorded MCP restoration permits only one known existing tool")
+    resource_id, properties = next(iter(tools.items()))
+    api_id = resource_id.split("/tools/", 1)[0]
+    for manifest in (attempted, corrected):
+        if (json.dumps(manifest.api_children.get(resource_id), sort_keys=True) != json.dumps(properties, sort_keys=True)
+                or json.dumps(manifest.api_properties.get(api_id), sort_keys=True) !=
+                json.dumps(current.api_properties.get(api_id), sort_keys=True)):
+            raise ValueError("Recorded MCP tool and parent contracts must remain unchanged")
+    parent_updated = False
+    for _, _, response in binding["operationsSnapshot"].values():
+        for operation in response["body"]["value"]:
+            item = operation["properties"]
+            target = item.get("targetResource") or {}
+            if isinstance(target.get("id"), str) and target["id"].casefold() == resource_id.casefold():
+                raise ValueError("A recorded tool operation prevents the narrowly scoped missing-tool restoration")
+            if (isinstance(target.get("id"), str) and target["id"].casefold() == api_id.casefold()
+                    and item["provisioningState"] == "Succeeded" and item["provisioningOperation"] == "Create"):
+                parent_updated = True
+    if not parent_updated:
+        raise ValueError("Recorded MCP restoration requires the succeeded owned parent API update")
+    witness = entra_publication._RecordedMissingMcpTool(current.apim_id, api_id, resource_id,
+        copy.deepcopy(properties), copy.deepcopy(current.api_properties[api_id]), entra_publication._MISSING_MCP_TOOL_SEAL)
+    entra_publication._check_recorded_missing_mcp_tool(current, witness)
+    return witness
+
+
+def read_failed_stage_operations(prior, template, source, browser, plan, transport):
+    """Require complete terminal operations within this recorded template's targets."""
+    apim, deployment_id = plan["apimId"], plan["deploymentId"]
+    prefix = "Microsoft.ApiManagement/service"
+    resources = template["resources"]
+    declared = {entry["type"].casefold() for entry in
+                (resources.values() if isinstance(resources, dict) else resources)}
+    targets = {}
+
+    def add(resource_id, kind):
+        if (prefix + kind).casefold() in declared:
+            targets[resource_id.casefold()] = (prefix + kind).casefold()
+
+    for entry in source["apis"]:
+        api_id = apim + "/apis/" + entra_publication._identifier(entry["name"])
+        add(api_id, "/apis")
+        add(api_id + "/diagnostics/azuremonitor", "/apis/diagnostics")
+        for name in entry["operations"]:
+            add(api_id + "/operations/" + entra_publication._identifier(name), "/apis/operations")
+        for product in entry["products"]:
+            product_id = apim + "/products/" + entra_publication._identifier(product)
+            add(product_id, "/products")
+            add(product_id + "/apis/" + entry["name"], "/products/apis")
+    for key, kind in (("backends", "/backends"), ("namedValues", "/namedValues")):
+        for entry in source[key]:
+            add(apim + entry["suffix"], kind)
+    for entry in source["policies"]:
+        suffix = entry["suffix"]
+        kind = "/policyFragments" if suffix.startswith("/policyFragments/") else (
+            "/apis/operations/policies" if "/operations/" in suffix else "/apis/policies")
+        add(apim + suffix, kind)
+    for entry in source["apiChildren"]:
+        add(apim + entry["suffix"], "/apis/" + entry["suffix"].split("/")[3])
+    if plan.get("credentialLogin"):
+        api_id = apim + "/apis/" + browser["name"]
+        add(api_id, "/apis")
+        add(api_id + "/diagnostics/azuremonitor", "/apis/diagnostics")
+        for entry in browser["operations"]:
+            add(api_id + "/operations/" + entry["name"], "/apis/operations")
+        for entry in browser["policies"]:
+            add(apim + entry["suffix"], "/apis/operations/policies")
+    add(apim + "/products/" + RELEASED_PRODUCT_ID, "/products")
+    add(apim + "/products/" + ENTRA_OPEN_PRODUCT_ID, "/products")
+    add(apim + "/products/" + ENTRA_OPEN_PRODUCT_ID + "/policies/policy", "/products/policies")
+    add(apim + "/loggers/azuremonitor", "/loggers")
+    add(apim + "/diagnostics/azuremonitor", "/diagnostics")
+    for api in plan["parameters"]["apiDefinitions"]["value"]:
+        for subscription in api.get("keySubscriptions", []):
+            add(apim + "/subscriptions/" + entra_publication._identifier(subscription["subscriptionId"]), "/subscriptions")
+    collection = deployment_id + "/operations"
+    path, visited, snapshot, failed, operation_ids = collection + "?api-version=" + DEPLOYMENT_API, set(), {}, False, set()
+    while path is not None:
+        if path in visited:
+            raise ValueError("Failed-stage operation pagination repeated a page")
+        visited.add(path)
+        response = transport.request("GET", path)
+        body = require_success(response, "Read complete recorded failed-stage operations")
+        if not isinstance(body, dict) or not isinstance(body.get("value"), list):
+            raise ValueError("Failed-stage operations inventory is incomplete")
+        snapshot[path] = (path, None, copy.deepcopy(response))
+        for operation in body["value"]:
+            operation_id = operation.get("id") if isinstance(operation, dict) else None
+            properties = operation.get("properties") if isinstance(operation, dict) else None
+            if (not isinstance(operation_id, str) or not operation_id.casefold().startswith(collection.casefold() + "/")
+                    or not re.fullmatch(r"[A-Za-z0-9-]+", operation_id[len(collection) + 1:])
+                    or operation_id.casefold() in operation_ids or not isinstance(properties, dict)
+                    or properties.get("provisioningState") not in ("Succeeded", "Failed")):
+                raise ValueError("Failed-stage operations must have unique owned IDs and terminal states")
+            operation_ids.add(operation_id.casefold())
+            target = properties.get("targetResource")
+            action = properties.get("provisioningOperation")
+            if target is None:
+                if action != "EvaluateDeploymentOutput" or properties["provisioningState"] != "Succeeded":
+                    raise ValueError("Failed-stage non-resource operation is unknown or incomplete")
+                continue
+            if not isinstance(target, dict):
+                raise ValueError("Failed-stage operation target is incomplete")
+            resource_id, kind = target.get("id"), target.get("resourceType")
+            if (isinstance(resource_id, str) and resource_id.casefold() == apim.casefold()
+                    and isinstance(kind, str) and kind.casefold() == prefix.casefold() and action == "Read"
+                    and properties["provisioningState"] == "Succeeded"):
+                continue
+            if (not isinstance(resource_id, str) or not isinstance(kind, str)
+                    or targets.get(resource_id.casefold()) != kind.casefold() or action != "Create"):
+                raise ValueError("Failed-stage operation targets a resource outside the recorded API stage")
+            failed |= properties["provisioningState"] == "Failed"
+        next_link = body.get("nextLink")
+        if next_link is None:
+            path = None
+        else:
+            parsed = urlsplit(next_link) if isinstance(next_link, str) else None
+            if (parsed is None or parsed.scheme not in ("", "https") or parsed.netloc not in ("", "management.azure.com")
+                    or parsed.fragment or parsed.path.casefold() != collection.casefold()
+                    or parse_qs(parsed.query).get("api-version") != [DEPLOYMENT_API]):
+                raise ValueError("Failed-stage operation pagination left the recorded deployment")
+            path = next_link
+    if not operation_ids or not failed or prior["properties"].get("provisioningState") != "Failed":
+        raise ValueError("The recorded failed stage must contain a completed failed resource operation")
+    return snapshot
+
+
+def confirm_failed_closed_stage_attempt(binding, config, plan, transport):
+    """Recheck the exact failed job and successful generation immediately before write."""
+    for key, resource_id in (("deployment", plan["deploymentId"]), ("generation", binding["generationId"])):
+        observed = require_success(transport.request("GET", resource_id + "?api-version=" + DEPLOYMENT_API),
+                                   "Confirm unchanged recorded failed-stage binding")
+        if _deployment_signature(observed) != _deployment_signature(binding[key]):
+            raise ValueError("The recorded failed-stage deployment or generation changed")
+        if key == "deployment":
+            if observed.get("properties", {}).get("provisioningState") != "Failed":
+                raise ValueError("Failed-stage recovery cannot replace a running or successful job")
+            _prior_published_ids(observed, config, plan)
+        else:
+            if not _recorded_parameters_match(observed.get("properties", {}).get("parameters"), binding["parameters"]):
+                raise ValueError("Recorded failed-stage generation input types changed")
+            _checked_source_job(observed, config, plan, resource_id, binding["parameters"])
+
+
 def validate_publication_template(template):
     """配備できる型をAPIMの子定義だけに限定し、ARMの配列・シンボル形式を検査する。
 
@@ -566,6 +801,15 @@ def validate_publication_template(template):
     message = "Only the API publication module may be deployed"
     if not isinstance(template, dict):
         raise ValueError(message)
+    # Count members across namespaces. A compiler success alone does not
+    # establish that Azure can accept the template's user-defined functions.
+    functions = template.get("functions", [])
+    if (not isinstance(functions, list) or any(
+            not isinstance(group, dict) or not isinstance(group.get("members"), dict)
+            for group in functions)):
+        raise ValueError("API publication requires valid ARM function groups")
+    if sum(len(group["members"]) for group in functions) > ARM_TEMPLATE_FUNCTION_LIMIT:
+        raise ValueError("API publication exceeds the ARM template function limit")
     if "coreNativeGrpc" in json.dumps(template):
         raise ValueError("API publication must not generate retired gRPC ingress exemptions")
     resources = template.get("resources")
@@ -759,15 +1003,23 @@ def verify_common_authentication(plan, transport):
     has_entra = current_xml is not None and ("validate-azure-ad-token" in current_xml or ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID in fragments)
     if current_xml is not None and (has_entra or plan.get("entraAuthentication", {}).get("enabled")):
         prior_entra = read_managed_entra_authentication(current_xml, plan.get("credentialLogin"),
-                                                       expected_entra=plan.get("previousEntraAuthentication"), fragments=fragments)
+                                                       expected_entra=plan.get("previousEntraAuthentication"), fragments=fragments,
+                                                       allow_previous_explanations=True)
         merged, changed = transition_common_authentication_policy(current_xml, plan.get("credentialLogin"),
-                                                                  previous_entra=prior_entra, entra=plan.get("entraAuthentication"))
+                                                                  previous_entra=prior_entra, entra=plan.get("entraAuthentication"),
+                                                                  previous_fragments=fragments, allow_previous_explanations=True)
     else:
         if current_xml is not None:
-            read_managed_entra_authentication(current_xml, plan.get("credentialLogin"), expected_entra=None, fragments=fragments)
-        merged, changed = merge_common_authentication_policy(current_xml, plan.get("credentialLogin"),
-                                                            entra=plan.get("entraAuthentication"),
-                                                            migrate_credential_broker=bool(plan.get("credentialLogin")))
+            read_managed_entra_authentication(current_xml, plan.get("credentialLogin"), expected_entra=None, fragments=fragments,
+                                              allow_previous_explanations=True)
+        if fragments:
+            merged, changed = transition_common_authentication_policy(current_xml, plan.get("credentialLogin"),
+                                                                      previous_entra=None, entra=plan.get("entraAuthentication"),
+                                                                      previous_fragments=fragments, allow_previous_explanations=True)
+        else:
+            merged, changed = merge_common_authentication_policy(current_xml, plan.get("credentialLogin"),
+                                                                entra=plan.get("entraAuthentication"),
+                                                                migrate_credential_broker=bool(plan.get("credentialLogin")))
     headers = {"If-None-Match": "*"} if missing else ({"If-Match": _etag(response)} if changed else {})
     for name, expected in plan["commonAuthentication"].items():
         response = transport.request("GET", plan["apimId"] + "/namedValues/" + name + "?api-version=" + APIM_API)
@@ -787,6 +1039,7 @@ def verify_common_authentication(plan, transport):
         validate_entra_named_value(named, name, expected)
     return {"path": path, "value": merged, "changed": changed, "headers": headers,
             "previousEntra": prior_entra, "previousValue": current_xml,
+            "previousFragments": copy.deepcopy(fragments),
             "credentialLogin": plan.get("credentialLogin"), "entraAuthentication": plan.get("entraAuthentication"),
             "entraNamedValues": copy.deepcopy(entra_values)}
 
@@ -1038,7 +1291,8 @@ def enable_websocket_diagnostics(plan, state, transport, *, sleep, deadline):
 
 
 def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, timeout_seconds=7200, checkpoint=None,
-                 reconcile_existing_source=False, backup=None):
+                 reconcile_existing_source=False, backup=None, failed_closed_stage_attempt=None,
+                 restore_recorded_mcp_tool=False):
     """全所有資源と事前条件を読み合わせてから、FW宛先追加とAPI公開を実行する。
 
     既存モデルの作成・変更はここでは行わず、必要なRBACや秘密参照も準備済みか検査する。
@@ -1051,6 +1305,10 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         raise ValueError("Set publishApis=true before executing API publication")
     if type(reconcile_existing_source) is not bool:
         raise ValueError("Existing-source reconciliation must be an explicit boolean operation")
+    if failed_closed_stage_attempt is not None and (reconcile_existing_source or not callable(checkpoint)):
+        raise ValueError("Recorded failed-stage recovery requires its own explicit checkpoint path")
+    if type(restore_recorded_mcp_tool) is not bool or (restore_recorded_mcp_tool and failed_closed_stage_attempt is None):
+        raise ValueError("Recorded missing MCP restoration requires the explicit failed-stage evidence")
     if reconcile_existing_source and (not callable(checkpoint) or not callable(backup)):
         raise ValueError("Existing-source reconciliation requires protected backup and source checkpoint callbacks")
     if prepare_plan(config, state) != plan:
@@ -1159,14 +1417,20 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     transition_needed = bool(plan["entraAuthentication"].get("enabled") or authentication_policy["previousEntra"])
     prior_source = None
     current_manifest = None
+    preflight_scope_manifest = None
+    historical_scope_error = None
     fresh_snapshot = None
     new_api_ids = set()
     stage_prerequisites = None
     reconciliation = None
+    failed_stage_binding, failed_stage_snapshot = None, {}
+    missing_mcp_tool = None
     old_names = set((authentication_policy["previousEntra"] or {}).get("apiNames", []))
     new_names = set(plan["entraAuthentication"].get("apiNames", [])) if plan["entraAuthentication"].get("enabled") else set()
     if reconcile_existing_source and not transition_needed:
         raise ValueError("Existing-source reconciliation requires the active dual authentication publication")
+    if failed_closed_stage_attempt is not None and (not transition_needed or changed):
+        raise ValueError("Recorded failed-stage recovery must preserve Firewall and the dual authentication scope")
     if transition_needed:
         checkpoint_present = "apiPublicationSourceCheckpoint" in state
         saved = state.get("apiPublicationSourceCheckpoint")
@@ -1180,6 +1444,11 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                 raise ValueError("The protected API source checkpoint is incomplete; reconcile it before publication")
         else:
             prior_source = _prior_publication_source(prior_response, config, plan, transport)
+        if failed_closed_stage_attempt is not None:
+            if not checkpoint_present:
+                raise ValueError("Recorded failed-stage recovery requires the unchanged prior checkpoint")
+            failed_stage_binding, failed_stage_snapshot = read_failed_closed_stage_attempt(
+                failed_closed_stage_attempt, prior_response, config, plan, apim, transport)
         if plan["entraAuthentication"].get("enabled") and isinstance(prior_source, dict):
             # Incremental publication does not revoke existing business APIs.
             # Preserve all source-represented owned APIs, then validate the full
@@ -1193,7 +1462,9 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                 effective_entra = {**plan["entraAuthentication"], "apiNames": sorted(new_names)}
                 merged, policy_changed = transition_common_authentication_policy(
                     authentication_policy["previousValue"], plan.get("credentialLogin"),
-                    previous_entra=authentication_policy["previousEntra"], entra=effective_entra)
+                    previous_entra=authentication_policy["previousEntra"], entra=effective_entra,
+                    previous_fragments=authentication_policy.get("previousFragments", {}),
+                    allow_previous_explanations=True)
                 authentication_policy.update(value=merged, changed=policy_changed, entraAuthentication=effective_entra)
         if reconcile_existing_source:
             entries = prior_source.get("apis", []) if isinstance(prior_source, dict) else []
@@ -1230,10 +1501,18 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
             new_api_ids = {plan["apimId"] + "/apis/" + name for name in addition_names}
             if not new_api_ids <= set(plan["publishedApiIds"]):
                 raise ValueError("An API without protected source must be selected for explicit closed publication")
-            current_manifest = entra_publication.source_manifest(prior_source, plan["apimId"], old_names | (new_names & represented_names),
-                                                                authentication_policy["previousValue"])
-            current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
-            stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
+            current_manifest = entra_publication._source_manifest(prior_source, plan["apimId"], old_names | (new_names & represented_names),
+                                                                 authentication_policy["previousValue"])
+            try:
+                entra_publication._validate_manifest_scope(current_manifest)
+            except ValueError as error:
+                # 過去XMLをまだ信頼しない。正式生成後の同じ非policy構成で固定配置を
+                # 検査できる場合だけ、移行前の旧XML完全照合へ進む。
+                historical_scope_error = error
+            if historical_scope_error is None:
+                current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
+                if failed_stage_binding is None:
+                    stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
     # ここではAPIMの子資源を変更せず、同じ式から期待値を先に生成します。
     # 生成が失敗しても共通認証や社員Productは切り替わらず、既存通信を維持します。
     publication_template, generated_source, generated_browser, generation_id = generate_publication_source(
@@ -1245,6 +1524,50 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
         if generated_source.get("schemaVersion") != 2 or names != expected_names:
             raise ValueError("Generated publication source must cover exactly the reviewed protected APIs")
         entra_publication.source_manifest(generated_source, plan["apimId"], names, authentication_policy["value"])
+    if failed_stage_binding is not None:
+        existing_names = {rid.rsplit("/", 1)[-1] for rid in current_manifest.operations}
+        attempted_entries = failed_stage_binding["source"].get("apis", [])
+        attempted_names = {entry.get("name") for entry in attempted_entries if isinstance(entry, dict)}
+        if (generation_id is None or existing_names != names or old_names != new_names or old_names != existing_names
+                or attempted_names != existing_names):
+            raise ValueError("Recorded failed-stage recovery cannot add, remove or reselect protected APIs")
+        preflight_scope_manifest = entra_publication._source_manifest(generated_source, plan["apimId"], existing_names,
+                                                                      authentication_policy["value"])
+        current_manifest = entra_publication._source_manifest(prior_source, plan["apimId"], existing_names,
+                                                             authentication_policy["previousValue"])
+        attempted_manifest = entra_publication._source_manifest(failed_stage_binding["source"], plan["apimId"], existing_names,
+                                                               authentication_policy["previousValue"])
+        current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
+        attempted_manifest = entra_publication.complete_named_value_expectations(attempted_manifest, plan, transport)
+        preflight_scope_manifest = entra_publication.complete_named_value_expectations(preflight_scope_manifest, plan, transport)
+        if restore_recorded_mcp_tool:
+            missing_mcp_tool = recorded_missing_mcp_tool(failed_stage_binding, current_manifest, attempted_manifest, preflight_scope_manifest)
+        current_manifest, partial_snapshot = entra_publication.read_failed_closed_stage(
+            current_manifest, attempted_manifest, transport, scope_manifest=preflight_scope_manifest, plan=plan,
+            previous_browser_source=saved.get("browserSource"), attempted_browser_source=failed_stage_binding["browserSource"],
+            native_product_before=failed_stage_binding["nativeProductsBefore"], _recorded_missing_mcp_tool=missing_mcp_tool)
+        stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
+        stage_prerequisites.update(partial_snapshot)
+        stage_prerequisites.update(failed_stage_snapshot)
+    elif historical_scope_error is not None:
+        # 生成専用ARM要求はAPIM・Product・FWを変更しない。過去資材の移行では
+        # 全既存対象を現行生成元で表せることを要求し、部分生成から補完しない。
+        existing_names = {rid.rsplit("/", 1)[-1] for rid in current_manifest.operations}
+        if generation_id is None or not existing_names <= names:
+            raise historical_scope_error
+        scope_source = copy.deepcopy(generated_source)
+        expected_backend_suffixes = {rid[len(plan["apimId"]):] for rid in current_manifest.backends}
+        scope_source["backends"] = [entry for entry in scope_source["backends"]
+                                    if entry["suffix"] in expected_backend_suffixes]
+        preflight_scope_manifest = entra_publication.source_manifest(scope_source, plan["apimId"], existing_names,
+                                                                     authentication_policy["value"])
+        current_manifest = entra_publication.source_manifest(prior_source, plan["apimId"], existing_names,
+            authentication_policy["previousValue"], scope_manifest=preflight_scope_manifest)
+        current_manifest = entra_publication.complete_named_value_expectations(current_manifest, plan, transport)
+        # Both scopes must independently include verified Core connections.
+        # Completing only the old scope adds its Broker backend on one side.
+        preflight_scope_manifest = entra_publication.complete_named_value_expectations(preflight_scope_manifest, plan, transport)
+        stage_prerequisites = entra_publication.read_stage_shared_resources(current_manifest, plan, template, transport)
     stage_result = {}
 
     class StageTransport:
@@ -1260,6 +1583,9 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
     stage_transport = StageTransport()
 
     def publish_closed_stage():
+        if failed_stage_binding is not None:
+            entra_publication.verify_snapshot(stage_prerequisites, transport)
+            confirm_failed_closed_stage_attempt(failed_stage_binding, config, plan, transport)
         if changed:
             if time.monotonic() >= deadline:
                 raise DeploymentError("API publication deadline expired before Firewall write")
@@ -1277,6 +1603,8 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                            "parameters": publication_parameters(template, plan["parameters"]) if generation_id is not None else plan["parameters"]}}
         if time.monotonic() >= deadline:
             raise DeploymentError("API publication deadline expired before API write")
+        if failed_stage_binding is not None:
+            confirm_failed_closed_stage_attempt(failed_stage_binding, config, plan, transport)
         response = stage_transport.request("PUT", plan["deploymentId"] + "?api-version=" + DEPLOYMENT_API, deployment)
         require_success(response, "Start API-only publication", allowed=(200, 201, 202))
         observed = _wait_resource(stage_transport, plan["deploymentId"], DEPLOYMENT_API, sleep=sleep, deadline=deadline)
@@ -1373,7 +1701,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                     desired.api_children, desired.source_version)
                 # The new ARM source becomes trustworthy only after exact graph
                 # readback, unchanged old global and an empty employee Product.
-                staged_snapshot = entra_publication.read_policy_graph(current_manifest, transport)
+                staged_snapshot = entra_publication.read_policy_graph(current_manifest, transport, scope_manifest=desired)
                 if entra_publication._signature(staged_snapshot[global_id][2]) != entra_publication._signature(fresh_snapshot[global_id][2]):
                     raise ValueError("The global policy drifted during the closed initial stage")
                 product_snapshot, members = entra_publication.read_open_product(plan["apimId"], transport, allowed_api_ids=(), missing=False)
@@ -1389,6 +1717,7 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                 except (ValueError, DeploymentError):
                     pass
                 raise entra_publication.TransitionError(employee_path_closed=closed, recovery_complete=False) from None
+            preflight_scope_manifest = desired
             stage_callback = lambda: desired
         elif reconciliation is None:
             stage_callback = publish_closed_stage
@@ -1403,8 +1732,11 @@ def execute_plan(config, state, plan, template, transport, *, sleep=time.sleep, 
                 desired_open_api_ids={plan["apimId"] + "/apis/" + name for name in new_names},
                 new_api_ids=new_api_ids,
                 stage_prerequisites=stage_prerequisites,
+                preflight_scope_manifest=preflight_scope_manifest,
                 on_staged=record_source, on_prepared=share_prepared_deadline,
-                sleep=sleep, timeout_seconds=timeout_seconds)
+                sleep=sleep, timeout_seconds=timeout_seconds,
+                native_product_before=None if failed_stage_binding is None else failed_stage_binding["nativeProductsBefore"],
+                _recorded_missing_mcp_tool=missing_mcp_tool)
     else:
         publish_closed_stage()
         # Preserve the legacy key-only publication contract (custom Products,

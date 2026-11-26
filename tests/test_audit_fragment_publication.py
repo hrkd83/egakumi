@@ -7,23 +7,20 @@ from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES, render_audit_fra
 from deployment.helpers.apim_ingress import TRUSTED_INGRESS_ID, render_trusted_ingress_fragment
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import render_common_authentication_fragments
-from deployment.helpers.apim_authentication import (
-    _render_inline_audit_v2_service_policy, render_service_policy,
-)
+from deployment.helpers.apim_authentication import render_service_policy
 from test_entra_publication import APIM, GLOBAL, fixture, response, source_fixture
 import entra_publication as publication
 
 
-def audit_graph(*, inline=False):
+def audit_graph():
     current, transport = fixture()
-    current.policies[GLOBAL] = (_render_inline_audit_v2_service_policy() if inline else render_service_policy())
-    if not inline:
-        current.policies.update({APIM + "/policyFragments/" + name: value
-                                 for name, value in render_audit_fragments().items()})
-        current.policies[APIM + "/policyFragments/" + TRUSTED_INGRESS_ID] = render_trusted_ingress_fragment()
-        current.policies[APIM + "/policyFragments/" + BROWSER_EXCEPTION_ID] = render_browser_exception_fragment()
-        current.policies.update({APIM + "/policyFragments/" + name: value
-                                 for name, value in render_common_authentication_fragments(entra_enabled=False).items()})
+    current.policies[GLOBAL] = render_service_policy()
+    current.policies.update({APIM + "/policyFragments/" + name: value
+                             for name, value in render_audit_fragments().items()})
+    current.policies[APIM + "/policyFragments/" + TRUSTED_INGRESS_ID] = render_trusted_ingress_fragment()
+    current.policies[APIM + "/policyFragments/" + BROWSER_EXCEPTION_ID] = render_browser_exception_fragment()
+    current.policies.update({APIM + "/policyFragments/" + name: value
+                             for name, value in render_common_authentication_fragments(entra_enabled=False).items()})
     # Only the three shared values referenced by the generated key-path global.
     # Their values and all IDs are independent synthetic fixtures.
     values = {"core-subscription-key-header": "api-key", "core-l7-ingress-enabled": "false",
@@ -45,18 +42,16 @@ def changed_xml(value, mutate):
 
 
 class AuditFragmentPublicationTests(unittest.TestCase):
-    def test_generated_source_and_get_graph_accept_new_and_fixed_inline_forms(self):
-        for inline in (False, True):
-            with self.subTest(inline=inline):
-                current, transport = audit_graph(inline=inline)
-                source = source_fixture(current)
-                manifest = publication.source_manifest(source, APIM, ["model-a", "model-b"], current.policies[GLOBAL])
-                self.assertEqual(manifest, current)
-                snapshot = publication.read_policy_graph(manifest, transport)
-                for identifier in AUDIT_FRAGMENT_FILES:
-                    self.assertEqual(APIM + "/policyFragments/" + identifier in snapshot, not inline)
-                self.assertTrue(transport.calls)
-                self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
+    def test_generated_source_and_get_graph_accept_current_fragments(self):
+        current, transport = audit_graph()
+        source = source_fixture(current)
+        manifest = publication.source_manifest(source, APIM, ["model-a", "model-b"], current.policies[GLOBAL])
+        self.assertEqual(manifest, current)
+        snapshot = publication.read_policy_graph(manifest, transport)
+        for identifier in AUDIT_FRAGMENT_FILES:
+            self.assertIn(APIM + "/policyFragments/" + identifier, snapshot)
+        self.assertTrue(transport.calls)
+        self.assertTrue(all(method == "GET" for method, *_ in transport.calls))
 
     def test_api_and_unrelated_fragment_cannot_write_or_call_common_audit_parts(self):
         for variable, identifier in (("gatewayRequestContext", "core-request-context"),

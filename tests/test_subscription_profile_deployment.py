@@ -1,5 +1,6 @@
 """購読プロファイル接続の秘密再利用・有効化順序・配備資材の参照を検証します。"""
 from bicep_helpers import compile_bicep
+from policy_fixture_paths import policy_fixture_path
 
 import contextlib
 import copy
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import deploy_portal as portal
 from deployment.helpers import subscription_profiles as profiles
+from deployment.helpers.apim_audit import render_audit_policy
 
 APIM = '/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-test-fixture-svc/providers/Microsoft.ApiManagement/service/apim-test-fixture'
 
@@ -59,7 +61,9 @@ def named(suffix):
 
 
 TARGET_APIS = [{'name': 'fixture-model', 'apiType': 'http'}]
-PROFILE_INLINE = (ROOT / 'apps/gateway/apim/policies/subscription-profile.xml').read_text(encoding='utf-8').replace('<fragment>', '').replace('</fragment>', '')
+PROFILE_INLINE = render_audit_policy(
+    policy_fixture_path(ROOT / 'apps/gateway/apim/policies', 'subscription-profile.xml').read_text(encoding='utf-8')
+).replace('<fragment>', '').replace('</fragment>', '')
 PROFILE_POLICY = '<policies><inbound>' + PROFILE_INLINE + '<include-fragment fragment-id="core-rate-limit" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
 
 

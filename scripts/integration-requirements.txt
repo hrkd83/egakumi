@@ -4,6 +4,8 @@
 -r auth-requirements.txt
 mcp==2.3.0
 httpx2==2.13.1
+# WindowsではOS標準の証明書・ホスト名検証を使う。信頼ストアは変更しない。
+truststore==0.10.4
 # 音声のWSS試験と、端末内だけで待ち受けるWebRTC画面用relayに使う。
 websockets==17.2
 aiohttp==3.14.5

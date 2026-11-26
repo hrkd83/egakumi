@@ -1,0 +1,10 @@
+<fragment>
+  <!-- ========== 提供元の要求IDの退避（core-backend-audit） ========== -->
+  <!-- 目的：共有outboundがapim-request-idをGatewayのIDへ上書きする前に、提供元の要求IDを監査へ渡します。 -->
+  <!-- 処理：同名C#の既知ヘッダー・単一値・ID形式の検査を使い、gatewayBackendResponseIdsへ保存します。 -->
+  <!-- 本文を読まず、SSEを読み切りません。この部品は監査を出力せず、後続の共通監査が退避値を使います。 -->
+  <set-variable name="gatewayBackendResponseIds" value="@{
+      __CORE_BACKEND_AUDIT_CSHARP__
+    }" />
+  <!-- === -->
+</fragment>

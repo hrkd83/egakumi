@@ -1,0 +1,58 @@
+<policies>
+  <!--
+    GPT-LiveのWebRTCセッションを作成します。API側の認証・scope・回数上限を継承します。
+    公開入力はSDPと任意のinstructions/voiceです。モデルは設定の固定配備名を使います。
+    上流のsession/transportをこの処理で組み立て、Microsoft EntraのMI tokenで送ります。
+    応答はsessionIdとSDP answerへ整えます。音声は確立後のWebRTCメディア経路を通ります。
+  -->
+  <inbound>
+    <base />
+    <!-- 元のJSONを検査し、上流の固定契約へ変換します。本文・SDPはログへ出しません。 -->
+    <set-variable name="liveSessionRequest" id="core-live-session-request-settings" value="@{
+      __LIVE_CREATE_REQUEST_CSHARP__
+    }" />
+    <choose><when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;liveSessionRequest&quot;]))">
+      <set-variable name="gatewayAuditPhase" value="rejected" />
+      <set-variable name="gatewayAuditCode" value="INVALID_LIVE_SESSION" />
+      <set-variable name="gatewayAuditStatus" value="@(400)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response><set-status code="400" reason="Invalid Live session request" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header></return-response>
+    </when></choose>
+    <!-- Foundry OpenAI backendの/openai/v1に対して、Live専用パスを選びます。 -->
+    <rewrite-uri template="/live/sessions" copy-unmatched-params="false" />
+    <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+    <set-body>@((string)context.Variables["liveSessionRequest"])</set-body>
+  </inbound>
+  <backend><base /></backend>
+  <outbound>
+    <!-- 成功応答からセッションIDとSDP answerを取り出し、公開の応答契約へ揃えます。 -->
+    <choose><when condition="@(context.Response.StatusCode &gt;= 200 &amp;&amp; context.Response.StatusCode &lt; 300)">
+      <set-variable name="liveSessionAnswer" value="@{
+        __LIVE_CREATE_ANSWER_CSHARP__
+      }" />
+      <choose><when condition="@(String.IsNullOrEmpty((string)context.Variables[&quot;liveSessionAnswer&quot;]))">
+        <!-- 共通outboundへ進まない変換失敗を、本文・SDPを含めず固定理由で記録します。 -->
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="INVALID_LIVE_SESSION_ANSWER" />
+        <set-variable name="gatewayAuditStatus" value="@(502)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response><set-status code="502" reason="Invalid Live session answer" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header></return-response>
+      </when></choose>
+      <set-header name="Location" exists-action="delete" />
+      <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header>
+      <set-body>@((string)context.Variables["liveSessionAnswer"])</set-body>
+    </when></choose>
+    <base />
+  </outbound>
+  <on-error>
+    <!-- 内部設定の取得・既存変換の失敗だけを分類し、その他は親の既存分類へ渡します。 -->
+    <choose><when condition="@(context.LastError.PolicyId == &quot;core-live-session-request-settings&quot;)">
+      <set-variable name="gatewayAuditPhase" value="policy-error" />
+      <set-variable name="gatewayAuditCode" value="OPERATION_SETTINGS_INVALID" />
+      <set-variable name="gatewayAuditStatus" value="@(500)" />
+      <include-fragment fragment-id="core-gateway-telemetry" />
+      <return-response><set-status code="500" reason="Live operation settings unavailable" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header></return-response>
+    </when></choose>
+    <base />
+  </on-error>
+</policies>

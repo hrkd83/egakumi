@@ -1,4 +1,4 @@
-"""入口確認の分離前後を、同じXML/C#とHTTP・gRPCの合成要求で比較する。"""
+"""現在の入口確認を実XML/C#とHTTP・gRPCの合成要求で検査する。"""
 import json
 from pathlib import Path
 import subprocess
@@ -7,31 +7,23 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from deployment.helpers.apim_authentication import (
-    _render_inline_trusted_ingress_service_policy, _structure, render_service_policy,
+    _structure, render_service_policy,
 )
 from deployment.helpers.apim_ingress import (
     expand_trusted_ingress_fragment, render_trusted_ingress_fragment,
 )
 from test_common_authentication import CSHARP, compile_inbound
 from test_gateway_limits_telemetry import PWSH
-from test_trusted_ingress_fragments import with_expected_observation_explanation
-from browser_exception_projection import project_browser_exception_to_previous
 
 
 class TrustedIngressStructureTests(unittest.TestCase):
-    def test_leaf_expansion_matches_the_previous_ingress_prefix(self):
-        previous = ET.fromstring(with_expected_observation_explanation(_render_inline_trusted_ingress_service_policy()))
-        current = ET.fromstring(project_browser_exception_to_previous(
-            expand_trusted_ingress_fragment(render_service_policy())))
-        # The frozen inline source predates the separate authentication review.
-        # Its independent expectation applies through ingress; the authentication
-        # fragment suite preserves the reviewed authentication executable hashes.
-        self.assertEqual(tuple(_structure(node) for node in list(current.find("inbound"))[:2]),
-                         tuple(_structure(node) for node in list(previous.find("inbound"))[:2]))
-        for section in ("backend", "outbound", "on-error"):
-            self.assertEqual(_structure(current.find(section)), _structure(previous.find(section)))
+    def test_leaf_expansion_preserves_the_ordered_current_ingress_contract(self):
+        current = ET.fromstring(expand_trusted_ingress_fragment(render_service_policy()))
+        inbound = current.find("inbound")
+        self.assertEqual([node.get("id") for node in list(inbound)[:2]],
+                         ["core-request-context", "core-trusted-ingress"])
         fragment = ET.fromstring(render_trusted_ingress_fragment())
-        self.assertEqual(_structure(fragment[0]), _structure(previous.find("inbound/choose[@id='core-trusted-ingress']")))
+        self.assertEqual(_structure(fragment[0]), _structure(inbound[1]))
         self.assertFalse(fragment.findall('.//include-fragment'))
 
 
@@ -56,7 +48,7 @@ class TrustedIngressBehaviorTests(unittest.TestCase):
             case['subscription'] = True
         cls.results = {}
         for required in ('true', 'false'):
-            for label, renderer in (('inline', _render_inline_trusted_ingress_service_policy), ('fragment', render_service_policy)):
+            for label, renderer in (('fragment', render_service_policy),):
                 policy = expand_trusted_ingress_fragment(renderer())
                 policy = policy.replace('{{core-l7-ingress-enabled}}', required)
                 policy = policy.replace('{{core-l7-ingress-secret}}', 'fixture-ingress')
@@ -76,12 +68,6 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                         raise AssertionError(result.stderr)
                     cls.results[(required, label)] = json.loads(result.stdout)
 
-    def test_all_request_and_authentication_results_match_before_and_after(self):
-        for required in ('true', 'false'):
-            with self.subTest(required=required):
-                for case in self.cases:
-                    if not case.get('grpc') or required == 'false':
-                        self.assertEqual(self.results[(required, 'fragment')][case['id']], self.results[(required, 'inline')][case['id']])
 
     def test_bad_http_ingress_is_rejected_before_authentication(self):
         results = self.results[('true', 'fragment')]

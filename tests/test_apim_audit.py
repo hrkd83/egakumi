@@ -1,4 +1,4 @@
-"""共通主体の生成時展開と旧XMLの独立性を合成入力で確認する。"""
+"""共通主体と監査の正規生成時展開を合成入力で確認する。"""
 from policy_fixture_paths import policy_fixture_path
 from pathlib import Path
 import unittest
@@ -6,23 +6,20 @@ from unittest import mock
 import xml.etree.ElementTree as ET
 
 from configuration_fixtures import CORE
-from deployment.helpers.apim_audit import AUTHENTICATED_SUBJECT_MARKER, SUBJECT_OBSERVATION_MARKER, _with_source_line_comments, render_audit_policy
+from deployment.helpers.apim_audit import CORE_AUTHENTICATED_SUBJECT_MARKER, CORE_GATEWAY_TELEMETRY_MARKER, _with_source_line_comments, render_audit_policy
 
 
 class AuditRenderingTests(unittest.TestCase):
-    def test_inline_source_round_trips_through_xml_attributes_and_text(self):
-        for marker, filename in ((AUTHENTICATED_SUBJECT_MARKER, "expressions/legacy/audit-authenticated-subject.cs"),
-                                 (SUBJECT_OBSERVATION_MARKER, "expressions/legacy/audit-subject-observation.cs")):
-            with self.subTest(source=filename):
-                source = (policy_fixture_path(CORE / "apps/gateway/apim/policies", filename)).read_text(encoding="utf-8")
-                source = _with_source_line_comments(source)
-                template = '<fragment><trace><message>@{' + marker + '}</message></trace>'
-                template += '<set-variable value="@{' + marker + '}"/></fragment>'
-                rendered = render_audit_policy(template)
-                root = ET.fromstring(rendered)
-                self.assertNotIn(marker, rendered)
-                self.assertEqual(root.find("trace/message").text, "@{" + source + "}")
-                self.assertEqual(root.find("set-variable").get("value"), "@{" + source.replace("\n", " ") + "}")
+    def test_inline_telemetry_source_round_trips_through_xml_text(self):
+        marker = CORE_GATEWAY_TELEMETRY_MARKER
+        filename = "fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs"
+        source = policy_fixture_path(CORE / "apps/gateway/apim/policies", filename).read_text(encoding="utf-8")
+        source = _with_source_line_comments(source)
+        template = '<fragment><trace><message>@{\n' + marker + '\n}</message></trace></fragment>'
+        rendered = render_audit_policy(template)
+        self.assertEqual(ET.fromstring(rendered).find('trace/message').text, '@{\n' + source.rstrip('\n') + '\n}')
+        self.assertNotIn('&quot;', rendered)
+        self.assertNotIn(marker, rendered)
 
     def test_fixed_previous_templates_do_not_load_current_subject_source(self):
         previous = '<fragment><trace><message>@{ return "fixed"; }</message></trace></fragment>'
@@ -33,8 +30,8 @@ class AuditRenderingTests(unittest.TestCase):
         from deployment.helpers import credential_login
         from test_credential_login import settings
         rendered = credential_login.render_connection("credential-connection-outbound.xml", settings(), "enabled")
-        self.assertNotIn(AUTHENTICATED_SUBJECT_MARKER, rendered)
-        self.assertNotIn(SUBJECT_OBSERVATION_MARKER, rendered)
+        self.assertNotIn(CORE_AUTHENTICATED_SUBJECT_MARKER, rendered)
+        self.assertNotIn(CORE_GATEWAY_TELEMETRY_MARKER, rendered)
         root = ET.fromstring(rendered)
         branch = next(node for node in root.findall("choose/when") if node.find(
             "set-variable[@name='gatewayAuditCode'][@value='CONNECTION_CLAIMS_REQUIRED']") is not None)

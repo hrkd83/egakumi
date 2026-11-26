@@ -98,15 +98,16 @@ class RerankTargetExpressionTests(unittest.TestCase):
         base = CSHARP.split("public static class ExpandedPolicyFixture")[0]
         source = base + r'''
 public static class RerankTargetFixture {
- public static bool Target(Context context) { __TARGET__ }
+ public static string TargetDecision(Context context) { __TARGET__ }
+ public static bool Target(Context context) { return (bool)JObject.Parse(TargetDecision(context))["allowed"]; }
  public static string Run(string input) {
   var result = new JObject();
   foreach (JObject item in JArray.Parse(input)) {
    var c = new Context();
    c.Request.Body = new Body { Data=item["body"].ToString(Formatting.None) };
-   c.Variables["config"] = new JObject(new JProperty("operationConstraints", new JObject(
-     new JProperty(c.Operation.Id, new JObject(new JProperty("kind", item["kind"]),
-       new JProperty("allowedModels", new JArray("synthetic-ranker"))))))).ToString(Formatting.None);
+   // Targetは、HTTP入口で準備された操作設定だけを読みます。
+   c.Variables["gatewayOperationConstraint"] = new JObject(new JProperty("kind", item["kind"]),
+     new JProperty("allowedModels", new JArray("synthetic-ranker"))).ToString(Formatting.None);
    var before = c.Request.Body.Data;
    var allowed = Target(c);
    result[(string)item["id"]] = new JObject(new JProperty("allowed", allowed),
@@ -115,7 +116,7 @@ public static class RerankTargetFixture {
   return result.ToString(Formatting.None);
  }
 }'''
-        source = source.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetAllowed"))
+        source = source.replace("__TARGET__", actual_expression("gateway.xml", "gatewayTargetDecision"))
         cases = [{"id": kind + "-" + name, "kind": kind, "body": body}
                  for kind in ("rerank", "bodyModel")
                  for name, body in (("approved", {"model": "synthetic-ranker"}),
@@ -164,7 +165,7 @@ class RerankPublicationTests(unittest.TestCase):
         root = ET.fromstring(compiled_policy_value(template, parameters))
         inbound = list(root.find("inbound"))
         limit = root.find('./inbound/include-fragment[@fragment-id="core-model-limits"]')
-        target = root.find('./inbound/set-variable[@name="gatewayTargetAllowed"]')
+        target = root.find('./inbound/include-fragment[@fragment-id="core-api-target-validation"]')
         backend = root.find('./inbound/set-backend-service')
         self.assertLess(inbound.index(limit), inbound.index(target))
         self.assertLess(inbound.index(target), inbound.index(backend))

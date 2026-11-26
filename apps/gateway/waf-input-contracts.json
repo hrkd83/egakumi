@@ -1,6 +1,42 @@
 {
   "version": 1,
-  "description": "Reviewed HTTP wire types. Arrays flatten without numeric indexes as observed by AppGW CRS 3.2. Model identifiers are resolved only from canonical API definitions; they are never WAF tuning inputs.",
+  "description": "確認済みのHTTP入力型です。AppGW CRS 3.2の配列は添字なしの名前で扱います。画像編集・文字起こしの配備名は操作署名から選ぶ専用末尾パターンで扱い、モデル一覧をWAFの適用範囲に使いません。",
+  "modelOperationWafRoutes": [
+    {
+      "profile": "g-images",
+      "scope": "gateway",
+      "api": "openai-images-v1",
+      "path": "models/openai-images/v1",
+      "operation": "image-edit",
+      "method": "POST",
+      "urlTemplate": "/deployments/{deployment}/edits",
+      "kind": "pathModel",
+      "parameter": "deployment",
+      "wafPath": "/models/openai-images/v1/deployments/*",
+      "bodyFormat": "multipart",
+      "apiType": "http",
+      "contentTypes": [
+        "multipart/form-data"
+      ]
+    },
+    {
+      "profile": "g-transcribe",
+      "scope": "gateway",
+      "api": "openai-audio-v1",
+      "path": "models/openai-audio/v1",
+      "operation": "audio-transcriptions",
+      "method": "POST",
+      "urlTemplate": "/deployments/{deployment}/transcriptions",
+      "kind": "pathModel",
+      "parameter": "deployment",
+      "wafPath": "/models/openai-audio/v1/deployments/*",
+      "bodyFormat": "multipart",
+      "apiType": "http",
+      "contentTypes": [
+        "multipart/form-data"
+      ]
+    }
+  ],
   "sources": {
     "codex": {
       "provider": "OpenAI",
@@ -1714,17 +1750,7 @@
           "apiType": "http"
         },
         {
-          "api": "openai-images-v1",
-          "path": "models/openai-images/v1",
-          "operation": "image-edit",
-          "method": "POST",
-          "urlTemplate": "/deployments/{deployment}/edits",
-          "kind": "pathModel",
-          "bodyFormat": "multipart",
-          "apiType": "http",
-          "contentTypes": [
-            "multipart/form-data"
-          ]
+          "modelOperationWafRoute": "g-images"
         }
       ],
       "unverified": [
@@ -1805,17 +1831,7 @@
       ],
       "bindings": [
         {
-          "api": "openai-audio-v1",
-          "path": "models/openai-audio/v1",
-          "operation": "audio-transcriptions",
-          "method": "POST",
-          "urlTemplate": "/deployments/{deployment}/transcriptions",
-          "kind": "pathModel",
-          "bodyFormat": "multipart",
-          "apiType": "http",
-          "contentTypes": [
-            "multipart/form-data"
-          ]
+          "modelOperationWafRoute": "g-transcribe"
         }
       ]
     },

@@ -54,6 +54,30 @@ ERROR_STATUS_EXPRESSION = ERROR_STATUS_EXPRESSIONS["gateway.xml"]
 if not ERROR_STATUS_EXPRESSION.startswith("@(") or not ERROR_STATUS_EXPRESSION.endswith(")"):
     raise AssertionError("Expected a single-statement APIM error status expression")
 
+
+def single_expression(value):
+    """呼出元XMLの単一式を取り出し、判定を試験側へ書き写さずに実行する。"""
+    if not value or not value.startswith("@(") or not value.endswith(")"):
+        raise AssertionError("Expected a single-statement APIM expression")
+    return value[2:-1]
+
+
+LIMIT_FAILURE_POLICY = next(
+    node for node in ET.parse(policy_fixture_path(POLICIES, "gateway.xml")).findall("./inbound/choose/when")
+    if "gatewayLimitDecision" in node.get("condition", "")
+)
+LIMIT_AUDIT_NODES = [node for node in LIMIT_FAILURE_POLICY if node.tag == "set-variable"]
+LIMIT_AUDIT_ASSIGNMENTS = "\n".join(
+    f'context.Variables[{json.dumps(node.get("name"))}] = {single_expression(node.get("value"))};'
+    for node in LIMIT_AUDIT_NODES
+)
+LIMIT_RESPONSE = LIMIT_FAILURE_POLICY.find("./return-response")
+PII_LIMIT_BRANCH = LIMIT_FAILURE_POLICY.find("./choose[@id='core-pii-public-limit-error']/when")
+PII_LIMIT_RESPONSE = PII_LIMIT_BRANCH.find("./return-response")
+PII_LIMIT_BODY = PII_LIMIT_RESPONSE.find("./set-body").text.strip()
+if not PII_LIMIT_BODY.startswith("@{") or not PII_LIMIT_BODY.endswith("}"):
+    raise AssertionError("Expected a multi-statement APIM PII response body expression")
+
 CSHARP = r"""
 using System;
 using System.Collections.Generic;
@@ -65,12 +89,18 @@ using Newtonsoft.Json.Linq;
 public sealed class Body {
   public byte[] Data;
   public int Reads;
+  public int ByteReads;
+  public bool ThrowOnByteRead;
   public bool AllReadsPreserved = true;
   public T As<T>(bool preserveContent = false) {
     Reads++;
     AllReadsPreserved &= preserveContent;
     object value;
-    if (typeof(T) == typeof(byte[])) value = Data;
+    if (typeof(T) == typeof(byte[])) {
+      ByteReads++;
+      if (ThrowOnByteRead) throw new Exception("Synthetic body reader failure details");
+      value = Data;
+    }
     else if (typeof(T) == typeof(JObject)) value = JObject.Parse(Encoding.UTF8.GetString(Data));
     else throw new Exception("Fixture does not support this message conversion");
     return (T)value;
@@ -111,11 +141,25 @@ public static class PolicyFixture {
   public static string RequestContext(Context context) { __REQUEST_CONTEXT__ }
   public static string Subject(Context context) { __SUBJECT__ }
   public static int ErrorStatus(Context context) { return __ERROR_STATUS__; }
+  public static string PiiLimitBody(Context context) { __PII_LIMIT_BODY__ }
+  public static string LimitFailure(Context context) {
+    // 実XMLの順序で監査変数を設定し、実Telemetry式と応答式を対照します。APIM応答engineは再現しません。
+    __LIMIT_AUDIT_ASSIGNMENTS__
+    var audit = JObject.Parse(Telemetry(context));
+    var pii = __PII_LIMIT_CONDITION__;
+    var response = new JObject(
+      new JProperty("status", pii ? __PII_LIMIT_STATUS__ : __LIMIT_RESPONSE_STATUS__),
+      new JProperty("reason", pii ? __PII_LIMIT_REASON__ : __LIMIT_RESPONSE_REASON__),
+      new JProperty("requestIdHeader", pii ? __PII_LIMIT_REQUEST_ID__ : __LIMIT_RESPONSE_REQUEST_ID__),
+      new JProperty("body", JObject.Parse(pii ? PiiLimitBody(context) : __LIMIT_RESPONSE_BODY__)));
+    return new JObject(new JProperty("audit", audit),
+      new JProperty("response", response)).ToString(Formatting.None);
+  }
   public static string Run(string casesJson) {
     var results = new JObject();
     foreach (JObject item in JArray.Parse(casesJson)) {
       var context = new Context {
-        Request = new Request { Body = new Body { Data = Encoding.UTF8.GetBytes((string)item["body"] ?? "") } },
+        Request = new Request { Body = new Body { Data = Encoding.UTF8.GetBytes((string)item["body"] ?? ""), ThrowOnByteRead = (bool?)item["throwOnByteRead"] ?? false } },
         Response = new Response { StatusCode = (int?)item["responseStatus"] ?? 200 }
       };
       if ((bool?)item["responseNull"] == true) context.Response = null;
@@ -158,6 +202,7 @@ public static class PolicyFixture {
       if (item.Property("controlRaw") != null) context.Variables["gatewayControlSettings"] =
         item["controlRaw"].Type == JTokenType.Null ? null : (string)item["controlRaw"];
       if (item["selection"] != null) context.Variables["gatewayOperationSelection"] = item["selection"].ToString(Formatting.None);
+      if (item.Property("selectionRaw") != null) context.Variables["gatewayOperationSelection"] = ((JValue)item["selectionRaw"]).Value;
       if (item["auditModel"] != null) context.Variables["gatewayAuditModel"] = (string)item["auditModel"];
       if (item["connectionExpiry"] != null) context.Variables["gatewayConnectionExpiresOn"] = ((JValue)item["connectionExpiry"]).Value;
       if (item["claims"] != null) {
@@ -169,10 +214,30 @@ public static class PolicyFixture {
       if ((bool?)item["subjectMissing"] != true && (bool?)item["requestContextMissing"] != true) context.Variables["gatewayAuthenticatedSubject"] = Subject(context);
       if (item.Property("subjectRaw") != null) context.Variables["gatewayAuthenticatedSubject"] = item["subjectRaw"].Type == JTokenType.Null ? null : item["subjectRaw"].Type == JTokenType.String ? (string)item["subjectRaw"] : item["subjectRaw"].ToString(Formatting.None);
       if (mode == "on-error") context.Variables["gatewayAuditStatus"] = ErrorStatus(context);
-      string raw = mode == "telemetry" || mode == "on-error" ? Telemetry(context) : Limits(context);
+      string raw;
+      if (mode == "telemetry" || mode == "on-error") raw = Telemetry(context);
+      else {
+        // APIMのon-error engineは再現せず、実Limits式から外へ伝わった例外だけを観測します。
+        try { raw = Limits(context); }
+        catch {
+          // 例外の詳細・型・要求本文を観測結果へ含めません。HTTP statusへの変換もしません。
+          results[(string)item["id"]] = new JObject(new JProperty("exceptionPropagated", true));
+          continue;
+        }
+        if ((bool?)item["propagationProbe"] == true) {
+          // 伝播しなかった場合も結果本文や要求本文を出さず、成否だけを観測します。
+          results[(string)item["id"]] = new JObject(new JProperty("exceptionPropagated", false));
+          continue;
+        }
+        if (mode == "limits-audit") {
+          context.Variables["gatewayLimitDecision"] = raw;
+          raw = LimitFailure(context);
+        }
+      }
       results[(string)item["id"]] = new JObject(
         new JProperty("result", JObject.Parse(raw)),
         new JProperty("reads", context.Request.Body.Reads),
+        new JProperty("byteReads", context.Request.Body.ByteReads),
         new JProperty("preserved", context.Request.Body.AllReadsPreserved),
         new JProperty("bodyAfter", Encoding.UTF8.GetString(context.Request.Body.Data)));
     }
@@ -180,6 +245,19 @@ public static class PolicyFixture {
   }
 }
 """.replace("__LIMITS__", LIMIT_EXPRESSION).replace("__TELEMETRY__", TELEMETRY_EXPRESSION).replace("__REQUEST_CONTEXT__", REQUEST_CONTEXT_EXPRESSION).replace("__SUBJECT__", SUBJECT_EXPRESSION).replace("__ERROR_STATUS__", ERROR_STATUS_EXPRESSION[2:-1])
+for marker, value in {
+    "__LIMIT_AUDIT_ASSIGNMENTS__": LIMIT_AUDIT_ASSIGNMENTS,
+    "__LIMIT_RESPONSE_STATUS__": single_expression(LIMIT_RESPONSE.find("./set-status").get("code")),
+    "__LIMIT_RESPONSE_REASON__": single_expression(LIMIT_RESPONSE.find("./set-status").get("reason")),
+    "__LIMIT_RESPONSE_REQUEST_ID__": single_expression(LIMIT_RESPONSE.find("./set-header[@name='apim-request-id']/value").text),
+    "__LIMIT_RESPONSE_BODY__": single_expression(LIMIT_RESPONSE.find("./set-body").text),
+    "__PII_LIMIT_CONDITION__": single_expression(PII_LIMIT_BRANCH.get("condition")),
+    "__PII_LIMIT_STATUS__": str(int(PII_LIMIT_RESPONSE.find("./set-status").get("code"))),
+    "__PII_LIMIT_REASON__": json.dumps(PII_LIMIT_RESPONSE.find("./set-status").get("reason")),
+    "__PII_LIMIT_REQUEST_ID__": single_expression(PII_LIMIT_RESPONSE.find("./set-header[@name='apim-request-id']/value").text),
+    "__PII_LIMIT_BODY__": PII_LIMIT_BODY[2:-1],
+}.items():
+    CSHARP = CSHARP.replace(marker, value)
 
 
 def limit_case(case_id, body, constraint=None):
@@ -196,25 +274,38 @@ def limit_case(case_id, body, constraint=None):
 CASES = [
     limit_case("valid", {"input": "synthetic", "max_output_tokens": 100}),
     limit_case("missing-output-limit", {"input": "synthetic"}),
-    limit_case("excess-output-limit", {"input": "synthetic", "max_output_tokens": 101}),
+    limit_case("output-above-former-limit", {"input": "synthetic", "max_output_tokens": 101}),
+    limit_case("large-output-limit", {"input": "synthetic", "max_output_tokens": 9223372036854775807}),
     limit_case("zero-output-limit", {"input": "synthetic", "max_output_tokens": 0}),
     limit_case("float-output-limit", {"input": "synthetic", "max_output_tokens": 10.0}),
     limit_case("string-output-limit", {"input": "synthetic", "max_output_tokens": "10"}),
     limit_case("bool-output-limit", {"input": "synthetic", "max_output_tokens": True}),
-    limit_case("alias-ambiguity", {"input": "synthetic", "max_output_tokens": 10, "max_tokens": 10}),
+    limit_case("null-output-limit", {"input": "synthetic", "max_output_tokens": None}),
+    limit_case("negative-output-limit", {"input": "synthetic", "max_output_tokens": -1}),
+    limit_case("mixed-output-fields", {"input": "synthetic", "max_output_tokens": 10, "max_tokens": 10}),
     limit_case("chat", {"messages": [], "max_completion_tokens": 25},
                {"kind": "bodyModel", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_completion_tokens"}),
-    limit_case("chat-wrong-field", {"messages": [], "max_output_tokens": 25},
+    limit_case("chat-alternate-output-field", {"messages": [], "max_output_tokens": 25},
+               {"kind": "bodyModel", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_completion_tokens"}),
+    limit_case("chat-null-alternate-output-field", {"messages": [], "max_output_tokens": None},
                {"kind": "bodyModel", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_completion_tokens"}),
     limit_case("get-connection", "", {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 32768}),
     limit_case("embedding", {"model": "synthetic-embedding", "input": "synthetic text"},
                {"kind": "bodyModel", "maxRequestBytes": 32768, "allowedModels": ["synthetic-embedding"]}),
-    limit_case("invalid-json", "{synthetic malformed JSON"),
+    limit_case("rerank-invalid-json", "{synthetic malformed JSON",
+               {"kind": "rerank", "maxRequestBytes": 1024,
+                "stringChoices": {"quality": ["low"]}}),
+    limit_case("registered-output-only-invalid-json", "{synthetic malformed JSON",
+               {"kind": "registeredOperation", "maxRequestBytes": 1024, "outputTokenParameter": "max_output_tokens"}),
     limit_case("missing-config", {}, {"kind": "statelessResponses"}),
-    limit_case("invalid-responses-alias", {"max_tokens": 10},
+    limit_case("unused-output-token-setting", {"max_tokens": 10},
                {"kind": "statelessResponses", "maxRequestBytes": 1024, "maxOutputTokens": 25, "outputTokenParameter": "max_tokens"}),
     limit_case("byte-boundary", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 30}),
     limit_case("multibyte-excess", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 29}),
+    {**limit_case("measured-byte-boundary", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 30}),
+     "selection": {"allowed": True, "requestBodyBytes": 30}},
+    {**limit_case("measured-multibyte-excess", "あ" * 10, {"kind": "registeredOperation", "maxRequestBytes": 29}),
+     "selection": {"allowed": True, "requestBodyBytes": 30}},
     {"id": "audit-accepted", "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
      "gatewayAuditPhase": "accepted", "gatewayAuditCode": "GATEWAY_ALLOWED",
      "decision": {"allowed": True, "callerId": "subscription:subscription-a", "method": "subscriptionKey", "accessToken": "SENTINEL_ACCESS_TOKEN"},
@@ -256,6 +347,14 @@ for label, raw in (("null", None), ("non-string", 1), ("malformed", "{"), ("arra
     CONSTRAINT_READER_FAILURES.append(identifier)
     CASES.append({**limit_case(identifier, "SENTINEL_RAW_CLIENT_REQUEST"), "constraintRaw": raw})
 
+# 測定値を含む内部結果を読めない場合も、本文解析の400と区別します。
+CASES.append({**limit_case("selection-reader-malformed", "SENTINEL_RAW_CLIENT_REQUEST"), "selectionRaw": "{"})
+
+UNEXPECTED_LIMITS_CASES = ("unexpected-body-reader", "unexpected-kind-object")
+CASES.append({**limit_case("unexpected-body-reader", "SENTINEL_SYNTHETIC_REQUEST_BODY"), "throwOnByteRead": True, "propagationProbe": True})
+CASES.append({**limit_case("unexpected-kind-object", "SENTINEL_SYNTHETIC_REQUEST_BODY",
+                          {"kind": {"synthetic": True}, "maxRequestBytes": 1024}), "propagationProbe": True})
+
 # JSON整数として読めてもlongに収まらない設定値は、本文を読む前に設定不備として扱います。
 CASES.append(limit_case("max-request-bytes-overflow", "SENTINEL_RAW_CLIENT_REQUEST",
                        {"kind": "registeredOperation", "maxRequestBytes": 9223372036854775808}))
@@ -292,6 +391,12 @@ CASES.extend([
     limit_case("pii-wire-boundary", PII_WIRE_BODY.ljust(72), {"kind": "pii", "maxRequestBytes": 12}),
     limit_case("pii-wire-excess", PII_WIRE_BODY.ljust(73), {"kind": "pii", "maxRequestBytes": 12}),
 ])
+# 設定不備と通常/PIIの本文超過を、実Limits→呼出元XML→Telemetry・応答式の順で検証します。
+for identifier in ("missing-config", "multibyte-excess", "pii-wire-excess"):
+    CASES.append({**next(case for case in CASES if case["id"] == identifier),
+                  "id": "limits-audit-" + identifier, "mode": "limits-audit"})
+# モデル選択を使わないJSONには計測値がなく、従来の実サイズ確認を続けます。
+next(case for case in CASES if case["id"] == "byte-boundary")["selection"] = {"allowed": True}
 
 # 認証は共通入口で完了し、認可decisionが未作成/拒否でも主体を保持するケース。
 _subject_tenant = "11111111-1111-4111-8111-111111111111"
@@ -342,10 +447,10 @@ for _label, _raw in (("malformed", "{broken"), ("null", None), ("oversized", " "
 # Regression cases use the shipped contracts, including optional native fields.
 for _id, _api, _operation, _body in (
     ("native-responses-history", "openai-inference-v1", "responses-create", {"model": "gpt-6.1-sol", "input": "a" * 98304}),
-    ("native-image-multiple", "openai-images-v1", "image-generate", {"model": "gpt-image-2", "n": 10, "size": "2048x1024", "quality": "high"}),
+    ("native-image-multiple", "openai-images-v1", "image-generate", {"model": "gpt-image-2", "n": 11, "size": "2048x1024", "quality": "high"}),
     ("native-image-default", "openai-images-v1", "image-generate", {"model": "gpt-image-2", "prompt": "synthetic"}),
     ("native-flux-dimensions", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "width": 2048, "height": 1024}),
-    ("native-flux-one-output", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "num_images": 2}),
+    ("native-flux-multiple-output", "blackforest-images-v1", "flux2-generate", {"model": "FLUX.2-flex", "n": 2, "num_images": 2, "output_format": "synthetic"}),
 ):
     _constraint = json.loads((CORE / "apps/gateway/apim/apis" / (_api + ".json")).read_text())["authorization"]["operationConstraints"][_operation]
     _constraint = dict(_constraint)
@@ -359,7 +464,7 @@ MODEL_LIMITS = {"kind": "bodyModel", "maxRequestBytes": 4096, "maxOutputTokens":
                 "outputTokenParameter": "max_tokens", "maxOutputTokensByModel": {"small": 128000, "large": 384000, "router": None}}
 CASES.extend([
     limit_case("model-small-boundary", {"model": "small", "max_tokens": 128000}, MODEL_LIMITS),
-    limit_case("model-small-excess", {"model": "small", "max_tokens": 128001}, MODEL_LIMITS),
+    limit_case("model-output-above-former-limit", {"model": "small", "max_tokens": 128001}, MODEL_LIMITS),
     limit_case("model-large-boundary", {"model": "large", "max_tokens": 384000}, MODEL_LIMITS),
     limit_case("model-not-registered", {"model": "unknown", "max_tokens": 1}, MODEL_LIMITS),
     limit_case("model-router-auto", {"model": "router"}, MODEL_LIMITS),
@@ -432,25 +537,49 @@ for _api, _operation, _mode in NATIVE_UPLOAD_OPERATIONS:
 CASES.append(limit_case("native-rerank-default", {"query": "query", "documents": ["document"] * 17},
                        {"kind": "rerank", "maxRequestBytes": 65536}))
 CASES.append(limit_case("protocol-unread", "opaque protocol frames", {"kind": "registeredOperation", "bodyFormat": "none", "maxRequestBytes": 1024}))
+# JSONサイズ分岐以外は、使わない選択結果のJSONを読まないことも確認します。
+for _case in CASES:
+    if _case["id"] in ("binary-valid", "multipart-valid", "text-valid", "protocol-unread"):
+        _case["selectionRaw"] = "{"
 for _classification in ("platform", "sample", "untrusted-value"):
     CASES.append({"id": "audit-class-" + _classification, "mode": "telemetry", "body": "SENTINEL_RAW_PROMPT",
                   "settings": {"serviceClass": _classification, "backendService": "foundryOpenAi", "backendAuthentication": "managedIdentity",
                                "measurementRole": "execution", "targetAgent": "", "knownAgents": [], "llmOperationIds": []}})
 for _name, _body in (("bounded-fields", {"documents": ["a", "b"], "top_n": 2, "quality": "low"}),
-                     ("too-many-documents", {"documents": ["a", "b", "c"], "top_n": 2}),
+                     ("documents-above-former-limit", {"documents": ["a", "b", "c"], "top_n": 2}),
                      ("float-integer", {"top_n": 2.0}), ("missing-required-integer", {}),
-                     ("unapproved-choice", {"top_n": 1, "quality": "high"})):
+                     ("unlisted-choice", {"top_n": 1, "quality": "high"})):
     CASES.append(limit_case(_name, _body, {"kind": "bodyModel", "bodyFormat": "json", "maxRequestBytes": 1024,
          "integerLimits": {"top_n": {"minimum": 1, "maximum": 2, "required": True}},
          "arrayLimits": {"documents": 2}, "stringChoices": {"quality": ["low"]}}))
+
+INTEGER_ONLY_CASES = ("integer-only-missing", "integer-only-string", "integer-only-malformed-json")
+for _name, _body in zip(INTEGER_ONLY_CASES, ({}, {"count": "synthetic"}, "{synthetic malformed JSON")):
+    CASES.append(limit_case(_name, _body, {"kind": "registeredOperation", "maxRequestBytes": 1024,
+        "integerLimits": {"count": {"minimum": 1, "maximum": 2, "required": True}}}))
+
+ARRAY_ONLY_CASES = ("array-only-above-former-limit", "array-only-null", "array-only-string", "array-only-malformed-json")
+for _name, _body in zip(ARRAY_ONLY_CASES, ({"documents": ["first", "second"]}, {"documents": None},
+                                         {"documents": "synthetic"}, "{synthetic malformed JSON")):
+    CASES.append(limit_case(_name, _body, {"kind": "registeredOperation", "maxRequestBytes": 1024,
+        "arrayLimits": {"documents": 1}}))
+
+STRING_ONLY_CASES = ("string-only-unlisted", "string-only-null", "string-only-number", "string-only-malformed-json")
+for _name, _body in zip(STRING_ONLY_CASES, ({"quality": "high"}, {"quality": None},
+                                         {"quality": 7}, "{synthetic malformed JSON")):
+    CASES.append(limit_case(_name, _body, {"kind": "registeredOperation", "maxRequestBytes": 1024,
+        "stringChoices": {"quality": ["low"]}}))
 
 RERANK_LIMITS = {"kind": "rerank", "bodyFormat": "json", "maxRequestBytes": 65536,
                  "arrayLimits": {"documents": 8},
                  "integerLimits": {"top_n": {"minimum": 1, "maximum": 3, "required": True}}}
 RERANK_BODY = {"model": "synthetic-ranker", "query": "synthetic query", "documents": ["synthetic document"], "top_n": 1}
-RERANK_REJECTIONS = {
+RERANK_TOP_VARIANTS = {
     "cross-field": {"top_n": 2}, "empty-documents": {"documents": []},
-    "too-many-documents": {"documents": ["document"] * 9},
+    "zero-top": {"top_n": 0}, "null-top": {"top_n": None},
+    "float-top": {"top_n": 1.0}, "string-top": {"top_n": "1"}, "bool-top": {"top_n": True},
+}
+RERANK_INPUT_VARIANTS = {
     "null-documents": {"documents": None}, "string-documents": {"documents": "document"},
     "object-document": {"documents": [{"text": "document"}]},
     "null-document": {"documents": [None]}, "number-document": {"documents": [1]},
@@ -458,15 +587,17 @@ RERANK_REJECTIONS = {
     "bom-document": {"documents": ["\ufeff"]}, "empty-query": {"query": ""},
     "blank-query": {"query": " \t\n"}, "unicode-blank-query": {"query": "\u00a0\u2003\u2028\u3000\ufeff"},
     "null-query": {"query": None}, "number-query": {"query": 1}, "array-query": {"query": ["query"]},
-    "zero-top": {"top_n": 0}, "excess-top": {"documents": ["document"] * 8, "top_n": 4},
-    "float-top": {"top_n": 1.0}, "string-top": {"top_n": "1"}, "bool-top": {"top_n": True},
 }
-for _name, _patch in RERANK_REJECTIONS.items():
+for _name, _patch in {**RERANK_TOP_VARIANTS, **RERANK_INPUT_VARIANTS}.items():
     CASES.append(limit_case("rerank-" + _name, {**RERANK_BODY, **_patch}, RERANK_LIMITS))
 for _field in ("query", "documents", "top_n"):
     CASES.append(limit_case("rerank-missing-" + _field,
                            {k: v for k, v in RERANK_BODY.items() if k != _field}, RERANK_LIMITS))
+CASES.append(limit_case("rerank-empty-documents-no-top",
+                       {**{k: v for k, v in RERANK_BODY.items() if k != "top_n"}, "documents": []}, RERANK_LIMITS))
 for _name, _patch in (("minimum", {}), ("maximum", {"documents": ["document"] * 8, "top_n": 3}),
+                       ("above-former-top-bound", {"documents": ["document"] * 8, "top_n": 4}),
+                       ("above-former-document-bound", {"documents": ["document"] * 9}),
                        ("non-js-whitespace", {"query": "\u0085", "documents": ["\u0085"]}),
                        ("preserve-surrounding-space", {"query": "  query  ", "documents": ["  document  "]})):
     CASES.append(limit_case("rerank-" + _name, {**RERANK_BODY, **_patch}, RERANK_LIMITS))
@@ -650,25 +781,59 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
 
     def test_standard_apis_accept_provider_inputs_beyond_old_trial_limits(self):
         for case_id in ("native-responses-history", "native-image-multiple", "native-image-default",
-                        "native-flux-dimensions", "published-token-above-old-ceiling"):
+                        "native-flux-dimensions", "native-flux-multiple-output", "published-token-above-old-ceiling"):
             self.assertTrue(self.decision(case_id)["allowed"], case_id)
-        self.assertFalse(self.decision("native-flux-one-output")["allowed"])
+        self.assertEqual(self.results["native-image-multiple"]["reads"], 1)
+        self.assertEqual(self.results["native-flux-multiple-output"]["reads"], 1)
 
-    def test_declared_json_cost_fields_are_bounded(self):
-        self.assertTrue(self.decision("bounded-fields")["allowed"])
-        for case_id in ("too-many-documents", "float-integer", "missing-required-integer", "unapproved-choice"):
-            self.assertFalse(self.decision(case_id)["allowed"], case_id)
+    def test_unused_integer_array_and_string_settings_do_not_restrict_limits(self):
+        for case_id in ("bounded-fields", "float-integer", "missing-required-integer", "documents-above-former-limit", "unlisted-choice"):
+            self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"}, case_id)
+            self.assertEqual(self.results[case_id]["reads"], 1, case_id)
+
+    def test_integer_only_settings_do_not_require_fields_or_parse_json(self):
+        for case_id in INTEGER_ONLY_CASES:
+            with self.subTest(case_id=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
+
+    def test_array_only_settings_do_not_limit_counts_types_or_require_json_parsing(self):
+        for case_id in ARRAY_ONLY_CASES:
+            with self.subTest(case_id=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
+
+    def test_string_only_settings_do_not_limit_values_types_or_require_json_parsing(self):
+        for case_id in STRING_ONLY_CASES:
+            with self.subTest(case_id=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
 
     def test_model_boundary_and_chat_contract(self):
         for case_id in ("valid", "chat"):
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
 
-    def test_output_limits_are_selected_per_model_and_router_allows_provider_default(self):
-        for case_id in ("model-small-boundary", "model-large-boundary", "model-router-auto"):
-            self.assertTrue(self.decision(case_id)["allowed"], case_id)
-        self.assertEqual(self.decision("model-small-excess")["code"], "OUTPUT_LIMIT_EXCEEDED")
-        self.assertFalse(self.decision("model-not-registered")["allowed"])
+    def test_model_output_maximum_tables_do_not_restrict_limits(self):
+        for case_id in ("model-small-boundary", "model-large-boundary", "model-router-auto",
+                        "model-output-above-former-limit", "model-not-registered"):
+            with self.subTest(case_id=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
 
     def test_read_only_connection_and_embedding_do_not_require_generation_tokens(self):
         for case_id in ("get-connection", "embedding"):
@@ -676,33 +841,83 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 expected_code = "NO_BODY_CONTRACT" if case_id == "get-connection" else "REQUEST_WITHIN_LIMITS"
                 self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": expected_code})
 
-    def test_output_limit_is_optional_and_uses_provider_maximum_when_supplied(self):
-        self.assertTrue(self.decision("missing-output-limit")["allowed"])
-        for case_id, code in (("excess-output-limit", "OUTPUT_LIMIT_EXCEEDED"),):
+    def test_output_count_can_be_omitted_or_exceed_former_maximum_without_rewriting(self):
+        for case_id in ("missing-output-limit", "output-above-former-limit", "large-output-limit"):
             with self.subTest(case_id=case_id):
-                self.assertEqual(self.decision(case_id), {"allowed": False, "status": 400, "code": code})
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
 
-    def test_token_limit_type_and_alias_are_not_coerced(self):
-        for case_id in ("zero-output-limit", "float-output-limit", "string-output-limit", "bool-output-limit", "alias-ambiguity", "chat-wrong-field"):
+    def test_output_values_and_unused_token_setting_do_not_trigger_json_reads_or_rejections(self):
+        for case_id in ("zero-output-limit", "float-output-limit", "string-output-limit", "bool-output-limit",
+                        "null-output-limit", "negative-output-limit", "unused-output-token-setting",
+                        "registered-output-only-invalid-json"):
             with self.subTest(case_id=case_id):
-                self.assertEqual(self.decision(case_id)["code"], "INVALID_OUTPUT_LIMIT")
-                self.assertFalse(self.decision(case_id)["allowed"])
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
+
+    def test_alternate_output_fields_are_preserved_when_alone_null_or_mixed(self):
+        for case_id in ("chat-alternate-output-field", "chat-null-alternate-output-field", "mixed-output-fields"):
+            with self.subTest(case_id=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
 
     def test_missing_or_incompatible_deployment_limits_fail_closed(self):
-        for case_id in ("missing-config", "invalid-responses-alias", *MAX_BYTES_FAILURES):
+        for case_id in ("missing-config", *MAX_BYTES_FAILURES):
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
         for case_id in MAX_BYTES_FAILURES:
             self.assertEqual(self.results[case_id]["reads"], 0, case_id)
             self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST", case_id)
 
-    def test_internal_constraint_read_failures_are_500_before_request_body_reads(self):
-        for case_id in CONSTRAINT_READER_FAILURES:
+    def test_internal_constraint_and_result_read_failures_are_500_before_request_body_reads(self):
+        for case_id in (*CONSTRAINT_READER_FAILURES, "selection-reader-malformed"):
             with self.subTest(case_id=case_id):
                 self.assertEqual(self.decision(case_id), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
                 self.assertEqual(self.results[case_id]["reads"], 0)
                 self.assertTrue(self.results[case_id]["preserved"])
                 self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST")
+
+    def test_unexpected_limits_exceptions_propagate_without_exposing_details_or_body(self):
+        # 実C#式からfixture呼出元への伝播を確認します。APIM on-errorの応答や監査はこの試験の対象外です。
+        for case_id in UNEXPECTED_LIMITS_CASES:
+            with self.subTest(case_id=case_id):
+                self.assertEqual(self.results[case_id], {"exceptionPropagated": True})
+        self.assertEqual(self.decision("valid"), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+        self.assertEqual(self.decision("constraint-reader-malformed"), {"allowed": False, "status": 500, "code": "LIMITS_NOT_CONFIGURED"})
+        self.assertEqual(self.decision("multibyte-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+
+    def test_limits_failure_audit_and_response_use_the_same_status_code_and_request_id(self):
+        nodes = list(LIMIT_FAILURE_POLICY)
+        positions = {node.get("name"): nodes.index(node) for node in LIMIT_AUDIT_NODES}
+        telemetry_position = nodes.index(LIMIT_FAILURE_POLICY.find("./include-fragment[@fragment-id='core-gateway-telemetry']"))
+        self.assertLess(positions["gatewayAuditStatus"], positions["gatewayAuditPhase"])
+        self.assertLess(max(positions.values()), telemetry_position)
+        for response in (LIMIT_RESPONSE, PII_LIMIT_RESPONSE):
+            header = response.find("./set-header[@name='Cache-Control']")
+            self.assertEqual(header.get("exists-action"), "override")
+            self.assertEqual(header.find("./value").text, "no-store")
+        request_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        for identifier, status, phase, code, reason, public_code in (
+            ("missing-config", 500, "policy-error", "LIMITS_NOT_CONFIGURED", "Gateway processing failed", "LIMITS_NOT_CONFIGURED"),
+            ("multibyte-excess", 413, "rejected", "REQUEST_TOO_LARGE", "Request too large", "REQUEST_TOO_LARGE"),
+            ("pii-wire-excess", 413, "rejected", "REQUEST_TOO_LARGE", "Invalid PII input", "PiiInputTooLarge"),
+        ):
+            with self.subTest(case=identifier):
+                observation = self.decision("limits-audit-" + identifier)
+                audit = observation["audit"]
+                self.assertEqual({key: audit[key] for key in ("status", "phase", "code", "requestId")},
+                                 {"status": status, "phase": phase, "code": code, "requestId": request_id})
+                self.assertEqual(observation["response"], {"status": status, "reason": reason, "requestIdHeader": request_id,
+                                 "body": {"error": {"code": public_code}, "requestId": request_id}})
+                self.assertEqual(self.results["limits-audit-" + identifier]["reads"], self.results[identifier]["reads"])
 
     def test_invalid_internal_body_formats_are_500_before_request_body_reads(self):
         for case_id in BODY_FORMAT_FAILURES:
@@ -713,37 +928,68 @@ Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'policy.cs')
                 self.assertEqual(self.results[case_id]["bodyAfter"], "SENTINEL_RAW_CLIENT_REQUEST")
 
     def test_real_utf8_bytes_and_exact_boundary(self):
-        self.assertTrue(self.decision("byte-boundary")["allowed"])
-        self.assertEqual(self.decision("multibyte-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+        for prefix, byte_reads in (("", 1), ("measured-", 0)):
+            with self.subTest(measured=bool(prefix)):
+                self.assertTrue(self.decision(prefix + "byte-boundary")["allowed"])
+                self.assertEqual(self.decision(prefix + "multibyte-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
+                self.assertEqual(self.results[prefix + "byte-boundary"]["byteReads"], byte_reads)
+                self.assertEqual(self.results[prefix + "multibyte-excess"]["byteReads"], byte_reads)
 
     def test_pii_wire_representation_keeps_its_reserved_byte_boundary(self):
         self.assertEqual(self.decision("pii-wire-boundary"), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
         self.assertEqual(self.decision("pii-wire-excess"), {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
         for case_id, size in (("pii-wire-boundary", 72), ("pii-wire-excess", 73)):
             self.assertEqual(self.results[case_id]["reads"], 1)
+            self.assertEqual(self.results[case_id]["byteReads"], 1)
             self.assertTrue(self.results[case_id]["preserved"])
             self.assertEqual(self.results[case_id]["bodyAfter"], PII_WIRE_BODY.ljust(size))
 
-    def test_invalid_json_has_safe_error_without_input(self):
-        self.assertEqual(self.decision("invalid-json"), {"allowed": False, "status": 400, "code": "INVALID_REQUEST"})
+    def test_rerank_does_not_parse_json_while_preserving_wire_bytes(self):
+        self.assertEqual(self.decision("rerank-invalid-json"), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+        self.assertEqual(self.results["rerank-invalid-json"]["reads"], 1)
+        self.assertEqual(self.results["rerank-invalid-json"]["byteReads"], 1)
+        self.assertTrue(self.results["rerank-invalid-json"]["preserved"])
+        self.assertEqual(self.results["rerank-invalid-json"]["bodyAfter"], "{synthetic malformed JSON")
 
     def test_request_is_preserved_and_never_silently_rewritten(self):
         for case in CASES:
+            # 例外伝播ケースは本文を観測結果に含めず、上の専用テストで確認します。
+            if case["id"] in UNEXPECTED_LIMITS_CASES:
+                continue
             with self.subTest(case_id=case["id"]):
                 self.assertEqual(self.results[case["id"]]["bodyAfter"], case["body"])
                 self.assertTrue(self.results[case["id"]]["preserved"])
 
-    def test_rerank_rejects_invalid_types_blanks_and_cross_field_counts_before_upstream(self):
-        for suffix in (*RERANK_REJECTIONS, "missing-query", "missing-documents", "missing-top_n"):
-            with self.subTest(case=suffix):
-                self.assertEqual(self.decision("rerank-" + suffix),
-                                 {"allowed": False, "status": 400, "code": "INVALID_REQUEST"})
+    def test_rerank_top_n_values_are_forwarded_without_rewriting(self):
+        for suffix in RERANK_TOP_VARIANTS:
+            case_id = "rerank-" + suffix
+            with self.subTest(case=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
 
-    def test_rerank_accepts_its_count_and_wire_byte_boundaries_without_clamping(self):
-        for suffix in ("minimum", "maximum", "non-js-whitespace", "preserve-surrounding-space", "bytes-65536"):
+    def test_rerank_input_shapes_and_missing_fields_are_forwarded_without_rewriting(self):
+        for suffix in (*RERANK_INPUT_VARIANTS, "missing-query", "missing-documents", "empty-documents-no-top"):
+            case_id = "rerank-" + suffix
+            with self.subTest(case=case_id):
+                original = next(item["body"] for item in CASES if item["id"] == case_id)
+                self.assertEqual(self.decision(case_id), {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results[case_id]["reads"], 1)
+                self.assertEqual(self.results[case_id]["byteReads"], 1)
+                self.assertTrue(self.results[case_id]["preserved"])
+                self.assertEqual(self.results[case_id]["bodyAfter"], original)
+
+    def test_rerank_body_byte_boundary_is_enforced_without_field_checks(self):
+        for suffix in ("minimum", "maximum", "above-former-top-bound", "missing-top_n",
+                       "above-former-document-bound", "non-js-whitespace", "preserve-surrounding-space", "bytes-65536"):
             with self.subTest(case=suffix):
                 self.assertEqual(self.decision("rerank-" + suffix),
                                  {"allowed": True, "status": 200, "code": "REQUEST_WITHIN_LIMITS"})
+                self.assertEqual(self.results["rerank-" + suffix]["reads"], 1)
+                self.assertEqual(self.results["rerank-" + suffix]["byteReads"], 1)
         self.assertEqual(self.decision("rerank-bytes-65537"),
                          {"allowed": False, "status": 413, "code": "REQUEST_TOO_LARGE"})
 

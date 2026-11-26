@@ -144,6 +144,18 @@ class WireContractTests(unittest.TestCase):
                 target, path = {'text': ('g-pii-rest', '/tools/pii/v1/redact'),
                                 'params.arguments.text': ('g-pii-mcp', '/tools/pii-v1-mcp/mcp')}[key[5]]
                 key = (target, key[1], (path,), *key[3:])
+            elif key[0] in ('g-images', 'g-transcribe'):
+                # Preserve the frozen rule oracle while projecting only the
+                # approved model-path widening. Shared image paths stay exact.
+                pattern = {'g-images': '/models/openai-images/v1/deployments/*',
+                           'g-transcribe': '/models/openai-audio/v1/deployments/*'}[key[0]]
+                retained = tuple(sorted({path for path in key[2] if not path.startswith(pattern[:-1])} | {pattern}))
+                expected = {'g-images': ('/models/blackforestlabs/v1/flux-2/edits',
+                                        '/models/blackforestlabs/v1/flux-2/generations',
+                                        '/models/openai-images/v1/deployments/*', '/models/openai-images/v1/generations'),
+                            'g-transcribe': ('/models/openai-audio/v1/deployments/*',)}[key[0]]
+                self.assertEqual(retained, expected)
+                key = (key[0], key[1], retained, *key[3:])
             projected[key] = groups
         previous = projected
         self.assertEqual(len(before['profiles']), 22)
@@ -241,7 +253,7 @@ class WireContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Unreviewed published operation'):
                 contract_inventory(root)
 
-    def test_model_add_remove_needs_only_api_source_then_deterministic_regeneration(self):
+    def test_model_add_remove_changes_inventory_without_changing_model_waf_patterns(self):
         with tempfile.TemporaryDirectory() as folder:
             root = self.tree(folder)
             path = root / 'apps/gateway/apim/apis/openai-images-v1.json'
@@ -250,17 +262,16 @@ class WireContractTests(unittest.TestCase):
             old_models = constraint['allowedModels'][:]
             constraint['allowedModels'] = ['synthetic-image-model']
             path.write_text(json.dumps(value))
-            expected = '/models/openai-images/v1/deployments/synthetic-image-model/edits'
+            expected = '/models/openai-images/v1/deployments/*'
             profile = next(p for p in generated_manifest(root)['profiles'] if p['name'] == 'g-images')
             self.assertIn(expected, profile['paths'])
             self.assertTrue(all('/deployments/' + model + '/edits' not in '\n'.join(profile['paths']) for model in old_models))
             self.assertTrue(any(row['model'] == 'synthetic-image-model' for row in contract_inventory(root)))
-            with self.assertRaisesRegex(ValueError, 'manifest drift'):
-                render(root, check=True)
+            self.assertEqual(render(root, check=True), generated_manifest(root))
             render(root)
             render(root, check=True)
 
-    def test_normal_update_routes_expand_selected_canonical_models(self):
+    def test_normal_update_routes_use_the_canonical_model_prefix_independently_of_model_list(self):
         from waf_policy import selected_profiles
         from standard_apis import infrastructure_api_definitions
         from deployment.helpers.waf_body import managed_ai_paths
@@ -269,7 +280,7 @@ class WireContractTests(unittest.TestCase):
         selected = api['authorization']['operationConstraints']['image-edit']['allowedModels'][0]
         api['authorization']['operationConstraints']['image-edit']['allowedModels'] = [selected]
         config = {'apiDefinitions': apis}
-        expected = '/models/openai-images/v1/deployments/' + selected + '/edits'
+        expected = '/models/openai-images/v1/deployments/*'
         result = next(p for p in selected_profiles(config) if p['name'] == 'g-images')
         self.assertIn(expected, result['paths'])
         self.assertIn(expected, managed_ai_paths(config))
@@ -279,16 +290,16 @@ class WireContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             managed_ai_paths(config)
 
-    def test_parameter_only_new_route_stops_before_static_bicep_can_diverge(self):
+    def test_parameter_only_new_model_keeps_static_bicep_and_python_on_the_same_prefix(self):
         from standard_apis import infrastructure_api_definitions
         from deployment.helpers.waf_body import managed_ai_paths
         apis = infrastructure_api_definitions([])
         api = next(a for a in apis if a['name'] == 'openai-images-v1')
         api['authorization']['operationConstraints']['image-edit']['allowedModels'] = ['synthetic-image-model']
-        with self.assertRaisesRegex(ValueError, 'canonical API definition'):
-            require_source_routes(apis)
-        with self.assertRaises(ValueError):
-            managed_ai_paths({'apiDefinitions': apis})
+        selected = require_source_routes(apis)
+        profile = next(p for p in selected['profiles'] if p['name'] == 'g-images')
+        self.assertIn('/models/openai-images/v1/deployments/*', profile['paths'])
+        self.assertIn('/models/openai-images/v1/deployments/*', managed_ai_paths({'apiDefinitions': apis}))
 
     def test_changed_canonical_mime_does_not_inherit_data_exclusion(self):
         from standard_apis import infrastructure_api_definitions

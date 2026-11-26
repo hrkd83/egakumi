@@ -20,7 +20,9 @@ HTTPメソッドは、1〜20文字のASCII大文字を記録できます。従�
 
 `gatewayQueryObservation`のJSONは`route`・`httpMethod`・`presence`・`duplicates`だけです。監査側はそれらに`phase`・`statusClass`、要求ID・API／操作ID、共通の要求情報、認証済み利用者情報を合わせます。イベント名`query-guard`、`schemaVersion: 2`、共通監査の`auditSchemaVersion: 2`を維持し、modeは新規出力しません。本文、URL、クエリの名前や値、認証キー・トークン・Cookieを読み取って記録する処理はありません。他の監査イベントの`schemaVersion: 1`は維持し、KQLでは旧`query-guard`イベントのschemaVersion 1も読める互換性を維持する方針です。
 
-認証済み利用者の読取りは、既存の共通式`expressions/legacy/audit-subject-observation.cs`を生成時に組み込み、説明も保持します。この部品がキーやトークンの認証を再実行する意味ではありません。
+MOD-116で、認証済み利用者を監査へ投影する既存コードを同名C#のmessage区画へ収めました。別C#を差し込む入れ子markerは使わず、説明もその区画が所有します。キーやトークンの認証を再実行する処理には変えません。CM拒否監査・CM下流claims監査も各自の同名C#へ移行済みのため、参照がなくなった旧observerファイルを撤去しました。旧構成移行用のproducerと旧認証XMLは別の照合資材として維持します。
+
+full／compact／omitで変更前と構造・属性・実式トークンが一致しました。関連76件の初回は、先行改修でMCPの内部引渡しが500になったことへ未対応の構造試験1件がエラーでした。他の75件は成功しました。その試験を引渡し分岐の識別と既存500に揃え、認証後・本文処理前の順序を維持する1件の別実行が0.004秒で成功しました。初回は57.916秒であり、別実行を一回の全件成功へ合算しません。監査主体の実式、配備／保護source・容量・構文・所有と、入れ子sourceへの非依存を確認済みです。MOD-116のAzure反映・実監査受入は未実施です。
 
 処理段階は`received`・`backend-response`・`policy-error`を記録します。棚卸⑦でこの部品による拒否を撤去するため、`query-rejected`・`guard-error`は新規出力しません。過去のログにある旧phaseとmodeは移行前の観測として区別します。応答区分と読取失敗時の`unknown`は維持し、観測できない値や未着の記録を正常成功に変換しません。後続の別検査で早期終了した要求には、終端記録がない場合があります。SSEやMCPのHTTP 200だけで、モデルやツールの完了を証明したとは扱いません。
 

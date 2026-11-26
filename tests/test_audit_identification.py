@@ -68,14 +68,11 @@ public static class VariableExtensions {
 public static class IdentificationFixture {
  static string Snapshot(Context context) { __SNAPSHOT__ }
  static string Subject(Context context) { __SUBJECT__ }
- static string PreviousSubject(Context context) { __PREVIOUS_SUBJECT__ }
  static string Gateway(Context context) { __GATEWAY__ }
  static string Credential(Context context) { __CREDENTIAL__ }
  static string Query(Context context) { __QUERY__ }
  static bool QueryGate(Context context) { __QUERY_GATE__ }
  static string Claims(Context context) { __CLAIMS__ }
- static string SnapshotV1(Context context) { __SNAPSHOT_V1__ }
- static string GatewayV1(Context context) { __GATEWAY_V1__ }
  static JObject ReadRecord(string text) { return JsonConvert.DeserializeObject<JObject>(text,new JsonSerializerSettings {DateParseHandling=DateParseHandling.None}); }
  static Context Create(JObject item) {
   var c=new Context(); c.Request.Headers["Authorization"]=new [] {"PRIVATE_TOKEN"};
@@ -112,10 +109,10 @@ public static class IdentificationFixture {
  public static string SubjectCases(string json) {
   var output=new JObject();
   foreach(JObject item in JsonConvert.DeserializeObject<JArray>(json,new JsonSerializerSettings {DateParseHandling=DateParseHandling.None})) {
-   var c=Create(item); var current=Subject(c); var previous=PreviousSubject(c);
+   var c=Create(item); var current=Subject(c);
    c.Variables["gatewayRequestContext"]=Snapshot(c); c.Variables["gatewayAuthenticatedSubject"]=current;
    output[(string)item["id"]]=new JObject(new JProperty("current",ReadRecord(current)),
-    new JProperty("previous",ReadRecord(previous)),new JProperty("responseStatus",c.Response.StatusCode),
+    new JProperty("responseStatus",c.Response.StatusCode),
     new JProperty("emitters",new JObject(new JProperty("gateway",ReadRecord(Gateway(c))),
      new JProperty("credential",ReadRecord(Credential(c))),new JProperty("query",ReadRecord(Query(c))),
      new JProperty("claims",ReadRecord(Claims(c))))));
@@ -147,71 +144,38 @@ public static class IdentificationFixture {
   }
   return output.ToString(Formatting.None);
  }
- public static string Benchmark(string auth,int iterations) {
-  var c=Create(new JObject(new JProperty("auth",auth)));
-  c.Variables["gatewayDecision"]=auth=="key" ? "{\"allowed\":true,\"method\":\"subscriptionKey\",\"callerId\":\"subscription:synthetic-subscription\"}" : "{}";
-  if(auth=="user") {
-   var u=JObject.Parse((string)c.Variables["gatewayUserAuthentication"]);
-   c.Variables["gatewayDecision"]=new JObject(new JProperty("allowed",true),new JProperty("method","user"),
-    new JProperty("callerId",u["callerId"]),new JProperty("allocationId",u["allocationId"]),
-    new JProperty("verifiedTenantId",u["tenantId"]),new JProperty("verifiedPrincipalId",u["principalId"]),new JProperty("verifiedClientId",u["clientId"])).ToString(Formatting.None);
-  }
-  var samples=new JArray(); int oldBytes=0,newBytes=0;
-  for(int round=-1;round<5;round++) {
-   var watch=Stopwatch.StartNew();
-   for(int n=0;n<iterations;n++) {
-    c.Variables["gatewayRequestContext"]=SnapshotV1(c);
-    oldBytes=System.Text.Encoding.UTF8.GetByteCount(GatewayV1(c)); GatewayV1(c);
-   }
-   watch.Stop(); var oldMs=watch.Elapsed.TotalMilliseconds/iterations;
-   watch.Restart();
-   for(int n=0;n<iterations;n++) {
-    c.Variables["gatewayRequestContext"]=Snapshot(c); c.Variables["gatewayAuthenticatedSubject"]=Subject(c);
-    newBytes=System.Text.Encoding.UTF8.GetByteCount(Gateway(c)); Gateway(c);
-   }
-   watch.Stop(); if(round>=0) samples.Add(new JObject(new JProperty("oldMsPerRequest",oldMs),new JProperty("newMsPerRequest",watch.Elapsed.TotalMilliseconds/iterations)));
-  }
-  return new JObject(new JProperty("auth",auth),new JProperty("iterationsPerRound",iterations),new JProperty("samples",samples),
-    new JProperty("oldEventBytes",oldBytes),new JProperty("newEventBytes",newBytes)).ToString(Formatting.None);
- }
+
 }
 '''
 
 
-def compiled_source(*, inline_audit_v2=False):
+def compiled_source():
     source = SOURCE
     for marker, filename, xpath, attribute in (
         ("__SNAPSHOT__", "service.xml", "./inbound/set-variable[@name='gatewayRequestContext']", "value"),
         ("__SUBJECT__", "service.xml", "./inbound/set-variable[@name='gatewayAuthenticatedSubject']", "value"),
-        ("__PREVIOUS_SUBJECT__", "service-inline-audit-v2.xml", "./inbound/set-variable[@name='gatewayAuthenticatedSubject']", "value"),
         ("__GATEWAY__", "core-gateway-telemetry.xml", "./trace/message", None),
         ("__CREDENTIAL__", "credential-telemetry.xml", "./trace/message", None),
         ("__QUERY__", "core-query-telemetry.xml", "./choose/when/trace/message", None),
         ("__QUERY_GATE__", "core-query-telemetry.xml", "./choose/when", "condition"),
         ("__CLAIMS__", "credential-connection-outbound.xml", "./choose/when/trace/message", None),
-        ("__SNAPSHOT_V1__", "service-audit-v1.xml", "./inbound/set-variable", "value"),
-        ("__GATEWAY_V1__", "gateway-telemetry-audit-v1.xml", "./trace/message", None),
     ):
-        if inline_audit_v2 and marker in ("__SNAPSHOT__", "__SUBJECT__"):
-            filename = "service-inline-audit-v2.xml"
         source = source.replace(marker, actual_expression(filename, xpath, attribute))
     return source
 
 
-def run_fixture(cases, *, benchmark=False, query_gate_only=False, inline_audit_v2=False, subjects_only=False):
+def run_fixture(cases, *, query_gate_only=False, subjects_only=False):
     if not PWSH:
         raise unittest.SkipTest("Roslyn is required; Azure has not been tested")
     with tempfile.TemporaryDirectory(prefix="synthetic-audit-identification-") as folder:
         base = Path(folder)
-        (base / "fixture.cs").write_text(compiled_source(inline_audit_v2=inline_audit_v2), encoding="utf-8")
+        (base / "fixture.cs").write_text(compiled_source(), encoding="utf-8")
         (base / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
         command = "[IdentificationFixture]::Run((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))"
         if query_gate_only:
             command = "[IdentificationFixture]::GateCases((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))"
         if subjects_only:
             command = "[IdentificationFixture]::SubjectCases((Get-Content -Raw (Join-Path $PSScriptRoot 'cases.json')))"
-        if benchmark:
-            command = "@([IdentificationFixture]::Benchmark('key',2000),[IdentificationFixture]::Benchmark('user',2000)) -join [Environment]::NewLine"
         (base / "run.ps1").write_text("$ErrorActionPreference='Stop'\n"
             "$refs=@(Get-ChildItem (Join-Path $PSHOME 'ref/*.dll') | ForEach-Object FullName)+@([Newtonsoft.Json.Linq.JObject].Assembly.Location)\n"
             "Add-Type -TypeDefinition (Get-Content -Raw (Join-Path $PSScriptRoot 'fixture.cs')) -ReferencedAssemblies $refs -CompilerOptions '/nowarn:1701,1702'\n"
@@ -223,7 +187,7 @@ def run_fixture(cases, *, benchmark=False, query_gate_only=False, inline_audit_v
             raise AssertionError(result.stderr)
         if "PRIVATE_" in result.stdout:
             raise AssertionError("Synthetic credentials or query data leaked")
-        return [json.loads(line) for line in result.stdout.splitlines()] if benchmark else json.loads(result.stdout)
+        return json.loads(result.stdout)
 
 
 class AuditIdentificationTests(unittest.TestCase):
@@ -322,33 +286,6 @@ class AuditIdentificationTests(unittest.TestCase):
         for record in self.results["null-routing"].values():
             self.assertIsNone(record["apiId"])
             self.assertIsNone(record["operationId"])
-
-
-class AuditFragmentOutputTests(unittest.TestCase):
-    def test_fragment_and_simplified_expression_preserve_inline_audit_output(self):
-        # Run both actual expressions. Reordering Take/Where, merging duplicate
-        # headers or broadening ASCII method checks changes these observations.
-        cases = [
-            {"id": "key", "auth": "key"}, {"id": "user", "auth": "user"},
-            {"id": "unverified"}, {"id": "null-routing", "nullApi": True, "nullOperation": True},
-            {"id": "ipv6", "peer": "2001:0db8:0:0::1"},
-            {"id": "invalid-peer", "peer": "not-an-address"},
-            {"id": "oversize-peer", "peer": "1" * 65},
-            {"id": "small-method", "method": "get"},
-            {"id": "long-method", "method": "A" * 21},
-            {"id": "unicode-method", "method": "\u0394"},
-            {"id": "empty-method", "method": ""},
-            {"id": "empty-headers", "headers": {"User-Agent": "", "x-appgw-trace-id": ""}},
-            {"id": "duplicates", "headers": {"User-Agent": ["one", "two"], "x-appgw-trace-id": [TRACE, TRACE]}},
-            {"id": "surrogates", "headers": {"User-Agent": "Synthetic\U0001f600Client/1.0"}},
-            {"id": "bounded-controls", "headers": {"User-Agent": "\u0000" * 510 + "u" * 30},
-             "template": "/" + "\u0000" * 510 + "p" * 30 + "?PRIVATE_QUERY=value"},
-            {"id": "date-agent", "headers": {"User-Agent": "2026-01-02T03:04:05.123+09:00"}},
-            {"id": "zero-trace", "headers": {"x-appgw-trace-id": "00000000-0000-0000-0000-000000000000"}},
-            {"id": "braced-trace", "headers": {"x-appgw-trace-id": "{" + TRACE + "}"}},
-            {"id": "oversize-trace", "headers": {"x-appgw-trace-id": "a" * 65}},
-        ]
-        self.assertEqual(run_fixture(cases), run_fixture(cases, inline_audit_v2=True))
 
 
 if __name__ == "__main__":

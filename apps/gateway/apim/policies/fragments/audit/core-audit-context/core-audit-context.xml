@@ -1,0 +1,15 @@
+<fragment>
+  <!-- 受付条件を通過した要求の親要求IDは追跡候補です。共通認証が確認済みの呼出者IDを併記し、実際の親子関係は監査時に確認します。 -->
+  <!-- HTTP・WebSocket・MCPの呼出し元が認証結果の引渡し失敗を先に止めるため、ここでは本人情報を再検査しません。 -->
+  <set-variable name="gatewayAgentTrace" value="@{
+    __CORE_AUDIT_CONTEXT_TRACE_CSHARP__
+  }" />
+  <set-header name="X-Core-Agent-Parent-Id" exists-action="delete" />
+  <!-- 受付条件を通過した要求のモデル名を選びます。この共通fragmentでは本文を読みません。
+       Body.Asは本文全体の読み取りを伴うため、ストリーミング中継でも使う共通処理には含めません。
+       HTTPのモデル本文は専用fragmentで読み、ここへ名前だけを渡します。
+       登録一覧にないモデルも記録し、監査に使う文字種・長さの既存条件は維持します。 -->
+  <set-variable name="gatewayAuditModel" value="@{
+    __CORE_AUDIT_CONTEXT_MODEL_CSHARP__
+  }" />
+</fragment>

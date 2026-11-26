@@ -8,7 +8,7 @@
     <include-fragment id="core-api-settings" fragment-id="core-api-settings" />
     <!-- === -->
     <!-- 予約済みの認証メタデータ用パスを、公開toolの操作へ転送しません。 -->
-    <choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
+    __MCP_PRM_GUARD_XML__
     <!-- === -->
     <!-- ========== 共通ポリシーの適用 ========== -->
     <!-- 目的：共通の入口確認・認証・監査情報の準備を実行します。 -->
@@ -21,51 +21,22 @@
     <include-fragment id="core-api-request-preparation" fragment-id="core-api-request-preparation" />
     <!-- === -->
     <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
-    <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
+    <!-- 処理：APIMの検証済み購読があればキーの結果、なければBearer認証成功を確認して、共通認証が確認・整形した社員情報をgatewayDecisionへ引き継ぎます。 -->
+    <!-- APIの認証方式ラベルは正式設定検査で確定済みです。この引渡しでは、設定の復元とラベルの再確認を行いません。 -->
     <set-variable name="gatewayDecision" value="@{
-      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
-      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
-      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot;) { return deny.ToString(); }
-      JObject decision;
-      if (context.Request.Headers.ContainsKey(keyHeader)) {
-        /* 購読とキー用ヘッダーの形式は共通認証で確認済みです。検証済み購読IDを呼出主体へ引き継ぎます。 */
-        decision = new JObject(new JProperty(&quot;allowed&quot;, true),
-          new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
-      } else {
-        try {
-          if (context.Subscription != null
-              || !context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;]
-              || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return deny.ToString(); }
-          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
-          Guid tenant, principal;
-          if ((int?)user[&quot;schemaVersion&quot;] != 1
-              || !Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
-              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return deny.ToString(); }
-          var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
-          if ((string)user[&quot;callerId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller) { return deny.ToString(); }
-          decision = new JObject(new JProperty(&quot;allowed&quot;, true), new JProperty(&quot;method&quot;, &quot;user&quot;),
-            new JProperty(&quot;callerId&quot;, caller), new JProperty(&quot;allocationId&quot;, caller),
-            new JProperty(&quot;verifiedTenantId&quot;, tenant.ToString(&quot;D&quot;)), new JProperty(&quot;verifiedPrincipalId&quot;, principal.ToString(&quot;D&quot;)),
-            new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
-        } catch { return deny.ToString(); }
-      }
-      if (context.Variables.ContainsKey(&quot;gatewayOperationSelection&quot;)) {
-        /* settingIdを既存監査のprofileIdへ転記します。本文のモデル選択はここでは追加しません。 */
-        var settingId = (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;settingId&quot;];
-        if (!String.IsNullOrEmpty(settingId)) { decision[&quot;profileId&quot;] = settingId; }
-      }
-      return decision.ToString(Newtonsoft.Json.Formatting.None);
+      __MCP_GATEWAY_DECISION_CSHARP__
     }" />
     <choose>
       <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
-        <set-variable name="gatewayAuditPhase" value="rejected" />
-        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
-        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <!-- 認証後の内部情報の引き渡し不備を、利用者の権限不足と区別して記録します。 -->
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="AUTHENTICATION_PROCESSING_ERROR" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
         <include-fragment fragment-id="core-gateway-telemetry" />
         <return-response>
-          <set-status code="403" reason="API operation is not authorized" />
+          <set-status code="500" reason="Gateway processing failed" />
           <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
         </return-response>
       </when>
     </choose>
@@ -77,26 +48,8 @@
     <include-fragment fragment-id="core-query-telemetry" />
     <!-- === -->
     <!-- native MCPはRESTの400応答もisError:falseで包むため、引数不正は実行前にJSON-RPCエラーへ確定します。 -->
-    <set-variable name="gatewayMcpArgumentError" value="@{
-      try {
-        var message = context.Request.Body.As&lt;JObject&gt;(preserveContent: true);
-        if ((string)message?[&quot;method&quot;] != &quot;tools/call&quot; || message[&quot;id&quot;]?.Type != JTokenType.Integer) { return &quot;&quot;; }
-        var name = (string)message[&quot;params&quot;]?[&quot;name&quot;];
-        var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-        var constraint = String.IsNullOrEmpty(name) ? null : config[&quot;operationConstraints&quot;]?[name] as JObject;
-        if ((string)constraint?[&quot;kind&quot;] != &quot;pii&quot;) { return &quot;&quot;; }
-        var arguments = message[&quot;params&quot;]?[&quot;arguments&quot;] as JObject;
-        var valid = arguments != null &amp;&amp; arguments.Properties().Count() == 2
-          &amp;&amp; arguments.Properties().All(p =&gt; p.Name == &quot;text&quot; || p.Name == &quot;language&quot;)
-          &amp;&amp; arguments[&quot;text&quot;]?.Type == JTokenType.String &amp;&amp; !String.IsNullOrWhiteSpace((string)arguments[&quot;text&quot;])
-          &amp;&amp; arguments[&quot;language&quot;]?.Type == JTokenType.String
-          &amp;&amp; !String.IsNullOrWhiteSpace((string)arguments[&quot;language&quot;])
-          &amp;&amp; (((JArray)constraint[&quot;allowedLanguages&quot;]).Count == 0 || ((JArray)constraint[&quot;allowedLanguages&quot;]).Any(v =&gt; (string)v == (string)arguments[&quot;language&quot;]))
-          &amp;&amp; System.Text.Encoding.UTF8.GetByteCount(arguments.ToString(Newtonsoft.Json.Formatting.None)) &lt;= (int)constraint[&quot;maxRequestBytes&quot;];
-        if (valid) { return &quot;&quot;; }
-        return new JObject(new JProperty(&quot;jsonrpc&quot;, &quot;2.0&quot;), new JProperty(&quot;id&quot;, message[&quot;id&quot;]),
-          new JProperty(&quot;error&quot;, new JObject(new JProperty(&quot;code&quot;, -32602), new JProperty(&quot;message&quot;, &quot;Invalid tool arguments&quot;)))).ToString(Newtonsoft.Json.Formatting.None);
-      } catch { return &quot;&quot;; }
+    <set-variable id="core-mcp-argument-validation" name="gatewayMcpArgumentError" value="@{
+      __MCP_PII_ARGUMENTS_CSHARP__
     }" />
     <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayMcpArgumentError&quot;]))">
       <return-response><set-status code="400" reason="Invalid tool arguments" />
@@ -116,9 +69,10 @@
     <choose><when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;method&quot;] == &quot;subscriptionKey&quot;)"><set-header name="Authorization" exists-action="delete" /></when></choose>
     <!-- 登録済みのREST操作へ購読キー等の要求ヘッダーを引き継ぎます。
          MCP/SSEの応答本文は読み取らず、そのまま転送します。 -->
-    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
   </inbound>
-  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <!-- 登録済みのREST操作を参照する、APIM生成MCPの転送処理です。
+       backendにbaseがないため、上位のforward-requestを継承せず、ここで1つ定義します。
+       応答ヘッダー待機は240秒、転送時の応答バッファリングは無効です。HTTP版と要求バッファリングはAPIMの既定値です。 -->
   <backend><forward-request timeout="240" buffer-response="false" /></backend>
   <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
   <outbound>
@@ -135,6 +89,22 @@
   <on-error>
     <base />
     __RATE_LIMIT_ERROR_XML__
+    <!-- この入力検査の内部設定読取りで停止した場合だけ、固定500へ分けます。 -->
+    <choose id="core-mcp-argument-validation-error">
+      <when condition="@(context.LastError.PolicyId == &quot;core-mcp-argument-validation&quot;)">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="OPERATION_SETTINGS_INVALID" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <set-variable name="gatewayQueryPhase" value="policy-error" />
+        <include-fragment fragment-id="core-query-telemetry" />
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
     <set-variable name="gatewayAuditPhase" value="policy-error" />
     <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
     <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。

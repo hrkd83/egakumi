@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import copy
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
+import json
 import re
 import time
 import xml.etree.ElementTree as ET
@@ -23,17 +24,20 @@ from deployment.helpers.apim_authentication import (
 from deployment.helpers.apim_audit import AUDIT_FRAGMENT_FILES
 from deployment.helpers.apim_api_settings import (
     API_SETTINGS_ID, API_SETTINGS_SOURCE_VARIABLE, validate_api_settings_inheritance, validate_api_settings_scope,
+    _source_settings,
 )
 from deployment.helpers.apim_api_request import validate_api_request_preparation_scope
 from deployment.helpers.apim_query_observation import validate_query_observation_scope
 from deployment.helpers.apim_ingress import (
-    TRUSTED_INGRESS_ID, render_trusted_ingress_fragment, render_legacy_trusted_ingress_fragment,
+    TRUSTED_INGRESS_ID, render_trusted_ingress_fragment,
 )
 from deployment.helpers.apim_browser_exception import BROWSER_EXCEPTION_ID, BROWSER_EXCEPTION_VARIABLE, render_browser_exception_fragment
 from deployment.helpers.apim_common_authentication import (
     AUTHENTICATION_FRAGMENT_IDS, COMMON_AUTHENTICATION_FRAGMENT_ID, ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID,
     render_common_authentication_fragments,
 )
+from deployment.helpers.credential_login import API_ID as CREDENTIAL_LOGIN_API_ID, OPERATIONS as CREDENTIAL_LOGIN_OPERATIONS
+from deployment.helpers.paths import REPOSITORY
 
 APIM_API = "2025-09-01-preview"
 SECTIONS = ("inbound", "backend", "outbound", "on-error")
@@ -43,7 +47,10 @@ PENDING = ("Accepted", "Creating", "Updating", "InProgress")
 OPEN_PRODUCT_PROPERTIES = {"displayName": "Core Entra model users", "description": "core-owned-entra-model-users-v1",
                            "subscriptionRequired": False, "state": "notPublished"}
 OPEN_PRODUCT_POLICY = '<policies><inbound><base /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
-PRM_GUARD = '<choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>'
+PRM_GUARD = (REPOSITORY / 'apps/gateway/apim/policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml').read_text(encoding='utf-8')
+# 読戻しで、独立した旧生成元と完全一致する従来guardだけを照合します。
+# 新配備へこのXMLを差し込まず、現行正本への置換にも使いません。
+PREVIOUS_PRM_GUARD = '<choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>'
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,82 @@ class ReconciliationInventory:
     api_ids: frozenset[str]
     protected_api_ids: frozenset[str]
     previous_members: frozenset[str]
+
+
+_MISSING_MCP_TOOL_SEAL = object()
+
+
+@dataclass(frozen=True)
+class _RecordedMissingMcpTool:
+    """Internal source-bound restoration witness, never accepted from JSON."""
+    apim_id: str
+    api_id: str
+    resource_id: str
+    properties: dict
+    api_properties: dict
+    seal: object = field(repr=False)
+
+
+def _check_recorded_missing_mcp_tool(manifest, witness):
+    if (type(witness) is not _RecordedMissingMcpTool or witness.seal is not _MISSING_MCP_TOOL_SEAL
+            or manifest.apim_id != witness.apim_id or manifest.source_version != 2
+            or manifest.api_properties.get(witness.api_id, {}).get("type") != "mcp"
+            or not witness.resource_id.startswith(witness.api_id + "/tools/")):
+        raise ValueError("A missing MCP tool requires its internal recorded-source witness")
+    _identifier(witness.resource_id[len(witness.api_id + "/tools/"):])
+    expected = {rid: properties for rid, properties in manifest.api_children.items()
+                if rid.startswith(witness.api_id + "/tools/")}
+    if (set(expected) != {witness.resource_id}
+            or json.dumps(expected[witness.resource_id], sort_keys=True) != json.dumps(witness.properties, sort_keys=True)
+            or json.dumps(manifest.api_properties[witness.api_id], sort_keys=True) != json.dumps(witness.api_properties, sort_keys=True)):
+        raise ValueError("Missing MCP restoration must retain the one exact recorded tool and parent")
+
+
+def validate_native_product_before(manifest, baseline):
+    """Validate exact historical Product witnesses, including known policy absence."""
+    roots = {manifest.apim_id + "/products/" + _identifier(name)
+             for names in manifest.products.values() for name in names}
+    expected = roots | {rid + "/policies/policy" for rid in roots}
+    open_id = manifest.apim_id + "/products/" + ENTRA_OPEN_PRODUCT_ID
+    allowed = expected | {open_id, open_id + "/policies/policy"}
+    if (not isinstance(baseline, dict) or not expected <= set(baseline) or not set(baseline) <= allowed
+            or ((open_id in baseline) != (open_id + "/policies/policy" in baseline))):
+        raise ValueError("Every native Product requires its exact recorded pre-stage witnesses")
+    for resource_id, entry in baseline.items():
+        raw = resource_id.endswith("/policies/policy")
+        path = resource_id + "?api-version=" + APIM_API + ("&format=rawxml" if raw else "")
+        if (not isinstance(entry, dict) or set(entry) != {"path", "headers", "response"}
+                or entry["path"] != path or not isinstance(entry["response"], dict)
+                or entry["response"].get("statusCode") not in ((200, 404) if raw else (200,))):
+            raise ValueError("Recorded native Product witness path or response is invalid")
+        response = entry["response"]
+        if response["statusCode"] == 200:
+            body = response.get("body")
+            if (not isinstance(body, dict) or not isinstance(body.get("properties"), dict)
+                    or not (raw and "id" not in body) and (
+                        not isinstance(body.get("id"), str) or body["id"].casefold() != resource_id.casefold())):
+                raise ValueError("Recorded native Product witness must identify its known resource")
+            if raw:
+                _xml(body["properties"].get("value"))
+    return baseline
+
+
+def _check_native_product_readback(product_id, body, policy, baseline):
+    before = baseline[product_id]["response"]["body"]["properties"]
+    current = copy.deepcopy(body.get("properties", {}))
+    before = copy.deepcopy(before)
+    before.pop("provisioningState", None)
+    current.pop("provisioningState", None)
+    if json.dumps(before, sort_keys=True) != json.dumps(current, sort_keys=True):
+        raise ValueError("Native Product properties changed from their recorded pre-stage contract")
+    response = baseline[product_id + "/policies/policy"]["response"]
+    if response["statusCode"] == 404:
+        if policy is not None:
+            raise ValueError("A native Product policy appeared outside the recorded stage")
+    else:
+        if policy is None:
+            raise ValueError("A recorded native Product policy disappeared")
+        _same_xml(policy.get("properties", {}).get("value"), response["body"]["properties"]["value"])
 
 
 class TransitionError(DeploymentError):
@@ -242,7 +325,7 @@ def _signature(response, *, resource_id=None):
                                               if name.lower() == "etag" and not refreshed}
 
 
-def _xml(value, *, fragment=False, inherited=False):
+def _xml(value, *, fragment=False, inherited=False, previous_prm_guard=False):
     if not isinstance(value, str) or any(item in value.upper() for item in ("<!DOCTYPE", "<!ENTITY")):
         raise ValueError("Raw policy XML is missing or unsafe")
     try:
@@ -266,9 +349,12 @@ def _xml(value, *, fragment=False, inherited=False):
         # Retired metadata is accepted only while reading an explicitly owned
         # previous source. New templates are rejected before deployment.
         metadata = ("gatewayAuditSettings", "gatewayControlSettings", "coreNativeGrpc", API_SETTINGS_SOURCE_VARIABLE)
+        guards = [_structure(ET.fromstring(PRM_GUARD))]
+        if previous_prm_guard:
+            guards.append(_structure(ET.fromstring(PREVIOUS_PRM_GUARD)))
         if any(not (node.tag == "set-variable" and node.get("name") in metadata)
                and not (node.tag == "include-fragment" and node.attrib == {"id": API_SETTINGS_ID, "fragment-id": API_SETTINGS_ID})
-               and _structure(node) != _structure(ET.fromstring(PRM_GUARD)) for node in before):
+               and _structure(node) not in guards for node in before):
             raise ValueError("Only source-verified audit/operation metadata may precede inbound inheritance")
     return root
 
@@ -281,9 +367,49 @@ def _structure(root):
 
 
 def _same_xml(actual, expected, *, fragment=False, inherited=False):
-    if _structure(_xml(actual, fragment=fragment, inherited=inherited)) != _structure(
-            _xml(expected, fragment=fragment, inherited=inherited)):
+    # 旧guardは読戻し比較だけで扱い、actualと旧／新のexpectedの完全一致を要求します。
+    if _structure(_xml(actual, fragment=fragment, inherited=inherited, previous_prm_guard=inherited)) != _structure(
+            _xml(expected, fragment=fragment, inherited=inherited, previous_prm_guard=inherited)):
         raise ValueError("Raw policy readback differs from the generated source; markers are not proof")
+
+
+def _operation_entra_error_sites(policies, apim_id, *, api_properties=None):
+    """検証済みAPI設定の操作種別と、CMの固定保護操作からエラーの引渡し先を選ぶ。"""
+    sites = set()
+    for resource_id, value in policies.items():
+        suffix = resource_id.removeprefix(apim_id).split("/")
+        if (not resource_id.startswith(apim_id + "/apis/") or len(suffix) != 5
+                or suffix[3:] != ["policies", "policy"]):
+            continue
+        root = _xml(value)
+        seed = root.find("inbound/set-variable[@name='" + API_SETTINGS_SOURCE_VARIABLE + "']")
+        if seed is None:
+            continue
+        # 呼出し元は先にseed/callの配置・固定形式・API種別を検証している。
+        # 同じdecoderで制御設定だけを取り出し、API名やモデル名では分類しない。
+        settings = _source_settings(seed)
+        if settings["apiType"] != "http":
+            continue
+        constraints = json.loads(settings["control"]).get("operationConstraints", {})
+        if not isinstance(constraints, dict):
+            raise ValueError("Operation error handoff requires the generated operation constraints")
+        api_id = resource_id.removesuffix("/policies/policy")
+        for name, constraint in constraints.items():
+            if isinstance(constraint, dict) and constraint.get("kind") in ("pii", "documentAnalysis", "documentAnalysisStatus"):
+                site = api_id + "/operations/" + _identifier(name) + "/policies/policy"
+                if site in policies:
+                    sites.add(site)
+    cm_api = apim_id + "/apis/" + CREDENTIAL_LOGIN_API_ID
+    cm_policy = policies.get(cm_api + "/policies/policy")
+    if cm_policy is not None and (api_properties is None or cm_api in api_properties
+                                 and (api_properties[cm_api].get("type") or "http") == "http"):
+        # ブラウザーの4操作は含めず、生成元が公開するCM保護操作だけを扱う。
+        root = _xml(cm_policy)
+        if _structure(root) == _structure(_xml(OPEN_PRODUCT_POLICY)):
+            sites.update(cm_api + "/operations/" + name + "/policies/policy"
+                         for name in CREDENTIAL_LOGIN_OPERATIONS
+                         if cm_api + "/operations/" + name + "/policies/policy" in policies)
+    return sites
 
 
 def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
@@ -291,12 +417,14 @@ def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
     validate_api_settings_scope(policies, apim_id, api_properties=api_properties)
     validate_api_request_preparation_scope(policies, apim_id, api_properties=api_properties)
     validate_query_observation_scope(policies, apim_id, api_properties=api_properties)
+    operation_error_sites = _operation_entra_error_sites(policies, apim_id, api_properties=api_properties)
     global_id = apim_id + "/policies/policy"
     ingress_id = TRUSTED_INGRESS_ID
     common_ids = set(AUDIT_FRAGMENT_FILES) | {ingress_id, BROWSER_EXCEPTION_ID} | set(AUTHENTICATION_FRAGMENT_IDS)
     writers = {variable: identifier for identifier, (_, variable) in AUDIT_FRAGMENT_FILES.items()}
     writers[BROWSER_EXCEPTION_VARIABLE] = BROWSER_EXCEPTION_ID
     references = []
+    operation_error_references = set()
     inline_ingress = []
     common_inbound = None
     for resource_id, value in policies.items():
@@ -320,9 +448,8 @@ def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
             if (root.attrib or len(children) != 1 or children[0].tag != "choose"
                     or children[0].attrib != {"id": ingress_id}):
                 raise ValueError("The trusted ingress fragment must contain only its fixed ingress decision")
-            if not any(_structure(root) == _structure(_xml(expected, fragment=True))
-                       for expected in (render_trusted_ingress_fragment(), render_legacy_trusted_ingress_fragment())):
-                raise ValueError("The trusted ingress fragment differs from its fixed current or legacy source")
+            if _structure(root) != _structure(_xml(render_trusted_ingress_fragment(), fragment=True)):
+                raise ValueError("The trusted ingress fragment differs from its fixed current source")
         if fragment_name == BROWSER_EXCEPTION_ID:
             children = list(root)
             if (root.attrib or len(children) != 1 or children[0].tag != "set-variable"
@@ -340,6 +467,19 @@ def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
             if node.tag == "include-fragment" and node.get("fragment-id") in common_ids:
                 identifier = node.get("fragment-id")
                 section = root.find("on-error") if identifier == ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID else inbound
+                if identifier == ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID and resource_id in operation_error_sites:
+                    # 個別on-errorは親を全面継承しない。共通トークン検証の失敗だけを
+                    # 先頭で引き渡し、それ以外は現在の個別エラー処理へ進める。
+                    if (section is None or not len(section) or section[0] is not node
+                            or node.attrib != {"id": identifier, "fragment-id": identifier}
+                            or list(node) or (node.text and node.text.strip())
+                            or any(child.tag == "base" for child in section.iter())
+                            or resource_id in operation_error_references):
+                        raise ValueError("Operation token errors require one fixed handler at the start of on-error")
+                    if apim_id + "/policyFragments/" + identifier not in policies:
+                        raise ValueError("The operation error reference needs its complete generated fragment source")
+                    operation_error_references.add(resource_id)
+                    continue
                 if (resource_id != global_id or section is None or node not in list(section)
                         or node.attrib != {"id": identifier, "fragment-id": identifier}
                         or list(node) or (node.text and node.text.strip())):
@@ -410,6 +550,10 @@ def _audit_fragment_scope(policies, apim_id, *, api_properties=None):
             error_root = _xml(policies[global_id]).find("on-error")
             if error_root is None or [node.get("id") for node in list(error_root)[:2]] != ["core-error-request-id", ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID]:
                 raise ValueError("Token validation errors require request correlation before their fixed handler")
+    if operation_error_references and (authentication_call is None
+            or ENTRA_AUTHENTICATION_ERROR_FRAGMENT_ID not in references
+            or authentication.find(".//validate-azure-ad-token") is None):
+        raise ValueError("Operation token error handlers require the active common validator and its global handler")
     first_when = authentication.find("when") if authentication is not None else None
     if BROWSER_EXCEPTION_ID in references:
         nodes = list(common_inbound)
@@ -462,7 +606,18 @@ def _read(transport, resource_id, snapshot, *, raw=False, missing=False, collect
     return body
 
 
-def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: PolicyManifest | None = None):
+def _validate_manifest_scope(manifest: PolicyManifest, scope_manifest: PolicyManifest | None = None):
+    """現行配置を検査し、過去XMLとの照合では非policy構成の完全一致を要求する。"""
+    scope = manifest if scope_manifest is None else scope_manifest
+    if (not isinstance(scope, PolicyManifest) or any(
+            getattr(scope, name) != getattr(manifest, name)
+            for name in ("apim_id", "operations", "products", "api_properties", "api_children", "backends", "source_version"))):
+        raise ValueError("A historical policy baseline requires the same complete current API scope")
+    _audit_fragment_scope(scope.policies, manifest.apim_id, api_properties=scope.api_properties)
+
+
+def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: PolicyManifest | None = None,
+                      _recorded_missing_mcp_tool=None, native_product_before=None):
     """global/Product/API/全operationと参照fragment/backend/NamedValueを実読取する。
 
     初回互換性範囲はコード生成元の既知Productだけ。購読必須Productの
@@ -477,12 +632,13 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
         raise ValueError("A canonical APIM resource ID is required")
     if not manifest.operations or set(manifest.operations) != set(manifest.products) or set(manifest.operations) != set(manifest.api_properties):
         raise ValueError("The complete target API manifest is required")
-    scope = manifest if scope_manifest is None else scope_manifest
-    if (not isinstance(scope, PolicyManifest) or any(
-            getattr(scope, name) != getattr(manifest, name)
-            for name in ("apim_id", "operations", "products", "api_properties", "api_children", "backends", "source_version"))):
-        raise ValueError("A historical policy baseline requires the same complete current API scope")
-    _audit_fragment_scope(scope.policies, apim, api_properties=scope.api_properties)
+    _validate_manifest_scope(manifest, scope_manifest)
+    if _recorded_missing_mcp_tool is not None:
+        if native_product_before is None:
+            raise ValueError("Recorded missing MCP restoration requires its historical native Product witnesses")
+        _check_recorded_missing_mcp_tool(manifest, _recorded_missing_mcp_tool)
+    if native_product_before is not None:
+        validate_native_product_before(manifest, native_product_before)
     snapshot, visited = {}, set()
 
     def dependency(kind, name, expected):
@@ -514,7 +670,7 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
         body = _read(transport, resource_id, snapshot, raw=True)
         value = body.get("properties", {}).get("value")
         _same_xml(value, expected, fragment=fragment, inherited=inherited)
-        root = _xml(value, fragment=fragment, inherited=inherited)
+        root = _xml(value, fragment=fragment, inherited=inherited, previous_prm_guard=inherited)
         for node in root.iter():
             if node.tag == "include-fragment":
                 policy(apim + "/policyFragments/" + _identifier(node.get("fragment-id")), (*stack, resource_id))
@@ -578,7 +734,13 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
                 children = _read(transport, api_id + "/" + kind, snapshot, collection=True)
                 observed_ids = [item.get("id") if isinstance(item, dict) else None for item in children["value"]]
                 if len(observed_ids) != len(expected_children) or set(observed_ids) != set(expected_children):
-                    raise ValueError("Every API tool/schema must match the generated source inventory")
+                    witness = _recorded_missing_mcp_tool
+                    if (witness is None or kind != "tools" or api_type != "mcp" or api_id != witness.api_id
+                            or set(expected_children) != {witness.resource_id} or observed_ids):
+                        raise ValueError("Every API tool/schema must match the generated source inventory")
+                    if _read(transport, witness.resource_id, snapshot, missing=True) is not None:
+                        raise ValueError("The recorded missing MCP tool must have a fresh direct 404")
+                    continue
                 for resource_id, expected in expected_children.items():
                     child = _read(transport, resource_id, snapshot)
                     if not _contains(_properties({"body": child}), expected):
@@ -619,6 +781,8 @@ def read_policy_graph(manifest: PolicyManifest, transport, *, scope_manifest: Po
             elif product.get("properties", {}).get("subscriptionRequired") is not True:
                 raise ValueError("An existing open Product conflicts with Entra activation")
             product_policy = _read(transport, product_id + "/policies/policy", snapshot, raw=True, missing=True)
+            if native_product_before is not None and product_id != open_product_id:
+                _check_native_product_readback(product_id, product, product_policy, native_product_before)
             if product_id == open_product_id:
                 if product_policy is None:
                     raise ValueError("The dedicated open Product must have its fixed policy")
@@ -793,6 +957,130 @@ def read_stage_shared_resources(manifest, plan, template, transport):
     return snapshot
 
 
+def read_failed_closed_stage(current, attempted, transport, *, scope_manifest, plan,
+                             previous_browser_source=None, attempted_browser_source=None,
+                             native_product_before=None, _recorded_missing_mcp_tool=None):
+    """Read a source-known partial stage without trusting an observed source.
+
+    The attempted manifest must come from the separately verified recorded
+    failed PUT/source binding. Routing and native Product/backend contracts
+    remain identical. Each expectation selected below is an independent old
+    or attempted value; unknown contents never become generated expectations.
+    Missing witnesses are permitted only for explicitly attempted creations.
+    """
+    _validate_manifest_scope(current, scope_manifest)
+    _validate_manifest_scope(attempted, scope_manifest)
+    validate_native_product_before(current, native_product_before)
+    for name in ("operations", "products", "api_properties", "api_children", "backends"):
+        expected = json.dumps(getattr(current, name), sort_keys=True, allow_nan=False)
+        if any(json.dumps(getattr(candidate, name), sort_keys=True, allow_nan=False) != expected
+               for candidate in (attempted, scope_manifest)):
+            raise ValueError("Failed-stage recovery must retain exact typed non-policy source contracts")
+    if current.source_version != 2 or set(current.operations) != {
+            resource_id for resource_id in plan["publishedApiIds"]
+            if not resource_id.endswith("/credential-manager-browser")}:
+        raise ValueError("Failed-stage recovery must retain every existing protected API")
+    apim, snapshot = current.apim_id, {}
+    global_id = apim + "/policies/policy"
+    _same_xml(attempted.policies.get(global_id), current.policies.get(global_id))
+    policies, named_values = {}, {}
+
+    def check_identity(body, resource_id, *, raw=False):
+        if body is not None and not (raw and "id" not in body):
+            observed = body.get("id")
+            if not isinstance(observed, str) or observed.casefold() != resource_id.casefold():
+                raise ValueError("Failed-stage readback must identify the requested known resource")
+
+    def known_policy(resource_id, old, new):
+        body = _read(transport, resource_id, snapshot, raw=True, missing=old is None)
+        check_identity(body, resource_id, raw=True)
+        if body is None:
+            if old is not None or new is None:
+                raise ValueError("A prior known policy cannot disappear during failed-stage recovery")
+            return None
+        actual = body.get("properties", {}).get("value")
+        for expected in (old, new):
+            if expected is None:
+                continue
+            try:
+                _same_xml(actual, expected, fragment="/policyFragments/" in resource_id,
+                          inherited=resource_id.startswith(apim + "/apis/"))
+                return expected
+            except ValueError:
+                pass
+        raise ValueError("Failed-stage policy differs from both recorded old and attempted values")
+
+    for resource_id in sorted(set(current.policies) | set(attempted.policies)):
+        old, new = current.policies.get(resource_id), attempted.policies.get(resource_id)
+        if resource_id == global_id:
+            new = old  # API-only staging never authorizes a changed Global.
+        chosen = known_policy(resource_id, old, new)
+        if chosen is not None:
+            policies[resource_id] = chosen
+    for resource_id in sorted(set(current.named_values) | set(attempted.named_values)):
+        old, new = current.named_values.get(resource_id), attempted.named_values.get(resource_id)
+        if old is not None and new is not None and not (
+                _resource_properties_match(resource_id, old, new) and _resource_properties_match(resource_id, new, old)):
+            raise ValueError("Failed-stage recovery cannot change existing NamedValue contracts")
+        body = _read(transport, resource_id, snapshot, missing=old is None)
+        check_identity(body, resource_id)
+        if body is None:
+            if old is not None or new is None:
+                raise ValueError("A prior known NamedValue cannot disappear during failed-stage recovery")
+            continue
+        expected = old if old is not None else new
+        if not _resource_properties_match(resource_id, _properties({"body": body}), expected):
+            raise ValueError("Failed-stage NamedValue differs from its recorded contract")
+        named_values[resource_id] = expected
+    for resource_id, expected in sorted(current.backends.items()):
+        body = _read(transport, resource_id, snapshot)
+        check_identity(body, resource_id)
+        properties = _properties({"body": body})
+        if not _resource_properties_match(resource_id, properties, expected) or properties.get("credentials"):
+            raise ValueError("Failed-stage backend differs from its unchanged recorded contract")
+    mixed = replace(current, policies=policies, named_values=named_values)
+    snapshot.update(read_policy_graph(mixed, transport, scope_manifest=scope_manifest,
+                                     native_product_before=native_product_before,
+                                     _recorded_missing_mcp_tool=_recorded_missing_mcp_tool))
+    product_snapshot, members = read_open_product(apim, transport, allowed_api_ids=(), missing=False)
+    if members:
+        raise ValueError("Failed-stage recovery requires the employee Product to remain empty")
+    snapshot.update(product_snapshot)
+    if plan.get("credentialLogin"):
+        old, new = previous_browser_source, attempted_browser_source
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            raise ValueError("Failed-stage recovery requires both recorded browser sources")
+        if {key: value for key, value in old.items() if key != "policies"} != {
+                key: value for key, value in new.items() if key != "policies"}:
+            raise ValueError("Failed-stage recovery cannot change browser routing or metadata")
+        def browser_policies(source):
+            entries = source.get("policies")
+            if not isinstance(entries, list) or any(not isinstance(entry, dict)
+                    or set(entry) != {"suffix", "value"} for entry in entries):
+                raise ValueError("Recorded browser policies must be complete")
+            result = {entry["suffix"]: entry["value"] for entry in entries}
+            if len(result) != len(entries):
+                raise ValueError("Recorded browser policies must not contain duplicates")
+            return result
+        old_policies, new_policies = browser_policies(old), browser_policies(new)
+        allowed = {"/apis/credential-manager-browser/operations/" + name + "/policies/policy"
+                   for name in ("launch", "launch-post", "identity-callback", "callback")}
+        if set(old_policies) != allowed or set(new_policies) != allowed:
+            raise ValueError("Recorded browser policies must retain the exact transaction operation set")
+        browser = copy.deepcopy(new)
+        browser["policies"] = [{"suffix": suffix, "value": known_policy(apim + suffix, old_policies[suffix], new_policies[suffix])}
+                              for suffix in sorted(allowed)]
+        snapshot.update(verify_browser_publication_source(plan, browser, transport))
+    elif previous_browser_source not in (None, {}) or attempted_browser_source not in (None, {}):
+        raise ValueError("Disabled browser recovery cannot include recorded browser resources")
+    for resource_id, (path, _, response) in snapshot.items():
+        body = response.get("body")
+        if isinstance(body, dict) and "properties" in body:
+            check_identity(body, resource_id, raw="&format=rawxml" in path)
+    verify_snapshot(snapshot, transport)
+    return mixed, snapshot
+
+
 def read_fresh_publication(plan, transport):
     """初回sourceがない場合だけ、閉じた新規stageの衝突と全体policyを読む。
 
@@ -876,8 +1164,8 @@ def _wait(transport, resource_id, *, sleep, deadline, raw=False):
     raise DeploymentError("APIM transition update is still pending")
 
 
-def source_manifest(source, apim_id, api_names, global_policy, *, named_values=None):
-    """新旧のprotected生成元を対象限定の期待値へ変換する。旧gRPCの照合は新規受付ではない。"""
+def _source_manifest(source, apim_id, api_names, global_policy, *, named_values=None):
+    """保護生成元の構造を解析する。固定配置の検査前には適用・読戻しの根拠にしない。"""
     version = source.get("schemaVersion") if isinstance(source, dict) else None
     required = {"schemaVersion", "apis", "policies", "backends", "namedValues"}
     if version == 2:
@@ -958,9 +1246,15 @@ def source_manifest(source, apim_id, api_names, global_policy, *, named_values=N
             if resource_id in children or not isinstance(entry["properties"], dict):
                 raise ValueError("The generated API child source must be unique and complete")
             children[resource_id] = copy.deepcopy(entry["properties"])
-    _audit_fragment_scope(policies, apim_id, api_properties=api_properties)
     return PolicyManifest(apim_id, policies, operations, products, entries("backends", "properties"), expected_named,
                           api_properties, children, version)
+
+
+def source_manifest(source, apim_id, api_names, global_policy, *, named_values=None, scope_manifest=None):
+    """生成元の構造と現行固定配置を検査する。過去XMLの期待値はそのまま保持する。"""
+    manifest = _source_manifest(source, apim_id, api_names, global_policy, named_values=named_values)
+    _validate_manifest_scope(manifest, scope_manifest)
+    return manifest
 
 
 def merge_sources(previous, current):
@@ -1630,7 +1924,9 @@ def reconcile_closed_publication(inventory, desired_global_policy, transport, st
         staged = PolicyManifest(apim, {**desired.policies, global_id: _properties(prior_global)["value"]},
             desired.operations, desired.products, desired.backends, desired.named_values,
             desired.api_properties, desired.api_children, desired.source_version)
-        ready = read_policy_graph(staged, transport)
+        # staging中は現行資材と旧globalを個別に完全照合する。固定配置は
+        # 正式なdesired全体で検査し、旧globalと新handlerの混在を救済対象にしない。
+        ready = read_policy_graph(staged, transport, scope_manifest=desired)
         if _signature(ready[global_id][2]) != _signature(prior_global):
             raise ValueError("Global policy drifted during source reconciliation")
         closed, current_members = read_open_product(apim, transport, allowed_api_ids=(), missing=False)
@@ -1640,6 +1936,7 @@ def reconcile_closed_publication(inventory, desired_global_policy, transport, st
         verify_snapshot(ready, transport)
         result = transition(staged, desired_global_policy, transport, lambda: desired,
             previous_open_api_ids=(), desired_open_api_ids=desired_open,
+            preflight_scope_manifest=desired,
             on_staged=on_staged, sleep=sleep, timeout_seconds=max(1, deadline - time.monotonic()))
         return {**result, "employeePathInterrupted": bool(inventory.previous_members), "sourceReconciled": True}
     except TransitionError:
@@ -1658,7 +1955,8 @@ def reconcile_closed_publication(inventory, desired_global_policy, transport, st
 
 def transition(current: PolicyManifest, desired_global_policy, transport, stage_closed_apis,
                *, previous_open_api_ids=(), desired_open_api_ids=(), new_api_ids=(), stage_prerequisites=None,
-               on_staged=None, on_prepared=None, sleep=time.sleep, timeout_seconds=300):
+               preflight_scope_manifest=None, on_staged=None, on_prepared=None, sleep=time.sleep, timeout_seconds=300,
+               native_product_before=None, _recorded_missing_mcp_tool=None):
     """所属解除 → staging/source readback → global/ETag/readback → 最後の所属追加。
 
     stage callbackは全APIのsubscriptionRequired=trueを保ち、更新後source manifestを返す。
@@ -1671,7 +1969,9 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
     if (not previous_open <= existing or not desired_open <= existing | additions
             or additions & existing):
         raise ValueError("Existing targets need generated source; additions need explicit absence proof")
-    snapshot = read_policy_graph(current, transport)
+    snapshot = read_policy_graph(current, transport, scope_manifest=preflight_scope_manifest,
+                                 native_product_before=native_product_before,
+                                 _recorded_missing_mcp_tool=_recorded_missing_mcp_tool)
     additions_snapshot = read_new_api_absence(current.apim_id, additions, transport)
     snapshot.update(additions_snapshot)
     snapshot.update(stage_prerequisites or {})
@@ -1704,7 +2004,8 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
         staged_policies = {**desired.policies, global_id: current.policies[global_id]}
         staged = PolicyManifest(desired.apim_id, staged_policies, desired.operations, desired.products,
                                 desired.backends, desired.named_values, desired.api_properties, desired.api_children, desired.source_version)
-        ready = read_policy_graph(staged, transport)
+        # 現行の固定配置をdesiredで検査し、実資材と旧globalはstagedの期待値へ照合する。
+        ready = read_policy_graph(staged, transport, scope_manifest=desired, native_product_before=native_product_before)
         fresh, members = read_open_product(current.apim_id, transport, allowed_api_ids=(), missing=not bool(desired_open))
         if members:
             raise ValueError("Staging must leave the employee route closed")
@@ -1725,7 +2026,7 @@ def transition(current: PolicyManifest, desired_global_policy, transport, stage_
             candidate = _wait(transport, global_id, sleep=sleep, deadline=deadline, raw=True)
             _same_xml(_properties(candidate).get("value"), desired_global_policy)
             written_global = candidate
-        ready = read_policy_graph(desired, transport)
+        ready = read_policy_graph(desired, transport, native_product_before=native_product_before)
         fresh, members = read_open_product(current.apim_id, transport, allowed_api_ids=(), missing=not bool(desired_open))
         ready.update(fresh)
         for api_id in sorted(desired_open):

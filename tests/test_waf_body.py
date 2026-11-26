@@ -76,19 +76,17 @@ class AiWafBodyTests(unittest.TestCase):
         speech["name"] = "custom-speech"
         self.assertEqual(managed_ai_paths({"apiDefinitions": [document, speech]}), set())
 
-    def test_deployment_routes_expand_only_registered_exact_manifest_paths(self):
+    def test_model_metadata_cannot_widen_the_two_approved_deployment_prefixes(self):
         images = api("openai-images-v1")
         constraints = images["authorization"]["operationConstraints"]
         allowed = constraints["image-edit"]["allowedModels"]
-        expected = {"/models/openai-images/v1/generations",
-                    *("/models/openai-images/v1/deployments/" + model + "/edits" for model in allowed)}
+        expected = {"/models/openai-images/v1/generations", "/models/openai-images/v1/deployments/*"}
         allowed.append("../escape")
         selected = managed_ai_paths({"apiDefinitions": [images]})
         self.assertEqual(selected, expected)
-        self.assertTrue(all("{" not in path and "*" not in path for path in selected))
+        self.assertTrue(all("{" not in path for path in selected))
         allowed.append("unlisted-model")
-        with self.assertRaisesRegex(ValueError, "canonical API definition"):
-            managed_ai_paths({"apiDefinitions": [images]})
+        self.assertEqual(managed_ai_paths({"apiDefinitions": [images]}), expected)
 
     def test_signed_status_and_realtime_control_do_not_acquire_ai_body_capacity(self):
         config = {"apiDefinitions": [api("document-analysis-v1"), api("openai-realtime-control-v1"),

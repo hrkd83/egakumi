@@ -18,6 +18,7 @@ from deployment.helpers.apim_api_request import render_api_request_preparation_f
 from deployment.helpers.apim_audit import render_audit_policy
 from deployment.helpers.apim_api_request import expand_api_request_preparation_fragment
 from deployment.helpers.apim_query_observation import render_query_observation_fragment
+from policy_fixture_paths import policy_fixture_path
 
 
 CORE = Path(__file__).resolve().parents[1]
@@ -619,9 +620,10 @@ class GatewayQueryStructureTests(unittest.TestCase):
                 for node in inbound[:guard_index]:
                     self.assertNotIn("context.Request.Body", ET.tostring(node, encoding="unicode"))
                 if filename == "mcp.xml":
-                    operation_authorization = next(i for i, node in enumerate(inbound)
-                                                   if node.tag == "choose" and node.find(".//set-status[@code='403']") is not None)
-                    self.assertLess(operation_authorization, guard_index)
+                    handoff = next(i for i, node in enumerate(inbound)
+                                   if node.tag == "choose" and "gatewayDecision" in node.find("when").get("condition", ""))
+                    self.assertLess(handoff, guard_index)
+                    self.assertEqual(inbound[handoff].find("./when/return-response/set-status").get("code"), "500")
 
     def test_observation_is_a_leaf_and_no_query_rejection_or_modes_remain_in_callers(self):
         observation=ET.fromstring(render_query_observation_fragment())
@@ -629,7 +631,7 @@ class GatewayQueryStructureTests(unittest.TestCase):
         self.assertEqual(observation[0].get("name"),"gatewayQueryObservation")
         for token in ("context.Request.Body","gatewayQueryGuardModes",'result["allowed"]','result["status"]'):
             self.assertNotIn(token,observation[0].get("value"))
-        for path in (API_TEMPLATES/"gateway.xml",API_TEMPLATES/"mcp.xml",POLICIES/"snippets/query-observation-inbound.xml"):
+        for path in (API_TEMPLATES/"gateway.xml",API_TEMPLATES/"mcp.xml",policy_fixture_path(POLICIES,"query-observation-inbound.xml")):
             root=ET.parse(path).getroot()
             self.assertIsNone(root.find(".//choose[@id='core-query-rejection']"))
             self.assertNotIn("QUERY_PARAMETERS_NOT_ALLOWED",ET.tostring(root,encoding="unicode"))

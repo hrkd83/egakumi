@@ -30,7 +30,8 @@ SESSION_POLICY_BOUNDS = {
     "rotationHandoffSeconds": (60, 3600), "rotationCandidateTtlSeconds": (60, 3600),
 }
 MAX_TRANSACTION_LIFETIME_SECONDS = 600
-POLICY_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies/credential-login"
+POLICY_DIRECTORY = REPOSITORY / "apps/gateway/apim/policies"
+OPERATION_POLICY_DIRECTORY = POLICY_DIRECTORY / "operation-policies/credential-login"
 
 
 def settings(configuration: dict) -> dict | None:
@@ -57,7 +58,7 @@ def encode(value) -> str:
     return base64.b64encode(json.dumps(value, separators=(",", ":")).encode()).decode()
 
 
-def render(filename: str, login: dict) -> str:
+def render(filename: str, login: dict, *, entra_enabled: bool = False) -> str:
     """検証済みの固定入力を XML へ差し込む。要求から接続先を組み立てない。"""
     replacements = {"__CREDENTIAL_LOGIN_SETTINGS__": encode(login),
                     "__CREDENTIAL_LOGIN_ORIGIN_BASE64__": base64.b64encode(login["publicOrigin"].encode()).decode(),
@@ -66,14 +67,20 @@ def render(filename: str, login: dict) -> str:
                     "__CREDENTIAL_TRANSACTION_TTL__": str(login["transactionLifetimeSeconds"]),
                     "__CREDENTIAL_LOGIN_CALLS__": str(login["loginCallsPerMinute"]),
                     "__CREDENTIAL_KEY_HEADER__": login["keyHeader"]}
-    value = (POLICY_DIRECTORY / filename).read_text(encoding="utf-8")
+    source = OPERATION_POLICY_DIRECTORY / filename
+    value = render_audit_policy(source.read_text(encoding="utf-8"))
     for key, replacement in replacements.items():
         value = value.replace(key, replacement)
-    return value
+    # 共通認証helperもCM監査helperを参照するため、操作用の置換だけをここで読みます。
+    from .apim_common_authentication import render_operation_entra_authentication_error
+    return render_operation_entra_authentication_error(value, entra_enabled=entra_enabled)
 
 
-def key_only_gateway_telemetry(telemetry: str) -> str:
+def key_only_gateway_telemetry(telemetry: str, *, source_comments: str = "full") -> str:
     """APIのdecisionが未生成の共通拒否監査には購読の確認部だけを使う。"""
+    # 現在のmessage全体は同名C#が所有します。固定旧XMLにmarkerがなければcurrent sourceを読みません。
+    if "__CORE_GATEWAY_TELEMETRY_CSHARP__" in telemetry:
+        telemetry = render_audit_policy(telemetry, source_comments=source_comments)
     start, end = " /* core-user-audit-start */", " /* core-user-audit-end */"
     if start not in telemetry and end not in telemetry:
         return telemetry
@@ -88,7 +95,7 @@ def credential_gateway_telemetry(telemetry: str) -> str:
     """CM内の拒否は短い監査を使い、主体を保持してfragment上限を守る。"""
     if not telemetry:
         return ""
-    path = POLICY_DIRECTORY.parent / "credential-telemetry.xml"
+    path = POLICY_DIRECTORY / "snippets/audit/credential-telemetry/credential-telemetry.xml"
     return path.read_text(encoding="utf-8").replace(
         "<fragment>", ""
     ).replace("</fragment>", "")
@@ -96,9 +103,20 @@ def credential_gateway_telemetry(telemetry: str) -> str:
 
 def render_connection(filename: str, login: dict, telemetry: str = "") -> str:
     """業務APIの本人接続と認証案内を、同じ設定・監査処理で展開する。"""
-    directory = POLICY_DIRECTORY.parent
-    challenge = (directory / "credential-challenge.xml").read_text(encoding="utf-8").replace("<fragment>", "").replace("</fragment>", "")
-    value = (directory / filename).read_text(encoding="utf-8").replace("__CREDENTIAL_CHALLENGE_XML__", challenge)
+    directory = POLICY_DIRECTORY
+    challenge_source = directory / "snippets/authentication/credential-challenge/credential-challenge.xml"
+    challenge = render_audit_policy(challenge_source.read_text(encoding="utf-8"), source_comments="compact").replace("<fragment>", "").replace("</fragment>", "")
+    # 旧名は呼出し契約だけに残し、本人接続の正本は同名XML/C#のフォルダーから読みます。
+    canonical = {
+        "credential-connection.xml": "fragments/authentication/core-credential-connection/core-credential-connection.xml",
+        "credential-connection-outbound.xml": "fragments/authentication/core-credential-connection-outbound/core-credential-connection-outbound.xml",
+        "credential-session-use.xml": "fragments/authentication/core-credential-session-use/core-credential-session-use.xml",
+        "credential-challenge.xml": "snippets/authentication/credential-challenge/credential-challenge.xml",
+    }
+    source = directory / canonical.get(filename, filename)
+    value = source.read_text(encoding="utf-8").replace("__CREDENTIAL_CHALLENGE_XML__", challenge)
+    if filename == "credential-challenge.xml":
+        value = render_audit_policy(value, source_comments="compact")
     return render_audit_policy(value.replace("__CREDENTIAL_LOGIN_SETTINGS__", encode(login))
         .replace("__CREDENTIAL_LOGIN_ORIGIN_BASE64__", base64.b64encode(login["publicOrigin"].encode()).decode())
         .replace("__GATEWAY_TELEMETRY_XML__", credential_gateway_telemetry(telemetry)), source_comments="compact")

@@ -21,74 +21,35 @@
     <include-fragment id="core-api-request-preparation" fragment-id="core-api-request-preparation" />
     <!-- === -->
     __PROTOCOL_QUERY_OBSERVATION_XML__
-    <!-- WebSocket の model query を、API 定義の allowedModels と照合して選びます。 -->
-    <set-variable name="gatewayProtocolModel" value="@{
-      var encoded = &quot;__WEBSOCKET_SETTINGS_BASE64__&quot;;
-      if (String.IsNullOrEmpty(encoded)) { return &quot;&quot;; }
-      try {
-        var settings = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
-        var allowed = settings[&quot;allowedModels&quot;] as JArray;
-        if (allowed == null) { return &quot;&quot;; }
-        var model = (string)settings[&quot;defaultModel&quot;];
-        if (context.Request.Url.Query.ContainsKey(&quot;model&quot;)) {
-          if (context.Request.Url.Query[&quot;model&quot;].Length != 1) { return &quot;!invalid-model!&quot;; }
-          model = context.Request.Url.Query[&quot;model&quot;][0];
-        }
-        return allowed.Any(m =&gt; (string)m == model) ? model : &quot;!invalid-model!&quot;;
-      } catch { return &quot;!invalid-model!&quot;; }
+    <!-- 動的モデル選択を使うWebSocketは、指定modelまたは既存のdefaultModelを使います。 -->
+    <!-- 登録モデル一覧による拒否は行わず、モデルの利用可否は固定接続先の提供元へ任せます。 -->
+    <set-variable id="core-protocol-model-selection" name="gatewayProtocolModel" value="@{
+      __PROTOCOL_MODEL_SELECTION_CSHARP__
     }" />
     <!-- 目的：共通入口で認証した利用者を、このAPIの操作制約と監査へ引き渡します。 -->
-    <!-- 処理：キーを優先して検証済み購読または社員情報をgatewayDecisionへ格納します。BearerのProduct確認は共通入口で済ませ、認証完了と本人情報をここで照合します。 -->
+    <!-- 処理：APIMの検証済み購読があればキーの結果、なければBearer認証成功を確認して、共通認証が確認・整形した社員情報をgatewayDecisionへ引き継ぎます。 -->
+    <!-- APIの認証方式ラベルは正式設定検査で確定済みです。この引渡しでは、設定の復元とラベルの再確認を行いません。 -->
     <set-variable name="gatewayDecision" value="@{
-      var config = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(&quot;__AUTHORIZATION_BASE64__&quot;)));
-      var deny = new JObject(new JProperty(&quot;allowed&quot;, false));
-      var keyHeader = (string)context.Variables[&quot;gatewayKeyHeader&quot;];
-      if ((string)config[&quot;mode&quot;] != &quot;subscriptionKey&quot;) { return deny.ToString(); }
-      JObject decision;
-      if (context.Request.Headers.ContainsKey(keyHeader)) {
-        /* 購読とキー用ヘッダーの形式は共通認証で確認済みです。検証済み購読IDを呼出主体へ引き継ぎます。 */
-        decision = new JObject(new JProperty(&quot;allowed&quot;, true),
-          new JProperty(&quot;callerId&quot;, &quot;subscription:&quot; + context.Subscription.Id), new JProperty(&quot;method&quot;, &quot;subscriptionKey&quot;));
-      } else {
-        try {
-          if (context.Subscription != null
-              || !context.Variables.ContainsKey(&quot;gatewayCommonAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayCommonAuthenticationValidated&quot;]
-              || !context.Variables.ContainsKey(&quot;gatewayEntraAuthenticationValidated&quot;) || !(bool)context.Variables[&quot;gatewayEntraAuthenticationValidated&quot;]) { return deny.ToString(); }
-          var user = JObject.Parse((string)context.Variables[&quot;gatewayUserAuthentication&quot;]);
-          Guid tenant, principal;
-          if ((int?)user[&quot;schemaVersion&quot;] != 1
-              || !Guid.TryParse((string)user[&quot;tenantId&quot;], out tenant) || tenant == Guid.Empty
-              || !Guid.TryParse((string)user[&quot;principalId&quot;], out principal) || principal == Guid.Empty) { return deny.ToString(); }
-          var caller = &quot;user:&quot; + tenant.ToString(&quot;D&quot;) + &quot;:&quot; + principal.ToString(&quot;D&quot;);
-          if ((string)user[&quot;callerId&quot;] != caller || (string)user[&quot;allocationId&quot;] != caller) { return deny.ToString(); }
-          decision = new JObject(new JProperty(&quot;allowed&quot;, true), new JProperty(&quot;method&quot;, &quot;user&quot;),
-            new JProperty(&quot;callerId&quot;, caller), new JProperty(&quot;allocationId&quot;, caller),
-            new JProperty(&quot;verifiedTenantId&quot;, tenant.ToString(&quot;D&quot;)), new JProperty(&quot;verifiedPrincipalId&quot;, principal.ToString(&quot;D&quot;)),
-            new JProperty(&quot;verifiedClientId&quot;, (string)user[&quot;clientId&quot;] ?? &quot;&quot;));
-        } catch { return deny.ToString(); }
-      }
-      if (context.Variables.ContainsKey(&quot;gatewayOperationSelection&quot;)) {
-        /* settingIdを既存監査のprofileIdへ転記します。本文のモデル選択はここでは追加しません。 */
-        var settingId = (string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;settingId&quot;];
-        if (!String.IsNullOrEmpty(settingId)) { decision[&quot;profileId&quot;] = settingId; }
-      }
-      return decision.ToString(Newtonsoft.Json.Formatting.None);
+      __PROTOCOL_AUTHENTICATION_RESULT_CSHARP__
     }" />
     <choose>
       <when condition="@(!(bool)JObject.Parse((string)context.Variables[&quot;gatewayDecision&quot;])[&quot;allowed&quot;])">
-        <set-variable name="gatewayAuditPhase" value="rejected" />
-        <set-variable name="gatewayAuditCode" value="AUTHORIZATION_DENIED" />
-        <set-variable name="gatewayAuditStatus" value="@(403)" />
+        <!-- 認証後の内部情報の引き渡し不備を、利用者の権限不足と区別して記録します。 -->
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="AUTHENTICATION_PROCESSING_ERROR" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
         <include-fragment fragment-id="core-gateway-telemetry" />
-        <return-response><set-status code="403" reason="API operation is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response>
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
       </when>
     </choose>
-    <choose><when condition="@(context.Variables.ContainsKey(&quot;gatewayProtocolModel&quot;) &amp;&amp; !String.IsNullOrEmpty((string)context.Variables[&quot;gatewayProtocolModel&quot;]))">
+    <choose><when condition="@(!String.IsNullOrEmpty((string)context.Variables[&quot;gatewayProtocolModel&quot;]))">
       <set-variable name="gatewayAuditSettings" value="@{
-        var settings = JObject.Parse((string)context.Variables[&quot;gatewayAuditSettings&quot;]);
-        settings[&quot;websocketModel&quot;] = (string)context.Variables[&quot;gatewayProtocolModel&quot;];
-        return settings.ToString(Newtonsoft.Json.Formatting.None);
-      }" />
+      __PROTOCOL_AUDIT_MODEL_SETTING_CSHARP__
+    }" />
     </when></choose>
     <include-fragment fragment-id="core-audit-context" />
     <!-- 共通認可を終えた入口の資格情報を取り除き、下流用の認証を設定します。 -->
@@ -98,16 +59,9 @@
     <set-header name="api-key" exists-action="delete" />
     <set-query-parameter name="subscription-key" exists-action="delete" />
     <set-query-parameter name="api-key" exists-action="delete" />
-    <set-header name="x-ms-client-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
-    <!-- WebSocket 等の query が、契約で固定した接続先やモデルと一致するか確認します。 -->
-    <set-variable name="gatewayProtocolQueryAllowed" value="@{
-      var encoded = &quot;__WEBSOCKET_QUERY_BASE64__&quot;;
-      if (String.IsNullOrEmpty(encoded)) { return true; }
-      try {
-        var expected = JObject.Parse(System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded)));
-        var model = context.Variables.ContainsKey(&quot;gatewayProtocolModel&quot;) ? (string)context.Variables[&quot;gatewayProtocolModel&quot;] : &quot;&quot;;
-        return context.Request.Url.Query.All(q =&gt; q.Value.Length == 1 &amp;&amp; ((!String.IsNullOrEmpty(model) &amp;&amp; q.Key == &quot;model&quot; &amp;&amp; q.Value[0] == model) || (q.Key != &quot;model&quot; || String.IsNullOrEmpty(model)) &amp;&amp; expected[q.Key] != null &amp;&amp; q.Value[0] == (string)expected[q.Key]));
-      } catch { return false; }
+    <!-- WebSocket等のquery名と単一値を確認します。固定項目の値は後続のwriterで上書きし、可変modelは先行選択済みの値を使います。 -->
+    <set-variable id="core-protocol-query-validation" name="gatewayProtocolQueryAllowed" value="@{
+      __PROTOCOL_QUERY_VALIDATION_CSHARP__
     }" />
     <choose><when condition="@(!(bool)context.Variables[&quot;gatewayProtocolQueryAllowed&quot;])"><return-response><set-status code="403" reason="Protocol target is not authorized" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>
     __PROTOCOL_QUERY_XML__
@@ -134,7 +88,9 @@
     <set-variable name="gatewayAuditStatus" value="@(0)" />
     <include-fragment fragment-id="core-gateway-telemetry" />
   </inbound>
-  <!-- 裏側への転送段階。親の転送方針や HTTP 版を引き継ぎ、上で許可した要求だけを送ります。 -->
+  <!-- このAPIの転送処理です。backendにbaseがないため、上位のforward-requestは継承しません。
+       WebSocketはAPIのWSS接続先、外部MCPは登録済みbackendを使うforward-requestを1つ定義します。
+       応答ヘッダー待機は240秒、HTTP版は生成時に1を設定し、転送用の要求・応答バッファリングは無効です。 -->
   <backend><forward-request timeout="240" http-version="__HTTP_VERSION__" buffer-request-body="false" buffer-response="false" /></backend>
   <!-- 正常に裏側応答を受け取った後の処理。必要な変換と安全な監査情報だけを追加します。 -->
   <outbound>
@@ -149,8 +105,38 @@
   </outbound>
   <!-- 認証・接続・ポリシー実行が例外になった経路。秘密を含む下流の生エラーを監査へ流しません。 -->
   <on-error>
+    <!-- この項目の内部owner・期限・チケット処理だけ、安全な500で停止します。 -->
+    <!-- 別のPolicyIdは下のbaseへ進み、既存の共通認証・エラー処理を維持します。 -->
+    <choose id="core-realtime-owner-error">
+      <when condition="@(context.LastError.PolicyId == &quot;core-realtime-owner-context&quot; || context.LastError.PolicyId == &quot;core-realtime-session-settings&quot; || context.LastError.PolicyId == &quot;core-realtime-observer-owner&quot;)">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="@(context.LastError.PolicyId == &quot;core-realtime-session-settings&quot; ? &quot;OPERATION_SETTINGS_INVALID&quot; : &quot;AUTHENTICATION_PROCESSING_ERROR&quot;)" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
     <base />
     __RATE_LIMIT_ERROR_XML__
+    <!-- 接続設定を扱う2setterで停止した場合だけ、内部エラーとして記録します。 -->
+    <choose id="core-protocol-settings-error">
+      <when condition="@(context.LastError.PolicyId == &quot;core-protocol-model-selection&quot; || context.LastError.PolicyId == &quot;core-protocol-query-validation&quot;)">
+        <set-variable name="gatewayAuditPhase" value="policy-error" />
+        <set-variable name="gatewayAuditCode" value="OPERATION_SETTINGS_INVALID" />
+        <set-variable name="gatewayAuditStatus" value="@(500)" />
+        <include-fragment fragment-id="core-gateway-telemetry" />
+        __PROTOCOL_QUERY_ERROR_XML__
+        <return-response>
+          <set-status code="500" reason="Gateway processing failed" />
+          <set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header>
+          <set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
+        </return-response>
+      </when>
+    </choose>
     <set-variable name="gatewayAuditPhase" value="policy-error" />
     <set-variable name="gatewayAuditCode" value="POLICY_ERROR" />
     <!-- 通信切断などでエラー応答が確定しない場合は0（未確定）を記録します。

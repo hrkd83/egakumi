@@ -47,6 +47,8 @@ var diagnosticResponse = {
 
 // XML 属性・本文へ入れる公開文字列を escape します。URL やヘッダー値を XML の別要素として解釈させません。
 func xmlText(value string) string => replace(replace(replace(replace(value, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '"', '&quot;')
+// C#へ埋め込む公開文字列をJSONの文字列リテラルにし、引用符・改行等をコードへ混入させません。
+func csharpStringLiteral(value string) string => substring(string([value]), 1, length(string([value])) - 2)
 // XML属性の改行が空白になっても実行コードを隠さないよう、説明行を安全なブロックコメントへ変換します。
 func sourceCommentLine(line string) string => startsWith(trim(line), '//') ? '${substring(line, 0, indexOf(line, '//'))}/*${replace(substring(line, indexOf(line, '//') + 2), '*/', '* /')} */' : line
 func sourceWithExplanations(source string) string => join(map(split(replace(source, '\r\n', '\n'), '\n'), line => sourceCommentLine(line)), '\n')
@@ -71,6 +73,11 @@ func websocketFixedParameters(api object) object => api.websocket.?queryParamete
 // FLUXのflex/proのように、公開Operationを共有するモデルの上流を選択します。
 func modelRoutingPolicy(constraint object) string => !contains(constraint, 'modelSettings') ? '' : empty(filter(items(constraint.modelSettings), entry => contains(entry.value, 'backendUrlTemplate'))) ? ''
   : '<!-- 解決済みモデルと同じ固定表から、モデルの上流パスを選びます。 --><choose>${join(map(filter(items(constraint.modelSettings), entry => contains(entry.value, 'backendUrlTemplate')), entry => '<when condition="@((string)JObject.Parse((string)context.Variables[&quot;gatewayOperationSelection&quot;])[&quot;effectiveModel&quot;] == &quot;${xmlText(entry.key)}&quot;)"><rewrite-uri template="${xmlText(entry.value.backendUrlTemplate)}" copy-unmatched-params="false" /></when>'), '')}<otherwise><return-response><set-status code="500" reason="Model route is not configured" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></otherwise></choose>'
+// 元の登録済みURIを配備時に式へ変換し、モデルを含むplaceholderの値を一要素として符号化します。
+// APIMが照合した値を使い、固定パス・query・API版はそのまま残します。
+func pathModelBackendUriPart(part string) string => !contains(part, '}') ? csharpStringLiteral(part)
+  : 'Uri.EscapeDataString((string)context.Request.MatchedParameters[${csharpStringLiteral(first(split(part, '}')))}]) + ${csharpStringLiteral(substring(part, indexOf(part, '}') + 1, length(part) - indexOf(part, '}') - 1))}'
+func pathModelBackendUriExpression(template string) string => '@(${join(map(split(template, '{'), part => pathModelBackendUriPart(part)), ' + ')})'
 func operationBackendSelection(api object) string => empty(filter(api.operations, operation => contains(operation, 'backendOverride'))) ? ''
   : '<choose>${join(map(filter(api.operations, operation => contains(operation, 'backendOverride')), operation => '<when condition="@(context.Operation.Id == &quot;${xmlText(operation.name)}&quot;)">${operationBackendPolicy(api.name, operation)}</when>'), '')}<otherwise><set-backend-service backend-id="${api.name}-backend" />${backendAuthenticationPolicy(api, '${api.name}-backend-secret')}${backendHeaderPolicy(api)}</otherwise></choose>'
 // 既存の音声合成の受付契約だけをSSML検査の対象にします。別のXML操作へは広げません。
@@ -83,17 +90,24 @@ func hostedAgentName(api object) string => length(filter(items(api.authorization
   ? first(split(last(split(api.backendUrl, '/agents/')), '/')) : ''
 // 初期の数値計測対象は公式手順が明示するOpenAI形式Chat CompletionsのHTTP操作に限定します。
 // Anthropicや音声/PII等へ対応を推測して拡大しません。LLMの本文保存は指定しません。
-func nativeLlmOperations(api object) array => api.apiType == 'http' && api.backendService == 'foundryOpenAi'
-  ? map(filter(api.operations, operation => endsWith(operation.urlTemplate, '/chat/completions') && api.authorization.operationConstraints[operation.name].kind == 'bodyModel'), operation => operation.name) : []
+// 監査の照合対象とAPI単位のLLMログは、操作別backendOverrideを含む実効接続先から選びます。
+func nativeLlmOperations(api object) array => api.apiType == 'http'
+  ? map(filter(api.operations, operation => (contains(operation, 'backendOverride') ? operation.backendOverride.backendService : api.backendService) == 'foundryOpenAi' && endsWith(operation.urlTemplate, '/chat/completions') && api.authorization.operationConstraints[operation.name].kind == 'bodyModel'), operation => operation.name) : []
+// FoundryのChat保存指定を上書きする操作を、実効接続先・メソッド・公開操作の宣言から選びます。
+// 操作別backendOverrideを優先し、API名やモデル一覧へ依存させません。監査用の表とは分けます。
+func chatStoreDisabledOperations(api object) array => api.apiType == 'http'
+  ? map(filter(api.operations, operation => operation.method == 'POST' && operation.urlTemplate == '/chat/completions' && api.authorization.operationConstraints[operation.name].kind == 'bodyModel' && (contains(operation, 'backendOverride') ? operation.backendOverride.backendService : api.backendService) == 'foundryOpenAi'), operation => operation.name)
+  : []
 // native token policyが対応するOpenAI形式の操作です。音声・画像・埋め込みは推測で計数しません。
-func tokenLimitOperations(api object) array => api.apiType == 'http' && api.backendService == 'foundryOpenAi'
-  ? map(filter(api.operations, operation => (endsWith(operation.urlTemplate, '/chat/completions') && api.authorization.operationConstraints[operation.name].kind == 'bodyModel') || api.authorization.operationConstraints[operation.name].kind == 'statelessResponses'), operation => operation.name) : []
+// 操作別backendOverrideを優先し、転送先と同じ実効接続先から対象を選びます。
+func tokenLimitOperations(api object) array => api.apiType == 'http'
+  ? map(filter(api.operations, operation => (contains(operation, 'backendOverride') ? operation.backendOverride.backendService : api.backendService) == 'foundryOpenAi' && ((endsWith(operation.urlTemplate, '/chat/completions') && api.authorization.operationConstraints[operation.name].kind == 'bodyModel') || api.authorization.operationConstraints[operation.name].kind == 'statelessResponses')), operation => operation.name) : []
 // 監査用のAPI固有情報。要求/API/操作の実行時IDは全体ポリシーが取得します。
 // 入力制約とトークン制限の設定はcontrolSettingsへ分け、監査名の変数で制御しません。
 func auditSettings(api object, operation string, generatedMcp bool) object => {
   serviceClass: api.?serviceClass ?? 'platform'
   backendService: api.backendService
-  // HTTP本人接続はgateway.xmlのchooseで基底のMI等を使わず、CM接続のtokenを送ります。
+  // HTTP本人接続は生成時に選ぶ接続・session処理で基底のMI等を使わず、CM接続のtokenを送ります。
   // disabledの接続も拒否されるだけでMIへ戻らないため、設定された最終方式を記録します。
   // 生成MCPの外側はREST側の本人接続処理を直接実行しないので、この表示を流用しません。
   backendAuthentication: !generatedMcp && contains(api, 'credentialConnection') ? 'credentialConnection' : api.backendAuthentication.mode
@@ -121,6 +135,8 @@ func controlSettings(api object, operation string, generatedMcp bool) object => 
   operationId: operation
   operationConstraints: api.authorization.operationConstraints
   tokenLimitOperationIds: generatedMcp ? [] : tokenLimitOperations(api)
+  // 保存指定を強制するChat操作だけを渡します。生成MCP・WebSocket・外部MCPへは追加しません。
+  chatStoreDisabledOperationIds: generatedMcp ? [] : chatStoreDisabledOperations(api)
   // 従来のTTS対象条件で選んだ操作だけを、共通APIフローのSSML検査へ渡します。
   // 生成MCPや別の本文形式に、音声合成用の検査を追加しません。
   speechSsmlOperationIds: !generatedMcp && api.apiType == 'http'
@@ -154,7 +170,11 @@ resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = { name: na
 var credentialLoginEnabled = publishApis && !empty(credentialLogin)
 var credentialSettings = union(credentialLogin, { apimPrincipalId: apim.identity.principalId })
 // 業務APIの入口と下流応答で、同じ認証URL案内を使います。
-var credentialChallengeXml = replace(replace(loadTextContent('policies/credential-challenge.xml'), '<fragment>', ''), '</fragment>', '')
+// 個別on-errorで共通トークン検証失敗を受ける操作だけに、有効時の固定部品を生成します。
+var operationEntraAuthenticationErrorXml = (entraAuthentication.?enabled ?? false) ? '<include-fragment id="core-entra-authentication-error" fragment-id="core-entra-authentication-error" />' : ''
+var credentialChallengeTemplate = loadTextContent('policies/snippets/authentication/credential-challenge/credential-challenge.xml')
+var credentialChallengeSource = loadTextContent('policies/snippets/authentication/credential-challenge/credential-challenge.cs')
+var credentialChallengeXml = replace(replace(renderPolicyTemplate(credentialChallengeTemplate, credentialChallengeSource, credentialChallengeSnippetSlots), '<fragment>', ''), '</fragment>', '')
 func renderCredentialLogin(template string, settings object) string => reduce(items({
   __CREDENTIAL_LOGIN_SETTINGS__: base64(string(settings))
   __CREDENTIAL_LOGIN_ORIGIN_BASE64__: base64(settings.?publicOrigin ?? '')
@@ -164,6 +184,8 @@ func renderCredentialLogin(template string, settings object) string => reduce(it
   __CREDENTIAL_LOGIN_CALLS__: string(settings.?loginCallsPerMinute ?? 10)
   __CREDENTIAL_KEY_HEADER__: settings.?keyHeader ?? 'api-key'
 }), template, (value, entry) => replace(value, entry.key, entry.value))
+// Browserにはmarkerがないため変えず、保護6操作だけ固定エラー呼出しを置換します。
+func renderCredentialLoginOperation(template string, settings object, entraErrorXml string) string => replace(renderCredentialLogin(template, settings), '__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__', entraErrorXml)
 resource credentialLoginApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = if (credentialLoginEnabled) {
   parent: apim
   name: 'credential-manager-login'
@@ -199,16 +221,22 @@ resource credentialLoginApiPolicy 'Microsoft.ApiManagement/service/apis/policies
 }
 // Keep CM metadata light: selecting individual templates avoids a second
 // expanded copy of every full XML inside the operation metadata array.
-var credentialLoginStartPolicyTemplate = loadTextContent('policies/credential-login/start.xml')
-var credentialLoginStatusPolicyTemplate = loadTextContent('policies/credential-login/status.xml')
-var credentialLoginLaunchPolicyTemplate = loadTextContent('policies/credential-login/launch.xml')
-var credentialLoginLaunchPostPolicyTemplate = loadTextContent('policies/credential-login/launch-post.xml')
-var credentialLoginIdentityCallbackPolicyTemplate = loadTextContent('policies/credential-login/identity-callback.xml')
-var credentialLoginCallbackPolicyTemplate = loadTextContent('policies/credential-login/callback.xml')
-var credentialLoginLogoutPolicyTemplate = loadTextContent('policies/credential-login/logout.xml')
-var credentialLoginSessionCommitPolicyTemplate = loadTextContent('policies/credential-login/session-commit.xml')
-var credentialLoginLogoutAllPolicyTemplate = loadTextContent('policies/credential-login/logout-all.xml')
-var credentialLoginDisconnectPolicyTemplate = loadTextContent('policies/credential-login/disconnect.xml')
+var credentialLoginStartPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/start.xml')
+var credentialLoginStartCallerSource = loadTextContent('policies/operation-policies/credential-login/start.cs')
+var credentialLoginStatusPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/status.xml')
+var credentialLoginStatusCallerSource = loadTextContent('policies/operation-policies/credential-login/status.cs')
+var credentialLoginLaunchPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/launch.xml')
+var credentialLoginLaunchPostPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/launch-post.xml')
+var credentialLoginIdentityCallbackPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/identity-callback.xml')
+var credentialLoginCallbackPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/credential-login/callback.xml'), loadTextContent('policies/operation-policies/credential-login/callback.cs'), credentialLoginCallbackPolicySlots)
+var credentialLoginLogoutPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/logout.xml')
+var credentialLoginLogoutCallerSource = loadTextContent('policies/operation-policies/credential-login/logout.cs')
+var credentialLoginSessionCommitPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/session-commit.xml')
+var credentialLoginSessionCommitCallerSource = loadTextContent('policies/operation-policies/credential-login/session-commit.cs')
+var credentialLoginLogoutAllPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/logout-all.xml')
+var credentialLoginLogoutAllCallerSource = loadTextContent('policies/operation-policies/credential-login/logout-all.cs')
+var credentialLoginDisconnectPolicyTemplate = loadTextContent('policies/operation-policies/credential-login/disconnect.xml')
+var credentialLoginDisconnectCallerSource = loadTextContent('policies/operation-policies/credential-login/disconnect.cs')
 var credentialLoginOperations = [
   { apiId: 'credential-manager-login', name: 'start', path: 'start', method: 'POST' }
   { apiId: 'credential-manager-login', name: 'status', path: 'status', method: 'GET' }
@@ -229,7 +257,8 @@ resource credentialLoginOperation 'Microsoft.ApiManagement/service/apis/operatio
 resource credentialLoginOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = [for (item, index) in credentialLoginOperations: if (credentialLoginEnabled) {
   parent: credentialLoginOperation[index]
   name: 'policy'
-  properties: { format: 'rawxml', value: renderCredentialLogin(item.name == 'start' ? credentialLoginStartPolicyTemplate : item.name == 'status' ? credentialLoginStatusPolicyTemplate : item.name == 'launch' ? credentialLoginLaunchPolicyTemplate : item.name == 'launch-post' ? credentialLoginLaunchPostPolicyTemplate : item.name == 'identity-callback' ? credentialLoginIdentityCallbackPolicyTemplate : item.name == 'callback' ? credentialLoginCallbackPolicyTemplate : item.name == 'logout' ? credentialLoginLogoutPolicyTemplate : item.name == 'session-commit' ? credentialLoginSessionCommitPolicyTemplate : item.name == 'logout-all' ? credentialLoginLogoutAllPolicyTemplate : credentialLoginDisconnectPolicyTemplate, credentialSettings) }
+  dependsOn: [entraAuthenticationErrorFragment]
+  properties: { format: 'rawxml', value: renderCredentialLoginOperation(item.name == 'start' ? renderPolicyTemplate(credentialLoginStartPolicyTemplate, credentialLoginStartCallerSource, credentialLoginStartPolicySlots) : item.name == 'status' ? renderPolicyTemplate(credentialLoginStatusPolicyTemplate, credentialLoginStatusCallerSource, credentialLoginStatusPolicySlots) : item.name == 'launch' ? credentialLoginLaunchPolicyTemplate : item.name == 'launch-post' ? credentialLoginLaunchPostPolicyTemplate : item.name == 'identity-callback' ? credentialLoginIdentityCallbackPolicyTemplate : item.name == 'callback' ? credentialLoginCallbackPolicyTemplate : item.name == 'logout' ? renderPolicyTemplate(credentialLoginLogoutPolicyTemplate, credentialLoginLogoutCallerSource, credentialLoginLogoutPolicySlots) : item.name == 'session-commit' ? renderPolicyTemplate(credentialLoginSessionCommitPolicyTemplate, credentialLoginSessionCommitCallerSource, credentialLoginSessionCommitPolicySlots) : item.name == 'logout-all' ? renderPolicyTemplate(credentialLoginLogoutAllPolicyTemplate, credentialLoginLogoutAllCallerSource, credentialLoginLogoutAllPolicySlots) : renderPolicyTemplate(credentialLoginDisconnectPolicyTemplate, credentialLoginDisconnectCallerSource, credentialLoginDisconnectPolicySlots), credentialSettings, operationEntraAuthenticationErrorXml) }
 }]
 // 一時URL・cookie・tokenを診断ログへ記録せず、要求の追跡IDだけを残します。
 resource credentialLoginDiagnostics 'Microsoft.ApiManagement/service/apis/diagnostics@2025-09-01-preview' = [for apiName in ['credential-manager-login', 'credential-manager-browser']: if (credentialLoginEnabled) {
@@ -248,28 +277,31 @@ resource credentialLoginDiagnostics 'Microsoft.ApiManagement/service/apis/diagno
 
 // ポリシー本文は読みやすい XML ファイルで管理し、契約固有の箇所だけを Bicep が置換します。
 // cache-lookup-valueはfragmentに置けないため、固定の照会本文をAPIポリシーへ展開します。
-var subscriptionProfileXml = replace(replace(loadTextContent('policies/subscription-profile.xml'), '<fragment>', ''), '</fragment>', '')
+var subscriptionProfileXml = replace(replace(renderPolicyTemplate(loadTextContent('policies/snippets/quota/subscription-profile/subscription-profile.xml'), loadTextContent('policies/snippets/quota/subscription-profile/subscription-profile.cs'), subscriptionProfileSnippetSlots), '<fragment>', ''), '</fragment>', '')
 // 原文だけを変数へ保持し、差し込みは使用先と生成元で同じ関数を呼びます。
 // 原文と置換済みXMLの二重保存を避け、説明コメントと実行コードを保ったまま容量を減らします。
-var gatewayPolicyTemplate = loadTextContent('policies/api-templates/gateway.xml')
-var protocolPolicyTemplate = loadTextContent('policies/api-templates/protocol.xml')
-var piiPolicyTemplate = loadTextContent('policies/pii.xml')
-var documentAnalysisPolicyTemplate = loadTextContent('policies/operation-policies/document-analysis/document-analysis.xml')
-var documentAnalysisStatusPolicyTemplate = loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.xml')
-var realtimeCreatePolicyTemplate = loadTextContent('policies/realtime-create.xml')
-var realtimeHangupPolicyTemplate = loadTextContent('policies/realtime-hangup.xml')
-var liveCreatePolicyTemplate = loadTextContent('policies/live-create.xml')
-var mcpPolicyTemplate = loadTextContent('policies/api-templates/mcp.xml')
+var auditBodyModelErrorXml = replace(trim(replace(replace(loadTextContent('policies/snippets/audit/audit-body-model-error/audit-body-model-error.xml'), '<fragment>', ''), '</fragment>', '')), '\n', '\n    ')
+var gatewayPolicyTemplate = replace(renderPolicyTemplate(loadTextContent('policies/api-templates/gateway.xml'), loadTextContent('policies/api-templates/gateway.cs'), gatewayTemplateSlots), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
+var protocolPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/protocol.xml'), loadTextContent('policies/api-templates/protocol.cs'), protocolTemplateSlots)
+var piiPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/pii/pii.xml'), loadTextContent('policies/operation-policies/pii/pii.cs'), piiPolicySlots)
+var documentAnalysisPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/document-analysis/document-analysis.xml'), loadTextContent('policies/operation-policies/document-analysis/document-analysis.cs'), documentAnalysisPolicySlots)
+var documentAnalysisStatusPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.xml'), loadTextContent('policies/operation-policies/document-analysis/document-analysis-status.cs'), documentAnalysisStatusPolicySlots)
+var realtimeCreateSource = loadTextContent('policies/operation-policies/realtime/realtime-create.cs')
+var realtimeCreatePolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/realtime/realtime-create.xml'), realtimeCreateSource, realtimeCreatePolicySlots)
+var realtimeCreateTicketSource = policySourceSection(realtimeCreateSource, 'ticket')
+var realtimeHangupPolicyTemplate = loadTextContent('policies/operation-policies/realtime/realtime-hangup.xml')
+var realtimeHangupOwnerSource = loadTextContent('policies/operation-policies/realtime/realtime-hangup.cs')
+var liveCreatePolicyTemplate = renderPolicyTemplate(loadTextContent('policies/operation-policies/live/live-create.xml'), loadTextContent('policies/operation-policies/live/live-create.cs'), liveCreatePolicySlots)
+var mcpPolicyTemplate = renderPolicyTemplate(loadTextContent('policies/api-templates/mcp.xml'), loadTextContent('policies/api-templates/mcp.cs'), mcpTemplateSlots)
 func configuredApiTemplate(http bool, gateway string, protocol string, profile string) string => http
   ? replace(gateway, '__SUBSCRIPTION_PROFILE_XML__', profile)
   : replace(protocol, '__SUBSCRIPTION_PROFILE_XML__', profile)
-func configuredOperationTemplate(template string, errorXml string) string => replace(template, '__RATE_LIMIT_ERROR_XML__', errorXml)
+func configuredOperationTemplate(template string, errorXml string, entraErrorXml string) string => replace(replace(replace(template, '__RATE_LIMIT_ERROR_XML__', errorXml), '__OPERATION_ENTRA_AUTHENTICATION_ERROR_XML__', entraErrorXml), '__AUDIT_BODY_MODEL_ERROR_XML__', auditBodyModelErrorXml)
 // Compact connection-failure audit retains the verified key/user identity and
 // fits the APIM fragment budget. Normal business audit remains the full fragment.
 // One shared subject reader is XML-escaped before it enters any trace
 // template. Both deployment assignments and protected source use these values.
 // 未展開の正本は各1回だけ読み、同じ原文が配備と生成元で二重に読み込まれるのを防ぎます。
-var auditObservationSource = loadTextContent('policies/expressions/legacy/audit-subject-observation.cs')
 var apiSettingsSource = loadTextContent('policies/fragments/settings/core-api-settings/core-api-settings.cs')
 var requestContextSource = loadTextContent('policies/fragments/audit/core-request-context/core-request-context.cs')
 var authenticatedSubjectSource = loadTextContent('policies/fragments/audit/core-audit-authenticated-subject/core-audit-authenticated-subject.cs')
@@ -277,11 +309,17 @@ var trustedIngressSource = loadTextContent('policies/fragments/ingress/core-trus
 var browserExceptionSource = loadTextContent('policies/fragments/authentication/core-credential-browser-exception/core-credential-browser-exception.cs')
 var commonAuthenticationSource = loadTextContent('policies/fragments/authentication/core-common-authentication/core-common-authentication.cs')
 var gatewayTelemetrySource = loadTextContent('policies/fragments/audit/core-gateway-telemetry/core-gateway-telemetry.cs')
+var backendAuditSource = loadTextContent('policies/fragments/audit/core-backend-audit/core-backend-audit.cs')
 var queryObservationSource = loadTextContent('policies/fragments/request/core-query-observation/core-query-observation.cs')
 var apiInputValidationSource = loadTextContent('policies/fragments/request/core-api-input-validation/core-api-input-validation.cs')
 var apiOperationSettingsSource = loadTextContent('policies/fragments/request/core-api-operation-settings/core-api-operation-settings.cs')
 var apiAuthenticationResultSource = loadTextContent('policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.cs')
+var apiTargetValidationSource = loadTextContent('policies/fragments/request/core-api-target-validation/core-api-target-validation.cs')
+var chatStoreDisabledSource = loadTextContent('policies/fragments/request/core-chat-store-disabled/core-chat-store-disabled.cs')
 var modelLimitsSource = loadTextContent('policies/fragments/request/core-model-limits/core-model-limits.cs')
+var rateLimitSource = loadTextContent('policies/fragments/quota/core-rate-limit/core-rate-limit.cs')
+var tokenLimitSource = loadTextContent('policies/fragments/quota/core-token-limits/core-token-limits.cs')
+var entraUserProfileSource = loadTextContent('policies/fragments/quota/core-entra-user-profile/core-entra-user-profile.cs')
 var speechSsmlGuardSource = loadTextContent('policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.cs')
 var documentInputValidationSource = loadTextContent('policies/fragments/request/core-document-input-validation/core-document-input-validation.cs')
 var queryTelemetrySource = loadTextContent('policies/fragments/audit/core-query-telemetry/core-query-telemetry.cs')
@@ -290,7 +328,12 @@ var apiRequestPreparationTemplate = loadTextContent('policies/fragments/request/
 var apiInputValidationTemplate = loadTextContent('policies/fragments/request/core-api-input-validation/core-api-input-validation.xml')
 var apiOperationSettingsTemplate = loadTextContent('policies/fragments/request/core-api-operation-settings/core-api-operation-settings.xml')
 var apiAuthenticationResultTemplate = loadTextContent('policies/fragments/authentication/core-api-authentication-result/core-api-authentication-result.xml')
+var apiTargetValidationTemplate = loadTextContent('policies/fragments/request/core-api-target-validation/core-api-target-validation.xml')
+var chatStoreDisabledTemplate = loadTextContent('policies/fragments/request/core-chat-store-disabled/core-chat-store-disabled.xml')
 var modelLimitsTemplate = loadTextContent('policies/fragments/request/core-model-limits/core-model-limits.xml')
+var rateLimitTemplate = loadTextContent('policies/fragments/quota/core-rate-limit/core-rate-limit.xml')
+var tokenLimitTemplate = loadTextContent('policies/fragments/quota/core-token-limits/core-token-limits.xml')
+var entraUserProfileTemplate = loadTextContent('policies/fragments/quota/core-entra-user-profile/core-entra-user-profile.xml')
 var speechSsmlGuardTemplate = loadTextContent('policies/fragments/request/core-speech-ssml-guard/core-speech-ssml-guard.xml')
 var documentInputValidationTemplate = loadTextContent('policies/fragments/request/core-document-input-validation/core-document-input-validation.xml')
 var requestContextTemplate = loadTextContent('policies/fragments/audit/core-request-context/core-request-context.xml')
@@ -300,50 +343,242 @@ var browserExceptionTemplate = loadTextContent('policies/fragments/authenticatio
 var commonAuthenticationTemplate = loadTextContent('policies/fragments/authentication/core-common-authentication/core-common-authentication.xml')
 var entraAuthenticationErrorTemplate = loadTextContent('policies/fragments/authentication/core-entra-authentication-error/core-entra-authentication-error.xml')
 var gatewayTelemetryTemplate = loadTextContent('policies/fragments/audit/core-gateway-telemetry/core-gateway-telemetry.xml')
+var backendAuditTemplate = loadTextContent('policies/fragments/audit/core-backend-audit/core-backend-audit.xml')
 var queryObservationTemplate = loadTextContent('policies/fragments/request/core-query-observation/core-query-observation.xml')
 var queryTelemetryTemplate = loadTextContent('policies/fragments/audit/core-query-telemetry/core-query-telemetry.xml')
 // 外部MCPだけに差し込む受付フローです。WebSocketへは追加しません。
-var protocolQueryObservationInboundXml = replace(trim(replace(replace(replace(loadTextContent('policies/snippets/query-observation-inbound.xml'), '<fragment>', ''), '</fragment>', ''), '\r\n', '\n')), '\n', '\n    ')
-var credentialConnectionTemplate = loadTextContent('policies/credential-connection.xml')
-var credentialSessionUseTemplate = loadTextContent('policies/credential-session-use.xml')
-var credentialConnectionOutboundTemplate = loadTextContent('policies/credential-connection-outbound.xml')
-var realtimeObserverTemplate = loadTextContent('policies/realtime-observer.xml')
-var auditSubjectObservationCompactXml = replace(xmlText(compactObservationSource(auditObservationSource)), '\'', '&apos;')
+var protocolQueryObservationInboundXml = replace(trim(replace(replace(replace(loadTextContent('policies/snippets/audit/query-observation-inbound/query-observation-inbound.xml'), '<fragment>', ''), '</fragment>', ''), '\r\n', '\n')), '\n', '\n    ')
+var credentialConnectionTemplate = loadTextContent('policies/fragments/authentication/core-credential-connection/core-credential-connection.xml')
+var credentialCallerSource = loadTextContent('policies/fragments/authentication/core-credential-connection/core-credential-connection.cs')
+// CMの内部500は呼出し元APIで監査・応答し、CMフラグメント内に監査全文を複製しません。
+var credentialCallerErrorXml = trim(replace(replace(loadTextContent('policies/snippets/authentication/credential-caller-error/credential-caller-error.xml'), '<fragment>', ''), '</fragment>', ''))
+var credentialSessionUseTemplate = loadTextContent('policies/fragments/authentication/core-credential-session-use/core-credential-session-use.xml')
+var credentialUseResultSource = loadTextContent('policies/fragments/authentication/core-credential-session-use/core-credential-session-use.cs')
+var credentialConnectionOutboundTemplate = credentialConnectionOutboundFragmentValue(loadTextContent('policies/fragments/authentication/core-credential-connection-outbound/core-credential-connection-outbound.xml'), loadTextContent('policies/fragments/authentication/core-credential-connection-outbound/core-credential-connection-outbound.cs'), true)
+var realtimeObserverTemplate = loadTextContent('policies/fragments/authentication/core-realtime-observer/core-realtime-observer.xml')
+var realtimeObserverOwnerSource = loadTextContent('policies/fragments/authentication/core-realtime-observer/core-realtime-observer.cs')
+var realtimeOwnerContextTemplate = loadTextContent('policies/snippets/authentication/realtime-owner-context/realtime-owner-context.xml')
+var realtimeOwnerContextSource = loadTextContent('policies/snippets/authentication/realtime-owner-context/realtime-owner-context.cs')
 // 共通入口のフローから、監査データの組み立てだけを呼び出せるようにします。
 // C#の正本は別ファイルで管理し、ここでXML属性用に変換します。外部通信は追加しません。
 // 配備と生成元は同じ関数を呼び、C#とXMLの全文を中間変数へ重複して保存しません。
 func auditSourceXml(source string) string => replace(xmlText(sourceWithExplanations(source)), '\'', '&apos;')
-func apiSettingsFragmentValue(template string, source string) string => replace(template, '__CORE_API_SETTINGS_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n    '))
-func requestContextFragmentValue(template string, source string) string => replace(template, '__CORE_REQUEST_CONTEXT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
-func queryObservationFragmentValue(template string, source string) string => replace(template, '__CORE_QUERY_OBSERVATION_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
-func apiInputValidationFragmentValue(template string, source string) string => replace(template, '__CORE_API_INPUT_VALIDATION_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+// message本文では&/</>だけを変換し、C#の引用符はそのまま保持します。
+func auditMessageSourceXml(source string) string => replace(replace(replace(sourceWithExplanations(source), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')
+// 同じ展開処理を共有し、ARMのユーザー定義関数を64個の上限内に保ちます。
+// 属性と本文の引用符、trim・字下げは各正本の固定slotに記録します。
+func renderPolicySource(source string, body bool, trimmed bool, indent string) string => replace(trimmed
+  ? trim(body ? auditMessageSourceXml(source) : auditSourceXml(source))
+  : (body ? auditMessageSourceXml(source) : auditSourceXml(source)), '\n', '\n${indent}')
+// 配列順にmarkerを展開し、配備資源と保護sourceへ同じXMLを渡します。
+func renderPolicyTemplate(template string, source string, slots array) string => reduce(slots, template, (policy, slot) => replace(policy, slot.marker, renderPolicySource(empty(slot.section) ? source : policySourceSection(source, slot.section), slot.body, slot.trimmed, slot.indent)))
+// 同じowner受取りを3正本へ複製せず、生成時にinline展開します。Azure fragmentは増やしません。
+func realtimeOwnerContextValue(template string, source string) string => trim(join(map(split(replace(replace(replace(replace(template, '\r\n', '\n'), '__REALTIME_OWNER_CONTEXT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      ')), '<fragment>', ''), '</fragment>', ''), '\n'), line => startsWith(line, '  ') ? substring(line, 2, length(line) - 2) : line), '\n'))
+// 配備と保護sourceは、同じC#正本・owner snippetを同じ字下げで展開します。
+func realtimePolicyValue(template string, marker string, source string, ownerTemplate string, ownerSource string, ownerIndent string, sourceIndent string) string => replace(replace(template, marker, replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n${sourceIndent}')), '__REALTIME_OWNER_CONTEXT_XML__', replace(realtimeOwnerContextValue(ownerTemplate, ownerSource), '\n', '\n${ownerIndent}'))
+var backendAuditFragmentSlots = [
+  { marker: '__CORE_BACKEND_AUDIT_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+// cacheを含むsnippetはAPIへinline展開し、取得式だけを同名C#から説明付きで埋め込みます。
+var subscriptionProfileSnippetSlots = [
+  { marker: '__SUBSCRIPTION_PROFILE_CSHARP__', section: '', body: false, trimmed: true, indent: '            ' }
+]
+var apiSettingsFragmentSlots = [
+  { marker: '__CORE_API_SETTINGS_CSHARP__', section: '', body: false, trimmed: true, indent: '    ' }
+]
+var requestContextFragmentSlots = [
+  { marker: '__CORE_REQUEST_CONTEXT_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+var queryObservationFragmentSlots = [
+  { marker: '__CORE_QUERY_OBSERVATION_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+var apiInputValidationFragmentSlots = [
+  { marker: '__CORE_API_INPUT_VALIDATION_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
 // 操作の基本設定へモデル別の差分を重ねる部品を、同名XMLとC#から展開します。
-func apiOperationSettingsFragmentValue(template string, source string) string => replace(template, '__CORE_API_OPERATION_SETTINGS_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+var apiOperationSettingsFragmentSlots = [
+  { marker: '__CORE_API_OPERATION_SETTINGS_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
 // 共通認証済みの利用者情報を引き継ぐ部品を、同名XMLとC#から展開します。
-func apiAuthenticationResultFragmentValue(template string, source string) string => replace(template, '__CORE_API_AUTHENTICATION_RESULT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
-// 受信本文とモデル入力の検査部品を、同名XMLとC#から説明コメント付きで展開します。
-func modelLimitsFragmentValue(template string, source string) string => replace(template, '__CORE_MODEL_LIMITS_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+var apiAuthenticationResultFragmentSlots = [
+  { marker: '__CORE_API_AUTHENTICATION_RESULT_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+// CM接続の6つの検査区画を同名C#から展開し、通信・分岐・応答のフローはXMLに保ちます。
+// 配備値と保護された読戻し期待sourceの両方で、同じ説明付きの展開を使います。
+var credentialConnectionFragmentSlots = [
+  { marker: '__CORE_CREDENTIAL_CALLER_CSHARP__', section: 'caller', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_CONNECTION_SELECTION_CSHARP__', section: 'selection', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_CONNECTION_AUTHORIZE_RESULT_CSHARP__', section: 'authorize-result', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_CONNECTION_REFRESH_UNAVAILABLE_CSHARP__', section: 'refresh-unavailable', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_CONNECTION_CLAIMS_REQUIRED_CSHARP__', section: 'claims-required', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_CONNECTION_IDENTITY_STATUS_CSHARP__', section: 'identity-status', body: false, trimmed: true, indent: '      ' }
+]
+// 本人セッションの使用結果・期限の2区画を、同名C#から説明付きで展開します。
+var credentialSessionUseFragmentSlots = [
+  { marker: '__CORE_CREDENTIAL_USE_RESULT_CSHARP__', section: 'use-result', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_CREDENTIAL_USE_EXPIRES_ON_CSHARP__', section: 'expires-on', body: false, trimmed: true, indent: '      ' }
+]
+// 認証案内の応答検査・再試行秒・本文の3区画を同名C#からinline展開します。
+var credentialChallengeSnippetSlots = [
+  { marker: '__CREDENTIAL_CHALLENGE_RESULT_CSHARP__', section: 'result', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_CHALLENGE_RETRY_AFTER_CSHARP__', section: 'retry-after', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_CHALLENGE_RESPONSE_BODY_CSHARP__', section: 'response-body', body: true, trimmed: true, indent: '      ' }
+]
+// startの呼出者ID受取りだけを同名C#から展開し、配備と保護sourceの生成を揃えます。
+var credentialLoginStartPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_START_CALLER_CSHARP__', section: '', body: false, trimmed: true, indent: ' ' }
+]
+// statusも保護操作の確認済みcallerを受け取り、同じ正本を配備と保護sourceへ展開します。
+var credentialLoginStatusPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_STATUS_CALLER_CSHARP__', section: '', body: false, trimmed: true, indent: ' ' }
+]
+// disconnectでも確認済みcallerを同名C#から引き継ぎます。
+var credentialLoginDisconnectPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_DISCONNECT_CALLER_CSHARP__', section: 'caller', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_LOGIN_DISCONNECT_SESSION_REQUEST_CSHARP__', section: 'session-request', body: false, trimmed: true, indent: '      ' }
+]
+// logout-allでも確認済みcallerを同名C#から引き継ぎます。
+var credentialLoginLogoutAllPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_LOGOUT_ALL_CALLER_CSHARP__', section: 'caller', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_LOGIN_LOGOUT_ALL_SESSION_REQUEST_CSHARP__', section: 'session-request', body: false, trimmed: true, indent: '      ' }
+]
+// logoutでも確認済みcallerを同名C#から引き継ぎます。
+var credentialLoginLogoutPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_LOGOUT_CALLER_CSHARP__', section: 'caller', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_LOGIN_LOGOUT_SESSION_REQUEST_CSHARP__', section: 'session-request', body: false, trimmed: true, indent: '      ' }
+]
+// セッション確定操作でも確認済みcallerを同名C#から引き継ぎます。
+var credentialLoginSessionCommitPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_SESSION_COMMIT_CALLER_CSHARP__', section: 'caller', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CREDENTIAL_LOGIN_SESSION_COMMIT_SESSION_REQUEST_CSHARP__', section: 'session-request', body: false, trimmed: true, indent: '      ' }
+]
+// HTTP本文から監査用モデル名を読む式を、同名XMLとC#から展開します。
+var auditBodyModelFragmentSlots = [
+  { marker: '__CORE_AUDIT_BODY_MODEL_CSHARP__', section: '', body: false, trimmed: true, indent: '    ' }
+]
+// 準備済みの操作設定を使う対象確認を、同名XMLとC#から展開します。
+var apiTargetValidationFragmentSlots = [
+  { marker: '__CORE_API_TARGET_VALIDATION_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+// 対象Chatのstoreだけをfalseへ揃える部品を、同名XMLとC#から説明付きで展開します。
+var chatStoreDisabledFragmentSlots = [
+  { marker: '__CORE_CHAT_STORE_DISABLED_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+// 本文サイズの確認部品を、同名XMLとC#から説明コメント付きで展開します。
+var modelLimitsFragmentSlots = [
+  { marker: '__CORE_MODEL_LIMITS_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
+// 確認済みの利用者と利用枠設定から回数制限を選ぶ部品を、同名XMLとC#から説明付きで展開します。
+func rateLimitFragmentValue(template string, source string, limits object) string => replace(replace(template, '__CORE_RATE_LIMIT_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      ')), '__RATE_LIMITS_BASE64__', base64(string(limits)))
+// 確認済み社員IDでトークン枠の計数キーを作る式だけを、同名XMLとC#から説明付きで展開します。
+var tokenLimitFragmentSlots = [
+  { marker: '__CORE_TOKEN_LIMITS_ENABLED_CSHARP__', section: 'enabled', body: false, trimmed: true, indent: '      ' }
+  { marker: '__CORE_TOKEN_LIMITS_CSHARP__', section: 'counter', body: false, trimmed: true, indent: '      ' }
+]
+// 認証済み社員の利用枠を取得する部品を、同名XMLとC#から説明付きで展開します。
+var entraUserProfileFragmentSlots = [
+  { marker: '__CORE_ENTRA_USER_PROFILE_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
 // TTSの本文を一度だけ読み、サイズとSSML宣言を続けて検査する部品を、同名XMLとC#から説明付きで展開します。
-func speechSsmlGuardFragmentValue(template string, source string) string => replace(template, '__CORE_SPEECH_SSML_GUARD_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+var speechSsmlGuardFragmentSlots = [
+  { marker: '__CORE_SPEECH_SSML_GUARD_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
 // Documentのmodelクエリ確認を、同名XMLとC#から説明付きで展開します。本文は読みません。
-func documentInputValidationFragmentValue(template string, source string) string => replace(template, '__CORE_DOCUMENT_INPUT_VALIDATION_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      '))
+var documentInputValidationFragmentSlots = [
+  { marker: '__CORE_DOCUMENT_INPUT_VALIDATION_CSHARP__', section: '', body: false, trimmed: true, indent: '      ' }
+]
 // query監査は同名C#の2区画をXMLへ展開します。利用者情報の共通式にも説明を残します。
-func queryTelemetrySection(source string, section string) string => split(split(replace(source, '\r\n', '\n'), '// BEGIN ${section}\n')[1], '\n// END ${section}')[0]
-func queryTelemetryFragmentValue(template string, source string, observation string) string => replace(replace(template,
-  '__CORE_QUERY_TELEMETRY_PREDICATE_CSHARP__', replace(auditSourceXml(queryTelemetrySection(source, 'predicate')), '\n', '\n        ')),
-  '__CORE_QUERY_TELEMETRY_CSHARP__', replace(auditSourceXml(replace(queryTelemetrySection(source, 'message'), '__AUDIT_SUBJECT_OBSERVATION_CSHARP__', observation)), '\n', '\n            '))
-func authenticatedSubjectFragmentValue(template string, source string) string => replace(template, '__CORE_AUTHENTICATED_SUBJECT_CSHARP__', auditSourceXml(source))
-func trustedIngressConditionValue(template string, source string) string => replace(template, '__CORE_TRUSTED_INGRESS_CSHARP__', replace(trim(auditSourceXml(source)), '\n', '\n        '))
+func policySourceSection(source string, section string) string => split(split(replace(source, '\r\n', '\n'), '// BEGIN ${section}\n')[1], '\n// END ${section}')[0]
+var protocolTemplateSlots = [
+  { marker: '__PROTOCOL_MODEL_SELECTION_CSHARP__', section: 'model-selection', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PROTOCOL_AUTHENTICATION_RESULT_CSHARP__', section: 'authentication-result', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PROTOCOL_AUDIT_MODEL_SETTING_CSHARP__', section: 'audit-model-setting', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PROTOCOL_QUERY_VALIDATION_CSHARP__', section: 'query-validation', body: false, trimmed: true, indent: '      ' }
+]
+var mcpTemplateSlots = [
+  { marker: '__MCP_GATEWAY_DECISION_CSHARP__', section: 'gateway-decision', body: false, trimmed: true, indent: '      ' }
+  { marker: '__MCP_PII_ARGUMENTS_CSHARP__', section: 'pii-arguments', body: false, trimmed: true, indent: '      ' }
+]
+var gatewayTemplateSlots = [
+  { marker: '__GATEWAY_MODEL_ALIAS_BODY_CSHARP__', section: 'model-alias-body', body: true, trimmed: true, indent: '      ' }
+  { marker: '__GATEWAY_HOSTED_BODY_CSHARP__', section: 'hosted-body', body: true, trimmed: true, indent: '      ' }
+  { marker: '__GATEWAY_RESPONSES_BODY_CSHARP__', section: 'responses-body', body: true, trimmed: true, indent: '      ' }
+]
+var realtimeCreatePolicySlots = [
+  { marker: '__REALTIME_CREATE_SDP_CSHARP__', section: 'sdp', body: false, trimmed: true, indent: '      ' }
+  { marker: '__REALTIME_CREATE_CLIENT_SECRETS_REQUEST_CSHARP__', section: 'client-secrets-request', body: true, trimmed: true, indent: '      ' }
+  { marker: '__REALTIME_CREATE_EPHEMERAL_TOKEN_CSHARP__', section: 'ephemeral-token', body: false, trimmed: true, indent: '      ' }
+  { marker: '__REALTIME_CREATE_CALL_ID_CSHARP__', section: 'call-id', body: false, trimmed: true, indent: '      ' }
+  { marker: '__REALTIME_CREATE_ANSWER_STATUS_CSHARP__', section: 'answer-status', body: false, trimmed: true, indent: '      ' }
+]
+var documentAnalysisStatusPolicySlots = [
+  { marker: '__DOCUMENT_ANALYSIS_STATUS_OWNER_CSHARP__', section: 'owner', body: false, trimmed: true, indent: '      ' }
+  { marker: '__DOCUMENT_ANALYSIS_STATUS_OWNER_STATUS_CSHARP__', section: 'owner-status', body: false, trimmed: true, indent: '      ' }
+  { marker: '__DOCUMENT_ANALYSIS_STATUS_POLL_EVALUATION_CSHARP__', section: 'poll-evaluation', body: false, trimmed: true, indent: '      ' }
+]
+var documentAnalysisPolicySlots = [
+  { marker: '__DOCUMENT_ANALYSIS_OPERATION_ID_CSHARP__', section: 'operation-id', body: false, trimmed: true, indent: '      ' }
+  { marker: '__DOCUMENT_ANALYSIS_ACCEPTED_CSHARP__', section: 'accepted', body: false, trimmed: true, indent: '      ' }
+  { marker: '__DOCUMENT_ANALYSIS_STATUS_CSHARP__', section: 'status', body: false, trimmed: true, indent: '      ' }
+  { marker: '__DOCUMENT_ANALYSIS_RETRY_AFTER_CSHARP__', section: 'retry-after', body: false, trimmed: true, indent: '      ' }
+]
+var piiPolicySlots = [
+  { marker: '__PII_INPUT_STATUS_CSHARP__', section: 'input', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_REQUEST_CSHARP__', section: 'request', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_RETRY_AFTER_CSHARP__', section: 'retry', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_RESULT_CSHARP__', section: 'result', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_OUTPUT_CSHARP__', section: 'output', body: true, trimmed: true, indent: '      ' }
+  { marker: '__PII_AUDIT_CSHARP__', section: 'audit', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_REQUEST_SETTINGS_CSHARP__', section: 'request-settings', body: false, trimmed: true, indent: '      ' }
+  { marker: '__PII_AUDIT_SETTINGS_CSHARP__', section: 'audit-settings', body: false, trimmed: true, indent: '      ' }
+]
+var liveCreatePolicySlots = [
+  { marker: '__LIVE_CREATE_REQUEST_CSHARP__', section: 'request', body: false, trimmed: true, indent: '      ' }
+  { marker: '__LIVE_CREATE_ANSWER_CSHARP__', section: 'answer', body: false, trimmed: true, indent: '        ' }
+]
+var auditContextPolicySlots = [
+  { marker: '__CORE_AUDIT_CONTEXT_TRACE_CSHARP__', section: 'trace', body: false, trimmed: true, indent: '    ' }
+  { marker: '__CORE_AUDIT_CONTEXT_MODEL_CSHARP__', section: 'model', body: false, trimmed: true, indent: '    ' }
+]
+var credentialLoginCallbackPolicySlots = [
+  { marker: '__CREDENTIAL_LOGIN_CALLBACK_INPUT_CSHARP__', section: 'input', body: false, trimmed: true, indent: ' ' }
+  { marker: '__CREDENTIAL_LOGIN_CALLBACK_TRANSACTION_CSHARP__', section: 'transaction', body: false, trimmed: true, indent: ' ' }
+  { marker: '__CREDENTIAL_LOGIN_CALLBACK_OWNER_CSHARP__', section: 'owner', body: false, trimmed: true, indent: ' ' }
+]
+
+var queryTelemetryFragmentSlots = [
+  { marker: '__CORE_QUERY_TELEMETRY_PREDICATE_CSHARP__', section: 'predicate', body: false, trimmed: false, indent: '        ' }
+  { marker: '__CORE_QUERY_TELEMETRY_CSHARP__', section: 'message', body: false, trimmed: false, indent: '            ' }
+]
+var authenticatedSubjectFragmentSlots = [
+  { marker: '__CORE_AUTHENTICATED_SUBJECT_CSHARP__', section: '', body: false, trimmed: false, indent: '' }
+]
+var trustedIngressConditionSlots = [
+  { marker: '__CORE_TRUSTED_INGRESS_CSHARP__', section: '', body: false, trimmed: true, indent: '        ' }
+]
 // ARMのstring(bool)の表記に依存せず、C#で使える小文字の真偽値を明示します。
 func browserExceptionFragmentValue(template string, source string, configured bool) string => replace(replace(template, '__CORE_CREDENTIAL_BROWSER_EXCEPTION_CSHARP__', replace(trim(replace(auditSourceXml(source), '\r\n', '\n')), '\n', '\n      ')), '__CREDENTIAL_BROWSER_CONFIGURED__', configured ? 'true' : 'false')
-func gatewayTelemetryFragmentValue(template string, source string, compact bool) string => replace(compact ? withoutTelemetryExplanationLines(template) : template, '__CORE_GATEWAY_TELEMETRY_CSHARP__', replace(xmlText(compact ? compactObservationSource(source) : sourceWithExplanations(source)), '\'', '&apos;'))
-func observationFragmentValue(template string, source string, compact bool) string => replace(template, '__AUDIT_SUBJECT_OBSERVATION_CSHARP__', replace(xmlText(compact ? compactObservationSource(source) : sourceWithExplanations(source)), '\'', '&apos;'))
-var credentialGatewayTelemetryBody = replace(replace(replace(loadTextContent('policies/credential-telemetry.xml'), '__AUDIT_SUBJECT_OBSERVATION_CSHARP__', auditSubjectObservationCompactXml), '<fragment>', ''), '</fragment>', '')
+func gatewayTelemetryFragmentValue(template string, source string, compact bool) string => replace(compact ? withoutTelemetryExplanationLines(template) : template, '__CORE_GATEWAY_TELEMETRY_CSHARP__', replace(trim(auditMessageSourceXml(compact ? compactObservationSource(source) : source)), '\n', '\n      '))
+func credentialConnectionOutboundFragmentValue(template string, source string, compact bool) string => replace(template, '__CORE_CREDENTIAL_CONNECTION_OUTBOUND_CSHARP__', replace(trim(auditMessageSourceXml(compact ? compactObservationSource(source) : source)), '\n', '\n    '))
+func credentialTelemetrySnippetValue(template string, source string, compact bool) string => replace(template, '__CREDENTIAL_TELEMETRY_CSHARP__', replace(trim(auditMessageSourceXml(compact ? compactObservationSource(source) : source)), '\n', '\n    '))
+var credentialGatewayTelemetryBody = replace(replace(credentialTelemetrySnippetValue(loadTextContent('policies/snippets/audit/credential-telemetry/credential-telemetry.xml'), loadTextContent('policies/snippets/audit/credential-telemetry/credential-telemetry.cs'), true), '<fragment>', ''), '</fragment>', '')
 // This handler is inlined only into API/operation policies, never registered as
 // a fragment. Refer to the full reviewed audit fragment without copying its
 // body into every API and protected source entry; fragment nesting is avoided.
-var rateLimitErrorXml = replace(replace(replace(loadTextContent('policies/rate-limit-error.xml'), '<fragment>', ''), '</fragment>', ''), '__GATEWAY_TELEMETRY_XML__', '<include-fragment fragment-id="core-gateway-telemetry" />')
-var mcpRateCleanupXml = replace(replace(loadTextContent('policies/mcp-rate-cleanup.xml'), '<fragment>', ''), '</fragment>', '')
+var rateLimitErrorPolicyTemplate = loadTextContent('policies/snippets/quota/rate-limit-error/rate-limit-error.xml')
+var rateLimitErrorRetryAfterSource = loadTextContent('policies/snippets/quota/rate-limit-error/rate-limit-error.cs')
+// Retry-Afterの式だけを同名C#から展開し、配備と保護sourceへ同じinline部品を渡します。
+var rateLimitErrorSnippetSlots = [
+  { marker: '__RATE_LIMIT_ERROR_RETRY_AFTER_CSHARP__', section: '', body: false, trimmed: true, indent: '        ' }
+]
+var rateLimitErrorXml = replace(replace(replace(renderPolicyTemplate(rateLimitErrorPolicyTemplate, rateLimitErrorRetryAfterSource, rateLimitErrorSnippetSlots), '<fragment>', ''), '</fragment>', ''), '__GATEWAY_TELEMETRY_XML__', '<include-fragment fragment-id="core-gateway-telemetry" />')
+var mcpRateCleanupPolicyTemplate = loadTextContent('policies/snippets/quota/mcp-rate-cleanup/mcp-rate-cleanup.xml')
+var mcpRateCleanupSource = loadTextContent('policies/snippets/quota/mcp-rate-cleanup/mcp-rate-cleanup.cs')
+// 外部MCPの取消判定を同名C#から展開し、既存の本文保持と計数免除だけを維持します。
+var mcpRateCleanupSnippetSlots = [
+  { marker: '__MCP_RATE_CLEANUP_CSHARP__', section: '', body: false, trimmed: true, indent: '    ' }
+]
+var mcpRateCleanupXml = replace(replace(renderPolicyTemplate(mcpRateCleanupPolicyTemplate, mcpRateCleanupSource, mcpRateCleanupSnippetSlots), '<fragment>', ''), '</fragment>', '')
 // Backend authentication is declared independently of public caller auth.
 // Key material remains in Key Vault-backed named values.
 var backendAuthenticationXml = [for api in apiDefinitions: empty(operationBackendSelection(api))
@@ -353,12 +588,12 @@ var backendHeadersXml = [for api in apiDefinitions: empty(operationBackendSelect
 // XML全文を加工する途中の結果は配列変数へ保存せず、関数で最終結果までつなぎます。
 // ARMは各変数の展開後のサイズも数えるため、API数分のXMLを段階ごとに保存すると、
 // ソースが小さくても配備要求の上限を超えます。認可・転送・監査の内容は変えません。
-// CM未設定のHTTP APIは、到達しないfragment参照を生成元にも残しません。
-// 接続設定のあるAPIは元のguard/接続/session/outbound処理をそのまま使います。
+// CM未設定のHTTP APIは、未使用の設定代入と到達しないfragment参照を生成元にも残しません。
+// 接続設定のあるAPIはInboundで接続/sessionを直接呼び、Outboundの既存分岐も維持します。
 func replaceCredentialBranch(policy string, startMarker string, endMarker string, fallback string) string => '${split(policy, startMarker)[0]}${fallback}${split(policy, endMarker)[1]}'
 func selectHttpCredentialPolicy(api object, policy string) string => api.apiType != 'http' || contains(api, 'credentialConnection') ? policy
   : replaceCredentialBranch(replaceCredentialBranch(policy, '<!-- core-http-credential-inbound-start -->', '<!-- core-http-credential-inbound-end -->', '__BACKEND_AUTHENTICATION_XML__'), '<!-- core-http-credential-outbound-start -->', '<!-- core-http-credential-outbound-end -->', '')
-func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectHttpCredentialPolicy(api, policyTemplate),
+func baseApiPolicy(api object, policyTemplate string, backendAuthentication string, backendHeaders string, credentialCallerError string) string => replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectHttpCredentialPolicy(api, policyTemplate),
   '__AUTHORIZATION_BASE64__', base64(string(api.authorization))),
   '__WEBSOCKET_SETTINGS_BASE64__', api.apiType == 'websocket' ? base64(string(api.websocket)) : ''),
   '__KEY_HEADER__', api.subscriptionKeyHeader),
@@ -369,7 +604,8 @@ func baseApiPolicy(api object, policyTemplate string, backendAuthentication stri
   '__BACKEND_AUTHENTICATION_XML__', backendAuthentication),
   '__BACKEND_HEADERS_XML__', backendHeaders),
   '__HTTP_VERSION__', '1'),
-  '__TOKEN_LIMIT_XML__', empty(tokenLimitOperations(api)) ? '' : '<include-fragment fragment-id="core-token-limits" />')
+  '__TOKEN_LIMIT_XML__', empty(tokenLimitOperations(api)) ? '' : '<include-fragment fragment-id="core-token-limits" />'),
+  '__CREDENTIAL_CALLER_ERROR_XML__', credentialCallerError)
 
 // WebSocketはAPIのwss接続先を維持し、HTTP用backend切替の１行だけを除きます。
 // ここでもXMLの中間配列を作らず、一つのAPIの最終ポリシーを計算します。
@@ -401,7 +637,7 @@ var protocolRateCleanupXml = [for api in apiDefinitions: api.apiType == 'mcp' ? 
     ? '<set-variable name="gatewayRateLimitExempt" value="@(true)" />'
     : '<set-variable name="gatewayRateLimitExempt" value="@(false)" />']
 // MCPの予約済みメタデータパスを下流へ転送せず、通常の404を返します。
-var mcpMetadataGuardXml = '<choose><when condition="@(context.Request.OriginalUrl.Path.IndexOf(&quot;/.well-known/oauth-protected-resource&quot;, StringComparison.OrdinalIgnoreCase) &gt;= 0)"><return-response><set-status code="404" reason="Not Found" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header></return-response></when></choose>'
+var mcpMetadataGuardXml = loadTextContent('policies/snippets/request/mcp-metadata-guard/mcp-metadata-guard.xml')
 // Keep only small per-API substitutions in variables. Storing every final XML
 // here and again in resources/source would exceed ARM's expanded size budget.
 var policySettings = [for (api, index) in apiDefinitions: {
@@ -413,12 +649,13 @@ var policySettings = [for (api, index) in apiDefinitions: {
   observer: observerPoliciesXml[index]
   mcpRoute: mcpProxyRoutingXml[index]
   metadataGuard: api.apiType == 'mcp' ? mcpMetadataGuardXml : ''
-  credentialInbound: api.apiType == 'mcp' && contains(api, 'credentialConnection') ? '<set-variable name="gatewayCredentialConnection" value="${base64(string(api.credentialConnection))}" /><include-fragment fragment-id="core-credential-connection" /><include-fragment fragment-id="core-credential-session-use" />' : backendAuthenticationXml[index]
+  credentialCallerError: api.apiType == 'http' && contains(api, 'credentialConnection') ? credentialCallerErrorXml : ''
+  credentialInbound: api.apiType == 'mcp' && contains(api, 'credentialConnection') ? '<set-variable name="gatewayCredentialConnection" value="${base64(string(api.credentialConnection))}" /><include-fragment fragment-id="core-credential-connection" />${credentialCallerErrorXml}<include-fragment fragment-id="core-credential-session-use" />' : backendAuthenticationXml[index]
   credentialOutbound: api.apiType == 'mcp' && contains(api, 'credentialConnection') ? '<include-fragment fragment-id="core-credential-connection-outbound" />' : ''
 }]
 func apiPolicyValue(api object, template string, errorXml string, values object) string =>
   replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(selectBackendPolicy(api,
-    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers),
+    replace(replace(replace(baseApiPolicy(api, template, values.authentication, values.headers, values.credentialCallerError),
       '__RATE_LIMIT_ERROR_XML__', errorXml), '__RATE_LIMIT_CLEANUP_XML__', values.cleanup),
       '__API_SETTINGS_BASE64__', base64(apiSettings(api, '', false)))),
     '__PROTOCOL_QUERY_XML__', values.queries), '__WEBSOCKET_QUERY_BASE64__', values.websocketQuery),
@@ -445,46 +682,46 @@ var documentApis = filter(apiDefinitions, api => length(filter(api.operations, o
 var mcpApis = filter(apiDefinitions, api => contains(api, 'mcp'))
 // MCPも同じ購読キーで認可します。APIのOperation構成は維持します。
 // 最終XMLを配列変数にも複製せず、配備先と生成元へ同じ内容を直接渡します。
-func mcpApiPolicyValue(api object, template string, errorXml string) string => replace(replace(replace(template, '__AUTHORIZATION_BASE64__', base64(string(api.authorization))), '__RATE_LIMIT_ERROR_XML__', errorXml), '__API_SETTINGS_BASE64__', base64(apiSettings(api, api.mcp.operationNames[0], true)))
+func mcpApiPolicyValue(api object, template string, errorXml string) string => replace(replace(replace(replace(template, '__AUTHORIZATION_BASE64__', base64(string(api.authorization))), '__RATE_LIMIT_ERROR_XML__', errorXml), '__API_SETTINGS_BASE64__', base64(apiSettings(api, api.mcp.operationNames[0], true))), '__MCP_PRM_GUARD_XML__', mcpMetadataGuardXml)
 
 // Share individual fragment XML with protected outputs without another full-XML object.
-var rateLimitFragmentXml = replace(loadTextContent('policies/rate-limit.xml'), '__RATE_LIMITS_BASE64__', base64(string(rateLimits)))
-var tokenLimitFragmentXml = loadTextContent('policies/token-limit.xml')
-var entraUserProfileFragmentXml = loadTextContent('policies/entra-user-profile.xml')
-var auditContextFragmentXml = loadTextContent('policies/audit-context.xml')
-var auditBodyModelFragmentXml = loadTextContent('policies/audit-body-model.xml')
-var backendAuditFragmentXml = loadTextContent('policies/backend-audit.xml')
+var auditContextFragmentXml = renderPolicyTemplate(loadTextContent('policies/fragments/audit/core-audit-context/core-audit-context.xml'), loadTextContent('policies/fragments/audit/core-audit-context/core-audit-context.cs'), auditContextPolicySlots)
+var auditBodyModelFragmentTemplate = loadTextContent('policies/fragments/audit/core-audit-body-model/core-audit-body-model.xml')
+var auditBodyModelFragmentSource = loadTextContent('policies/fragments/audit/core-audit-body-model/core-audit-body-model.cs')
+var auditBodyModelFragmentXml = renderPolicyTemplate(auditBodyModelFragmentTemplate, auditBodyModelFragmentSource, auditBodyModelFragmentSlots)
+var backendAuditFragmentXml = renderPolicyTemplate(backendAuditTemplate, backendAuditSource, backendAuditFragmentSlots)
 // 入口確認に失敗した要求の監査は、従来の共通拒否監査と同じ内容を展開します。
 // 認証前なのでAPIのdecisionを参照する区間だけを除き、fragmentの入れ子は作りません。
 // 中間のXML全文を変数へ保存せず、ARM展開後の重複した容量を増やしません。
 func preAuthenticationTelemetry(telemetry string) string => '${split(telemetry, ' /* core-user-audit-start */')[0]}${split(telemetry, ' /* core-user-audit-end */')[1]}'
 // 同名CSの固定5区画を同名XMLだけへ差し込みます。BEGIN/ENDは生成用で、APIMへは本文だけを渡します。
 // 区画名・重複・閉じ忘れはPythonの配備前検査でも拒否し、Bicepと生成元の完成XMLを照合します。
-func authenticationSection(source string, name string) string => split(split(replace(source, '\r\n', '\n'), '// BEGIN ${name}\n')[1], '\n// END ${name}')[0]
-func authenticationExpressionsValue(template string, source string) string => replace(replace(replace(replace(replace(template,
-  '__CORE_COMMON_AUTHENTICATION_KEY_REQUEST_VALIDATION_CSHARP__', auditSourceXml(authenticationSection(source, 'key-request-validation'))),
-  '__CORE_COMMON_AUTHENTICATION_BEARER_REQUEST_VALIDATION_CSHARP__', auditSourceXml(authenticationSection(source, 'bearer-request-validation'))),
-  '__CORE_COMMON_AUTHENTICATION_ENTRA_IDENTITY_CSHARP__', auditSourceXml(authenticationSection(source, 'entra-identity'))),
-  '__CORE_COMMON_AUTHENTICATION_ENTRA_AUTHENTICATION_RESULT_CSHARP__', auditSourceXml(authenticationSection(source, 'entra-authentication-result'))),
-  '__CORE_COMMON_AUTHENTICATION_ENTRA_FAILURE_SUBJECT_CSHARP__', auditSourceXml(authenticationSection(source, 'entra-failure-subject')))
+
+var authenticationExpressionsSlots = [
+  { marker: '__CORE_COMMON_AUTHENTICATION_KEY_REQUEST_VALIDATION_CSHARP__', section: 'key-request-validation', body: false, trimmed: false, indent: '' }
+  { marker: '__CORE_COMMON_AUTHENTICATION_BEARER_REQUEST_VALIDATION_CSHARP__', section: 'bearer-request-validation', body: false, trimmed: false, indent: '' }
+  { marker: '__CORE_COMMON_AUTHENTICATION_ENTRA_IDENTITY_CSHARP__', section: 'entra-identity', body: false, trimmed: false, indent: '' }
+  { marker: '__CORE_COMMON_AUTHENTICATION_ENTRA_AUTHENTICATION_RESULT_CSHARP__', section: 'entra-authentication-result', body: false, trimmed: false, indent: '' }
+  { marker: '__CORE_COMMON_AUTHENTICATION_ENTRA_FAILURE_SUBJECT_CSHARP__', section: 'entra-failure-subject', body: false, trimmed: false, indent: '' }
+]
 func authenticationBranchValue(template string, source string, enabled bool) string => replace(enabled
-  ? authenticationExpressionsValue(template, source)
-  : replaceCredentialBranch(authenticationExpressionsValue(template, source), '<!-- core-entra-branch-start -->', '<!-- core-entra-branch-end -->', ''),
+  ? renderPolicyTemplate(template, source, authenticationExpressionsSlots)
+  : replaceCredentialBranch(renderPolicyTemplate(template, source, authenticationExpressionsSlots), '<!-- core-entra-branch-start -->', '<!-- core-entra-branch-end -->', ''),
   '__ENTRA_OPEN_PRODUCT_ID__', 'core-entra-model-users')
 // 共通の監査ソースを生成時に展開します。フラグメント同士を実行時に呼ぶ入れ子は作りません。
 func authenticationTelemetryBody(template string, source string) string => preAuthenticationTelemetry(replace(replace(gatewayTelemetryFragmentValue(template, source, true), '<fragment>', ''), '</fragment>', ''))
 func commonAuthenticationFragmentValue(template string, source string, enabled bool, telemetryTemplate string, telemetrySource string) string => replace(replace(
   authenticationBranchValue(template, source, enabled), '__AUTHENTICATION_TELEMETRY_XML__', authenticationTelemetryBody(telemetryTemplate, telemetrySource)),
-  '__ENTRA_FAILURE_TELEMETRY_XML__', replace(authenticationTelemetryBody(telemetryTemplate, telemetrySource), '&quot;gatewayAuthenticatedSubject&quot;', '&quot;gatewayEntraFailureSubject&quot;'))
+  '__ENTRA_FAILURE_TELEMETRY_XML__', replace(authenticationTelemetryBody(telemetryTemplate, telemetrySource), '"gatewayAuthenticatedSubject"', '"gatewayEntraFailureSubject"'))
 func entraAuthenticationErrorFragmentValue(template string, telemetryTemplate string, telemetrySource string) string => replace(template, '__AUTHENTICATION_TELEMETRY_XML__', authenticationTelemetryBody(telemetryTemplate, telemetrySource))
 // 配備先と生成元に同じXMLを渡し、展開済みの全文を中間変数へ重複保存しません。
-func trustedIngressFragmentValue(template string, conditionSource string, telemetryTemplate string, telemetrySource string) string => replace(replace(replace(trustedIngressConditionValue(template, conditionSource), '__AUTHENTICATION_TELEMETRY_XML__', preAuthenticationTelemetry(replace(replace(gatewayTelemetryFragmentValue(telemetryTemplate, telemetrySource, false), '<fragment>', ''), '</fragment>', ''))), '__L7_INGRESS_REQUIRED__', '&quot;{{core-l7-ingress-enabled}}&quot; == &quot;true&quot;'), '__L7_INGRESS_EXPECTED__', '{{core-l7-ingress-secret}}')
+func trustedIngressFragmentValue(template string, conditionSource string, telemetryTemplate string, telemetrySource string) string => replace(replace(replace(renderPolicyTemplate(template, conditionSource, trustedIngressConditionSlots), '__AUTHENTICATION_TELEMETRY_XML__', preAuthenticationTelemetry(replace(replace(gatewayTelemetryFragmentValue(telemetryTemplate, telemetrySource, false), '<fragment>', ''), '</fragment>', ''))), '__L7_INGRESS_REQUIRED__', '&quot;{{core-l7-ingress-enabled}}&quot; == &quot;true&quot;'), '__L7_INGRESS_EXPECTED__', '{{core-l7-ingress-secret}}')
 
 // 各APIがbaseより前で呼び、API固有の監査・制御設定を準備するleaf部品です。
 resource apiSettingsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-api-settings'
-  properties: { format: 'rawxml', description: 'APIから渡された公開設定を読み、監査情報と制御設定に分けて共通ポリシーの実行前に準備する。モデルや要求本文は変更しない。', value: apiSettingsFragmentValue(apiSettingsTemplate, apiSettingsSource) }
+  properties: { format: 'rawxml', description: 'APIから渡された公開設定を読み、監査情報と制御設定に分けて共通ポリシーの実行前に準備する。モデルや要求本文は変更しない。', value: renderPolicyTemplate(apiSettingsTemplate, apiSettingsSource, apiSettingsFragmentSlots) }
 }
 // 各APIがbaseの直後で呼び、内部用ヘッダーの整理と認証完了の確認を行います。
 resource apiRequestPreparationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
@@ -496,7 +733,7 @@ resource apiRequestPreparationFragment 'Microsoft.ApiManagement/service/policyFr
 resource requestContextFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-request-context'
-  properties: { format: 'rawxml', description: '共通入口で監査用の要求情報を準備する。本文や資格情報を記録しない。', value: requestContextFragmentValue(requestContextTemplate, requestContextSource) }
+  properties: { format: 'rawxml', description: '共通入口で監査用の要求情報を準備する。本文や資格情報を記録しない。', value: renderPolicyTemplate(requestContextTemplate, requestContextSource, requestContextFragmentSlots) }
 }
 resource trustedIngressFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
@@ -521,46 +758,46 @@ resource entraAuthenticationErrorFragment 'Microsoft.ApiManagement/service/polic
 resource authenticatedSubjectFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-audit-authenticated-subject'
-  properties: { format: 'rawxml', description: '共通認証後に確認済みの購読または社員の識別情報を監査用に整理する。', value: authenticatedSubjectFragmentValue(authenticatedSubjectTemplate, authenticatedSubjectSource) }
+  properties: { format: 'rawxml', description: '共通認証後に確認済みの購読または社員の識別情報を監査用に整理する。', value: renderPolicyTemplate(authenticatedSubjectTemplate, authenticatedSubjectSource, authenticatedSubjectFragmentSlots) }
 }
 
 // 本人/共有キー/サービスの中央設定を全APIで共有し、同じ枠へ異なる上限を適用しません。
 resource rateLimitFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-rate-limit'
-  properties: { format: 'rawxml', description: 'Subscription-scoped request limits without response-body buffering.', value: rateLimitFragmentXml }
+  properties: { format: 'rawxml', description: '確認済みの購読または社員の識別情報と利用枠設定から回数制限を選び、取消・切断の免除と既存カウンターを維持する。応答本文は読み取らない。', value: rateLimitFragmentValue(rateLimitTemplate, rateLimitSource, rateLimits) }
 }
 // 本文を扱うnative token policyを、HTTPの対応APIだけから参照します。
 resource tokenLimitFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-token-limits'
-  properties: { format: 'rawxml', description: 'Optional native LLM token limits for supported HTTP operations only.', value: tokenLimitFragmentXml }
+  properties: { format: 'rawxml', description: '操作の実効接続先がFoundry OpenAIである対応HTTP操作の毎分・累積トークン枠を、確認済み社員IDまたは購読IDによる既存カウンターへ渡す。社員の認証と利用枠の検査は先行処理へ集約する。内部対象一覧の不備は既存on-errorへ渡し、正常な空一覧・対象外・免除とnative計数の条件は維持する。', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }
 }
 // The API-inlined subscription profile includes this standalone fragment;
 // keep employee-only validation once instead of duplicating every API XML.
 resource entraUserProfileFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-entra-user-profile'
-  properties: { format: 'rawxml', description: 'Verified employee request/token limits; no subscription lookup or nested fragments.', value: entraUserProfileFragmentXml }
+  properties: { format: 'rawxml', description: '認証済み社員JSONを解析し、共通認証で検査済みの利用枠を後段へ渡します。構造・必須項目・型・範囲・期間の検査は先行共通認証へ集約し、取得失敗は補完せず既存on-errorへ渡します。SQL照会・cache・入れ子の部品は使用しません。', value: renderPolicyTemplate(entraUserProfileTemplate, entraUserProfileSource, entraUserProfileFragmentSlots) }
 }
 
 // 追跡候補の検査と下流IDの退避。fragment内で本文やtokenをログへ出しません。
 resource auditContextFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-audit-context'
-  properties: { format: 'rawxml', description: 'Agent-claimed trace candidates and authorized model metadata; never authorization or ownership.', value: auditContextFragmentXml }
+  properties: { format: 'rawxml', description: '親要求IDを追跡候補として保持し、監査用モデル名を選びます。認証・所有者確認には使いません。', value: auditContextFragmentXml }
 }
 // 本文の受信完了を前提にするHTTPモデル監査だけを独立させます。
 // WebSocket/MCPからは参照せず、未実行分岐の本文読取りによるbufferも防ぎます。
 resource auditBodyModelFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-audit-body-model'
-  properties: { format: 'rawxml', description: 'HTTP-only authorized model-name extraction; never used by native protocol policies.', value: auditBodyModelFragmentXml }
+  properties: { format: 'rawxml', description: '通常HTTPのモデル入力から監査用のモデル名だけを取得する。本文を保持して下流へ渡し、WebSocket・MCPへは共用しない。', value: auditBodyModelFragmentXml }
 }
 resource backendAuditFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-backend-audit'
-  properties: { format: 'rawxml', description: 'Capture allowlisted backend response IDs before global header rewriting; no body reads.', value: backendAuditFragmentXml }
+  properties: { format: 'rawxml', description: '提供元の要求IDを共有応答ヘッダーの上書き前に退避します。既知ヘッダーの単一値・形式だけを確認し、本文は読みません。', value: backendAuditFragmentXml }
 }
 
 // 各ポリシーから共通利用する最小限の監査情報出力。本文や認証値は記録しません。
@@ -573,73 +810,85 @@ resource gatewayTelemetryFragment 'Microsoft.ApiManagement/service/policyFragmen
 resource apiInputValidationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-api-input-validation'
-  properties: { format: 'rawxml', description: '対象操作について、本文読取り前にContent-Typeの欠落・複数値・空欄を確認する。MIMEの許可一覧は使わず、結果を呼出し元の拒否処理と監査へ渡す。', value: apiInputValidationFragmentValue(apiInputValidationTemplate, apiInputValidationSource) }
+  properties: { format: 'rawxml', description: '対象操作について、本文読取り前にContent-Typeの欠落・複数値・空欄を確認する。MIMEの許可一覧は使わず、結果を呼出し元の拒否処理と監査へ渡す。', value: renderPolicyTemplate(apiInputValidationTemplate, apiInputValidationSource, apiInputValidationFragmentSlots) }
 }
 // 操作の基本設定へモデル別の差分を反映し、後続処理が参照する設定を用意します。
 resource apiOperationSettingsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-api-operation-settings'
-  properties: { format: 'rawxml', description: '操作の基本設定を取得し、モデル名と別名を解決してモデル別の差分を重ねる。クライアントのprofile指定は使わず、選択結果と入力・設定不備を呼出し元へ渡す。', value: apiOperationSettingsFragmentValue(apiOperationSettingsTemplate, apiOperationSettingsSource) }
+  properties: { format: 'rawxml', description: '操作の基本設定を取得し、モデル名と別名を解決してモデル別の差分を重ねる。クライアントのprofile指定は使わず、選択結果と入力・設定不備を呼出し元へ渡す。', value: renderPolicyTemplate(apiOperationSettingsTemplate, apiOperationSettingsSource, apiOperationSettingsFragmentSlots) }
 }
 // HTTP APIで、共通認証が確認した利用者と監査用ラベルを後続処理へ引き継ぎます。
 resource apiAuthenticationResultFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-api-authentication-result'
-  properties: { format: 'rawxml', description: '共通認証済みの購読または社員情報を後続へ引き継ぎ、操作・モデル設定の監査用ラベルを添える。認証条件の再検査は行わず、内部情報の引き渡し失敗を呼出し元へ返す。', value: apiAuthenticationResultFragmentValue(apiAuthenticationResultTemplate, apiAuthenticationResultSource) }
+  properties: { format: 'rawxml', description: '共通認証済みの購読または社員情報を後続へ引き継ぎ、操作・モデル設定の監査用ラベルを添える。認証条件の再検査は行わず、内部情報の引き渡し失敗を呼出し元へ返す。', value: renderPolicyTemplate(apiAuthenticationResultTemplate, apiAuthenticationResultSource, apiAuthenticationResultFragmentSlots) }
+}
+// HTTP APIで準備済みの操作設定を使い、対象操作・モデル・本文の既存条件を確認します。
+resource apiTargetValidationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-api-target-validation'
+  properties: { format: 'rawxml', description: 'HTTPの準備済み操作設定に従い、モデル・対象操作・本文の既存条件を確認する。内部設定の読取り失敗500と既存条件の拒否403を分け、許可・状態・原因を呼出し元の監査と応答へ渡す。', value: renderPolicyTemplate(apiTargetValidationTemplate, apiTargetValidationSource, apiTargetValidationFragmentSlots) }
+}
+// 宣言から選んだFoundryのChat操作で、保存指定だけをfalseへ上書きする本文を用意します。
+resource chatStoreDisabledFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
+  parent: apim
+  name: 'core-chat-store-disabled'
+  properties: { format: 'rawxml', description: '対象Chatの本文をJSONオブジェクトとして一度だけ読み、storeをfalseへ揃える。model・messages・stream等は維持し、本文読取り不備の監査・400応答はHTTP APIへ委ねる。', value: renderPolicyTemplate(chatStoreDisabledTemplate, chatStoreDisabledSource, chatStoreDisabledFragmentSlots) }
 }
 // 操作・受付が明示したラベルでクエリの概要を観測します。要求の許可・拒否は変更しません。
 resource queryObservationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-query-observation'
-  properties: { format: 'rawxml', description: 'HTTP操作またはMCP受付が明示した観測ラベルを選び、URLクエリの有無と複数値を監査へ渡す。要求の許可・拒否や本文・モデル機能は変更しない。', value: queryObservationFragmentValue(queryObservationTemplate, queryObservationSource) }
+  properties: { format: 'rawxml', description: 'HTTP操作またはMCP受付が明示した観測ラベルを選び、URLクエリの有無と複数値を監査へ渡す。要求の許可・拒否や本文・モデル機能は変更しない。', value: renderPolicyTemplate(queryObservationTemplate, queryObservationSource, queryObservationFragmentSlots) }
 }
 resource queryTelemetryFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-query-telemetry'
-  properties: { format: 'rawxml', description: 'API設定で選んだ観測ラベルのクエリ概要と処理段階を、要求情報と認証済み利用者情報に関連付けて監査へ記録する。本文、URL、クエリの名前や値、資格情報は記録しない。', value: queryTelemetryFragmentValue(queryTelemetryTemplate, queryTelemetrySource, auditObservationSource) }
+  properties: { format: 'rawxml', description: 'API設定で選んだ観測ラベルのクエリ概要と処理段階を、要求情報と認証済み利用者情報に関連付けて監査へ記録する。本文、URL、クエリの名前や値、資格情報は記録しない。', value: renderPolicyTemplate(queryTelemetryTemplate, queryTelemetrySource, queryTelemetryFragmentSlots) }
 }
-// 要求サイズと出力トークン上限を検査する共通部品です。
+// 選択済みの操作設定に従い、受信本文のサイズを確認する共通部品です。
 resource modelLimitsFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-model-limits'
-  properties: { format: 'rawxml', description: '操作設定に従い、受信本文のサイズ・形式と指定された出力トークン数などを検査する。出力トークン数の指定は必須化せず、失敗結果を呼出し元の監査と応答へ渡す。', value: modelLimitsFragmentValue(modelLimitsTemplate, modelLimitsSource) }
+  properties: { format: 'rawxml', description: '選択済みの操作設定に従い、受信本文のサイズを確認する。内部設定不備500と本文超過413の結果を呼出し元の監査と応答へ渡す。', value: renderPolicyTemplate(modelLimitsTemplate, modelLimitsSource, modelLimitsFragmentSlots) }
 }
 // 音声合成のSSMLについて、本文サイズとDTD・エンティティ宣言を一度の本文読取りで確認します。
 resource speechSsmlGuardFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-speech-ssml-guard'
-  properties: { format: 'rawxml', description: '対象の音声合成操作で、本文を一度だけ読み、サイズとDTD・エンティティ宣言を確認する。XMLの解析や外部参照は行わず、結果を呼出し元の監査と応答へ渡す。', value: speechSsmlGuardFragmentValue(speechSsmlGuardTemplate, speechSsmlGuardSource) }
+  properties: { format: 'rawxml', description: '対象の音声合成操作で、本文を一度だけ読み、サイズとDTD・エンティティ宣言を確認する。XMLの解析や外部参照は行わず、結果を呼出し元の監査と応答へ渡す。', value: renderPolicyTemplate(speechSsmlGuardTemplate, speechSsmlGuardSource, speechSsmlGuardFragmentSlots) }
 }
 // 残すDocument固有の入力確認を、利用回数・下流接続・正常受付の記録より前に実行します。
 resource documentInputValidationFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-document-input-validation'
-  properties: { format: 'rawxml', description: 'Document解析のmodelの存在・単一値・空欄とURL階層指定を確認し、入力不備400と内部変数の引渡し失敗500を呼出し元へ渡す。モデル一覧や本文は読み取らず、原本と提供元JSONの受付可否は提供元へ任せる。', value: documentInputValidationFragmentValue(documentInputValidationTemplate, documentInputValidationSource) }
+  properties: { format: 'rawxml', description: 'Document解析のmodelの存在・単一値・空欄とURL階層指定を確認し、入力不備400と内部変数の引渡し失敗500を呼出し元へ渡す。モデル一覧や本文は読み取らず、原本と提供元JSONの受付可否は提供元へ任せる。', value: renderPolicyTemplate(documentInputValidationTemplate, documentInputValidationSource, documentInputValidationFragmentSlots) }
 }
 // 本人の登録済み OAuth 接続を解決する共通部品です。
 resource credentialConnectionFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-credential-connection'
-  properties: { format: 'rawxml', description: 'Resolve personal sessions and return Microsoft sign-in guidance when authentication is required.', value: replace(renderCredentialLogin(replace(credentialConnectionTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+  properties: { format: 'rawxml', description: '共通認証が確定した呼出者IDでCM接続を選び、内部IDの引き渡し不備は500として呼出し元APIへ返す。接続所有者・本人セッション・取得トークンのGraph本人ID・期限・失効を照合する。', value: replace(renderCredentialLogin(replace(renderPolicyTemplate(credentialConnectionTemplate, credentialCallerSource, credentialConnectionFragmentSlots), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
 }
 // 本人照合後の業務利用確定と認証案内。上のfragmentと同階層で呼び出します。
 resource credentialSessionUseFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-credential-session-use'
-  properties: { format: 'rawxml', description: 'Finalize verified business use and relay session updates without extending authentication transactions.', value: replace(renderCredentialLogin(replace(credentialSessionUseTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+  properties: { format: 'rawxml', description: '接続所有者・Graph本人照合後にSQLで使用直前の期限・失効を確認し、応答の世代・期限・更新候補を検査して再認証案内と下流認証を準備する。', value: replace(renderCredentialLogin(replace(renderPolicyTemplate(credentialSessionUseTemplate, credentialUseResultSource, credentialSessionUseFragmentSlots), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
 }
 // 外部資格情報が失効した場合に、安全な再認証案内へ変換する共通部品です。
 resource credentialConnectionOutboundFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = {
   parent: apim
   name: 'core-credential-connection-outbound'
-  properties: { format: 'rawxml', description: 'Start personal reauthorization for revoked downstream credentials and return safe guidance.', value: replace(renderCredentialLogin(replace(observationFragmentValue(credentialConnectionOutboundTemplate, auditObservationSource, true), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+  properties: { format: 'rawxml', description: '下流claims要求・失効を安全な403／409案内へ変換し、検証済みの接続世代・期限・更新候補だけを返します。', value: replace(renderCredentialLogin(replace(credentialConnectionOutboundTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
 }
 
 // Realtime の補助 WebSocket 接続で所有者チケットを照合する共通部品です。
 resource realtimeObserverFragment 'Microsoft.ApiManagement/service/policyFragments@2024-05-01' = if (!empty(observerApis)) {
   parent: apim
   name: 'core-realtime-observer'
-  properties: { format: 'rawxml', description: 'Validate the signed session owner before a Realtime sideband handshake; relay receive-only mode is separate.', value: realtimeObserverTemplate }
+  properties: { format: 'rawxml', description: 'Realtime補助接続の前に、確認済み所有者と署名チケットの通話・期限を照合します。本人受取りの内部不成立はonHandshake側で500に分類し、受信専用のBFF中継とは分けます。', value: realtimePolicyValue(realtimeObserverTemplate, '__REALTIME_OBSERVER_OWNER_CSHARP__', realtimeObserverOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '  ', '      ') }
 }
 
 // 入口の購読キーヘッダー名は基盤の共通設定を参照します。
@@ -814,7 +1063,7 @@ resource apiPolicies 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' 
   parent: apis[index]
   name: 'policy'
   properties: { format: 'rawxml', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[index]) }
-  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
+  dependsOn: [apiSettingsFragment, apiRequestPreparationFragment, apiInputValidationFragment, apiOperationSettingsFragment, apiAuthenticationResultFragment, apiTargetValidationFragment, chatStoreDisabledFragment, auditContextFragment, auditBodyModelFragment, backendAuditFragment, rateLimitFragment, tokenLimitFragment, entraUserProfileFragment, backends, operationBackends, backendAudienceNamedValues, gatewayTelemetryFragment, queryObservationFragment, queryTelemetryFragment, modelLimitsFragment, speechSsmlGuardFragment, documentInputValidationFragment, credentialConnectionFragment, credentialSessionUseFragment, credentialConnectionOutboundFragment, backendSecretNamedValues, operationBackendSecretNamedValues, realtimeObserverFragment]
 }]
 // WebSocket API では API スコープの policy を作れないため、システムが自動生成する
 // onHandshake 操作へ同じ接続開始時の認証・認可を設定します。操作本体は作成・変更しません。
@@ -865,7 +1114,7 @@ func operationProperties(entry object) object => {
     } : entry.operation.?request ?? {}
     responses: entry.constraint.kind == 'pii' ? concat([
       { statusCode: 200, description: 'Redacted text and allowlisted metadata only.', representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactResult' }] }
-    ], map([400, 413, 422, 429, 502, 504], statusCode => {
+    ], map([400, 413, 422, 429, 500, 502, 504], statusCode => {
       statusCode: statusCode
       description: 'Safe failure code and correlation ID. No input text or upstream diagnostic.'
       representations: [{ contentType: 'application/json', schemaId: 'pii-public-contract', typeName: 'PiiRedactError' }]
@@ -904,7 +1153,9 @@ func operationPolicyValue(entry object, policyTemplate string) string => entry.c
           // TTSのSSML検査もAPI側で完了してから、この操作ポリシーへ戻ります。
           contains(entry.operation, 'staticResponse') ? '<return-response><set-status code="200" reason="OK" /><set-header name="apim-request-id" exists-action="override"><value>@(context.RequestId.ToString())</value></set-header><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-body>${xmlText(string(entry.operation.staticResponse.body))}</set-body></return-response>' : ''
           modelRoutingPolicy(entry.constraint)
-          contains(entry.operation, 'backendUrlTemplate') ? '<!-- 登録済みの上流URIへ書き換えます。転送queryは定義した値に揃えます。 --><rewrite-uri template="${xmlText(entry.operation.backendUrlTemplate)}" copy-unmatched-params="false" />' : ''
+          contains(entry.operation, 'backendUrlTemplate') ? entry.constraint.kind == 'pathModel'
+            ? '<!-- モデルを含むパス値を一要素として符号化し、登録済みの上流URIへ書き換えます。固定queryは保持します。 --><rewrite-uri template="${xmlText(pathModelBackendUriExpression(entry.operation.backendUrlTemplate))}" copy-unmatched-params="false" />'
+            : '<!-- 登録済みの上流URIへ書き換えます。転送queryは定義した値に揃えます。 --><rewrite-uri template="${xmlText(entry.operation.backendUrlTemplate)}" copy-unmatched-params="false" />' : ''
           '</inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'], '')
 // Pass the selected template directly; retaining another object of all full XML
 // templates would count the same bytes again in ARM's expanded variables.
@@ -916,9 +1167,9 @@ resource operationPolicies 'Microsoft.ApiManagement/service/apis/operations/poli
   name: 'policy'
   properties: {
     format: 'rawxml'
-    value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml), realtimeCreatePolicyTemplate, realtimeHangupPolicyTemplate, liveCreatePolicyTemplate))
+    value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate))
   }
-  dependsOn: [apiPolicies, websocketPolicies]
+  dependsOn: [apiPolicies, websocketPolicies, entraAuthenticationErrorFragment]
 }]
 // Official REST-backed MCP resource model. No serviceUrl/transport backend is
 // invented: the single tool references the reviewed REST operation directly.
@@ -1062,43 +1313,45 @@ output entraPublicationSource object = {
   )
   policies: concat(
     map(apiDefinitions, api => { suffix: api.apiType == 'websocket' ? '/apis/${api.name}/operations/onHandshake/policies/policy' : '/apis/${api.name}/policies/policy', value: apiPolicyValue(api, configuredApiTemplate(api.apiType == 'http', gatewayPolicyTemplate, protocolPolicyTemplate, subscriptionProfileXml), rateLimitErrorXml, policySettings[indexOf(apiDefinitions, api)]) }),
-    map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}/policies/policy', value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml), realtimeCreatePolicyTemplate, realtimeHangupPolicyTemplate, liveCreatePolicyTemplate)) }),
+    map(operationEntries, entry => { suffix: '/apis/${entry.apiName}/operations/${entry.operation.name}/policies/policy', value: operationPolicyValue(entry, selectOperationTemplate(entry.constraint.kind, configuredOperationTemplate(piiPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), configuredOperationTemplate(documentAnalysisStatusPolicyTemplate, rateLimitErrorXml, operationEntraAuthenticationErrorXml), realtimePolicyValue(realtimeCreatePolicyTemplate, '__REALTIME_CREATE_TICKET_CSHARP__', realtimeCreateTicketSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '            '), realtimePolicyValue(realtimeHangupPolicyTemplate, '__REALTIME_HANGUP_OWNER_CSHARP__', realtimeHangupOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '    ', '      '), liveCreatePolicyTemplate)) }),
     map(mcpApis, api => { suffix: '/apis/${api.mcp.name}/policies/policy', value: mcpApiPolicyValue(api, mcpPolicyTemplate, rateLimitErrorXml) }),
     credentialLoginEnabled ? concat(
       [{ suffix: '/apis/credential-manager-login/policies/policy', value: credentialLoginApiPolicyXml }],
       map(filter(credentialLoginOperations, item => item.apiId == 'credential-manager-login'), item => {
         suffix: '/apis/credential-manager-login/operations/${item.name}/policies/policy'
-        value: renderCredentialLogin(item.name == 'start' ? credentialLoginStartPolicyTemplate : item.name == 'status' ? credentialLoginStatusPolicyTemplate : item.name == 'logout' ? credentialLoginLogoutPolicyTemplate : item.name == 'session-commit' ? credentialLoginSessionCommitPolicyTemplate : item.name == 'logout-all' ? credentialLoginLogoutAllPolicyTemplate : credentialLoginDisconnectPolicyTemplate, credentialSettings)
+        value: renderCredentialLoginOperation(item.name == 'start' ? renderPolicyTemplate(credentialLoginStartPolicyTemplate, credentialLoginStartCallerSource, credentialLoginStartPolicySlots) : item.name == 'status' ? renderPolicyTemplate(credentialLoginStatusPolicyTemplate, credentialLoginStatusCallerSource, credentialLoginStatusPolicySlots) : item.name == 'logout' ? renderPolicyTemplate(credentialLoginLogoutPolicyTemplate, credentialLoginLogoutCallerSource, credentialLoginLogoutPolicySlots) : item.name == 'session-commit' ? renderPolicyTemplate(credentialLoginSessionCommitPolicyTemplate, credentialLoginSessionCommitCallerSource, credentialLoginSessionCommitPolicySlots) : item.name == 'logout-all' ? renderPolicyTemplate(credentialLoginLogoutAllPolicyTemplate, credentialLoginLogoutAllCallerSource, credentialLoginLogoutAllPolicySlots) : renderPolicyTemplate(credentialLoginDisconnectPolicyTemplate, credentialLoginDisconnectCallerSource, credentialLoginDisconnectPolicySlots), credentialSettings, operationEntraAuthenticationErrorXml)
       })
     ) : [],
     [
-      { suffix: '/policyFragments/core-api-settings', value: apiSettingsFragmentValue(apiSettingsTemplate, apiSettingsSource) }
+      { suffix: '/policyFragments/core-api-settings', value: renderPolicyTemplate(apiSettingsTemplate, apiSettingsSource, apiSettingsFragmentSlots) }
       { suffix: '/policyFragments/core-api-request-preparation', value: apiRequestPreparationTemplate }
-      { suffix: '/policyFragments/core-api-input-validation', value: apiInputValidationFragmentValue(apiInputValidationTemplate, apiInputValidationSource) }
-      { suffix: '/policyFragments/core-api-operation-settings', value: apiOperationSettingsFragmentValue(apiOperationSettingsTemplate, apiOperationSettingsSource) }
-      { suffix: '/policyFragments/core-api-authentication-result', value: apiAuthenticationResultFragmentValue(apiAuthenticationResultTemplate, apiAuthenticationResultSource) }
-      { suffix: '/policyFragments/core-request-context', value: requestContextFragmentValue(requestContextTemplate, requestContextSource) }
+      { suffix: '/policyFragments/core-api-input-validation', value: renderPolicyTemplate(apiInputValidationTemplate, apiInputValidationSource, apiInputValidationFragmentSlots) }
+      { suffix: '/policyFragments/core-api-operation-settings', value: renderPolicyTemplate(apiOperationSettingsTemplate, apiOperationSettingsSource, apiOperationSettingsFragmentSlots) }
+      { suffix: '/policyFragments/core-api-authentication-result', value: renderPolicyTemplate(apiAuthenticationResultTemplate, apiAuthenticationResultSource, apiAuthenticationResultFragmentSlots) }
+      { suffix: '/policyFragments/core-api-target-validation', value: renderPolicyTemplate(apiTargetValidationTemplate, apiTargetValidationSource, apiTargetValidationFragmentSlots) }
+      { suffix: '/policyFragments/core-chat-store-disabled', value: renderPolicyTemplate(chatStoreDisabledTemplate, chatStoreDisabledSource, chatStoreDisabledFragmentSlots) }
+      { suffix: '/policyFragments/core-request-context', value: renderPolicyTemplate(requestContextTemplate, requestContextSource, requestContextFragmentSlots) }
       { suffix: '/policyFragments/core-trusted-ingress', value: trustedIngressFragmentValue(trustedIngressTemplate, trustedIngressSource, gatewayTelemetryTemplate, gatewayTelemetrySource) }
       { suffix: '/policyFragments/core-credential-browser-exception', value: browserExceptionFragmentValue(browserExceptionTemplate, browserExceptionSource, credentialLoginEnabled) }
       { suffix: '/policyFragments/core-common-authentication', value: commonAuthenticationFragmentValue(commonAuthenticationTemplate, commonAuthenticationSource, entraAuthentication.?enabled ?? false, gatewayTelemetryTemplate, gatewayTelemetrySource) }
-      { suffix: '/policyFragments/core-audit-authenticated-subject', value: authenticatedSubjectFragmentValue(authenticatedSubjectTemplate, authenticatedSubjectSource) }
-      { suffix: '/policyFragments/core-rate-limit', value: rateLimitFragmentXml }
-      { suffix: '/policyFragments/core-token-limits', value: tokenLimitFragmentXml }
-      { suffix: '/policyFragments/core-entra-user-profile', value: entraUserProfileFragmentXml }
+      { suffix: '/policyFragments/core-audit-authenticated-subject', value: renderPolicyTemplate(authenticatedSubjectTemplate, authenticatedSubjectSource, authenticatedSubjectFragmentSlots) }
+      { suffix: '/policyFragments/core-rate-limit', value: rateLimitFragmentValue(rateLimitTemplate, rateLimitSource, rateLimits) }
+      { suffix: '/policyFragments/core-token-limits', value: renderPolicyTemplate(tokenLimitTemplate, tokenLimitSource, tokenLimitFragmentSlots) }
+      { suffix: '/policyFragments/core-entra-user-profile', value: renderPolicyTemplate(entraUserProfileTemplate, entraUserProfileSource, entraUserProfileFragmentSlots) }
       { suffix: '/policyFragments/core-audit-context', value: auditContextFragmentXml }
       { suffix: '/policyFragments/core-audit-body-model', value: auditBodyModelFragmentXml }
       { suffix: '/policyFragments/core-backend-audit', value: backendAuditFragmentXml }
       { suffix: '/policyFragments/core-gateway-telemetry', value: gatewayTelemetryFragmentValue(gatewayTelemetryTemplate, gatewayTelemetrySource, false) }
-      { suffix: '/policyFragments/core-query-observation', value: queryObservationFragmentValue(queryObservationTemplate, queryObservationSource) }
-      { suffix: '/policyFragments/core-query-telemetry', value: queryTelemetryFragmentValue(queryTelemetryTemplate, queryTelemetrySource, auditObservationSource) }
-      { suffix: '/policyFragments/core-model-limits', value: modelLimitsFragmentValue(modelLimitsTemplate, modelLimitsSource) }
-      { suffix: '/policyFragments/core-speech-ssml-guard', value: speechSsmlGuardFragmentValue(speechSsmlGuardTemplate, speechSsmlGuardSource) }
-      { suffix: '/policyFragments/core-document-input-validation', value: documentInputValidationFragmentValue(documentInputValidationTemplate, documentInputValidationSource) }
-      { suffix: '/policyFragments/core-credential-connection', value: replace(renderCredentialLogin(replace(credentialConnectionTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
-      { suffix: '/policyFragments/core-credential-session-use', value: replace(renderCredentialLogin(replace(credentialSessionUseTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
-      { suffix: '/policyFragments/core-credential-connection-outbound', value: replace(renderCredentialLogin(replace(observationFragmentValue(credentialConnectionOutboundTemplate, auditObservationSource, true), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+      { suffix: '/policyFragments/core-query-observation', value: renderPolicyTemplate(queryObservationTemplate, queryObservationSource, queryObservationFragmentSlots) }
+      { suffix: '/policyFragments/core-query-telemetry', value: renderPolicyTemplate(queryTelemetryTemplate, queryTelemetrySource, queryTelemetryFragmentSlots) }
+      { suffix: '/policyFragments/core-model-limits', value: renderPolicyTemplate(modelLimitsTemplate, modelLimitsSource, modelLimitsFragmentSlots) }
+      { suffix: '/policyFragments/core-speech-ssml-guard', value: renderPolicyTemplate(speechSsmlGuardTemplate, speechSsmlGuardSource, speechSsmlGuardFragmentSlots) }
+      { suffix: '/policyFragments/core-document-input-validation', value: renderPolicyTemplate(documentInputValidationTemplate, documentInputValidationSource, documentInputValidationFragmentSlots) }
+      { suffix: '/policyFragments/core-credential-connection', value: replace(renderCredentialLogin(replace(renderPolicyTemplate(credentialConnectionTemplate, credentialCallerSource, credentialConnectionFragmentSlots), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+      { suffix: '/policyFragments/core-credential-session-use', value: replace(renderCredentialLogin(replace(renderPolicyTemplate(credentialSessionUseTemplate, credentialUseResultSource, credentialSessionUseFragmentSlots), '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
+      { suffix: '/policyFragments/core-credential-connection-outbound', value: replace(renderCredentialLogin(replace(credentialConnectionOutboundTemplate, '__CREDENTIAL_CHALLENGE_XML__', credentialChallengeXml), credentialSettings), '__GATEWAY_TELEMETRY_XML__', credentialGatewayTelemetryBody) }
     ],
-    !empty(observerApis) ? [{ suffix: '/policyFragments/core-realtime-observer', value: realtimeObserverTemplate }] : [],
+    !empty(observerApis) ? [{ suffix: '/policyFragments/core-realtime-observer', value: realtimePolicyValue(realtimeObserverTemplate, '__REALTIME_OBSERVER_OWNER_CSHARP__', realtimeObserverOwnerSource, realtimeOwnerContextTemplate, realtimeOwnerContextSource, '  ', '      ') }] : [],
     (entraAuthentication.?enabled ?? false) ? [{ suffix: '/policyFragments/core-entra-authentication-error', value: entraAuthenticationErrorFragmentValue(entraAuthenticationErrorTemplate, gatewayTelemetryTemplate, gatewayTelemetrySource) }] : []
   )
   backends: concat(

@@ -1,0 +1,9 @@
+<fragment>
+  <!-- 目的：先行認証が確認した通話の所有者を、この要求の後続処理へ引き渡します。 -->
+  <!-- 同名C#はdecisionのmethodとcallerIdだけを使い、社員JSON・認証成功印・GUIDを再検査しません。 -->
+  <set-variable id="core-realtime-owner-context" name="realtimeOwnerContext" value="@{
+      __REALTIME_OWNER_CONTEXT_CSHARP__
+    }" />
+  <!-- 期限設定は先行処理で検査済みです。ここではintとして受け取り、範囲を再検査しません。 -->
+  <set-variable id="core-realtime-session-settings" name="realtimeSessionTtlSeconds" value="@((int)JObject.Parse((string)context.Variables[&quot;gatewayOperationConstraint&quot;])[&quot;sessionTtlSeconds&quot;])" />
+</fragment>
