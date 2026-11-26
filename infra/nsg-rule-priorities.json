@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "groups": {
     "agw": {
       "suffix": "agw",
@@ -1025,23 +1025,6 @@
           "destinationPorts": [
             "80",
             "443"
-          ]
-        },
-        "allow-time-sync-egress": {
-          "designRecordId": "B-MGMT-11",
-          "direction": "Outbound",
-          "priority": 325,
-          "access": "Allow",
-          "protocol": "Udp",
-          "sourcePort": "*",
-          "source": [
-            "subnet:management"
-          ],
-          "destination": [
-            "tag:Internet"
-          ],
-          "destinationPorts": [
-            "123"
           ]
         },
         "deny-any-egress": {

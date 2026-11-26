@@ -458,9 +458,10 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
                 self.assertEqual((rule["priority"], rule["destinationPortRange"]), (priority, port))
         self.assertEqual(rules[1, "allow-appgw-http-ingress"]["sourceAddressPrefix"], "10.70.0.0/24")
         self.assertEqual(rules[1, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.64/26")
-        self.assertEqual(rules[3, "allow-time-sync-egress"]["sourceAddressPrefix"], "10.70.2.128/26")
-        self.assertEqual(rules[3, "allow-time-sync-egress"]["destinationAddressPrefix"], "Internet")
-        self.assertEqual(rules[3, "allow-time-sync-egress"]["priority"], 325)
+        self.assertNotIn((3, "allow-time-sync-egress"), rules)
+        self.assertEqual(rules[1, "allow-time-sync-egress"]["sourceAddressPrefix"], "10.70.2.64/26")
+        self.assertEqual(rules[1, "allow-time-sync-egress"]["destinationAddressPrefix"], "Internet")
+        self.assertEqual(rules[1, "allow-time-sync-egress"]["priority"], 328)
         self.assertEqual(rules[4, "allow-appgw-http-ingress"]["destinationAddressPrefix"], "10.70.2.192/26")
         expression, parameters = self.resolver("network-bindings", config)
         entries = expression.resolve("[variables('dynamicRules')]", parameters)
@@ -619,15 +620,12 @@ class ParameterIpCompiledNetworkTests(unittest.TestCase):
         self.assertEqual(firewall["dnsSettings"], {"enableProxy": True, "servers": []})
         collections = expression.resolve(resources["platformRules"]["properties"], supplied)["ruleCollections"]
         rules = {rule["name"]: rule for collection in collections for rule in collection["rules"]}
-        for name, source in (("allow-mgmt-vm-ntp", "10.70.2.128/26"),
-                             ("allow-apim-ntp", "10.70.2.64/26")):
-            with self.subTest(rule=name):
-                self.assertEqual(rules[name]["sourceAddresses"], [source])
-                self.assertEqual(rules[name]["destinationPorts"], ["123"])
-                self.assertEqual(rules[name]["ipProtocols"], ["UDP"])
-        for name in ("allow-mgmt-vm-ntp", "allow-apim-ntp"):
-            self.assertEqual(rules[name]["destinationAddresses"], ["*"])
-            self.assertNotIn("destinationFqdns", rules[name])
+        self.assertNotIn("allow-mgmt-vm-ntp", rules)
+        self.assertEqual(rules["allow-apim-ntp"]["sourceAddresses"], ["10.70.2.64/26"])
+        self.assertEqual(rules["allow-apim-ntp"]["destinationPorts"], ["123"])
+        self.assertEqual(rules["allow-apim-ntp"]["ipProtocols"], ["UDP"])
+        self.assertEqual(rules["allow-apim-ntp"]["destinationAddresses"], ["*"])
+        self.assertNotIn("destinationFqdns", rules["allow-apim-ntp"])
 
     def test_firewall_arm_keeps_config_sku_and_constructed_vnet_ranges_together(self):
         config = self.configuration()

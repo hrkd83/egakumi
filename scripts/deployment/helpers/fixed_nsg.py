@@ -17,6 +17,7 @@ import time
 from uuid import UUID
 
 from .apim_naming import apim_name
+from .management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 
 
 API = '2025-01-01'
@@ -473,7 +474,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
     expected = {groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-' + SUFFIXES[key]
                 + '/securityRules/' + name: _definition(rule, bindings)
                 for key in GROUPS for name, rule in catalog['groups'][key]['rules'].items()}
-    if len(expected) != 76: raise FixedNsgError('The NSG-only manifest must contain exactly 76 children')
+    if len(expected) != 75: raise FixedNsgError('The NSG-only manifest must contain exactly 75 children')
     expected = {identity.casefold(): value for identity, value in expected.items()}
     aca = (groups['nw'] + '/providers/' + NSG_TYPE + '/nsg-' + stem + '-aca').casefold()
     observed = set()
@@ -520,7 +521,7 @@ def verify_fixed_nsg_upgrade_what_if(config, document, bindings):
         elif action not in ('Ignore', 'NoChange'):
             raise FixedNsgError('NSG-only what-if would write an unrelated resource or an existing parent')
     if observed != set(expected): raise FixedNsgError('NSG-only what-if did not expand all fixed children')
-    return {'fixedChildrenVerified': 76, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
+    return {'fixedChildrenVerified': 75, 'expansionDiagnostics': 0, 'unrelatedWrites': 0}
 
 
 def _subnet_reference(value):
@@ -752,6 +753,14 @@ def complete_fixed_nsg_rules(config, transport, *, execute=False, record=None, m
     _limits(max_checks, wait_seconds)
     parents = _parents(config, transport); bindings = read_fixed_nsg_bindings(config, transport)
     plan = _classify(parents, bindings, require_complete=True)
+    # The NSG-only migration can be called without the Core wrapper. Preserve
+    # legacy NTP egress until the existing VM's PHC preparation is verified.
+    if execute and any(row['group'] == 'management' and row['name'] in ('allow-time-sync-egress', 'allow-time-sync')
+                       for row in plan):
+        try:
+            require_management_host_time_core_ready(config, transport)
+        except ManagementHostTimeError as error:
+            raise FixedNsgError(str(error)) from None
     emit = record if callable(record) else (lambda event, value: None)
     emit('plan', {'operation': 'complete', 'parents': parents, 'bindings': bindings, 'targets': plan, 'execute': execute})
     writes = _apply(config, transport, parents, plan, deleting=True, record=record, max_checks=max_checks,

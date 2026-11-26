@@ -4,7 +4,7 @@
 
 本書は、初期構築のAzure Firewallを実際に通過する通信と、構築資材の許可規則を対応付ける。NSGで許可するVNet内通信のすべてがFirewallを通る設計ではない。送信元、宛先、プロトコル、ポートだけでなく、[通信要件](network-communication-requirements.md)の経路と併せて読む。
 
-初期集合は **6 Rule Collection Group（RCG）・11 collection・36 Allow規則**。RCG、collection、規則の作成有無を公開params／configで切り替える入力は設けない。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証済みの業務接続設定だけを該当するアドレスへ差し込む。資材・合成検証・実環境への適用・実通信の確認は別の段階として扱う。
+初期集合は **6 Rule Collection Group（RCG）・11 collection・35 Allow規則（Network16、Application19）**。RCG、collection、規則の作成有無を公開params／configで切り替える入力は設けない。構築サブネットCIDR、割当IP、公開Host、リージョンと、検証済みの業務接続設定だけを該当するアドレスへ差し込む。資材・合成検証・実環境への適用・実通信の確認は別の段階として扱う。
 
 ## 設計前提と評価順序
 
@@ -24,7 +24,7 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 | RCG | 優先度 | collection（優先度） | 規則数 | 正本 |
 | --- | ---: | --- | ---: | --- |
 | `rcg-ingress` | 200 | `allow-agw-to-apim`（200） | 1 | [network-bindings.bicep](../../infra/modules/network-bindings.bicep) |
-| `rcg-platform` | 300 | `allow-apim-platform`（200）、`allow-vm-platform`（210） | 13 | [network.bicep](../../infra/modules/network.bicep) |
+| `rcg-platform` | 300 | `allow-apim-platform`（200）、`allow-vm-platform`（210） | 12 | [network.bicep](../../infra/modules/network.bicep) |
 | `rcg-portal` | 350 | `portal-ingress`（100）、`portal-azure-monitor`（150）、`portal-platform-and-probe`（200）、`portal-runner`（300） | 7 | [portal-network.bicep](../../infra/modules/portal-network.bicep) |
 | `rcg-credential-broker` | 360 | `credential-broker-azure`（200） | 3 | [credential-broker-network.bicep](../../infra/modules/credential-broker-network.bicep) |
 | `rcg-portal-gateway` | 370 | `portal-gateway`（100） | 1 | [gateway-egress.bicep](../../apps/portal/deploy/gateway-egress.bicep) |
@@ -67,9 +67,8 @@ NSGの `allow-internet-egress` がTCP80／443を許可していても、Firewall
 | `allow-mgmt-vm-arm` | N・TCP443 | `AzureResourceManager`タグ | [`FLOW-MGMT-ARM`](network-communication-requirements.md#flow-mgmt-arm)。構築資源の管理API操作、ログ接続token取得 | `allow-azure-resource-manager-egress`。VMを全リソースの保守拠点とするための管理到達性 |
 | `allow-mgmt-vm-monitor` | N・TCP443 | `AzureMonitor`タグ | [`FLOW-MGMT-MONITOR`](network-communication-requirements.md#flow-mgmt-monitor)。AMAの監視送信、保存済みログ閲覧 | `allow-monitor-egress`。監視送信と閲覧は用途・認可を分ける |
 | `allow-mgmt-vm-agent-storage` | N・TCP443 | `Storage`タグ | [`FLOW-MGMT-AGENT-STORAGE`](network-communication-requirements.md#flow-mgmt-agent-storage)。Agent配布・状態等の直接Storage依存、診断取得 | `allow-storage-egress`。構築監査Blob PEへの閲覧許可とは別 |
-| `allow-mgmt-vm-ntp` | N・UDP123 | `*` | [`FLOW-MGMT-NTP`](network-communication-requirements.md#flow-mgmt-ntp)。guestの標準外部NTP | `allow-time-sync-egress`。NSGのInternet制限と組み合わせ、APIM用とは送信元を分離 |
 
-送信元は全件管理VMサブネット。`ntp.ubuntu.com`をguestの標準外部時刻源として準備し、既存PHC／refclock等のOS条件を維持する。FirewallでのUDP123許可と、guestが実際に選択した時刻源・同期状態は別の判定である。WireServer、DHCP、IMDS、Azure提供DNSの基盤例外は[別の通信記録](platform-communications.md)で扱う。
+送信元は全件管理VMサブネット。管理VMの時刻同期はAzureホストのPHCをChronyで参照する非IPの連携であり、このcollectionに外部NTP規則を置かない。既存VMには現行guest監査moduleを単独適用してPHC同期を成立させた後、所有する`allow-vm-platform`から旧`allow-mgmt-vm-ntp`を撤去して読み戻す。通常CoreのFirewall更新はguest監査より先なので、先行適用の成功証跡を確認できない既存VMはCore変更前に停止する。APIMの`allow-apim-ntp`は維持し、未知の企業ルールを自動削除しない。WireServer、DHCP、IMDS、Azure提供DNSとホスト時刻の基盤連携は[別の通信記録](platform-communications.md)で扱う。
 
 ### rcg-portal
 
@@ -160,9 +159,9 @@ ACME directoryは業務の証明書発行設定と共有する。productionで�
 | 証明書ACME directory | 管理VMのproduction／staging公式CA Host | 証明書確認7宛先、CA許可規則の存在 |
 | 検証済みAPI／Operation／本人接続設定 | APIM approved-servicesのFQDN集合 | 単一常設規則、HTTPS443、FQDN検証、他規則の保持 |
 | Azure環境定義 | Storage suffix、Entra login host | 共通宛先の用途と規則集合 |
-| Firewall SKU／IDPS／Threat Intel／SNAT設定 | Firewallの検査・変換方式 | 上記36のAllow集合。作成有無のフラグへ転用しない |
+| Firewall SKU／IDPS／Threat Intel／SNAT設定 | Firewallの検査・変換方式 | 上記35のAllow集合。作成有無のフラグへ転用しない |
 
-公開入力の `network.firewall.apimAllowedFqdns`、`network.firewall.managementAllowedFqdns`、`network.firewall.dnsServers`等の旧自由入力は廃止し、空でも検査で拒否する。初期の標準DNS／NTP、Broker常設、gRPC撤去に関する作成有無の入力を再導入しない。
+公開入力の `network.firewall.apimAllowedFqdns`、`network.firewall.managementAllowedFqdns`、`network.firewall.dnsServers`等の旧自由入力は廃止し、空でも検査で拒否する。初期の標準DNS、APIM NTP、管理VMのホスト時刻同期、Broker常設、gRPC撤去に関する作成有無の入力を再導入しない。
 
 StandardにはIDPS自体を送信せず、Premiumでのみ構成する。標準のtest構成はIDPSなし、production構成は採用したPremium IDPSを使用する。IDPS private ranges、SNAT private ranges、bypass／signature設定の役割を混同しない。TLS inspection無効のまま、IDPSがHTTPS本文まで見えるという検証結果は作らない。
 
@@ -174,7 +173,7 @@ StandardにはIDPS自体を送信せず、Premiumでのみ構成する。標準�
 | `FW-D02` | 全RCG／collection／規則は初期常設にする | Broker profiles、任意機能の利用有無で初期集合を変えない。内部配備段階と公開作成フラグを区別 |
 | `FW-D03` | Portal GatewayのRCGを370にする | Broker360との同順位を解消し、350→360→370→400の順を明示。許可範囲は維持 |
 | `FW-D04` | AppGW→APIM／ACAはHTTP80をFW経由で許可 | 外部HTTPSはAppGW終端。通常API・Portal・probeの経路を維持し、gRPC許可を撤去 |
-| `FW-D05` | APIM／管理VM NTPはそれぞれ送信元サブネット・UDP123・宛先`*`とする | Azure標準DNSとFWの独立した名前解決による回答差を回避。NSG Internet制限・guest時刻源・実同期確認は別途維持 |
+| `FW-D05` | APIM NTPはAPIMサブネット・UDP123・宛先`*`を維持し、管理VMはホストPHCを使う | APIMはDNS回答差を回避するNSG328と組み合わせる。管理VMのPHC／VMBusは非IPなので旧FW NTPを撤去し、UDP123／319／320を追加しない。guest同期の先行成立と現在状態の確認は分ける |
 | `FW-D06` | 同じHTTPSでもEntra／ARM／Monitor／build等の用途を規則名で分離する | 同じタグやNetwork RuleとApplication Ruleの重複を明記し、特定の後段規則hitは保証しない |
 | `FW-D07` | 証明書確認7宛先を維持する | 基盤互換到達性を失わない。全宛先の毎回利用、将来の証明書購入方式とは区別 |
 | `FW-D08` | 管理VM ACA Dev gatewayを単一構築リージョンに常設許可する | 管理VMからのログ・exec等の保守経路を成立させる。対象操作はMI／RBACで認可 |
@@ -202,12 +201,12 @@ StandardにはIDPS自体を送信せず、Premiumでのみ構成する。標準�
 
 独立した架空の構築入力で、以下のassertionを確認する。実ID・実Host・実CIDRや実ログをfixtureへ転記しない。
 
-今回の文書照合では、5つのBicep入口をコンパイルして合成入力で展開し、6 RCG・11 collection・36規則（Network 17、Application 19）の名称集合と本書の36レコードが一致した。actionはすべてAllow、Application 19規則のTLS inspectionはすべて無効であることを確認した。全通信IDは通信マスターのアンカーへ対応する。この結果は公開資材の合成照合であり、実環境の設定・通信実測値ではない。
+旧外部NTP構成での文書照合では、5つのBicep入口をコンパイルして合成入力で展開し、6 RCG・11 collection・36規則（Network 17、Application 19）の名称集合と当時の36レコードが一致した。actionはすべてAllow、Application 19規則のTLS inspectionはすべて無効であることを確認した。当時の全通信IDは通信マスターのアンカーへ対応していた。この記録は旧条件の公開資材の合成照合として保持し、管理VMのPHC化後の35規則（Network16、Application19）の検証結果へ転用しない。今回のAzure反映・実VM同期は未実施である。
 
 | 検証対象 | 判定条件 | 検証資材 |
 | --- | --- | --- |
 | 固定集合・NSGとの対応 | Bicep生成後の名称、規則種別、action、source、destination、protocol／port、priorityを定義と照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) |
-| NTPとDNS | APIM／管理VMを別規則とし、FW UDP123宛先`*`、NSG Internet制限、VNet／FW上流DNS固定を照合 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py) |
+| 時刻とDNS | APIMのFW UDP123宛先`*`・NSG328・Internet制限、管理VM用UDP123規則の不存在、VNet／FW上流DNS固定を照合。管理VMのPHC選択・同期はguestで別判定 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py)、[test_parameter_ip_ownership.py](../../tests/test_parameter_ip_ownership.py)、[test_management_linux.py](../../tests/test_management_linux.py) |
 | ACA Azure依存とDev接続 | Monitor／Entra、Entra login／ARMの分離、ipify除外、単一リージョンDev FQDNを照合 | [test_nsg_rule_priorities.py](../../tests/test_nsg_rule_priorities.py) |
 | 外部業務宛先の更新 | approved-servicesの生成・name移行・他collection保持・反復時同一結果・競合拒否・読戻し条件を照合 | [test_publish_apis.py](../../tests/test_publish_apis.py) |
 | 診断記録 | Network／Application／Threat Intelのresource-specificログ、PremiumだけのIDPSログ、保存先と配備順を照合 | [test_firewall_diagnostics.py](../../tests/test_firewall_diagnostics.py) |

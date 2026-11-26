@@ -1,4 +1,4 @@
-"""Compile all 76 fixed NSG rules with synthetic addresses; no Azure calls."""
+"""Compile all 75 fixed NSG rules with synthetic addresses; no Azure calls."""
 import copy
 import json
 from pathlib import Path
@@ -250,9 +250,9 @@ class NsgRulePriorityTests(unittest.TestCase):
         return result
 
     def test_complete_contract_has_unique_contiguous_bands_and_no_grpc_rules(self):
-        self.assertEqual(self.contract['version'], 2)
+        self.assertEqual(self.contract['version'], 3)
         self.assertEqual(set(self.contract['groups']), set(GROUPS))
-        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 13, 'management': 17}
+        expected_counts = {'agw': 9, 'apim': 22, 'aca': 15, 'pep': 13, 'management': 16}
         record_ids = set(); terminal = 0
         for g, group in self.contract['groups'].items():
             self.assertEqual(len(group['rules']), expected_counts[g]); identities = set(); bands = {}
@@ -268,9 +268,9 @@ class NsgRulePriorityTests(unittest.TestCase):
                     bands.setdefault((rule['direction'], start), []).append(rule['priority'])
             for (_, start), priorities in bands.items():
                 self.assertEqual(sorted(priorities), list(range(start, start+len(priorities))))
-        self.assertEqual((len(record_ids), terminal), (76, 6))
+        self.assertEqual((len(record_ids), terminal), (75, 6))
 
-    def test_all_76_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
+    def test_all_75_compiled_tuples_match_fixed_manifest_with_single_and_multiple_ips(self):
         for multiple, prefix in ((False, '10.70'), (True, '10.80')):
             p = self.parameters(multiple, prefix); actual = self.compiled_rules(p)
             for g, rules in actual.items():
@@ -291,6 +291,27 @@ class NsgRulePriorityTests(unittest.TestCase):
         self.assertEqual(self.compiled_rules(p), expected)
         for m in MODULES:
             self.assertFalse({'grpcEnabled', 'grpcPublicPort', 'grpcBackendPort'} & set(self.templates[m]['parameters']))
+
+    def test_management_host_phc_has_no_network_time_allow_and_apim_keeps_internet_ntp(self):
+        p = self.parameters(); actual = self.compiled_rules(p)
+        management = actual['management']
+        self.assertNotIn('allow-time-sync-egress', management)
+        for name, properties in management.items():
+            rule = canonical(properties)
+            if rule['direction'] == 'Outbound' and rule['access'] == 'Allow':
+                self.assertEqual(rule['protocol'], 'Tcp', name)
+        deny = canonical(management['deny-any-egress'])
+        self.assertEqual({key: deny[key] for key in ('priority', 'direction', 'access', 'protocol',
+                                                   'source', 'destination', 'destinationPorts')}, {
+            'priority': 4096, 'direction': 'Outbound', 'access': 'Deny', 'protocol': '*',
+            'source': ['*'], 'destination': ['*'], 'destinationPorts': ['*'],
+        })
+        ntp = canonical(actual['apim']['allow-time-sync-egress'])
+        self.assertEqual({key: ntp[key] for key in ('priority', 'direction', 'access', 'protocol',
+                                                  'source', 'destination', 'destinationPorts')}, {
+            'priority': 328, 'direction': 'Outbound', 'access': 'Allow', 'protocol': 'Udp',
+            'source': [p['subnetPrefixes']['apim']], 'destination': ['Internet'], 'destinationPorts': ['123'],
+        })
 
     def test_defaults_parent_preservation_and_fixed_dns_are_maintained(self):
         p = self.parameters(); network = self.templates['network']; actual = self.compiled_rules(p)

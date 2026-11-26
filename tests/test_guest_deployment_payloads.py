@@ -71,7 +71,7 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                 for name in ("configure-audit.sh", "certificate-bootstrap.sh", "certificate.ps1"):
                     content = (CORE / "infra/guest" / name).read_bytes().replace(b"\r\n", b"\n")
                     (root / "infra/guest" / name).write_bytes(content.replace(b"\n", newline))
-                for name in ("management-audit", "certificate", "portal-network"):
+                for name in ("management-audit", "management-host-time", "certificate", "portal-network"):
                     output = root / (name + ".json")
                     result = subprocess.run(
                         [bicep, "build", str(root / "infra/modules" / (name + ".bicep")), "--outfile", str(output)],
@@ -85,12 +85,12 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
     @staticmethod
     def payload(template, expression, login_endpoint="https://login.microsoftonline.com/"):
         return PayloadExpression(expression, template.get("variables", {}), login_endpoint).evaluate(
-            {"ntpServers": ["time.example.com"], "managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
+            {"managementPrefix": "<MANAGEMENT_SUBNET_PREFIX>",
              "acaPrefix": "<ACA_SUBNET_PREFIX>", "agwPrefix": "<APPGW_SUBNET_PREFIX>"}, 0)
 
     def test_actual_run_command_scripts_are_lf_and_have_a_working_linux_shebang(self):
         for newline in (b"\n", b"\r\n"):
-            for name in ("management-audit", "certificate"):
+            for name in ("management-audit", "management-host-time", "certificate"):
                 with self.subTest(source_newline=newline, module=name):
                     template = self.templates[newline, name]
                     command, = [item for item in template["resources"]
@@ -112,6 +112,22 @@ class GuestDeploymentPayloadTests(unittest.TestCase):
                     if name == "certificate":
                         worker = (CORE / "infra/guest/certificate.ps1").read_bytes().replace(b"\r\n", b"\n")
                         self.assertIn(base64.b64encode(worker).decode(), script)
+
+    def test_host_time_only_payload_shares_the_audit_script_with_one_fixed_mode_change(self):
+        for newline in (b"\n", b"\r\n"):
+            with self.subTest(source_newline=newline):
+                scripts = {}
+                for name in ("management-audit", "management-host-time"):
+                    template = self.templates[newline, name]
+                    command, = [item for item in template["resources"]
+                                if item["type"] == "Microsoft.Compute/virtualMachines/runCommands"]
+                    scripts[name] = self.payload(template, command["properties"]["source"]["script"])
+                mode = "readonly core_host_time_only=false"
+                self.assertEqual(scripts["management-audit"].count(mode), 1)
+                self.assertEqual(scripts["management-host-time"], scripts["management-audit"].replace(
+                    mode, "readonly core_host_time_only=true"))
+                self.assertEqual(set(self.templates[newline, "management-host-time"]["parameters"]),
+                                 {"vmName", "location", "tags"})
 
     def test_portal_firewall_uses_hosts_without_url_separators_in_each_cloud(self):
         template = self.templates[b"\n", "portal-network"]

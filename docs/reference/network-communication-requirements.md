@@ -11,14 +11,14 @@
 | 判断 | 採用する設計 | 理由と境界 |
 | --- | --- | --- |
 | 初期ネットワーク | 独立VNet、6サブネット、5 NSG、4ルートテーブル | AppGW、APIM、Private Endpoint、管理VM、ACAへNSGを関連付ける。AzureFirewallSubnetに顧客NSGを関連付けない |
-| 固定ルール集合 | NSGは76カスタム規則、Firewallは36規則。名称・優先度・用途・作成を資材で固定 | ルール作成だけを切り替えるparams/configのフラグ・任意追加配列は設けない。構築した資源のアドレスは動的に設定する |
+| 固定ルール集合 | NSG catalog v3は75カスタム規則（Allow69、Deny6）、Firewallは35規則（Network16、Application19）。名称・優先度・用途・作成を資材で固定 | ルール作成だけを切り替えるparams/configのフラグ・任意追加配列は設けない。構築した資源のアドレスは動的に設定する |
 | 公開入口 | AppGWのHTTP80とHTTPS443 | HTTPはHTTPSへのリダイレクト用。公開IPv4の初期範囲は`0.0.0.0/0`。企業の許可元IP制限は引渡し後に手動で変更する |
 | AppGWのバックエンド | APIMとPortalのACA入口へHTTP80 | 公開TLSをAppGWで終端し、バックエンドの再暗号化を行わない。閉域経路・対向NSG・入口検証を組み合わせる。閉域であるだけで暗号化と同等の保証を置かない |
 | APIMからの接続 | Foundry・Key Vault PE、BrokerのACA入口等へHTTPS443 | AppGWのバックエンド設定とは別接続。サービスのHTTPS契約と認証を維持する |
 | gRPC | 初期要件から廃止 | gRPC専用入口、8443、転送設備、API定義・設定を設けない。管理VMとAPIM間のHTTPS保守は残す。AppGW公開側HTTP/2は維持し、APIMのServer.Http2は`false`固定。HTTP/2受付とgRPC提供を区別する |
 | L7入口保護 | AppGWが`X-Core-L7-Ingress`を上書きし、APIMが検査 | 通常HTTP/HTTPS APIの入口保護として常設する。gRPC設定から独立させ、値は公開文書・paramsへ記載しない。業務APIの購読キー・Bearer認可も別に維持する |
 | 標準DNS | VNetとFirewallの上流DNSをAzure提供DNSへ固定。Firewall DNS proxyを保持 | DNS変更入力と初期カスタムDNS用NSG規則を設けない。Azure提供DNSのNSG例外を、他のDNSや全宛先53番へ一般化しない |
-| 標準時刻 | APIMの外部NTP、管理VMのOS標準NTPとホスト時刻機構 | 外部NTPはNSGでInternet宛UDP123、Firewallでは各送信元サブネットからUDP123を許可。FW側FQDNとクライアントDNSの回答一致に依存させない |
+| 標準時刻 | APIMの外部NTP、管理VMのAzureホストPHC同期 | APIMはNSG328でInternet宛UDP123、FirewallでAPIMサブネットからUDP123を許可。管理VMはChronyでPHC／`AZUR`だけを参照し、非IPのVMBus／PHCにNSG／FWのUDP123／319／320許可を作らない |
 | 明示Allowと既定許可 | 通信用途を明示しても、AppGW/ACAに必要な既定規則を保持 | 明示Allowが既定許可より狭いだけでは全体の許可範囲は狭まらない。AppGW Outbound、ACA両方向、PE Outboundの境界をNSG設計に記録する |
 | 共有SQLの接続方式 | Proxy固定、SQL PEへTCP1433で直接接続 | [Proxy採用理由](sql-proxy-decision.md)を参照。PortalのSessionロックと接続層を維持し、Redirectへの移行は見送る |
 | Firewallの記録範囲 | 実際にFirewallを通る通信だけをルールにする | PEへ直接接続するSQL/Key Vault等に、将来の迂回を想定したFW規則を置かない。通信要件は本書で記録する |
@@ -121,11 +121,10 @@ AppGWの公開側TLS、バックエンドHTTP、APIMから上流へのTLSは別�
 | <a id="flow-mgmt-monitor"></a>`FLOW-MGMT-MONITOR` | 管理VM → AzureMonitorタグ | TCP443 / HTTPS | AMA送信・保存ログ照会。FW経由。監査Blob PE閲覧とは別 |
 | <a id="flow-mgmt-agent-storage"></a>`FLOW-MGMT-AGENT-STORAGE` | 管理VM → Storageタグ | TCP443 / HTTPS | Agent/拡張の直接Storage接続等。FW経由。接続済みManaged Disk I/Oやmanaged Boot Diagnostics内部保存をこの接続へ置き換えない |
 | <a id="flow-mgmt-internet"></a>`FLOW-MGMT-INTERNET` | 管理VM → Internetタグ | TCP80、443 | NSG側の外向き許可枠。FWはOS更新、CA、build、ACA Dev等へ用途を分ける |
-| <a id="flow-mgmt-ntp"></a>`FLOW-MGMT-NTP` | 管理VMの時刻同期daemon → 外部NTP | UDP123 | FW経由。NSGはInternet、FW宛先は`*`。既存PHC/refclockも保持し、同期元を強制しない |
 
 ## Firewallを通る外部HTTP/HTTPSの用途分割
 
-下表の宛先群は、[Firewall設計の全36レコード](firewall-policy-design.md#ルールと通信要件の対応)でFQDN・protocol・port・collectionへ対応付ける。Network Ruleに先に一致する接続もあるため、各Application Ruleが必ずhitするという前提を置かない。
+下表の宛先群は、[Firewall設計の全35レコード](firewall-policy-design.md#ルールと通信要件の対応)でFQDN・protocol・port・collectionへ対応付ける。Network Ruleに先に一致する接続もあるため、各Application Ruleが必ずhitするという前提を置かない。
 
 | 通信ID | 送信元 | 用途・宛先選択 | NSG側の許可枠 |
 | --- | --- | --- | --- |
@@ -146,7 +145,7 @@ FWの許可先が一定でも、各通信が常に発生するという意味で
 
 ## 通常NSGルールへ置き換えない通信
 
-操作端末からAzureへの制御通信は、管理VMから同じサービスへ接続する通信と実行主体が異なる。以下は端末・サービス側の要件であり、VNet内5 NSGや顧客転送用FW36規則へ誤って追加しない。Azure CLIの人間Entra認証はWindows側で行い、WSLは公開資材の合成試験に使用する。
+操作端末からAzureへの制御通信は、管理VMから同じサービスへ接続する通信と実行主体が異なる。以下は端末・サービス側の要件であり、VNet内5 NSGや顧客転送用FW35規則へ誤って追加しない。Azure CLIの人間Entra認証はWindows側で行い、WSLは公開資材の合成試験に使用する。
 
 | 主体 → 宛先 | プロトコル・用途 | 構築VNet側の制御との関係 |
 | --- | --- | --- |
@@ -167,13 +166,13 @@ FWの許可先が一定でも、各通信が常に発生するという意味で
 | VM Agent/HostGAPlugin | 管理VM → Azure host/WireServer | TCP80/32526のhostchannel | 通常NSG/UDRの基盤例外。直接Storage等のfallbackは別のFLOW |
 | Managed Run Command/拡張 | Azure Compute制御 → VM Agent/guest | ARM制御とAgentの処理 | VMへの通常SSH22 Inbound接続へ置き換えない。スクリプトの外部接続は別途制御 |
 | rsyslog → AMA | 同VM内の監査転送 | loopback TCPまたはUnix Domain Socket | remote Syslog Inboundを追加しない。実Agent版、生成forwarder、DCRとログ到着を確認 |
-| ホスト時刻 | Hyper-V/VMBus/PHC → guest時刻機構 | 非IPのホスト連携 | 外部NTP UDP123とは別。network PTP UDP319/320を推測追加しない |
+| <a id="flow-mgmt-host-time"></a>`FLOW-MGMT-HOST-TIME` | Azure Hyper-V/VMBus/PHC → 管理VMのChrony | 非IPのホスト連携 | Ubuntu24.04で`/dev/ptp_hyperv`と`clock_name=hyperv`を検証し、PHC／`AZUR`を唯一sourceとして選択・`Normal`同期を確認。旧管理外部NTP許可を撤去し、UDP123／319／320を追加しない |
 | Managed Disk I/O | guest → 接続済みOS Disk | 仮想block device | guest Storage HTTPS通信ではない。backup/import/exportは別要件 |
 | Boot Diagnostics | Azure Compute基盤 → managed診断保存先 | provider内部収集・保存 | 顧客VM NICを通るStorage接続に推測対応付けしない。閲覧取得のARM/Storageは実行主体で区別 |
 | Serial Console | Windows操作端末 → Azure Serial Console → guest serial channel | 操作端末側のHTTPS/WSSと非IPのserial channel | 管理VM Inbound NSGでSSH22を開けない。利用者認可、Boot Diagnostics、guestのローカル認証が必要 |
 | Private Link/provider処理 | PE応答とサービス内部のHA/backup/保守 | 許可接続へのstateful応答・provider内部処理 | 応答専用Outbound Allowやprovider内部の推測IP/portを追加しない |
 | 診断・監査のprovider送信 | APIM/Firewall等 → 診断設定の保存先 | Azure診断基盤の処理 | Storage PEの読取接続とは別。顧客NSGを通るguest接続と一律に扱わない |
-| Azure Firewall自身の基盤通信 | Firewallサービス・上流DNS・管理基盤 | managedサービスの依存通信 | AzureFirewallSubnetへ顧客NSGを追加しない。利用者転送の36規則と内部管理wireを混同しない |
+| Azure Firewall自身の基盤通信 | Firewallサービス・上流DNS・管理基盤 | managedサービスの依存通信 | AzureFirewallSubnetへ顧客NSGを追加しない。利用者転送の35規則と内部管理wireを混同しない |
 
 ## params/configとアドレスの依存
 
@@ -191,6 +190,6 @@ FWの許可先が一定でも、各通信が常に発生するという意味で
 
 ## 再構築と実証の範囲
 
-構築資材は、同じ固定通信集合と構築資源からのアドレスbinding、標準DNS/NTP、L7入口保護、監査Blob PE、管理VMの保守client/権限/Serial初期準備を再現するための正本である。限定パッチだけに存在し、初期構築には存在しない設定を完了形の設計へ持ち込まない。
+構築資材は、同じ固定通信集合と構築資源からのアドレスbinding、標準DNS、APIMの外部NTP許可と管理VMのAzureホストPHC同期、L7入口保護、監査Blob PE、管理VMの保守client/権限/Serial初期準備を再現するための正本である。既存の管理VMはPHC実同期成立後に旧管理NSG325の完全一致tupleをETag付きで限定削除し、所有FW collectionを更新・読戻しする。未知の企業ルール・時刻設定は自動削除しない。限定パッチだけに存在し、初期構築には存在しない設定を完了形の設計へ持ち込まない。
 
 資材生成・ローカル合成検証・既存環境への限定反映/読戻し・実操作・新規環境の一式再構築は別の確認段階である。ルール全件の設定一致を、各ルールのパケット実証済みと読み替えない。判定と結果の扱いは[検証と実証結果の管理](network-security-validation.md)で定める。

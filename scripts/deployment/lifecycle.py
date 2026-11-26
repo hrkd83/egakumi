@@ -132,6 +132,7 @@ from .helpers.dns_nsg import DnsNsgError, retire_dns_rules
 from .helpers.appgw_egress_nsg import AppgwEgressNsgError, retire_appgw_egress_rules
 from .helpers.fixed_nsg import FixedNsgError, prepare_fixed_nsg_rules, complete_fixed_nsg_rules
 from .helpers.portal_backend_http import require_portal_http_core_ready
+from .helpers.management_host_time import ManagementHostTimeError, require_management_host_time_core_ready
 from .helpers import serial_initialization
 from .helpers.serial_credentials import (
     SerialCredentialError, prepare_initial_serial_password, bind_initial_serial_password, prepared_initial_serial_generation,
@@ -200,7 +201,11 @@ def upgrade_journal(config: dict, category: str):
 
 
 def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> dict:
-    """既存PortalのHTTP段階移行を確認してから、全NSGの旧子規則を安全に移す。"""
+    """既存VMのPHC同期準備とPortal移行を確認してから、全NSGの旧子規則を安全に移す。"""
+    try:
+        require_management_host_time_core_ready(config, transport)
+    except ManagementHostTimeError as error:
+        raise DeploymentError(str(error)) from None
     require_portal_http_core_ready(config, transport)
     record = upgrade_journal(config, "fixed-nsg-prepare")
     try:
@@ -210,7 +215,7 @@ def prepare_core_network_upgrade(config: dict, transport, *, execute=True) -> di
 
 
 def complete_core_network_upgrade(config: dict, transport) -> dict:
-    """Bicepから作成された全72条件を読み戻し、照合済み旧子規則だけを回収する。"""
+    """Bicepから作成された全75条件を読み戻し、照合済み旧子規則だけを回収する。"""
     record = upgrade_journal(config, "fixed-nsg-complete")
     try:
         return complete_fixed_nsg_rules(config, transport, execute=True, record=record)

@@ -7,11 +7,13 @@ import json
 from pathlib import Path
 import sys
 import unittest
+import uuid
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from deployment.helpers import fixed_nsg as nsg
+from deployment.helpers import management_host_time as host_time
 
 
 def fixture_config():
@@ -72,8 +74,11 @@ class MemoryTransport:
         manifest = nsg._catalog('nsg-legacy-rule-definitions.json' if legacy else 'nsg-rule-priorities.json')
         for key in nsg.GROUPS:
             if legacy and key=='aca': continue
+            # The historical pre-fixed fixture predates the v2 management NTP child.
+            # v2 retirement is covered independently rather than changing its old 45-rule history.
             rules = [] if empty else [self.child(self.nsg_id(key), name, nsg._definition(rule, self.bindings))
-                    for name, rule in manifest['groups'][key]['rules'].items()]
+                    for name, rule in manifest['groups'][key]['rules'].items()
+                    if not (legacy and key == 'management' and name == 'allow-time-sync-egress')]
             self.add(self.nsg_id(key), nsg.NSG_TYPE, {'securityRules': rules, 'defaultSecurityRules': self.defaults(key),
                      'subnets': [{'id': self.subnets[key]}], 'networkInterfaces': []})
         for key, suffix in (('firewallPublic', 'pip-afw-'), ('appGatewayPublic', 'pip-agw-')):
@@ -87,7 +92,16 @@ class MemoryTransport:
                  {'staticIp': self.bindings['ips']['aca'], 'vnetConfiguration': {'internal': True, 'infrastructureSubnetId': self.subnets['aca']}})
         self.vm_id = self.groups['maint']+'/providers/Microsoft.Compute/virtualMachines/vm-'+self.stem+'-mgmt'
         self.nic_id = self.groups['maint']+'/providers/Microsoft.Network/networkInterfaces/nic-'+self.stem+'-mgmt'
-        self.add(self.vm_id, 'Microsoft.Compute/virtualMachines', {'networkProfile': {'networkInterfaces': [{'id': self.nic_id}]}})
+        self.add(self.vm_id, 'Microsoft.Compute/virtualMachines', {
+            'vmId': str(uuid.UUID(int=2)), 'timeCreated': '2026-11-01T09:00:00Z',
+            'networkProfile': {'networkInterfaces': [{'id': self.nic_id}]}})
+        self.host_time_command_id = self.vm_id + '/runCommands/configure-linux-audit'
+        self.add(self.host_time_command_id, 'Microsoft.Compute/virtualMachines/runCommands', {
+            'source': {'script': host_time.GUEST_SCRIPT.read_text(encoding='utf-8')},
+            'instanceView': {'executionState': 'Succeeded', 'exitCode': 0,
+                'startTime': '2026-11-01T10:00:00Z', 'endTime': '2026-11-01T10:01:00Z',
+                'output': json.dumps({'status': 'configured', 'timeSource': 'azure-host-phc',
+                                     'timeSynchronized': True, 'timeService': 'chrony.service'}) + '\n'}})
         self.add(self.nic_id, 'Microsoft.Network/networkInterfaces', {'virtualMachine': {'id': self.vm_id},
                  'ipConfigurations': [{'properties': {'subnet': {'id': self.subnets['management']}, 'privateIPAddress': self.bindings['ips']['management']}}]})
         mon = self.groups['monitor'] + '/providers/Microsoft.Storage/storageAccounts/'
@@ -186,6 +200,112 @@ class FixedNsgMigrationTests(unittest.TestCase):
         # All bodies in this test are independently synthesized, never live ARM output.
         self.events.append((event, copy.deepcopy(value)))
 
+    @staticmethod
+    def add_v2_management_ntp(transport):
+        """Recreate the independently specified v2 child, including its original priority."""
+        parent = transport.resources[transport.nsg_id('management')]
+        child = transport.child(parent['id'], 'allow-time-sync-egress', {
+            'priority': 325, 'direction': 'Outbound', 'access': 'Allow', 'protocol': 'Udp',
+            'sourcePortRange': ['*'], 'destinationPortRange': ['123'],
+            'sourceAddressPrefix': [transport.prefixes['management']], 'destinationAddressPrefix': ['Internet'],
+        })
+        parent['properties']['securityRules'].append(child)
+        return child
+
+    def test_v2_management_ntp_retires_conditionally_without_changing_any_other_rule(self):
+        transport = MemoryTransport(self.config)
+        before = {group: nsg._snapshot(transport.resources[transport.nsg_id(group)]) for group in nsg.GROUPS}
+        old = self.add_v2_management_ntp(transport)
+        prepared = nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual((prepared['plannedMoves'], prepared['azureWrites']), (1, 1))
+        self.assertEqual(nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True,
+            record=self.record, wait_seconds=0)['azureWrites'], 0)
+        transport.deploy_fixed()
+        completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual((completed['plannedDeletes'], completed['azureWrites']), (1, 1))
+        self.assertEqual(nsg.complete_fixed_nsg_rules(self.config, transport, execute=True,
+            record=self.record, wait_seconds=0)['azureWrites'], 0)
+        self.assertEqual([call['method'] for call in transport.mutations()], ['PUT', 'DELETE'])
+        self.assertTrue(all(call['path'].split('?')[0] == old['id'] and call['headers']['If-Match'] != '*'
+                            for call in transport.mutations()))
+        after = {group: nsg._snapshot(transport.resources[transport.nsg_id(group)]) for group in nsg.GROUPS}
+        self.assertEqual(after, before)
+
+    def test_v2_ntp_is_classified_when_it_is_the_only_existing_child(self):
+        transport = MemoryTransport(self.config, empty=True)
+        old = self.add_v2_management_ntp(transport)
+        plan = nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual((plan['plannedMoves'], plan['azureWrites']), (1, 1))
+        self.assertEqual(transport.mutations()[0]['path'].split('?')[0], old['id'])
+        transport.deploy_fixed()
+        result = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertEqual((result['plannedDeletes'], result['azureWrites']), (1, 1))
+        self.assertNotIn('allow-time-sync-egress', nsg._inventory(transport.resources[transport.nsg_id('management')]))
+        self.assertIn('allow-time-sync-egress', nsg._inventory(transport.resources[transport.nsg_id('apim')]))
+
+    def test_modified_v2_ntp_stops_before_any_mutation(self):
+        for field, value in (('priority', 326), ('protocol', 'Tcp'), ('destinationPortRange', '319'),
+                             ('destinationAddressPrefix', '192.0.2.123/32'), ('sourceAddressPrefix', '*')):
+            transport = MemoryTransport(self.config)
+            child = self.add_v2_management_ntp(transport)
+            child['properties'][field] = value
+            before = copy.deepcopy(transport.resources)
+            with self.subTest(field=field), self.assertRaises(nsg.FixedNsgError):
+                nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+            self.assertFalse(transport.mutations())
+            self.assertEqual(transport.resources, before)
+
+    def test_ntp_retirement_gate_failure_keeps_all_old_rules_before_the_first_delete(self):
+        for legacy in (False, True):
+            transport = MemoryTransport(self.config, legacy=legacy)
+            if not legacy:
+                self.add_v2_management_ntp(transport)
+            nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+            transport.deploy_fixed(); transport.calls.clear()
+            before = copy.deepcopy(transport.resources)
+            with self.subTest(legacy=legacy), mock.patch.object(nsg, 'require_management_host_time_core_ready',
+                    side_effect=host_time.ManagementHostTimeError('PHC preparation required')) as gate:
+                with self.assertRaisesRegex(nsg.FixedNsgError, 'PHC preparation required'):
+                    nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+                gate.assert_called_once_with(self.config, transport)
+            self.assertFalse(transport.mutations())
+            self.assertEqual(transport.resources, before)
+
+    def test_missing_phc_proof_blocks_direct_ns_only_retirement(self):
+        transport = MemoryTransport(self.config)
+        self.add_v2_management_ntp(transport)
+        nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        transport.deploy_fixed(); transport.calls.clear()
+        transport.resources.pop(transport.host_time_command_id)
+        with self.assertRaises(nsg.FixedNsgError):
+            nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        self.assertFalse(transport.mutations())
+        self.assertIn('allow-time-sync-egress', nsg._inventory(transport.resources[transport.nsg_id('management')]))
+
+    def test_new_vm_readiness_result_allows_owned_ntp_retirement(self):
+        transport = MemoryTransport(self.config)
+        self.add_v2_management_ntp(transport)
+        nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        transport.deploy_fixed(); transport.calls.clear()
+        with mock.patch.object(nsg, 'require_management_host_time_core_ready', return_value={
+                'newManagementVm': True, 'hostTimePreparationRequired': False}) as gate:
+            result = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        gate.assert_called_once_with(self.config, transport)
+        self.assertEqual((result['plannedDeletes'], result['azureWrites']), (1, 1))
+
+    def test_ns_only_retirement_without_management_ntp_does_not_read_host_time(self):
+        transport = MemoryTransport(self.config, legacy=True)
+        parent = transport.resources[transport.nsg_id('management')]
+        parent['properties']['securityRules'] = [row for row in parent['properties']['securityRules']
+                                                 if row['name'] != 'allow-time-sync']
+        nsg.prepare_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        transport.deploy_fixed(); transport.calls.clear()
+        with mock.patch.object(nsg, 'require_management_host_time_core_ready',
+                               side_effect=AssertionError('No management time-source retirement')) as gate:
+            result = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
+        gate.assert_not_called()
+        self.assertEqual((result['plannedDeletes'], result['azureWrites']), (44, 44))
+
     def test_execute_requires_a_callable_journal_before_transport_use(self):
         for operation in (nsg.prepare_fixed_nsg_rules, nsg.complete_fixed_nsg_rules):
             for record in (None, [], {}, False, 'not-a-callback'):
@@ -266,9 +386,11 @@ class FixedNsgMigrationTests(unittest.TestCase):
             self.assertFalse(transport.mutations())
 
     def test_core_preparation_resumes_before_audit_pe_creation_but_completion_requires_them(self):
-        for legacy, expected_moves in ((False, 0), (True, 45)):
+        for legacy, expected_moves in ((False, 1), (True, 45)):
             transport = MemoryTransport(self.config, legacy=legacy)
             # The old fixed catalog had 72 children and no audit Blob endpoint.
+            if not legacy:
+                self.add_v2_management_ntp(transport)
             for group in ('management', 'pep'):
                 parent = transport.resources[transport.nsg_id(group)]
                 parent['properties']['securityRules'] = [
@@ -296,7 +418,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
                 completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
                 self.assertEqual(completed['azureWrites'], expected_moves)
                 self.assertEqual(sum(len(nsg._inventory(transport.resources[transport.nsg_id(group)]))
-                                     for group in nsg.GROUPS), 76)
+                                     for group in nsg.GROUPS), 75)
 
     def test_pending_audit_phase_cannot_ignore_a_rule_whose_binding_is_missing(self):
         transport = MemoryTransport(self.config)
@@ -328,7 +450,7 @@ class FixedNsgMigrationTests(unittest.TestCase):
         transport.deploy_fixed()
         completed = nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)
         self.assertEqual(completed['azureWrites'], 45)
-        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 76)
+        self.assertEqual(sum(len(transport.resources[transport.nsg_id(g)]['properties']['securityRules']) for g in nsg.GROUPS), 75)
         self.assertEqual(nsg.complete_fixed_nsg_rules(self.config, transport, execute=True, record=self.record, wait_seconds=0)['azureWrites'], 0)
         self.assertTrue(all('/securityRules/' in c['path'] and c['headers']['If-Match']!='*' for c in transport.mutations()))
 

@@ -96,8 +96,8 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         self.assertEqual(network["resources"]["staticSecurityRules"]["properties"],
                          "[variables('staticNsgRules')[copyIndex()].rule.properties]")
 
-    def test_apim_and_management_ntp_keep_separate_sources_and_the_internet_nsg_boundary(self):
-        """独立DNSの回答差を避け、各送信元・UDP123とNSGのInternet制限を守る。"""
+    def test_apim_keeps_ntp_while_management_host_phc_needs_no_network_time_allow(self):
+        """APIMのUDP123境界を保持し、管理VMにはNTP/PTPのネットワーク許可を作らない。"""
         configuration = build_bicep_configuration(normalize_configuration(fixture(), base_directory=CORE / "config"))
         template = self.templates["network"]
         parameters = {"config": configuration["network"], "resourcePrefix": configuration["resourceStem"]}
@@ -119,21 +119,19 @@ class FirewallDiagnosticsDeploymentTests(unittest.TestCase):
         self.assertFalse(any(rule["name"] == "allow-mgmt-vm-ntp" for rule in rules))
         self.assertFalse(any(rule["name"] == "apim-platform-time" for rule in rules + vm_rules))
         self.assertFalse(any(rule["name"] == "management-time" for rule in rules + vm_rules))
-        management_time, = [rule for rule in vm_rules if rule["name"] == "allow-mgmt-vm-ntp"]
-        self.assertEqual(management_time, {
-            "name": "allow-mgmt-vm-ntp", "ruleType": "NetworkRule",
-            "sourceAddresses": [configuration["network"]["subnetPrefixes"]["management"]],
-            "destinationAddresses": ["*"], "destinationPorts": ["123"], "ipProtocols": ["UDP"],
-        })
+        self.assertFalse(any(rule["name"] == "allow-mgmt-vm-ntp" for rule in vm_rules))
+        self.assertTrue(all(rule["ipProtocols"] == ["TCP"] for rule in vm_rules))
         nsgs = expression.resolve(template["variables"]["nsgDefinitions"], parameters)
-        for key in ("apim", "management"):
-            group = next(group for group in nsgs if group["key"] == key)
-            nsg_time, = [rule for rule in group["rules"] if rule["name"] == "allow-time-sync-egress"]
-            properties = nsg_time["properties"]
-            self.assertEqual(properties["sourceAddressPrefix"], configuration["network"]["subnetPrefixes"][key])
-            self.assertEqual(properties["destinationAddressPrefix"], "Internet")
-            self.assertEqual(properties["destinationPortRange"], "123")
-            self.assertEqual(properties["protocol"], "Udp")
+        apim = next(group for group in nsgs if group["key"] == "apim")
+        nsg_time, = [rule for rule in apim["rules"] if rule["name"] == "allow-time-sync-egress"]
+        properties = nsg_time["properties"]
+        self.assertEqual(properties["sourceAddressPrefix"], configuration["network"]["subnetPrefixes"]["apim"])
+        self.assertEqual(properties["destinationAddressPrefix"], "Internet")
+        self.assertEqual(properties["destinationPortRange"], "123")
+        self.assertEqual(properties["protocol"], "Udp")
+        management = next(group for group in nsgs if group["key"] == "management")
+        self.assertFalse(any(rule["name"] == "allow-time-sync-egress" for rule in management["rules"]))
+        self.assertTrue(all(rule["properties"]["protocol"] == "Tcp" for rule in management["rules"]))
 
     def test_nsg_declarations_are_disjoint_for_fresh_existing_and_partial_environments(self):
         """実ARMのループを展開し、同じNSGの二重宣言と既存本体へのPUTを防ぐ。"""

@@ -2,7 +2,7 @@
 
 [共通確認](common.md) · [基盤設定](platform-settings.md) · [NSG設計・通信対応](../reference/network-security-design.md) · [非NSG通信](../reference/platform-communications.md)
 
-初期構築は5 NSG・カスタム76ルールの固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
+初期構築は5 NSG・カスタム75ルール（Allow 69、Deny 6）の固定集合とする。AzureFirewallSubnetにはNSGを関連付けない。
 通信の用途を1ルールずつ名前と設計IDで記録し、ルールの作成有無を公開params／configで制御しない。
 
 - 120から: クライアント要求から発生する通信。
@@ -19,7 +19,7 @@ Azure仕様上の通信として300番台へ置く。300番台の名前にはポ
 
 正本は[infra/nsg-rule-priorities.json](../../infra/nsg-rule-priorities.json)のversion 2で、
 名称・方向・優先度・Allow/Deny・両ポート・プロトコル・アドレス参照・設計IDを定義する。
-以下の表はその76件に対応する。送信元ポートは全件Any。
+以下の表は正本catalog v3の75件に対応する。送信元ポートは全件Any。
 
 サブネットCIDRは構築入力から、単IPは構築した資源の割当IPから、PEは構築したPE NICの全IPから
 動的に設定する。単IP・PE IPは/32とし、同じサブネットの他資源へ無条件に広げない。
@@ -153,10 +153,32 @@ NTPの確認では、対象FirewallとAPIM送信元CIDRからのUDP123を全Acti
 | 322 | `allow-monitor-egress` | 管理VMサブネットCIDR | `AzureMonitor`タグ | TCP／443 | `B-MGMT-08` |
 | 323 | `allow-storage-egress` | 管理VMサブネットCIDR | `Storage`タグ | TCP／443 | `B-MGMT-09` |
 | 324 | `allow-internet-egress` | 管理VMサブネットCIDR | `Internet`タグ | TCP／80, 443 | `B-MGMT-10` |
-| 325 | `allow-time-sync-egress` | 管理VMサブネットCIDR | `Internet`タグ | UDP／123 | `B-MGMT-11` |
 | 4096 | `deny-any-egress` | Any | Any | Any／Any | `B-MGMT-20` |
 
-管理VMのNTPはFirewallの`allow-mgmt-vm-ntp`で管理サブネットから宛先`*`へのUDP123を許可し、NSGの325でInternet宛に制限します。VNet標準DNSとFirewallの独立した回答差による遮断を避ける設計です。guestへ設定する標準外部NTPは`ntp.ubuntu.com`ですが、既存PHC・OS側pool等も保持します。変更後は他のInternet NTP sourceも到達できるため、実際の選択元・到達性・時刻精度を確認します。Firewall Allowやdaemon稼働だけで外部同期の成功とは扱いません。資材・Azure読戻し・同期結果は別に記録します。
+管理VMはUbuntu 24.04のChronyでAzureホストのPHCを唯一の同期元にします。`/dev/ptp_hyperv`のcharacter deviceと`clock_name=hyperv`を確認し、PHC／`AZUR`の選択と`Normal`の同期状態を時間を限定して確認します。VMBus／PHCはIPを使わないため、旧管理NSGの325 `allow-time-sync-egress`とFirewallの`allow-mgmt-vm-ntp`を撤去し、UDP123／319／320の代替許可を作りません。APIMの328 `allow-time-sync-egress`と`allow-apim-ntp`は維持します。既知のUbuntu外部NTP経路と完全一致する旧管理ファイルだけを移行し、未知の企業時刻設定・変更済み旧管理ファイルは変更前に停止します。サービスまたは同期確認の失敗時は元設定へ復旧します。資材、Azure読戻し、実同期・精度の結果は別に記録し、今回のAzure反映・実VM同期は未実施です。
+
+### 管理VMのホスト時計へ先行移行する
+
+通常CoreではNSG／Firewall更新がguest監査設定より先に実行されます。既存管理VMは、[時刻専用module](../../infra/modules/management-host-time.bicep)でPHC同期を先に設定します。旧外部NTP許可を残したまま先行適用し、Coreを先に実行しません。時刻専用moduleは構築用guestと同じ時刻ロジックを使い、固定内部モードだけを変更してSSH／rsyslogの設定・再起動へ進まず終了します。公開params／configに時刻sourceの切替入力は追加しません。Windows側でAzure CLI認証と対象所有を確認し、同じ環境の操作ロックを保持して行います。
+
+次の例は、チェックアウトルートから実行するためのプレースホルダーです。`vmName`、`location`、`tags`を含むARM形式のparameters JSONと実際の対象情報は、所有者限定の`.local/<environment>/generated/`等の保護ファイルで管理し、公開資材や実行出力へ転記しません。
+
+```powershell
+az deployment group create `
+  --resource-group "<MANAGEMENT_RESOURCE_GROUP>" `
+  --template-file infra/modules/management-host-time.bicep `
+  --parameters "@<PROTECTED_MANAGEMENT_AUDIT_PARAMETERS_JSON>"
+```
+
+Core前の読取gateは、既存VMの所有と、Managed Run Commandのscript全文が現行資材に一致することを確認します。`configure-host-time`を優先し、provisioning／executionの`Succeeded`、整数の`exitCode: 0`、出力の`status: configured`、`timeSource: azure-host-phc`、`timeSynchronized: true`と`timeOnly: true`を要求します。新commandが正確に404の場合だけ、現行全文に一致する`configure-linux-audit`成功を代替証跡として読みます。新commandの失敗・進行中・未知sourceを過去の別成功で隠しません。VMの`timeCreated`とcommandの`startTime`／`endTime`をUTCで照合し、現在のVMより前の実行証跡を拒否します。旧guest結果、未適用、失敗、読取不能はCore変更前に停止します。新規VMが正確に404の場合は新規構築へ進めます。NSG限定移行も、旧管理NTP規則を削除する前に同じgateを確認します。
+
+この成功証跡は先行適用時の同期成立を示します。現在のPHC選択、`Normal`状態、offset／精度と保守復帰後の同期は実VMで別に確認します。同じVMの再イメージ・OS復元や時刻設定の変更後は、時刻専用moduleを再適用してPHC同期を確認します。実環境の結果は環境別の保護証跡で管理します。
+
+時刻だけの移行には[management_host_time.py](../../scripts/operations/management_host_time.py)の`inspect → apply → verify`を使います。各stageは同じ明示した保護evidence-dirと共通lockで所有VMのUUID・MI・`timeCreated`、入力とCore stateを照合します。旧Coreに`vmId`が無い場合だけ、所有ID・記録principal・tenant・イメージを確認した現世代を最初のinspect原本へ固定し、後続stageで同じbindingを要求します。Core stateは書き換えません。計画時はARM GETだけで、`--execute`を明示したinspect／verifyは静的な読取専用Run Command、applyは時刻専用Run Commandを各1回だけ送ります。応答不明や既存receiptの再開では同じtargetをGETし、PUTを再送しません。再読取の成功を新しい実測と扱いません。
+
+verifyで現在のPHC／`AZUR`、`Normal`、残補正100ms以下とSSH／rsyslogの既存ファイルfingerprint不変を確認した後、[management_time_network.py](../../scripts/operations/management_time_network.py)で旧管理NSGの325または260の既知子1件と、`rcg-platform`の`allow-vm-platform`内NTP規則1件だけを撤去します。直前の定義・ETag・関連付けを照合し、NSG childのDELETEと当該RCGのPUTだけを行います。NSG親・Firewall Policy親・他RCG・他規則は更新しません。APIのreadonly `size`はPUTしません。再実行は残る対象だけを再計画し、競合・未知条件・応答不明では再送せず停止します。
+
+撤去後は別の明示evidence-dirで新しい`inspect → verify`を実行し、既存設定と実同期を再確認します。一時読取commandは正確なIDとreceiptを保護保存し、条件付き削除の成立を確認していない状態で自動回収しません。Core／GW／Portal全体の再配備は、このNTP限定移行には不要です。
 
 ### ACA Dev API向けFirewall許可
 
@@ -242,20 +264,22 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 既存NSGの親は再PUTせず、タグは専用Tags API、ルールは子リソースで更新する。
 この順序と固定ルールの全条件をコンパイル済み資材で確認し、新規構築と再適用で同じ定義を使う。
 
-既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではPortal HTTP80・gRPC撤去・標準DNS固定を
+既存環境も最終状態は同じ資材に収束させる。今回の関連改修ではPortal HTTP80・gRPC撤去・標準DNS固定・管理VMのAzureホストPHC同期を
 含むため、旧HTTPS後段へ最終Coreを先に適用しない。
 
 1. Windows側Azure CLIで認証し、入力・Core state・所有RG／VNet／NSG／内部資源・実ルールを読み取る。
    WSLはローカル試験とBicepコンパイルに使用し、Entra認証にLinux側Azure CLIを使わない。
 2. [Portal HTTP80移行](platform-settings.md#portal後段をhttp80へ移行する)を先行する。
    Firewall80追加時は443を保持し、対応image／revision・HTTP readinessを確認してAppGW後段とprobeを切り替える。
+   [管理VMのホスト時計への先行移行](#管理vmのホスト時計へ先行移行する)は現行guest監査moduleを単独適用する。既知内容の照合と変更前保存を行い、PHCの実同期と現行scriptの成功証跡が成立してからCoreと旧外部NTP許可の撤去へ進む。
 3. `fixed_nsg.prepare_fixed_nsg_rules`は変更前に全NSGを監査し、完全一致した所有済み旧ルールだけを
    一時優先度へ移す。旧Allowは1000番台、旧末尾Denyは4080とし、旧順序を維持する。
    未知・手動変更・所有不明のルールがあれば変更前に停止する。各変更をETagと保護記録で限定する。
-4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定72子と
+4. [NSG限定資材](../../infra/modules/nsg-fixed-upgrade.bicep)を単独what-ifで検証し、固定75子と
    新ACA NSGだけをIncremental配備する。既存NSGの親、UDR、VNet親、Firewall本体、Public IPは書かない。
    その後、ACA subnetの直前ETagを使った限定PUTでNSG関連付けだけを追加する。
-   `complete_fixed_nsg_rules`が5関連付け・全72条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
+   `complete_fixed_nsg_rules`が5関連付け・全75条件と既定規則を照合した後にだけ、完全一致する旧子を回収する。
+   catalog v2の旧管理325は既知legacy tupleとの完全一致と直前ETagで限定削除し、所有Firewall collectionから管理VM NTP規則を除いて読み戻す。APIMのUDP123許可、未知の企業規則を削除しない。
    Incremental配備で省いた旧子が削除されたとは判断しない。
 5. APIMの通常L7保護を常設し、所有参照を照合した旧gRPC専用domainとAppGW L4設備を撤去する。
    APIM標準名でのHTTPS保守を維持し、Server.Http2だけfalseへ固定する。他customPropertiesと他用途domainを保持する。
@@ -273,11 +297,11 @@ DHCP、host time等を通常NSGのAllowへ置き換えない。[非NSG通信と�
 所有する既存NSG名を読み取る。新ACA parentのtagsは再構築と同じ構築tagsと固定3タグのunionとする。
 実VNetのDNSとFirewall上流DNSがAzure提供の空設定であり、Firewall DNS proxyが有効であることを
 NSG変更前に要求する。手動custom DNSがあればこの入口で切り替えず、規則の更新前に停止する。
-公開params／configは増やさず、72規則を常に生成する。
-`verify_fixed_nsg_upgrade_what_if`は72子の全tupleを照合し、展開診断、対象子のIgnore、
+公開params／configは増やさず、catalog v3の75規則を常に生成する。
+`verify_fixed_nsg_upgrade_what_if`は75子の全tupleを照合し、展開診断、対象子のIgnore、
 不足、削除、既存parentやNSG以外への書込を拒否する。what-ifのSucceededだけで判断しない。
 
-`associate_fixed_aca_nsg`は72子が揃った後に、ACA subnetの既知writable設定を保持して
+`associate_fixed_aca_nsg`は75子が揃った後に、ACA subnetの既知writable設定を保持して
 NSG参照だけを変更する。現routeTable、delegations、標準送信設定等を保持し、API仕様の
 readOnly以外で未対応の項目があれば値を省略せず停止する。現在の関連付けが別NSGなら停止する。
 変更前記録・直前ETag・If-Match・一致readbackを必要とし、応答不明や未完了時はPUTを再送しない。

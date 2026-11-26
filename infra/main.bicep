@@ -402,11 +402,11 @@ module sharedEntraSecrets 'modules/shared-entra-secrets.bicep' = if (deployCore)
   dependsOn: [services]
 }
 
-// 管理 VM の時刻同期と認証ログを設定。証明書処理を始める前に監査の準備を完了します。
+// 管理 VM を Azure ホスト PHC に同期し、認証ログを設定。証明書処理より先に完了します。
 module auditConfiguration 'modules/management-audit.bicep' = if (deployCore) {
   name: '${stem}-management-audit'
   scope: maintGroup
-  params: { vmName: management!.outputs.managementVm.name, location: location, tags: tags, ntpServers: ['ntp.ubuntu.com'] }
+  params: { vmName: management!.outputs.managementVm.name, location: location, tags: tags }
   dependsOn: [networkBindings]
 }
 
