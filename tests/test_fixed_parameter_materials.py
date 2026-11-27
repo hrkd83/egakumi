@@ -51,27 +51,25 @@ class FixedParameterMaterialsTests(unittest.TestCase):
             "main": "infra/main.bicep",
         }.items()}
 
-    def test_firewall_ranges_include_every_constructed_vnet_space_without_public_override(self):
+    def test_firewall_uses_generated_idps_ranges_and_keeps_snat_ranges(self):
         template = self.templates["network"]
         policy, = [item for item in resources(template)
                    if item["type"] == "Microsoft.Network/firewallPolicies"]
-        # RFC1918内の重複と、RFC1918外の文書用CIDRの両方を含む合成計画。
-        spaces = ["10.0.0.0/8", "192.0.2.0/24", "198.51.100.0/24"]
-        for settings in ({"sku": "Premium"}, {
-            "sku": "Premium", "snatPrivateRanges": ["0.0.0.0/0"],
-            "idpsPrivateRanges": ["0.0.0.0/0"],
-            "bypassTrafficSettings": [{"name": "synthetic-legacy-bypass"}],
-        }):
-            parameters = {"config": {"addressSpaces": spaces, "firewall": settings}}
-            with self.subTest(legacy_fields=len(settings) > 1):
-                actual = expression(template).resolve(policy["properties"], parameters)
-                self.assertEqual(actual["snat"]["privateRanges"], ["IANAPrivateRanges", *spaces])
-                self.assertEqual(actual["intrusionDetection"]["configuration"], {
-                    "privateRanges": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
-                                      "192.0.2.0/24", "198.51.100.0/24"],
-                    "bypassTrafficSettings": [],
-                })
-                self.assertEqual(actual["dnsSettings"], {"enableProxy": True, "servers": []})
+        app_gateway = "192.0.2.0/24"
+        spaces = ["10.0.0.0/8", app_gateway, "198.51.100.0/24"]
+        generated = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "198.51.100.0/24"]
+        parameters = {"config": {"addressSpaces": spaces, "subnetPrefixes": {"agw": app_gateway},
+                                 "firewall": {"sku": "Premium", "idpsPrivateRanges": ["0.0.0.0/0"]}}}
+        with self.assertRaisesRegex(KeyError, "generatedIdpsPrivateRanges"):
+            expression(template).resolve(policy["properties"], parameters)
+        parameters["config"]["generatedIdpsPrivateRanges"] = generated
+        actual = expression(template).resolve(policy["properties"], parameters)
+        self.assertEqual(actual["snat"]["privateRanges"], ["IANAPrivateRanges", *spaces])
+        self.assertEqual(actual["intrusionDetection"]["configuration"], {
+            "privateRanges": generated,
+            "bypassTrafficSettings": [],
+        })
+        self.assertEqual(actual["dnsSettings"], {"enableProxy": True, "servers": []})
 
     def test_firewall_default_ranges_and_sku_specific_idps_preserve_reviewed_settings(self):
         template = self.templates["network"]
@@ -83,6 +81,8 @@ class FixedParameterMaterialsTests(unittest.TestCase):
                 "sku": tier, "idpsMode": "Deny", "threatIntelMode": "Deny",
                 "signatureOverrides": copy.deepcopy(overrides),
             }}}
+            if tier == "Premium":
+                parameters["config"]["generatedIdpsPrivateRanges"] = ["192.0.2.0/24"]
             with self.subTest(tier=tier):
                 actual = expression(template).resolve(policy["properties"], parameters)
                 spaces = expression(template).resolve(template["variables"]["addressSpaces"], parameters)

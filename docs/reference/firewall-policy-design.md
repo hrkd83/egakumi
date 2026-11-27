@@ -165,6 +165,8 @@ ACME directoryは業務の証明書発行設定と共有する。productionで�
 
 StandardにはIDPS自体を送信せず、Premiumでのみ構成する。標準のtest構成はIDPSなし、production構成は採用したPremium IDPSを使用する。IDPS private ranges、SNAT private ranges、bypass／signature設定の役割を混同しない。TLS inspection無効のまま、IDPSがHTTPS本文まで見えるという検証結果は作らない。
 
+Premiumでは、構築CLIがRFC1918と構築VNetのCIDRからAppGWサブネットだけを差し引く。Firewallを経由するAppGWから内部APIMなどへの通信を受信方向のシグネチャの対象にする。ネットワーク規則のSNAT用範囲、IDPSモード、許可経路は従来の設定を維持する。 [AppGWをFirewallの前段に置く構成のIDPS設計](https://learn.microsoft.com/en-us/azure/architecture/example-scenario/gateway/firewall-application-gateway#application-gateway-in-front-of-azure-firewall)
+
 ## 判断記録
 
 | 判断ID | 判断・採用理由 | 影響範囲 |

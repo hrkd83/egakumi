@@ -234,7 +234,7 @@ Graph表示名・scope・poolの4末端値とPortal共通購読数上限は、�
 | 16 | `network.subnetPrefixes.management` | params | 管理VMサブネット |
 | 17 | `network.subnetPrefixes.aca` | params | ACAサブネット |
 | 18 | `network.firewall.snatPrivateRanges` | 資材固定 | IANAPrivateRanges＋構築VNet範囲からSNAT除外を生成 |
-| 19 | `network.firewall.idpsPrivateRanges` | 資材固定 | PremiumのみRFC1918＋構築VNet範囲を重複排除して生成 |
+| 19 | `network.firewall.idpsPrivateRanges` | 資材固定 | PremiumではRFC1918と構築VNetの範囲からAppGWサブネットを除いて生成 |
 | 20 | `network.firewall.bypassTrafficSettings` | 資材固定 | 初期IDPS bypassを空に固定 |
 | 21 | `services.publisherName` | params | API提供組織の表示名 |
 | 22 | `services.publisherEmail` | params | API運用の連絡先 |
